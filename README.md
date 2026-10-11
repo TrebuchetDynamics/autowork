@@ -244,6 +244,39 @@ executed evidence precede canonical closure; no push or deployment is implied.
 Skill availability and support files are checked at use time; a missing skill is
 reported with its safe fallback, not silently treated as loaded.
 
+## Autoresearch
+
+The bundle vendors [uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch)
+v2.2.2 at the revision in [UPSTREAM.json](skills/autoresearch/UPSTREAM.json), with
+its MIT license and runtime scripts. Installing the bundle makes it available in
+every configured profile; no separate Claude/Codex installation is required.
+
+Use `/autoresearch` for goal routing or a metric-driven loop. All 13 upstream
+subcommands are available:
+
+`plan`, `debug`, `fix`, `security`, `ship`, `probe`, `scenario`, `predict`,
+`reason`, `learn`, `improve`, `evals`, `regression`.
+
+CLI keeps `/autoresearch:plan`; Telegram uses `/autoresearch_plan` (likewise for
+every subcommand). `/autoresearch plan ...` also works. Colon commands are omitted
+from Telegram's menu; use the underscore spelling there. Menu capacity can hide
+entries without disabling typed commands. Existing command owners keep precedence.
+
+```text
+/autoresearch_plan reduce cache latency; document findings and schedule TODO tasks; do not implement yet
+/autoresearch Goal: reduce parser time Scope: src/parser Metric: milliseconds Verify: python bench.py Iterations: 10
+```
+
+The [Hermes adapter](skills/autoresearch/SKILL.md) connects research to repo-docs:
+findings update existing documents, matching tasks are reused, and accepted gaps
+become full TODO.md bodies with goals.json priorities, dependencies and checks.
+This schedules the backlog; it does not create a timer. Autogoal can execute
+eligible tasks when implementation is authorized, preserving its ownership,
+verification and commit gates. Read-only and planning-only requests remain scoped.
+Upstream flags and analytical methods are retained; host-specific tools, generic
+confirmation prompts, experimental Git handling and documentation handoffs follow
+the adapter. Claude-only hooks are not installed.
+
 ## Add or update a skill
 
 ```text

@@ -256,6 +256,24 @@ Eligibility checks current dependencies/focus/status. Live lease availability re
 unknown. The command does not dispatch; readiness is not implementation authorization.
 Do not substitute an unrelated global pick.
 
+### Autoresearch intake and task scheduling
+
+For `/autoresearch` findings, plans, experiments or chained handoffs, load
+[the autoresearch adapter](../autoresearch/SKILL.md). Treat run logs, TSV and
+`handoff.json` as evidence inputs; this skill still owns canonical documentation
+and backlog reconciliation. Narrow Maintain records accepted findings in existing
+owners and schedules bounded work in TODO.md with matching goals.json priority,
+dependencies, full acceptance/checks and preserved ownership. Reuse matching task
+IDs, including leased/in-progress work; repeated evidence creates no duplicates.
+Research recommendations do not manufacture accepted product requirements.
+
+Include baseline/target/units, exact Verify/Guard results, run/source references,
+remaining gaps and chosen implementation/verification slices. Run the normal
+consumer-bound handoff gate and report actual Now/Next eligibility. Scheduling
+here means ordered backlog work, not a new timer or dispatch. Continue through
+autogoal only within existing implementation authority; explicit audit/read-only
+and no-implementation limits carry across all chained research commands.
+
 ## 6. Language, verification and report
 
 Load [the STE-inspired writing profile](references/ste-inspired-profile.md) for

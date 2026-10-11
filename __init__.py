@@ -89,5 +89,7 @@ def register(ctx):
             command, partial(_invoke, ctx, name, path),
             description=f"Run the {name} skill", args_hint="[instructions]",
         )
+    from .autoresearch_commands import register as register_autoresearch
+    register_autoresearch(ctx, skills, _invoke)
     from .bundle import register_bundle
     register_bundle(ctx, _invoke)

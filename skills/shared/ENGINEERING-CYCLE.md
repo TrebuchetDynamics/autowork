@@ -7,6 +7,18 @@ continuation through that accepted scope; default autogoal still hands off one s
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
+## Autoresearch evidence enters the same cycle
+
+Use [autoresearch](../autoresearch/SKILL.md) for bounded measured experiments,
+diagnosis, adversarial analysis and research-driven planning. Its original command
+protocols are vendored with a pinned revision. `plan`/`learn`/`improve` and all
+research checkpoints route findings through repo-docs narrow Maintain: update
+existing document owners, deduplicate accepted tasks, schedule Now/Next in TODO.md
+and canonical goals.json, and run the consumer handoff gate. TSV/handoff files are
+evidence, never a competing task queue. Autogoal retains task ownership, execution,
+review and commit gates. Planning does not dispatch workers or create timers;
+already-authorized implementation can continue from a verified eligible handoff.
+
 ## Autonomous decisions are the default
 
 Within the user's authorized outcome, decide routine reversible choices yourself:

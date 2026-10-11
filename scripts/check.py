@@ -23,6 +23,8 @@ EXCLUSIONS = {
         ('native', 'optional installed Linux controller/backend composition'),
     'tests/integration_plugin.py':
         ('integration', 'requires the optional Hermes loader environment'),
+    'tests/integration_autoresearch.py':
+        ('integration', 'requires Hermes loader, CLI queue and gateway routing; no model or network calls'),
     'tests/integration_bundle.py':
         ('integration', 'requires an existing isolated Hermes installation'),
     'tests/integration_hindsight.py':

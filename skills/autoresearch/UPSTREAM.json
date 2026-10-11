@@ -1,0 +1,49 @@
+{
+  "repository": "https://github.com/uditgoenka/autoresearch",
+  "revision": "050e30dc4ba0974b03f2873111b9901ec3211390",
+  "version": "2.2.2",
+  "source_directory": "plugins/autoresearch/skills/autoresearch",
+  "license": "MIT",
+  "commands": [
+    "plan",
+    "debug",
+    "fix",
+    "security",
+    "ship",
+    "probe",
+    "scenario",
+    "predict",
+    "reason",
+    "learn",
+    "improve",
+    "evals",
+    "regression"
+  ],
+  "sha256": {
+    "LICENSE": "36fe186f404fa529a4c290a5c671e0dd07162be0c3270c02e1cdc831e97bf127",
+    "autoresearch.md": "970be21cf52c450ec55f22f80a029ef83bb8eb12e84e1baf6feab65885687c00",
+    "debug.md": "f95104f9c43e0d073d3776cb071cbadba2896744d36652320ad9a59b29f827c5",
+    "evals.md": "09e04e2b631f8e4b64860e32e2fd5b96a046276ce0de0f6c1381887e5b2dbb5b",
+    "fix.md": "e83f8a34be9cc61089d3fa0cad93398e028b2bee2fbabe56b3b92a0523df7833",
+    "improve.md": "c208711fcb47089bae9fbeb6a0f82e26efb40d9b7cbb034e9dc8fdf0b057ca2b",
+    "learn.md": "6d336d9b1294cf0af825ed1b23db9fca05e06c097b776079ea034d88292a8e8d",
+    "plan.md": "8ded92e1aa9f4ef2145cc19c141d9ae6af412027450732ddbbe1500fcb4c4ff4",
+    "predict.md": "d3b16c4dca37924f4f29fd91fbdcf3906851110907517d60b932eba182cc396e",
+    "probe.md": "e41ceec05a13a24b5af853c8287ded7c680368100963d5a6157e8395062ea4b3",
+    "reason.md": "73025217ff63d2cc6f1906f28ab2221fccdff190780ee6e45751800e522e76a9",
+    "references/orchestrator-routing.md": "53ec4f48e88318812d7e2ddc51b993c44d9843000972c0e68aa24fb36158d240",
+    "references/predict-personas.md": "c8440a3cfb02d15c2286fd12ca318cc2c060adaa05320d5648c9214c07d008ce",
+    "references/reason-judge-protocol.md": "5a56791e32c7604a10753ca8fe14aa92768d65b8e0e264fbe3bb2da616c25253",
+    "references/security-checklist.md": "30cbf18e1509b90b0e621fe270b63d592af13b2addc7bd15d5b89633989f8c31",
+    "regression.md": "2797c904e397a2bcb65b4a908b48e3538d029fd2a0b92a816e99efdecf30c9eb",
+    "scenario.md": "170e3f0cd1bb62c8a494373b36d6bcb90f9ffaf6a0efa658f829640145d625ca",
+    "scripts/orchestrate.sh": "482319614dd674fae64ecf43c531367c06a92c24d5217b5f8e30ea75051ae339",
+    "scripts/score-regression.sh": "489beaa40f990ea52996f184f42f75b5ac386406f89671d291009eea018eab7d",
+    "security.md": "365f3229a45c1765ea1b69517d6d3e3acdadc9a9fa85b7010dab6ee886fd77be",
+    "ship.md": "af40dac96f86c7542feca17804533d48b1f52ecc0512da032ed3a223bfab5658",
+    "ROUTER.md": "c3ec24a5c90e72bfeca1f69702d5c9159c90b3c8546e94a87eead20a715e6045"
+  },
+  "renamed_files": {
+    "ROUTER.md": "SKILL.md"
+  }
+}
