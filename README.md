@@ -15,10 +15,10 @@ across profiles, and verification that gateway commands were registered.
 | --- | --- | --- |
 | Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. |
 | Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. |
-| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates relevant docs and reconciles full TODO.md tasks with goals.json. Does not launch workers. |
+| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. |
 | Implement accepted work | `/autogoal Implement the accepted cache specification` | Selects eligible tasks, hands work to a worker, checks results and commits owned changes. Default invocation selects one task; no push/deploy implied. |
 | Research and improve | `/autoresearch:plan Reduce cache latency` | Derives measurements and a plan; records accepted follow-ups through repo-docs. Other research commands can execute bounded experiments. |
-| Continue approved work | `/lgtm` | Resumes the understood next step, retaining prior authorization and later restrictions. |
+| Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. |
 | Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. |
@@ -32,15 +32,25 @@ See [commands and workflows](docs/workflows.md) for the full research command se
 
 ```text
 /repo-interview Design a caching layer for this repository
-/repo-docs Record our accepted design and order implementation tasks in TODO.md
 /autogoal Implement that accepted specification; commit locally, no push
 ```
 
-The interview establishes the decisions. Repo-docs turns accepted work into tasks
-with dependencies and checks. Autogoal executes authorized work and reports the
-current TODO task, actual outcome, next eligible task, and commit/push status.
+The interview asks questions and uses repo-docs to save accepted decisions and
+tasks automatically; a separate docs command is unnecessary. Once that design is
+accepted, autogoal implements it and reports task outcomes and delivery status.
 A blocked dependency stays blocked; a passing build alone does not complete a task.
 Documentation-only requests do not start implementation or recurring jobs.
+
+Illustrative result after an authorized task completes—not a test receipt:
+
+```text
+CACHE — COMPLETED; 1 TODO task completed
+Task: TODO.md CACHE-01 — Add bounded cache storage.
+Changed: cache implementation, tests and docs/cache.md.
+Checks: cache acceptance tests passed; required review passed.
+Next: CACHE-02 — Verify eviction behavior [eligible, not started].
+Delivery: local commit <SHA>; not pushed, as requested.
+```
 
 ## Read before installing
 
@@ -58,8 +68,9 @@ Documentation-only requests do not start implementation or recurring jobs.
 - There is **no automatic restoration of previous configuration** on uninstall.
   Back up profile configurations first; see [removal and recovery](docs/uninstall.md).
 
-The runtime-policy opt-out and exact configuration effects are documented in
-[installation](docs/installation.md). It does not make full setup policy-neutral.
+The runtime-policy opt-out prevents changes **during plugin loading only**.
+Full setup still applies the bundle’s approval policy. There is currently no
+policy-neutral full-installation mode. See [installation](docs/installation.md).
 See [memory and retained data](docs/memory.md) before enabling memory capture.
 
 ## Installation choices
@@ -90,14 +101,24 @@ bash install.sh --bundle-only
 ```
 
 This starts with the bundled workflows and skips external-source setup. Keep the
-checkout: the installed plugin links to it. Setup reports each profile as ready,
-stopped, deferred or incomplete and refreshes running gateway command handlers.
-Reopen existing CLI chats to load the new commands. In chat, try:
+checkout: the installed plugin links to it. Profile `status` is `ready` or
+`incomplete`. The separate `gateway` field reports `commands_reloaded`,
+`not_running`, `deferred_by_request`, `unreachable` or `reload_incomplete`.
+
+Run `hermes toolset doctor --json` in the terminal. After bundle-only setup it may
+report missing external imports: command registration does not prove full workflow
+readiness. Reopen CLI chat and try this first, conversation-only scenario:
 
 ```text
 /toolset list
-/repo-interview questions only: help me clarify a small repository improvement
+/repo-interview questions only: help me clarify a caching improvement; ask one question, then stop
 ```
+
+Expected first success: the agent asks one relevant question and changes no files.
+This uses the bundled interview skill and your configured model; it does not need
+OMH, speech, Graphify or a worker. It is a live smoke check you perform, not a claim
+that automated registration tests exercised the model. Resolve any missing skill
+or model error before attempting implementation workflows.
 
 For the full external stack, preview `bash install.sh --yes-deps --dry-run`, then
 run `bash install.sh --yes-deps`. Full setup also needs `uv` unless OMH and Graphify
