@@ -17,7 +17,7 @@ def main():
         (home / 'plugins/hermes-toolset').symlink_to(root, target_is_directory=True)
         (home / 'config.yaml').write_text('plugins:\n  enabled: [hermes-toolset]\n')
         from hermes_cli.plugins import get_plugin_manager, get_plugin_commands
-        from hermes_cli.commands_platforms import telegram_menu_commands
+        from hermes_cli.commands_platforms import telegram_menu_commands, telegram_menu_max_commands
         from gateway.session_context import set_session_vars, clear_session_vars
         from tools.skills_tool import skill_view
         manager = get_plugin_manager()
@@ -28,7 +28,7 @@ def main():
         names = json.loads((root / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
         payload = json.loads(skill_view('hermes-toolset:autoresearch'))
         assert 'error' not in payload, payload
-        menu, _ = telegram_menu_commands()
+        menu, _ = telegram_menu_commands(telegram_menu_max_commands())
         menu = dict(menu)
         # Fleet menus may exceed Telegram's cap. Sanitized colon names must never
         # appear as unresolvable menu entries, regardless of the selected cap.
@@ -36,7 +36,8 @@ def main():
             assert f'autoresearch:{name}' in commands
             assert f'autoresearch-{name}' in commands
             assert f'autoresearch{name}' not in menu
-        assert 'autoresearch_plan' in menu, menu
+        assert all('autoresearch_' + name in menu for name in names), menu
+        assert 'autoresearch' in menu, menu
         cli = SimpleNamespace(_pending_input=Queue(), _agent_running=False)
         manager._cli_ref = cli
         tokens = set_session_vars()

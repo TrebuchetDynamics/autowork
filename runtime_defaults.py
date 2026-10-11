@@ -1,4 +1,4 @@
-"""Apply the bundle's approval policy in the profile bound by Hermes' loader."""
+"""Apply bundle policy and command visibility in Hermes' bound profile."""
 
 
 def apply_runtime_defaults(ctx):
@@ -25,6 +25,8 @@ def apply_runtime_defaults(ctx):
     # with fallback defaults. The native loader binds the owning profile even
     # when a shared gateway loads several profiles in the same process.
     raw = require_readable_config_before_write()
+    from .telegram_menu_policy import menu_patch
+    patch.update(menu_patch(raw))
     paths = set()
 
     def differs(current, expected, prefix=()):

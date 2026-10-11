@@ -131,3 +131,14 @@ copies when updating a skill rather than assuming every copy was overwritten.
 
 See [removal and recovery](uninstall.md) for disabling/removing the plugin and
 restoring configuration. Removal alone does not undo prior setup writes.
+
+### Autoresearch in Telegram's picker
+
+Use `/autoresearch_plan`, `/autoresearch_debug`, `/autoresearch_fix` and the other
+underscore spellings in Telegram; colon spellings are for CLI chat. Plugin runtime
+defaults add all 14 Autoresearch entries to Hermes' menu priority, preserving your
+existing priority list, mode and cap. An intentionally small cap or a longer custom
+priority list can still hide entries; `/commands` lists commands beyond the picker.
+Command registration and Telegram's stored menu are separate: a gateway plugin
+reload wires handlers, while a gateway reconnect refreshes the bot menu. Tests use
+the configured menu cap, not an artificial 100-entry limit.
