@@ -51,6 +51,22 @@ Git status/diff against its pre-test state. This checks conversational invocatio
 not documentation generation or autonomous implementation. Missing provider/tool
 errors are failures to resolve, not reasons to report a successful workflow.
 
+## Core-only requirements interview
+
+After the smoke check, use the bundled interview to clarify a real requirement
+and produce a decision summary in chat:
+
+```text
+/repo-interview questions only: help me define a tiny CLI that counts nonempty lines in a text file. Ask one question at a time about inputs, blank lines and errors. When I say finish, summarize my answers, open questions and one concrete acceptance example in chat. Do not save files or create tasks.
+```
+
+Answer the questions, then say `finish`. Expected evidence is a useful summary
+grounded in your actual answers, with unresolved choices left open and no file
+changes. This uses the configured model and ordinary repository read access;
+supporting imported skills have a documented fallback. Questions-only mode does
+not run repo-docs Maintain and needs no Graphify, memory or speech service.
+This is an operator-run exercise, not a recorded clean-install/model test.
+
 ## Telegram smoke check
 
 Configure the Telegram bot and intended profile using normal Hermes setup first.
@@ -76,10 +92,15 @@ working directory is not confinement. See Hermes' [profile and workspace guidanc
 
 ## Optional: see decisions become a task
 
-Use a new disposable Git repository with no real product data, configured model
-and the file/terminal capabilities needed by the workflow. Check full diagnostics
-and the relevant skill prerequisites first; command registration alone is not
-readiness for this exercise. In its CLI chat, try:
+This is the **full-workflow exercise**, not a core-only installation check.
+Saving interview answers invokes repo-docs Maintain, whose mandatory Graphify
+analysis needs an installed, configured Graphify integration and the relevant
+file/terminal tools. Native plugin installation alone does not set up Graphify.
+Use [full setup](installation.md) or satisfy those prerequisites separately, then
+check diagnostics and actual Graphify readiness before continuing.
+
+Use a new disposable Git repository with no real product data and a configured
+model. Command registration alone is not readiness for this exercise. In its CLI chat, try:
 
 ```text
 /repo-interview Plan a tiny CLI that counts nonempty lines in a text file. Ask me the missing requirements, then save my accepted answers and one bounded implementation task. Do not implement, commit or push.

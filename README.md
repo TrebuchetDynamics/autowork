@@ -126,6 +126,7 @@ checkout: the installed plugin links to it. Profile `status` is `ready` or
 ## First use in your project
 
 Keep the same profile selected, then open **your project**, not the Toolset checkout:
+replace `work` with an existing profile, or omit `-p work` for default.
 
 ```sh
 hermes -p work toolset doctor --core
@@ -149,8 +150,10 @@ OMH, speech, Graphify or a worker. It is a live smoke check you perform, not a c
 that automated registration tests exercised the model. Resolve any missing skill
 or model error before attempting implementation workflows.
 
-Next, try the [disposable-repository exercise](docs/onboarding.md#optional-see-decisions-become-a-task):
-answer an interview, save accepted decisions and produce a bounded TODO.md task.
+Next, use the [core-only requirements interview](docs/onboarding.md#core-only-requirements-interview)
+to produce a useful decision summary in chat. The separate
+[full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task)
+saves docs and a TODO.md task; it requires Graphify and file/terminal tools.
 
 To add the full stack after native installation, use
 `hermes -p work toolset setup --yes-deps --dry-run`, then
