@@ -52,7 +52,7 @@ printf '%s|%s\\n' "$HERMES_HOME" "$*" >> "$CALL_LOG"
                         HERMES_HOME=str(self.hermes_root), CALL_LOG=str(self.log))
 
     def run_installer(self, *args):
-        return subprocess.run(['bash', str(self.script), *args], cwd=self.root,
+        return subprocess.run(['bash', str(self.script), '--sources-only', *args], cwd=self.root,
                               env=self.env, text=True, capture_output=True)
 
     def calls(self):

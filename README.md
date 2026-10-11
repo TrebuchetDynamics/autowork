@@ -21,20 +21,21 @@ hermes toolset setup --yes-deps --hindsight-config /path/to/connection.json
 hermes toolset doctor
 ```
 
-For local development, link this checkout into your profile's plugin directory.
-Run from the repository root (this fails safely if the target already exists):
+From a local checkout, one command performs the complete installation for every
+existing live profile:
 
 ```sh
-python - <<'PY'
-import os
-from pathlib import Path
-home = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
-plugins = home / "plugins"
-plugins.mkdir(parents=True, exist_ok=True)
-(plugins / "hermes-toolset").symlink_to(Path.cwd(), target_is_directory=True)
-PY
-hermes plugins enable hermes-toolset
+bash install.sh --yes-deps
 ```
+
+`install.sh`, `install-plugins.sh`, and `hermes toolset setup` share the same
+complete setup path: bundled skills, plugin installation/enablement, profile
+configuration, OMH setup, per-profile readiness checks, and running-gateway command
+refresh. No manual symlinks or per-profile enable commands are needed. Use
+`--dry-run` to preview, `--bundle-only` to install only this bundle and its native
+skills, or `--no-reload` to explicitly defer gateway wiring. Dependency consent
+and native security scans still apply; a blocked dependency or failed readiness
+check returns nonzero and reports setup as incomplete.
 
 Plugins are enabled per profile. For a named profile, use that profile's home for
 the link and `hermes -p PROFILE plugins enable hermes-toolset` to enable it.

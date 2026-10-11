@@ -30,6 +30,14 @@ EOF
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
+# Public installs always run the full orchestration. The internal stage keeps
+# legacy source installation separate so it cannot recursively launch setup.
+if [[ ${1:-} != --sources-only ]]; then
+    script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+    exec python3 "$script_dir/setup_bundle.py" "$@"
+fi
+shift
+
 dry_run=false
 enable=false
 yes_deps=false

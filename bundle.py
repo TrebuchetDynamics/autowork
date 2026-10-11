@@ -170,6 +170,12 @@ def setup_parser(parser):
     setup.add_argument('--hermes-home', help='Hermes root containing profiles/')
     setup.add_argument('--yes-deps', action='store_true', help='Consent to declared Python dependencies')
     setup.add_argument('--hindsight-config', help='Connection-only JSON for new Hindsight profiles')
+    setup.add_argument('--bundle-only', action='store_true')
+    setup.add_argument('--no-reload', action='store_true')
+    finalize = actions.add_parser('finalize', help='Verify this profile and refresh gateway command wiring')
+    finalize.add_argument('--hermes-home', required=True)
+    finalize.add_argument('--bundle-only', action='store_true')
+    finalize.add_argument('--no-reload', action='store_true')
     doctor = actions.add_parser('doctor', help='Report enabled plugins and available commands')
     doctor.add_argument('--json', action='store_true')
 
@@ -179,16 +185,18 @@ def handle_cli(args):
         report = inventory()
         print(json.dumps(report, indent=2) if args.json else list_commands())
         return int(bool(report['missing_plugins'] or report['missing_skills'] or report['unchecked_skill_sources']))
-    argv = ['bash', str(ROOT / 'install-plugins.sh'), '--enable', '--setup']
-    if args.dry_run:
-        argv.append('--dry-run')
-    if args.hermes_home:
-        argv += ['--hermes-home', args.hermes_home]
-    if args.yes_deps:
-        argv.append('--yes-deps')
-    if getattr(args, 'hindsight_config', None):
-        argv += ['--hindsight-config', args.hindsight_config]
-    return subprocess.run(argv, check=False).returncode
+    if args.action == 'finalize':
+        from .setup_runtime import finalize
+        report = inventory()
+        result, code = finalize(ROOT, report, args)
+        print(json.dumps(result, indent=2))
+        return code
+    argv = ['python3', str(ROOT / 'setup_bundle.py')]
+    for flag in ('dry_run', 'yes_deps', 'bundle_only', 'no_reload'):
+        if getattr(args, flag, False): argv.append('--' + flag.replace('_', '-'))
+    if args.hermes_home: argv += ['--hermes-home', args.hermes_home]
+    if getattr(args, 'hindsight_config', None): argv += ['--hindsight-config', args.hindsight_config]
+    return subprocess.run(argv, cwd=ROOT, check=False).returncode
 
 
 def register_bundle(ctx, invoke):

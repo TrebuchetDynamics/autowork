@@ -73,13 +73,13 @@ class BundleTests(unittest.TestCase):
         self.skills = ['other:secret']
         self.assertEqual(self.bundle.register_imported_skills(self.ctx, self.invoke), {})
 
-    def test_setup_runs_bundled_installer_with_explicit_flags_without_shell_interpolation(self):
-        args = argparse.Namespace(action='setup', dry_run=True, hermes_home='/tmp/home with spaces', yes_deps=True)
+    def test_setup_uses_complete_orchestrator_and_preserves_arguments(self):
+        args = argparse.Namespace(action='setup', dry_run=True, hermes_home='/tmp/home with spaces',
+                                  yes_deps=True, bundle_only=True, no_reload=True)
         with patch.object(self.bundle.subprocess, 'run', return_value=types.SimpleNamespace(returncode=7)) as run:
             self.assertEqual(self.bundle.handle_cli(args), 7)
-        self.assertEqual(run.call_args.args[0], ['bash', str(ROOT / 'install-plugins.sh'),
-                                               '--enable', '--setup', '--dry-run',
-                                               '--hermes-home', '/tmp/home with spaces', '--yes-deps'])
+        self.assertEqual(run.call_args.args[0], ['python3', str(ROOT / 'setup_bundle.py'),
+            '--dry-run', '--yes-deps', '--bundle-only', '--no-reload', '--hermes-home', '/tmp/home with spaces'])
         self.assertNotIn('shell', run.call_args.kwargs)
 
     def test_setup_parser_requires_action_and_supports_doctor(self):
