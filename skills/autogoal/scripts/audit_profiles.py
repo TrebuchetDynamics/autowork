@@ -287,6 +287,13 @@ def inspect_profile(name, home, launch):
         owner_cycle['task_ids'] = [safe(t) for t in cycle_raw['task_ids'] if isinstance(t, str)][:100]
         if isinstance(cycle_raw.get('selected_task'), dict):
             owner_cycle['selected_task'] = project(cycle_raw['selected_task'], ('id', 'title', 'status'))
+        for field in ('held_task_ids', 'repairs', 'blocker', 'resolved_requests'):
+            if isinstance(cycle_raw.get(field), list):
+                owner_cycle[field] = [safe(v) for v in cycle_raw[field] if isinstance(v, str)][:100]
+        queue = cycle_raw.get('ready_queue')
+        owner_cycle['ready_queue'] = [project(t, ('id', 'title', 'goal'))
+                                    for t in (queue if isinstance(queue, list) else []) if isinstance(t, dict)][:3]
+        owner_cycle.update(project(cycle_raw, ('queue_shortfall', 'routing_gap')))
         owner_cycle['boundary'] = 'Reported owner-cycle evidence; not fresh worker, remote or product acceptance verification'
     elif cycle_raw is not None:
         gaps.append('owner cycle receipt missing supported schema; recovery execution unverified')

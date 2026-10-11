@@ -18,7 +18,7 @@ Resolve the actual owning profile home first; never guess default from a named
 session. Add `--apply --authority /private/owner.json` only with the existing
 source-bound authority described in handoff.md. Prerequisite/candidate request
 flags are forwarded to the existing recovery pipeline. The runner writes private
-history, `unblock-latest.json` and a five-line `report-latest.txt` automatically,
+history, `unblock-latest.json` and a compact `report-latest.txt` automatically,
 then performs fresh canonical selection. It never invents a ledger or acceptance.
 
 An unchanged blocker reuses one `requests/<id>.json`; the second occurrence changes
@@ -42,6 +42,68 @@ readiness does not dispatch. Without repair authority, diagnosis does not repair
 The runner's bounded work search uses the canonical selector. When no candidate
 is found, inspect one accepted source/test seam as below; an empty selector does
 not prove all independent work exhausted. Keep offline and live acceptance separate.
+
+## Unattended continuation contract
+
+At the beginning of every authorized owner occurrence, read this profile's
+`autogoal/inbox/` with `progress_runtime.py inbox --state-dir OWN_HOME/autogoal`.
+Reconcile each request against the actual consumer and current ownership. An inbox
+item is a request, never permission to take another worker's task. Acknowledge it
+with `progress_runtime.py reply --state-dir OWN_HOME/autogoal --request-id ID
+--owner EXACT_OWNER --status acknowledged --evidence ACTUAL_RECEIPT`. Perform
+already authorized integration/repair, then reply `resolved` with the actual
+commit/check receipt, or `blocked` with the one missing input. The requesting
+profile retries readiness next occurrence; a resolution claim alone cannot close it.
+No new schedule, worker or external message is created by the mailbox helper.
+
+The agent establishes these private continuation files from **existing** evidence;
+the user should not have to wire them manually:
+
+- `recovery-authority.json`: the existing exact authority schema from handoff.md.
+  With `--apply`, owner_cycle automatically uses it if no explicit authority is
+  supplied. Current revision, accepted scope and no-overlapping-writer checks still
+  apply. Never refresh stale authority blindly or infer acceptance from a cron tick.
+- `owner-route.json`: `{ "consumer": "/canonical/repo", "owner": "actual-owner",
+  "state_dir": "/actual/owner/home/autogoal" }`. Resolve the actual owner from
+  existing ownership/session evidence first. With `--apply`, the runner delivers
+  one request into that inbox and polls its matching outbox. Delivery, acknowledgement,
+  reported resolution and verified resolution are separate states. An unknown owner
+  becomes one precise escalation; never guess a sibling profile or send to all.
+- `handoff-requests/TASK_ID.json`: the already authorized, task-bound native handoff
+  payload above. With `--apply`, a ready task uses this automatically. Native
+  admission still checks the current source, contract and ownership.
+
+Use `--allow-ready-fallback` for normal milestone-wide autogoal scope, including
+scheduled runs. Omit it when the user restricts work to literal task IDs. It can
+select an already accepted, ready task in the same milestone while retaining the
+original held task and blocker. It never changes focus, releases live qualification,
+steals ownership or dispatches without an exact handoff payload.
+
+Maintain a **target of three** small ready tasks from accepted scope. The runner
+reports the validated queue and shortfall. When short, perform one bounded repo-docs
+Maintain pass under the existing integration owner: split remaining implementation,
+offline regression tests and live qualification into distinct acceptance criteria.
+Preserve the live task and its gate; create an offline task only for demonstrably
+unfinished accepted work with explicit sources, dependencies and checks. Reuse an
+existing task if it already covers that work. Do not create duplicate tasks, empty
+commits, arbitrary features or fabricate scope merely to reach three. If the accepted
+scope has fewer useful tasks, report the actual shortfall and reason.
+
+After repeated blockage, choose an action in this order: attributable repair;
+resume/reconcile the actual owner; hand off an independent ready task; route the
+missing input to its actual owner; escalate one unresolved input when routing or
+resolution is impossible. A pending request is not an excuse to skip available work.
+Do not repeat unchanged broad audits. Inspect new owner replies before repeating
+checks; preserve pause and no-live-operation instructions.
+
+The runner report is a **readiness receipt**, not the final cron result. After
+worker reconciliation, produce the occurrence report from actual native and Git
+receipts: completed TODO IDs and titles; checks and results; owned commit SHA and
+publication state; next task ID/title; exact remaining blocker and owner. Count a
+task only when its acceptance and required review passed. Count clerical repairs,
+queue creation and handoff as separate progress, never implementation completion.
+A commit alone does not prove completion, and the runner's zero completed tasks
+must not overwrite a worker's verified completion in the same occurrence.
 
 ## Execute before a blocked or idle report
 

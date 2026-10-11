@@ -20,6 +20,7 @@ import uuid
 
 import owner_unblock
 import retry_selection
+import progress_runtime
 
 
 def read_json(path, default=None):
@@ -97,6 +98,9 @@ def cycle(args):
 def run_locked(args, state):
     previous = read_json(state / 'unblock-latest.json', {})
     now = datetime.now(timezone.utc).isoformat()
+    # Reuse an existing exact authority, never synthesize or refresh its revision.
+    if args.apply and not args.authority and (state / 'recovery-authority.json').is_file():
+        args.authority = str(progress_runtime.private_path(state / 'recovery-authority.json'))
     result = {'version': 1, 'timestamp': now, 'run_id': uuid.uuid4().hex,
               'task_ids': args.tasks.split(','), 'plan': args.plan, 'completed_tasks': [],
               'dispatch_attempted': False, 'implementation': 'not_executed',
@@ -125,7 +129,40 @@ def run_locked(args, state):
     selection = recovery.get('selection', {})
     result['selected_task'] = selection.get('selected_task')
     ready = recovery['gate'] in ('ready_for_autogoal', 'candidate_validated')
+    result['held_task_ids'] = []
+    result['ready_queue'] = []
+    try:
+        queue = progress_runtime.ready_queue(consumer)
+        result['ready_queue'] = queue['tasks']
+        result['queue_shortfall'] = queue['shortfall']
+        alternate = queue['selection']
+        permitted_goals = set(recovery.get('task_goals', {}).values())
+        if (not ready and getattr(args, 'allow_ready_fallback', False)
+                and recovery['gate'] == 'consumer_readiness'
+                and (alternate.get('selected_task') or {}).get('goal') in permitted_goals
+                and alternate['state'] == 'ready_for_autogoal'):
+            result['held_task_ids'] = result['task_ids']
+            result['fallback_selection'] = alternate
+            result['selected_task'] = alternate['selected_task']
+            ready = True
+    except (ValueError, OSError, TypeError, KeyError, AttributeError) as exc:
+        result['queue_gap'] = str(exc)
     if ready:
+        resolved = []
+        for path in sorted((state / 'requests').glob('*.json')):
+            request = read_json(path)
+            if (isinstance(request, dict) and request.get('consumer') == consumer
+                    and request.get('plan') == args.plan and request.get('task_ids') == result['task_ids']
+                    and request.get('status') != 'resolved' and args.apply and not result['held_task_ids']):
+                request.update(status='resolved', resolved_at=now,
+                               resolution={'run_id':result['run_id'], 'gate':recovery['gate'],
+                                           'revision':retry_selection.goals.revision(Path(consumer))})
+                save(path, request)
+                resolved.append(str(path))
+        result['resolved_requests'] = resolved
+        if args.apply and not args.handoff_request and result['selected_task']:
+            saved = state / 'handoff-requests' / (result['selected_task']['id'] + '.json')
+            if saved.is_file(): args.handoff_request = str(progress_runtime.private_path(saved))
         result.update(outcome='READY', action='prepare_native_handoff',
                       next_action='Use the existing native handoff with explicit contract and source snapshot')
         if any(s.get('stage') == 'repair' for s in recovery.get('stages', [])):
@@ -174,6 +211,22 @@ def run_locked(args, state):
                            acknowledgement={'owner': args.integration_owner, 'evidence': args.owner_evidence,
                                             'verification': 'caller-supplied; not authentication'})
             save(path, request)
+        if args.apply:
+            try:
+                route = read_json(state / 'owner-route.json')
+                if route is not None:
+                    if (not isinstance(route, dict) or route.get('consumer') != consumer
+                            or route.get('owner') != request['owner']):
+                        raise ValueError('owner route must match canonical consumer and actual owner')
+                    request['delivery'] = progress_runtime.route(request, route['state_dir'])
+                    reply = progress_runtime.read_reply(request, request['delivery'])
+                    if reply:
+                        request.update(status=reply['status'], owner_reply=reply)
+                    save(path, request)
+                else:
+                    result['routing_gap'] = 'No bound owner-route.json; establish actual owner inbox, do not guess'
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                result['routing_gap'] = str(exc)
         result.update(integration_request=str(path), request_status=request['status'],
                       next_action=('Follow up existing integration request with its owner; do not repeat unchanged validation'
                                    if result['unchanged_runs'] >= 2 else
@@ -186,6 +239,12 @@ def run_locked(args, state):
                                      'boundary': 'canonical selector only; source/test seam search still required when no eligible candidate'}
         except (ValueError, OSError, TypeError, KeyError, SystemExit) as exc:
             result['work_search'] = {'state': 'unavailable', 'reason': str(exc)}
+    result['repairs'] = [repair for stage in recovery.get('stages', [])
+                         if stage.get('stage') == 'repair' for repair in stage.get('repairs', [])]
+    result['blocker'] = recovery.get('required_inputs', []) if not ready or result['held_task_ids'] else []
+    if result.get('routing_gap') and result['unchanged_runs'] >= 2:
+        result['action'] = 'escalate_missing_owner_route'
+        result['next_action'] = result['routing_gap']
     save(state / 'history' / (result['run_id'] + '.json'), result)
     save(state / 'unblock-latest.json', result)
     save(state / 'report-latest.txt', render(result))
@@ -199,7 +258,10 @@ def render(result):
     return (f"{result['outcome']} — 0 tasks completed by this cycle\n"
             f"Task: {label} — {title}\n"
             f"Recovery: {result['recovery']['gate']}; unchanged runs: {result['unchanged_runs']}\n"
-            f"Next: {result['next_action']}\nDelivery: {result['delivery']}\n")
+            f"Repairs: {', '.join(result.get('repairs', [])) or 'none'}; checks: recovery/readiness only, not product acceptance\n"
+            f"Held: {', '.join(result.get('held_task_ids', [])) or 'none'}; blocker: {'; '.join(result.get('blocker', [])) or 'none'}\n"
+            f"Next: {result['next_action']}; ready queue: {', '.join(t['id'] for t in result.get('ready_queue', [])) or 'none'}\n"
+            f"Delivery: {result['delivery']}\n")
 
 
 def main(argv=None):
@@ -212,6 +274,7 @@ def main(argv=None):
                  'handoff-request', 'integration-owner', 'proposal', 'owner-evidence'):
         parser.add_argument('--' + name)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--allow-ready-fallback', action='store_true', help='Allow an accepted same-milestone task when the preferred slice is held')
     parser.add_argument('--acknowledge', action='store_true', help='Record supplied owner acknowledgement, not inferred consent')
     args = parser.parse_args(argv)
     try:

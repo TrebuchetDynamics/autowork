@@ -182,6 +182,13 @@ never gitignore it. Use supported `scripts/goals.py` operations or write JSON th
    At most one investigation/contract task per goal, only for a blocking unknown;
    no stacked preflights. Unverified work needs its check. Keep two ordered open
    slices for remaining work (Now then Next) with dependencies; preserve done work.
+   For unattended engineering, target up to three independently ready, accepted
+   slices when useful work exists. Separate implementation/offline checks from
+   live-device qualification: retain the live gate on its task, not on independent
+   offline work. Give each slice its own sources, acceptance, dependencies and owner.
+   Never fabricate scope, remove real dependencies, duplicate done work or claim
+   device acceptance to fill the queue. Report a justified shortfall when fewer
+   useful slices remain.
 4. Preserve accepted `primary_milestone`; `goals.py focus <repo> <GOAL>` requires
    authorized priority change. Focused eligible work precedes unrelated work,
    still respecting dependencies. Use vertical implementation/recovery/platform QA.

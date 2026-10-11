@@ -52,7 +52,7 @@ def owner_prompt(prompt, enabled):
                'owner recovery -> same-invocation retry -> supported handoff cycle '
                'before reporting a recoverable tooling hold or no eligible work. '
                'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile autogoal state directory; '
-               'use its automatic receipt and compact report. Follow up deduplicated integration requests on repeated holds. '
+               'apply the unattended continuation contract: process owner inbox/replies, reuse exact saved authority, allow same-milestone ready fallback within original scope, and maintain useful offline tasks. Reconcile actual worker/check/commit receipts for the final report; the readiness helper is not task completion. '
                'Retain actual attempted commands/results and bounded disjoint work_search. '
                'Do not substitute an unchanged audit for an available authorized repair. '
                'This pointer changes workflow only; original product scope, settled decisions, '

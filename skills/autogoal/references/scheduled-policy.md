@@ -6,7 +6,11 @@ and genuine repository exceptions; do not duplicate this workflow in each job.
 Existing authorized cron jobs may invoke autogoal; the skill never creates schedules.
 
 Before a blocked or idle report, execute [the owner recovery cycle](owner-cycle.md).
-Use owner_cycle.py for automatic receipts and repeated-blocker follow-up.
+Use owner_cycle.py --apply --allow-ready-fallback for normal milestone-wide scope;
+omit fallback for literal task-only scope. Process inbox replies, reuse existing
+exact authority and task-bound handoff payloads, replenish useful accepted offline
+tasks, and reconcile worker completions per the unattended continuation contract.
+Never summarize the readiness helper's zero count as the whole occurrence result.
 Keep an actual owner pipeline receipt and bounded disjoint work search; a maintenance
 "evaluation" without an authorized repair attempt is not completed recovery.
 

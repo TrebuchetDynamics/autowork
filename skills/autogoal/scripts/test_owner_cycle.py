@@ -162,6 +162,84 @@ class OwnerCycleTests(unittest.TestCase):
         request=json.loads(Path(second['integration_request']).read_text())
         self.assertEqual(len(request['evidence_updates']),2)
 
+    def test_saved_authority_is_reused_only_with_apply(self):
+        import retry_selection
+        self.ready_backlog()
+        p=self.repo/'TODO.md';p.write_text(p.read_text().replace('[Accepted](SPEC.md#slice)','decision'))
+        self.state.mkdir()
+        authority={'version':1,'workspace':str(self.repo),'plan':'SPEC.md#slice','task_ids':['T1'],
+                   'expected_revision':retry_selection.goals.revision(self.repo),'source_commit':None,
+                   'owner':'fixture','evidence_ref':'fixture://existing-owner','no_overlapping_writer':True}
+        (self.state/'recovery-authority.json').write_text(json.dumps(authority))
+        _,before=self.run_cycle()
+        self.assertEqual(before['recovery']['gate'],'accepted_body_repair')
+        _,after=self.run_cycle('--apply')
+        self.assertEqual(after['outcome'],'PROGRESS')
+        self.assertIn('Accepted plan',p.read_text())
+
+    def test_delivered_request_closes_only_after_fresh_readiness(self):
+        owner=self.root/'owner';owner.mkdir();self.state.mkdir()
+        (self.state/'owner-route.json').write_text(json.dumps({'consumer':str(self.repo),
+            'owner':'parent','state_dir':str(owner)}))
+        _,first=self.run_cycle('--apply','--integration-owner','parent')
+        request=json.loads(Path(first['integration_request']).read_text())
+        self.assertEqual(request['delivery']['state'],'delivered')
+        reply=Path(request['delivery']['reply_path']);reply.parent.mkdir()
+        reply.write_text(json.dumps({'request_id':request['request_id'],'owner':'parent',
+                                    'status':'resolved','evidence':'fixture://integrated'}))
+        _,still=self.run_cycle('--apply','--integration-owner','parent')
+        self.assertEqual(still['outcome'],'BLOCKED')
+        self.assertEqual(json.loads(Path(first['integration_request']).read_text())['status'],'resolution_reported')
+        self.ready_backlog()
+        _,ready=self.run_cycle('--apply','--integration-owner','parent')
+        self.assertEqual(ready['outcome'],'READY')
+        self.assertEqual(json.loads(Path(first['integration_request']).read_text())['status'],'resolved')
+        self.assertIn('resolved_requests',ready)
+
+    def test_blocked_live_task_can_offer_three_offline_tasks_without_releasing_it(self):
+        self.ready_backlog()
+        ledger=self.repo/'goals.json'; data=json.loads(ledger.read_text())
+        data['tasks'][0]['section']='Needs decision'
+        todo=self.repo/'TODO.md'
+        original=todo.read_text().replace('## Now','## Needs decision')
+        extra='\n## Now\n'
+        for task_id in ('T2','T3','T4'):
+            data['goals'][0]['tasks'].append(task_id)
+            data['tasks'].append({'id':task_id,'title':'Offline fixture '+task_id,
+                                 'goal':'G1','status':'open','section':'Now'})
+            extra += ('\n- [ ] '+task_id+': Offline fixture\n  Goal: G1\n  Scope: fixture\n'
+                      '  Acceptance: test passes\n  Dependencies: None\n  Sources: [Accepted](SPEC.md#slice)\n')
+        ledger.write_text(json.dumps(data));todo.write_text(original+extra)
+        before=ledger.read_bytes()
+        _,held=self.run_cycle()
+        self.assertEqual(held['outcome'],'BLOCKED')
+        _,ready=self.run_cycle('--allow-ready-fallback')
+        self.assertEqual(ready['outcome'],'READY')
+        self.assertEqual(ready['selected_task']['id'],'T2')
+        self.assertEqual([t['id'] for t in ready['ready_queue']],['T2','T3','T4'])
+        self.assertEqual(ready['held_task_ids'],['T1'])
+        self.assertEqual(ledger.read_bytes(),before)
+        self.assertFalse(ready['dispatch_attempted'])
+        self.assertIn('T1', (self.state/'report-latest.txt').read_text())
+
+    def test_saved_native_handoff_is_used_for_ready_task(self):
+        import owner_cycle
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        self.ready_backlog()
+        path=self.state/'handoff-requests'/'T1.json';path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'consumer':str(self.repo),'task_id':'T1','options':{}}))
+        with patch.object(owner_cycle,'handoff',return_value={'exit_code':0,'result':{'outcome':'handed_off'}}) as handoff:
+            with redirect_stdout(io.StringIO()):
+                code=owner_cycle.main([str(self.repo),'--plan','SPEC.md#slice','--tasks','T1',
+                    '--state-dir',str(self.state),'--apply'])
+        self.assertEqual(code,0)
+        self.assertEqual(handoff.call_args.args[0].handoff_request,str(path))
+        receipt=json.loads((self.state/'unblock-latest.json').read_text())
+        self.assertEqual(receipt['outcome'],'QUEUED')
+        self.assertEqual(receipt['completed_tasks'],[])
+
     def test_native_json_shapes_and_canonical_handoff_binding(self):
         import owner_cycle
         from types import SimpleNamespace
