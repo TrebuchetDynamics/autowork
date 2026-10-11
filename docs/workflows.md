@@ -7,8 +7,8 @@ counts, and unavailable imports. These are registered capabilities, not a claim
 that every tool is enabled in the current chat. Hermes's `/toolsets` lists tool
 groups; plugins that provide skills, commands, or hooks need not appear there.
 Use `/toolset list` in CLI chat or Telegram for the installed command inventory,
-or `/toolset omh` to filter it. `hermes toolset doctor --json` reports plugin load
-errors and missing imports. Imported native commands keep their own handlers;
+or `/toolset omh` to filter it. `hermes toolset doctor --core` checks the bundled command layer and lists external
+gaps separately. Plain `doctor` requires the full stack; add `--json` for automation. Imported native commands keep their own handlers;
 imported plugin skills without commands receive aliases. Telegram's menu has a
 capacity limit, so some commands must be typed rather than selected in the menu.
 

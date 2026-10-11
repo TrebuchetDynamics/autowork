@@ -85,7 +85,23 @@ The standalone command registration code does not require a memory or speech
 service to register commands. The published manifest describes the complete stack;
 there is currently no separate minimal, policy-neutral package.
 
-## Quickstart from source
+## Try the native plugin in one profile
+
+For an existing Hermes profile, use the native manager (add `-p PROFILE` to each
+command to select a named profile):
+
+```sh
+hermes plugins install TrebuchetDynamics/hermes-toolset
+hermes plugins enable hermes-toolset
+hermes toolset doctor --core
+```
+
+Loading it still applies the runtime policy above. This is not a policy-preserving
+trial; the manifest declares dependencies, and native installation alone does not
+perform full external setup. For fleet setup or local development, use the source
+path below. Both paths continue at [first use](#first-use-in-your-project).
+
+## Fleet setup from source
 
 Prerequisites: an existing Hermes installation with a configured model, Git,
 Bash and Python 3.12 for setup/tests (Hermes uses its managed interpreter). Use the [verified compatibility record](docs/testing.md#compatibility)
@@ -105,9 +121,20 @@ checkout: the installed plugin links to it. Profile `status` is `ready` or
 `incomplete`. The separate `gateway` field reports `commands_reloaded`,
 `not_running`, `deferred_by_request`, `unreachable` or `reload_incomplete`.
 
-Run `hermes toolset doctor --json` in the terminal. After bundle-only setup it may
-report missing external imports: command registration does not prove full workflow
-readiness. Reopen CLI chat and try this first, conversation-only scenario:
+## First use in your project
+
+Run the readable core check, then open **your project**, not the Toolset checkout:
+
+```sh
+hermes toolset doctor --core
+cd /path/to/your-project
+hermes
+```
+
+Core readiness checks bundled skill/command registration. Missing external
+integrations are listed separately and do not fail `--core`. Plain `doctor` checks
+the full stack; add `--json` for automation. Neither mode runs a model or verifies
+live messaging. In the new CLI chat, try:
 
 ```text
 /toolset list
@@ -124,6 +151,9 @@ For the full external stack, preview `bash install.sh --yes-deps --dry-run`, the
 run `bash install.sh --yes-deps`. Full setup also needs `uv` unless OMH and Graphify
 CLIs are already installed. Read the outcome: partial setup is not success.
 Workflow dependencies can still be unavailable after a bundle-only installation.
+
+For Telegram, project binding, a disposable-repository exercise and updates, see
+[onboarding and first-use checks](docs/onboarding.md). A profile is not a filesystem sandbox.
 
 ## What verification proves
 

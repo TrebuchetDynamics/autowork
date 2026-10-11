@@ -102,6 +102,23 @@ def main():
         payload = json.loads(skill_view("hermes-toolset:repo-docs"))
         assert "error" not in payload, payload
 
+        # A deliberately core-only fixture must pass core diagnostics while
+        # retaining the external gaps and failing a full-stack readiness check.
+        import argparse
+        import contextlib
+        import io
+        bundle = import_module(loaded.module.__name__ + '.bundle')
+        parser = argparse.ArgumentParser()
+        bundle.setup_parser(parser)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = bundle.handle_cli(parser.parse_args(['doctor', '--core', '--json']))
+        readiness = json.loads(output.getvalue())
+        assert code == 0 and readiness['core_status'] == 'ready', readiness
+        assert readiness['integrations_status'] == 'unavailable', readiness
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert bundle.handle_cli(parser.parse_args(['doctor', '--json'])) == 1
+
         menu, _ = telegram_menu_commands()
         assert "git_commit_push" in dict(menu), menu
         assert "repo_docs" in dict(menu), menu
@@ -146,7 +163,7 @@ def main():
             raise AssertionError('Malformed configuration was accepted')
         assert config_path.read_bytes() == before
         print("PASS: loader approval defaults, /new gate, profile isolation, idempotency, opt-out, "
-              "malformed YAML, skill_view, Telegram menu, CLI queue, gateway routing, unload")
+              "malformed YAML, core/full diagnostics, skill_view, Telegram menu, CLI queue, gateway routing, unload")
 
 
 if __name__ == "__main__":

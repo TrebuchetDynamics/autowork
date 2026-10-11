@@ -71,3 +71,13 @@ that an earlier version has all required APIs.
 `tests/integration_autoresearch.py` checks all research aliases, CLI queues,
 Telegram menu entries and captured gateway origin routing. Like the main plugin
 integration test, it runs without a live model or message delivery.
+
+## Core versus full-stack diagnostics
+
+`python3 -m unittest discover -s tests -p test_doctor_modes.py` covers core success
+with external gaps, strict full-stack failure, command ownership, missing skill
+registration, plugin load failure and readable/JSON output. The native plugin
+integration fixture additionally loads a real bundle-only profile and requires
+core success plus full-stack failure from the same installed state.
+These checks do not call a model or send a Telegram message. Use the separate
+[operator-run onboarding checks](onboarding.md) for those outcomes.

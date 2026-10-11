@@ -165,13 +165,61 @@ def setup_parser(parser):
     finalize.add_argument('--no-reload', action='store_true')
     doctor = actions.add_parser('doctor', help='Report enabled plugins and available commands')
     doctor.add_argument('--json', action='store_true')
+    doctor.add_argument('--core', '--bundle-only', dest='core_only', action='store_true',
+                        help='Check bundled skills/commands; report external gaps without failing on them')
+
+
+def diagnose(report, *, core_only=False):
+    """Evaluate one inventory snapshot without invoking setup or reloading gateways."""
+    errors = []
+    own = next((p for p in report['plugins'] if p['name'] == 'hermes-toolset'), {})
+    if not own.get('enabled') or own.get('error'):
+        errors.append('hermes-toolset is not loaded cleanly')
+    names = {p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')}
+    commands = {r['command'] for r in report['commands']
+                if r.get('kind') == 'plugin' and r.get('source') == 'hermes-toolset'}
+    missing_commands = sorted(n.replace('_', '-') for n in names
+                              if n.replace('_', '-') not in commands)
+    missing_skills = sorted('hermes-toolset:' + n for n in names
+                            if 'hermes-toolset:' + n not in report['plugin_skills'])
+    if not names:
+        errors.append('No bundled skills found')
+    if missing_commands:
+        errors.append('Unavailable bundled commands: ' + ', '.join(missing_commands))
+    if missing_skills:
+        errors.append('Unavailable bundled skills: ' + ', '.join(missing_skills))
+    gaps = {field: [name for name in report[field] if name != 'hermes-toolset']
+            for field in ('missing_plugins', 'missing_skills', 'unchecked_skill_sources')}
+    integrations_ready = not any(gaps.values())
+    ready = not errors and (core_only or integrations_ready)
+    return {**report, 'scope': 'core' if core_only else 'full',
+            'status': 'ready' if ready else 'incomplete',
+            'core_status': 'incomplete' if errors else 'ready', 'core_errors': errors,
+            'integrations_status': 'ready' if integrations_ready else 'unavailable',
+            'integration_gaps': gaps,
+            'readiness_note': 'Skill and command registration only. Model execution, workflow-specific '
+                              'tools and live Telegram delivery are not tested.'}
+
+
+def format_diagnosis(report):
+    lines = [f"Hermes Toolset — {report['scope']} check: {report['status']}",
+             f"Core: {report['core_status']} (bundled skill and command registration)",
+             f"Integrations: {report['integrations_status']}"]
+    lines.extend('  ' + error for error in report['core_errors'])
+    for field, names in report['integration_gaps'].items():
+        if names:
+            lines.append('  ' + field.replace('_', ' ') + ': ' + ', '.join(names))
+    if report['scope'] == 'core' and report['integrations_status'] != 'ready':
+        lines.append('External gaps do not fail this core check; workflows using them may be unavailable.')
+    lines.append(report['readiness_note'])
+    return '\n'.join(lines)
 
 
 def handle_cli(args):
     if args.action == 'doctor':
-        report = inventory()
-        print(json.dumps(report, indent=2) if args.json else list_commands())
-        return int(bool(report['missing_plugins'] or report['missing_skills'] or report['unchecked_skill_sources']))
+        report = diagnose(inventory(), core_only=getattr(args, 'core_only', False))
+        print(json.dumps(report, indent=2) if args.json else format_diagnosis(report))
+        return int(report['status'] != 'ready')
     if args.action == 'finalize':
         from .setup_runtime import finalize
         report = inventory()
