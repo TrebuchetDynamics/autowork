@@ -152,6 +152,25 @@ class OwnerUnblockTests(unittest.TestCase):
                 finally:
                     fixture.doCleanups()
 
+    def test_gated_task_contract_can_be_repaired_without_releasing_gate(self):
+        self.ledger['tasks'][0]['section'] = 'Needs decision'
+        self.save_ledger()
+        todo = self.repo / 'TODO.md'
+        todo.write_text(self.body.replace('## Now', '## Needs decision'))
+        ledger_before = (self.repo / 'goals.json').read_bytes()
+        self.authority['expected_revision'] = retry_selection.goals.revision(self.repo)
+        self.auth.write_text(json.dumps(self.authority))
+        _, diagnosis = self.run_cli()
+        self.assertEqual(diagnosis['gate'], 'accepted_body_repair')
+        result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(receipt['gate'], 'consumer_readiness')
+        self.assertEqual([s['stage'] for s in receipt['stages']], ['diagnose', 'repair', 'retry_selection'])
+        self.assertIn('[Accepted plan](SPEC.md#slice)', todo.read_text())
+        self.assertEqual((self.repo / 'goals.json').read_bytes(), ledger_before)
+        self.assertIsNone(receipt['selection']['selected_task'])
+        self.assertTrue(any('section=Needs decision' in r for r in receipt['required_inputs']))
+
     def test_binding_repair_retries_same_invocation_preserves_foreign_index(self):
         result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
         self.assertEqual(result.returncode, 0, receipt)

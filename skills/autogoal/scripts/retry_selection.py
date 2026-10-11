@@ -32,11 +32,13 @@ def select(consumer, *, canonical_repo=None, plan=None, task_ids=None):
             result['reasons'] = problems
             return result
         picks = goals.eligible(goals.normalize(data))
-        if not picks:
+        # Explicit recovery must diagnose contracts even when execution is gated.
+        # Eligibility still runs inside backlog_check after contract validation.
+        if not picks and plan is None:
             result.update(state='backlog_reconciled_not_eligible', reasons=['no current dependency-ready ledger task'])
             return result
-        first, owner = picks[0]
         if plan is None:
+            first, owner = picks[0]
             if data.get('primary_milestone') and first['goal'] != data['primary_milestone']:
                 result.update(state='backlog_reconciled_not_eligible',
                               reasons=['focused milestone has no eligible slice; unrelated fallback needs attestation'])

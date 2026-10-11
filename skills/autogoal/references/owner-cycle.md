@@ -63,6 +63,11 @@ not prove all independent work exhausted. Keep offline and live acceptance separ
    acceptance marker is not a new product decision when acceptance of the exact
    scope is already evidenced; use the supported immutable-provenance repair when
    available or the bounded repo-docs metadata procedure. Never manufacture acceptance.
+   Explicit named-task diagnosis runs even when the task is in Needs decision or
+   has unmet dependencies. Repairing its documented contract does not release that
+   execution gate. If diagnosis exposes an attributable repair, use the existing
+   recovery authority and retry; do not replace an available repair with another
+   pending follow-up request. Report repairs separately from task completions.
 4. A missing consumer ledger requires integration of existing accepted owner inputs,
    not repeated `validate` calls against an absent file. Perform scoped repo-docs
    Bootstrap/Maintain under its canonical integration owner (or send an attributed

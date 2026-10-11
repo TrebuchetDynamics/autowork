@@ -29,6 +29,25 @@ class RetrySelectionTests(unittest.TestCase):
         import retry_selection
         return retry_selection.select(consumer or self.consumer, **kwargs)
 
+    def test_named_gated_task_still_reports_repairable_contract_defects(self):
+        path = self.consumer / 'goals.json'
+        data = json.loads(path.read_text())
+        data['tasks'][0]['section'] = 'Needs decision'
+        path.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text().replace('## Now', '## Needs decision')
+                        .replace('[Plan](SPEC.md#accepted)', 'existing decision'))
+        before = todo.read_bytes()
+        result = self.retry(plan='SPEC.md#accepted', task_ids=['T1'])
+        self.assertIn('T1: Sources do not link accepted plan', result['reasons'])
+        self.assertIsNone(result['selected_task'])
+        self.assertEqual(todo.read_bytes(), before)
+        todo.write_text(todo.read_text().replace('existing decision', '[Plan](SPEC.md#accepted)'))
+        result = self.retry(plan='SPEC.md#accepted', task_ids=['T1'])
+        self.assertEqual(result['state'], 'backlog_reconciled_not_eligible')
+        self.assertTrue(any('section=Needs decision' in r for r in result['reasons']))
+        self.assertIsNone(result['selected_task'])
+
     def test_multiple_accepted_task_sources_require_named_plan(self):
         (self.consumer / 'README.md').write_text('Product intent\n')
         (self.consumer / 'SECOND.md').write_text('# Accepted\n\nStatus: Accepted\n')
