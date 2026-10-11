@@ -2,6 +2,7 @@
 import contextlib
 import importlib.util
 import io
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,8 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def module(name):
     spec = importlib.util.spec_from_file_location(name, ROOT / (name + '.py'))
+    assert spec is not None and spec.loader is not None
     value = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(value)
+    with patch.object(sys, 'path', [str(ROOT), *sys.path]):
+        spec.loader.exec_module(value)
     return value
 
 
