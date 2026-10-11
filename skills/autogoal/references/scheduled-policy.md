@@ -14,6 +14,11 @@ Never summarize the readiness helper's zero count as the whole occurrence result
 Keep an actual owner pipeline receipt and bounded disjoint work search; a maintenance
 "evaluation" without an authorized repair attempt is not completed recovery.
 
+Before another no-progress report, follow the owner-cycle `planning.action` and
+[bounded Autoresearch Plan fallback](backlog-planning.md). Run plan only when the
+gate requests it; persist its result against the triggering input fingerprint.
+Planning findings must reach canonical repo-docs reconciliation before selection.
+
 When no runnable task remains and no live worker owns the affected work, load `hermes-toolset:repo-docs`
 for one bounded Bootstrap/Maintain pass grounded in existing accepted intent, then
 rerun selection in the same occurrence. Respect concurrent docs ownership and ledger

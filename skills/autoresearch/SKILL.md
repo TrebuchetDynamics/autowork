@@ -63,6 +63,12 @@ or `grill-me` handles genuinely missing owner intent; routine reversible choices
 are autonomous. Existing accepted scope is enough: do not repeat upstream's generic
 “confirm”/“run now?” questions when the user already authorized that action.
 
+When invoked by autogoal for backlog recovery, follow its
+[bounded planning fallback](../autogoal/references/backlog-planning.md): accepted
+scope only, up to three useful slices, canonical reconciliation, same-occurrence
+selection and a persisted input-bound receipt. Do not launch a recurring research
+loop or ask again for settled implementation choices.
+
 ## Document and schedule through repo-docs
 
 This handoff is required after planning/discovery and at each bounded execution

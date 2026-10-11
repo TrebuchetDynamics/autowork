@@ -144,6 +144,11 @@ must not overwrite a worker's verified completion in the same occurrence.
 
 ## If the preferred slice remains held
 
+Follow the receipt's `planning.action` through [Autoresearch Plan fallback](backlog-planning.md).
+A recorded plan is reused until bound inputs change. Missing canonical adoption
+routes to the integration owner before any new planning proposal.
+
+
 A live-owner conflict prevents edits to its inputs, not all independent work. Search
 ONE accepted milestone/source/caller/test seam, record the concrete candidate and
 why it is eligible or excluded, and continue a safe disjoint slice under standing

@@ -170,7 +170,7 @@ or reply `[SILENT]` and leave a journal note for the next run.
    `references/blockers-and-history.md` for failed/blocked cards. Retry limits still apply.
 2. **Select.** Read `goals.py focus <repo> --json`, then run `goals.py next <repo> --json`
    through the repo-docs script path (pass `<repo>` as the absolute repo path — a bare
-   directory name fails to resolve); choose an eligible slice of that primary milestone (priority 2). For held selection execute [the owner cycle](references/owner-cycle.md); do not audit-exit. Resolve routine engineering choices first. If it still needs a material
+   directory name fails to resolve); choose an eligible slice of that primary milestone (priority 2). If held, run [recovery](references/owner-cycle.md) and [planning](references/backlog-planning.md). Resolve routine engineering choices first. If it still needs a material
    owner action or decision, run `goals.py section <repo> <TASK> "Needs decision"` and ask (hard-blockers).
    If it bundles excluded scope, register the in-scope slice with `goals.py add-task` and park the rest.
    Then pick again, within the picker budget. If the eligible slice's goal is not the ledger

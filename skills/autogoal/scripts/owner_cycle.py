@@ -21,6 +21,7 @@ import uuid
 import owner_unblock
 import retry_selection
 import progress_runtime
+import backlog_plan
 
 
 def read_json(path, default=None):
@@ -245,6 +246,7 @@ def run_locked(args, state):
     if result.get('routing_gap') and result['unchanged_runs'] >= 2:
         result['action'] = 'escalate_missing_owner_route'
         result['next_action'] = result['routing_gap']
+    result['planning'] = backlog_plan.decide(result, state)
     save(state / 'history' / (result['run_id'] + '.json'), result)
     save(state / 'unblock-latest.json', result)
     save(state / 'report-latest.txt', render(result))
