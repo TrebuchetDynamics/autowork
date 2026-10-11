@@ -23,6 +23,8 @@ No recurring jobs.
 
 Only explicit whole-spec requests use `references/whole-spec-execution.md` instead of picker selection/stop rules; retain all safety, ownership, admission, budgets and review gates below.
 
+For scheduled runs load [scheduled policy](references/scheduled-policy.md).
+
 ## Operating priorities
 
 1. **Step 0 — reconcile, never fingerprint-exit.** Resolve workspace instructions,
@@ -43,13 +45,14 @@ Only explicit whole-spec requests use `references/whole-spec-execution.md` inste
    finds no eligible delta. Record `work_search`: milestone/source, checked seam
    and evidence, candidates, eligibility/rejection reasons and next seam. This is
    prompt policy, not a runtime guarantee of autonomous progress.
-2. **Repo-docs runs separately; autogoal works from its backlog.**
+2. **Use runnable backlog first; otherwise run the repo-docs fallback.**
    Explicit plan slices follow [the shared handoff](../shared/PLAN-HANDOFF.md):
    select within the named IDs, never an unrelated global task.
    Do not run a repo-docs prepass for a usable backlog task, even without a docs cron.
-   Record `Repo-docs pass: existing backlog <source/receipt>` or `delegated to cron <job id>`.
-   With no usable task, load discovery.md; a missing/stale backlog may justify one
-   bounded prepass, at most once per day, only when no enabled docs job covers it.
+   Record `Repo-docs pass: existing backlog <source/receipt>` or the actual fallback result.
+   With no runnable task and no overlapping writer, apply the scheduled fallback
+   above and load discovery.md as needed; reuse current docs-owner evidence rather
+   than competing with an enabled docs job. Then recheck consumer readiness and selection.
    Missing TODO.md or an old mtime alone does not invalidate a usable goals.json task.
    **Selection order:** reconcile live work, then read `goals.py focus <repo> --json`
    with `<skills-root>` the loaded skill directory’s parent. Select ONE primary milestone; retain it
@@ -182,8 +185,8 @@ or reply `[SILENT]` and leave a journal note for the next run.
 3. **Hand off.** Load `references/handoff.md`. Use backlog-check. Compare
    the selected source inputs and current `goals.json` against the proposed committed
    candidate; a clean base commit alone does not include the dirty backlog or its
-   implementation prerequisites. Resolve attribution and candidate closure first,
-   without copying or committing foreign edits. Treat `--validate-only` as structural
+   implementation prerequisites. Use [recovery](references/blocker-recovery.md) first;
+   never copy or commit foreign edits. Treat `--validate-only` as structural
    and ledger admission, not proof that isolated candidate assembly will pass.
    Write the contract file with every field:
    `Objective`, `Scope`, `Verification`, `Source`, `Project payoff`, `Current evidence`,
@@ -198,10 +201,10 @@ or reply `[SILENT]` and leave a journal note for the next run.
    must not claim an owner that does not exist). An owner request for that same slice *now* is a
    parallel dispatch, not a reason to retry the helper: send it as a bounded file-disjoint child
    under **Explicit parallel backlog requests** and leave the ledger and commit to the parent. The picker never implements the slice itself.
-4. **Report** per the Output contract. Reply exactly `[SILENT]` when nothing changed since
-   your previous report. When the busy gate printed `idle`, `[SILENT]` is allowed only if
-   `goals.py next` is empty after backlog repair and discovery found nothing; an idle profile
-   with eligible tasks hands one off.
+4. **Report** per the Output contract and the user's delivery policy. A request
+   for status every occurrence requires a concise nonempty report even when unchanged.
+   Otherwise reply exactly `[SILENT]` only after reconciliation and the idle fallback
+   find no new reportable event; an idle profile with eligible tasks hands one off.
 
 References (load when steps 1–3 require): `references/discovery.md`,
 `references/handoff.md`, `references/blockers-and-history.md`, `references/maintenance.md`

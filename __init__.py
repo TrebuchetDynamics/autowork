@@ -76,6 +76,15 @@ def register(ctx):
     from hermes_cli.plugins import get_plugin_commands
 
     skills = _discover_skills()
+    from hermes_constants import get_hermes_home
+    from .install_skills import install
+    native_skills = [path.parent for _, _, path in skills]
+    shared = SKILLS_DIR / 'shared'
+    if shared.is_dir():
+        native_skills.append(shared)
+    messages = []
+    if install(SKILLS_DIR, [('current', get_hermes_home())], skills=native_skills, report=messages.append):
+        raise RuntimeError('Bundled native skill provisioning failed:\n' + '\n'.join(messages))
     from .runtime_defaults import apply_runtime_defaults
     apply_runtime_defaults(ctx)
     existing = get_plugin_commands()

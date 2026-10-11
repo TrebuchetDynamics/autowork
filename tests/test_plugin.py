@@ -49,11 +49,13 @@ class PluginTests(unittest.TestCase):
         spec.loader.exec_module(self.plugin)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name) / "skills"
+        self.root.mkdir()
         self.plugin.SKILLS_DIR = self.root
         self.session = {}
         self.existing = {}
         modules = {
+            "hermes_constants": types.SimpleNamespace(get_hermes_home=lambda: Path(self.temp.name) / 'home'),
             "gateway.session_context": types.SimpleNamespace(
                 get_session_env=lambda name, default="": self.session.get(name, default)),
             "hermes_cli.commands": types.SimpleNamespace(
@@ -141,7 +143,8 @@ class PluginTests(unittest.TestCase):
         for names in (("bad.name",), ("a" * 33,), ("a-b", "a_b")):
             with self.subTest(names=names):
                 with tempfile.TemporaryDirectory() as directory:
-                    self.root = Path(directory)
+                    self.root = Path(directory) / "skills"
+                    self.root.mkdir()
                     self.plugin.SKILLS_DIR = self.root
                     for name in names:
                         self.skill(name)
@@ -162,8 +165,14 @@ class PluginTests(unittest.TestCase):
     def test_repository_skills_are_all_discovered(self):
         self.plugin.SKILLS_DIR = ROOT / "skills"
         self.plugin.register(self.ctx)
-        self.assertTrue({"autogoal", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"}
+        self.assertTrue({"autogoal", "git-commit-push", "git-pull-merge", "grill-me", "lgtm", "repo-docs", "repo-interview"}
                         <= set(self.ctx.commands))
+        self.assertEqual(self.ctx.skills['grill-me'], ROOT / 'skills/grill-me/SKILL.md')
+        self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture-chat')
+        self.ctx.commands['grill_me'.replace('_', '-')]('review this plan')
+        self.assertIn('hermes-toolset:grill-me', self.ctx.messages[-1][0])
+        self.assertIn('review this plan', self.ctx.messages[-1][0])
+        self.assertEqual(self.ctx.messages[-1][1]['origin']['chat_id'], 'fixture-chat')
 
 
 if __name__ == "__main__":

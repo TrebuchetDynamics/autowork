@@ -7,13 +7,19 @@ From the repository root:
 ./install-plugins.sh
 ```
 
-The script reads `plugins/PLUGINS.md` relative to its own location, so it
+The public command performs full setup by default: bundled skills, plugin
+installation and enablement, profile configuration, memory setup, verification,
+and live gateway command refresh. `install.sh` and `hermes toolset setup` use the
+same orchestrator. `--bundle-only` limits setup to this bundle; `--no-reload`
+explicitly defers live command wiring. No separate per-profile wiring is needed.
+
+The source stage reads `plugins/PLUGINS.md` relative to its own location, so it
 also works when called from another directory. Add one catalog URL and scope
 per line; blank lines and lines beginning with `#` are ignored:
 
 ```text
 https://hermes-agent.nousresearch.com/docs/plugins/omh all profiles
-https://hermes-agent.nousresearch.com/docs/plugins/bot-forge all profiles
+
 https://github.com/dietrichgebert/ponytail all profiles
 skills https://github.com/addyosmani/agent-skills all profiles
 ```
@@ -46,16 +52,22 @@ Hermes' recorded source metadata so differing repository and plugin names work.
 Untracked manual installs are left for Hermes to handle without force-overwrite.
 Installation uses the native catalog
 command, preserving Hermes' dependency, security, and activation prompts;
-run interactively to answer them. `--enable` activates plugins; `--yes-deps`
+run interactively to answer them. Plugins are enabled by default; `--yes-deps`
 consents to native plugin dependencies. Skill installation skips the normal
-confirmation prompt but still enforces security scans. `--setup` runs OMH's full
-setup and doctor using `plugins/defaults.json`, preserving the existing memory
-policy and TUI. Before enabling the bundle, it configures gateway injection,
+confirmation prompt but still enforces security scans. Full setup runs OMH's
+setup and doctor using `plugins/defaults.json`. The
+memory provider is selected as OMH with `auto-safe` policy and an independent
+store per profile; the current TUI is kept. Before enabling the bundle, it configures gateway injection,
 turns off command and slash-confirmation prompts, and clears global/per-channel
-skill disable lists in each profile. All declared plugin sources target all profiles. The script does not update existing installs or restart gateways.
-Existing plugin directories are reported as skipped, not verified as enabled.
+skill disable lists in each profile. All declared plugin sources target all profiles. Existing installs and local edits
+are preserved; readiness is checked per profile after setup. Running gateways are
+refreshed through the native control socket and command activation receipts are
+checked, without restarting in-flight turns. This verifies command registration,
+not a live Telegram/model round trip; prior tools/prompts/memory in an existing
+session can remain until a new session. A stopped gateway is reported separately.
 An install failure is reported, other targets are attempted, and the script
-exits nonzero if any target failed. `--dry-run` never invokes Hermes.
+exits nonzero if any installation, setup or verification stage failed. Even a
+partial install refreshes successful command registrations and reports the gaps. `--dry-run` never invokes Hermes.
 
 Run the isolated installer tests with:
 

@@ -9,8 +9,9 @@ plugin, and restart Hermes; there is no command list to maintain.
 For a published version that includes `hermes toolset setup`:
 
 Setup is broader than installing this plugin: the current source inventory targets
-all profiles for OMH, Bot Forge, Ponytail, external skills, Graphify and speech support.
-If the published version
+all profiles for OMH, Ponytail, external skills, Graphify, speech support,
+and OMH memory. Setup selects OMH with bounded `auto-safe` capture; no external
+memory server or connection JSON is required. If the published version
 does not yet include setup, use the local checkout instructions below.
 
 ```sh
@@ -40,12 +41,12 @@ Plugins are enabled per profile. For a named profile, use that profile's home fo
 the link and `hermes -p PROFILE plugins enable hermes-toolset` to enable it.
 `hermes toolset setup` installs and enables the sources in
 [plugins/PLUGINS.md](plugins/PLUGINS.md), including external skill repositories,
-Graphify's Hermes integration and OMH's full setup. It also links and enables
+Graphify's Hermes integration, and OMH's full memory setup. It also links and enables
 hermes-toolset itself in every existing live profile, preserving existing plugin
 installations. After creating another profile, rerun setup or, from this checkout,
 run `bash install-plugins.sh --bundle-only` to add just this bundle and its defaults
 across profiles. The links depend on keeping this checkout installed. It applies
-[our defaults](plugins/defaults.json): preserve OMH's existing store, keep the
+[our defaults](plugins/defaults.json): select OMH with `auto-safe` memory in independent stores, keep the
 current TUI, disable the optional menubar, allow toolset gateway injection, and
 set `approvals.mode` to `off` for profiles with hermes-toolset installed. This
 disables terminal command approval prompts throughout those profiles, including
@@ -60,16 +61,60 @@ To opt out of automatic policy application, first run
 then restore the desired settings, for example
 `hermes -p PROFILE config set approvals.mode manual` and
 `hermes -p PROFILE config set approvals.destructive_slash_confirm true`.
-It runs OMH doctor after setup. Native Hermes installation has no post-install
+It runs OMH doctor after setup, checks every profile, and refreshes live commands. Native Hermes installation has no post-install
 hook, so the setup command is required after installing this repository.
 Use `hermes toolset setup --dry-run` to preview target profiles.
 
-## Memory
+## Bundled Grill Me
 
-Hindsight support has been removed from the bundle, including its installer,
-connection template and setup flags. Existing memory stores are not deleted or
-migrated by this change. Removing its plugin does not erase stored memories.
-OMH setup follows the memory policy in [bundle defaults](plugins/defaults.json).
+`skills/grill-me/SKILL.md` bundles the MIT-licensed official
+`official/software-development/grill-me` skill (version 2.0.0), preserving its
+upstream attribution. It is available through `/grill-me` in CLI chat and
+`/grill_me` in Telegram. Enabling/loading hermes-toolset installs missing bundled
+skills and shared support files into that profile's native skill directory, using
+the same offline provisioner as full setup. Existing flat and categorized skills
+are preserved; incomplete existing slots fail visibly instead of being replaced.
+Ordinary plugin loading never installs network dependencies, changes sibling
+profiles, or reloads a gateway. Full setup provisions native skills across all
+profiles before external plugin setup.
+Setup refreshes running gateway command handlers and checks their activation
+receipts automatically. It does not send test messages or restart ongoing turns.
+Existing sessions can retain prior tools, prompts and memory providers; those
+changes apply to new sessions. A stopped gateway is reported as not running,
+not as a tested messaging connection.
+
+## OMH memory per profile
+
+OMH is the bundled external memory provider. Full setup selects
+`memory.provider: omh` with `auto-safe` policy and binds the plugin to an
+independent store for every profile: `<hermes-home>/omh` for new bindings.
+Existing explicit stores are preserved. Resolved duplicate stores, including
+symlink aliases and inherited global `OMH_HOME`, are refused before writes.
+Clear another selected provider explicitly before setup; OMH never silently
+steals its slot.
+
+`auto-safe` admits only bounded eligible records; other candidates still need
+review. Reviewed OMH records and Hermes built-in `MEMORY.md`/`USER.md` remain
+separate. Setup does not erase or import built-in memory or legacy Hindsight
+stores, change the chat model, or start a memory server. Shared plugin code does
+not imply a shared store. Project-local `.omh` records are separate project
+context and can intentionally be shared by sessions in the same repository.
+
+To configure only OMH using the checked-in defaults, select every existing
+profile when including default (upstream root setup synchronizes children):
+
+```sh
+python3 install-omh.py --hermes-home "$HOME/.hermes" \
+  --profile default --profile work
+hermes -p work memory status
+```
+
+The helper runs children before default, binds each runtime store explicitly,
+and checks OMH doctor after root synchronization. Repeat after creating a
+profile; `--bundle-only` does not configure external memory. Restart or reload
+existing sessions after switching providers; no shared gateway is restarted.
+Provider status is not replay evidence: verify a harmless reviewed record in
+its own profile and its absence from other profile stores before relying on it.
 
 Hermes may flag the bundled workflow scripts during installation. Review its
 findings; the plain install command can require an explicit scanner override.
@@ -80,32 +125,19 @@ currently trigger hard blocks that even Hermes's `--force` cannot override.
 enabled; blocked imports make setup fail and need review. Existing installations
 are preserved. No gateways are restarted automatically.
 
+Hindsight support has been removed. Existing memory stores are not deleted or
+migrated by this change. Removing its plugin does not erase its stored memories.
+
 ## Telegram setup
 
-Setup applies this entry to profiles containing hermes-toolset. For a manual
-installation, merge it into the selected profile's `config.yaml`:
-
-```yaml
-plugins:
-  entries:
-    hermes-toolset:
-      allow_gateway_injection: true
-```
-
-This lets a skill command queue an agent turn in the chat where it was invoked.
-The CLI REPL can queue turns without this setting; gateway and TUI injection
-require it. Enable the plugin using the command above as well.
-
-Restart the gateway, and reopen any running CLI chat:
-
-```sh
-hermes gateway restart
-# For a named profile: hermes -p PROFILE gateway restart
-```
+Enabling/loading hermes-toolset applies its gateway-injection setting in the
+owning profile. There is no YAML wiring step. This lets a skill command queue an
+agent turn in the chat where it was invoked. Full setup refreshes running gateway
+commands and verifies activation receipts; `--no-reload` explicitly defers that.
+Existing CLI chats must be reopened to receive a new plugin/tool inventory.
 
 Requires a current Hermes build with `register_skill`, `register_command`,
-and `inject_message(..., origin=...)` support. The manifest declares PyYAML for
-Bot Forge, whose upstream manifest currently omits that dependency. Hermes needs its normal model and Telegram
+and `inject_message(..., origin=...)` support. Hermes needs its normal model and Telegram
 configuration; individual skills may require their own tools.
 
 ## OMH runtime troubleshooting

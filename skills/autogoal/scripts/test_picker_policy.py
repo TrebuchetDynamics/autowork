@@ -16,7 +16,7 @@ class PickerPolicyTests(unittest.TestCase):
             self.assertIn(phrase,text)
     def test_no_early_exit_and_terminal_results_continue(self):
         text=Path(__file__).resolve().parents[1].joinpath('SKILL.md').read_text()
-        for phrase in ['version: 0.25.0', "Ask, don't block", 'Repo-docs runs separately', 'goals.py next', 'never fingerprint-exit', 'On EVERY idle occurrence', 'A completed card is not a stop condition', 'Disable change-only fingerprint monitors', 'autogoal_gate.py', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
+        for phrase in ['version: 0.25.0', "Ask, don't block", 'otherwise run the repo-docs fallback', 'goals.py next', 'never fingerprint-exit', 'On EVERY idle occurrence', 'A completed card is not a stop condition', 'Disable change-only fingerprint monitors', 'autogoal_gate.py', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
             self.assertIn(phrase, text)
         for obsolete in ['Step 0 — fast exit', 'return `[SILENT]` immediately', 'Step 0 fast exit bounds']:
             self.assertNotIn(obsolete, text)
@@ -42,6 +42,16 @@ class PickerPolicyTests(unittest.TestCase):
         self.assertIn('Do not split debugging, fixes, tests or review handoff into intermediate cards', handoff)
         self.assertIn('original card and worker session', core)
         self.assertIn('Only when no usable backlog task remains', discovery)
+
+    def test_history_reads_require_verified_profile_identity(self):
+        text = ROOT.joinpath('references/state-and-recovery.md').read_text()
+        for phrase in ['repository basename is not a profile ID',
+                       'confirm the exact profile directory exists',
+                       'never guess an alias, create a profile',
+                       'missing continuity, not an abandoned owner',
+                       'SQLite `mode=ro`',
+                       'reopen only when the profile inventory or an explicit identity mapping changes']:
+            self.assertIn(phrase, text)
 
     def test_core_stays_lean_and_points_to_every_reference(self):
         core = ROOT.joinpath('SKILL.md').read_text()

@@ -42,6 +42,14 @@ PYVALIDATE
 export GIT_LITERAL_PATHSPECS=1
 old=$(git rev-parse -q --verify "$ref" || true)
 parent=${old:-$(git rev-parse HEAD)}
+# Prerequisite preparation pins a new ref; never inherit a raced foreign tip.
+if [ -n "${AGENT_COMMIT_EXPECTED_BASE:-}" ]; then
+  if [ -n "$old" ] || [ "$(git rev-parse HEAD)" != "$AGENT_COMMIT_EXPECTED_BASE" ]; then
+    echo "pinned preparation requires unchanged base and an absent task ref" >&2
+    exit 2
+  fi
+  parent=$AGENT_COMMIT_EXPECTED_BASE
+fi
 for f in "$@"; do
   if [ ! -e "$f" ] && [ ! -L "$f" ] && ! git cat-file -e "$parent:$f" 2>/dev/null; then
     # A retained owned-file list may include an already committed deletion.

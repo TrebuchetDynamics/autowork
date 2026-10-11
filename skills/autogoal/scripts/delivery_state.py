@@ -45,7 +45,8 @@ def integration_state(candidate, integration, repo):
     candidate = candidate_fields(candidate)
     def git(*args):
         return subprocess.run(['git', '-C', str(repo), *args], text=True,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10,
+                              env=candidate_identity.git_environment())
     def revision(value):
         if not isinstance(value, str) or re.fullmatch(r'[0-9a-f]{40}', value) is None:
             return False

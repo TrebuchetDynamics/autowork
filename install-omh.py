@@ -236,6 +236,18 @@ def main(argv=None):
                                  + ', '.join(sorted(children - set(names))))
             if len({plan['mode'] for plan in plans}) > 1:
                 raise SetupError('Upstream default-home setup cannot preserve different child memory modes; configure named profiles separately')
+        # Resolve aliases and inherited OMH_HOME before any setup can write.
+        fleet_names = {'default', *names}
+        if (root / 'profiles').is_dir():
+            fleet_names.update(path.name for path in (root / 'profiles').iterdir()
+                               if path.is_dir() and (path / 'config.yaml').is_file())
+        stores = {}
+        for name in sorted(fleet_names):
+            store = profile_plan(root, name, defaults)['store'].resolve()
+            if store in stores:
+                raise SetupError(f'Refusing shared OMH store for {stores[store]} and {name}: {store}; '
+                                 'review existing data and assign independent stores before setup')
+            stores[store] = name
         plans.sort(key=lambda plan: plan['name'] == 'default')
         executable = shutil.which('omh')
         if not executable:

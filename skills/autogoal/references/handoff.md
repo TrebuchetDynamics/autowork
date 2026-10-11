@@ -240,6 +240,10 @@ merge conflicts, missing closure files or a candidate outside base ancestry refu
 create. This is explicit dependency assembly, not inferred dependency discovery.
 An untracked/dirty sibling is never copied merely because it is in the checkout;
 the integration owner must first provide its attributed committed prerequisite.
+Use [executable blocker recovery](blocker-recovery.md) to reconstruct same-task
+bodies, prepare hash-attributed private input commits, retry actual consumer
+selection and check exact authorized publication readiness. Missing immutable
+preparation is engineering work, not a newly invented owner-approval requirement.
 
 Before spending the picker budget on a contract, resolve the proposed candidate
 with `git rev-parse <candidate>^{commit}` and inspect each selected input with

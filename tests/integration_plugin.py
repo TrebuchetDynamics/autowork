@@ -48,6 +48,13 @@ def main():
         assert other_config.read_bytes() == other_before
         loaded = manager._plugins["hermes-toolset"]
         assert loaded.enabled and not loaded.error, loaded.error
+        # Enabling/loading the plugin must wire native discovery without setup.
+        native_grill = home / 'skills/grill-me/SKILL.md'
+        assert native_grill.is_file(), 'Plugin load did not install native Grill Me'
+        assert not (other / 'skills').exists(), 'Plugin load crossed profile ownership'
+        native_payload = json.loads(skill_view('grill-me'))
+        assert 'error' not in native_payload, native_payload
+        assert Path(native_payload['skill_dir']) == native_grill.parent
         from hermes_cli.config import require_readable_config_before_write
         configured = require_readable_config_before_write()
         assert configured['approvals']['destructive_slash_confirm'] is False, configured['approvals']

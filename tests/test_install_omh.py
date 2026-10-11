@@ -60,6 +60,51 @@ class InstallOmhTests(unittest.TestCase):
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
 
+    def test_bundle_defaults_select_omh_not_hindsight(self):
+        root = SCRIPT.parent
+        defaults = json.loads((root / 'plugins/defaults.json').read_text())
+        self.assertEqual(defaults['omh']['memory_mode'], 'auto-safe')
+        self.assertNotIn('hindsight', defaults['imported_plugins'])
+        self.assertNotIn('  - hindsight', (root / 'plugin.yaml').read_text())
+        self.assertNotIn('/plugins/hindsight', (root / 'plugins/PLUGINS.md').read_text())
+
+    def test_shared_stores_refused_before_any_setup(self):
+        child = self.home / 'profiles/coder'
+        child.mkdir(parents=True)
+        shared = self.root / 'shared'
+        for home in (self.home, child):
+            (home / 'config.yaml').write_text(
+                f'plugins:\n  entries:\n    omh:\n      settings:\n        omh_home: "{shared}"\n')
+        result = self.run_helper('--profile', 'default', '--profile', 'coder')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('shared OMH store', result.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_named_setup_refuses_store_shared_with_unselected_profile(self):
+        child = self.home / 'profiles/coder'
+        child.mkdir(parents=True)
+        shared = self.root / 'shared'
+        shared.mkdir()
+        alias = self.root / 'alias'
+        alias.symlink_to(shared, target_is_directory=True)
+        for home, store in ((self.home, shared), (child, alias)):
+            (home / 'config.yaml').write_text(
+                f'plugins:\n  entries:\n    omh:\n      settings:\n        omh_home: "{store}"\n')
+        result = self.run_helper('--profile', 'coder')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('shared OMH store', result.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_inherited_global_store_refused_before_any_setup(self):
+        child = self.home / 'profiles/coder'
+        child.mkdir(parents=True)
+        (child / 'config.yaml').touch()
+        self.env['OMH_HOME'] = str(self.root / 'global-store')
+        result = self.run_helper('--profile', 'default', '--profile', 'coder')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('shared OMH store', result.stderr)
+        self.assertFalse(self.log.exists())
+
     def test_preserves_unset_memory_and_runs_doctor(self):
         result = self.run_helper('--profile', 'default')
         self.assertEqual(result.returncode, 0, result.stderr)

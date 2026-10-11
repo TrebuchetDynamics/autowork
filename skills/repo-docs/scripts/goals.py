@@ -433,10 +433,25 @@ def local_reference(repo, ref, blobs, reasons):
     return text[headings[found][2]:end]
 
 
+def task_fields(body):
+    """Read maintained fields, including continued Sources and header-inline Goal."""
+    matches = list(re.finditer(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):(?:\*\*)?[ \t]*', body, re.M))
+    fields = {}
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        value = body[match.end():end].strip()
+        if value:
+            fields.setdefault(match[1], []).append(value)
+    inline = re.match(r'^\s*[—–-]\s+Goal:[ \t]*(\S[^\n]*)', body)
+    if inline:
+        fields.setdefault('Goal', []).append(inline[1])
+    return {label: values[0] for label, values in fields.items() if len(values) == 1}
+
+
 def task_bodies(text):
     """Only checkbox entries outside generated coverage are task contracts."""
     text = re.sub(re.escape(BEGIN) + r'.*?' + re.escape(END), '', text, flags=re.S)
-    matches = list(re.finditer(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?([A-Za-z0-9][A-Za-z0-9_-]*)`?(?=\s|:)', text, re.M))
+    matches = list(re.finditer(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?([A-Za-z0-9][A-Za-z0-9_-]*)`?(?:\*\*)?(?=\s|:)', text, re.M))
     bodies = {}
     for i, match in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
@@ -445,7 +460,12 @@ def task_bodies(text):
         if section_end:
             block = block[:section_end.start()]
         sections = re.findall(r'^##\s+(.+)', text[:match.start()], re.M)
-        bodies.setdefault(match[2], []).append((block, match[1], sections[-1] if sections else ''))
+        section = sections[-1] if sections else ''
+        if section == 'Now / Next':
+            explicit = re.findall(r'(?:^|\.\s+)Section:[ \t]*(Now|Next|Needs decision)(?=\.|\s*$)', block, re.M)
+            if len(explicit) == 1:
+                section = explicit[0]
+        bodies.setdefault(match[2], []).append((block, match[1], section))
     return bodies
 
 
@@ -515,14 +535,10 @@ def backlog_check(a):
                 reasons.append(f'{tid}: missing or duplicate task body')
                 continue
             body, checked, section = entries[0]
-            fields = {}
+            fields = task_fields(body)
             for label in ('Goal', 'Scope', 'Acceptance', 'Dependencies', 'Sources'):
-                match = re.search(r'^\s*(?:[-*]\s+)?(?:\*\*)?' + label
-                                  + r':(?:\*\*)?[ \t]*(\S[^\n]*)', body, re.M)
-                if not match:
+                if label not in fields:
                     reasons.append(f'{tid}: missing {label}')
-                else:
-                    fields[label] = match[1]
             if not re.match(r'`?' + re.escape(t['goal']) + r'`?(?:[.\s]|$)', fields.get('Goal', '')):
                 reasons.append(f'{tid}: Goal does not match ledger')
             if checked != ' ' or section != t.get('section', 'Next'):

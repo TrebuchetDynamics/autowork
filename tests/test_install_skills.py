@@ -26,6 +26,7 @@ class InstallSkillsTests(unittest.TestCase):
         self.script = self.repo / SCRIPT.name
         if SCRIPT.exists():
             shutil.copy2(SCRIPT, self.script)
+            shutil.copy2(SCRIPT.with_name('install_skills.py'), self.repo / 'install_skills.py')
         self.home = self.root / 'hermes'
         for profile in ('coder', 'deleted'):
             directory = self.home / 'profiles' / profile
@@ -66,6 +67,25 @@ class InstallSkillsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(target.read_text(), 'local edits')
         self.assertIn('2 skipped', result.stdout)
+
+    def test_categorized_official_skill_is_preserved_without_duplicate(self):
+        installed = self.home / 'skills/software-development/example/SKILL.md'
+        installed.parent.mkdir(parents=True)
+        installed.write_text('---\nname: example\n---\nOwner version\n')
+        result = self.run_installer()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.home / 'skills/example').exists())
+        self.assertEqual(installed.read_text(), '---\nname: example\n---\nOwner version\n')
+        self.assertTrue((self.home / 'profiles/coder/skills/example/SKILL.md').exists())
+        self.assertIn('1 skipped', result.stdout)
+
+    def test_profile_home_installs_only_the_owning_profile(self):
+        owner = self.home / 'profiles/coder'
+        result = self.run_installer('--profile-home', str(owner))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((owner / 'skills/example/SKILL.md').is_file())
+        self.assertFalse((self.home / 'skills').exists())
+        self.assertFalse((self.home / 'profiles/deleted/skills').exists())
 
     def test_named_home_and_explicit_root(self):
         self.env['HERMES_HOME'] = str(self.home / 'profiles/coder')

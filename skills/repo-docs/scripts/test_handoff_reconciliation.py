@@ -60,6 +60,25 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertEqual(ledger, (self.repo / 'goals.json').read_bytes())
         self.assertEqual(receipt, self.check()[1])
 
+    def test_bold_task_ids_are_ready_without_changing_identifiers(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        for heading in ('**T1**:', '**`T1`**:', '**T1:**', '**T1: Verify startup**'):
+            with self.subTest(heading=heading):
+                self.todo.write_text(self.body.replace('T1: Verify startup', heading))
+                code, receipt = self.check()
+                self.assertEqual((code, receipt['state']), (0, 'ready_for_autogoal'))
+                self.assertEqual(receipt['eligible_task_ids'], ['T1'])
+
+    def test_bold_task_ids_do_not_bypass_duplicate_or_unknown_checks(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        for extra, reason in (('T1', 'T1: missing or duplicate task body'),
+                              ('T10', 'T10: executable body has no ledger task')):
+            with self.subTest(extra=extra):
+                self.todo.write_text(self.body + f'\n- [ ] **{extra}**: duplicate or unknown\n')
+                code, receipt = self.check()
+                self.assertEqual(code, 1)
+                self.assertIn(reason, receipt['reasons'])
+
     def test_proposed_plan_stays_draft_even_with_complete_eligible_backlog(self):
         self.plan.write_text('# Slice\n\nStatus: Proposed\n')
         code, receipt = self.check()

@@ -4,11 +4,9 @@ description: Run the repository's bundled skills as commands in Hermes CLI and T
 author: TrebuchetDynamics
 homepage: https://github.com/TrebuchetDynamics/hermes-toolset
 kind: standalone
-# Bot Forge imports PyYAML but currently omits it from its own manifest.
-python_dependencies:
-  - PyYAML>=6,<7
+
 requires_plugins:
   - omh
-  - bot-forge
+
   - ponytail
   - hermes-speech

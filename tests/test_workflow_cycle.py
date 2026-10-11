@@ -20,6 +20,32 @@ def worker_module():
 
 
 class CycleGuidanceTests(unittest.TestCase):
+    def test_cross_profile_audit_verifies_publication_without_takeover(self):
+        text = (ROOT / 'skills/autogoal/references/state-and-recovery.md').read_text()
+        self.assertIn('## Cross-profile audit and publication evidence', text)
+        for requirement in ('git status --porcelain=v1 -z', 'git worktree list --porcelain',
+                            'git ls-remote --heads', 'audit_unverified',
+                            'last_run_commit', 'published_branch', 'integrated_main',
+                            'read-only', 'No automatic commit', 'nonempty',
+                            'bounded backlog', 'UTC', 'mode=ro'):
+            with self.subTest(requirement=requirement):
+                self.assertIn(requirement, text)
+
+    def test_shared_scheduled_policy_owns_fallback_and_authorized_delivery(self):
+        core = (ROOT / 'skills/autogoal/SKILL.md').read_text()
+        self.assertIn('references/scheduled-policy.md', core)
+        text = (ROOT / 'skills/autogoal/references/scheduled-policy.md').read_text()
+        self.assertIn('# Scheduled policy and profile exceptions', text)
+        self.assertIn('load `hermes-toolset:repo-docs`', text)
+        self.assertIn('rerun selection in the same occurrence', text)
+        self.assertIn('load `hermes-toolset:git-commit-push`', text)
+        self.assertIn('exact remote ref and SHA', text)
+        self.assertIn('--publication-authority', text)
+        self.assertIn('source before changing profile prompts', text)
+        self.assertIn('never implies push permission', text)
+        self.assertNotIn('at most once per day', text)
+        self.assertNotIn('Repo-docs runs separately;', text)
+
     def test_cycle_routes_available_skills_and_preserves_authority(self):
         policy = ROOT / 'skills/shared/ENGINEERING-CYCLE.md'
         self.assertTrue(policy.is_file(), 'missing shared engineering cycle')

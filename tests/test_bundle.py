@@ -20,7 +20,7 @@ class BundleTests(unittest.TestCase):
         self.path = Path(self.tmp.name) / 'SKILL.md'
         self.path.write_text('skill')
         self.commands = {'ponytail-review': {'plugin': 'ponytail', 'handler': object()}}
-        self.skills = ['bot-forge:bot-forge', 'ponytail:ponytail-review', 'hermes-speech:configure-allmodels-speech']
+        self.skills = ['ponytail:ponytail', 'ponytail:ponytail-review', 'hermes-speech:configure-allmodels-speech']
         self.manager = types.SimpleNamespace(
             list_plugin_skill_metadata=lambda: [{'name': n} for n in self.skills],
             find_plugin_skill=lambda n: self.path,
@@ -49,19 +49,19 @@ class BundleTests(unittest.TestCase):
         native = self.commands['ponytail-review']['handler']
         self.bundle.register_imported_skills(self.ctx, self.invoke)
         self.assertIs(self.commands['ponytail-review']['handler'], native)
-        self.commands['bot-forge']['handler']('make a bot')
-        self.assertEqual(self.messages, [('bot-forge', 'bot-forge', 'make a bot')])
+        self.commands['ponytail']['handler']('full')
+        self.assertEqual(self.messages, [('ponytail', 'ponytail', 'full')])
         self.assertIn('configure-allmodels-speech', self.commands)
 
     def test_builtin_collision_uses_plugin_prefix(self):
-        self.skills = ['bot-forge:help']
+        self.skills = ['ponytail:help']
         self.bundle.register_imported_skills(self.ctx, self.invoke)
         self.assertNotIn('help', self.commands)
-        self.commands['bot-forge-help']['handler']('details')
-        self.assertEqual(self.messages, [('bot-forge', 'help', 'details')])
+        self.commands['ponytail-help']['handler']('details')
+        self.assertEqual(self.messages, [('ponytail', 'help', 'details')])
 
     def test_long_imported_skill_names_have_stable_telegram_safe_alias(self):
-        self.skills = ['bot-forge:' + 'long-name-' * 6]
+        self.skills = ['ponytail:' + 'long-name-' * 6]
         first = self.bundle.register_imported_skills(self.ctx, self.invoke)
         name = next(iter(first))
         self.assertLessEqual(len(name), 32)
@@ -101,7 +101,7 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(missing, [])
         self.assertEqual(unchecked, ['https://github.com/addyosmani/agent-skills'])
 
-    def test_named_profiles_require_bot_forge_too(self):
+    def test_named_profiles_do_not_require_or_export_bot_forge(self):
         self.manager.home_path = Path(self.tmp.name) / 'profiles/coder'
         self.manager.discover_and_load = lambda: None
         self.manager.list_plugins = lambda: []
@@ -112,7 +112,11 @@ class BundleTests(unittest.TestCase):
         }
         with patch.dict('sys.modules', modules):
             report = self.bundle.inventory()
-        self.assertIn('bot-forge', report['missing_plugins'])
+        self.assertNotIn('bot-forge', report['missing_plugins'])
+        self.skills = ['bot-forge:bot-forge']
+        self.assertEqual(self.bundle.register_imported_skills(self.ctx, self.invoke), {})
+        self.assertNotIn('bot-forge', (ROOT / 'plugins/PLUGINS.md').read_text())
+        self.assertNotIn('bot-forge', (ROOT / 'plugin.yaml').read_text())
 
     def test_optional_hindsight_is_not_part_of_bundle_inventory(self):
         self.manager.home_path = Path(self.tmp.name)

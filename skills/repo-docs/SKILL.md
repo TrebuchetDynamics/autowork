@@ -80,6 +80,17 @@ Resolve the actual consumer, not just a docs-only scratch checkout. Scratch
 `validate` passing does not give the consumer a backlog: no consumer backlog means
 `draft_saved`.
 
+## 2a. Mandatory Graphify analysis
+
+Load `graphify` and [Graphify analysis](references/graphify-analysis.md) before
+architecture analysis, document corrections or goal-gap/task decomposition. Use a
+fresh scoped graph, query real component/dependency/test paths, and corroborate
+findings in source and accepted intent. Bootstrap/Maintain builds or refreshes the
+graph where authorized; Audit only reads existing graph/source and writes nothing.
+Report missing/stale/partial coverage explicitly; never silently skip Graphify or
+claim source-only fallback is a completed graph analysis. Graph inference is not
+approval, executed validation, or sufficient grounds for a new executable task.
+
 ## 3. Intent and evidence
 
 Requirements/accepted decisions own intent; code/tests show implementation; release
@@ -185,6 +196,11 @@ never gitignore it. Use supported `scripts/goals.py` operations or write JSON th
    owners/dependencies. Reread concurrent completion evidence, rerender before
    stability checks, and never reopen done work for queue counts.
 
+Each new or materially revised body includes `Graph evidence:` in Sources: verified
+nodes/paths, source locations, confidence and coverage, or an explicit graph gap
+with source-backed evidence. Derive bounded outcome slices, blast radius and real
+prerequisites from corroborated relationships, not graph centrality alone.
+
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
 Acceptance/checks, explicit `Dependencies:` and `Ownership:` fields. Keep the dependency
 key separate because the consumer checker matches field labels exactly. Before handoff,
@@ -238,7 +254,11 @@ authorized location. It binds exact full plan/TODO/goals bytes and authoritative
 path, not just a heading/coverage row. A prior receipt is checked against current
 bytes/authority; stale/mismatched input cannot certify readiness. Revision tokens
 are freshness guards, not dispatch permission. Never fabricate receipts or copy
-scratch state into consumers to force success.
+scratch state into consumers to force success. For safe same-task body reconstruction,
+accepted-source link repair and byte-identical duplicate removal, use the
+[executable recovery procedure](../autogoal/references/blocker-recovery.md#accepted-task-contracts)
+and `scripts/recover_backlog.py` with the current revision. It never accepts a plan,
+changes ledger status or resolves conflicting intent; rerun the same consumer gate.
 
 | JSON state | Exit | Meaning |
 | --- | --- | --- |
@@ -298,6 +318,8 @@ Report scope, changed owners, actual checks, gaps and eligible next task. Bootst
 includes role/path/outcome coverage; Maintain only affected roles. Include TODO/goals
 paths, IDs/status counts, validate and archive checks, and consumer state/exit.
 Backlog is not dispatch/delivery proof. Name language/behavior checks not performed.
+Include Graphify coverage/limitations, freshness, actual queries, source corroboration
+and the evidence chain behind changed docs and tasks; graph output alone is not delivery.
 
 ## Hard-blocker coordination contract
 

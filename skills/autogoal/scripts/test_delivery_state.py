@@ -169,6 +169,24 @@ class DeliveryStateTests(unittest.TestCase):
             external.write_text('after\n')
             self.assertFalse(m.evaluate(f.evidence, f.repo)['qualified'])
 
+    def test_integration_uses_supplied_repo_not_inherited_git_routing(self):
+        import os
+        import subprocess
+        from unittest.mock import patch
+        with EvidenceFixture() as f, tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            evidence = f.integrated()
+            foreign = Path(directory) / 'foreign'
+            subprocess.run(['git', 'clone', '--quiet', str(f.repo), str(foreign)], check=True)
+            f.git('update-ref', 'refs/heads/main', f.base)
+            routing = {'GIT_DIR': str(foreign / '.git'), 'GIT_WORK_TREE': str(foreign)}
+            with patch.dict(os.environ, routing):
+                self.assertEqual(m.integration_state(f.identity, evidence['integration'], f.repo),
+                                 'unknown', 'Foreign main must not prove supplied repo integration')
+            subprocess.run(['git', '-C', str(foreign), 'update-ref', 'refs/heads/main', f.base], check=True)
+            f.git('update-ref', 'refs/heads/main', f.commit_id)
+            with patch.dict(os.environ, routing):
+                self.assertEqual(m.integration_state(f.identity, evidence['integration'], f.repo), 'merged')
+
     def test_integration_gaps_and_noop_synchronization_remain_undelivered(self):
         with EvidenceFixture() as f:
             self.assertEqual(m.evaluate(f.evidence, f.repo)['state'], 'qualified')
