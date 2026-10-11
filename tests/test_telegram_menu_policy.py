@@ -9,8 +9,9 @@ class MenuPolicyTests(unittest.TestCase):
     def test_all_autoresearch_commands_get_priority_without_changing_cap(self):
         patch=policy.menu_patch({})
         menu=patch['platforms']['telegram']['extra']['command_menu']
-        self.assertEqual(len(menu['priority']),14)
+        self.assertEqual(len(menu['priority']),15)
         self.assertIn('autoresearch_plan',menu['priority'])
+        self.assertIn('autowork',menu['priority'])
         self.assertNotIn('max_commands',menu)
     def test_existing_choices_preserved_and_idempotent(self):
         raw={'platforms':{'telegram':{'extra':{'command_menu':{'priority':['status','custom'],

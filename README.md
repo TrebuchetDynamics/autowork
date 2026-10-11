@@ -16,7 +16,7 @@ across profiles, and verification that gateway commands were registered.
 | Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core for questions/chat summary; Graphify + file/terminal tools to save decisions |
 | Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. | Core + configured model |
 | Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | Graphify + file/terminal tools |
-| Implement accepted work | `/autogoal Implement the accepted cache specification` | Selects eligible tasks, hands work to a worker, checks results and commits owned changes. Default invocation selects one task; no push/deploy implied. | Eligible accepted task + native worker and repository build/test tools; Graphify for docs fallback |
+| Develop a repository | `/autowork Implement the accepted cache specification` | Inspects the repo’s stage, plans missing work, maintains tasks, executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; Graphify for docs preparation |
 | Research and improve | `/autoresearch:plan Reduce cache latency` | Derives measurements and a plan; records accepted follow-ups through repo-docs. Other research commands can execute bounded experiments. | Research/experiment tools for the selected protocol; Graphify to record tasks |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
@@ -31,16 +31,18 @@ Telegram uses underscores: `/repo_interview`, `/repo_docs`, `/git_commit_push`,
 `/autoresearch_plan`. Autoresearch retains all 13 subcommands plus `/autoresearch`.
 See [commands and workflows](docs/workflows.md) for the full research command set.
 
+`/autogoal` remains a compatibility alias for `/autowork`. Existing jobs and state continue unchanged.
+
 ## A typical workflow
 
 ```text
 /repo-interview Design a caching layer for this repository
-/autogoal Implement that accepted specification; commit locally, no push
+/autowork Implement that accepted specification; commit locally, no push
 ```
 
 The interview asks questions and uses repo-docs to save accepted decisions and
 tasks automatically; a separate docs command is unnecessary. Once that design is
-accepted, autogoal implements it and reports task outcomes and delivery status.
+accepted, autowork implements it and reports task outcomes and delivery status.
 A blocked dependency stays blocked; a passing build alone does not complete a task.
 Documentation-only requests do not start implementation or recurring jobs.
 

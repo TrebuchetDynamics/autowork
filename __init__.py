@@ -37,6 +37,8 @@ def _discover_skills():
 def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
     from gateway.session_context import get_session_env
 
+    if namespace == "hermes-toolset" and name == "autogoal":
+        name, path = "autowork", SKILLS_DIR / "autowork" / "SKILL.md"
     if not path.is_file():
         return f"Skill {name!r} no longer exists. Update the plugin and restart Hermes."
     prompt = (

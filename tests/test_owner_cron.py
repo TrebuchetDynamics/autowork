@@ -45,10 +45,12 @@ class OwnerCronTests(unittest.TestCase):
             self.assertEqual([row['profile'] for row in rows], ['default', 'alpha', 'beta'])
             self.assertTrue(all(row['jobs'] == [] for row in rows))
 
-    def test_only_autogoal_jobs_are_owner_targets(self):
+    def test_only_development_jobs_are_owner_targets(self):
         module = load()
         self.assertTrue(module.is_owner_job({'name': 'scheduled autogoal', 'skills': []}))
         self.assertTrue(module.is_owner_job({'name': 'progress', 'skills': ['hermes-toolset:autogoal']}))
+        self.assertTrue(module.is_owner_job({'name': 'scheduled autowork', 'skills': []}))
+        self.assertTrue(module.is_owner_job({'name': 'progress', 'skills': ['hermes-toolset:autowork']}))
         self.assertFalse(module.is_owner_job({'name': 'mail brief', 'skills': []}))
 
     def test_apply_binds_edits_to_inventory_root_and_explicit_profile(self):

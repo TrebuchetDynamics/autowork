@@ -1,6 +1,6 @@
 ---
 name: autogoal
-description: "Use when picking project work. Delegate a bounded task."
+description: "Compatibility execution engine for Autowork. Use autowork for stage-aware repository development."
 version: 0.25.0
 author: Hermes Agent
 platforms: [linux, macos]
@@ -9,7 +9,12 @@ metadata:
     tags: [autonomy, planning, backlog, verification]
 ---
 
-# Autogoal
+# Autogoal — compatibility execution engine
+
+The primary workflow is [Autowork](../autowork/SKILL.md). When invoked directly
+by a legacy job or skill call, apply its repository-stage preparation first, then
+continue below. If Autowork already prepared this run, do not repeat preparation.
+Keep existing helper paths and private state unchanged.
 
 ## When to use
 

@@ -5,6 +5,10 @@ Profiles carry only workspace, accepted scope, owner authorization, delivery tar
 and genuine repository exceptions; do not duplicate this workflow in each job.
 Existing authorized cron jobs may invoke autogoal; the skill never creates schedules.
 
+Start with `hermes-toolset:autowork` for repository-stage preparation, then use the
+existing worker engine and state. Missing task files alone are bootstrap work; an
+unintegrated owner proposal still requires reconciliation.
+
 Before a blocked or idle report, execute [the owner recovery cycle](owner-cycle.md).
 Use owner_cycle.py --apply --allow-ready-fallback for normal milestone-wide scope;
 omit fallback for literal task-only scope. Process inbox replies, reuse existing

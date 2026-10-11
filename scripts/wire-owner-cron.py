@@ -42,13 +42,14 @@ def inventory(root):
 
 def is_owner_job(job):
     skills = job.get('skills') or []
-    return ('autogoal' in job.get('name', '').lower()
-            or 'hermes-toolset:autogoal' in skills or 'autogoal' in skills)
+    return any(name in job.get('name', '').lower()
+               or f'hermes-toolset:{name}' in skills or name in skills
+               for name in ('autowork', 'autogoal'))
 
 
 def owner_prompt(prompt, enabled):
     original = prompt.split(MARKER, 1)[0]
-    pointer = ('Load hermes-toolset:autogoal references/owner-cycle.md and execute its '
+    pointer = ('Load hermes-toolset:autowork for stage-aware preparation, then hermes-toolset:autogoal references/owner-cycle.md and execute its '
                'owner recovery -> same-invocation retry -> supported handoff cycle '
                'before reporting a recoverable tooling hold or no eligible work. '
                'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile autogoal state directory; '

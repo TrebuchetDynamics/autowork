@@ -14,7 +14,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 
 | Hermes CLI chat | Telegram | Purpose |
 | --- | --- | --- |
-| `/autogoal` | `/autogoal` | Select eligible accepted work, dispatch a worker, verify and commit owned changes |
+| `/autowork` | `/autowork` | Inspect the repo, plan missing tasks, execute a useful slice, verify and commit owned changes |
 | `/git-commit-push` | `/git_commit_push` | Commit and push scoped changes |
 | `/git-pull-merge` | `/git_pull_merge` | Pull and merge changes |
 | `/lgtm` | `/lgtm` | Continue the understood next step with existing authorization |
@@ -59,8 +59,8 @@ The [engineering cycle](../skills/shared/ENGINEERING-CYCLE.md) connects accepted
 specs and existing `goals.json`/`TODO.md` tasks to targeted installed engineering
 skills, implementation, checks, native review and owner-ledger reconciliation.
 A documentation-only `/repo-docs` request does not launch workers. To continue
-through a spec, explicitly ask `/autogoal` to implement that accepted spec within
-its stated scope. Default `/autogoal` hands off one slice. Review acceptance and
+through a spec, explicitly ask `/autowork` to implement that accepted spec within
+its stated scope. Default `/autowork` hands off one slice. Review acceptance and
 executed evidence precede canonical closure; no push or deployment is implied.
 Skill availability and support files are checked at use time; a missing skill is
 reported with its safe fallback, not silently treated as loaded.
@@ -98,3 +98,5 @@ Upstream flags and analytical methods are retained; host-specific tools, generic
 confirmation prompts, experimental Git handling and documentation handoffs follow
 the adapter. Claude-only hooks are not installed.
 
+`/autowork` is the primary repository development command; `/autogoal` routes to it
+for compatibility. Internal `autogoal/` helper paths and state remain stable.

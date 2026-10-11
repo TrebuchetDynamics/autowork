@@ -162,6 +162,18 @@ class PluginTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.plugin.register(self.ctx)
 
+    def test_autogoal_alias_routes_to_autowork_with_arguments_and_origin(self):
+        self.plugin.SKILLS_DIR = ROOT / 'skills'
+        self.plugin.register(self.ctx)
+        self.assertIn('autowork',self.ctx.commands)
+        self.session.update(HERMES_SESSION_PLATFORM='telegram',HERMES_SESSION_CHAT_ID='fixture-chat')
+        for command in ('autogoal','autowork'):
+            self.ctx.commands[command]('Improve this repo; no push')
+            prompt,target=self.ctx.messages[-1]
+            self.assertIn('hermes-toolset:autowork',prompt)
+            self.assertIn('Improve this repo; no push',prompt)
+            self.assertEqual(target['origin']['chat_id'],'fixture-chat')
+
     def test_repository_skills_are_all_discovered(self):
         self.plugin.SKILLS_DIR = ROOT / "skills"
         self.plugin.register(self.ctx)

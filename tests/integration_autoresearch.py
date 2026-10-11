@@ -38,10 +38,14 @@ def main():
             assert f'autoresearch{name}' not in menu
         assert all('autoresearch_' + name in menu for name in names), menu
         assert 'autoresearch' in menu, menu
+        assert 'autowork' in menu, menu
         cli = SimpleNamespace(_pending_input=Queue(), _agent_running=False)
         manager._cli_ref = cli
         tokens = set_session_vars()
         try:
+            for alias in ('autowork', 'autogoal'):
+                assert commands[alias]['handler']('Improve this repo; no push') is None
+                assert 'hermes-toolset:autowork' in cli._pending_input.get_nowait()
             for name in names:
                 raw = 'Goal: cache latency\n--chain evals; do not implement'
                 assert commands[f'autoresearch:{name}']['handler'](raw) is None
@@ -56,6 +60,9 @@ def main():
         manager.set_gateway_message_injector(accepted, lambda **kwargs: accepted.append(kwargs) or True)
         tokens = set_session_vars(platform='telegram', chat_id='42', thread_id='8', profile='research')
         try:
+            for alias in ('autowork', 'autogoal'):
+                assert commands[alias]['handler']('Improve this repo; no push') is None
+                assert accepted[-1]['origin']['thread_id'] == '8'
             for name in names:
                 assert commands[f'autoresearch-{name}']['handler']('plan only') is None
                 assert accepted[-1]['origin']['thread_id'] == '8'
