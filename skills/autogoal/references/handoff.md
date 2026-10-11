@@ -36,6 +36,14 @@ authentication or independently verified approval. Read current ownership first;
 never manufacture these fields from profile names, timestamps or a green test.
 Revision checks and the canonical lock bound clerical writes, not hostile writers.
 Conflicting bodies, unrelated contract defects and missing acceptance stay held.
+For a missing/malformed accepted-status marker, supply the separate
+`accepted_plan_source_commit`: a full immutable commit of this same repository
+whose referenced section is explicitly accepted and byte-identical to the current
+scope excluding status metadata. This does not broaden body `source_commit`.
+Current Proposed/Rejected/Draft/Superseded status conflicts refuse, even when an
+older accepted commit exists. Body/link recovery is validated in memory before
+any write; only metadata is restored, then the same selection is retried.
+The existing cooperative write seam is not a crash-atomic multi-file transaction.
 
 Optional `--prerequisite-request /private/inputs.json` composes
 `prepare_prerequisites.py` only under `--apply`. JSON supplies its existing explicit
