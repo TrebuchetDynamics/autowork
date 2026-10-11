@@ -11,18 +11,21 @@ across profiles, and verification that gateway commands were registered.
 
 ## What you can do
 
-| Workflow | Example in CLI chat | Result and possible changes |
-| --- | --- | --- |
-| Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. |
-| Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. |
-| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. |
-| Implement accepted work | `/autogoal Implement the accepted cache specification` | Selects eligible tasks, hands work to a worker, checks results and commits owned changes. Default invocation selects one task; no push/deploy implied. |
-| Research and improve | `/autoresearch:plan Reduce cache latency` | Derives measurements and a plan; records accepted follow-ups through repo-docs. Other research commands can execute bounded experiments. |
-| Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” |
-| Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. |
-| Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. |
-| Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. |
-| Inspect capabilities | `/toolset list` | Lists registered commands and their owners; `hermes toolset doctor --json` reports missing imports. |
+| Workflow | Example in CLI chat | Result and possible changes | Readiness needed |
+| --- | --- | --- | --- |
+| Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core for questions/chat summary; Graphify + file/terminal tools to save decisions |
+| Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. | Core + configured model |
+| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | Graphify + file/terminal tools |
+| Implement accepted work | `/autogoal Implement the accepted cache specification` | Selects eligible tasks, hands work to a worker, checks results and commits owned changes. Default invocation selects one task; no push/deploy implied. | Eligible accepted task + native worker and repository build/test tools; Graphify for docs fallback |
+| Research and improve | `/autoresearch:plan Reduce cache latency` | Derives measurements and a plan; records accepted follow-ups through repo-docs. Other research commands can execute bounded experiments. | Research/experiment tools for the selected protocol; Graphify to record tasks |
+| Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
+| Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
+| Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
+| Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. | Profile setup tools + selected integrations |
+| Inspect capabilities | `/toolset list` | Lists registered commands and their owners; `hermes toolset doctor --json` reports missing imports. | Core; inventory does not prove workflow readiness |
+
+**Core** means bundled commands with a configured model; `doctor --core` checks
+registration, not the workflow prerequisites above.
 
 Telegram uses underscores: `/repo_interview`, `/repo_docs`, `/git_commit_push`,
 `/autoresearch_plan`. Autoresearch retains all 13 subcommands plus `/autoresearch`.
@@ -87,15 +90,16 @@ there is currently no separate minimal, policy-neutral package.
 
 ## Try the native plugin in one profile
 
-Replace `work` with your existing profile; omit `-p work` throughout to use default.
+These commands use the default profile. For an existing named profile, add
+`-p work` after `hermes` throughout (for example, `hermes -p work toolset doctor --core`).
 The manifest requires OMH, Ponytail and Hermes Speech, so native installation may
 involve dependency resolution or consent even though the smoke check needs none
 of those services.
 
 ```sh
-hermes -p work plugins install TrebuchetDynamics/hermes-toolset
-hermes -p work plugins enable hermes-toolset
-hermes -p work toolset doctor --core
+hermes plugins install TrebuchetDynamics/hermes-toolset
+hermes plugins enable hermes-toolset
+hermes toolset doctor --core
 ```
 
 Loading it still applies the runtime policy above. This is not a policy-preserving
@@ -125,13 +129,13 @@ checkout: the installed plugin links to it. Profile `status` is `ready` or
 
 ## First use in your project
 
-Keep the same profile selected, then open **your project**, not the Toolset checkout:
-replace `work` with an existing profile, or omit `-p work` for default.
+Open **your project**, not the Toolset checkout. These commands use default; if
+you installed into a named profile, keep `-p PROFILE` after `hermes` in both commands.
 
 ```sh
-hermes -p work toolset doctor --core
+hermes toolset doctor --core
 cd /path/to/your-project
-hermes -p work
+hermes
 ```
 
 Core readiness checks bundled skill/command registration. Missing external
@@ -155,15 +159,21 @@ to produce a useful decision summary in chat. The separate
 [full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task)
 saves docs and a TODO.md task; it requires Graphify and file/terminal tools.
 
-To add the full stack after native installation, use
-`hermes -p work toolset setup --yes-deps --dry-run`, then
-`hermes -p work toolset setup --yes-deps`. **This expands setup to every live
-profile**, despite `-p work`. No source checkout is needed. From a source checkout,
-the alternatives are `bash install.sh --yes-deps --dry-run` and `bash install.sh --yes-deps`.
-Full setup needs `uv` unless OMH and Graphify CLIs are installed. CLI startup can
-apply runtime defaults before [preflight](docs/installation.md#preflight-before-fleet-writes);
-use the source-script preview to avoid booting Hermes. Later failures can still
-leave partial setup; read the outcome.
+Before upgrading, note that **CLI startup can apply runtime defaults before
+[preflight](docs/installation.md#preflight-before-fleet-writes), even with `--dry-run`**.
+Use `bash install.sh --yes-deps --dry-run` from a source checkout to preview without
+booting Hermes. Full setup needs `uv` unless OMH and Graphify CLIs are installed.
+
+To add the full stack after native installation (no checkout needed):
+**This expands setup to every live profile**, even when launched with `-p PROFILE`.
+
+```sh
+hermes toolset setup --yes-deps --dry-run
+hermes toolset setup --yes-deps
+```
+
+From a source checkout, apply with `bash install.sh --yes-deps`.
+Later failures can still leave partial setup; read the outcome.
 
 See [onboarding](docs/onboarding.md) for Telegram checks, project binding and updates.
 A profile is not a filesystem sandbox.
