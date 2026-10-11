@@ -15,7 +15,7 @@ class RuntimeSetupTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('setup_runtime', ROOT/'setup_runtime.py')
         self.mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(self.mod)
         self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
-        self.root=Path(self.temp.name); self.home=self.root/'profiles/bravo'
+        self.root=Path(self.temp.name); self.home=self.root/'profiles/sample'
         self.bundle=self.root/'bundle'; (self.bundle/'skills/grill-me').mkdir(parents=True)
         (self.bundle/'skills/grill-me/SKILL.md').write_text('fixture')
         self.report={'missing_plugins':[], 'missing_skills':[], 'unchecked_skill_sources':[],

@@ -22,7 +22,7 @@ class ScheduledProgressTests(unittest.TestCase):
                        'replied, failed, or not reached', 'queries default recursively',
                        '--toolsets session_search', '--run-budget SECONDS',
                        'No resume, yolo, accept-hooks, ignore-rules',
-                       'Bravo-only chat repair decision', 'own scoped recovery',
+                       'chat-only repair decisions', 'own scoped recovery',
                        'not be resumed, widened or overridden'):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, policy)

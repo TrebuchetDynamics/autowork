@@ -20,7 +20,7 @@ class CompleteSetupTests(unittest.TestCase):
         self.repo.mkdir()
         self.home = Path(self.tmp.name) / 'hermes home'
         self.home.mkdir()
-        for name in ('bravo', 'deleted', 'ghost'):
+        for name in ('sample', 'deleted', 'ghost'):
             p = self.home / 'profiles' / name
             p.mkdir(parents=True)
             if name != 'ghost': (p / 'config.yaml').touch()
@@ -66,24 +66,24 @@ sys.exit(5 if os.environ.get('VERIFY_FAIL')==sys.argv[2] else 0)
         self.assertTrue(calls[0][0].endswith('install-skills.sh'))
         self.assertTrue(calls[1][0].endswith('install-plugins.sh'))
         for option in ('--sources-only', '--setup', '--enable'): self.assertIn(option, calls[1])
-        self.assertEqual([c[2] for c in calls[2:]], ['default', 'bravo'])
+        self.assertEqual([c[2] for c in calls[2:]], ['default', 'sample'])
         self.assertTrue(all(c[3:5] == ['toolset', 'finalize'] for c in calls[2:]))
 
     def test_failure_keeps_finalization_and_nonzero_status(self):
         self.env['CHILD_FAIL'] = '9'
         result = self.run_setup()
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual([c[2] for c in self.calls() if c[0]=='hermes'], ['default','bravo'])
+        self.assertEqual([c[2] for c in self.calls() if c[0]=='hermes'], ['default','sample'])
         self.assertIn('incomplete', result.stdout.lower())
 
     def test_verification_failure_does_not_claim_complete(self):
-        self.env['VERIFY_FAIL'] = 'bravo'
+        self.env['VERIFY_FAIL'] = 'sample'
         result = self.run_setup()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('incomplete', result.stdout.lower())
 
     def test_named_profile_home_resolves_to_all_profiles_and_bundle_only_forwards(self):
-        self.env['HERMES_HOME'] = str(self.home / 'profiles/bravo')
+        self.env['HERMES_HOME'] = str(self.home / 'profiles/sample')
         result = self.run_setup('--bundle-only', '--no-reload')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('--bundle-only', self.calls()[1])
@@ -94,9 +94,9 @@ sys.exit(5 if os.environ.get('VERIFY_FAIL')==sys.argv[2] else 0)
 
     def test_symlinked_profile_refuses_before_configuration(self):
         import shutil
-        bravo=self.home/'profiles/bravo'
-        shutil.rmtree(bravo)
-        bravo.symlink_to(self.home,target_is_directory=True)
+        sample=self.home/'profiles/sample'
+        shutil.rmtree(sample)
+        sample.symlink_to(self.home,target_is_directory=True)
         self.assertNotEqual(self.run_setup().returncode,0)
         self.assertEqual(self.calls(),[])
 

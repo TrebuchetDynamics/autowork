@@ -2,7 +2,7 @@
 name: profile-create
 description: "Create repo-bound profiles with tools and isolated memory."
 version: 0.1.0
-author: Juan Tamez, Hermes Agent
+author: TrebuchetDynamics
 license: MIT
 platforms: [linux, macos]
 metadata:

@@ -11,8 +11,7 @@ metadata:
 
 # Git Commit Push
 
-Adapted from TrebuchetDynamics/pi-toolset `skills/delivery/git-commit-push` (rev 2fbe70a):
-https://github.com/TrebuchetDynamics/pi-toolset/tree/main/skills%2Fdelivery%2Fgit-commit-push
+Adapted from an earlier TrebuchetDynamics delivery workflow.
 Merged with the fleet's shared-worktree rules and autogoal's local agent-branch helper.
 
 Ship finished work without turning delivery into another project. Local changes are the

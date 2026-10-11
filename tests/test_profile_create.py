@@ -24,7 +24,7 @@ class ProfileCreateTests(unittest.TestCase):
                 self.assertIn(requirement, text)
         description = next(line for line in text.splitlines() if line.startswith('description:'))
         self.assertLessEqual(len(description.split(':', 1)[1].strip().strip('"')), 60)
-        self.assertNotIn('/home/user', text)
+        self.assertNotRegex(text, r'/home/[^/\s]+')
 
     def test_real_discovery_and_gateway_dispatch_preserve_arguments(self):
         self.assertTrue(SKILL.is_file())

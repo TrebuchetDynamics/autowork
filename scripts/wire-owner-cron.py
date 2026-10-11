@@ -71,7 +71,7 @@ def audit_prompt(prompt):
         'Missing owner receipts mean recovery execution unverified, not no work or fleet health. '
         'Do not perform product --apply, write sibling state, change jobs, or replace workers. '
         'Identify shared helper defects from the actual failed transition; owner consultations '
-        'and successful cron delivery are not recovered tasks. Keep Bravo paused.\n')
+        'and successful cron delivery are not recovered tasks. Keep all paused jobs paused.\n')
 
 
 def verify_edit(before, after, prompt):
