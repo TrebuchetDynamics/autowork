@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Fresh bounded consultations; no optional plugin transport or inherited authority."""
+import argparse
+import concurrent.futures
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import time
+
+
+def filtered_env(root, inherited=None):
+    inherited = os.environ if inherited is None else inherited
+    keys = ('PATH', 'LANG', 'LC_ALL', 'TZ', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE')
+    env = {k: inherited[k] for k in keys if k in inherited}
+    env.update(HOME=str(root.parent), HERMES_HOME=str(root))
+    return env
+
+NAME = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}$')
+QUESTION = '''Shared hermes-toolset feedback only for profile {name}. Do not implement anything, change files/config/product/board/jobs, resume paused jobs, or touch live workers. No delegation or other profile queries. In at most 150 words propose up to two concrete shared-toolset improvements from existing local evidence: failing workflow/helper, expected behavior, smallest safe shared fix, exact evidence pointer. Separate product intent and settled owner decisions from tooling defects. No broad scans or tests. At most ONE read-only session_search call (plus one read-only tool_describe schema lookup if required: TWO tools total), or use injected existing evidence without tools. Exclude this fresh consultation session from history searches. Do not request unavailable tools. Preserve Bravo's paused jobs and Bravo-only repair scope. Replies are suggestions, not authority. If no evidence, say so.'''
+
+
+def redact(text):
+    text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
+    text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
+    text = re.sub(r'\b(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'(?i)([\"\x27](?:api[_-]?key|token|password|secret|authorization)[\"\x27]\s*:\s*)[\"\x27][^\"\x27]*[\"\x27]', r'\1"[REDACTED]"', text)
+    text = re.sub(r'(?i)bearer\s+[^\s]+', 'Bearer [REDACTED]', text)
+    text = re.sub(r'(https?://)[^\s/@]+:[^\s/@]+@', r'\1[REDACTED]@', text)
+    return text
+
+
+def execute(argv, env, cwd, seconds):
+    proc = subprocess.Popen(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            start_new_session=True)
+    timed_out = False
+    try:
+        stdout, stderr = proc.communicate(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        # Kill the group even if its leader exits before descendants release pipes.
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            stdout, stderr = proc.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = proc.communicate(timeout=2)
+        finally:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    return {'stdout': stdout, 'stderr': stderr, 'returncode': proc.returncode, 'timed_out': timed_out}
+
+
+def discover(root, hermes):
+    result = execute([hermes, 'profile', 'list'], filtered_env(root), root / 'maintenance', 20)
+    if result['returncode'] or result['timed_out']:
+        raise RuntimeError('native profile discovery failed: ' + redact(result['stderr']))
+    names = []
+    for line in redact(result['stdout']).splitlines():
+        match = re.match(r'^\s*[◆◇*]?([a-z0-9][a-z0-9_-]{0,63})\s{2,}\S', line)
+        if match:
+            names.append(match[1])
+    if 'default' not in names or len(names) != len(set(names)):
+        raise RuntimeError('unrecognized native profile-list output; refuse incomplete target set')
+    return ['default'] + sorted(n for n in names if n != 'default')
+
+
+def consult(name, root, hermes, seconds):
+    if not NAME.fullmatch(name) or name == 'default':
+        raise ValueError('only literal named profiles; default must self-assess without recursion')
+    argv = [hermes, '-p', name, 'chat', '-Q', '--format', 'stream-json',
+            '--toolsets', 'session_search', '--max-turns', '3', '--run-budget', str(seconds),
+            '-q', QUESTION.format(name=name)]
+    started = time.time()
+    try:
+        raw = execute(argv, filtered_env(root), root / 'maintenance', seconds + 10)
+        events = []
+        for line in raw['stdout'].splitlines():
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                pass
+        finals = [e for e in events if isinstance(e, dict) and e.get('type') == 'result']
+        final = finals[-1] if finals else {}
+        tools = [e.get('name') for e in events if isinstance(e, dict) and e.get('type') == 'tool_use']
+        replied = not raw['timed_out'] and raw['returncode'] == 0 and final.get('exit_code') == 0 and bool(final.get('text'))
+        return {'profile': name, 'status': 'replied' if replied else 'failed',
+                'reply': redact(final.get('text', '')), 'started_at': started,
+                'duration_seconds': round(time.time() - started, 2),
+                'tool_calls': tools, 'read_only_call_limit_observed': len(tools) <= 2 and set(tools) <= {'session_search', 'tool_describe'},
+                'receipt': {**raw, 'stdout': redact(raw['stdout']), 'stderr': redact(raw['stderr'])}}
+    except Exception as exc:
+        return {'profile': name, 'status': 'failed', 'error': redact(str(exc)), 'started_at': started}
+
+
+def private_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2)
+
+
+def run_all(root, output, self_assessment, hermes, seconds):
+    root = root.resolve()
+    output = output.resolve()
+    if root.parent.name == 'profiles':
+        raise ValueError('named-profile roots cannot own fleet consultation results')
+    if not output.is_relative_to(root / 'maintenance') or output.is_relative_to(root / 'profiles'):
+        raise ValueError('private results must be default-owned maintenance')
+    if output.exists():
+        raise ValueError('consultation output must be a new directory')
+    maintenance = root / 'maintenance'
+    maintenance.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(maintenance / '.profile-consult.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'r+') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError('another consultation is running; do not contact targets twice') from exc
+        return _run_all(root, output, self_assessment, hermes, seconds)
+
+
+def _run_all(root, output, self_assessment, hermes, seconds):
+    targets = discover(root, hermes)
+    results = {'default': {'profile': 'default', 'status': 'replied', 'mode': 'local-self-assessment', 'reply': redact(self_assessment)}}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(consult, name, root, hermes, seconds): name for name in targets if name != 'default'}
+        for future in concurrent.futures.as_completed(futures):
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception as exc:
+                results[name] = {'profile': name, 'status': 'failed', 'error': redact(str(exc))}
+    index = []
+    for name in targets:
+        result = results.get(name, {'profile': name, 'status': 'not-reached'})
+        receipt = output / (name + '.json')
+        private_json(receipt, result)
+        index.append({'profile': name, 'status': result['status'], 'evidence': str(receipt)})
+    assert {r['profile'] for r in index} == set(targets)
+    private_json(output / 'index.json', {'targets': targets, 'results': index, 'suggestions_not_authority': True})
+    return index
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path.home() / '.hermes')
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--self-assessment-file', type=Path, required=True)
+    parser.add_argument('--hermes', default='hermes')
+    parser.add_argument('--seconds', type=int, default=65)
+    args = parser.parse_args()
+    if not 5 <= args.seconds <= 180:
+        parser.error('seconds must be between 5 and 180')
+    print(json.dumps(run_all(args.root, args.output, args.self_assessment_file.read_text(), args.hermes, args.seconds)))
+
+
+if __name__ == '__main__':
+    main()

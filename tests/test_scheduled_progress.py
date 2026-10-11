@@ -18,14 +18,14 @@ class ScheduledProgressTests(unittest.TestCase):
 
     def test_direct_feedback_preserves_owner_authority_and_paused_jobs(self):
         policy = (ROOT / 'skills/autogoal/references/profile-feedback.md').read_text()
-        for phrase in ('ask_agent', 'fresh profile-local', 'not a message to or takeover',
-                       'replied, failed, or not reached', 'not config/job/product/board changes',
-                       'Bravo-only', '900-second', 'do not fabricate', 'not recursively'):
-            if phrase == 'not recursively':
-                self.assertIn('Do not ask\ndefault through ask_agent', policy)
-            else:
-                with self.subTest(phrase=phrase):
-                    self.assertIn(phrase, policy)
+        for phrase in ('scripts/profile-consult.py', 'Fresh named consultations',
+                       'replied, failed, or not reached', 'queries default recursively',
+                       '--toolsets session_search', '--run-budget SECONDS',
+                       'No resume, yolo, accept-hooks, ignore-rules',
+                       'Bravo-only chat repair decision', 'own scoped recovery',
+                       'not be resumed, widened or overridden'):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, policy)
 
     def test_audit_guidance_requires_executable_coverage_and_source_only_actions(self):
         policy = (ROOT / 'skills/autogoal/references/state-and-recovery.md').read_text()

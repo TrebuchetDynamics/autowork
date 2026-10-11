@@ -35,7 +35,19 @@ progress. A live worker is observed through its same card/run, not replaced.
 When consecutive completed runs repeat the same task/blocker/check/commit evidence,
 compare relevant inputs, then diagnose the earliest missing transition. Do not
 repeat broad docs passes or ask again for authority already granted. Apply the
-existing recovery reference within the profile's own accepted scope:
+existing recovery reference within the profile's own accepted scope. Use
+`owner_unblock.py <actual-consumer> --plan <accepted-path#heading> --tasks <IDs>`
+first; diagnosis is non-mutating. Only the explicit integration owner uses
+`--apply --authority <existing-owner.json>` after current ownership reconciliation.
+This composed CLI reuses recover_backlog.py and retry_selection.py and retries
+selection in the same occurrence after attributable repair. Supply
+`--prerequisite-request <existing-inputs.json>` only for already explicit
+snapshot/attribution/base/check inputs; candidate_target/required_paths enable
+real candidate validation, never native dispatch. See handoff.md's executable
+owner unblock pipeline for exact schemas and native/authentication limits. Missing
+inputs produce required inputs/next action argv; do not invent attribution, run
+hidden docs generation, unpause jobs or replace an in_progress task.
+The individual existing helpers remain available for separately authorized steps:
 - Missing/malformed accepted task bodies: source-bound recover_backlog.py under
   canonical revision/ownership guards, then retry the exact consumer gate.
 - Dirty accepted prerequisites excluded from the candidate: prepare_prerequisites.py

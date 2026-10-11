@@ -24,6 +24,7 @@ No recurring jobs.
 Only explicit whole-spec requests use `references/whole-spec-execution.md` instead of picker selection/stop rules; retain all safety, ownership, admission, budgets and review gates below.
 
 For scheduled runs load [scheduled policy](references/scheduled-policy.md).
+Owner consultations: `references/profile-feedback.md`.
 
 ## Operating priorities
 
@@ -164,9 +165,7 @@ or reply `[SILENT]` and leave a journal note for the next run.
    Apply owner replies and report new terminal results. Preserve the original card and worker session
    after interruption; a new tick never licenses a replacement, budget reset or overlapping worker.
    Check live ownership again at dispatch (the helper does this under its lock).
-   Reconcile the card by its runs, not its status string: `hermes kanban runs <card>` plus
-   `reconcile.py`'s `worker_observed`/heartbeat is the liveness evidence, and one card can
-   read `running` for hours across several crashed attempts and a review→running cycle.
+   Read run/heartbeat liveness per `references/handoff.md#picker-run-liveness`.
    Load `references/state-and-recovery.md` for schema/session/recovery details and
    `references/blockers-and-history.md` for failed/blocked cards. Retry limits still apply.
 2. **Select.** Read `goals.py focus <repo> --json`, then run `goals.py next <repo> --json`

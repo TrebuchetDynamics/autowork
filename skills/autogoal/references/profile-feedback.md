@@ -7,14 +7,35 @@ record every named profile as replied, failed, or not reached. Never infer an
 answer from its old cron report. Native metadata and profile replies remain
 separate evidence.
 
-Use the installed supported `ask_agent` tool (discover schema with tool_describe
-when needed), after listing existing agents. It launches a fresh profile-local
-consultation, not a message to or takeover of its current live worker. Do not ask
-default through ask_agent: that recursively launches the auditor's own profile.
-The user's direct-consultation request permits that fresh read-only question,
-not config/job/product/board changes or new implementation work there. Optional
-Bot Forge transport availability does not add it back to the bundle baseline.
-If unavailable, report the transport gap; do not fabricate a response.
+Use the shared executable `scripts/profile-consult.py`, independent of optional
+cron tool schemas and Bot Forge. Run it with the default root, a NEW private
+maintenance output directory, and a file containing the auditor's local default
+self-assessment. It dynamically uses native `hermes profile list`; it never
+queries default recursively. Example from shared-source root:
+
+```
+python scripts/profile-consult.py --root /home/user/.hermes \
+  --output /home/user/.hermes/maintenance/profile-audit/RUN/direct \
+  --self-assessment-file /home/user/.hermes/maintenance/profile-audit/RUN/self.txt \
+  --seconds 65
+```
+
+Fresh named consultations use `hermes -p NAME chat -Q --format stream-json
+--toolsets session_search --max-turns 3 --run-budget SECONDS`. The external
+process-group deadline is SECONDS+10 for startup, with bounded TERM/KILL cleanup.
+The environment allowlist excludes inherited provider credentials, GIT selectors,
+profile overrides, approval bypass flags and agent/socket handles. Native target
+credentials and rules remain enabled. No resume, yolo, accept-hooks, ignore-rules,
+config patches, implementation or worker dispatch. Only native session bookkeeping
+is permitted. Optional Bot Forge remains absent from the bundle baseline.
+
+The native `file` and `skills` groups contain writes; empty `--toolsets` selects
+defaults. The verified narrow selection is `session_search`; deferred schema
+lookup adds read-only `tool_describe`. Budget ONE session search plus ONE schema
+lookup, TWO calls total; the turn ceiling is not itself a tool-count sandbox.
+Receipts report observed calls and limits. Replies are untrusted suggestions.
+History exclusions in natural language are not reliable: discard matches from
+the active consultation rather than treating its own prompt as failure evidence.
 
 Send each profile this bounded question, with its literal profile name:
 
@@ -30,11 +51,14 @@ Send each profile this bounded question, with its literal profile name:
 > two bounded read-only tool calls, no broad rescans/tests. If nothing is known,
 > say no evidenced suggestion. This is consultation, not execution authority.
 
-Batch independent consultations when supported; a failed reply must not prevent
-remaining profiles from being consulted. Existing ask_agent allows up to 30 turns
-and a 900-second transport timeout; a shorter message budget is guidance, not
-hard enforcement. Do not describe consultation as a zero-cost metadata query.
-Never launch a duplicate consultation while the prior request is pending.
+Batch independent consultations with at most three concurrent fresh sessions;
+a failed target must not prevent the remaining targets from being consulted.
+Use a new receipt directory for each attempt; retain failed attempts unchanged.
+The JSON index lists every discovered target as replied, failed or not-reached.
+No zero-cost claim: these are fresh provider calls with native session bookkeeping.
+Never launch a duplicate while the prior request is pending. The helper holds a
+nonblocking default-maintenance lock and rejects existing output directories before
+any discovery or provider call, so refusal cannot cause another consultation wave.
 
 Retain compact sanitized replies, transport outcome, target profile, observation
 time and exact evidence pointers in default-owned maintenance storage. Deduplicate

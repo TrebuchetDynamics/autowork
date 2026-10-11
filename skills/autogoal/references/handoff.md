@@ -1,5 +1,66 @@
 # Autogoal — Handoff, review and worker execution
 
+## Picker run liveness
+
+Reconcile the card by its runs, not its status string: `hermes kanban runs <card>` plus
+`reconcile.py`'s `worker_observed`/heartbeat is the liveness evidence, and one card can
+read `running` for hours across several crashed attempts and a review→running cycle.
+
+## Executable owner unblock pipeline
+
+Before a fragmented recovery handoff, use the composed CLI against the actual
+consumer, preserving its named accepted plan and literal task IDs:
+
+```sh
+python3 <autogoal>/scripts/owner_unblock.py /absolute/consumer \
+  --plan SPEC.md#slice --tasks T1
+python3 <autogoal>/scripts/owner_unblock.py /absolute/consumer \
+  --plan SPEC.md#slice --tasks T1 --apply --authority /private/owner.json
+```
+
+Default diagnosis never edits product bytes. It reports the earliest held gate,
+exact task/goal/revision stages, required inputs and next action argv. Linked
+worktrees require `--canonical-repo` as in `goals.py`. Only explicitly open tasks
+can be repaired; in_progress is an ownership reconciliation, not a repair retry.
+The CLI composes `recover_backlog.py` and `retry_selection.py`, retrying the SAME
+canonical consumer in the SAME invocation after repair. It never accepts a plan,
+creates tasks, generates hidden docs, changes the ledger, board or lease, dispatches
+workers or publishes. Unknown live ownership remains unknown.
+
+Owner JSON supplies `version: 1`, absolute canonical `workspace`, exact `plan`,
+ordered `task_ids`, current `expected_revision` from `goals.py revision`,
+`source_commit` (null for accepted-link repair; full immutable same-task source
+commit for a missing body), nonempty `owner` and `evidence_ref`, and
+`no_overlapping_writer: true`. These are supplied caller attestations, NOT native
+authentication or independently verified approval. Read current ownership first;
+never manufacture these fields from profile names, timestamps or a green test.
+Revision checks and the canonical lock bound clerical writes, not hostile writers.
+Conflicting bodies, unrelated contract defects and missing acceptance stay held.
+
+Optional `--prerequisite-request /private/inputs.json` composes
+`prepare_prerequisites.py` only under `--apply`. JSON supplies its existing explicit
+arguments: canonical `source`, new private `target`, immutable `base`, `snapshot`
+object, `attribution` object, `profile`, `task` and acceptance `checks` (argv lists).
+Snapshot/attribution must match the post-repair bytes; the pipeline never generates,
+refreshes or broadens them. Already-supplied exact future repair bytes may qualify;
+otherwise recover readiness first, obtain actual owner-attributed inputs, then invoke
+again. Missing attribution is required input, not invented permission.
+Add explicit `candidate_target` and `required_paths` to prepare and verify the
+candidate from the helper's actual returned commit/ref in that invocation. The
+source HEAD, real index and foreign bytes remain untouched by preparation.
+
+For previously prepared inputs, `--candidate-request /private/candidate.json`
+supplies canonical `source`, new `target`, immutable `base`, `candidate`, pinned
+`prerequisites` mapping, `required_paths`, and original `snapshot`. The CLI reuses
+`pass_workspace.prepare/verify`; it reports `candidate_validated` only after exact
+source/candidate byte and ledger checks. A ready backlog alone is not candidate
+validation. No request means no inferred prerequisites, copying or committing.
+Validate the snapshot's canonical workspace binding before target creation;
+invalid provenance must not leave a materialized candidate workspace.
+Candidate validation is local real-Git proof, NOT native/model execution, installed
+profile adoption, main-only admission or filesystem containment. Recheck native
+ownership and the authorized original launch payload before any separate handoff.
+
 ## Recovery continuation boundary
 
 Put authorized lifecycle/launch ownership in
