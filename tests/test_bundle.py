@@ -89,14 +89,6 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(args.action, 'doctor')
         self.assertTrue(args.json)
 
-    def test_setup_forwards_hindsight_connection_file(self):
-        parser = argparse.ArgumentParser()
-        self.bundle.setup_parser(parser)
-        args = parser.parse_args(['setup', '--hindsight-config', '/tmp/connection file.json'])
-        with patch.object(self.bundle.subprocess, 'run', return_value=types.SimpleNamespace(returncode=0)) as run:
-            self.assertEqual(self.bundle.handle_cli(args), 0)
-        self.assertEqual(run.call_args.args[0][-2:], ['--hindsight-config', '/tmp/connection file.json'])
-
     def test_missing_imports_track_partial_install_and_removed_commands(self):
         home = Path(self.tmp.name)
         self.bundle.record_skill_repository(home, 'https://github.com/addyosmani/agent-skills', ['alpha', 'beta'])
@@ -122,7 +114,7 @@ class BundleTests(unittest.TestCase):
             report = self.bundle.inventory()
         self.assertIn('bot-forge', report['missing_plugins'])
 
-    def test_hindsight_category_provider_is_not_reported_as_a_disabled_general_plugin(self):
+    def test_optional_hindsight_is_not_part_of_bundle_inventory(self):
         self.manager.home_path = Path(self.tmp.name)
         self.manager.discover_and_load = lambda: None
         self.manager.list_plugins = lambda: [{'name': 'hindsight', 'kind': 'exclusive',
@@ -138,8 +130,7 @@ class BundleTests(unittest.TestCase):
         with patch.dict('sys.modules', modules):
             report = self.bundle.inventory()
         self.assertNotIn('hindsight', report['missing_plugins'])
-        self.assertIsNone(report['plugins'][0]['error'])
-        self.assertTrue(report['plugins'][0]['memory_provider'])
+        self.assertEqual(report['plugins'], [])
 
     def report(self):
         return {'plugins': [{'name': 'ponytail', 'version': '5.1.0', 'enabled': True,

@@ -34,7 +34,6 @@ def main(argv=None):
     parser.add_argument('--bundle-only', action='store_true', help='Set up bundled skills and commands only')
     parser.add_argument('--no-reload', action='store_true', help='Explicitly defer live gateway wiring')
     parser.add_argument('--yes-deps', action='store_true')
-    parser.add_argument('--hindsight-config')
     # Compatibility: full setup and enablement are now defaults.
     parser.add_argument('--setup', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--enable', action='store_true', help=argparse.SUPPRESS)
@@ -54,7 +53,6 @@ def main(argv=None):
     plugins = ['bash', str(ROOT / 'install-plugins.sh'), '--sources-only', '--setup', '--enable', *common]
     if args.bundle_only: plugins.append('--bundle-only')
     if args.yes_deps: plugins.append('--yes-deps')
-    if args.hindsight_config: plugins += ['--hindsight-config', args.hindsight_config]
     env = dict(os.environ, HERMES_HOME=str(root))
     failures = []
     def run(label, command):

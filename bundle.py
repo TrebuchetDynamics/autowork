@@ -100,18 +100,6 @@ def inventory():
     for row in rows:
         row['in_telegram_menu'] = row['telegram'] in menu_names
     selected = [dict(p) for p in plugins if p['name'] in wanted]
-    for plugin in selected:
-        if plugin['name'] == 'hindsight' and plugin.get('kind') == 'exclusive':
-            # Memory providers have a dedicated loader; the general plugin
-            # manager records them as inactive even when memory.provider selects them.
-            from hermes_cli.config import load_config_readonly
-            from plugins.memory import load_memory_provider
-            active = (load_config_readonly().get('memory') or {}).get('provider') == 'hindsight'
-            provider = load_memory_provider('hindsight', register_skills=False) if active else None
-            available = bool(provider and provider.is_available())
-            plugin.update(memory_provider=True, enabled=active and available,
-                          error=None if active and available else
-                          'Hindsight memory is not selected/available; run hermes memory status and toolset setup.')
     loaded = {p['name'] for p in selected if p.get('enabled') and not p.get('error')}
     required = wanted
     missing_skills, unchecked_sources = missing_skill_imports(
@@ -169,7 +157,6 @@ def setup_parser(parser):
     setup.add_argument('--dry-run', action='store_true')
     setup.add_argument('--hermes-home', help='Hermes root containing profiles/')
     setup.add_argument('--yes-deps', action='store_true', help='Consent to declared Python dependencies')
-    setup.add_argument('--hindsight-config', help='Connection-only JSON for new Hindsight profiles')
     setup.add_argument('--bundle-only', action='store_true')
     setup.add_argument('--no-reload', action='store_true')
     finalize = actions.add_parser('finalize', help='Verify this profile and refresh gateway command wiring')
@@ -195,7 +182,6 @@ def handle_cli(args):
     for flag in ('dry_run', 'yes_deps', 'bundle_only', 'no_reload'):
         if getattr(args, flag, False): argv.append('--' + flag.replace('_', '-'))
     if args.hermes_home: argv += ['--hermes-home', args.hermes_home]
-    if getattr(args, 'hindsight_config', None): argv += ['--hindsight-config', args.hindsight_config]
     return subprocess.run(argv, cwd=ROOT, check=False).returncode
 
 

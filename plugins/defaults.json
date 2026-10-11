@@ -3,8 +3,7 @@
     "omh",
     "bot-forge",
     "ponytail",
-    "hermes-speech",
-    "hindsight"
+    "hermes-speech"
   ],
   "hermes": {
     "allow_gateway_injection": true,
@@ -18,11 +17,6 @@
     "graphify",
     "omh-plan"
   ],
-  "hindsight": {
-    "memory_mode": "hybrid",
-    "auto_recall": true,
-    "auto_retain": true
-  },
   "omh": {
     "source": "git+https://github.com/rlaope/oh-my-hermes.git@021e5c63d976b4e0faf9cfc7d608701d98fe1722",
     "full": true,
