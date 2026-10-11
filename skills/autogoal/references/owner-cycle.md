@@ -4,6 +4,45 @@ This is execution inside the existing owner's scope, not permission to replace a
 worker, alter product intent, take over an integration owner or bypass admission.
 A cron tick is not successful progress merely because it produced a status.
 
+## Run the executable cycle
+
+Use the shared runner rather than assembling status JSON by hand:
+
+```sh
+python3 <autogoal>/scripts/owner_cycle.py /absolute/consumer \
+  --plan SPEC.md#slice --tasks T1 \
+  --state-dir "$HERMES_HOME/autogoal" --integration-owner ACTUAL_OWNER
+```
+
+Resolve the actual owning profile home first; never guess default from a named
+session. Add `--apply --authority /private/owner.json` only with the existing
+source-bound authority described in handoff.md. Prerequisite/candidate request
+flags are forwarded to the existing recovery pipeline. The runner writes private
+history, `unblock-latest.json` and a five-line `report-latest.txt` automatically,
+then performs fresh canonical selection. It never invents a ledger or acceptance.
+
+An unchanged blocker reuses one `requests/<id>.json`; the second occurrence changes
+the action to owner follow-up. Supply `--proposal /private/attributed-proposal
+--owner-evidence EVIDENCE_REF` when known. Requests remain local and pending:
+creation is not delivery or acknowledgement. Record an actual owner's reply with
+`--apply --acknowledge --integration-owner OWNER --owner-evidence REPLY_REF`.
+This is explicit caller evidence, not authentication or integration permission.
+New evidence is retained without duplicating the request. The auditor surfaces
+pending requests; integration remains the repository owner's job.
+
+For an already authorized handoff, pass `--apply --handoff-request /private/handoff.json`.
+Its object contains canonical `consumer`, exact selected `task_id`, and `options`
+using start_goal.py option names (profile, title, contract-file, source-snapshot,
+base and explicitly supplied prerequisite/worker-role options). The runner calls
+that helper only after fresh readiness. Native ownership, snapshot, contract and
+admission checks still run there. A card handoff is QUEUED, never task completion;
+failed/uncertain dispatch requires native reconciliation. Without a handoff request,
+readiness does not dispatch. Without repair authority, diagnosis does not repair.
+
+The runner's bounded work search uses the canonical selector. When no candidate
+is found, inspect one accepted source/test seam as below; an empty selector does
+not prove all independent work exhausted. Keep offline and live acceptance separate.
+
 ## Execute before a blocked or idle report
 
 1. Reconcile the exact original card/run and current owner decisions. A live or
@@ -11,7 +50,8 @@ A cron tick is not successful progress merely because it produced a status.
    source path; never restore redirected Git routing or copy foreign dirty inputs.
 2. Read ledger focus and current task bodies. Bind the literal task IDs and the
    actual accepted-plan path/anchor. If consumer readiness holds, **execute**
-   `scripts/owner_unblock.py /absolute/consumer --plan EXACT_PLAN --tasks EXACT_IDS`
+   `scripts/owner_cycle.py /absolute/consumer --plan EXACT_PLAN --tasks EXACT_IDS
+   --state-dir OWN_PROFILE_HOME/autogoal --integration-owner ACTUAL_OWNER`
    from the loaded autogoal directory. Save its actual JSON and exit status under
    this owner's `autogoal/` state; update `unblock-latest.json` only from a completed
    invocation. Do not invent command inputs or cite another profile's receipt.

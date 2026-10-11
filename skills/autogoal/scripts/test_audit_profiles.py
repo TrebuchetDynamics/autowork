@@ -50,6 +50,18 @@ class CollectorTests(unittest.TestCase):
         self.assertTrue(all(p['repo']['state'] == 'unknown_relative_cwd' for p in rows))
         self.assertTrue(all(p['live_ownership'] == 'unknown' for p in rows))
 
+    def test_owner_cycle_receipt_is_collected_without_claiming_live_progress(self):
+        home=self.profile('default')
+        (home/'autogoal').mkdir()
+        (home/'autogoal/unblock-latest.json').write_text(json.dumps({'version':1,'run_id':'run',
+            'task_ids':['T1'],'outcome':'BLOCKED','action':'owner_followup_required',
+            'request_status':'pending','integration_request':'/private/request', 'unchanged_runs':3}))
+        _,summary=self.run_collector()
+        row=self.receipt(summary)['profiles'][0]
+        self.assertEqual(row['owner_cycle']['task_ids'],['T1'])
+        self.assertEqual(row['owner_cycle']['outcome'],'BLOCKED')
+        self.assertEqual(row['live_ownership'],'unknown')
+
     def test_rejects_named_profile_alias_state_and_emits_errors(self):
         home = self.profile('one')
         (self.root / 'maintenance').mkdir()

@@ -278,6 +278,18 @@ def inspect_profile(name, home, launch):
                     row[key + '_sha256'] = digest(json.dumps(value, sort_keys=True).encode())
             continuity[filename] = row
         elif raw is not None: gaps.append(filename + ': unknown schema')
+    cycle_raw = read_json(home / 'autogoal/unblock-latest.json', gaps, optional=True)
+    owner_cycle = {}
+    if isinstance(cycle_raw, dict) and cycle_raw.get('version') == 1 and isinstance(cycle_raw.get('task_ids'), list):
+        owner_cycle = project(cycle_raw, ('timestamp', 'run_id', 'task_ids', 'plan', 'consumer',
+                              'outcome', 'action', 'unchanged_runs', 'request_status', 'integration_request',
+                              'next_action', 'selected_task', 'dispatch_attempted', 'completed_tasks', 'delivery'))
+        owner_cycle['task_ids'] = [safe(t) for t in cycle_raw['task_ids'] if isinstance(t, str)][:100]
+        if isinstance(cycle_raw.get('selected_task'), dict):
+            owner_cycle['selected_task'] = project(cycle_raw['selected_task'], ('id', 'title', 'status'))
+        owner_cycle['boundary'] = 'Reported owner-cycle evidence; not fresh worker, remote or product acceptance verification'
+    elif cycle_raw is not None:
+        gaps.append('owner cycle receipt missing supported schema; recovery execution unverified')
     # start_goal.save_receipt archives continuity here; archives are not current runs.
     directory = home / 'autogoal/handoffs'
     history = {'files_observed': 0, 'boundary': 'archive inventory only; not current handoff or ownership'}
@@ -290,7 +302,7 @@ def inspect_profile(name, home, launch):
     repo = repository(home, launch, gaps)
     return {'profile': name, 'home': str(home), 'jobs': jobs, 'executions': executions,
             'cron_responses': cron_responses(home, jobs, gaps),
-            'sessions': sessions, 'continuity': continuity, 'handoff_history': history, 'repo': repo, 'gaps': gaps,
+            'sessions': sessions, 'owner_cycle': owner_cycle, 'continuity': continuity, 'handoff_history': history, 'repo': repo, 'gaps': gaps,
             'live_ownership': 'unknown',
             'workers': {'session_anchors': [r['id'] for r in sessions if r.get('parent_session_id')],
                         'boundary': 'session metadata, not process liveness or board ownership'},
@@ -405,6 +417,7 @@ def compact_profile(row, previous):
             failures.append(project(execution, ('id', 'job_id', 'status', 'error')))
     if failures: result['failures'] = failures
     if row['continuity']: result['tasks'] = row['continuity']
+    if row.get('owner_cycle'): result['owner_cycle'] = row['owner_cycle']
     readiness = row['repo'].get('backlog_readiness', {})
     held = [task for task in readiness.get('tasks', []) if task.get('reasons')]
     if held:
