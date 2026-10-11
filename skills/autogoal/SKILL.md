@@ -147,7 +147,7 @@ Only explicit whole-spec requests use `references/whole-spec-execution.md` inste
 
 ## Parallel dispatch and reporting
 
-Load [dispatch and reporting](references/dispatch-and-reporting.md) before an explicit parallel backlog handoff or a completion report. Its file ownership, verification and output contracts remain required.
+Load [dispatch and reporting](references/dispatch-and-reporting.md) before an explicit parallel backlog handoff or any user-facing status report, including blocked, failed, unchanged and scheduled occurrences. Always name the current TODO.md task and the next task with its eligibility; its output contract is required.
 
 ## Each run (picker)
 
