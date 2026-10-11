@@ -2,8 +2,8 @@
 
 An opinionated toolkit for running repository work across Hermes profiles—from
 questions and research to documented tasks, implementation, checks and commits.
-Use the same workflows in CLI chat and Telegram without wiring each skill or
-profile by hand.
+Use the same workflows in Hermes CLI and Telegram. Install into one profile with
+the native plugin manager, or deploy across your fleet with the setup tools.
 
 Hermes already supports skills and plugins. This bundle adds a coordinated set of
 repository workflows, automatic slash-command registration, shared installation
@@ -87,19 +87,21 @@ there is currently no separate minimal, policy-neutral package.
 
 ## Try the native plugin in one profile
 
-For an existing Hermes profile, use the native manager (add `-p PROFILE` to each
-command to select a named profile):
+Replace `work` with your existing profile; omit `-p work` throughout to use default.
+The manifest requires OMH, Ponytail and Hermes Speech, so native installation may
+involve dependency resolution or consent even though the smoke check needs none
+of those services.
 
 ```sh
-hermes plugins install TrebuchetDynamics/hermes-toolset
-hermes plugins enable hermes-toolset
-hermes toolset doctor --core
+hermes -p work plugins install TrebuchetDynamics/hermes-toolset
+hermes -p work plugins enable hermes-toolset
+hermes -p work toolset doctor --core
 ```
 
 Loading it still applies the runtime policy above. This is not a policy-preserving
-trial; the manifest declares dependencies, and native installation alone does not
-perform full external setup. For fleet setup or local development, use the source
-path below. Both paths continue at [first use](#first-use-in-your-project).
+trial, and native installation alone does not perform full external setup.
+Continue at [first use](#first-use-in-your-project); the source path below is an
+alternative for fleet setup or local development.
 
 ## Fleet setup from source
 
@@ -123,12 +125,12 @@ checkout: the installed plugin links to it. Profile `status` is `ready` or
 
 ## First use in your project
 
-Run the readable core check, then open **your project**, not the Toolset checkout:
+Keep the same profile selected, then open **your project**, not the Toolset checkout:
 
 ```sh
-hermes toolset doctor --core
+hermes -p work toolset doctor --core
 cd /path/to/your-project
-hermes
+hermes -p work
 ```
 
 Core readiness checks bundled skill/command registration. Missing external
@@ -147,15 +149,21 @@ OMH, speech, Graphify or a worker. It is a live smoke check you perform, not a c
 that automated registration tests exercised the model. Resolve any missing skill
 or model error before attempting implementation workflows.
 
-For the full external stack, preview `bash install.sh --yes-deps --dry-run`, then
-run `bash install.sh --yes-deps`. Full setup also needs `uv` unless OMH and Graphify
-CLIs are already installed. [Preflight](docs/installation.md#preflight-before-fleet-writes)
-checks prerequisites and shows profile changes before installation starts. Later
-failures can still leave partial setup; read the outcome.
-Workflow dependencies can still be unavailable after a bundle-only installation.
+Next, try the [disposable-repository exercise](docs/onboarding.md#optional-see-decisions-become-a-task):
+answer an interview, save accepted decisions and produce a bounded TODO.md task.
 
-For Telegram, project binding, a disposable-repository exercise and updates, see
-[onboarding and first-use checks](docs/onboarding.md). A profile is not a filesystem sandbox.
+To add the full stack after native installation, use
+`hermes -p work toolset setup --yes-deps --dry-run`, then
+`hermes -p work toolset setup --yes-deps`. **This expands setup to every live
+profile**, despite `-p work`. No source checkout is needed. From a source checkout,
+the alternatives are `bash install.sh --yes-deps --dry-run` and `bash install.sh --yes-deps`.
+Full setup needs `uv` unless OMH and Graphify CLIs are installed. CLI startup can
+apply runtime defaults before [preflight](docs/installation.md#preflight-before-fleet-writes);
+use the source-script preview to avoid booting Hermes. Later failures can still
+leave partial setup; read the outcome.
+
+See [onboarding](docs/onboarding.md) for Telegram checks, project binding and updates.
+A profile is not a filesystem sandbox.
 
 ## What verification proves
 
