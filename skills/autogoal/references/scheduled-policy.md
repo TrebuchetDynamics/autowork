@@ -5,6 +5,10 @@ Profiles carry only workspace, accepted scope, owner authorization, delivery tar
 and genuine repository exceptions; do not duplicate this workflow in each job.
 Existing authorized cron jobs may invoke autogoal; the skill never creates schedules.
 
+Before a blocked or idle report, execute [the owner recovery cycle](owner-cycle.md).
+Keep an actual owner pipeline receipt and bounded disjoint work search; a maintenance
+"evaluation" without an authorized repair attempt is not completed recovery.
+
 When no runnable task remains and no live worker owns the affected work, load `hermes-toolset:repo-docs`
 for one bounded Bootstrap/Maintain pass grounded in existing accepted intent, then
 rerun selection in the same occurrence. Respect concurrent docs ownership and ledger

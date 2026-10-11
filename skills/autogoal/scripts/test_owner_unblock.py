@@ -60,6 +60,98 @@ class OwnerUnblockTests(unittest.TestCase):
         self.assertTrue(result.stdout, result.stderr)
         return result, json.loads(result.stdout)
 
+    def accepted_history(self, status='Status: Accepted', missing_body=False):
+        plan = '# Slice\n\n' + status + '\nScope: startup only\n\n# Foreign\nStatus: Proposed\nForeign bytes\n'
+        (self.repo / 'SPEC.md').write_text(plan)
+        self.git('add', 'SPEC.md', 'TODO.md', 'goals.json')
+        self.git('commit', '-qm', 'immutable plan fixture')
+        pin = self.git('rev-parse', 'HEAD')
+        current = plan.replace(status + '\n', 'Status: Accepted (implementation only)\n', 1)
+        (self.repo / 'SPEC.md').write_text(current)
+        if missing_body:
+            (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n')
+        self.authority.update(expected_revision=retry_selection.goals.revision(self.repo),
+                              accepted_plan_source_commit=pin, source_commit=pin if missing_body else None)
+        self.auth.write_text(json.dumps(self.authority))
+        return plan, current
+
+    def test_metadata_and_link_repair_ready_preserves_foreign_bytes(self):
+        plan, current = self.accepted_history()
+        plan = plan.replace('Foreign bytes', 'Uncommitted foreign bytes')
+        (self.repo / 'SPEC.md').write_text(current.replace('Foreign bytes', 'Uncommitted foreign bytes'))
+        head, index = self.git('rev-parse', 'HEAD'), self.git('write-tree')
+        result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
+        self.assertEqual(result.returncode, 0, receipt)
+        self.assertEqual(receipt['selection']['selected_task']['id'], 'T1')
+        self.assertEqual((self.repo / 'SPEC.md').read_text(), plan)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(self.git('write-tree'), index)
+        self.assertEqual((self.repo / 'foreign.txt').read_bytes(), b'foreign staged\x00bytes')
+
+    def test_missing_metadata_with_body_repair_ready(self):
+        plan, current = self.accepted_history(missing_body=True)
+        (self.repo / 'SPEC.md').write_text(current.replace('Status: Accepted (implementation only)\n', '', 1))
+        result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
+        self.assertEqual(result.returncode, 0, receipt)
+        self.assertEqual((self.repo / 'SPEC.md').read_text(), plan)
+        self.assertIn('T1: restored committed task body', receipt['stages'][1]['repairs'])
+
+    def test_metadata_recovery_rejects_invalid_evidence_without_any_write(self):
+        for case in ('scope', 'proposed_source', 'missing_pin', 'short_pin', 'tree_pin',
+                     'stale', 'in_progress', 'bad_body_source', 'duplicate_status', 'unrelated'):
+            with self.subTest(case=case):
+                fixture = OwnerUnblockTests()
+                fixture.setUp()
+                try:
+                    _, current = fixture.accepted_history('Status: Proposed' if case == 'proposed_source' else 'Status: Accepted',
+                                                         missing_body=case == 'bad_body_source')
+                    if case == 'scope':
+                        (fixture.repo / 'SPEC.md').write_text(current.replace('startup only', 'other scope'))
+                    elif case == 'missing_pin':
+                        del fixture.authority['accepted_plan_source_commit']
+                    elif case == 'short_pin':
+                        fixture.authority['accepted_plan_source_commit'] = 'HEAD'
+                    elif case == 'tree_pin':
+                        fixture.authority['accepted_plan_source_commit'] = fixture.git('rev-parse', 'HEAD^{tree}')
+                    elif case == 'stale':
+                        fixture.authority['expected_revision'] = 'stale'
+                    elif case == 'in_progress':
+                        fixture.ledger['tasks'][0]['status'] = 'in_progress'
+                        fixture.save_ledger()
+                    elif case == 'bad_body_source':
+                        fixture.authority['source_commit'] = fixture.base
+                    elif case == 'duplicate_status':
+                        (fixture.repo / 'SPEC.md').write_text(current.replace('Scope:', 'Status: Proposed\nScope:', 1))
+                    elif case == 'unrelated':
+                        (fixture.repo / 'README.md').unlink()
+                    fixture.auth.write_text(json.dumps(fixture.authority))
+                    before = {name: (fixture.repo / name).read_bytes() for name in ('SPEC.md', 'TODO.md', 'goals.json', 'foreign.txt')}
+                    head, index = fixture.git('rev-parse', 'HEAD'), fixture.git('write-tree')
+                    result, receipt = fixture.run_cli('--apply', '--authority', str(fixture.auth))
+                    self.assertNotEqual(result.returncode, 0, receipt)
+                    self.assertEqual({name: (fixture.repo / name).read_bytes() for name in before}, before)
+                    self.assertEqual(fixture.git('rev-parse', 'HEAD'), head)
+                    self.assertEqual(fixture.git('write-tree'), index)
+                finally:
+                    fixture.doCleanups()
+
+    def test_historical_acceptance_cannot_overwrite_current_unaccepted_status(self):
+        for status in ('Proposed', 'Rejected', 'Draft', 'Superseded'):
+            with self.subTest(status=status):
+                fixture = OwnerUnblockTests()
+                fixture.setUp()
+                try:
+                    _, current = fixture.accepted_history()
+                    (fixture.repo / 'SPEC.md').write_text(current.replace('Accepted (implementation only)', status, 1))
+                    fixture.authority['expected_revision'] = retry_selection.goals.revision(fixture.repo)
+                    fixture.auth.write_text(json.dumps(fixture.authority))
+                    before = {name: (fixture.repo / name).read_bytes() for name in ('SPEC.md', 'TODO.md', 'goals.json')}
+                    result, receipt = fixture.run_cli('--apply', '--authority', str(fixture.auth))
+                    self.assertNotEqual(result.returncode, 0, receipt)
+                    self.assertEqual({name: (fixture.repo / name).read_bytes() for name in before}, before)
+                finally:
+                    fixture.doCleanups()
+
     def test_binding_repair_retries_same_invocation_preserves_foreign_index(self):
         result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
         self.assertEqual(result.returncode, 0, receipt)

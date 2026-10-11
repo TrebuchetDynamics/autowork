@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import re
+from types import SimpleNamespace
 
 import retry_selection
 import prepare_prerequisites
@@ -24,6 +26,62 @@ finally:
         del sys.modules['goals']
     else:
         sys.modules['goals'] = previous
+
+
+def repair_metadata(repo, plan, ids, authority):
+    name, separator, anchor = plan.partition('#')
+    if not separator or not anchor:
+        raise ValueError('accepted plan requires a heading anchor')
+    blobs, reasons = {}, []
+    current = goals.local_reference(repo, plan, blobs, reasons)
+    if reasons:
+        raise ValueError('; '.join(reasons))
+    pin = authority.get('accepted_plan_source_commit', '')
+    source = recovery.committed(repo, pin, name)
+    env = {k: v for k, v in goals.os.environ.items() if not k.startswith('GIT_')}
+    if subprocess.check_output(['git', '-C', str(repo), 'cat-file', '-t', pin], env=env, text=True, timeout=10).strip() != 'commit':
+        raise ValueError('accepted plan source must be a commit, not another Git object')
+    historical = goals.local_reference(repo, plan, {name: source.encode()}, reasons)
+    status = re.compile(r'^[ \t]*(?:\*\*)?Status:(?:\*\*)?[^\r\n]*(?:\r?\n|$)', re.M | re.I)
+    old, new = list(status.finditer(current)), list(status.finditer(historical))
+    if (reasons or len(new) != 1 or len(old) > 1
+            or not re.fullmatch(r'[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*Accepted[ \t]*(?:\r?\n)?', new[0][0], re.I)):
+        raise ValueError('immutable source must contain unique explicit Status: Accepted')
+    if old and not re.match(r'[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*Accepted\b', old[0][0], re.I):
+        raise ValueError('current explicit unaccepted status conflicts with historical acceptance')
+    if status.sub('', current) != status.sub('', historical):
+        raise ValueError('immutable accepted plan scope differs from current section')
+    if old:
+        repaired = current[:old[0].start()] + new[0][0] + current[old[0].end():]
+    else:
+        offset = new[0].start()
+        repaired = current[:offset] + new[0][0] + current[offset:]
+    original = blobs[name]
+    text = original.decode('utf-8')
+    if not current or text.count(current) != 1:
+        raise ValueError('plan section cannot be uniquely located')
+    replacement = text.replace(current, repaired, 1)
+    pending = {repo / name: replacement}
+    # Validate the entire body/link recovery against an in-memory accepted plan before any write.
+    canonical = recovery.goals
+    overlay = SimpleNamespace(**vars(goals))
+    def reference(root, ref, inputs, errors):
+        if root == repo:
+            inputs.setdefault(name, replacement.encode())
+        return goals.local_reference(root, ref, inputs, errors)
+    overlay.local_reference = reference
+    overlay.checked_bytes = lambda path: pending[path].encode() if path in pending else goals.checked_bytes(path)
+    overlay.atomic_write = lambda path, value: pending.__setitem__(path, value)
+    recovery.goals = overlay
+    try:
+        repairs = recovery.repair(repo, plan, ids, authority['source_commit'])
+    finally:
+        recovery.goals = canonical
+    if goals.checked_bytes(repo / name) != original:
+        raise ValueError('plan inputs changed during recovery')
+    for path, value in pending.items():
+        goals.atomic_write(path, value)
+    return ['restored immutable accepted plan status metadata'] + repairs
 
 
 def run(args):
@@ -64,15 +122,18 @@ def run(args):
     selected = retry_selection.select(repo, plan=args.plan, task_ids=ids)
     result['selection'] = selected
     reasons = selected['reasons']
-    repairable = bool(reasons) and all(reason == 'missing TODO.md' or any(reason in (
+    metadata = 'plan section lacks explicit Status: Accepted' in reasons
+    repairable = bool(reasons) and all(reason in ('missing TODO.md', 'plan section lacks explicit Status: Accepted') or any(reason in (
         tid + ': missing or duplicate task body', tid + ': Sources do not link accepted plan') for tid in ids)
         for reason in reasons)
     if repairable:
         required = ['authority', 'expected_revision=' + revision,
                     'source_commit (full immutable same-task history if body is absent)',
                     'owner and evidence_ref; no_overlapping_writer=true']
+        if metadata:
+            required.append('accepted_plan_source_commit (full immutable same-repository accepted same-scope plan)')
         if not args.apply:
-            return held('accepted_body_repair', required, command + ['--apply', '--authority', '<existing-owner-authority.json>'])
+            return held('accepted_metadata_repair' if metadata else 'accepted_body_repair', required, command + ['--apply', '--authority', '<existing-owner-authority.json>'])
         if not args.authority:
             return held('owner_authority', required, command + ['--apply', '--authority', '<existing-owner-authority.json>'])
         authority = json.loads(Path(args.authority).read_text())
@@ -85,7 +146,8 @@ def run(args):
         with goals.coordination(repo) as locked:
             if goals.revision(locked) != revision:
                 raise ValueError('stale revision; no recovery write')
-            repairs = recovery.repair(locked, args.plan, ids, authority['source_commit'])
+            repairs = (repair_metadata(locked, args.plan, ids, authority) if metadata else
+                       recovery.repair(locked, args.plan, ids, authority['source_commit']))
             stage('repair', locked, repairs=repairs, authority=authority)
         selected = retry_selection.select(repo, plan=args.plan, task_ids=ids)
         result['selection'] = selected
