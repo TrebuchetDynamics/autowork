@@ -45,6 +45,19 @@ implementation approach autonomously, but do not choose an unresolved product me
 RF window, spending, device acceptance or ownership transfer. Do not create receipt-only
 or duplicate tasks, change focus without authority, or run unchanged expensive gates.
 
+An external execution window holds that live action, not independent implementation or fixture qualification
+already covered by accepted intent. If one end-to-end task mixes source work with
+live-device acceptance, leave the original live task in Needs decision and book a
+bounded, source-backed offline slice through the canonical integration owner when
+that implementation scope is already authorized. Do not invent approval or duplicate
+completed work. Keep its actual source/test acceptance separate from live qualification.
+Do not make a whole milestone idle just because its final hardware check is gated.
+For each blocked/idle occurrence, record the actual source/test seam inspected in
+`work_search` alongside the pipeline receipt, with the candidate and precise rejection
+reason or owned handoff. A statement that maintenance was evaluated is insufficient.
+If every focused slice needs external authority, retain that evidence before considering
+an independent already-accepted slice under the normal scoped selection rules.
+
 `NO_CHANGE` is valid only with the actual attempted recovery result and exhausted
 bounded work search, or exact live ownership preventing work. A pending interview,
 empty `next`, green ledger validation or stale `draft_saved` is not that evidence.

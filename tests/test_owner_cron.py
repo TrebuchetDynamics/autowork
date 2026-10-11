@@ -67,6 +67,19 @@ class OwnerCronTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs['env']['HERMES_HOME'], str(root))
         self.assertNotIn('HERMES_PROFILE', run.call_args.kwargs['env'])
 
+    def test_external_window_does_not_hold_independent_offline_work(self):
+        policy = (ROOT / 'skills/autogoal/references/owner-cycle.md').read_text()
+        self.assertIn('independent implementation or fixture qualification', policy)
+        self.assertIn('leave the original live task in Needs decision', policy)
+        self.assertIn('record the actual source/test seam inspected', policy)
+
+    def test_completion_counter_can_advance_without_changing_repeat_policy(self):
+        module = load()
+        before = {'prompt': 'old', 'repeat': {'times': None, 'completed': 64}}
+        module.verify_edit(before, {'prompt': 'new', 'repeat': {'times': None, 'completed': 65}}, 'new')
+        with self.assertRaises(ValueError):
+            module.verify_edit(before, {'prompt': 'new', 'repeat': {'times': 2, 'completed': 65}}, 'new')
+
     def test_schedule_and_safety_configuration_must_read_back_exactly(self):
         module = load()
         before = {'id': 'abc', 'enabled': False, 'schedule': {'minutes': 15}, 'model': None,

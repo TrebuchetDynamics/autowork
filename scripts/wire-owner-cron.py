@@ -77,7 +77,12 @@ def audit_prompt(prompt):
 def verify_edit(before, after, prompt):
     if after.get('prompt') != prompt:
         raise ValueError('prompt readback mismatch')
-    changed = [key for key in PRESERVE if before.get(key) != after.get(key)]
+    def policy(value):
+        return {key: item for key, item in value.items() if key != 'completed'} if isinstance(value, dict) else value
+    # A scheduler completion may race the edit; its counter is not repeat configuration.
+    changed = [key for key in PRESERVE if
+               (policy(before.get(key)) != policy(after.get(key)) if key == 'repeat'
+                else before.get(key) != after.get(key))]
     if changed:
         raise ValueError('unrelated job fields changed: ' + ','.join(changed))
 
