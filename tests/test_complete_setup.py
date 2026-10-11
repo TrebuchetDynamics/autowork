@@ -28,6 +28,11 @@ class CompleteSetupTests(unittest.TestCase):
         (self.home / 'profiles/.deleted/deleted').touch()
         self.log = self.repo / 'calls.jsonl'
         self.env = dict(os.environ, HERMES_HOME=str(self.home), LOG=str(self.log))
+        # These tests exercise orchestration after admission; the real preflight
+        # and its no-write failure paths are covered in test_preflight.py.
+        (self.repo / 'setup_preflight.py').write_text(
+            "def preflight(*args, **kwargs): return {'errors': [], 'plan': []}\n"
+            "def print_plan(report): pass\n")
         for name in ('install-skills.sh', 'install-plugins.sh'):
             (self.repo / name).write_text('''#!/bin/bash
 python3 - "$0" "$@" <<'CHILD'
@@ -97,11 +102,9 @@ sys.exit(5 if os.environ.get('VERIFY_FAIL')==sys.argv[2] else 0)
 
     def test_dry_run_never_finalizes_and_invalid_flags_never_run_children(self):
         self.assertEqual(self.run_setup('--dry-run').returncode, 0)
-        self.assertEqual(len(self.calls()), 2)
-        self.assertTrue(all('--dry-run' in c for c in self.calls()))
-        before = self.log.read_bytes()
+        self.assertEqual(self.calls(), [])
         self.assertNotEqual(self.run_setup('--unknown').returncode, 0)
-        self.assertEqual(self.log.read_bytes(), before)
+        self.assertEqual(self.calls(), [])
 
 
 if __name__ == '__main__': unittest.main()

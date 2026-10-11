@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from setup_preflight import preflight, print_plan
 
 ROOT = Path(__file__).resolve().parent
 
@@ -48,6 +49,17 @@ def main(argv=None):
         parser.error(str(exc))
     for name in ('install-skills.sh', 'install-plugins.sh'):
         if not (ROOT / name).is_file(): parser.error(f'Missing installer: {name}')
+    try:
+        report = preflight(ROOT, root, profiles, bundle_only=args.bundle_only)
+    except (ValueError, OSError, KeyError) as exc:
+        print(f'Preflight failed ({type(exc).__name__}); no installation stages started.')
+        return 1
+    print_plan(report)
+    if report['errors']:
+        return 1
+    if args.dry_run:
+        print(f'Bundle setup preview: {len(profiles)} profiles; no installation stages started.')
+        return 0
     common = ['--hermes-home', str(root)]
     if args.dry_run: common.append('--dry-run')
     plugins = ['bash', str(ROOT / 'install-plugins.sh'), '--sources-only', '--setup', '--enable', *common]

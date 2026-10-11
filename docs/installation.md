@@ -5,9 +5,10 @@ Source: [setup orchestrator](../setup_bundle.py), [source installer](../install-
 
 ## Install
 
-Prerequisites: configured Hermes, Git, Bash and Python. Full setup also needs `uv`
-when `omh` or `graphify` is not already installed. Check those prerequisites before
-starting; setup can partially change profiles before a later prerequisite fails.
+Prerequisites: configured Hermes, Bash and Python 3.12+. Full setup also needs Git
+and `uv` when `omh` or `graphify` is not already installed. Setup now checks these
+prerequisites before starting installation stages; later runtime failures can
+still leave partial setup.
 See [compatibility](testing.md#compatibility) for the verified environment.
 
 Setup is broader than installing this plugin: the current source inventory targets
@@ -65,6 +66,39 @@ then restore the desired settings, for example
 It runs OMH doctor after setup, checks every profile, and refreshes live commands. Native Hermes installation has no post-install
 hook, so the setup command is required after installing this repository.
 Use `hermes toolset setup --dry-run` to preview target profiles.
+
+## Preflight before fleet writes
+
+Every complete setup starts with [read-only preflight](../setup_preflight.py).
+It inventories all live profiles and prints planned skill copies, preserved
+existing skills, plugin links, approval/gateway settings and memory effects.
+The autonomous fleet defaults are unchanged; this adds no interactive approval
+round. `--dry-run` runs preflight only and exits without installation stages.
+Full previews contact Git source servers with bounded timeouts; core previews
+need no dependency network access.
+
+Checks include executable availability, the required Hermes skill/injection APIs,
+strict YAML parsing (including duplicate keys), writable installation paths,
+existing skill/plugin conflicts, OMH store isolation and source accessibility.
+Compatibility is inspected from local Hermes source without loading its plugins;
+the configuration parser uses Hermes's managed Python and does not print config
+values or parser excerpts that could contain credentials. Unrecognized runtime
+layouts fail visibly instead of being assumed compatible.
+
+A failed preflight exits nonzero before changing profile configuration, plugins,
+skills or memory. This guarantee starts at the setup orchestrator: invoking it
+through `hermes toolset setup` may already have loaded the plugin and applied its
+runtime defaults. Use `bash install.sh --dry-run` for a preview that does not boot
+Hermes. The internal `--sources-only` adapter and standalone helper scripts are
+not the complete setup entry point.
+
+Preflight is not a transaction or a security-scan approval. Native scans still
+run during dependency installation; rejection, package resolution failures,
+network changes, concurrent edits and later runtime failures can leave partial
+setup after preflight passes. No rollback is implied. Source reachability alone
+does not certify a pinned version or a usable integration. Profiles linked to
+another bundle checkout are blocked until that installation is explicitly
+updated/removed, avoiding finalization through stale code.
 
 ## Bundled Grill Me
 

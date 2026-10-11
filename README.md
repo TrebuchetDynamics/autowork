@@ -149,7 +149,9 @@ or model error before attempting implementation workflows.
 
 For the full external stack, preview `bash install.sh --yes-deps --dry-run`, then
 run `bash install.sh --yes-deps`. Full setup also needs `uv` unless OMH and Graphify
-CLIs are already installed. Read the outcome: partial setup is not success.
+CLIs are already installed. [Preflight](docs/installation.md#preflight-before-fleet-writes)
+checks prerequisites and shows profile changes before installation starts. Later
+failures can still leave partial setup; read the outcome.
 Workflow dependencies can still be unavailable after a bundle-only installation.
 
 For Telegram, project binding, a disposable-repository exercise and updates, see

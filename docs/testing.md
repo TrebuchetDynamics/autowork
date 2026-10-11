@@ -81,3 +81,13 @@ integration fixture additionally loads a real bundle-only profile and requires
 core success plus full-stack failure from the same installed state.
 These checks do not call a model or send a Telegram message. Use the separate
 [operator-run onboarding checks](onboarding.md) for those outcomes.
+
+## Installer preflight
+
+`test_preflight.py` covers admission failure before any installer call, unchanged
+profile snapshots, incomplete destination conflicts, source timeouts and the core
+policy/memory preview. Run it with Hermes's managed Python as well to exercise
+strict YAML rejection, memory conflicts and secret-safe errors (those parser
+cases skip when ruamel.yaml is unavailable). `test_complete_setup.py` separately
+checks orchestration after admission, including no installation calls on dry-run.
+No passing preview is evidence of a live model or Telegram workflow.
