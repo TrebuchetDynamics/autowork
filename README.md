@@ -177,6 +177,5 @@ Hermes `/toolsets` reports enabled tool groups, a different inventory.
 - [Dependencies, reproducibility and licensing](docs/dependencies.md)
 - [Adding skills](docs/contributing.md) · [Testing and compatibility](docs/testing.md)
 
-No repository-wide license is currently declared. Individual bundled components
-retain their own licenses; those do not license the whole repository.
-See [licensing status](docs/dependencies.md#licensing).
+Licensed under the [MIT License](LICENSE). Bundled third-party components retain
+their own licenses and attribution; see [licensing details](docs/dependencies.md#licensing).

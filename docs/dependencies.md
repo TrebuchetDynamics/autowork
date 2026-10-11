@@ -41,9 +41,9 @@ remain unimplemented. This page makes the limitation explicit; it is not a lockf
 
 ## Licensing
 
-No repository-wide LICENSE has been declared. Public GitHub visibility and
-individual skill licenses do not grant a blanket license for the whole project.
-A repository license requires an owner decision.
+Hermes Toolset is licensed under the [MIT License](../LICENSE), copyright
+2026 TrebuchetDynamics. Third-party components retain their respective licenses
+and copyright notices.
 
 - Vendored Autoresearch retains its [MIT license and attribution](../skills/autoresearch/upstream/LICENSE).
 - Grill Me declares MIT in its [skill metadata](../skills/grill-me/SKILL.md).
