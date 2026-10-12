@@ -91,7 +91,7 @@ authorized repairable defect means Maintain is unfinished. Missing approval,
 authority or a real dependency remains an explicit bounded blocker.
 
 For docs-only scope, report the ready task as undispatched. With existing execution
-authority, pass the accepted slice to the existing autogoal workflow without asking
+authority, pass the accepted slice to the existing autowork workflow without asking
 again or inventing another dispatcher; preserve review, verification and commit
 gates. Queuing, readiness and doc commits do not prove implementation or delivery.
 

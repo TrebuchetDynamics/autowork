@@ -16,7 +16,7 @@ class AuditLauncherTests(unittest.TestCase):
             (home / 'scripts').mkdir()
             script = home / 'scripts/profile-audit-cron.py'
             script.write_bytes((ROOT / 'scripts/profile-audit-cron.py').read_bytes())
-            helper = home / 'plugins/hermes-toolset/skills/autogoal/scripts/audit_profiles.py'
+            helper = home / 'plugins/hermes-toolset/skills/autowork/scripts/audit_profiles.py'
             helper.parent.mkdir(parents=True)
             helper.write_text('import json, sys\nprint(json.dumps(sys.argv))\n')
             result = subprocess.run([sys.executable, str(script)], cwd=home,

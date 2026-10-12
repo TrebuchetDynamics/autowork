@@ -58,7 +58,7 @@ Preserve quantities, units, logical operators and boundaries, state names, count
 2. Language and meaning review: compare the original and revised text for actor, action, object, condition, sequence, simultaneity, obligation, uncertainty, quantities, units, boundaries, counting, and exceptions. For API prose also compare request/response identifiers, status codes, and compatibility. Flag unresolved meaning instead of guessing a cleaner interpretation.
 3. Repository verification: check the documented commands, configuration, interfaces, requirements, generated ownership, operations, and release claims against available repository evidence. Execute only checks authorized by the task. Passing a language check does not authorize destructive operations or establish technical correctness.
 
-Review the diff. Confirm that style changes did not alter technical meaning or protected literals. Do not turn a small bug fix into a repository-wide style rewrite. In Audit/read-only mode, report language findings and proposed wording without editing any file or TODO.md. Do not create speculative autogoal tasks for general style churn.
+Review the diff. Confirm that style changes did not alter technical meaning or protected literals. Do not turn a small bug fix into a repository-wide style rewrite. In Audit/read-only mode, report language findings and proposed wording without editing any file or TODO.md. Do not create speculative autowork tasks for general style churn.
 
 ## Strict conformance and reporting
 

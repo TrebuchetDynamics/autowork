@@ -25,7 +25,7 @@ class WorkflowContractTests(unittest.TestCase):
                     self.assertTrue((source.parent / target.split('#')[0]).exists())
 
     def test_active_docs_do_not_assume_shared_skills_install(self):
-        for folder in ('autogoal', 'repo-docs', 'git-commit-push'):
+        for folder in ('autowork', 'repo-docs', 'git-commit-push'):
             for source in (ROOT / 'skills' / folder).rglob('*.md'):
                 with self.subTest(source=source):
                     self.assertNotIn('~/.hermes/shared-skills/', source.read_text())
@@ -34,7 +34,7 @@ class WorkflowContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='toolset install ') as directory:
             installed = Path(directory) / 'bundle with spaces'
             shutil.copytree(ROOT / 'skills', installed / 'skills')
-            script = installed / 'skills/autogoal/scripts/start_goal.py'
+            script = installed / 'skills/autowork/scripts/start_goal.py'
             spec = importlib.util.spec_from_file_location('portable_start_goal', script)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)

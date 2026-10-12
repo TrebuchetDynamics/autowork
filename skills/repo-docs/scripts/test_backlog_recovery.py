@@ -56,7 +56,7 @@ class BacklogRecoveryTests(unittest.TestCase):
         (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n')
         result = self.invoke('--source-commit', pin)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(json.loads(result.stdout)['state'], 'ready_for_autogoal')
+        self.assertEqual(json.loads(result.stdout)['state'], 'ready_for_autowork')
 
     def test_byte_identical_duplicate_contract_is_deduplicated_without_owner_decision(self):
         entry = '- [ ] T1' + self.body.split('- [ ] T1', 1)[1]
@@ -77,7 +77,7 @@ class BacklogRecoveryTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(GOALS), 'backlog-check', str(self.repo),
                                  '--plan', 'SPEC.md#slice', '--tasks', 'T1'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(json.loads(result.stdout)['state'], 'ready_for_autogoal')
+        self.assertEqual(json.loads(result.stdout)['state'], 'ready_for_autowork')
         self.assertEqual(before, (self.repo / 'TODO.md').read_bytes())
 
     def test_binding_repair_changes_selected_body_not_matching_foreign_line(self):
@@ -136,7 +136,7 @@ class BacklogRecoveryTests(unittest.TestCase):
         result = self.invoke('--source-commit', self.pin)
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout)
-        self.assertEqual(receipt['state'], 'ready_for_autogoal')
+        self.assertEqual(receipt['state'], 'ready_for_autowork')
         self.assertEqual(receipt['repairs'], ['T1: restored committed task body'])
         self.assertIn('Owner notes stay.', (self.repo / 'TODO.md').read_text())
         self.assertEqual(ledger, (self.repo / 'goals.json').read_bytes())

@@ -31,7 +31,8 @@ Telegram uses underscores: `/repo_interview`, `/repo_docs`, `/git_commit_push`,
 `/autoresearch_plan`. Autoresearch retains all 13 subcommands plus `/autoresearch`.
 See [commands and workflows](docs/workflows.md) for the full research command set.
 
-`/autogoal` remains a compatibility alias for `/autowork`. Existing jobs and state continue unchanged.
+`/autowork` is the repository-development command. Upgrade existing installations
+with the migration procedure in [installation](docs/installation.md).
 
 ## A typical workflow
 

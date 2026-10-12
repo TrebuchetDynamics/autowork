@@ -1,9 +1,9 @@
 # Repository engineering cycle
 
-Use the existing repo-docs backlog and autogoal executor. This is workflow guidance,
+Use the existing repo-docs backlog and autowork executor. This is workflow guidance,
 not a scheduler, new database or `/cycle` command. Documentation work alone never
-launches autogoal. Only an explicit whole-spec implementation request authorizes
-continuation through that accepted scope; default autogoal still hands off one slice.
+launches autowork. Only an explicit whole-spec implementation request authorizes
+continuation through that accepted scope; default autowork still hands off one slice.
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
@@ -15,7 +15,7 @@ protocols are vendored with a pinned revision. `plan`/`learn`/`improve` and all
 research checkpoints route findings through repo-docs narrow Maintain: update
 existing document owners, deduplicate accepted tasks, schedule Now/Next in TODO.md
 and canonical goals.json, and run the consumer handoff gate. TSV/handoff files are
-evidence, never a competing task queue. Autogoal retains task ownership, execution,
+evidence, never a competing task queue. Autowork retains task ownership, execution,
 review and commit gates. Planning does not dispatch workers or create timers;
 already-authorized implementation can continue from a verified eligible handoff.
 
@@ -53,7 +53,7 @@ never relabel it Accepted merely because the engineering choice is reversible.
 ## Load the skill needed at the current step
 
 Resolve bundled skills through `hermes-toolset:repo-docs` and
-`hermes-toolset:autogoal`, or their actual loaded SKILL.md paths. For addyosmani
+`hermes-toolset:autowork`, or their actual loaded SKILL.md paths. For addyosmani
 skills, inspect the active profile's skill catalog and `skills/.hub/lock.json` to
 confirm the installed file and source `addyosmani/agent-skills`. Load by the exact
 catalog identity when unambiguous; otherwise read the verified SKILL.md path.
@@ -79,7 +79,7 @@ Record selected identity/path and any unavailable dependency in the handoff.
 | Build, test automation or packaging boundaries | `ci-cd-and-automation` | Bind the changed boundary to runnable pipeline/build checks. |
 | Services, jobs, retries or integration operations | `observability-and-instrumentation` | Define operational questions, useful signals and a verification path; preserve sensitive data. |
 | Proven unnecessary complexity | `code-simplification` | Simplify owned code while preserving observable behavior; avoid unrelated cleanup. |
-| Owned changes ready to commit | `git-workflow-and-versioning` | Group validated changes; autogoal's finish_task.py/agent_commit.sh remains the commit mechanism. |
+| Owned changes ready to commit | `git-workflow-and-versioning` | Group validated changes; autowork's finish_task.py/agent_commit.sh remains the commit mechanism. |
 | Release or rollout planning in accepted scope | `shipping-and-launch` | Capture readiness and rollback criteria; planning does not itself authorize deployment. |
 | Reproduction or failing checks | `debugging-and-error-recovery` | Diagnose before changing code; use the verified fallback below when unavailable. |
 | Measured performance requirement | `performance-optimization` | Establish a baseline, target the measured cause and compare the same workload. |
@@ -90,7 +90,7 @@ Record selected identity/path and any unavailable dependency in the handoff.
 At intake and whenever the work changes phase, match the actual task against this
 matrix. Repo-docs planning uses `planning-and-task-breakdown` and
 `documentation-and-adrs`, plus spec/constraint/domain skills for evidenced gaps.
-Autogoal implementation uses `incremental-implementation`, the relevant domain
+Autowork implementation uses `incremental-implementation`, the relevant domain
 skills, `test-driven-development` for behavior changes, and
 `code-review-and-quality` plus `git-workflow-and-versioning` at closeout. Reuse
 existing accepted specs, plans and quality bars instead of recreating them.

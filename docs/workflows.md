@@ -41,13 +41,13 @@ Bundled skills also remain available by their qualified names, such as
 [`skills/shared`](../skills/shared/COMMON-CONTRACT.md), alongside the skill folders;
 the legacy skill copier preserves that support directory too. Resolve helper
 commands from the loaded bundle rather than assuming `~/.hermes/shared-skills`.
-Generated autogoal ledger commands use quoted paths to the bundled helper.
+Generated autowork ledger commands use quoted paths to the bundled helper.
 An existing built-in or previously registered plugin command wins a name
 collision; the skipped alias produces a warning and the qualified skill remains
 available. Choose distinctive names to avoid collisions with other plugins,
 local skills, and configured quick commands.
 
-Repo-docs and autogoal decide routine engineering choices autonomously within the
+Repo-docs and autowork decide routine engineering choices autonomously within the
 accepted scope. They carry decisions into worker contracts and apply relevant
 [Addy agent-skills](https://github.com/addyosmani/agent-skills) throughout planning,
 implementation and verification, including API, UI, migration, CI and operational
@@ -91,12 +91,12 @@ entries without disabling typed commands. Existing command owners keep precedenc
 The [Hermes adapter](../skills/autoresearch/SKILL.md) connects research to repo-docs:
 findings update existing documents, matching tasks are reused, and accepted gaps
 become full TODO.md bodies with goals.json priorities, dependencies and checks.
-This schedules the backlog; it does not create a timer. Autogoal can execute
+This schedules the backlog; it does not create a timer. Autowork can execute
 eligible tasks when implementation is authorized, preserving its ownership,
 verification and commit gates. Read-only and planning-only requests remain scoped.
 Upstream flags and analytical methods are retained; host-specific tools, generic
 confirmation prompts, experimental Git handling and documentation handoffs follow
 the adapter. Claude-only hooks are not installed.
 
-`/autowork` is the primary repository development command; `/autogoal` routes to it
-for compatibility. Internal `autogoal/` helper paths and state remain stable.
+`/autowork` is the repository development command. Its helpers and profile-local
+state live under `autowork/`; upgrades preserve existing work through migration.

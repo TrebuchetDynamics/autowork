@@ -162,12 +162,13 @@ class PluginTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.plugin.register(self.ctx)
 
-    def test_autogoal_alias_routes_to_autowork_with_arguments_and_origin(self):
+    def test_autowork_replaces_legacy_command_with_arguments_and_origin(self):
         self.plugin.SKILLS_DIR = ROOT / 'skills'
         self.plugin.register(self.ctx)
         self.assertIn('autowork',self.ctx.commands)
         self.session.update(HERMES_SESSION_PLATFORM='telegram',HERMES_SESSION_CHAT_ID='fixture-chat')
-        for command in ('autogoal','autowork'):
+        self.assertNotIn('autogoal', self.ctx.commands)
+        for command in ('autowork',):
             self.ctx.commands[command]('Improve this repo; no push')
             prompt,target=self.ctx.messages[-1]
             self.assertIn('hermes-toolset:autowork',prompt)
@@ -177,7 +178,7 @@ class PluginTests(unittest.TestCase):
     def test_repository_skills_are_all_discovered(self):
         self.plugin.SKILLS_DIR = ROOT / "skills"
         self.plugin.register(self.ctx)
-        self.assertTrue({"autogoal", "git-commit-push", "git-pull-merge", "grill-me", "lgtm", "repo-docs", "repo-interview"}
+        self.assertTrue({"autowork", "git-commit-push", "git-pull-merge", "grill-me", "lgtm", "repo-docs", "repo-interview"}
                         <= set(self.ctx.commands))
         self.assertEqual(self.ctx.skills['grill-me'], ROOT / 'skills/grill-me/SKILL.md')
         self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture-chat')

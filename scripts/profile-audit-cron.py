@@ -6,7 +6,7 @@ import runpy
 import sys
 
 home = Path(__file__).resolve().parents[1]
-helper = home / 'plugins/hermes-toolset/skills/autogoal/scripts/audit_profiles.py'
+helper = home / 'plugins/hermes-toolset/skills/autowork/scripts/audit_profiles.py'
 if not helper.is_file():
     print(json.dumps({'state': 'collector_failed', 'reason': 'shared audit helper missing'}))
     sys.exit(1)

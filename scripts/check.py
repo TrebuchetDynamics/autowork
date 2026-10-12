@@ -8,18 +8,18 @@ import signal
 import subprocess
 import sys
 
-TEST_DIRS = ('tests', 'skills/autogoal/scripts', 'skills/repo-docs/scripts',
+TEST_DIRS = ('tests', 'skills/autowork/scripts', 'skills/repo-docs/scripts',
              'skills/git-commit-push/scripts')
 EXCLUSIONS = {
     'skills/repo-docs/scripts/test_goal_gap_regression.py':
         ('model', 'runs Hermes chat and writes profile receipts at import'),
-    'skills/autogoal/scripts/test_native_lifecycle_controls.py':
+    'skills/autowork/scripts/test_native_lifecycle_controls.py':
         ('native', 'requires an installed Hermes interpreter and native CLI'),
-    'skills/autogoal/scripts/test_native_handoff.py':
+    'skills/autowork/scripts/test_native_handoff.py':
         ('native', 'optional installed Hermes native handoff suite'),
-    'skills/autogoal/scripts/test_native_containment_linux.py':
+    'skills/autowork/scripts/test_native_containment_linux.py':
         ('native', 'optional installed Linux containment backend'),
-    'skills/autogoal/scripts/test_controller_bridge_linux.py':
+    'skills/autowork/scripts/test_controller_bridge_linux.py':
         ('native', 'optional installed Linux controller/backend composition'),
     'tests/integration_plugin.py':
         ('integration', 'requires the optional Hermes loader environment'),

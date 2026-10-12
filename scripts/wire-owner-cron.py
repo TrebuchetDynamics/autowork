@@ -47,14 +47,21 @@ def is_owner_job(job):
                for name in ('autowork', 'autogoal'))
 
 
+def autowork_skills(job):
+    skills = job.get('skills') or ([job['skill']] if job.get('skill') else [])
+    return ['hermes-toolset:autowork'] + [name for name in skills if name not in
+            ('autogoal', 'hermes-toolset:autogoal', 'autowork', 'hermes-toolset:autowork')]
+
+
 def owner_prompt(prompt, enabled):
     original = prompt.split(MARKER, 1)[0]
-    pointer = ('Load hermes-toolset:autowork for stage-aware preparation, then hermes-toolset:autogoal references/owner-cycle.md and execute its '
+    pointer = ('Load hermes-toolset:autowork for stage-aware preparation, then hermes-toolset:autowork references/owner-cycle.md and execute its '
                'owner recovery -> same-invocation retry -> supported handoff cycle '
                'before reporting a recoverable tooling hold or no eligible work. '
                'For implementation-only workers, use proposal ledger mode: start_goal.py freezes admitted planning files as read-only context, so uncommitted planning files alone do not require a prerequisite commit. Executable source still requires exact committed inputs. '
-               'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile autogoal state directory; '
+               'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile existing continuity state directory; retain established state rather than resetting it for a skill rename; '
                'apply the unattended continuation contract: process owner inbox/replies, reuse exact saved authority, allow same-milestone ready fallback within original scope, and maintain useful offline tasks. Reconcile actual worker/check/commit receipts for the final report; the readiness helper is not task completion. '
+               'When no runnable task remains, load references/repository-maintenance.md under autowork: discover documentation, UI/UX, tests, refactoring and reliability work in unexamined authorized repository components, record bounded canonical tasks, then execute an eligible slice in the same occurrence. Explicit task-only scope and pauses still win. '
                'Retain actual attempted commands/results and bounded disjoint work_search. '
                'Do not substitute an unchanged audit for an available authorized repair. '
                'This pointer changes workflow only; original product scope, settled decisions, '
@@ -69,8 +76,8 @@ def owner_prompt(prompt, enabled):
 def audit_prompt(prompt):
     original = prompt.split(AUDIT_MARKER, 1)[0]
     return original + AUDIT_MARKER + (
-        'Load skills/autogoal/references/owner-cycle.md. Read each owning profile\'s '
-        'autogoal/unblock-latest.json when present and verify its task/plan/revision, '
+        'Load skills/autowork/references/owner-cycle.md. Read each owning profile\'s '
+        'autowork/unblock-latest.json when present and verify its task/plan/revision, '
         'attempted repair, same-cycle retry and actual admission/implementation separately. '
         'Report changes and required owner actions first, at most one short line per changed profile; '
         'link detailed receipts instead of repeating historical evidence and skipped-check lists. '
@@ -103,19 +110,25 @@ def wire(root, apply=False, hermes='hermes'):
         if not targets:
             results.append({'profile': name, 'state': 'no_matching_job', 'changed': False})
         for before in targets:
-            prompt = (owner_prompt(before['prompt'], before['enabled']) if is_owner_job(before)
-                      else audit_prompt(before['prompt']))
-            state = 'unchanged' if prompt == before['prompt'] else 'would_update'
+            audit = name == 'default' and before.get('name') == 'Profile audit and hermes-toolset maintenance'
+            prompt = (audit_prompt(before['prompt']) if audit
+                      else owner_prompt(before['prompt'], before['enabled']))
+            skills = autowork_skills(before)
+            expected = {**before, 'skills': skills, 'skill': skills[0]}
+            state = 'unchanged' if prompt == before['prompt'] and all(
+                before.get(key) == expected[key] for key in ('skills', 'skill')) else 'would_update'
             if apply and state == 'would_update':
                 current = next(job for job in jobs(home) if job['id'] == before['id'])
                 verify_edit(before, current, before['prompt'])
                 argv = [hermes, '-p', name]
                 env = dict(os.environ, HERMES_HOME=str(root))
                 env.pop('HERMES_PROFILE', None)
-                subprocess.run(argv + ['cron', 'edit', before['id'], '--prompt', prompt],
-                               check=True, text=True, capture_output=True, timeout=60, env=env)
+                command = argv + ['cron', 'edit', before['id'], '--prompt', prompt]
+                for skill in skills:
+                    command += ['--skill', skill]
+                subprocess.run(command, check=True, text=True, capture_output=True, timeout=60, env=env)
                 after = next(job for job in jobs(home) if job['id'] == before['id'])
-                verify_edit(before, after, prompt)
+                verify_edit(expected, after, prompt)
                 state = 'updated_verified'
             results.append({'profile': name, 'job_id': before['id'], 'state': state,
                             'enabled': before['enabled'], 'changed': state == 'updated_verified'})

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""goals.json: the machine-readable goal list that repo-docs writes and autogoal reads.
+"""goals.json: the machine-readable goal list that repo-docs writes and autowork reads.
 
 TODO.md stays the human view; its `Goal coverage` table is rendered from this file.
 Agents change goals.json only through these commands, never by hand-editing JSON.
@@ -587,7 +587,7 @@ def backlog_check(a):
     if any(checked_bytes(repo / name) != blob for name, blob in blobs.items()):
         reasons.append('inputs changed during check')
     state = ('draft_saved' if reasons else 'backlog_reconciled_not_eligible'
-             if ineligible else 'ready_for_autogoal')
+             if ineligible else 'ready_for_autowork')
     receipt = {'state': state, 'authority_binding': binding,
                'authoritative_repo': str(repo), 'plan': a.plan, 'task_ids': ids,
                'primary_milestone': data.get('primary_milestone') if data else None,

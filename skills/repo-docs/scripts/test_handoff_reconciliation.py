@@ -55,7 +55,7 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.plan.write_text(self.plan.read_text().replace(
             'Status: Accepted (implementation only)', 'Status: Accepted\n\nScope: implementation only'))
         code, receipt = self.check()
-        self.assertEqual((code, receipt['state']), (0, 'ready_for_autogoal'))
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'))
         self.assertEqual(receipt['eligible_task_ids'], ['T1'])
         self.assertEqual(ledger, (self.repo / 'goals.json').read_bytes())
         self.assertEqual(receipt, self.check()[1])
@@ -66,7 +66,7 @@ class HandoffReconciliationTests(unittest.TestCase):
             with self.subTest(heading=heading):
                 self.todo.write_text(self.body.replace('T1: Verify startup', heading))
                 code, receipt = self.check()
-                self.assertEqual((code, receipt['state']), (0, 'ready_for_autogoal'))
+                self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'))
                 self.assertEqual(receipt['eligible_task_ids'], ['T1'])
 
     def test_bold_task_ids_do_not_bypass_duplicate_or_unknown_checks(self):

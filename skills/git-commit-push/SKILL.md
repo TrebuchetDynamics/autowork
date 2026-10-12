@@ -6,13 +6,13 @@ license: MIT
 metadata:
   hermes:
     tags: [git, commit, push, delivery, worktree, fleet]
-    related_skills: [lgtm, autogoal, hard-blockers, systematic-debugging, git-pull-merge]
+    related_skills: [lgtm, autowork, hard-blockers, systematic-debugging, git-pull-merge]
 ---
 
 # Git Commit Push
 
 Adapted from an earlier TrebuchetDynamics delivery workflow.
-Merged with the fleet's shared-worktree rules and autogoal's local agent-branch helper.
+Merged with the fleet's shared-worktree rules and autowork's local agent-branch helper.
 
 Ship finished work without turning delivery into another project. Local changes are the
 delivery queue, not a reason to stop and ask. Prefer direct execution for a bounded
@@ -52,7 +52,7 @@ original commit/push/main-delivery obligation and continue candidate verificatio
 |---|---|---|
 | User explicitly asked to commit only | the checked-out branch, subject to repository branch policy | **no** |
 | User explicitly asked to push, commit and push, or ship | the checked-out branch, then its upstream | yes |
-| Autonomous goal slice / kanban card, no explicit ship request | `agent/<profile>/<card-id>` via autogoal's helper | **never** |
+| Autonomous goal slice / kanban card, no explicit ship request | `agent/<profile>/<card-id>` via autowork's helper | **never** |
 | Audit request | nothing | no |
 
 Interpret delivery verbs separately: a request to implement and commit authorizes a local commit, not publication. Do not infer push permission from the skill name, an upstream being configured, or a broad request to finish all plans. After a local-only commit, verify `git show --stat HEAD` and repository status; omit remote fetch/push verification because no remote write occurred.
@@ -72,7 +72,7 @@ Card branch helper (temporary index, so HEAD, the real index, and other agents' 
 are untouched). Resolve `<skills-root>` as the parent of this loaded skill directory:
 
 ```bash
-"<skills-root>/autogoal/scripts/agent_commit.sh" <repo> <profile> <card-id> "<message>" <files>...
+"<skills-root>/autowork/scripts/agent_commit.sh" <repo> <profile> <card-id> "<message>" <files>...
 ```
 
 Report the branch and sha it prints. Never point it at main/master or the checked-out branch.

@@ -22,7 +22,7 @@ Follow [the shared plan contract](../shared/PLAN-HANDOFF.md) for idea-to-executi
 handoffs. Accepted answers update existing owners; proposals stay outside the
 executable backlog. Writing a task does not authorize its execution. Use [the engineering cycle](../shared/ENGINEERING-CYCLE.md)
 for targeted supporting skills and reconciliation after authorized implementation;
-a documentation-only request never launches autogoal.
+a documentation-only request never launches autowork.
 
 ## 1. Choose mode and scope
 
@@ -217,7 +217,7 @@ body placement without promoting a `Needs decision` task or changing focus absen
 authority. Now is ready work; Next is accepted successors; Needs decision is owner
 questions/defaults. Proposals stay outside executable Now/Next. Accepted tasks belong
 there even when this docs pass does not execute them; execution needs its own authority.
-Saving never launches autogoal, claims cards, resumes cron or changes schedules.
+Saving never launches autowork, claims cards, resumes cron or changes schedules.
 
 Priority reorders preserve bodies/leases and need supported selector controls;
 P labels alone do not affect `goals.py next <repo> --json`. Report actual eligible
@@ -263,7 +263,7 @@ bytes/authority; stale/mismatched input cannot certify readiness. Revision token
 are freshness guards, not dispatch permission. Never fabricate receipts or copy
 scratch state into consumers to force success. For safe same-task body reconstruction,
 accepted-source link repair and byte-identical duplicate removal, use the
-[executable recovery procedure](../autogoal/references/blocker-recovery.md#accepted-task-contracts)
+[executable recovery procedure](../autowork/references/blocker-recovery.md#accepted-task-contracts)
 and `scripts/recover_backlog.py` with the current revision. It never accepts a plan,
 changes ledger status or resolves conflicting intent; rerun the same consumer gate.
 
@@ -271,7 +271,7 @@ changes ledger status or resolves conflicting intent; rerun the same consumer ga
 | --- | --- | --- |
 | `draft_saved` | 1 | Consumer backlog absent or accepted plan/task binding unreconciled. |
 | `backlog_reconciled_not_eligible` | 2 | Reconciled bodies, but current dependencies/focus/status block requested tasks. |
-| `ready_for_autogoal` | 0 | At least one requested task is currently ledger-eligible. |
+| `ready_for_autowork` | 0 | At least one requested task is currently ledger-eligible. |
 
 An actual consumer with no backlog is draft even if docs scratch `validate` passes.
 Report state/exit, saved paths, IDs, authority and eligible slice or exact blocker.
@@ -298,7 +298,7 @@ Include baseline/target/units, exact Verify/Guard results, run/source references
 remaining gaps and chosen implementation/verification slices. Run the normal
 consumer-bound handoff gate and report actual Now/Next eligibility. Scheduling
 here means ordered backlog work, not a new timer or dispatch. Continue through
-autogoal only within existing implementation authority; explicit audit/read-only
+autowork only within existing implementation authority; explicit audit/read-only
 and no-implementation limits carry across all chained research commands.
 
 ## 6. Language, verification and report

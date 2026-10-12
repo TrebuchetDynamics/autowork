@@ -51,7 +51,7 @@ back every open ID that was already present, and assert each pre-existing open I
 appears exactly once in the result before writing.
 - **Use `goals.py section` for placement, not hand-editing.** Move a task between
 sections with `goals.py section <repo> <task> {Now,Next,Needs decision}` and re-render.
-Since `autogoal` selects only from `Now` and `Next`, a task whose next step needs an
+Since `autowork` selects only from `Now` and `Next`, a task whose next step needs an
 owner (a deploy window, an approval) belongs in `Needs decision` whatever its goal's
 section says; leaving it eligible invites a worker to attempt a gated action.
 - **Records the state you found.** Report pre-existing duplicates, withdrawn entries

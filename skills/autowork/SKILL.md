@@ -1,83 +1,217 @@
 ---
 name: autowork
-description: "Develop a repository at any stage: understand intent, plan useful work, maintain tasks, implement, verify and commit. Use for autonomous repository progress, including empty or missing backlogs."
-version: 0.1.0
-license: MIT
+description: "Develop a repository at any stage: discover useful tasks, plan, implement, verify and commit."
+version: 0.25.0
+author: Hermes Agent
+platforms: [linux, macos]
+metadata:
+  hermes:
+    tags: [autonomy, planning, backlog, verification]
 ---
 
 # Autowork
 
-Take the specified repository forward. Plan when needed, read or create actionable
-tasks, execute useful work, verify it and report the next step. `/autogoal` is the
-compatibility command for this workflow. Existing helper paths, private `autogoal/`
-state, job IDs and native goal workers remain compatible; do not migrate or reset them.
+First apply [repository-stage preparation](references/repository-stages.md), then
+use the execution and completion rules below.
 
-## Bind the job
+## When to use
 
-Use the supplied repository, otherwise the session's verified project directory.
-Read its instructions, current source, docs, tasks, dirty files and worker ownership.
-Preserve the user's latest scope, pauses, no-push/no-deploy restrictions and existing
-work. A broad request to develop this repository authorizes ordinary reversible
-engineering choices; missing task paperwork is not a request for renewed permission.
-Resolve conventions, implementation details and local tooling autonomously.
+Default /autowork hands off one bounded native goal worker (50 turns by default; explicit 100).
+Use [the engineering cycle](../shared/ENGINEERING-CYCLE.md) for skill routing and
+review-gated reconciliation. Apply its autonomous decision rules and phase/domain
+skill matrix; carry decision and skill-application receipts into the worker contract.
+No recurring jobs.
 
-If purpose is genuinely absent, ask one concrete question about the intended product
-while continuing independent inspection and setup. Do not invent a product, credentials,
-live acceptance or ownership. Lack of a detailed spec is not itself a blocker when
-purpose and a useful bounded outcome are already clear.
+## Mode precedence
 
-## Choose the repository's next useful stage
+Only explicit whole-spec requests use `references/whole-spec-execution.md` instead of picker selection/stop rules; retain all safety, ownership, admission, budgets and review gates below.
 
-| Observed state | Work to do now |
-| --- | --- |
-| Empty/scaffold repo with known purpose | Inspect tooling, define the smallest working vertical slice and its acceptance, scaffold and implement it. |
-| Code exists, no useful task list | Inspect actual gaps, run one bounded Autoresearch Plan pass, then repo-docs Bootstrap/Maintain into canonical TODO.md/goals.json. |
-| Ready tasks exist | Read their complete bodies and select accepted, dependency-ready work; skip replanning. |
-| Tests/build fail | Reproduce the failure, diagnose and fix with regression coverage; ordinary engineering failures are work. |
-| Task combines offline work and live qualification | Separate their acceptance; finish useful offline implementation/tests while preserving the live gate. |
-| Documentation proposal exists outside canonical checkout | Reconcile and integrate it through the actual owner; do not generate another competing backlog. |
-| Repeated blocker | Repair attributable inputs, follow through owner handoff, or execute independent accepted work. Escalate only the exact external input still missing. |
-| Mature repo with no open task | Check one bounded source/test/user-flow seam against documented intent; implement a demonstrated gap, or report evidence that no useful authorized delta was found. |
+For scheduled runs load [scheduled policy](references/scheduled-policy.md).
+Owner consultations: `references/profile-feedback.md`.
 
-Use `hermes-toolset:autoresearch` subcommand `plan` for bounded discovery and
-`hermes-toolset:repo-docs` for canonical tasks. Planning follows
-[bounded backlog planning](../autogoal/references/backlog-planning.md): at most
-three useful slices, measurable checks, no invented scope or repetitive replanning.
-For a new backlog, derive tasks from the user's development request and existing
-project intent; record decisions as agent decisions under that scope, never a
-fabricated historical user approval. Existing accepted plans and competing owners
-remain authoritative. Satisfy repo-docs prerequisites rather than quietly omitting them.
+## Operating priorities
 
-## Execute and finish a useful slice
+1. **Step 0 — reconcile, never fingerprint-exit.** Resolve workspace instructions,
+   human decisions, journal and live ownership before selecting.
+   Reconcile once, select usable backlog, check ownership/source freshness, hand off.
+   Run discovery only when no usable task remains: [maintenance](references/repository-maintenance.md).
+   Disable change-only fingerprint monitors; only `autowork_gate.py` may skip a tick
+   while this profile's own card is running or ready and nothing finished.
+   Preserve schedule, model, delivery and enabled state.
+   Reconcile new terminal results, then CONTINUE selection in the same occurrence.
+   A completed card is not a stop condition. A genuinely live worker wins: reconcile
+   its exact run; never enqueue overlapping work or steal its lease.
+   On EVERY idle occurrence inspect one bounded new seam; broad repository scope
+   permits independent maintenance beyond the held milestone.
+   Empty queues, absent TODO/FIXME markers, green tests and unchanged HEAD do not
+   prove work is absent. Implement the accepted next slice or fix an evidenced
+   defect with a regression instead of repeating audits or ledger-only receipts. Silence is allowed only AFTER the required work search
+   finds no eligible delta. Record `work_search`: milestone/source, checked seam
+   and evidence, candidates, eligibility/rejection reasons and next seam. This is
+   prompt policy, not a runtime guarantee of autonomous progress.
+2. **Use runnable backlog first; otherwise run the repo-docs fallback.**
+   Explicit plan slices follow [the shared handoff](../shared/PLAN-HANDOFF.md):
+   select within the named IDs, never an unrelated global task.
+   Do not run a repo-docs prepass for a usable backlog task, even without a docs cron.
+   Record `Repo-docs pass: existing backlog <source/receipt>` or the actual fallback result.
+   With no runnable task and no overlapping writer, apply the scheduled fallback
+   above and load discovery.md as needed; reuse current docs-owner evidence rather
+   than competing with an enabled docs job. Then recheck consumer readiness and selection.
+   Missing TODO.md or an old mtime alone does not invalidate a usable goals.json task.
+   **Selection order:** reconcile live work, then read `goals.py focus <repo> --json`
+   with `<skills-root>` the loaded skill directory’s parent. Select ONE primary milestone; retain it
+   until delivered or explicitly reprioritized. Run
+   `python3 "<skills-root>/repo-docs/scripts/goals.py" next <repo> --json`
+   and choose a dependency-ready, unclaimed slice advancing that focus, not the
+   first unrelated task. If focus is absent, record the accepted milestone and
+   missing focus explicitly; do not invent CLI syntax. Without goals.json use
+   TODO.md Now/Next linked to that milestone. Broad-scope maintenance fallback
+   requires evidence that every eligible milestone slice
+   cannot safely proceed (ownership, authority or environment), or owner reprioritization.
+   Executed passing checks establish only their named scope, not delivery.
+   Prove or finish unverified/partial work before reimplementing it.
+   Build the worker contract directly from the task's Scope, Acceptance and Sources,
+   and quote its task ID and goal ID. Mark it with `goals.py task <repo> <TASK>
+   in_progress` at handoff. If the backlog is stale against the code (a task already
+   done, a path gone), correct that one entry via `goals.py task`, then pick again;
+   repo-docs' next run does the rest.
+3. **Fix your own environment.** Install missing non-privileged tooling in user
+   space/project; record installs, PATH changes and fixtures. Only sudo/system
+   packages, credentials and paid resources become owner questions (priority 9).
+4. **Workers iterate.** Inside a goal worker, a failing check means fix → rerun until
+   acceptance, or until 5 consecutive attempts produce no new evidence. Never block
+   on a first failure, and never write "one execution/one rerun/no source edit"
+   limits into contracts for work inside their scope. Give workers the scope
+   they need; a harness or fixture correction needed to reach acceptance is in
+   scope by default.
+5. **Retry and backoff across runs.** The handoff helper gives each card 3 attempts.
+   A card that blocks twice with no new evidence is parked
+   (`hermes kanban schedule <id> "retry_exhausted: …"`) and is not reselected until
+   its source, prerequisite or contract fingerprint changes. Pick disjoint work
+   instead. A parked or triage card blocks only its own slice.
+6. **Vague acceptance.** If criteria are vague, the worker rewrites them in its
+   first turn as 1–3 observable checks under `Interpreted acceptance:` and proceeds.
+   Ask an owner question (priority 9) only when the possible readings lead to
+   materially different product outcomes; continue only independent authorized work
+   until that input arrives. Choose 50 turns, or explicit 100 with `Goal budget rationale:` explaining
+   one coherent outcome. Stop at acceptance, not budget exhaustion; never spend turns
+   merely because available. If acceptance cannot fit, narrow it before dispatch.
+7. **Done means scoped done.** Finish after checks pass and owned changes are committed; never rerun an unchanged
+   passing gate merely to refresh status metadata. NOT_CHECKED is not qualification.
+   Separate implemented, exact-source/platform qualification and verified main delivery.
+   Explain progress in user outcomes: overall goal, current slice, what is still unproved.
+   Keep unrelated recovery work separate; IDs and test counts must not obscure that map.
+   Follow the vertical-slice standard in references/handoff.md.
+8. **One review.** When the card goes through the native review lane, that lane is
+   the independent review. Every card body starts with a *Definition of done* that makes
+   the review handoff the card's last step, NOT milestone completion. If a worker reports "review entry rejected
+   because review is pending" (circular gate), do not route it to the governor and do not
+   block. Have the review requested again with a summary that cites the Definition of
+   done and lists only deliverables and executed checks (see SOUL "Review handoff"). Do not also launch pre-write or final reviewer subagents
+   unless the contract explicitly names them. Do not load `requesting-code-review`
+   in workers.
+9. **Ask, don't block independent work.** Decide routine engineering choices
+   (approach, internal design, tests, ordering within focus) under existing authority
+   without a questionnaire. Ask only for material missing USER_INPUT, SUDO or
+   USER_DECISION, using `grill-me`/`clarify` when available. Record the exact held
+   action and recommendation in BLOCKERS.md and the handoff. Silence never grants
+   authority or required review acceptance. Prepare authorized work up to that
+   boundary and continue independent work; if nothing can proceed, report the real
+   dependency honestly. Do not relabel incomplete work as done to avoid a pause.
+   Existing explicit authority carries forward. Failing tests, missing user-space
+   tooling, routine debugging and agent-invented restrictions are not owner decisions.
+   Read owner replies (chat / `session_search`) at each run and apply them; do not
+   repeatedly return `[SILENT]` for an unanswered material question.
+10. **Ownership.** Each writing pass uses its own pinned Git worktree, never
+    the shared checkout. `start_goal.py` requires `--base`; assemble explicit
+    prerequisites and run its manifest-pinned guard before FIRST edits only.
+    Ledger proposals go through the canonical integration owner and `goals.py`.
+    Follow the candidate, exact-source and containment rules in
+    [handoff safeguards](references/handoff.md#ownership-and-verification-safeguards).
+    Workers run focused checks; the integration owner gates one frozen candidate.
+    Policy/fixture checks never establish product journeys or provider execution.
+11. **Model refusals.** A provider safety refusal or crash is infrastructure: reword
+    the contract neutrally (or set a `hermes kanban set-model` override) and retry
+    the same card once. After two failures, record it in the journal and move on.
+12. **Board queries.** Use `hermes kanban list/show/runs --json` piped through `jq`
+    with `--assignee`/`--status` filters. Never hand-write SQL against kanban.db,
+    and never `json.loads` raw terminal output of a whole-board listing.
+14. **Local commits required.** Before review/completion, run `scripts/finish_task.py`
+    for acceptance checks and owned files; report branch/SHA. Failure is incomplete;
+    no_changes means no new commit. Explicit no-commit instructions win.
+    See references/handoff.md for commands, ownership and delivery safeguards.
+    Never commit foreign work, secrets or build output; never
+    push, merge, rebase, amend or bypass protected PR checks without explicit authority.
+13. **State hygiene.** Keep `autowork/state.json` under ~20 KB: the last 20 entries
+    with a fixed schema; older entries go to `autowork/history/`. Keep picker
+    receipts to the last 10. Preserve downstream launch inputs outside disposable
+    worker workspaces before terminal completion; retain exact bytes and hash pins.
+15. **Recovery must reach execution.** Follow the recovery-continuation procedure
+    in `references/handoff.md`: retain original-card launch authority, reconcile
+    current runs, and execute the authorized parent continuation after slot release.
+    Task creation is not progress; report running only from exact run/process
+    identity and observed worker initial-gate success.
 
-Use the [execution engine](../autogoal/SKILL.md) for native worker admission,
-source-bound recovery, review, checks and commits. Read it as the execution stage
-of Autowork, not a second command or an excuse to skip this preparation. Resolve
-its relative helper/reference paths under `../autogoal/`. Preserve native ownership,
-budgets, leases and repository exceptions. Apply
-[unattended continuation](../autogoal/references/owner-cycle.md) and process owner
-inbox replies before repeating an unchanged blockage.
+## Parallel dispatch and reporting
 
-Default: prepare and execute one bounded useful slice (or hand it to the existing
-native worker), then identify the next task. An explicitly authorized whole-spec
-request uses the engine's whole-spec execution mode. Existing scheduled occurrences
-continue this loop; invoking Autowork never creates a recurring job by itself.
-Planning, queue creation or a readiness receipt alone is not a completed development
-slice. Continue from planning through canonical admission to supported execution
-in the same occurrence when the required inputs are available.
+Load [dispatch and reporting](references/dispatch-and-reporting.md) before an explicit parallel backlog handoff or any user-facing status report, including blocked, failed, unchanged and scheduled occurrences. Always name the current TODO.md task and the next task with its eligibility; its output contract is required.
 
-Commit completed owned work after relevant checks and required review. Push only
-under existing explicit publication authority. Do not steal an active task, overwrite
-foreign changes, bypass protected integration, deploy or perform live operations
-merely to avoid a zero count. A real external hold applies to that action; it does
-not stop disjoint authorized work. Never create busywork or empty commits.
+## Each run (picker)
 
-## Report actual results
+**Picker budget:** At most about 30 tool calls or 10 minutes per scheduled run.
+Reconcile, select, hand off and stop. Delegate deep investigation, source
+re-verification and checks to the worker. Over budget: hand off the best candidate,
+or reply `[SILENT]` and leave a journal note for the next run.
 
-State: COMPLETED, IN_PROGRESS, BLOCKED or NO_CHANGE, supported by evidence.
-Task: actual TODO ID/title (or the newly established task). Changed: concrete result.
-Checks: executed results and material omissions. Delivery: owned commit SHA and
-push state, or none. Next: task ID/title and eligibility, or exact blocker/owner.
-A queued worker is IN_PROGRESS with execution unverified, not a completed task.
-Keep planning/recovery progress separate from completed-task counts. Do not claim
-that every repository can progress when purpose, authority or external inputs are absent.
+1. **Reconcile first.** Use `scripts/reconcile.py --profile <profile> [--task-id <id>]`
+   once for the prior handoff; reuse its readback instead of repeating show/journal reads.
+   Apply owner replies and report new terminal results. Preserve the original card and worker session
+   after interruption; a new tick never licenses a replacement, budget reset or overlapping worker.
+   Check live ownership again at dispatch (the helper does this under its lock).
+   Read run/heartbeat liveness per `references/handoff.md#picker-run-liveness`.
+   Load `references/state-and-recovery.md` for schema/session/recovery details and
+   `references/blockers-and-history.md` for failed/blocked cards. Retry limits still apply.
+2. **Select.** Read `goals.py focus <repo> --json`, then run `goals.py next <repo> --json`
+   through the repo-docs script path (pass `<repo>` as the absolute repo path — a bare
+   directory name fails to resolve); choose an eligible slice of that primary milestone (priority 2). If held, run [recovery](references/owner-cycle.md) and [planning](references/backlog-planning.md). Resolve routine engineering choices first. If it still needs a material
+   owner action or decision, run `goals.py section <repo> <TASK> "Needs decision"` and ask (hard-blockers).
+   If it bundles excluded scope, register the in-scope slice with `goals.py add-task` and park the rest.
+   Then pick again, within the picker budget. If the eligible slice's goal is not the ledger
+   focus, use the scoped override in [the plan contract](../shared/PLAN-HANDOFF.md)
+   for a one-slice request. Change `goals.py focus <repo> <GOAL>` only for an owner
+   priority change, then re-run `next`. Neither path licenses unrelated work.
+   Load `references/discovery.md` only if
+   no usable milestone task remains (including the TODO fallback); do not double-check
+   a usable task with a broad discovery or documentation pass.
+3. **Hand off.** Load `references/handoff.md`. Use backlog-check. Compare
+   executable inputs against the committed candidate. Proposal workers use frozen
+   read-only planning context; no planning-files commit is needed. Dirty code needs
+   attributable prerequisites per [recovery](references/blocker-recovery.md);
+   never copy or commit foreign edits. Treat `--validate-only` as structural
+   and ledger admission, not proof that isolated candidate assembly will pass.
+   Write the contract file with every field:
+   `Objective`, `Scope`, `Verification`, `Source`, `Project payoff`, `Current evidence`,
+   `Expected change`, `Acceptance`, `Stop conditions`, `Repo-docs pass`. Include the
+   vertical-slice contract in references/handoff.md within these fields. Build it from the
+   goals.json task (quote its task and goal IDs), run `scripts/start_goal.py … --validate-only`,
+   then the real handoff (same selected 50/100 budget, 3 attempts), and — only once the helper
+   has actually created or returned a card for it — mark the task with
+   `goals.py task <repo> <TASK> in_progress`. If the helper answers `already_owned`, no card was
+   created: preserve the live card, avoid duplicate dispatch and revert any premature
+   `in_progress`. Explicit parallel requests use bounded file-disjoint children under
+   **Explicit parallel backlog requests**; the parent retains ledger/commit ownership.
+   The picker never implements the slice itself.
+4. **Report** per the Output contract and the user's delivery policy. A request
+   for status every occurrence requires a concise nonempty report even when unchanged.
+   Otherwise reply exactly `[SILENT]` only after reconciliation and the idle fallback
+   find no new reportable event; an idle profile with eligible tasks hands one off.
+
+References (load when steps 1–3 require): `references/discovery.md`,
+`references/handoff.md`, `references/blockers-and-history.md`, `references/maintenance.md`
+(maintenance only; not scheduled), `references/upstream-goal-selection.md` (background),
+`references/native-containment-proof.md` (containment),
+`references/budget-controller-proof.md` (synthetic admission), and
+`references/controller-bridge-proof.md` (peer-bound fixture composition).
+These proofs do not qualify native/provider execution.
+
+Named plan: [accepted-plan-execution.md](references/accepted-plan-execution.md). Explicit whole spec: `references/whole-spec-execution.md`.

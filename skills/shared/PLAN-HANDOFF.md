@@ -11,7 +11,7 @@ Resolve `goals.py` from the sibling repo-docs skill as described in the
 and render the canonical ledger; preserve concurrency/revision guards. Check the
 actual consumer with `backlog-check <repo> --plan path#heading --tasks T1,T2`.
 Report its JSON state and exit: `draft_saved` (1),
-`backlog_reconciled_not_eligible` (2), or `ready_for_autogoal` (0).
+`backlog_reconciled_not_eligible` (2), or `ready_for_autowork` (0).
 Readiness is not execution authorization or a live ownership check.
 
 Diagnose all check reasons before closing the handoff. When existing owner acceptance
@@ -28,7 +28,7 @@ backlog does not require a fresh documentation prepass. If the named slice diffe
 from the primary milestone, retain the focus unless the owner reprioritizes it;
 use start_goal's existing `--goal-task` and structured `--fallback-file` admission
 with fresh source evidence and attributed reasons, as specified in
-[autogoal handoff](../autogoal/references/handoff.md). There is no new override
+[autowork handoff](../autowork/references/handoff.md). There is no new override
 flag and no permission to select an unrelated global task or bypass a refusal.
 
 The worker contract carries the IDs, scope, sources, expected change, acceptance,

@@ -143,3 +143,35 @@ Back up configurations first and review [removal and recovery](uninstall.md).
 
 Updating this page: reconcile changes to setup flags, profile discovery, runtime
 policy writes and native provisioning against the source links above.
+
+## Upgrade to Autowork
+
+Autowork replaces the former command and skill, rather than registering an alias.
+The skill, helper paths, readiness value (`ready_for_autowork`) and new private
+state use the same name. Update integrations that consume the old readiness value.
+
+Before upgrading an existing scheduled profile, wait for its current cron and
+native workers to finish; preserve paused schedules. Back up its skill directories,
+cron jobs and private state. Provision `skills/autowork` from this checkout,
+preserving local skill customizations, and retire the old skill's `SKILL.md` from
+native discovery. Replace old command, helper and skill names in existing job
+names, prompts and attached skills through `hermes cron edit`; retain job IDs,
+schedules, enabled states, delivery and model settings.
+
+From the source checkout, preview and migrate each existing profile's private state:
+
+```sh
+python3 scripts/migrate-autowork.py --home /path/to/profile-home
+python3 scripts/migrate-autowork.py --home /path/to/profile-home --apply
+```
+
+The migration refuses conflicting stores and held owner/handoff locks. It moves
+the existing directory, preserving receipt bytes and lock inodes; it does not
+restart workers or declare their tasks complete. A filesystem link at the retired
+state path preserves historical receipt references, not a command alias. Do not
+rewrite pinned manifests or signed evidence to change their historical spelling.
+Update pending owner-mailbox routing paths to the new real state directory before
+using them; private-state helpers reject symlink paths. Retain retired execution
+files needed by historical/native contracts outside skill discovery until those
+contracts are retired. Reload gateway commands and refresh Telegram menus after
+provisioning; verify `/autowork` is present and the retired command is absent.

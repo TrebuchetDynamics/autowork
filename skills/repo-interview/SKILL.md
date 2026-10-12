@@ -19,7 +19,7 @@ and [plan handoff](../shared/PLAN-HANDOFF.md).
 current repository; arguments narrow the topic. Its default scope includes saving
 answered decisions and maintaining affected docs. `questions only`, `audit` or
 `read-only` means no file changes. It does not authorize code changes or start
-autogoal. Honor any separate implementation authority already given.
+autowork. Honor any separate implementation authority already given.
 
 ## Learn enough to ask a useful question
 
@@ -105,7 +105,7 @@ actual readiness result when a consumer check was applicable and executed; other
 state that readiness was not assessed. Questions-only/read-only mode finishes with
 a conversational summary, no Maintain pass and no writes. Docs-only scope leaves
 ready tasks undispatched. Existing
-implementation authority permits the established autogoal handoff without another
+implementation authority permits the established autowork handoff without another
 permission question; preserve review and owned-commit requirements. No new
 scheduler, parallel backlog, automatic deployment or invented acceptance.
 

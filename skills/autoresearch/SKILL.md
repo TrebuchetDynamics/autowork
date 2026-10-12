@@ -8,7 +8,7 @@ license: MIT
 # Autoresearch for Hermes
 
 Run the pinned Udit Goenka autoresearch protocols with Hermes tools and the existing
-repo-docs → TODO.md/goals.json → autogoal cycle. Read this adapter first, then the
+repo-docs → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
 selected upstream protocol. These integration rules govern host/tool substitutions,
 repository ownership and handoff; preserve upstream research methods and flags.
 
@@ -63,8 +63,8 @@ or `grill-me` handles genuinely missing owner intent; routine reversible choices
 are autonomous. Existing accepted scope is enough: do not repeat upstream's generic
 “confirm”/“run now?” questions when the user already authorized that action.
 
-When invoked by autogoal for backlog recovery, follow its
-[bounded planning fallback](../autogoal/references/backlog-planning.md): accepted
+When invoked by autowork for backlog recovery, follow its
+[bounded planning fallback](../autowork/references/backlog-planning.md): accepted
 scope only, up to three useful slices, canonical reconciliation, same-occurrence
 selection and a persisted input-bound receipt. Do not launch a recurring research
 loop or ask again for settled implementation choices.
@@ -98,10 +98,10 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
    exact state/exit, touched task IDs and eligible next slice. Repeat reconciliation
    of unchanged evidence must preserve IDs and bytes, not duplicate tasks.
 5. This is **backlog scheduling**: documenting and ordering tasks in TODO.md.
-   It does not mean installing a cron job or claiming an autogoal task. If the user
-   also authorized implementation, pass the current ready receipt to `autogoal`;
+   It does not mean installing a cron job or claiming an autowork task. If the user
+   also authorized implementation, pass the current ready receipt to `autowork`;
    reuse an existing worker instead of spawning a competing worker for its task.
-   A request for periodic execution uses autogoal's native schedule workflow with
+   A request for periodic execution uses autowork's native schedule workflow with
    the user's cadence/profile/repository; never invent or duplicate a timer.
 
 `plan`, `probe`, `predict`, `reason`, `scenario`, `learn`, `improve`, `evals` and
@@ -126,7 +126,7 @@ stage all files or revert a shared HEAD. Record an experiment's exact SHA and on
 revert that owned experiment there. Where worktree use is prohibited, use a private
 snapshot for experiments and transplant only verified owned changes; record snapshot
 identity rather than pretending an experiment commit exists. Preserve dirty user work.
-Honor no-commit instructions. For autogoal work, its `finish_task.py` validation and
+Honor no-commit instructions. For autowork work, its `finish_task.py` validation and
 owned-file commit gate remain authoritative; upstream experiment commits do not
 replace the accepted-task commit, review or canonical completion evidence.
 
@@ -134,7 +134,7 @@ replace the accepted-task commit, review or canonical completion evidence.
 deploy, publication and external messages need the actual user-authorized scope;
 research success or command chaining alone provides none. Carry prior authorization
 without reasking. Do not close canonical tasks just because an upstream handoff
-says COMPLETE: use repo-docs evidence and autogoal's normal closure gates.
+says COMPLETE: use repo-docs evidence and autowork's normal closure gates.
 
 Finish with: result/stop reason; metric/check evidence; changed document owners;
 TODO/goals task IDs and Now/Next; consumer readiness or blocker; committed SHA when

@@ -97,7 +97,7 @@ def main():
             runner, event=None, command='new', title='New', detail='test', execute=execute))
         assert result == 'executed' and called == [True]
         commands = get_plugin_commands()
-        assert {"autogoal", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"} <= commands.keys()
+        assert {"autowork", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"} <= commands.keys()
         assert manager.find_plugin_skill("hermes-toolset:repo-docs") == root / "skills/repo-docs/SKILL.md"
         payload = json.loads(skill_view("hermes-toolset:repo-docs"))
         assert "error" not in payload, payload

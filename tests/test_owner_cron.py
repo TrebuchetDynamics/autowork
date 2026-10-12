@@ -24,6 +24,14 @@ class OwnerCronTests(unittest.TestCase):
         self.assertIn('execute', updated)
         self.assertEqual(module.owner_prompt(updated, enabled=True), updated)
 
+    def test_idle_jobs_load_repository_maintenance_without_widening_task_only_scope(self):
+        updated = load().owner_prompt('Develop this repository.', enabled=True)
+        self.assertIn('references/repository-maintenance.md', updated)
+        self.assertIn('documentation, UI/UX, tests, refactoring and reliability', updated)
+        self.assertIn('task-only', updated)
+        self.assertIn('same occurrence', updated)
+        self.assertEqual(load().owner_prompt(updated, enabled=True), updated)
+
     def test_paused_prompt_cannot_resume_or_replace_writer(self):
         updated = load().owner_prompt('Main-only; chat-only implementation.', enabled=False)
         self.assertIn('Main-only; chat-only implementation.', updated)
@@ -53,13 +61,36 @@ class OwnerCronTests(unittest.TestCase):
         self.assertTrue(module.is_owner_job({'name': 'progress', 'skills': ['hermes-toolset:autowork']}))
         self.assertFalse(module.is_owner_job({'name': 'mail brief', 'skills': []}))
 
+    def test_autowork_is_primary_and_legacy_skill_is_replaced(self):
+        module = load()
+        self.assertEqual(module.autowork_skills({'skills': ['hermes-toolset:autogoal', 'ponytail:ponytail']}),
+                         ['hermes-toolset:autowork', 'ponytail:ponytail'])
+        self.assertEqual(module.autowork_skills({'skill': 'autogoal'}), ['hermes-toolset:autowork'])
+        ready = {'skills': ['hermes-toolset:autowork', 'hermes-toolset:git-commit-push']}
+        self.assertEqual(module.autowork_skills(ready), ready['skills'])
+
+    def test_audit_keeps_read_only_role_after_autowork_attachment(self):
+        from unittest.mock import patch
+        module = load()
+        root = Path('/fixture/hermes')
+        before = {'id': 'audit', 'name': 'Profile audit and hermes-toolset maintenance',
+                  'enabled': True, 'prompt': module.audit_prompt('Audit scope'),
+                  'skills': ['hermes-toolset:autowork'], 'skill': 'hermes-toolset:autowork'}
+        with patch.object(module, 'inventory', return_value=[{'profile': 'default', 'home': str(root), 'jobs': [before]}]):
+            rows = module.wire(root)
+        self.assertEqual(rows[0]['state'], 'unchanged')
+
     def test_apply_binds_edits_to_inventory_root_and_explicit_profile(self):
         import os
         from unittest.mock import patch
         module = load()
         root = Path('/fixture/hermes')
-        before = {'id': 'abc', 'name': 'autogoal', 'enabled': False, 'prompt': 'scope'}
-        after = {**before, 'prompt': module.owner_prompt('scope', False)}
+        before = {'id': 'abc', 'name': 'autogoal', 'enabled': False,
+                  'prompt': module.owner_prompt('scope', False),
+                  'skills': ['hermes-toolset:autogoal', 'ponytail:ponytail'],
+                  'skill': 'hermes-toolset:autogoal'}
+        after = {**before, 'skills': ['hermes-toolset:autowork', 'ponytail:ponytail'],
+                 'skill': 'hermes-toolset:autowork'}
         with patch.object(module, 'inventory', return_value=[{'profile': 'default', 'home': str(root), 'jobs': [before]}]), \
              patch.object(module, 'jobs', side_effect=[[before], [after]]), \
              patch.object(module.subprocess, 'run') as run, \
@@ -68,9 +99,11 @@ class OwnerCronTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][:3], ['hermes', '-p', 'default'])
         self.assertEqual(run.call_args.kwargs['env']['HERMES_HOME'], str(root))
         self.assertNotIn('HERMES_PROFILE', run.call_args.kwargs['env'])
+        self.assertEqual(run.call_args.args[0][-4:],
+                         ['--skill', 'hermes-toolset:autowork', '--skill', 'ponytail:ponytail'])
 
     def test_external_window_does_not_hold_independent_offline_work(self):
-        policy = (ROOT / 'skills/autogoal/references/owner-cycle.md').read_text()
+        policy = (ROOT / 'skills/autowork/references/owner-cycle.md').read_text()
         self.assertIn('independent implementation or fixture qualification', policy)
         self.assertIn('leave the original live task in Needs decision', policy)
         self.assertIn('record the actual source/test seam inspected', policy)

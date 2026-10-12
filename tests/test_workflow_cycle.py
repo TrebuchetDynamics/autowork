@@ -13,7 +13,7 @@ GOALS = ROOT / 'skills/repo-docs/scripts/goals.py'
 
 def worker_module():
     spec = importlib.util.spec_from_file_location('cycle_start_goal',
-        ROOT / 'skills/autogoal/scripts/start_goal.py')
+        ROOT / 'skills/autowork/scripts/start_goal.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -21,7 +21,7 @@ def worker_module():
 
 class CycleGuidanceTests(unittest.TestCase):
     def test_cross_profile_audit_verifies_publication_without_takeover(self):
-        text = (ROOT / 'skills/autogoal/references/state-and-recovery.md').read_text()
+        text = (ROOT / 'skills/autowork/references/state-and-recovery.md').read_text()
         self.assertIn('## Cross-profile audit and publication evidence', text)
         for requirement in ('git status --porcelain=v1 -z', 'git worktree list --porcelain',
                             'git ls-remote --heads', 'audit_unverified',
@@ -32,9 +32,9 @@ class CycleGuidanceTests(unittest.TestCase):
                 self.assertIn(requirement, text)
 
     def test_shared_scheduled_policy_owns_fallback_and_authorized_delivery(self):
-        core = (ROOT / 'skills/autogoal/SKILL.md').read_text()
+        core = (ROOT / 'skills/autowork/SKILL.md').read_text()
         self.assertIn('references/scheduled-policy.md', core)
-        text = (ROOT / 'skills/autogoal/references/scheduled-policy.md').read_text()
+        text = (ROOT / 'skills/autowork/references/scheduled-policy.md').read_text()
         self.assertIn('# Scheduled policy and profile exceptions', text)
         self.assertIn('load `hermes-toolset:repo-docs`', text)
         self.assertIn('rerun selection in the same occurrence', text)
@@ -58,8 +58,8 @@ class CycleGuidanceTests(unittest.TestCase):
                             'tasks/todo.md', 'review acceptance', 'NOT_CHECKED'):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, text)
-        for path in ('repo-docs/SKILL.md', 'autogoal/SKILL.md',
-                     'autogoal/references/whole-spec-execution.md'):
+        for path in ('repo-docs/SKILL.md', 'autowork/SKILL.md',
+                     'autowork/references/whole-spec-execution.md'):
             self.assertIn('ENGINEERING-CYCLE.md', (ROOT / 'skills' / path).read_text())
 
     def test_workers_receive_autonomous_decisions_and_skill_application_contract(self):
@@ -77,7 +77,7 @@ class CycleGuidanceTests(unittest.TestCase):
             self.assertIn('required review acceptance', body)
 
     def test_autonomy_does_not_turn_missing_intent_into_approval(self):
-        core = (ROOT / 'skills/autogoal/SKILL.md').read_text()
+        core = (ROOT / 'skills/autowork/SKILL.md').read_text()
         self.assertNotIn('proceed on the recommended reading', core)
         self.assertIn('continue only independent authorized work', core)
         self.assertIn('Silence never grants', core)
@@ -164,7 +164,7 @@ class LedgerCycleTests(unittest.TestCase):
     def test_two_tasks_require_owner_closure_then_advance_and_render_stably(self):
         self.assertEqual(self.picks(), ['T1'])
         ready = json.loads(self.cli('backlog-check', '--plan', 'SPEC.md#accepted', '--tasks', 'T1'))
-        self.assertEqual(ready['state'], 'ready_for_autogoal')
+        self.assertEqual(ready['state'], 'ready_for_autowork')
         for number, content in ((1, 'first'), (2, 'second')):
             task, goal = f'T{number}', f'G{number}'
             self.cli('task', task, 'in_progress')
@@ -204,7 +204,7 @@ class LedgerCycleTests(unittest.TestCase):
             self.cli('render')
             if number == 1:
                 ready = json.loads(self.cli('backlog-check', '--plan', 'SPEC.md#accepted', '--tasks', 'T2'))
-                self.assertEqual(ready['state'], 'ready_for_autogoal')
+                self.assertEqual(ready['state'], 'ready_for_autowork')
             self.assertEqual(self.picks(), ['T2'] if number == 1 else [])
         first = {name: (self.repo / name).read_bytes() for name in ('goals.json', 'TODO.md')}
         self.cli('fmt')

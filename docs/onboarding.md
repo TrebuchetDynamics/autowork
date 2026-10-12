@@ -111,7 +111,7 @@ your actual accepted decisions; TODO.md contains a bounded task with acceptance
 checks and dependencies; goals.json agrees with that task. The final response
 names changed paths, task ID and the real backlog readiness state. Inspect the
 files and diff yourself. A question or an unexecuted proposal is not completion
-of this second milestone. Explicitly authorize a separate `/autogoal` run only
+of this second milestone. Explicitly authorize a separate `/autowork` run only
 when you want implementation and its required supporting capabilities are ready.
 
 These are operator-run live checks, not recorded model or Telegram test results.
