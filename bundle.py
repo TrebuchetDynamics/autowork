@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import os
+import sys
+import time
 
 ROOT = Path(__file__).resolve().parent
 
@@ -146,13 +149,87 @@ def list_commands(raw_args=''):
         lines.append('Skill repositories not yet set up: ' + ', '.join(report['unchecked_skill_sources']))
     if report['telegram_menu_hidden']:
         lines.append('Telegram menu capacity hides some entries; type their commands directly.')
-    lines.append('Commands: /toolset list · Filter: /toolset ponytail')
+    lines.append('Commands: /toolset list · Update all profiles: /toolset update · Filter: /toolset ponytail')
     lines.append('Diagnostics: hermes toolset doctor --json · Setup: hermes toolset setup')
     return '\n'.join(lines)
 
 
+def update_home():
+    from hermes_constants import get_hermes_home
+    home = Path(get_hermes_home()).expanduser()
+    return home.parent.parent if home.parent.name == 'profiles' else home
+
+
+def update_status():
+    path = update_home() / 'maintenance/toolset-update/latest.json'
+    if not path.is_file():
+        return 'No update receipt yet. Run /toolset update; if just started, check status again shortly.'
+    try:
+        result = json.loads(path.read_text())
+        request = path.with_name('request.json')
+        if request.is_file():
+            requested = json.loads(request.read_text())
+            requested_pid = requested.get('pid')
+            if requested_pid != result.get('pid') and requested.get('started_ns', 0) > result.get('started_ns', 0):
+                try:
+                    os.kill(int(requested_pid), 0)
+                    return 'Requested update is starting; use /toolset update status shortly.'
+                except (ProcessLookupError, ValueError, TypeError):
+                    result['request_note'] = 'The later chat request did not produce a receipt (another updater may have held the lock). Showing the actual latest updater result.'
+        if result.get('status') == 'running':
+            try:
+                os.kill(int(result['pid']), 0)
+            except (ProcessLookupError, ValueError, KeyError):
+                return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /toolset update.'
+        return json.dumps(result, indent=2)
+    except (OSError, ValueError) as error:
+        return f'Cannot read update receipt: {type(error).__name__}; inspect maintenance/toolset-update/run.log.'
+
+
+def start_update(*, check=False):
+    home = update_home()
+    folder = home / 'maintenance/toolset-update'
+    if any(p.is_symlink() for p in (folder, folder.parent, home)):
+        return 'Update refused: symlinked update state directory.'
+    folder.mkdir(parents=True, exist_ok=True)
+    log = folder / 'run.log'
+    if log.is_symlink():
+        return 'Update refused: symlinked update log.'
+    argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
+    if check:
+        argv.append('--check')
+    try:
+        started_ns = time.time_ns()
+        with log.open('ab') as stream:
+            process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream,
+                             start_new_session=True, cwd=ROOT)
+        request = folder / 'request.json'
+        if request.is_symlink():
+            return 'Update started; request marker is unsafe. Inspect the updater receipt directly.'
+        request.write_text(json.dumps({'pid': process.pid, 'started_ns': started_ns}) + '\n')
+    except OSError as error:
+        return f'Update could not start: {type(error).__name__}.'
+    return ('Upstream check' if check else 'All-profile update') + ' requested. Use /toolset update status for the result. Local conflicts are preserved; workers and schedules are not restarted.'
+
+
+def handle_chat(raw_args=''):
+    words = raw_args.strip().split()
+    if words and words[0].lower() == 'update':
+        if len(words) == 1:
+            return start_update(check=False)
+        if words[1:] == ['--check']:
+            return start_update(check=True)
+        if words[1:] == ['status']:
+            return update_status()
+        return 'Usage: /toolset update [--check|status] — updates all existing profiles; no force option.'
+    return list_commands(raw_args)
+
+
 def setup_parser(parser):
     actions = parser.add_subparsers(dest='action', required=True)
+    update = actions.add_parser('update', help='Update this bundle and native skills across all existing profiles')
+    update.add_argument('--check', action='store_true', help='Fetch/check only; no checkout/profile updates')
+    update.add_argument('--hermes-home', help='Hermes root containing profiles/')
     setup = actions.add_parser('setup', help='Install, enable, and configure sources in plugins/PLUGINS.md')
     setup.add_argument('--dry-run', action='store_true')
     setup.add_argument('--hermes-home', help='Hermes root containing profiles/')
@@ -216,6 +293,12 @@ def format_diagnosis(report):
 
 
 def handle_cli(args):
+    if args.action == 'update':
+        argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home',
+                str(args.hermes_home or update_home())]
+        if args.check:
+            argv.append('--check')
+        return subprocess.run(argv, cwd=ROOT, check=False).returncode
     if args.action == 'doctor':
         report = diagnose(inventory(), core_only=getattr(args, 'core_only', False))
         print(json.dumps(report, indent=2) if args.json else format_diagnosis(report))
@@ -235,7 +318,7 @@ def handle_cli(args):
 
 def register_bundle(ctx, invoke):
     register_imported_skills(ctx, invoke)
-    ctx.register_command('toolset', list_commands, description='Bundle status, missing imports, and command inventory',
-                         args_hint='[list|filter]')
+    ctx.register_command('toolset', handle_chat, description='Bundle status, commands, and all-profile upstream update',
+                         args_hint='[list|update|filter]')
     ctx.register_cli_command('toolset', help='Install and diagnose the Hermes toolset bundle',
                              setup_fn=setup_parser, handler_fn=handle_cli)

@@ -1,4 +1,5 @@
 import argparse
+import json
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -44,6 +45,40 @@ class BundleTests(unittest.TestCase):
 
     def invoke(self, ctx, name, path, args, namespace='hermes-toolset'):
         self.messages.append((namespace, name, args))
+
+    def test_chat_update_is_not_treated_as_inventory_filter(self):
+        with patch.object(self.bundle, 'start_update', return_value='started') as start:
+            self.assertEqual(self.bundle.handle_chat('update'), 'started')
+            start.assert_called_once_with(check=False)
+        with patch.object(self.bundle, 'start_update', return_value='checking') as start:
+            self.assertEqual(self.bundle.handle_chat('update --check'), 'checking')
+            start.assert_called_once_with(check=True)
+        with patch.object(self.bundle, 'update_status', return_value='updated'):
+            self.assertEqual(self.bundle.handle_chat('update status'), 'updated')
+        self.assertIn('Usage:', self.bundle.handle_chat('update --force'))
+
+    def test_update_cli_uses_dedicated_updater(self):
+        args=argparse.Namespace(action='update', check=True, hermes_home='/tmp/home')
+        with patch.object(self.bundle.subprocess, 'run', return_value=types.SimpleNamespace(returncode=0)) as run:
+            self.assertEqual(self.bundle.handle_cli(args), 0)
+            self.assertIn(str(ROOT/'update_bundle.py'),run.call_args.args[0])
+            self.assertIn('--check',run.call_args.args[0])
+
+    def test_new_cli_receipt_is_not_hidden_by_older_chat_request(self):
+        home=Path(self.tmp.name);folder=home/'maintenance/toolset-update';folder.mkdir(parents=True)
+        (folder/'request.json').write_text(json.dumps({'pid':111,'started_ns':1}))
+        (folder/'latest.json').write_text(json.dumps({'pid':222,'started_ns':2,'status':'updated'}))
+        with patch.object(self.bundle,'update_home',return_value=home):
+            self.assertIn('updated',self.bundle.update_status())
+
+    def test_dead_duplicate_request_does_not_hide_current_result(self):
+        home=Path(self.tmp.name);folder=home/'maintenance/toolset-update';folder.mkdir(parents=True)
+        (folder/'request.json').write_text(json.dumps({'pid':111,'started_ns':2}))
+        (folder/'latest.json').write_text(json.dumps({'pid':222,'started_ns':1,'status':'updated'}))
+        with patch.object(self.bundle,'update_home',return_value=home), patch.object(self.bundle.os,'kill',side_effect=ProcessLookupError):
+            result=self.bundle.update_status()
+            self.assertIn('updated',result)
+            self.assertIn('did not produce',result)
 
     def test_imported_skills_get_commands_without_overwriting_native_handlers(self):
         native = self.commands['ponytail-review']['handler']

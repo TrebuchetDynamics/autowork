@@ -25,6 +25,7 @@ def main():
         loaded = manager._plugins['hermes-toolset']
         assert loaded.enabled and not loaded.error, loaded.error
         commands = get_plugin_commands()
+        assert 'No update receipt yet' in commands['toolset']['handler']('update status')
         names = json.loads((root / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
         payload = json.loads(skill_view('hermes-toolset:autoresearch'))
         assert 'error' not in payload, payload

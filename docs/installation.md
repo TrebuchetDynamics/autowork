@@ -175,3 +175,48 @@ using them; private-state helpers reject symlink paths. Retain retired execution
 files needed by historical/native contracts outside skill discovery until those
 contracts are retired. Reload gateway commands and refresh Telegram menus after
 provisioning; verify `/autowork` is present and the retired command is absent.
+
+## Update all profiles
+
+Run `/toolset update` in an authorized Hermes CLI or gateway chat. It starts a
+background updater; use `/toolset update status` for its durable result, not the
+initial “requested” message as proof of completion. `/toolset update --check`
+fetches upstream and previews changes without advancing checkouts or writing
+profile skills/configuration. It still writes Git fetch metadata and its receipt.
+
+Terminal equivalents wait for completion:
+
+```sh
+hermes toolset update --check
+hermes toolset update
+```
+
+A named-profile invocation still targets every existing live profile under the
+same Hermes root. The updater fetches the official Hermes Toolset `main` branch,
+checks each distinct installed Git checkout, and accepts only clean fast-forward
+updates. Dirty checkouts, local commits absent upstream, unsafe paths and skill
+merge conflicts stop preflight before checkout/profile writes. Review and commit
+or move local changes yourself; the updater never stashes, resets or force-pulls.
+Non-Git plugin distributions need a supported Git installation before this update.
+
+Bundled native skill copies are synchronized, including shared references and
+upstream deletions of unmodified files. Compatible local edits are merged;
+conflicting edits are preserved for reconciliation. Missing bundle installations
+are linked to the updated source. Native enablement loads the plugin and applies
+its documented runtime defaults; per-profile bundle-only finalization verifies
+registrations and refreshes gateway commands. Separate native checkouts remain
+separate. It does not upgrade unrelated plugins, Hermes Agent or external imports.
+Existing setup prerequisites still apply; this is not a policy-neutral operation.
+
+`maintenance/toolset-update/latest.json` in the root Hermes home records status,
+source revisions, profiles and the backup location. `run.log` holds setup details;
+per-run backups include original skill files and a manifest. An `incomplete` result
+may follow partial application: preserve the backups, fix the reported cause and
+rerun. There is no automatic rollback. A stopped gateway is reported by setup;
+an unreachable live gateway is not treated as verified wiring.
+
+Workers and schedules are not restarted or changed. Update between active tasks
+when possible because runtime/helper files change. Existing conversations may
+retain already-loaded instructions; open a new conversation to load updated skills.
+The new `/toolset update` handler itself first needs the normal plugin reload if
+upgrading from a version that does not register it.

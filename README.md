@@ -22,6 +22,7 @@ across profiles, and verification that gateway commands were registered.
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
 | Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. | Profile setup tools + selected integrations |
+| Update the bundle | `/toolset update` | Checks upstream and updates plugin copies and bundled skills across all existing profiles. Use `/toolset update status` for the result. | Git, upstream access and clean plugin checkouts |
 | Inspect capabilities | `/toolset list` | Lists registered commands and their owners; `hermes toolset doctor --json` reports missing imports. | Core; inventory does not prove workflow readiness |
 
 **Core** means bundled commands with a configured model; `doctor --core` checks
@@ -205,6 +206,12 @@ hermes toolset setup --yes-deps
 
 From a source checkout, apply with `bash install.sh --yes-deps`.
 Later failures can still leave partial setup; read the outcome.
+
+For subsequent bundle updates, use `/toolset update` in CLI chat or Telegram;
+`/toolset update --check` previews availability and `/toolset update status` shows
+the result. Terminal equivalent: `hermes toolset update`. This targets **all live
+profiles**, preserves local conflicts and uses fast-forward updates only. See
+[update behavior and recovery](docs/installation.md#update-all-profiles).
 
 See [onboarding](docs/onboarding.md) for Telegram checks, project binding and updates.
 A profile is not a filesystem sandbox.
