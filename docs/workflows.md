@@ -107,3 +107,20 @@ the adapter. Claude-only hooks are not installed.
 
 `/autowork` is the repository development command. Its helpers and profile-local
 state live under `autowork/`; upgrades preserve existing work through migration.
+
+## Pinned engineering protocols
+
+`/engineering` (the same spelling in Telegram) selects Addy engineering methods for
+the current phase. Autowork, Repo Docs and Autoresearch load this adapter through the
+shared engineering cycle; no separate command is normally needed. Examples:
+
+```text
+/engineering plan the accepted cache change into TODO.md; do not implement
+/engineering review the current cache task against its acceptance checks
+```
+
+The [adapter](../skills/engineering/SKILL.md) loads a small relevant selection from
+25 pinned protocols and their shared references. It translates upstream plan/task
+paths into existing TODO.md/goals.json entries and preserves prior authorization,
+explicit restrictions and actual review requirements. Its protocols are not extra
+workers or independently registered slash commands. See [provenance and updates](dependencies.md#refresh-the-pinned-engineering-pack).

@@ -7,7 +7,9 @@ the native plugin manager, or deploy across your fleet with the setup tools.
 
 Hermes already supports skills and plugins. This bundle adds a coordinated set of
 repository workflows, automatic slash-command registration, shared installation
-across profiles, and verification that gateway commands were registered.
+across profiles, and verification that gateway commands were registered. It includes
+25 pinned [Addy engineering protocols](skills/engineering/SKILL.md), with shared
+checklists, loaded by task phase rather than all at once.
 
 ## What you can do
 
@@ -113,7 +115,7 @@ See [memory and retained data](docs/memory.md) before enabling memory capture.
 | Path | Scope | External integrations | Policy effects |
 | --- | --- | --- | --- |
 | `bash install.sh --bundle-only` | All existing live profiles | Skips external-source setup | Applies bundle defaults; not a single-profile or policy-neutral mode |
-| `bash install.sh --yes-deps` | All existing live profiles | OMH, Ponytail, speech, Graphify, external skills | Applies defaults and OMH setup |
+| `bash install.sh --yes-deps` | All existing live profiles | OMH, Ponytail, speech, Graphify | Applies defaults and OMH setup |
 | Native Hermes plugin installation | Selected Hermes profile | Manifest declares OMH, Ponytail and speech dependencies | Plugin load applies runtime defaults and provisions missing bundled skills |
 
 The standalone command registration code does not require a memory or speech
@@ -190,6 +192,11 @@ Next, use the [core-only requirements interview](docs/onboarding.md#core-only-re
 to produce a useful decision summary in chat. The separate
 [full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task)
 saves docs and a TODO.md task; it requires Graphify and file/terminal tools.
+
+The bundled engineering pack is available without external skill imports. Autowork,
+Autoresearch and Repo Docs use its planning, implementation, debugging and review
+methods while keeping TODO.md as the shared queue. Application receipts identify
+the protocol revision and actual decision/check; loading a skill is not proof of use.
 
 Before upgrading, note that **CLI startup can apply runtime defaults before
 [preflight](docs/installation.md#preflight-before-fleet-writes), even with `--dry-run`**.

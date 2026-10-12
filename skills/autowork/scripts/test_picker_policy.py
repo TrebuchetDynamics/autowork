@@ -15,7 +15,7 @@ class PickerPolicyTests(unittest.TestCase):
         for phrase in ['two consecutive no-selection receipts','DIFFERENT authorized component','not discovery completeness','keep exploration read-only and resource-disjoint','Do not repeat this exploration','Checked scope exhausted','not an enforced runtime guarantee']:
             self.assertIn(phrase,text)
     def test_no_early_exit_and_terminal_results_continue(self):
-        text=Path(__file__).resolve().parents[1].joinpath('SKILL.md').read_text()
+        text=full_text()
         for phrase in ['version: 0.25.0', "Ask, don't block", 'otherwise run the repo-docs fallback', 'goals.py next', 'never fingerprint-exit', 'On EVERY idle occurrence', 'A completed card is not a stop condition', 'Disable change-only fingerprint monitors', 'autowork_gate.py', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
             self.assertIn(phrase, text)
         for obsolete in ['Step 0 — fast exit', 'return `[SILENT]` immediately', 'Step 0 fast exit bounds']:

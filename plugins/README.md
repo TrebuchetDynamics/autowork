@@ -21,7 +21,7 @@ per line; blank lines and lines beginning with `#` are ignored:
 https://hermes-agent.nousresearch.com/docs/plugins/omh all profiles
 
 https://github.com/dietrichgebert/ponytail all profiles
-skills https://github.com/addyosmani/agent-skills all profiles
+skills https://github.com/example/optional-skills all profiles
 ```
 
 `all profiles` includes `default` and existing named profiles. Deleted profiles
@@ -76,3 +76,6 @@ python -m unittest discover -s tests -p 'test_install_plugins.py'
 ```
 
 Native command reference: [Hermes plugins](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins).
+
+Addy engineering protocols are pinned under `skills/engineering/` and distributed
+with the bundle; they no longer require an external skill-source entry.

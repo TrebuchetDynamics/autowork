@@ -124,17 +124,34 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(args.action, 'doctor')
         self.assertTrue(args.json)
 
+    def external_source_fixture(self):
+        source=Path(self.tmp.name)/'source';(source/'plugins').mkdir(parents=True)
+        (source/'plugins/defaults.json').write_bytes((ROOT/'plugins/defaults.json').read_bytes())
+        (source/'plugins/PLUGINS.md').write_text('skills https://github.com/example/optional-skills all profiles\n')
+        return source
+
     def test_missing_imports_track_partial_install_and_removed_commands(self):
         home = Path(self.tmp.name)
-        self.bundle.record_skill_repository(home, 'https://github.com/addyosmani/agent-skills', ['alpha', 'beta'])
-        missing, unchecked = self.bundle.missing_skill_imports(home, {'alpha', 'graphify', 'omh-plan'})
+        source=self.external_source_fixture()
+        self.bundle.record_skill_repository(home, 'https://github.com/example/optional-skills', ['alpha', 'beta'])
+        with patch.object(self.bundle,'ROOT',source):
+            missing, unchecked = self.bundle.missing_skill_imports(home, {'alpha', 'graphify', 'omh-plan'})
         self.assertEqual(missing, ['beta'])
         self.assertEqual(unchecked, [])
 
     def test_unattempted_skill_repository_is_not_reported_healthy(self):
-        missing, unchecked = self.bundle.missing_skill_imports(Path(self.tmp.name), {'graphify', 'omh-plan'})
+        source=self.external_source_fixture()
+        with patch.object(self.bundle,'ROOT',source):
+            missing, unchecked = self.bundle.missing_skill_imports(Path(self.tmp.name), {'graphify', 'omh-plan'})
         self.assertEqual(missing, [])
-        self.assertEqual(unchecked, ['https://github.com/addyosmani/agent-skills'])
+        self.assertEqual(unchecked, ['https://github.com/example/optional-skills'])
+
+    def test_retired_external_addy_inventory_does_not_require_duplicate_imports(self):
+        home=Path(self.tmp.name)
+        self.bundle.record_skill_repository(home,'https://github.com/addyosmani/agent-skills',['old-import'])
+        missing,unchecked=self.bundle.missing_skill_imports(home,{'graphify','omh-plan'})
+        self.assertNotIn('old-import',missing)
+        self.assertNotIn('https://github.com/addyosmani/agent-skills',unchecked)
 
     def test_named_profiles_do_not_require_or_export_bot_forge(self):
         self.manager.home_path = Path(self.tmp.name) / 'profiles/coder'

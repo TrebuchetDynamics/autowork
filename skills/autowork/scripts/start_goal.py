@@ -187,6 +187,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
     goals_command = shlex.join([sys.executable, str(
         Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py')])
     cycle_path = Path(__file__).resolve().parents[2] / 'shared/ENGINEERING-CYCLE.md'
+    engineering_path = Path(__file__).resolve().parents[2] / 'engineering/SKILL.md'
     body = (REVIEW_DOD + '\n\n' + contract + '\n\nExecution: This is the selected autowork slice, not a picker. '
             'Implement and verify this contract only. Do not discover or enqueue another task. '
             f'Read the bundled engineering cycle at `{cycle_path}` for verified skill routing, '
@@ -196,7 +197,10 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'matrix: planning-and-task-breakdown for actual decomposition gaps, constraint-driven-development '
             'for quality criteria, incremental-implementation for the slice, test-driven-development for behavior '
             'changes, relevant API/UI/migration/CI/observability skills, then code-review-and-quality and '
-            'git-workflow-and-versioning at closeout. Read verified installed skill instructions and apply '
+            'git-workflow-and-versioning at closeout. '
+            f'Read the pinned Addy adapter at `{engineering_path}` first; select only relevant phase/domain protocols '
+            'and preserve its bundled shared references. Record the pinned revision with each application. '
+            'Read verified installed skill instructions and apply '
             'their methods; record Skill application: trigger, verified skill path, decision/artifact, check/result. '
             'Carry existing decision receipts forward; report unavailable skills and the concrete fallback. '
             'Implement and update scoped documentation, then return exact checks, source evidence and remaining gaps. '

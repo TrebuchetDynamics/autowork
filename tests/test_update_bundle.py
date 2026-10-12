@@ -43,6 +43,26 @@ class UpdateTests(unittest.TestCase):
         for _,home in self.profiles:self.assertEqual((home/'skills/demo/SKILL.md').read_text(),'new\n')
         self.assertEqual(self.git(self.repo,'rev-parse','HEAD'),self.git(self.remote,'rev-parse','HEAD'))
         self.assertEqual(self.plan()['writes'],[])
+    def test_new_pinned_engineering_tree_reaches_every_profile(self):
+        payloads = {
+            'SKILL.md': 'Hermes adapter\n',
+            'UPSTREAM.json': '{"revision":"reviewed-pin"}\n',
+            'upstream/skills/planning/PROTOCOL.md': 'Plan a bounded task\n',
+            'upstream/references/checklist.md': 'Verify the task\n',
+            'upstream/LICENSE': 'MIT\n',
+        }
+        for relative, content in payloads.items():
+            path = self.remote / 'skills/engineering' / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        self.git(self.remote, 'add', '.')
+        self.git(self.remote, 'commit', '-m', 'reviewed engineering snapshot')
+        self.mod.apply(self.plan(), self.home / 'backups')
+        for _, home in self.profiles:
+            for relative, content in payloads.items():
+                self.assertEqual((home / 'skills/engineering' / relative).read_text(), content)
+        self.assertEqual(self.plan()['writes'], [])
+
     def test_conflict_in_last_profile_prevents_all_mutations(self):
         self.advance();p=self.profiles[-1][1]/'skills/demo/SKILL.md';p.write_text('custom\n')
         with self.assertRaisesRegex(ValueError,'conflict'):self.plan()

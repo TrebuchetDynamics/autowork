@@ -70,14 +70,15 @@ class CycleGuidanceTests(unittest.TestCase):
                            'Skill application:', 'trigger, verified skill path, decision/artifact, check/result',
                            'planning-and-task-breakdown', 'constraint-driven-development',
                            'incremental-implementation', 'code-review-and-quality',
-                           'git-workflow-and-versioning'):
+                           'git-workflow-and-versioning', 'pinned Addy adapter',
+                           'Record the pinned revision'):
                 self.assertIn(phrase, body)
             self.assertNotIn('Questions (no reply = defaults apply)', body)
             self.assertIn('Mandatory completion gate:', body)
             self.assertIn('required review acceptance', body)
 
     def test_autonomy_does_not_turn_missing_intent_into_approval(self):
-        core = (ROOT / 'skills/autowork/SKILL.md').read_text()
+        core = (ROOT / 'skills/autowork/SKILL.md').read_text() + (ROOT / 'skills/autowork/references/iteration-and-decisions.md').read_text()
         self.assertNotIn('proceed on the recommended reading', core)
         self.assertIn('continue only independent authorized work', core)
         self.assertIn('Silence never grants', core)

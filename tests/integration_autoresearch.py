@@ -25,6 +25,8 @@ def main():
         loaded = manager._plugins['hermes-toolset']
         assert loaded.enabled and not loaded.error, loaded.error
         commands = get_plugin_commands()
+        assert 'hermes-toolset:engineering' in [i['name'] for i in manager.list_plugin_skill_metadata()]
+        assert (home / 'skills/engineering/upstream/references/security-checklist.md').is_file()
         assert 'No update receipt yet' in commands['toolset']['handler']('update status')
         names = json.loads((root / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
         payload = json.loads(skill_view('hermes-toolset:autoresearch'))

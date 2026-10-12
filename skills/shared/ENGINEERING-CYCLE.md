@@ -57,13 +57,17 @@ never relabel it Accepted merely because the engineering choice is reversible.
 
 ## Load the skill needed at the current step
 
-Resolve bundled skills through `hermes-toolset:repo-docs` and
-`hermes-toolset:autowork`, or their actual loaded SKILL.md paths. For addyosmani
-skills, inspect the active profile's skill catalog and `skills/.hub/lock.json` to
-confirm the installed file and source `addyosmani/agent-skills`. Load by the exact
-catalog identity when unambiguous; otherwise read the verified SKILL.md path.
-Do not invent an `addyosmani:` namespace or assume the default profile's home.
-Record selected identity/path and any unavailable dependency in the handoff.
+Resolve bundled skills through `hermes-toolset:repo-docs`, `hermes-toolset:autowork`
+and [hermes-toolset:engineering](../engineering/SKILL.md), or their actual loaded
+SKILL.md paths. The engineering adapter's pinned Addy snapshot is the default;
+load its phase router and only relevant protocols/support files. This works without
+external imports and avoids ambiguous bare names. Preserve upstream bytes and
+apply the adapter's TODO, authorization and host-tool translations.
+
+An explicit user request to use a separate installed Addy version wins: verify its
+source/revision through the profile catalog and `skills/.hub/lock.json`, disclose
+missing references, and record that alternative. Do not invent an `addyosmani:`
+namespace or assume another profile's home. Existing imports are left intact.
 
 | Need | Targeted addyosmani skill | Apply to the existing owner |
 | --- | --- | --- |
@@ -118,12 +122,11 @@ Now/Next ordering, bounded bodies and repaired consumer contracts are the output
 Record selected skill → changed owner/decision/check; a list of loaded skills does
 not establish application. A usable accepted backlog does not need repeated planning.
 
-TDD identity collision: addyosmani's copy may be at
-`<profile-home>/skills/test-driven-development/SKILL.md`, while Hermes's bundled
-copy resolves as `software-development/test-driven-development`. Verify the former
-against the install lock and read that explicit path when bare
-`test-driven-development` is ambiguous. If unavailable, disclose the fallback and
-load the verified bundled identity; do not claim addyosmani's version was loaded.
+TDD identity collision: use the engineering adapter's pinned
+`upstream/skills/test-driven-development/PROTOCOL.md` by default. Neither a bare
+`test-driven-development` name nor Hermes's bundled
+`software-development/test-driven-development` establishes Addy provenance.
+If the vendored protocol is unavailable, identify the actual fallback and gap.
 
 If a domain skill is scanner-blocked or unavailable, use verified repository
 procedures/checklists for its same obligations and report any missing capability;

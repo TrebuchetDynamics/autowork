@@ -1,0 +1,334 @@
+{
+  "excluded": "Host manifests/hooks, evals, root scripts and hidden integration directories; never activated by Hermes",
+  "files": {
+    "CONTRIBUTING.md": {
+      "path": "upstream/CONTRIBUTING.md",
+      "sha256": "fe5d17011565e9cfeb8a02510c81a243f3e4d829b800e2eab239039fcac214e7"
+    },
+    "LICENSE": {
+      "path": "upstream/LICENSE",
+      "sha256": "6f202f8bd568cd730dbb2b0d1f8e243bc74c2fa1f64dbce9b2c7ea08bd5c9fd7"
+    },
+    "README.md": {
+      "path": "upstream/README.md",
+      "sha256": "1721f3d97679a2d7e6208e7f9af3ed891a4dd29de9a56ccbb6fd7d971cb8c9d4"
+    },
+    "agents/code-reviewer.md": {
+      "path": "upstream/agents/code-reviewer.md",
+      "sha256": "2d02acb9db1c37521d676587d2e0afb713c8983de957a78efdfa82d27e5fc3da"
+    },
+    "agents/security-auditor.md": {
+      "path": "upstream/agents/security-auditor.md",
+      "sha256": "66a3f68f1c691b600ddb44e88afb138e239d0572df37be84e1f9a427c887dd0a"
+    },
+    "agents/test-engineer.md": {
+      "path": "upstream/agents/test-engineer.md",
+      "sha256": "c4acde91d6307d88515387344a129a2d0679134e587596c3517d73faffcd5aa6"
+    },
+    "agents/web-performance-auditor.md": {
+      "path": "upstream/agents/web-performance-auditor.md",
+      "sha256": "0928b1cf8103262a364bce0c1fc689a918852e2275441f1b2e687adfa1e607e9"
+    },
+    "commands/build.toml": {
+      "path": "upstream/commands/build.toml",
+      "sha256": "e25857cf424905bceea7f1250903eb801a8e79ed62ec67c2fd4d785969e47e62"
+    },
+    "commands/code-simplify.toml": {
+      "path": "upstream/commands/code-simplify.toml",
+      "sha256": "640cdd34c26a04cabe6d3ea64ba5aad91bb68b16c8f7619a9e5fae6fe0a37ec8"
+    },
+    "commands/constraints.toml": {
+      "path": "upstream/commands/constraints.toml",
+      "sha256": "bcc519db853a0ebdf0b07f378e2bc87cb112508d28e41f0d39dd1b17aa68def4"
+    },
+    "commands/planning.toml": {
+      "path": "upstream/commands/planning.toml",
+      "sha256": "8245744d68ada00751413feca49bca457689b4a25aba76be952f5e7a0be066f7"
+    },
+    "commands/review.toml": {
+      "path": "upstream/commands/review.toml",
+      "sha256": "a7ae7259a9e080731e0dd91368da728b89919d31488192e067b751cf472d5a8d"
+    },
+    "commands/ship.toml": {
+      "path": "upstream/commands/ship.toml",
+      "sha256": "a067c5c4ea484609ceb530b908c7fb707f184abae839826012ddca653517c1c5"
+    },
+    "commands/spec.toml": {
+      "path": "upstream/commands/spec.toml",
+      "sha256": "ef26c247995ff2cdacf8e0474e3b7433b0a851c258ba33a626da6525f842af8d"
+    },
+    "commands/test.toml": {
+      "path": "upstream/commands/test.toml",
+      "sha256": "c54f004d67f9fd4f8a5c9ab753ef99d3dd3d12cdc304473ea61db8c8680fe84d"
+    },
+    "commands/webperf.toml": {
+      "path": "upstream/commands/webperf.toml",
+      "sha256": "a7ff4a4ab3c3e20e22edb7582542264813f2c6c11c9687878f3ff9f6e5b529be"
+    },
+    "docs/adoption-guide.md": {
+      "path": "upstream/docs/adoption-guide.md",
+      "sha256": "e8cf338ae5762bf93bb48b04eac986bf7307cea702ff87180a0983b33473bcf5"
+    },
+    "docs/advanced-per-agent-configuration.md": {
+      "path": "upstream/docs/advanced-per-agent-configuration.md",
+      "sha256": "93b2a53ca052b5e24b7382caf9438abdae7d511d7b16aedf71f35e36e9adc60d"
+    },
+    "docs/agents.md": {
+      "path": "upstream/docs/agents.md",
+      "sha256": "e03481592a725146ed48ee22010086dcfebd1faf1373cb99e7f2ed4d2100275c"
+    },
+    "docs/antigravity-setup.md": {
+      "path": "upstream/docs/antigravity-setup.md",
+      "sha256": "1a47959d542ec6008ef9f20bf20fdf8ac9c309157c9cc3bfd42f888b606af3ea"
+    },
+    "docs/codex-setup.md": {
+      "path": "upstream/docs/codex-setup.md",
+      "sha256": "d6d491303d37020b51ddc0417fe3e7ea119518fa892deda07602d64f93d9fa8a"
+    },
+    "docs/commandcode-setup.md": {
+      "path": "upstream/docs/commandcode-setup.md",
+      "sha256": "6305e672cd15c1dd709d7a2b307dca4bbf2704328654f8b3a5f37c495d3cf31c"
+    },
+    "docs/comparison.md": {
+      "path": "upstream/docs/comparison.md",
+      "sha256": "652e4df31f4bc1e1d456db768ee15c6cc5fdd6dee754d9dfccffe5ce1eac7194"
+    },
+    "docs/copilot-cli-setup.md": {
+      "path": "upstream/docs/copilot-cli-setup.md",
+      "sha256": "5ecb11fa4f8b1d8bfd94f9f66f6e50037e8241fca34b3cbc598aee78f96762a9"
+    },
+    "docs/copilot-setup.md": {
+      "path": "upstream/docs/copilot-setup.md",
+      "sha256": "46f1f46c4c1f4f656b1725271692e686e6f2e10ca977b526ea4f932497ecb209"
+    },
+    "docs/cursor-setup.md": {
+      "path": "upstream/docs/cursor-setup.md",
+      "sha256": "f775d97d834c1de09c2e83c011c1ff5b9fba0f9c38e03e188f5aff48ba1dada6"
+    },
+    "docs/developer-onboarding.md": {
+      "path": "upstream/docs/developer-onboarding.md",
+      "sha256": "59a35b68045f34aa42161bc5901892489e6ecdac4b5bbfcf311fde65f8255eea"
+    },
+    "docs/gemini-cli-setup.md": {
+      "path": "upstream/docs/gemini-cli-setup.md",
+      "sha256": "72fd36e321b76a6ed2799faba2357e0afc22349b07bbe91da4470808f1642409"
+    },
+    "docs/getting-started.md": {
+      "path": "upstream/docs/getting-started.md",
+      "sha256": "eb8601e481a3dc237bf76e38521e47f3dfc950f153836754a23302abca64b989"
+    },
+    "docs/opencode-setup.md": {
+      "path": "upstream/docs/opencode-setup.md",
+      "sha256": "77a6bd91ef2837acb96feea4ae60f3bfea2c4155864c197394dd2166f49de864"
+    },
+    "docs/other-hosts.md": {
+      "path": "upstream/docs/other-hosts.md",
+      "sha256": "8269a198ac91a2a512e053066089a59613333101f835c6df259802b1683b41b2"
+    },
+    "docs/skill-anatomy.md": {
+      "path": "upstream/docs/skill-anatomy.md",
+      "sha256": "5d2276c169c713e280bdbc4dcad41f20f4d5f7c5a8f09f9ee834eb1252a60df4"
+    },
+    "docs/windsurf-setup.md": {
+      "path": "upstream/docs/windsurf-setup.md",
+      "sha256": "1410af016060047d1a265365f8d98aadd00a58bcfa2a048edec06d61d337cd97"
+    },
+    "references/accessibility-checklist.md": {
+      "path": "upstream/references/accessibility-checklist.md",
+      "sha256": "61c759d94d52296231f5f310b92b401f56c44e4430dc3cc95ebac5d7b1d5ffac"
+    },
+    "references/definition-of-done.md": {
+      "path": "upstream/references/definition-of-done.md",
+      "sha256": "d1c75d2ae65d2c7a9cd01f93fa8de63e00e75f2fe5d08be224d576157054dcee"
+    },
+    "references/observability-checklist.md": {
+      "path": "upstream/references/observability-checklist.md",
+      "sha256": "25fcd0e854596a5ab6f11b002050d245bf78f5ae0fcbd1df699b89451ae0e1e8"
+    },
+    "references/orchestration-patterns.md": {
+      "path": "upstream/references/orchestration-patterns.md",
+      "sha256": "61e543d86f19f86b83074f8c1c769455c7085a2c72dd47b1da21a8c63785be4a"
+    },
+    "references/performance-checklist.md": {
+      "path": "upstream/references/performance-checklist.md",
+      "sha256": "40f564d1e62341e277c01ba42c42d95264b9ef3b8e5a23249dc6e121a7e70067"
+    },
+    "references/security-checklist.md": {
+      "path": "upstream/references/security-checklist.md",
+      "sha256": "37774056502fe8970dcd2fd27dca5fa31f2a55232649fc3056c89c3af7d62755"
+    },
+    "references/testing-patterns.md": {
+      "path": "upstream/references/testing-patterns.md",
+      "sha256": "f0bf05acd0edcadc27297ad5b74f104c8103ccfedba1a05cd6d6ae4af8364c56"
+    },
+    "skills/api-and-interface-design/SKILL.md": {
+      "path": "upstream/skills/api-and-interface-design/PROTOCOL.md",
+      "sha256": "e83d34f52ff12dd8a7c5134cd7e8140ea4541ec65e204f8a1e4cd366e30c4192"
+    },
+    "skills/browser-testing-with-devtools/SKILL.md": {
+      "path": "upstream/skills/browser-testing-with-devtools/PROTOCOL.md",
+      "sha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9"
+    },
+    "skills/ci-cd-and-automation/SKILL.md": {
+      "path": "upstream/skills/ci-cd-and-automation/PROTOCOL.md",
+      "sha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0"
+    },
+    "skills/code-review-and-quality/SKILL.md": {
+      "path": "upstream/skills/code-review-and-quality/PROTOCOL.md",
+      "sha256": "2db1e850379f255fd3091ef278cde24cd6c7d2ba23e360cc52ea522c40d4396e"
+    },
+    "skills/code-simplification/SKILL.md": {
+      "path": "upstream/skills/code-simplification/PROTOCOL.md",
+      "sha256": "f0c5ed754057eb0c1e027e2587f59de816651feb5e837242296c43ea21cf621d"
+    },
+    "skills/constraint-driven-development/SKILL.md": {
+      "path": "upstream/skills/constraint-driven-development/PROTOCOL.md",
+      "sha256": "06479d4305f286d23cfb99f5dc85695896785269664e1f6a8d800e3b71e70c10"
+    },
+    "skills/constraint-driven-development/references/floor-guard.md": {
+      "path": "upstream/skills/constraint-driven-development/references/floor-guard.md",
+      "sha256": "59715dc6c3c6c36ec9177f9ced65c379e80a4539b36115456666bfabc43a6a9c"
+    },
+    "skills/context-engineering/SKILL.md": {
+      "path": "upstream/skills/context-engineering/PROTOCOL.md",
+      "sha256": "8b736cb9e55b82b265ab6ff78349c0e826e8a6df550deddf665b7fb3ff858b63"
+    },
+    "skills/debugging-and-error-recovery/SKILL.md": {
+      "path": "upstream/skills/debugging-and-error-recovery/PROTOCOL.md",
+      "sha256": "21f3960f5d7ae2cc95c40896545004dbbcbbd752ea65fc2d53962554d4174220"
+    },
+    "skills/deprecation-and-migration/SKILL.md": {
+      "path": "upstream/skills/deprecation-and-migration/PROTOCOL.md",
+      "sha256": "6a624f942e09c69863a4219b9bd5d56975026b67b0c70bc83385ffd2120b6142"
+    },
+    "skills/documentation-and-adrs/SKILL.md": {
+      "path": "upstream/skills/documentation-and-adrs/PROTOCOL.md",
+      "sha256": "b60d503925bbaacee7fd63935db70b9ced5b2514ff5a56a672130e01b9690bc5"
+    },
+    "skills/doubt-driven-development/SKILL.md": {
+      "path": "upstream/skills/doubt-driven-development/PROTOCOL.md",
+      "sha256": "6fa1fcd8420c28daf7e53c5b08b0f20b907911efd2a6d9bce0b9740da20a4008"
+    },
+    "skills/frontend-ui-engineering/SKILL.md": {
+      "path": "upstream/skills/frontend-ui-engineering/PROTOCOL.md",
+      "sha256": "29a3e53d57c0a128831a20730ae874a8c4fda40c001fcdc15f8e9ad4b5f72f1b"
+    },
+    "skills/git-workflow-and-versioning/SKILL.md": {
+      "path": "upstream/skills/git-workflow-and-versioning/PROTOCOL.md",
+      "sha256": "b7465d187935c52546d39fdc7bd6ac36d94eda25a9500ef8c18b767d2eb116ea"
+    },
+    "skills/idea-refine/SKILL.md": {
+      "path": "upstream/skills/idea-refine/PROTOCOL.md",
+      "sha256": "79e773058963adc7646b0115b4f8a4afc974c5ff95843e4ef1cafff3cb51899e"
+    },
+    "skills/idea-refine/examples.md": {
+      "path": "upstream/skills/idea-refine/examples.md",
+      "sha256": "563204bfbf2f80a444151695205af4cb759e722b3d1e5460e08f278a69c89ba1"
+    },
+    "skills/idea-refine/frameworks.md": {
+      "path": "upstream/skills/idea-refine/frameworks.md",
+      "sha256": "161ebc18fdf2d996bc62a87a2d747cf1bf53548354f8925de25c732c27f00309"
+    },
+    "skills/idea-refine/refinement-criteria.md": {
+      "path": "upstream/skills/idea-refine/refinement-criteria.md",
+      "sha256": "1ca2973a4d01b5cb37ab7ddb2eff77fa4e792634a33d0ce44961c068fc88d51a"
+    },
+    "skills/idea-refine/scripts/idea-refine.sh": {
+      "path": "upstream/skills/idea-refine/scripts/idea-refine.sh",
+      "sha256": "f02a52408a4218047c032d221483abfbb48d11f090bb4915965c7419bf2e0e47"
+    },
+    "skills/incremental-implementation/SKILL.md": {
+      "path": "upstream/skills/incremental-implementation/PROTOCOL.md",
+      "sha256": "df66536610071727feae1ca95f3c391c248ad828041750ccd3699cce763aa00b"
+    },
+    "skills/interview-me/SKILL.md": {
+      "path": "upstream/skills/interview-me/PROTOCOL.md",
+      "sha256": "ace4b675999bb504593d572e0f73f3d7e803ad6fddf318445598c82c11939db2"
+    },
+    "skills/observability-and-instrumentation/SKILL.md": {
+      "path": "upstream/skills/observability-and-instrumentation/PROTOCOL.md",
+      "sha256": "e7fcb0820306d46268de9594d676ad98e35040858926c412b7000faa52a61f87"
+    },
+    "skills/performance-optimization/SKILL.md": {
+      "path": "upstream/skills/performance-optimization/PROTOCOL.md",
+      "sha256": "665a83a7218d6aebd02ca329a7b2422cf28f7c55cb56f870c05e12047770245c"
+    },
+    "skills/performance-optimization/references/optimization-patterns.md": {
+      "path": "upstream/skills/performance-optimization/references/optimization-patterns.md",
+      "sha256": "fbf724076ffb8ac1a28e1a2773c0b550f5361090024b2dd32e5a682c69b7945f"
+    },
+    "skills/planning-and-task-breakdown/SKILL.md": {
+      "path": "upstream/skills/planning-and-task-breakdown/PROTOCOL.md",
+      "sha256": "ed0f90cc5951ddd4bcab7f871f64efec93a49af9279ef93bc470da77ad8da3f7"
+    },
+    "skills/security-and-hardening/SKILL.md": {
+      "path": "upstream/skills/security-and-hardening/PROTOCOL.md",
+      "sha256": "2e3fc60eed5aba97fe416f3f3c9317fdb014a682925ec70a733c3ff99e4b9858"
+    },
+    "skills/security-and-hardening/references/hardening-patterns.md": {
+      "path": "upstream/skills/security-and-hardening/references/hardening-patterns.md",
+      "sha256": "2e1b93a502b4cdb0258404441f3aab029b0cce4003fbbcc61af9a2de18bab9ab"
+    },
+    "skills/shipping-and-launch/SKILL.md": {
+      "path": "upstream/skills/shipping-and-launch/PROTOCOL.md",
+      "sha256": "726f3e546369db289160b8d42195590f00b6432887e17bf19070dcc9a347fe39"
+    },
+    "skills/source-driven-development/SKILL.md": {
+      "path": "upstream/skills/source-driven-development/PROTOCOL.md",
+      "sha256": "c59faf851377f0eeda45306398d16eb96d77ab1c2fd3e1a7fb58e9a0af33c1e9"
+    },
+    "skills/spec-driven-development/SKILL.md": {
+      "path": "upstream/skills/spec-driven-development/PROTOCOL.md",
+      "sha256": "c4b97ce3d7f24be0e67fd612c7595f65504872e3a9f8d338d098b2363fdb66ef"
+    },
+    "skills/test-driven-development/SKILL.md": {
+      "path": "upstream/skills/test-driven-development/PROTOCOL.md",
+      "sha256": "7c0c6ac057c19d7f8be65d9f49c3a638703b868f4625c78b70da5439d5d74fca"
+    },
+    "skills/using-agent-skills/SKILL.md": {
+      "path": "upstream/skills/using-agent-skills/PROTOCOL.md",
+      "sha256": "30787ef2c77bf1a4729fffed0f6523ba6fcbe81bdc436b36371b78c21394d3c3"
+    }
+  },
+  "included": [
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "agents",
+    "commands",
+    "docs",
+    "references",
+    "skills"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "revision": "1be8e34187e34647bb83adc3a1323b26ae6f6abe",
+  "skills": [
+    "api-and-interface-design",
+    "browser-testing-with-devtools",
+    "ci-cd-and-automation",
+    "code-review-and-quality",
+    "code-simplification",
+    "constraint-driven-development",
+    "context-engineering",
+    "debugging-and-error-recovery",
+    "deprecation-and-migration",
+    "documentation-and-adrs",
+    "doubt-driven-development",
+    "frontend-ui-engineering",
+    "git-workflow-and-versioning",
+    "idea-refine",
+    "incremental-implementation",
+    "interview-me",
+    "observability-and-instrumentation",
+    "performance-optimization",
+    "planning-and-task-breakdown",
+    "security-and-hardening",
+    "shipping-and-launch",
+    "source-driven-development",
+    "spec-driven-development",
+    "test-driven-development",
+    "using-agent-skills"
+  ],
+  "transform": "SKILL.md filenames become PROTOCOL.md; file bytes unchanged"
+}
