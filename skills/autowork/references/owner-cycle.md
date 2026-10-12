@@ -223,3 +223,26 @@ Save the supported request under `handoff-requests/<task-id>.json` and rerun the
 cycle with `--apply`; saved requests are consumed by the existing native helper.
 Report execution only after observing its worker, and completion only after its
 acceptance and commit receipts. A routed request alone does not unblock a task.
+
+
+## A profile mailbox is not its parent session
+
+An owner route may bind `target_session` when repository integration belongs to a
+specific parent conversation. Carry that ID into the request and inbox; replies
+must include the observed replying `session_id` matching it. A sibling cron in the
+same profile must not answer for that parent. Session fields are caller-supplied
+binding evidence, not authentication or a transfer of integration authority.
+
+`delivery.state=delivered` means a local mailbox file was published. Check
+`session_wakeup`: `not_attempted` does not establish that the parent ran or saw the
+request. Do not describe a self-written blocked reply as an owner decision. Use a
+supported, authorized wake of the existing parent session when available; retain
+its actual routing/session identity and confirm acknowledgement separately. If the
+host provides no such transport, report that exact missing transition once rather
+than another unchanged validation loop. Never resume a different session or adopt
+parent-only integration authority just because both sessions use one profile.
+
+A missing canonical backlog with an existing owned proposal needs integration,
+not another discovery pass or replacement goals.json. Surface the exact proposed
+files, current owner and parent-only repository rule. An explicit owner grant may
+permit reviewed integration; absence of an active session lease alone does not.

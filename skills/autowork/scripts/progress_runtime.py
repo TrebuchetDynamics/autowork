@@ -32,13 +32,16 @@ def route(request, owner_state):
         raise ValueError('owner state must already exist; do not invent an owner')
     if not request.get('owner') or request['owner'] == 'unassigned':
         raise ValueError('named integration owner required')
+    target = request.get('target_session')
+    if target is not None and (not isinstance(target, str) or not target.strip()):
+        raise ValueError('target_session must be a nonempty observed session ID')
     key = request['request_id']
     if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
         raise ValueError('invalid request ID')
     path = private_path(owner_state/'inbox'/f'{key}.json')
     if path.exists():
         old = json.loads(path.read_text())
-        for field in ('request_id','owner','consumer','plan','task_ids'):
+        for field in ('request_id','owner','consumer','plan','task_ids','target_session'):
             if old.get(field) != request.get(field):
                 raise ValueError('conflicting owner inbox request')
     else:
@@ -52,6 +55,7 @@ def route(request, owner_state):
         finally:
             os.unlink(temporary)
     return {'state':'delivered','inbox_path':str(path),
+            'target_session': target, 'session_wakeup':'not_attempted',
             'reply_path':str(owner_state/'outbox'/f'{key}.json'),
             'boundary':'local durable delivery only; not read, acknowledged or authorized'}
 
@@ -65,6 +69,8 @@ def read_reply(request, delivery):
             or reply.get('status') not in ('acknowledged','resolved','blocked')
             or not isinstance(reply.get('evidence'),str) or not reply['evidence'].strip()):
         raise ValueError('owner reply must bind request, owner, status and evidence')
+    if request.get('target_session') and reply.get('session_id') != request['target_session']:
+        raise ValueError('owner reply must bind the designated target session; same-profile cron evidence is not a parent reply')
     reply = dict(reply)
     if reply['status'] == 'resolved': reply['status'] = 'resolution_reported'
     return reply
@@ -104,6 +110,8 @@ def main(argv=None):
     parser.add_argument('--owner')
     parser.add_argument('--status', choices=('acknowledged','resolved','blocked'))
     parser.add_argument('--evidence')
+    parser.add_argument('--session-id', default=os.environ.get('HERMES_SESSION_ID'),
+                        help='Observed replying session ID, not a copied target or ownership grant')
     args=parser.parse_args(argv)
     state=private_path(args.state_dir)
     if args.action=='inbox':
@@ -116,6 +124,10 @@ def main(argv=None):
     if args.owner != request['owner'] or not args.status or not args.evidence:
         parser.error('exact --owner, --status and actual --evidence required')
     reply={'request_id':args.request_id,'owner':args.owner,'status':args.status,'evidence':args.evidence}
+    if request.get('target_session'):
+        if args.session_id != request['target_session']:
+            parser.error('reply requires the observed designated owner session; a sibling cron cannot answer for it')
+        reply['session_id']=args.session_id
     write(state/'outbox'/f'{args.request_id}.json',reply)
     print(json.dumps(reply))
     return 0

@@ -36,6 +36,38 @@ class ProgressRuntimeTests(unittest.TestCase):
         reply['owner']='integration';path.write_text(json.dumps(reply))
         self.assertEqual(runtime.read_reply(self.request,delivery)['status'],'acknowledged')
 
+    def test_same_profile_reply_must_bind_the_designated_owner_session(self):
+        import progress_runtime as runtime
+        self.request['target_session']='parent-session'
+        delivery=runtime.route(self.request,self.owner)
+        path=Path(delivery['reply_path']);path.parent.mkdir(exist_ok=True)
+        reply={'request_id':'request-1','owner':'integration','status':'blocked','evidence':'cron inspected state'}
+        for session in (None,'cron-session'):
+            if session is not None:reply['session_id']=session
+            path.write_text(json.dumps(reply))
+            with self.assertRaises(ValueError):runtime.read_reply(self.request,delivery)
+        reply['session_id']='parent-session';path.write_text(json.dumps(reply))
+        self.assertEqual(runtime.read_reply(self.request,delivery)['status'],'blocked')
+        self.assertEqual(delivery['session_wakeup'],'not_attempted')
+
+    def test_route_cannot_retarget_an_existing_request_to_a_different_session(self):
+        import progress_runtime as runtime
+        self.request['target_session']='parent-session'
+        runtime.route(self.request,self.owner)
+        with self.assertRaises(ValueError):runtime.route(dict(self.request,target_session='other-session'),self.owner)
+
+    def test_reply_cli_rejects_sibling_session_without_writing_outbox(self):
+        import progress_runtime as runtime
+        from contextlib import redirect_stderr
+        import io
+        self.request['target_session']='parent-session'
+        delivery=runtime.route(self.request,self.owner)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            runtime.main(['reply','--state-dir',str(self.owner),'--request-id','request-1',
+                          '--owner','integration','--status','blocked','--evidence','fixture://cron',
+                          '--session-id','cron-session'])
+        self.assertFalse(Path(delivery['reply_path']).exists())
+
     def test_resolution_claim_is_not_consumer_readiness(self):
         import progress_runtime as runtime
         delivery=runtime.route(self.request,self.owner)

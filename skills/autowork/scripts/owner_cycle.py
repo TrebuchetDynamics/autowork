@@ -188,6 +188,21 @@ def run_locked(args, state):
         request_binding = {'consumer': consumer, 'plan': args.plan, 'tasks': request_tasks,
                            'owner': args.integration_owner, 'blocker': key}
         if preparation: request_binding['admission'] = 'handoff_preparation'
+        # Bind an explicitly designated session before deduplication; a sibling
+        # cron using the same profile is not the parent integration session.
+        target_session = None
+        if args.apply:
+            try:
+                owner_route = read_json(state / 'owner-route.json')
+                if (isinstance(owner_route, dict) and owner_route.get('consumer') == consumer
+                        and owner_route.get('owner') == (args.integration_owner or 'unassigned')):
+                    target_session = owner_route.get('target_session')
+                    if target_session is not None:
+                        if not isinstance(target_session, str) or not target_session.strip():
+                            raise ValueError('owner route target_session must be a nonempty session ID')
+                        request_binding['target_session'] = target_session
+            except (ValueError, OSError) as exc:
+                result['routing_gap'] = str(exc)
         request_id = fingerprint(request_binding)
         path = state / 'requests' / (request_id + '.json')
         request = read_json(path)
@@ -201,6 +216,8 @@ def run_locked(args, state):
                        'instruction': ('Prepare attributed execution prerequisites and the same-task handoff under existing authority; do not replan a ready task' if preparation else
                                        'Reconcile accepted canonical inputs under existing integration ownership, then rerun owner cycle'),
                        'boundary': 'Local request only; not delivered, acknowledged or integration authority'}
+            if target_session is not None:
+                request['target_session'] = target_session
             save(path, request)
         updates = request.setdefault('evidence_updates', [])
         evidence = {'proposal': args.proposal, 'evidence': args.owner_evidence}
@@ -219,7 +236,8 @@ def run_locked(args, state):
                 route = read_json(state / 'owner-route.json')
                 if route is not None:
                     if (not isinstance(route, dict) or route.get('consumer') != consumer
-                            or route.get('owner') != request['owner']):
+                            or route.get('owner') != request['owner']
+                            or route.get('target_session') != request.get('target_session')):
                         raise ValueError('owner route must match canonical consumer and actual owner')
                     request['delivery'] = progress_runtime.route(request, route['state_dir'])
                     reply = progress_runtime.read_reply(request, request['delivery'])

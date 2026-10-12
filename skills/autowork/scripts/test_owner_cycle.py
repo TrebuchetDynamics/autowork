@@ -65,6 +65,23 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertFalse(receipt['dispatch_attempted'])
         for path,contents in before.items():self.assertEqual(path.read_bytes(),contents)
 
+    def test_parent_session_is_bound_in_request_and_delivery(self):
+        self.state.mkdir();owner=self.root/'parent';owner.mkdir()
+        (self.state/'owner-route.json').write_text(json.dumps({'consumer':str(self.repo),
+            'owner':'parent','state_dir':str(owner),'target_session':'parent-session'}))
+        _,first=self.run_cycle('--apply','--integration-owner','parent')
+        request=json.loads(Path(first['integration_request']).read_text())
+        inbox=json.loads(Path(request['delivery']['inbox_path']).read_text())
+        self.assertEqual(inbox['target_session'],'parent-session')
+        self.assertEqual(request['delivery']['session_wakeup'],'not_attempted')
+        reply=Path(request['delivery']['reply_path']);reply.parent.mkdir(exist_ok=True)
+        reply.write_text(json.dumps({'request_id':request['request_id'],'owner':'parent',
+             'status':'blocked','evidence':'cron observation','session_id':'cron-session'}))
+        _,second=self.run_cycle('--apply','--integration-owner','parent')
+        self.assertEqual(second['request_status'],'pending')
+        self.assertIn('designated target session',second['routing_gap'])
+        self.assertEqual(second['integration_request'],first['integration_request'])
+
     def test_ledger_input_change_resets_repetition(self):
         self.run_cycle()
         (self.repo/'TODO.md').write_text('# Changed owner inputs\n')
