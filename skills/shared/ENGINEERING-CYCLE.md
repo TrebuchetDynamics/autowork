@@ -10,7 +10,35 @@ no-deploy and other user boundaries throughout; skill defaults cannot expand the
 Apply [TODO work center](TODO-WORKCENTER.md): TODO.md holds user-facing plans and
 orders; reconcile it with goals.json before selection or rendering. Autoresearch
 persists findings there by default. Autowork invokes bounded planning when useful
-work needs decomposition or the observed queue is empty, then retries execution.
+work has unresolved research or decomposition questions, then retries execution.
+An empty queue alone calls for bounded inspection, not mandatory Autoresearch.
+
+## One coordinator, supporting skills on demand
+
+Autowork is the default coordinator for authorized repository development. It owns
+selection, execution handoff, reconciliation and closeout. An explicitly requested
+specialist command stays within its own scope; it does not secretly start Autowork.
+Installation makes skills available, not mandatory to load or invoke.
+
+| Current need | Smallest workflow |
+| --- | --- |
+| Ready task with clear checks | Autowork executes; no research or documentation prepass. |
+| Known small repair, empty queue | Record one bounded task and execute; no research ceremony. |
+| Unresolved hypothesis, tradeoff or measured optimization | Bounded Autoresearch, then return findings to the same Autowork task. |
+| Affected docs, accepted decisions or task metadata | Narrow repo-docs Maintain; no repository bootstrap. |
+| User requirements that evidence cannot answer | repo-interview; Grill Me only for requested/advisable adversarial questioning. |
+| Specific engineering method gap | Engineering reference adapter and the relevant protocol only. |
+| UI/design work | Impeccable when relevant; no design pass for unrelated changes. |
+
+Zero supporting skills is valid when the task and repository checks suffice. Load
+one relevant method at a time and stop when the gap is resolved; the table below
+is a menu, not a checklist. Do not reread unchanged supporting instructions within
+the same task or add a second review/planning loop merely because a skill exists.
+Explicit user-required methods and actual acceptance/review gates still apply.
+A helper called by Autowork returns findings, changed paths, checks and task IDs to
+that coordinator; it never starts another picker, backlog or scheduler. Reuse the
+same TODO entry and receipt. Record a skill's application only when it materially
+changes a decision or artifact; never manufacture receipts for unused skills.
 
 ## Autoresearch evidence enters the same cycle
 
@@ -60,9 +88,9 @@ never relabel it Accepted merely because the engineering choice is reversible.
 Resolve bundled skills through `hermes-toolset:repo-docs`, `hermes-toolset:autowork`
 and [hermes-toolset:engineering](../engineering/SKILL.md), or their actual loaded
 SKILL.md paths. The engineering adapter's pinned Addy snapshot is the default;
-load its phase router and only relevant protocols/support files. This works without
-external imports and avoids ambiguous bare names. Preserve upstream bytes and
-apply the adapter's TODO, authorization and host-tool translations.
+consult its phase router only when a method is needed; load selected support only. This works without
+external imports and avoids ambiguous bare names. Preserve recorded vendored
+adaptations and apply the adapter's TODO, authorization and host-tool translations.
 
 An explicit user request to use a separate installed Addy version wins: verify its
 source/revision through the profile catalog and `skills/.hub/lock.json`, disclose
@@ -96,21 +124,13 @@ namespace or assume another profile's home. Existing imports are left intact.
 | Browser behavior needs qualification | `browser-testing-with-devtools` | Exercise the actual journey on the required environment; static checks are not browser proof. |
 | External implementation/API behavior is uncertain | `source-driven-development` | Verify authoritative source/contracts before relying on remembered behavior. |
 
-At intake and whenever the work changes phase, match the actual task against this
-matrix. Repo-docs planning uses `planning-and-task-breakdown` and
-`documentation-and-adrs`, plus spec/constraint/domain skills for evidenced gaps.
-Autowork implementation uses `incremental-implementation`, the relevant domain
-skills, `test-driven-development` for behavior changes, and
-`code-review-and-quality` plus `git-workflow-and-versioning` at closeout. Reuse
-existing accepted specs, plans and quality bars instead of recreating them.
-
-For each relevant skill, read its verified instructions, apply its method and keep
-one compact receipt in the existing task/plan: `Skill application: trigger, verified
-skill path, decision/artifact, check/result`. Carry planning receipts into the
-worker contract; workers add implementation and verification receipts at handoff.
-A skill name in a list or a loaded file alone is not evidence of use. Report
-unavailable skills with the actual fallback and any remaining coverage gap. Select
-by applicability, not an arbitrary quota; reassess after new risks or failures.
+Consult this menu only for an unresolved method gap or explicit protocol request.
+A phase change alone is not a trigger. Reuse accepted specs, plans, quality bars
+and repository procedures; do not replay planning, review or delivery workflows.
+For a protocol actually applied, record material decision/artifact/check evidence
+in the existing task receipt. Do not create an application record for every skill
+that could conceivably be relevant. Missing optional guidance is not a gate;
+missing required acceptance or execution capability must still be reported.
 
 Load only relevant skills, not this whole table. Adapt upstream examples such as
 `tasks/todo.md`, new spec files and automatic commits to existing owners and

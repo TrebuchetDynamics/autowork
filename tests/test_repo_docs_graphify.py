@@ -6,9 +6,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class GraphifyContractTests(unittest.TestCase):
-    def test_discovery_and_planning_require_graphify(self):
+    def test_graphify_is_targeted_to_relationship_analysis(self):
         core = (ROOT / 'skills/repo-docs/SKILL.md').read_text()
-        self.assertIn('## 2a. Mandatory Graphify analysis', core)
+        self.assertIn('## 2a. Targeted relationship analysis', core)
+        self.assertIn('Routine link, wording and task-metadata repairs use direct source evidence', core)
+        self.assertNotIn('Mandatory Graphify analysis', core)
         self.assertIn('references/graphify-analysis.md', core)
         self.assertIn('Graph evidence:', core)
         self.assertIn('Graphify coverage/limitations', core)

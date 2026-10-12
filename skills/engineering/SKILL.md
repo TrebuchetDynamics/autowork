@@ -1,6 +1,6 @@
 ---
 name: engineering
-description: "Use when planning, implementing, debugging, reviewing or documenting repository work with the bundled Addy engineering protocols."
+description: "Reference adapter for a specific engineering method gap or explicit Addy protocol request; not a mandatory lifecycle or repository coordinator."
 version: 0.1.0
 license: MIT
 ---
@@ -8,13 +8,15 @@ license: MIT
 # Engineering protocols for Hermes
 
 Apply the pinned Addy Osmani protocols to the current repository task. This adapter
-controls host integration; the upstream files retain their original bytes and MIT
-license. Read [provenance](UPSTREAM.json) for the exact revision and file hashes.
+controls host integration; upstream files retain their MIT license, with two
+documented defensive-example adaptations. Read [provenance](UPSTREAM.json) for the exact revision and file hashes.
 No external import, separate agent harness or upstream hook installation is needed.
 
 ## Select one phase, then relevant domain guidance
 
-Use the current task phase, not a requirement to run the whole lifecycle again:
+Use only when a concrete method gap exists. Zero protocols is valid for a clear
+task with sufficient repository instructions and checks. The phase defaults below
+are suggestions when consulting this adapter, not obligations on every task:
 
 | Phase | Protocols |
 | --- | --- |
@@ -50,7 +52,7 @@ permission to bypass a scanner or execution restriction.
 
 The upstream tree preserves `skills/<name>/` and root `references/` relationships.
 Only filenames `SKILL.md` are renamed `PROTOCOL.md` to prevent duplicate host
-registration; their contents are unchanged. For upstream links ending in SKILL.md,
+registration; content adaptations and original hashes are recorded in UPSTREAM.json. For upstream links ending in SKILL.md,
 use the corresponding PROTOCOL.md in this snapshot. `../../references/...` is
 relative to the selected protocol's folder. Upstream support-document references
 under `references/`, `skills/`, `docs/`, `agents/` and `commands/` resolve within

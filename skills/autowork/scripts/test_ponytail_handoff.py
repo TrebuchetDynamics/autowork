@@ -10,18 +10,19 @@ SPEC.loader.exec_module(m)
 
 
 class PonytailHandoffTests(unittest.TestCase):
-    def test_implementation_handoff_selects_ponytail_without_waiving_gates(self):
+    def test_implementation_handoff_makes_ponytail_optional_without_waiving_gates(self):
         contract = 'Objective: scoped implementation\nAcceptance: retain required checks'
         body = m.build_task_body(contract)
         self.assertIn(contract, body)
-        self.assertIn('Before solution design or implementation, load `ponytail`', body)
-        self.assertIn('test-driven-development', body)
+        self.assertIn('Use `ponytail` only for a concrete simplification tradeoff or explicit request', body)
+        self.assertNotIn('Before solution design or implementation, load `ponytail`', body)
+        self.assertIn('preserve relevant regression coverage', body)
         self.assertIn('never waive safety, acceptance criteria or required checks', body)
         self.assertNotIn('load `ponytail-review`', body)
         self.assertIn('no push, merge, deploy', body)
         guide = (Path(__file__).parents[1] / 'references/handoff.md').read_text()
-        self.assertIn('Before solution design or implementation, load `ponytail`', guide)
-        self.assertIn('native-tool handoffs', guide)
+        self.assertIn('not as\na mandatory startup step', guide)
+        self.assertIn('Native-tool handoffs', guide)
 
 
 if __name__ == '__main__':

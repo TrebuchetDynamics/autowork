@@ -35,12 +35,10 @@ information. Ask the first useful question in the first response after this
 bounded inspection; do not return only an interview plan.
 
 Use the [engineering cycle](../shared/ENGINEERING-CYCLE.md) to resolve verified
-installed Addy skills. Apply `interview-me`'s focused hypothesis-and-response
-method; use `spec-driven-development` and `planning-and-task-breakdown` to turn
-answers into acceptance and bounded tasks, and `documentation-and-adrs` to save
-decisions in their owners. Load domain skills when the answers expose API, UI,
-migration or operational requirements. Record their concrete application when
-maintaining docs. If a supporting skill is missing, continue this workflow and
+installed Addy skills. Consult `interview-me` only if its questioning method adds value;
+use planning or documentation protocols only for a concrete gap when recording
+answers. Questions-only interviews need no planning, graph or documentation pass.
+Do not load a sequence of methods merely because answers mention an API or UI. If a supporting skill is missing, continue this workflow and
 report the fallback briefly at handoff, without delaying the first question; do not install or modify imported skills during the interview.
 
 This companion includes docs persistence, unlike a standalone intent interview.

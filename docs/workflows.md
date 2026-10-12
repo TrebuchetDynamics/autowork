@@ -92,7 +92,8 @@ TODO.md is the central work queue for plans, orders and progress. Autoresearch
 updates it by default and synchronizes goals.json; “do not implement” still saves
 the plan, while explicit read-only/chat-only/no-write/--dry-run writes nothing.
 Autowork reads those orders, executes ready tasks, and invokes bounded Autoresearch
-when tasks need decomposition or the queue is empty. It retries selection in the
+for unresolved research or decomposition questions. An empty queue starts with
+bounded inspection; an obvious repair needs no research pass. It retries selection in the
 same run. See [the work-center contract](../skills/shared/TODO-WORKCENTER.md).
 
 The [Hermes adapter](../skills/autoresearch/SKILL.md) connects research to repo-docs:

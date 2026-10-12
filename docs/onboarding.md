@@ -92,12 +92,12 @@ working directory is not confinement. See Hermes' [profile and workspace guidanc
 
 ## Optional: see decisions become a task
 
-This is the **full-workflow exercise**, not a core-only installation check.
-Saving interview answers invokes repo-docs Maintain, whose mandatory Graphify
-analysis needs an installed, configured Graphify integration and the relevant
-file/terminal tools. Native plugin installation alone does not set up Graphify.
-Use [full setup](installation.md) or satisfy those prerequisites separately, then
-check diagnostics and actual Graphify readiness before continuing.
+This exercise writes documentation and a task; it needs a configured model and
+file/terminal tools. Saving answers uses narrow repo-docs Maintain. A small utility
+with clear requirements can use direct source evidence without Graphify. Broader
+architecture or dependency analysis may benefit from that integration; native
+installation does not configure it. Use [full setup](installation.md) when those
+additional capabilities are needed. No implementation worker is started here.
 
 Use a new disposable Git repository with no real product data and a configured
 model. Command registration alone is not readiness for this exercise. In its CLI chat, try:

@@ -21,7 +21,7 @@ purpose and a useful bounded outcome are already clear.
 | Observed state | Work to do now |
 | --- | --- |
 | Empty/scaffold repo with known purpose | Inspect tooling, define the smallest working vertical slice and its acceptance, scaffold and implement it. |
-| Code exists, no useful task list | Inspect actual gaps, run one bounded Autoresearch Plan pass, then repo-docs Bootstrap/Maintain into canonical TODO.md/goals.json. |
+| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Reconcile canonical TODO.md/goals.json through scoped repo-docs. |
 | Ready tasks exist | Read their complete bodies and select accepted, dependency-ready work; skip replanning. |
 | Tests/build fail | Reproduce the failure, diagnose and fix with regression coverage; ordinary engineering failures are work. |
 | Task combines offline work and live qualification | Separate their acceptance; finish useful offline implementation/tests while preserving the live gate. |
@@ -29,7 +29,7 @@ purpose and a useful bounded outcome are already clear.
 | Repeated blocker | Repair attributable inputs, follow through owner handoff, or execute independent accepted work. Escalate only the exact external input still missing. |
 | Mature repo with no open task | Check one bounded source/test/user-flow seam against documented intent; implement a demonstrated gap, or report evidence that no useful authorized delta was found. |
 
-Use `hermes-toolset:autoresearch` subcommand `plan` for bounded discovery and
+Use `hermes-toolset:autoresearch` subcommand `plan` for unresolved discovery questions and
 `hermes-toolset:repo-docs` for canonical tasks. Planning follows
 [bounded backlog planning](backlog-planning.md): at most
 three useful slices, measurable checks, no invented scope or repetitive replanning.

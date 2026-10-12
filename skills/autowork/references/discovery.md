@@ -15,8 +15,8 @@ per day. With such a job, skip this section and search the milestone's gaps.
 Do not repeat a docs pass merely because a picker tick arrived. First resolve the active workspace, read
 repository instructions and explicit task boundaries, and check live ownership.
 These safety checks do not replace the documentation pass. Load the active
-profile's `repo-docs` skill and its STE-inspired reference with `skill_view` and
-apply them in this run. Merely mentioning the command, finding TODO.md, or
+profile's `repo-docs` skill for the needed reconciliation. Consult the STE-inspired
+reference only for substantive writing guidance, not a link or ID repair. Merely mentioning the command, finding TODO.md, or
 printing `/repo_docs` is not execution. Do not spawn a separate picker, invoke a
 recursive autowork, or enqueue another worker for this prerequisite.
 

@@ -1,6 +1,6 @@
 ---
 name: autowork
-description: "Develop a repository at any stage: discover useful tasks, plan, implement, verify and commit."
+description: "Default coordinator for authorized repository development: select tasks, execute, verify and close out; call supporting skills only for a concrete need."
 version: 0.25.0
 author: Hermes Agent
 platforms: [linux, macos]
@@ -20,7 +20,9 @@ Local work needs no external owner; [autonomous recovery](references/owner-cycle
 Default /autowork hands off one bounded native goal worker (50 turns by default; explicit 100).
 Use [the engineering cycle](../shared/ENGINEERING-CYCLE.md) for skill routing and
 review-gated reconciliation. Apply its autonomous decision rules and phase/domain
-skill matrix; carry decision and skill-application receipts into the worker contract.
+skill menu; carry material decisions and actually applied methods into the worker contract.
+Installation is availability, not a requirement to load every skill. A clear task
+needs no supporting skill; preserve explicit user methods and required checks.
 No recurring jobs.
 
 ## Mode precedence

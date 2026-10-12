@@ -65,9 +65,10 @@ presenting a helper exit code as the whole outcome. Include technical readiness
 results when useful. A saved plan is not an implemented feature.
 
 Autowork reads this queue first. Execute a clear runnable task directly. If a task
-needs substantive decomposition or no useful runnable tasks remain, invoke bounded
-Autoresearch planning in the current conversation, reconcile TODO/goals, validate
-and retry selection in the same occurrence. Under broad repo-development authority,
+has an unresolved research or decomposition question, invoke bounded Autoresearch
+in the current conversation. If the queue is empty, inspect for useful work first;
+a clear bounded repair needs only a task record, not a research pass. Reconcile
+TODO/goals, validate and retry selection in the same occurrence. Under broad repo-development authority,
 inspect a fresh relevant code/docs/UI/test seam and plan up to three evidence-backed
 slices. With task-limited authority, stay inside that scope. Do not invent work,
 loop on identical research, start a timer or require a separate owner reply.

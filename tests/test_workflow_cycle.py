@@ -68,14 +68,30 @@ class CycleGuidanceTests(unittest.TestCase):
             body = module.build_task_body('Objective: fixture', **kwargs)
             for phrase in ('Decide routine reversible choices yourself',
                            'Skill application:', 'trigger, verified skill path, decision/artifact, check/result',
-                           'planning-and-task-breakdown', 'constraint-driven-development',
-                           'incremental-implementation', 'code-review-and-quality',
-                           'git-workflow-and-versioning', 'pinned Addy adapter',
+                           'Use zero supporting skills when the contract and repository checks suffice',
+                           'Do not run the full skill lifecycle', 'pinned Addy adapter',
                            'Record the pinned revision'):
                 self.assertIn(phrase, body)
             self.assertNotIn('Questions (no reply = defaults apply)', body)
+            self.assertNotIn('Before solution design or implementation, load `ponytail`', body)
+            self.assertNotIn('Apply the cycle phase/domain matrix:', body)
             self.assertIn('Mandatory completion gate:', body)
             self.assertIn('required review acceptance', body)
+
+    def test_supporting_guidance_does_not_reintroduce_phase_checklists(self):
+        forbidden = {
+            'shared/ENGINEERING-CYCLE.md': ['At intake and whenever the work changes phase',
+                                           'For each relevant skill, read'],
+            'autoresearch/SKILL.md': ['Use verified Addy skills through the engineering-cycle matrix:'],
+            'autowork/references/discovery.md': ["skill and its STE-inspired reference with"],
+            'autowork/references/handoff.md': ['Before solution design or implementation, load `ponytail`'],
+            'autowork/references/backlog-planning.md': ['or immediately\nwhen the observed queue'],
+        }
+        for path, phrases in forbidden.items():
+            text = (ROOT / 'skills' / path).read_text()
+            for phrase in phrases:
+                with self.subTest(path=path, phrase=phrase):
+                    self.assertNotIn(phrase, text)
 
     def test_autonomy_does_not_turn_missing_intent_into_approval(self):
         core = (ROOT / 'skills/autowork/SKILL.md').read_text() + (ROOT / 'skills/autowork/references/iteration-and-decisions.md').read_text()

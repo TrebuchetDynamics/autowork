@@ -42,8 +42,9 @@ Also apply the engineering cycle's domain matrix: API work needs caller/error an
 compatibility criteria; migrations need transition/rollback; services need operational
 signals; CI changes need actual pipeline checks; UI needs interaction/accessibility
 criteria. Use `constraint-driven-development` to preserve the existing quality bar
-and `context-engineering` to make the worker contract self-contained. Load those
-skills when their trigger is present, and put their outputs in existing task bodies.
+and `context-engineering` to make the worker contract self-contained. Consult those skills only if current task instructions leave a concrete method gap;
+the domain criteria above do not mandate loading another skill. Keep outputs in
+existing task bodies.
 
 Decide routine choices with evidence now; do not create `Needs decision` tasks for
 internal naming, test selection, document organization or equivalent implementation

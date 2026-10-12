@@ -751,9 +751,9 @@ before task closure, then reconciles docs/TODO, validates/renders and reselects.
 A direct worker ledger role has the same acceptance/review precondition; pending
 review leaves canonical task status in_progress after worker review handoff.
 
-Before solution design or implementation, load `ponytail`; preserve test-driven-development
-and never waive safety, acceptance criteria or required checks for a smaller diff.
-Include this instruction in native-tool handoffs as well as the CLI-generated body.
+Use `ponytail` for a concrete simplification tradeoff or explicit request, not as
+a mandatory startup step. Preserve relevant regression coverage, acceptance and
+required checks. Native-tool handoffs follow the same selective-loading policy.
 Use ponytail's integrated complexity review, not a separate ponytail-review load.
 Skill consolidation lesson: archive the old discovery entry with provenance, remove
 it from vendor sync, and verify fresh command resolution; an existing session's

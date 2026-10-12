@@ -12,15 +12,19 @@ the complete [Impeccable design skill](skills/impeccable/SKILL.md) and
 25 pinned [Addy engineering protocols](skills/engineering/SKILL.md), with shared
 checklists, loaded by task phase rather than all at once.
 
+**Autowork coordinates repository development.** Supporting skills are available
+on demand; installation does not load them all or require a full workflow per task.
+Explicit specialist commands still work independently within their stated scope.
+
 ## What you can do
 
 | Workflow | Example in CLI chat | Result and possible changes | Readiness needed |
 | --- | --- | --- | --- |
-| Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core for questions/chat summary; Graphify + file/terminal tools to save decisions |
+| Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
 | Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. | Core + configured model |
-| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | Graphify + file/terminal tools |
-| Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, uses bounded Autoresearch when planning is needed or the queue is empty, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; Graphify for docs preparation |
-| Research and improve | `/autoresearch:plan Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through repo-docs. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; Graphify to record tasks |
+| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
+| Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, calls bounded Autoresearch for unresolved planning or research questions, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; supporting tools only when needed |
+| Research and improve | `/autoresearch:plan Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through repo-docs. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
@@ -64,8 +68,9 @@ creating a competing backlog. Explicit `read-only`, `chat-only`, `no-write` or
 `--dry-run` requests write nothing. Planning alone starts neither implementation
 nor a recurring job.
 
-Autowork uses a clear runnable task directly. When substantive planning is needed
-or the observed queue is empty, it invokes bounded Autoresearch, records useful
+Autowork uses a clear runnable task directly. When unresolved research or decomposition questions remain, it invokes bounded
+Autoresearch. An empty queue first gets a bounded inspection; clear repairs need
+no research ceremony. It records useful
 work in TODO.md and retries selection in the same run. Under broad repository
 scope, that can include evidenced documentation, UI/accessibility, test or refactor
 work. It preserves dependencies, active workers and live-operation limits; it does
@@ -192,7 +197,7 @@ or model error before attempting implementation workflows.
 Next, use the [core-only requirements interview](docs/onboarding.md#core-only-requirements-interview)
 to produce a useful decision summary in chat. The separate
 [full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task)
-saves docs and a TODO.md task; it requires Graphify and file/terminal tools.
+saves docs and a TODO.md task; it requires file/terminal tools; Graphify is relevant to relationship analysis.
 
 The bundled engineering pack is available without external skill imports. Autowork,
 Autoresearch and Repo Docs use its planning, implementation, debugging and review

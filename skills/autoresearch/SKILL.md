@@ -1,6 +1,6 @@
 ---
 name: autoresearch
-description: "Use when running autoresearch goal optimization, planning, debugging, fixes, security, shipping, probes, scenarios, prediction, reasoning, learning, improvements, evals or regression checks; reconcile findings into repo-docs and TODO.md."
+description: "Use for explicit Autoresearch commands or bounded investigation of unresolved hypotheses, planning tradeoffs and measured experiments. Not required for ordinary implementation or a ready task."
 version: 0.1.0
 license: MIT
 ---
@@ -11,6 +11,12 @@ Run the pinned Udit Goenka autoresearch protocols with Hermes tools and the exis
 repo-docs → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
 selected upstream protocol. These integration rules govern host/tool substitutions,
 repository ownership and handoff; preserve upstream research methods and flags.
+
+When called by Autowork, investigate the named uncertainty and return to its
+current task. Do not assume coordination of the repository, reopen settled plans,
+or start another worker/scheduler. Explicit subcommands retain their documented
+behavior within the user's scope. An empty queue with an obvious repair needs no
+research protocol.
 
 ## Default output: update the work queue
 
@@ -65,9 +71,9 @@ and requirement IDs. Research logs, TSV and upstream `handoff.json` remain evide
 not a second backlog or proof of completion. Use a unique per-run output directory
 under the existing research owner (avoid minute-timestamp collisions).
 
-Use verified Addy skills through the engineering-cycle matrix: planning and
-documentation for `plan`/`learn`/`improve`; diagnosis/TDD for `debug`/`fix`; applicable
-domain skills for security/performance/API work; review and versioning at closeout.
+The selected Autoresearch protocol is normally sufficient. Consult an Addy
+protocol only for a concrete method gap or explicit request; do not add a phase
+sequence or separate review/versioning workflow to an analysis-only command.
 Record the decision/artifact/check each selected skill changed. `repo-interview`
 or `grill-me` handles genuinely missing owner intent; routine reversible choices
 are autonomous. Existing accepted scope is enough: do not repeat upstream's generic

@@ -1,7 +1,8 @@
 # Autoresearch Plan fallback
 
-Use this when an existing task needs substantive decomposition, or immediately
-when the observed queue has no useful runnable work. First reconcile live workers
+Use this when an existing task needs substantive research or decomposition. An
+empty queue first needs bounded inspection; an obvious repair can be recorded and
+executed without a research protocol. First reconcile live workers
 and existing results; do not wait for repeated blocked runs. Apply
 [TODO work center](../../shared/TODO-WORKCENTER.md). An owner_cycle receipt may
 contain `planning.action`; that receipt is optional for entering the skill and
@@ -19,7 +20,8 @@ does not execute a model. Routine acceptance clarification needs no research pas
   existing authority; research cannot grant permission or repair routing.
 - `reuse`: read the bound prior receipt and act on its integration/execution outcome.
   Do not repeat the plan against identical inputs.
-- `plan`: execute the bounded pass below in this occurrence.
+- `plan`: prepare the bounded task in this occurrence. Use the research pass below
+  only for unresolved questions; direct evidence and a clear repair need no protocol.
 
 These decisions cover the bound task, not the entire repository. For a broad
 development request with no runnable task, use [repository maintenance](repository-maintenance.md)

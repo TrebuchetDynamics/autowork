@@ -40,7 +40,7 @@ Maintain, not bootstrap. Preserve IDs, focus, completed work, history, active ow
 and unrelated edits. State mode/scope briefly, then make the authorized changes.
 
 Apply the [autonomous decision rules](../shared/ENGINEERING-CYCLE.md#autonomous-decisions-are-the-default)
-and its phase/domain skill matrix at intake and handoff. Decide routine engineering
+and consult its phase/domain skill menu only for a concrete method gap. Decide routine engineering
 choices now, record material reasoning, and carry decisions and skill-application
 receipts into task bodies; ask only for genuinely missing owner intent or authority.
 
@@ -80,16 +80,17 @@ Resolve the actual consumer, not just a docs-only scratch checkout. Scratch
 `validate` passing does not give the consumer a backlog: no consumer backlog means
 `draft_saved`.
 
-## 2a. Mandatory Graphify analysis
+## 2a. Targeted relationship analysis
 
-Load `graphify` and [Graphify analysis](references/graphify-analysis.md) before
-architecture analysis, document corrections or goal-gap/task decomposition. Use a
-fresh scoped graph, query real component/dependency/test paths, and corroborate
-findings in source and accepted intent. Bootstrap/Maintain builds or refreshes the
-graph where authorized; Audit only reads existing graph/source and writes nothing.
-Report missing/stale/partial coverage explicitly; never silently skip Graphify or
-claim source-only fallback is a completed graph analysis. Graph inference is not
-approval, executed validation, or sufficient grounds for a new executable task.
+Routine link, wording and task-metadata repairs use direct source evidence;
+no Graphify or other supporting skill is required merely to edit documentation.
+For architecture, cross-component impact or uncertain task dependencies, use
+`graphify` and [Graphify analysis](references/graphify-analysis.md) when its map
+adds needed evidence. Corroborate graph findings in source and accepted intent.
+An explicit Graphify requirement remains binding. If graph tooling is unavailable,
+use bounded source inspection where sufficient and report material coverage gaps;
+never claim that source-only work completed a requested graph analysis. Audit
+reads existing artifacts only. Graph inference is not approval or executed validation.
 
 ## 3. Intent and evidence
 
@@ -206,9 +207,9 @@ never gitignore it. Use supported `scripts/goals.py` operations or write JSON th
    owners/dependencies. Reread concurrent completion evidence, rerender before
    stability checks, and never reopen done work for queue counts.
 
-Each new or materially revised body includes `Graph evidence:` in Sources: verified
-nodes/paths, source locations, confidence and coverage, or an explicit graph gap
-with source-backed evidence. Derive bounded outcome slices, blast radius and real
+When graph analysis was used or explicitly required, include `Graph evidence:` in
+affected Sources: verified nodes/paths, confidence and coverage, or the graph gap.
+Otherwise cite direct source evidence without inventing graph metadata. Derive bounded outcome slices, blast radius and real
 prerequisites from corroborated relationships, not graph centrality alone.
 
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
@@ -306,8 +307,8 @@ and no-implementation limits carry across all chained research commands.
 
 ## 6. Language, verification and report
 
-Load [the STE-inspired writing profile](references/ste-inspired-profile.md) for
-changed English. Review literals, meaning and repository facts separately; no
+Consult [the STE-inspired writing profile](references/ste-inspired-profile.md)
+for substantive English-writing guidance when useful, not for a link or ID repair. Review literals, meaning and repository facts separately; no
 translation by default or dictionary-compliance claim from sentence counts.
 Use [bootstrap/idempotency regression](references/bootstrap-idempotency-regression.md)
 for authorized behavioral checks; static text tests do not prove model adherence.
@@ -328,7 +329,8 @@ Report scope, changed owners, actual checks, gaps and eligible next task. Bootst
 includes role/path/outcome coverage; Maintain only affected roles. Include TODO/goals
 paths, IDs/status counts, validate and archive checks, and consumer state/exit.
 Backlog is not dispatch/delivery proof. Name language/behavior checks not performed.
-Include Graphify coverage/limitations, freshness, actual queries, source corroboration
+When graph analysis was used or required, include Graphify coverage/limitations,
+freshness, actual queries, source corroboration
 and the evidence chain behind changed docs and tasks; graph output alone is not delivery.
 
 ## Hard-blocker coordination contract

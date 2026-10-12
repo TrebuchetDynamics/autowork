@@ -1,7 +1,8 @@
 # Graphify-backed documentation and task planning
 
-Mandatory for repo-docs Bootstrap/Maintain analysis and read-only Audit where a
-graph is available. Load the installed `graphify` skill and its needed references;
+Use for relationship analysis when a graph adds needed evidence, or when
+explicitly required. Routine wording, link and metadata repairs do not need it.
+Load the installed `graphify` skill and only its needed references;
 follow its supported pipeline rather than inventing a slash-command shell CLI.
 Graphify supplies a map, not accepted intent, approval, executed tests or delivery.
 
@@ -88,7 +89,7 @@ accepted intent remain proposals or owner questions, not executable work. Reuse
 IDs and preserve completed work, leases, focus and canonical ledger authority;
 do not invent task IDs from graph node IDs.
 
-Every added or materially revised task carries the existing required body fields
+For graph-backed work, every added or materially revised task carries the required body fields
 plus `Graph evidence:` inside its Sources section (node/path, source locations,
 confidence and scope). If graph coverage is unavailable, say so and cite the
 verified source instead. Do not require graph metadata for untouched historical tasks.
