@@ -48,6 +48,22 @@ collision; the skipped alias produces a warning and the qualified skill remains
 available. Choose distinctive names to avoid collisions with other plugins,
 local skills, and configured quick commands.
 
+Public names and stable implementation IDs are deliberately different:
+
+| Primary command | Stable skill ID | Compatibility command |
+| --- | --- | --- |
+| `/plan_with_me` | `repo-interview` | `/repo_interview` |
+| `/plan_for_me` | `autoresearch` (plan protocol) | `/autoresearch_plan` |
+| `/docs_sync` | `repo-docs` | `/repo_docs` |
+| `/autowork` | `autowork` | None; Autogoal is retired |
+
+Do not rename helper paths, saved receipt keys or qualified skill IDs merely to
+match a public command. Autogoal references in migration code preserve old state;
+they do not register a live command. Hindsight is not a bundle integration; its
+negative tests prevent accidental reintroduction. Updating source does not refresh
+an already-running gateway's command registry: use supported plugin reload and
+verify activation before claiming the new names work in messaging.
+
 Repo-docs and autowork decide routine engineering choices autonomously within the
 accepted scope. They carry decisions into worker contracts and apply relevant
 [Addy agent-skills](https://github.com/addyosmani/agent-skills) throughout planning,

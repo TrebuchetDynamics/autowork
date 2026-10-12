@@ -275,8 +275,9 @@ details inside them (no additional contract fields are required):
 
 Report three distinct states: **implemented** means the scoped artifact exists;
 **qualified** means checks passed on a named platform/backend against exact
-source; **delivered** means the qualified outcome is verified merged into main.
-Read back the merged PR and main commit/reachable source before claiming delivery.
+source; **delivered** means the qualified outcome is verified integrated into the
+authorized target. Read back target ancestry and PR evidence when repository policy
+requires it. Report local integration and remote publication separately.
 Neither a fixture pass, local commit, review handoff nor a passing isolated branch
 proves a usable milestone delivered on main.
 
@@ -290,8 +291,10 @@ Reuse evidence only for the exact source/dependencies/environment and relevant
 check inputs; invalidate affected checks after changes, not all checks reflexively.
 Record commands, duration, repeated failures and verification cost (actual tool or
 usage receipts; unknown cost is unknown, not zero). Run only required PR checks
-for landing; no optional-suite treadmill. Land through a protected PR with required
-checks satisfied; no direct main pushes, admin override or protection bypass.
+for landing; no optional-suite treadmill. Use a protected PR when repository policy
+requires it; otherwise use the authorized local integration path after checks/review.
+Workers do not directly push main. Remote publication needs its own authority;
+no admin override or protection bypass.
 
 Product receipts/reporting retain the primary milestone, merged user outcomes,
 qualification boundaries, remaining gaps, recurring failure causes and verification
@@ -768,9 +771,10 @@ resolve their location/attribution before claiming acceptance.
 
 Explicit task/repository restrictions (such as no commit) win: skip this helper,
 run checks separately and report the restriction plus any uncommitted owned files.
-The integration owner lands a protected PR after required checks; this standing
-local-commit requirement never authorizes a push or merge. Existing separately
-validated task-ref publication authority remains the only scoped push exception.
+The coordinator integrates after checks/review through repository policy, using a
+protected PR only when required. This worker-local commit requirement alone does not
+authorize publication or let workers merge. Existing separately validated task-ref
+publication authority remains the only scoped worker push exception.
 The helper executes checks and commits when invoked; it cannot independently
 establish file ownership, completeness of chosen checks, or force a native worker
 to invoke it. The generated worker definition of done requires its receipt.
@@ -779,7 +783,8 @@ to invoke it. The generated worker definition of done requires its receipt.
 
 Read [the engineering cycle](../../shared/ENGINEERING-CYCLE.md) for installed skill
 identity, targeted addyosmani guidance and transparent missing-support fallbacks.
-Whole-spec workers use proposal ledger mode with a named integration owner. Workers
+Whole-spec workers default to worker ledger mode; proposal mode requires an explicit
+split-role request with a named integration owner. Workers
 update scoped docs and return evidence; the owner waits for required review acceptance
 before task closure, then reconciles docs/TODO, validates/renders and reselects.
 A direct worker ledger role has the same acceptance/review precondition; pending

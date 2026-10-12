@@ -23,7 +23,7 @@ review-gated reconciliation. Apply its autonomous decision rules and phase/domai
 skill menu; carry material decisions and actually applied methods into the worker contract.
 Installation is availability, not a requirement to load every skill. A clear task
 needs no supporting skill; preserve explicit user methods and required checks.
-No recurring jobs.
+Does not create recurring jobs; existing authorized cron jobs may invoke it.
 
 ## Mode precedence
 
@@ -100,7 +100,9 @@ Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
     no_changes means no new commit. Explicit no-commit instructions win.
     See references/handoff.md for commands, ownership and delivery safeguards.
     Never commit foreign work, secrets or build output; never
-    push, merge, rebase, amend or bypass protected PR checks without explicit authority.
+    push, rebase, amend or bypass protected PR checks without explicit authority.
+    Coordinator local integration follows standing repository authority and review;
+    worker contracts do not grant workers merge permission.
 13. **State hygiene.** Keep `autowork/state.json` under ~20 KB: the last 20 entries
     with a fixed schema; older entries go to `autowork/history/`. Keep picker
     receipts to the last 10. Preserve downstream launch inputs outside disposable

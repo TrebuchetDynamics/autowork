@@ -174,8 +174,10 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
 2. For explicitly authorized whole-spec execution, the integration owner reads
    `goals.py next <repo> --json`, restricts selection to accepted IDs, checks live
    ownership and fresh sources, and hands off a dependency-ready slice through
-   existing start_goal admission. Use `--ledger-mode proposal --integration-owner
-   <owner>` with the existing base, source snapshot, task ID and complete contract.
+   existing start_goal admission. Use default `worker` ledger mode with the existing
+   base, source snapshot, task ID and complete contract. Use
+   `--ledger-mode proposal --integration-owner <owner>` only for an explicitly
+   requested split-role workflow; whole-spec scope alone does not select proposal mode.
    Mark in_progress only after actual handoff. No new scheduler or substitute run.
 3. The worker loads the relevant verified skills, implements, runs checks and
    updates scoped documentation. It returns task/goal IDs, changed paths, source

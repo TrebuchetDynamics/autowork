@@ -15,7 +15,7 @@ installation hashes and command routing checks are not behavioral evidence.
    profile/schedule edits, agent-instruction edits, commits and goal dispatch.
    The reduced fixture has no platform runners; docs must disclose that limit.
 3. Snapshot all input paths and SHA-256 bytes. Check live CLI help, then invoke
-   the actual bare `/repo-docs` using `hermes chat --in <fixture> -q /repo-docs
+   the actual bare `/docs_sync` using `hermes chat --in <fixture> -q /docs_sync
    --oneshot -Q --max-turns <bounded-budget> --run-budget <seconds>` through
    `terminal`. Do not replace it with a bespoke Markdown generator or an extra
    prompt that specifies all expected output files. Preserve stdout, stderr,

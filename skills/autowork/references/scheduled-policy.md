@@ -54,8 +54,10 @@ and read back the exact remote ref and SHA. Forward scoped worker publication th
 `start_goal.py --publication-authority` per `references/handoff.md`; do not rely on a
 parent prompt to override the worker's no-push contract. Otherwise the authorized
 integration owner delivers the completed candidate. Use the receipt commit SHA,
-not assumed HEAD: `agent_commit.sh` can leave HEAD unchanged. No force push, merge,
-deployment, protection bypass, foreign edits or main-only admission bypass.
+not assumed HEAD: `agent_commit.sh` can leave HEAD unchanged. The coordinator may
+perform authorized local integration after checks and required review, following
+repository policy. No force push, unauthorized remote publication or deployment,
+protection bypass, foreign edits or main-only admission bypass.
 A local commit is incomplete delivery when an authorized push remains held.
 
 ## Scoped offline task isolation
@@ -116,8 +118,10 @@ hidden docs generation, unpause jobs or replace an in_progress task.
 The individual existing helpers remain available for separately authorized steps:
 - Missing/malformed accepted task bodies: source-bound recover_backlog.py under
   canonical revision/ownership guards, then retry the exact consumer gate.
-- Uncommitted planning files: use proposal ledger mode with its automatic frozen
-  planning context; no planning-files prerequisite commit is needed.
+- Uncommitted planning files in an explicitly requested proposal workflow: use its
+  automatic frozen planning context; no planning-files prerequisite commit is needed.
+  Otherwise retain worker mode and reconcile attributable planning changes through
+  the normal authorized candidate preparation; dirt alone does not select proposal mode.
 - Dirty executable prerequisites excluded from the candidate: prepare_prerequisites.py
   only with existing explicit attribution; never adopt foreign dirty work.
 - No eligible selection after maintenance: retry_selection.py against the actual

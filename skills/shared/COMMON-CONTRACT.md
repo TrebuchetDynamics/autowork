@@ -3,8 +3,11 @@
 User instructions and repository rules define the authorized scope. Read the
 relevant instructions, current source, tests and existing documentation before
 changing their owners. Keep proposals distinct from accepted requirements and
-implemented behavior. A skill invocation does not independently authorize source
-changes, installation, publication, third-party contact or destructive actions.
+implemented behavior. An explicit skill invocation authorizes its documented default
+actions within the user's scope: planning commands may save docs/tasks, and Autowork
+may implement, test and commit locally. Loading a supporting skill adds no authority.
+Installation, publication, third-party contact and destructive actions require their
+own authorization; specific no-write/no-commit restrictions always take precedence.
 
 Inspect status and preserve pre-existing edits, untracked files and live ownership.
 Use [worktree isolation](WORKTREE-ISOLATION.md) when a separate writing checkout

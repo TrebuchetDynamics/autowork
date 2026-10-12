@@ -1,4 +1,4 @@
-"""Run the real bare /repo-docs twice on a fresh fixture: docs must be built, every
+"""Run the real bare /docs_sync twice on a fresh fixture: docs must be built, every
 unmet goal must get a TODO.md task keyed to it, and the second pass must be byte-exact.
 
 Rebuild the fixture first (see references/bootstrap-idempotency-regression.md); this
@@ -40,7 +40,7 @@ env['HERMES_EPHEMERAL_SYSTEM_PROMPT'] = (
     'policy, preserving byte-exact no-op on a second pass. The README states the accepted intent; no '
     'user action is required. The fixture has no platform runners; do not imply product tests ran.')
 command = ['hermes', 'chat', '--in', str(fixture), '--oneshot', '-Q',
-           '--max-turns', '40', '--run-budget', '420', '-q', '/repo-docs']
+           '--max-turns', '40', '--run-budget', '420', '-q', '/docs_sync']
 results = []
 for number in (1, 2):
     proc = subprocess.run(command, env=env, capture_output=True, text=True, timeout=480)

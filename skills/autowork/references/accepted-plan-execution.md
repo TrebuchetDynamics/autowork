@@ -54,8 +54,10 @@ an accepted plan or named task. A plan review or design approval alone is not ex
 Resolve local commit authority before handoff: autowork normally makes an isolated
 agent-branch commit after acceptance. Carry an explicit no-commit boundary in the
 worker contract when commits are not authorized; never override that boundary to
-satisfy a review/delivery step. Do not push, merge, change profiles or cron, install
-upstream hooks, or turn design acceptance into implementation authorization. The existing executor
+satisfy a review/delivery step. Workers do not merge; the coordinator may perform
+authorized local integration after required checks/review under repository policy.
+Do not push without publication authority, change profiles or cron, install upstream
+hooks, or turn design acceptance into implementation authorization. The existing executor
 uses POSIX helpers, hence Linux/macOS. A returned contract or card is not a completed
 worker, accepted review, merge or delivered milestone.
 

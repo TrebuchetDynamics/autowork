@@ -17,7 +17,7 @@ repository instructions and explicit task boundaries, and check live ownership.
 These safety checks do not replace the documentation pass. Load the active
 profile's `repo-docs` skill for the needed reconciliation. Consult the STE-inspired
 reference only for substantive writing guidance, not a link or ID repair. Merely mentioning the command, finding TODO.md, or
-printing `/repo_docs` is not execution. Do not spawn a separate picker, invoke a
+printing `/docs_sync` is not execution. Do not spawn a separate picker, invoke a
 recursive autowork, or enqueue another worker for this prerequisite.
 
 Use Maintain by default. Use bounded Bootstrap only for missing, applicable docs
@@ -86,7 +86,7 @@ source, scope, project payoff, acceptance check, dependencies, and ownership; ve
 these against current repository state before selecting. Skip `Done`, proposed or
 unapproved work, and `Blocked / Needs decision` items until their actual gate is
 resolved. Preserve task IDs and authoritative tracker links rather than copying the
-queue into a competing ledger. A standalone bare `/repo_docs` (or the profile's
+queue into a competing ledger. A standalone bare `/docs_sync` (or the profile's
 `repo-docs` cron job) maintains docs and this handoff. `/autowork` runs the bounded
 repo-docs pass above only when Operating priority 2 calls for missing/stale backlog
 repair without an enabled docs job, then selects one remaining eligible slice under its existing
