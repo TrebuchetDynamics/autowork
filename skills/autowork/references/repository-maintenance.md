@@ -8,6 +8,35 @@ Explicit task-only scope, pauses, excluded directories and live-operation limits
 still win. Do not interpret a task-specific recovery failure as a repository-wide
 prohibition; equally, do not silently override a genuine repository-wide hold.
 
+## Make ordinary decisions; do not delegate them back to the user
+
+For a broad development job invoke owner_cycle.py with `--scope repository`.
+Explicit task-only work uses `--scope tasks` (the helper's conservative default).
+`discover_repository_work` is an instruction to act, not a finished occurrence:
+load the bounded planner, choose the most valuable evidenced slice, reconcile its
+canonical task and continue execution. A missing route for the held task does not
+invalidate independent authority. Do not rename a blocked report to ACTION_REQUIRED
+and stop; the helper cannot do the model's investigation or implementation for it.
+
+Choose routine implementation approach, task decomposition, local check commands,
+documentation corrections and reversible refactoring under standing repository
+scope. Prepare your own contract/base/snapshot. If the current profile already is
+the verified integration owner, use its existing authority; no request to a second
+owner is needed. Discover an unknown route from current ownership records, never
+invent the owner or assert that sending a request granted permission.
+
+Record a short decision with chosen task, supporting source, rejected alternative,
+acceptance check and actual action taken in `work_search`. For a repeated hold,
+compare up to three concrete candidates across two relevant work classes before
+claiming the bounded search exhausted. A clean infrastructure test is not evidence
+that documentation, UX or another authorized component has no useful work. Do not
+manufacture a candidate to meet a quota: record the evidence when none is found.
+
+A true repository-wide policy conflict remains a blocker. Do not rewrite project
+instructions, waive native admission, take another owner's files or perform live
+operations to evade it. State the exact rule and missing decision once; keep that
+hold separate from ordinary engineering choices that can already be made.
+
 ## Select, discover, execute
 
 1. Reconcile running workers and completed results; prefer an existing ready task.

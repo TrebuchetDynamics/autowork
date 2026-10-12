@@ -25,6 +25,23 @@ class BacklogPlanTests(unittest.TestCase):
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'execute_ready_work')
         self.cycle['ready_queue']=[];self.cycle['recovery']['gate']='ownership'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'reconcile_owner')
+    def test_repository_scope_keeps_deciding_beyond_cached_task_hold(self):
+        self.cycle['scope']='repository'
+        backlog_plan.record(self.cycle,self.state,'fixture://findings','no_supported_delta')
+        for gate in ('consumer_readiness','prerequisites','candidate','source_freshness','owner_authority'):
+            self.cycle['recovery']['gate']=gate
+            result=backlog_plan.decide(self.cycle,self.state)
+            self.assertEqual(result['action'],'discover_repository_work', gate)
+            self.assertTrue(result['execution_required'])
+        self.cycle['scope']='tasks'
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'repair_execution_inputs')
+
+    def test_repository_scope_does_not_bypass_ownership_or_canonical_integration(self):
+        self.cycle['scope']='repository'
+        for gate, action in [('ownership','reconcile_owner'),('ledger','integrate_existing_inputs')]:
+            self.cycle['recovery']['gate']=gate
+            self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],action)
+
     def test_receipt_requires_actual_evidence_and_known_outcome(self):
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'','no_supported_delta')
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'fixture://receipt','completed')

@@ -21,6 +21,13 @@ def decide(cycle, state):
         return {'action':'execute_ready_work','reason':'Use the existing accepted task before planning'}
     if gate=='ledger':
         return {'action':'integrate_existing_inputs','reason':'Reconcile canonical backlog with its owner; do not create another detached plan'}
+    if (cycle.get('scope') == 'repository' and gate in
+            ('consumer_readiness','owner_authority','source_freshness','prerequisites','candidate')):
+        return {'action':'discover_repository_work', 'execution_required':True,
+                'skill':'hermes-toolset:autoresearch', 'subcommand':'plan',
+                'reason':'The selected task is held; repository development authority still covers independent work',
+                'handoff':'Choose an evidence-backed independent maintenance slice, reconcile canonical tasks and execute it in this occurrence',
+                'boundary':'Preserve the held task, ownership and live gates; this decision is not discovery execution or completion'}
     if gate in ('refused','owner_authority','source_freshness','prerequisites','candidate'):
         return {'action':'repair_execution_inputs','reason':'Planning cannot supply missing authority or execution prerequisites'}
     token=key(cycle)

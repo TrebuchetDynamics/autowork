@@ -104,6 +104,7 @@ def run_locked(args, state):
         args.authority = str(progress_runtime.private_path(state / 'recovery-authority.json'))
     result = {'version': 1, 'timestamp': now, 'run_id': uuid.uuid4().hex,
               'task_ids': args.tasks.split(','), 'plan': args.plan, 'completed_tasks': [],
+              'scope': getattr(args, 'scope', 'tasks'),
               'dispatch_attempted': False, 'implementation': 'not_executed',
               'delivery': 'no product commit or push by this runner', 'outcome': 'BLOCKED',
               'work_search': {'state': 'not_evaluated'},
@@ -266,6 +267,12 @@ def run_locked(args, state):
         result['action'] = 'escalate_missing_owner_route'
         result['next_action'] = result['routing_gap']
     result['planning'] = backlog_plan.decide(result, state)
+    if result['planning']['action'] == 'discover_repository_work' and not result['dispatch_attempted']:
+        result.update(action='discover_repository_work', outcome='ACTION_REQUIRED',
+                      next_action=result['planning']['handoff'])
+    elif preparation:
+        result.update(action='prepare_execution_handoff',
+                      next_action='Prepare the contract, base and snapshot under existing authority; a missing owner route does not delegate ordinary preparation to the user')
     save(state / 'history' / (result['run_id'] + '.json'), result)
     save(state / 'unblock-latest.json', result)
     save(state / 'report-latest.txt', render(result))
@@ -294,6 +301,8 @@ def main(argv=None):
     for name in ('canonical-repo', 'authority', 'prerequisite-request', 'candidate-request',
                  'handoff-request', 'integration-owner', 'proposal', 'owner-evidence'):
         parser.add_argument('--' + name)
+    parser.add_argument('--scope', choices=('tasks', 'repository'), default='tasks',
+                        help='Repository-wide development authority permits independent maintenance selection; named-task calls stay scoped by default')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--allow-ready-fallback', action='store_true', help='Allow an accepted same-milestone task when the preferred slice is held')
     parser.add_argument('--acknowledge', action='store_true', help='Record supplied owner acknowledgement, not inferred consent')

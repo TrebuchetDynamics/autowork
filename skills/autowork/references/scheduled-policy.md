@@ -10,8 +10,9 @@ existing worker engine and state. Missing task files alone are bootstrap work; a
 unintegrated owner proposal still requires reconciliation.
 
 Before a blocked or idle report, execute [the owner recovery cycle](owner-cycle.md).
-Use owner_cycle.py --apply --allow-ready-fallback for normal milestone-wide scope;
-omit fallback for literal task-only scope. Process inbox replies, reuse existing
+Use owner_cycle.py --apply --allow-ready-fallback --scope repository for broad repository development;
+use --scope tasks for a job limited to its named tasks and omit fallback for literal
+task-only scope. Process inbox replies, reuse existing
 exact authority and task-bound handoff payloads, replenish useful accepted offline
 tasks, and reconcile worker completions per the unattended continuation contract.
 Never summarize the readiness helper's zero count as the whole occurrence result.

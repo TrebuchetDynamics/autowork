@@ -30,6 +30,8 @@ class OwnerCronTests(unittest.TestCase):
         self.assertIn('documentation, UI/UX, tests, refactoring and reliability', updated)
         self.assertIn('task-only', updated)
         self.assertIn('same occurrence', updated)
+        self.assertIn('--scope repository', updated)
+        self.assertIn('--scope tasks', updated)
         self.assertEqual(load().owner_prompt(updated, enabled=True), updated)
 
     def test_paused_prompt_cannot_resume_or_replace_writer(self):

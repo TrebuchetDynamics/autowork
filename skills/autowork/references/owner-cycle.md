@@ -144,13 +144,18 @@ must not overwrite a worker's verified completion in the same occurrence.
 
 ## If the preferred slice remains held
 
+For broad repository development pass `--scope repository`; for explicit named-task
+work retain `--scope tasks`. A `discover_repository_work` action requires the current
+agent to choose and execute independent maintenance through
+[repository maintenance](repository-maintenance.md), not return the helper receipt.
 Follow the receipt's `planning.action` through [Autoresearch Plan fallback](backlog-planning.md).
 A recorded plan is reused until bound inputs change. Missing canonical adoption
 routes to the integration owner before any new planning proposal.
 
 
 A live-owner conflict prevents edits to its inputs, not all independent work. Search
-ONE accepted milestone/source/caller/test seam, record the concrete candidate and
+a bounded set of relevant source/caller/test or documentation/UX seams under
+repository scope (a single milestone seam for task-only scope), record the concrete candidate and
 why it is eligible or excluded, and continue a safe disjoint slice under standing
 scope. Respect focused selection and repository exclusions; choose an internal
 implementation approach autonomously, but do not choose an unresolved product metric,
@@ -185,7 +190,13 @@ native limit; no branch/worktree, observer-lock or inline-picker workaround.
 
 Explicit maintainer authorization to repair schedules permits
 `python scripts/wire-owner-cron.py --root DEFAULT_HOME --apply` from shared source.
-The default is read-only inventory. It updates existing owner jobs with one pointer
+The default is read-only inventory. It makes `hermes-toolset:autowork` the primary
+attached skill, replacing legacy Autogoal bindings while retaining extra skills.
+A prompt mention alone is not migration; verify both `skills` and legacy `skill`
+readback, then repeat inventory to prove idempotency. Retain established continuity
+state; changing the entry skill does not reset workers or receipts. Default audit
+keeps its read-only product scope even with Autowork attached.
+It updates existing owner jobs with one pointer
 to this cycle, preserves their original authorization/exclusions and all unrelated
 configuration, and reads each target back. It creates no jobs, changes no enabled
 state and launches no worker. Missing-job profiles remain visible coverage gaps.

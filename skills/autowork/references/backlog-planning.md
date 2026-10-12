@@ -3,6 +3,9 @@
 Use this only after owner recovery, when no accepted ready work remains. The
 owner_cycle receipt contains `planning.action`; it does not execute a model.
 
+- `discover_repository_work`: choose independent work under repository-wide
+  authority using [repository maintenance](repository-maintenance.md); the original
+  task remains held. Run discovery and execution, not another blocked summary.
 - `execute_ready_work`: continue the accepted task. Do not plan just to fill a quota.
 - `reconcile_owner`: retain the live writer and its work; do not launch a competing planner.
 - `integrate_existing_inputs`: resolve the existing documentation proposal with

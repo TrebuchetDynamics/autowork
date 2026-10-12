@@ -49,6 +49,22 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(len(list((self.state/'history').glob('*.json'))),2)
         self.assertNotIn('COMPLETED', (self.state/'report-latest.txt').read_text())
 
+    def test_repository_scope_missing_route_does_not_end_independent_selection(self):
+        self.ready_backlog()
+        p=self.repo/'goals.json';data=json.loads(p.read_text())
+        data['tasks'][0]['section']='Needs decision';p.write_text(json.dumps(data))
+        todo=self.repo/'TODO.md';todo.write_text(todo.read_text().replace('## Now','## Needs decision'))
+        before={p:p.read_bytes(),todo:todo.read_bytes()}
+        for _ in range(2):
+            result,receipt=self.run_cycle('--scope','repository','--apply','--integration-owner','parent')
+        self.assertEqual(result.returncode,1)
+        self.assertEqual(receipt['action'],'discover_repository_work')
+        self.assertEqual(receipt['outcome'],'ACTION_REQUIRED')
+        self.assertIn('routing_gap',receipt)
+        self.assertEqual(receipt['completed_tasks'],[])
+        self.assertFalse(receipt['dispatch_attempted'])
+        for path,contents in before.items():self.assertEqual(path.read_bytes(),contents)
+
     def test_ledger_input_change_resets_repetition(self):
         self.run_cycle()
         (self.repo/'TODO.md').write_text('# Changed owner inputs\n')

@@ -62,6 +62,7 @@ def owner_prompt(prompt, enabled):
                'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile existing continuity state directory; retain established state rather than resetting it for a skill rename; '
                'apply the unattended continuation contract: process owner inbox/replies, reuse exact saved authority, allow same-milestone ready fallback within original scope, and maintain useful offline tasks. Reconcile actual worker/check/commit receipts for the final report; the readiness helper is not task completion. '
                'When no runnable task remains, load references/repository-maintenance.md under autowork: discover documentation, UI/UX, tests, refactoring and reliability work in unexamined authorized repository components, record bounded canonical tasks, then execute an eligible slice in the same occurrence. Explicit task-only scope and pauses still win. '
+               'For broad repository development pass --scope repository to owner_cycle.py; retain --scope tasks for explicit task-only work. Follow discover_repository_work through actual selection and execution, not a final blocked summary. Prepare ordinary execution inputs yourself under existing authority. '
                'Retain actual attempted commands/results and bounded disjoint work_search. '
                'Do not substitute an unchanged audit for an available authorized repair. '
                'This pointer changes workflow only; original product scope, settled decisions, '
