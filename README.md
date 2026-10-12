@@ -8,6 +8,7 @@ the native plugin manager, or deploy across your fleet with the setup tools.
 Hermes already supports skills and plugins. This bundle adds a coordinated set of
 repository workflows, automatic slash-command registration, shared installation
 across profiles, and verification that gateway commands were registered. It includes
+the complete [Impeccable design skill](skills/impeccable/SKILL.md) and
 25 pinned [Addy engineering protocols](skills/engineering/SKILL.md), with shared
 checklists, loaded by task phase rather than all at once.
 

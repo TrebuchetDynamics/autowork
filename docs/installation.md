@@ -235,3 +235,17 @@ that compatibility. Existing conversations may
 retain already-loaded instructions; open a new conversation to load updated skills.
 The new `/toolset update` handler itself first needs the normal plugin reload if
 upgrading from a version that does not register it.
+
+## Complete bundled skill installation
+
+Native plugin loading provisions every bundled skill and its support files into
+the selected profile, including Impeccable, Autoresearch, Grill Me and the pinned
+engineering protocols. No separate hub installation is needed for these skills.
+Fleet setup provisions the same bundle across existing live profiles. Existing
+local or categorized skill installations are preserved rather than overwritten.
+`hermes toolset doctor --core` checks registration; full setup and full diagnostics
+still apply to external integrations such as Graphify and OMH. This does not install
+the entire public skill catalog or guarantee optional browser/service readiness.
+Impeccable’s upstream launcher may download its versioned engine on first use
+(or use an existing configured engine). The bundled snapshot does not contain
+or attest that external binary; instruction loading has a documented fallback.

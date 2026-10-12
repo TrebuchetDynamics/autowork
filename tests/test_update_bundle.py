@@ -42,6 +42,29 @@ class UpdateTests(unittest.TestCase):
         self.git(self.remote,'commit','-am','update')
     def plan(self):
         return self.mod.prepare(self.repo,self.profiles,upstream=str(self.remote))
+    def test_existing_categorized_skill_is_updated_without_duplicate(self):
+        for _, home in self.profiles:
+            folder = home / 'skills/creative/demo'
+            folder.parent.mkdir()
+            (home / 'skills/demo').rename(folder)
+        self.advance()
+        self.mod.apply(self.plan(), self.home / 'backups')
+        for _, home in self.profiles:
+            self.assertEqual((home/'skills/creative/demo/SKILL.md').read_text(), 'new\n')
+            self.assertFalse((home/'skills/demo').exists())
+
+    def test_ambiguous_categorized_skills_are_preserved(self):
+        original = self.home/'skills/demo/SKILL.md'
+        original.unlink()
+        original.parent.rmdir()
+        for category in ('creative', 'custom'):
+            path = self.home/'skills'/category/'demo/SKILL.md'
+            path.parent.mkdir(parents=True)
+            path.write_text('old\n')
+        self.advance()
+        with self.assertRaisesRegex(ValueError, 'Ambiguous'):
+            self.plan()
+
     def test_updates_shared_checkout_and_both_profiles(self):
         self.advance();plan=self.plan()
         self.assertEqual(len(plan['sources']),1)

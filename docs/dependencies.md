@@ -15,6 +15,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | --- | --- | --- |
 | Bundled workflows | This repository revision | Pin the checkout revision to reproduce these files. |
 | Autoresearch 2.2.2 | Vendored revision and file hashes in [UPSTREAM.json](../skills/autoresearch/UPSTREAM.json) | Reviewed updates require refreshing the pinned subtree and tests. |
+| Impeccable 4.5.2 | Vendored official Hermes package, [pin and hashes](../skills/impeccable/UPSTREAM.json) | All references and scripts ship with the plugin; Apache-2.0 license and notices retained. |
 | Grill Me 2.0.0 | Bundled [SKILL.md](../skills/grill-me/SKILL.md) | Its checked-in bytes are fixed by this repository revision. |
 | OMH setup CLI | Git revision pinned in defaults.json | The Hermes plugin source is separately resolved through the source inventory/catalog. |
 | OMH plugin, Ponytail, Hermes Speech | Native Hermes installs from declared sources | No unified bundle lockfile pins their installed revisions. |
@@ -53,6 +54,7 @@ Hermes Toolset is licensed under the [MIT License](../LICENSE), copyright
 2026 TrebuchetDynamics. Third-party components retain their respective licenses
 and copyright notices.
 
+- Vendored Impeccable retains its [Apache-2.0 license](../skills/impeccable/LICENSE) and [notices](../skills/impeccable/NOTICE.md). Its official Hermes package is copied unchanged, with supplemental [modern-screenshot](../skills/impeccable/licenses/modern-screenshot-MIT.txt) and [platform-design-skills](../skills/impeccable/licenses/platform-design-skills-MIT.txt) MIT notices.
 - Vendored Addy agent-skills retains its [MIT license and attribution](../skills/engineering/upstream/LICENSE). Upstream protocol bytes are unchanged; SKILL.md filenames become PROTOCOL.md to avoid duplicate host discovery.
 - Vendored Autoresearch retains its [MIT license and attribution](../skills/autoresearch/upstream/LICENSE).
 - Grill Me declares MIT in its [skill metadata](../skills/grill-me/SKILL.md).

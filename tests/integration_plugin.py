@@ -49,6 +49,11 @@ def main():
         loaded = manager._plugins["hermes-toolset"]
         assert loaded.enabled and not loaded.error, loaded.error
         # Enabling/loading the plugin must wire native discovery without setup.
+        # Every bundled skill must be provisioned by native plugin loading.
+        for source in (root / 'skills').glob('*/SKILL.md'):
+            assert (home / 'skills' / source.parent.name / 'SKILL.md').is_file(), source.parent.name
+        assert (home / 'skills/impeccable/reference/routing.md').is_file()
+        assert (home / 'skills/impeccable/scripts/impeccable').is_file()
         native_grill = home / 'skills/grill-me/SKILL.md'
         assert native_grill.is_file(), 'Plugin load did not install native Grill Me'
         assert not (other / 'skills').exists(), 'Plugin load crossed profile ownership'
@@ -97,7 +102,7 @@ def main():
             runner, event=None, command='new', title='New', detail='test', execute=execute))
         assert result == 'executed' and called == [True]
         commands = get_plugin_commands()
-        assert {"autowork", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"} <= commands.keys()
+        assert {"autowork", "impeccable", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"} <= commands.keys()
         assert manager.find_plugin_skill("hermes-toolset:repo-docs") == root / "skills/repo-docs/SKILL.md"
         payload = json.loads(skill_view("hermes-toolset:repo-docs"))
         assert "error" not in payload, payload
@@ -123,6 +128,7 @@ def main():
         assert "git_commit_push" in dict(menu), menu
         assert "repo_docs" in dict(menu), menu
         assert "repo_interview" in dict(menu), menu
+        assert "impeccable" in dict(menu), menu
         interview = json.loads(skill_view("hermes-toolset:repo-interview"))
         assert "error" not in interview, interview
 

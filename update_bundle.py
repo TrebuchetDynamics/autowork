@@ -89,6 +89,23 @@ def historical_copy(repo, state, relative, local):
     return local in cache[relative]
 
 
+def skill_destination(home, relative, roots):
+    """Use the existing native category, matching install_skills provisioning."""
+    parts = Path(relative).parts
+    name = parts[1]
+    if name not in roots:
+        root = home / 'skills' / name
+        if not root.exists() and not root.is_symlink():
+            matches = [p.parent for p in (home / 'skills').glob(f'*/{name}/SKILL.md')
+                       if p.is_file() and not p.relative_to(home / 'skills').parts[0].startswith('.')]
+            if len(matches) > 1:
+                raise ValueError(f'Ambiguous categorized skill {name}; reconcile duplicate native installations')
+            if matches:
+                root = matches[0]
+        roots[name] = root
+    return roots[name].joinpath(*parts[2:])
+
+
 def prepare(source, profiles, *, upstream=UPSTREAM):
     """Fetch trusted main, then preflight ALL sources and destinations before writes."""
     sources = {}
@@ -116,8 +133,9 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
                                  git(repo, 'ls-tree', '-rz', after, '--', 'skills').split(b'\0')
                                  if e.startswith(b'100755 ')}}
         state = sources[repo]
+        skill_roots = {}
         for relative in sorted(state['old'].keys() | state['new'].keys()):
-            path = home / relative
+            path = skill_destination(home, relative, skill_roots)
             safe_path(path)
             local = path.read_bytes() if path.exists() else None
             old, new = state['old'].get(relative), state['new'].get(relative)
