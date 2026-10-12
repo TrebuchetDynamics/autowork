@@ -39,11 +39,15 @@ def route(request, owner_state):
     if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
         raise ValueError('invalid request ID')
     path = private_path(owner_state/'inbox'/f'{key}.json')
+    def verify_existing():
+        old = json.loads(private_path(path).read_text())
+        if not isinstance(old, dict) or any(
+                old.get(field) != request.get(field) for field in
+                ('request_id','owner','consumer','plan','task_ids','target_session')):
+            raise ValueError('conflicting owner inbox request')
+
     if path.exists():
-        old = json.loads(path.read_text())
-        for field in ('request_id','owner','consumer','plan','task_ids','target_session'):
-            if old.get(field) != request.get(field):
-                raise ValueError('conflicting owner inbox request')
+        verify_existing()
     else:
         # Publish complete bytes atomically; a competing delivery cannot overwrite.
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -51,7 +55,11 @@ def route(request, owner_state):
         try:
             with os.fdopen(fd,'w') as stream:
                 json.dump(request,stream,indent=2)
-            os.link(temporary, path)
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                # Another sender may publish the same request after our existence check.
+                verify_existing()
         finally:
             os.unlink(temporary)
     return {'state':'delivered','inbox_path':str(path),

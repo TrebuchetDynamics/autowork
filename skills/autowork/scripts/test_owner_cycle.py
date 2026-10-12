@@ -177,6 +177,23 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(result['result']['outcome'],'handed_off')
         with self.assertRaises(ValueError): owner_cycle.handoff(args,{'id':'OTHER'})
 
+    def test_handoff_forwards_fallback_evidence_to_native_admission(self):
+        import owner_cycle
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        request = self.root / 'handoff.json'
+        fallback = str(self.root / 'fallback.json')
+        request.write_text(json.dumps({'consumer': str(self.repo), 'task_id': 'T1',
+                                      'options': {'fallback-file': fallback}}))
+        args = SimpleNamespace(consumer=str(self.repo), handoff_request=str(request))
+        # Admission owns validation: its refusal must survive the bridge unchanged.
+        with patch.object(owner_cycle.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=1, stdout='{"outcome":"blocked"}')) as run:
+            result = owner_cycle.handoff(args, {'id': 'T1'})
+        self.assertEqual(run.call_args.args[0][-2:], ['--fallback-file', fallback])
+        self.assertEqual(result['exit_code'], 1)
+        self.assertEqual(result['result']['outcome'], 'blocked')
+
     def test_supplied_acknowledgement_is_distinct_from_request_creation(self):
         self.run_cycle('--integration-owner','parent')
         _,receipt=self.run_cycle('--integration-owner','parent','--apply','--acknowledge','--owner-evidence','fixture://actual-reply')

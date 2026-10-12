@@ -25,6 +25,27 @@ class ProgressRuntimeTests(unittest.TestCase):
         self.assertEqual(len(list((self.owner/'inbox').glob('*.json'))),1)
         self.assertEqual(self.request['status'],'pending')
 
+    def test_competing_delivery_is_idempotent_but_never_overwrites_conflict(self):
+        import progress_runtime as runtime
+        from unittest.mock import patch
+        path = self.owner / 'inbox' / 'request-1.json'
+        for conflict in (False, True):
+            with self.subTest(conflict=conflict):
+                if path.exists(): path.unlink()
+                winner = dict(self.request)
+                if conflict: winner['consumer'] = '/other/repository'
+                def competing_link(source, destination):
+                    Path(destination).write_text(json.dumps(winner))
+                    raise FileExistsError('competing delivery won')
+                with patch.object(runtime.os, 'link', side_effect=competing_link):
+                    if conflict:
+                        with self.assertRaisesRegex(ValueError, 'conflicting'):
+                            runtime.route(self.request, self.owner)
+                    else:
+                        self.assertEqual(runtime.route(self.request, self.owner)['state'], 'delivered')
+                self.assertEqual(json.loads(path.read_text()), winner)
+                self.assertEqual(list(path.parent.glob('.delivery-*')), [])
+
     def test_reply_requires_matching_request_and_owner(self):
         import progress_runtime as runtime
         delivery=runtime.route(self.request,self.owner)

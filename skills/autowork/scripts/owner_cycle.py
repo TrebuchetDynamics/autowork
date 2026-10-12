@@ -58,7 +58,8 @@ def handoff(args, task, consumer=None):
     options = request.get('options', {})
     allowed = {'profile', 'title', 'contract-file', 'ledger-mode', 'integration-owner',
                'publication-authority', 'goal-max-turns', 'source-snapshot', 'base',
-               'candidate', 'required-path', 'prerequisite', 'pass-root', 'disjoint-terminal-triage'}
+               'candidate', 'required-path', 'prerequisite', 'pass-root', 'disjoint-terminal-triage',
+               'fallback-file'}
     if not isinstance(options, dict) or set(options) - allowed:
         raise ValueError('unsupported native handoff options')
     argv = [sys.executable, str(Path(__file__).with_name('start_goal.py')),
