@@ -15,6 +15,34 @@ def load():
 
 
 class OwnerCronTests(unittest.TestCase):
+    def test_autonomous_prompt_has_no_external_owner_or_proposal_gate(self):
+        module = load()
+        scope = 'Repository: /fixture/repo. Scope: offline collector tests only.'
+        updated = module.owner_prompt(scope, enabled=False)
+        self.assertIn(scope, updated)
+        self.assertIn('No external owner acknowledgement is required', updated)
+        self.assertIn('Do not push or deploy', updated)
+        self.assertNotIn('process owner inbox/replies', updated)
+        self.assertNotIn('supported handoff cycle', updated)
+        self.assertNotIn('proposal ledger mode', updated)
+        for label in ('Completed:', 'Changed:', 'Checks:', 'Commit:', 'Next:', 'Blocker:'):
+            self.assertIn(label, updated)
+        self.assertEqual(module.owner_prompt(scope, enabled=True), updated)
+        legacy = scope + module.MARKER + 'process owner inbox/replies; proposal ledger mode'
+        self.assertNotIn('process owner inbox/replies', module.owner_prompt(legacy, False))
+
+    def test_scoped_offline_isolation_permission_keeps_main_and_external_limits(self):
+        module = load()
+        scope = ('User authorizes isolated task branches/worktrees for offline work. '
+                 'Keep main protected; no push, deployment or live/RF operations.')
+        prompt = module.owner_prompt(scope, True)
+        self.assertIn(scope, prompt)
+        self.assertEqual(module.owner_prompt(prompt, True), prompt)
+        policy = (ROOT / 'skills/autowork/references/scheduled-policy.md').read_text()
+        self.assertIn('not the unsupported canonical main-only', policy)
+        self.assertIn('it remains unproved rather than being falsely closed', policy)
+        self.assertIn('Respect separately recorded pause/resume decisions', policy)
+
     def test_owner_prompt_routes_to_one_shared_executable_cycle(self):
         module = load()
         prompt = 'Accepted scope: fixture-only. No production writes. No push.'
@@ -37,7 +65,7 @@ class OwnerCronTests(unittest.TestCase):
     def test_paused_prompt_cannot_resume_or_replace_writer(self):
         updated = load().owner_prompt('Main-only; chat-only implementation.', enabled=False)
         self.assertIn('Main-only; chat-only implementation.', updated)
-        self.assertIn('Do not resume', updated)
+        self.assertIn('resume this job yourself', updated)
         self.assertIn('do not trigger recovery', updated)
 
     def test_all_profiles_including_missing_jobs_remain_in_coverage(self):

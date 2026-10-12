@@ -10,8 +10,8 @@ Use `/autowork` with an explicit whole-spec request and accepted spec/tracker po
 
 Follow [the engineering cycle](../../shared/ENGINEERING-CYCLE.md) for verified
 addyosmani skill routing, canonical backlog ownership and review-gated continuation.
-Use existing `--ledger-mode proposal --integration-owner <owner>` worker roles;
-only that owner closes canonical tasks after evidence and required review acceptance.
+Use default `worker` ledger mode; this agent handles canonical integration and
+closure after checks and required review. Proposal/external-owner roles are opt-in.
 
 ## Active execution policy (overrides historical upstream steps below)
 

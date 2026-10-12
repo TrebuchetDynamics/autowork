@@ -50,7 +50,8 @@ flags are forwarded to the existing recovery pipeline. The runner writes private
 history, `unblock-latest.json` and a compact `report-latest.txt` automatically,
 then performs fresh canonical selection. It never invents a ledger or acceptance.
 
-An unchanged blocker reuses one `requests/<id>.json`; the second occurrence changes
+Only in optional `--require-owner` mode, an unchanged blocker reuses one
+`requests/<id>.json`; the second occurrence changes
 the action to owner follow-up. Supply `--proposal /private/attributed-proposal
 --owner-evidence EVIDENCE_REF` when known. Requests remain local and pending:
 creation is not delivery or acknowledgement. Record an actual owner's reply with

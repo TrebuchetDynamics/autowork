@@ -55,26 +55,25 @@ def autowork_skills(job):
 
 def owner_prompt(prompt, enabled):
     original = prompt.split(MARKER, 1)[0]
-    pointer = ('Load hermes-toolset:autowork for stage-aware preparation, then hermes-toolset:autowork references/owner-cycle.md and execute its '
-               'owner recovery -> same-invocation retry -> supported handoff cycle '
-               'before reporting a recoverable tooling hold or no eligible work. '
-               'Only explicitly requested split-role workers use proposal ledger mode: start_goal.py freezes admitted planning files as read-only context, so uncommitted planning files alone do not require a prerequisite commit. Executable source still requires exact committed inputs. '
-               'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile existing continuity state directory; retain established state rather than resetting it for a skill rename; '
-               'apply the unattended continuation contract: process owner inbox/replies, reuse exact saved authority, allow same-milestone ready fallback within original scope, and maintain useful offline tasks. Reconcile actual worker/check/commit receipts for the final report; the readiness helper is not task completion. '
-               'When no runnable task remains, load references/repository-maintenance.md under autowork: discover documentation, UI/UX, tests, refactoring and reliability work in unexamined authorized repository components, record bounded canonical tasks, then execute an eligible slice in the same occurrence. Explicit task-only scope and pauses still win. '
-               'For broad repository development pass --scope repository to owner_cycle.py; retain --scope tasks for explicit task-only work. Follow discover_repository_work through actual selection and execution, not a final blocked summary. Prepare ordinary execution inputs yourself under existing authority. '
-               'Retain actual attempted commands/results and bounded disjoint work_search. '
-               'Do not substitute an unchanged audit for an available authorized repair. '
-               'This pointer changes workflow only; original product scope, settled decisions, '
-               'ownership, repository exceptions, publication authority and safety limits remain binding. '
-               'It grants no production, RF, credential, spending, takeover or admission-bypass authority.')
-    pointer += (' Autonomous local coordination is the default: the current agent plans, implements, reviews and integrates authorized local work itself. '
-                'Do not wait for an owner profile, parent session or release acknowledgement. Recorded claims are attribution, not approval gates; inspect actual live workers and file conflicts, preserve existing candidates, and continue or adopt verified idle work. '
-                'Use default worker mode. The optional --require-owner workflow applies only when explicitly requested. This supersedes older local owner-only workflow wording, while explicit scope, pause, no-push and no-live-operation limits remain.')
-    if not enabled:
-        pointer += (' This job is paused: Do not resume it, do not trigger recovery, '
-                    'or start a substitute writer. Existing chat-only and paused-job decisions win.')
-    return original + MARKER + pointer + '\n'
+    return original + MARKER + (
+        'Load hermes-toolset:autowork and references/owner-cycle.md for autonomous local coordination. '
+        'Develop this repository within its established purpose and the scope above. '
+        'Handle planning, implementation, testing, review and local integration yourself. '
+        'No external owner acknowledgement is required. Use default worker mode and supported native helpers where needed. '
+        'Reconcile actual running workers and completed results first; preserve original cards, budgets and useful candidates. '
+        'Select a useful, dependency-ready TODO task. If unavailable, inspect independent bugs, documentation, UI/UX, tests, refactoring and reliability or performance work. '
+        'When the backlog lacks useful tasks, load references/repository-maintenance.md, inspect a bounded source/test seam, document a justified task and execute it in the same occurrence. '
+        'Use owner_cycle.py in its default autonomous mode for recovery; pass --scope repository for repository work and --scope tasks only for explicit task-only requests. '
+        'Preserve unrelated changes, inspect actual live writers and file conflicts, and avoid overlapping work. Historical claims alone are not approval gates. '
+        'Respect repository branch policy, native admission and genuinely missing user decisions or external-action authority. '
+        'Verify changes, review them, integrate authorized owned changes locally and commit completed work using explicit paths. Do not push or deploy. '
+        'Do not count planning, audits, task creation or queued workers as implementation completion. '
+        'Never create another schedule, change cadence/model/delivery or resume this job yourself. '
+        'While paused, do not trigger recovery or start a substitute writer; a separately authorized native resume enables future occurrences under this workflow. '
+        'Return a concise nonempty profile-labeled report every occurrence through automatic cron delivery, not a messaging tool: '
+        'Completed: task ID and title, or none. Changed: concrete result. Checks: actual passes/failures or none. '
+        'Commit: verified local SHA, or none. Next: task ID and intended action. Blocker: exact missing input and recovery attempted. '
+        'End with skipped checks and risks.\n')
 
 
 def audit_prompt(prompt):

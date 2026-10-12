@@ -56,6 +56,19 @@ not assumed HEAD: `agent_commit.sh` can leave HEAD unchanged. No force push, mer
 deployment, protection bypass, foreign edits or main-only admission bypass.
 A local commit is incomplete delivery when an authorized push remains held.
 
+## Scoped offline task isolation
+
+When the user explicitly authorizes isolated task branches/worktrees for named
+repositories, retain that exact permission in their existing cron scope and
+applicable repository instructions. Use the ordinary supported isolated native
+worker path for those offline tasks, not the unsupported canonical main-only
+path. Keep main protected, preserve live writers and unrelated work, and carry
+no-push, no-deployment and no-live/RF exclusions into every worker contract.
+An unchanged main-only admission/canary task does not gate independent authorized
+offline isolation; it remains unproved rather than being falsely closed. The
+exception grants no PR, protected-main write, history rewrite or Agent modification.
+Respect separately recorded pause/resume decisions.
+
 ## Progress and decision loop
 
 On each occurrence account for accepted_goal -> eligible_task -> implementation ->

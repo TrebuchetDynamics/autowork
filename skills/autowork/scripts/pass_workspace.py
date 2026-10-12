@@ -122,14 +122,24 @@ def verify(manifest, workspace, *, admitted_task=None):
         context = manifest['planning_context']
         task_id = context['goal_task']
         pinned_ledger = context['files']['goals.json'].encode('utf-8')
-    elif task_id and (workspace / 'goals.json').is_file():
-        pinned_ledger = (workspace / 'goals.json').read_bytes()
+    elif task_id:
+        blob = subprocess.run(['git', '-C', str(workspace), 'show', identity['candidate_commit'] + ':goals.json'],
+                              capture_output=True, timeout=30, env=candidate_identity.git_environment())
+        if blob.returncode:
+            raise ValueError('Pinned candidate ledger missing')
+        pinned_ledger = blob.stdout
     if pinned_ledger is not None:
         if hashlib.sha256(pinned_ledger).hexdigest() != manifest['ledger_sha256']:
             raise ValueError('Pinned ledger differs from admission')
         ledger = json.loads(pinned_ledger)
         selected = [t for t in ledger['tasks'] if t['id'] == task_id]
-        if (len(selected) == 1 and selected[0].get('status') == 'open'
+        goals_spec = importlib.util.spec_from_file_location('pass_goals',
+            Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py')
+        assert goals_spec is not None and goals_spec.loader is not None
+        goals = importlib.util.module_from_spec(goals_spec)
+        goals_spec.loader.exec_module(goals)
+        if (('goals.json' in planning or ledger == goals.normalize(json.loads(pinned_ledger)))
+                and len(selected) == 1 and selected[0].get('status') == 'open'
                 and selected[0].get('section') in ('Now', 'Next')):
             # Derive the one admitted task transition from immutable original bytes.
             selected[0]['status'] = 'in_progress'

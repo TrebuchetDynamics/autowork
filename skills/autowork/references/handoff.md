@@ -1,5 +1,10 @@
 # Autowork — Handoff, review and worker execution
 
+Default local coordination belongs to the current agent: plan, implement, review
+and integrate without external owner acknowledgement. `owner` identifies the
+executor. Proposal/external-owner sections apply only to explicitly split roles;
+actual live-writer conflicts and source/acceptance checks remain mandatory.
+
 ## Picker run liveness
 
 Reconcile the card by its runs, not its status string: `hermes kanban runs <card>` plus

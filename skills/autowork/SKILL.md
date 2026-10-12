@@ -83,11 +83,10 @@ Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
 10. **Ownership.** Each writing pass uses its own pinned Git worktree, never
     the shared checkout. `start_goal.py` requires `--base`; assemble explicit
     prerequisites and run its manifest-pinned guard before FIRST edits only.
-    Ledger proposals go through the canonical integration owner and `goals.py`.
-    Follow the candidate, exact-source and containment rules in
-    [handoff safeguards](references/handoff.md#ownership-and-verification-safeguards).
-    Workers run focused checks; the integration owner gates one frozen candidate.
-    Policy/fixture checks never establish product journeys or provider execution.
+    Use default worker mode and `goals.py`; this agent owns local integration.
+    External-owner/proposal roles require an explicit split-role request.
+    Follow [handoff safeguards](references/handoff.md#ownership-and-verification-safeguards).
+    Gate one frozen candidate; fixtures never establish product/provider execution.
 11. **Model refusals.** A provider safety refusal or crash is infrastructure: reword
     the contract neutrally (or set a `hermes kanban set-model` override) and retry
     the same card once. After two failures, record it in the journal and move on.
@@ -142,8 +141,8 @@ or reply `[SILENT]` and leave a journal note for the next run.
    no usable milestone task remains (including the TODO fallback); do not double-check
    a usable task with a broad discovery or documentation pass.
 3. **Hand off.** Load `references/handoff.md`. Use backlog-check. Compare
-   executable inputs against the committed candidate. Proposal workers use frozen
-   read-only planning context; no planning-files commit is needed. Dirty code needs
+   executable inputs against the committed candidate. Use default worker mode;
+   proposal context is only for explicitly requested split-role work. Dirty code needs
    attributable prerequisites per [recovery](references/blocker-recovery.md);
    never copy or commit foreign edits. Treat `--validate-only` as structural
    and ledger admission, not proof that isolated candidate assembly will pass.

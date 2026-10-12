@@ -109,6 +109,85 @@ class PassWorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError): module.verify(manifest, target)
         manifest.pop('goal_task')
         with self.assertRaises(ValueError): module.verify(manifest, target)
+        manifest['goal_task'] = 'T1'
+        self.assertEqual(module.run_checked(manifest, target, ['python3', '-c',
+                         "open('owned.py','w').write('authorized initial write')"]), 0)
+        with self.assertRaisesRegex(ValueError, 'workspace changed'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
+        self.assertEqual((target / 'owned.py').read_text(), 'authorized initial write')
+
+    def test_worker_rejects_foreign_candidate_blob_despite_clean_matching_worktree(self):
+        import json
+        module, manifest, target = self.worker_transition_fixture()
+        original = (target / 'goals.json').read_bytes()
+        foreign = json.loads(original)
+        foreign['tasks'][0]['section'] = 'Needs decision'
+        (self.root / 'goals.json').write_text(json.dumps(foreign))
+        self.git('add', 'goals.json'); self.git('commit', '-qm', 'foreign candidate ledger')
+        commit = self.git('rev-parse', 'HEAD')
+        subprocess.run(['git', '-C', str(target), 'checkout', '--detach', commit],
+                       check=True, capture_output=True)
+        manifest['candidate_identity'] = module.candidate_identity.capture(target, manifest['candidate_identity']['base_commit'], commit)
+        (target / 'goals.json').write_bytes(original)
+        subprocess.run(['git', '-C', str(target), 'update-index', '--assume-unchanged', 'goals.json'], check=True)
+        changed = json.loads(original)
+        changed['tasks'][0]['status'] = 'in_progress'
+        (self.root / 'goals.json').write_text(json.dumps(changed, indent=2, sort_keys=True) + '\n')
+        self.assertEqual(module.candidate_identity.git(target, 'status', '--porcelain'), '')
+        with self.assertRaisesRegex(ValueError, 'Pinned ledger differs'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
+        self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+
+    def test_worker_status_tolerance_requires_canonical_ledger_semantics(self):
+        import hashlib, json
+        module, manifest, target = self.worker_transition_fixture()
+        ledger = json.loads((target / 'goals.json').read_bytes())
+        ledger['tasks'][1].pop('depends_on')
+        original = (json.dumps(ledger, indent=2, sort_keys=True) + '\n').encode()
+        (self.root / 'goals.json').write_bytes(original)
+        self.git('add', 'goals.json'); self.git('commit', '-qm', 'noncanonical ledger')
+        commit = self.git('rev-parse', 'HEAD')
+        subprocess.run(['git', '-C', str(target), 'checkout', '--detach', commit], check=True, capture_output=True)
+        manifest['candidate_identity'] = module.candidate_identity.capture(target, manifest['candidate_identity']['base_commit'], commit)
+        manifest['ledger_sha256'] = hashlib.sha256(original).hexdigest()
+        next(r for r in manifest['files'] if r['path'] == 'goals.json')['sha256'] = manifest['ledger_sha256']
+        ledger['tasks'][0]['status'] = 'in_progress'
+        (self.root / 'goals.json').write_text(json.dumps(ledger, indent=2, sort_keys=True) + '\n')
+        with self.assertRaisesRegex(ValueError, 'Source changed'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
+        self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+
+    def test_worker_rejects_missing_candidate_ledger_before_write(self):
+        module, manifest, target = self.worker_transition_fixture()
+        self.git('rm', '-f', 'goals.json'); self.git('commit', '-qm', 'candidate without ledger')
+        commit = self.git('rev-parse', 'HEAD')
+        subprocess.run(['git', '-C', str(target), 'checkout', '--detach', commit], check=True, capture_output=True)
+        manifest['candidate_identity'] = module.candidate_identity.capture(target, manifest['candidate_identity']['base_commit'], commit)
+        with self.assertRaisesRegex(ValueError, 'Pinned candidate ledger missing'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
+        self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+
+    def test_worker_rejects_held_candidate_promotion_or_stale_admission_pin(self):
+        import hashlib, json
+        module, manifest, target = self.worker_transition_fixture()
+        manifest['ledger_sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'Pinned ledger differs'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
+        ledger = json.loads((target / 'goals.json').read_bytes())
+        ledger['tasks'][0]['section'] = 'Needs decision'
+        original = (json.dumps(ledger, indent=2, sort_keys=True) + '\n').encode()
+        (self.root / 'goals.json').write_bytes(original)
+        self.git('add', 'goals.json'); self.git('commit', '-qm', 'held task')
+        commit = self.git('rev-parse', 'HEAD')
+        subprocess.run(['git', '-C', str(target), 'checkout', '--detach', commit], check=True, capture_output=True)
+        manifest['candidate_identity'] = module.candidate_identity.capture(target, manifest['candidate_identity']['base_commit'], commit)
+        manifest['ledger_sha256'] = hashlib.sha256(original).hexdigest()
+        next(r for r in manifest['files'] if r['path'] == 'goals.json')['sha256'] = manifest['ledger_sha256']
+        ledger['tasks'][0].update(section='Next', status='in_progress')
+        (self.root / 'goals.json').write_text(json.dumps(ledger, indent=2, sort_keys=True) + '\n')
+        with self.assertRaisesRegex(ValueError, 'Source changed'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
+        self.assertEqual((target / 'owned.py').read_text(), 'base\n')
 
     def test_legacy_worker_uses_exact_existing_handoff_without_repinning(self):
         import json, hashlib
@@ -153,8 +232,13 @@ class PassWorkspaceTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.base)
 
     def test_admitted_transition_rejects_every_other_source_delta_before_write(self):
+        self.assert_transition_rejects_other_source_deltas(*self.admitted_transition_fixture())
+
+    def test_worker_transition_rejects_every_other_source_delta_before_write(self):
+        self.assert_transition_rejects_other_source_deltas(*self.worker_transition_fixture())
+
+    def assert_transition_rejects_other_source_deltas(self, module, manifest, target):
         import copy, json
-        module, manifest, target = self.admitted_transition_fixture()
         original = (self.root / 'goals.json').read_bytes()
         current = json.loads(original)
         mutations = [
