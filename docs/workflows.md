@@ -18,18 +18,19 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/git-commit-push` | `/git_commit_push` | Commit and push scoped changes |
 | `/git-pull-merge` | `/git_pull_merge` | Pull and merge changes |
 | `/lgtm` | `/lgtm` | Continue the understood next step with existing authorization |
-| `/repo-docs` | `/repo_docs` | Maintain repository documentation |
-| `/repo-interview` | `/repo_interview` | Answer focused questions, then update docs and plans |
+| `/docs_sync` | `/docs_sync` | Maintain repository documentation |
+| `/plan_with_me` | `/plan_with_me` | Answer focused questions, then update docs and plans |
+| `/plan_for_me` | `/plan_for_me` | Investigate, choose an approach, and save the plan and tasks |
 | `/grill-me` | `/grill_me` | Stress-test a plan through questions |
 | `/autoresearch` | `/autoresearch` | Route a research goal or run a bounded metric loop |
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
 | `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps |
 
-Use `/repo-interview` when you want questions before planning. It asks one at a
+Use `/plan_with_me` when you want questions before planning. It asks one at a
 time, reuses existing answers, and saves decisions through repo-docs. Add
 `questions only` for an interview without file changes.
 
-For example, type `/repo-docs update the architecture documentation` in Hermes
+For example, type `/docs_sync update the architecture documentation` in Hermes
 CLI chat, or `/git_commit_push only src/; no push` in Telegram. Arguments are
 passed as text to the skill, never executed as a shell command by the plugin.
 These are conversational slash commands, not new `hermes <skill>` shell
@@ -58,7 +59,7 @@ loading a skill alone is not proof of applying it.
 The [engineering cycle](../skills/shared/ENGINEERING-CYCLE.md) connects accepted
 specs and existing `goals.json`/`TODO.md` tasks to targeted installed engineering
 skills, implementation, checks, native review and owner-ledger reconciliation.
-A documentation-only `/repo-docs` request does not launch workers. To continue
+A documentation-only `/docs_sync` request does not launch workers. To continue
 through a spec, explicitly ask `/autowork` to implement that accepted spec within
 its stated scope. Default `/autowork` hands off one slice. Review acceptance and
 executed evidence precede canonical closure; no push or deployment is implied.
@@ -78,13 +79,15 @@ subcommands are available:
 `plan`, `debug`, `fix`, `security`, `ship`, `probe`, `scenario`, `predict`,
 `reason`, `learn`, `improve`, `evals`, `regression`.
 
-CLI keeps `/autoresearch:plan`; Telegram uses `/autoresearch_plan` (likewise for
-every subcommand). `/autoresearch plan ...` also works. Colon commands are omitted
+Use `/plan_for_me` in CLI or Telegram for planning. Legacy `/autoresearch:plan`
+and `/autoresearch_plan` remain available. Other subcommands retain their names:
+for example, `/autoresearch:debug` in CLI and `/autoresearch_debug` in Telegram.
+`/autoresearch plan ...` also works. Colon commands are omitted
 from Telegram's menu; use the underscore spelling there. Menu capacity can hide
 entries without disabling typed commands. Existing command owners keep precedence.
 
 ```text
-/autoresearch_plan reduce cache latency; document findings and schedule TODO tasks; do not implement yet
+/plan_for_me reduce cache latency; document findings and schedule TODO tasks; do not implement yet
 /autoresearch Goal: reduce parser time Scope: src/parser Metric: milliseconds Verify: python bench.py Iterations: 10
 ```
 

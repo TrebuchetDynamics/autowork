@@ -134,6 +134,9 @@ def main():
         assert "repo_docs" in dict(menu), menu
         assert "repo_interview" in dict(menu), menu
         assert "impeccable" in dict(menu), menu
+        for public in ('plan_with_me', 'plan_for_me', 'docs_sync'):
+            assert public in dict(menu), menu
+            assert public in commands and public.replace('_', '-') in commands
         interview = json.loads(skill_view("hermes-toolset:repo-interview"))
         assert "error" not in interview, interview
 
@@ -141,6 +144,14 @@ def main():
         manager._cli_ref = cli
         tokens = set_session_vars()
         try:
+            for public, target in [('plan_with_me', 'repo-interview'),
+                                   ('plan_for_me', 'autoresearch'), ('docs_sync', 'repo-docs')]:
+                assert commands[public]['handler']('read-only: example') is None
+                message = cli._pending_input.get_nowait()
+                assert f'hermes-toolset:{target}' in message, message
+                assert message.endswith('read-only: example'), message
+                if public == 'plan_for_me':
+                    assert 'Selected subcommand: plan' in message
             assert commands["repo-docs"]["handler"]("update the README") is None
             queued = cli._pending_input.get_nowait()
             assert 'skill_view(name="hermes-toolset:repo-docs")' in queued

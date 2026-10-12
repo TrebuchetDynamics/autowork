@@ -28,6 +28,15 @@ explicit read-only, chat-only, no-write and --dry-run requests write nothing.
 Report saved paths, task IDs and the next executable action. Reuse existing plans
 and tasks; preserve user orders before rendering and never claim planning as delivery.
 
+## Plan For Me
+
+`/plan_for_me` (also `/plan-for-me`) is the primary planning command. It routes
+to this adapter's `plan` protocol: investigate the repository, choose a supported
+approach, and save the plan and tasks. Decide routine engineering choices without
+an interview; ask only for consequential missing product intent or authority.
+`/autoresearch:plan` and `/autoresearch_plan` remain compatibility aliases. Other
+Autoresearch commands keep their existing behavior and names.
+
 ## Commands and dispatch
 
 `/autoresearch` is the upstream router. `/autoresearch:<command>` is the original

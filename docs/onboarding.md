@@ -43,7 +43,7 @@ In that chat:
 
 ```text
 /toolset list
-/repo-interview questions only: help me clarify a caching improvement; ask one question, then stop
+/plan_with_me questions only: help me clarify a caching improvement; ask one question, then stop
 ```
 
 Success means a relevant question arrives without file changes. Check the project's
@@ -57,7 +57,7 @@ After the smoke check, use the bundled interview to clarify a real requirement
 and produce a decision summary in chat:
 
 ```text
-/repo-interview questions only: help me define a tiny CLI that counts nonempty lines in a text file. Ask one question at a time about inputs, blank lines and errors. When I say finish, summarize my answers, open questions and one concrete acceptance example in chat. Do not save files or create tasks.
+/plan_with_me questions only: help me define a tiny CLI that counts nonempty lines in a text file. Ask one question at a time about inputs, blank lines and errors. When I say finish, summarize my answers, open questions and one concrete acceptance example in chat. Do not save files or create tasks.
 ```
 
 Answer the questions, then say `finish`. Expected evidence is a useful summary
@@ -82,7 +82,7 @@ Apply config/session changes through your normal gateway service procedure after
 ongoing work is accounted for. Do not assume an already-running session picked up
 the changed directory. In the intended bot chat, request a read-only terminal `pwd`
 and inspect its actual tool result, then invoke `/toolset list` and the same
-questions-only command as `/repo_interview`. Confirm the reply arrives in that
+questions-only command as `/plan_with_me`. Confirm the reply arrives in that
 chat and that no project files changed. A registered command or successful CLI
 probe does not establish Telegram delivery.
 
@@ -103,7 +103,7 @@ Use a new disposable Git repository with no real product data and a configured
 model. Command registration alone is not readiness for this exercise. In its CLI chat, try:
 
 ```text
-/repo-interview Plan a tiny CLI that counts nonempty lines in a text file. Ask me the missing requirements, then save my accepted answers and one bounded implementation task. Do not implement, commit or push.
+/plan_with_me Plan a tiny CLI that counts nonempty lines in a text file. Ask me the missing requirements, then save my accepted answers and one bounded implementation task. Do not implement, commit or push.
 ```
 
 Answer the interview. Expected evidence: the existing/new design owner records
@@ -134,7 +134,7 @@ restoring configuration. Removal alone does not undo prior setup writes.
 
 ### Autoresearch in Telegram's picker
 
-Use `/autoresearch_plan`, `/autoresearch_debug`, `/autoresearch_fix` and the other
+Use `/plan_for_me`, `/autoresearch_debug`, `/autoresearch_fix` and the other
 underscore spellings in Telegram; colon spellings are for CLI chat. Plugin runtime
 defaults add all 14 Autoresearch entries to Hermes' menu priority, preserving your
 existing priority list, mode and cap. An intentionally small cap or a longer custom

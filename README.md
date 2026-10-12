@@ -16,15 +16,21 @@ checklists, loaded by task phase rather than all at once.
 on demand; installation does not load them all or require a full workflow per task.
 Explicit specialist commands still work independently within their stated scope.
 
+The main commands are **`/plan_with_me`** (ask and plan together),
+**`/plan_for_me`** (investigate and decide), **`/docs_sync`** (maintain docs and
+TODO.md), and **`/autowork`** (execute). Underscore and hyphen spellings work in
+CLI; Telegram displays underscores. Old `/repo_interview`, `/repo_docs` and
+`/autoresearch_plan` commands remain compatibility aliases.
+
 ## What you can do
 
 | Workflow | Example in CLI chat | Result and possible changes | Readiness needed |
 | --- | --- | --- | --- |
-| Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
+| Clarify a project | `/plan_with_me Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
 | Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. | Core + configured model |
-| Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
+| Maintain docs and tasks | `/docs_sync Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
 | Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, calls bounded Autoresearch for unresolved planning or research questions, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; supporting tools only when needed |
-| Research and improve | `/autoresearch:plan Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through repo-docs. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
+| Research and improve | `/plan_for_me Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through repo-docs. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
@@ -35,8 +41,8 @@ Explicit specialist commands still work independently within their stated scope.
 **Core** means bundled commands with a configured model; `doctor --core` checks
 registration, not the workflow prerequisites above.
 
-Telegram uses underscores: `/repo_interview`, `/repo_docs`, `/git_commit_push`,
-`/autoresearch_plan`. Autoresearch retains all 13 subcommands plus `/autoresearch`.
+Telegram uses underscores: `/plan_with_me`, `/docs_sync`, `/git_commit_push`,
+`/plan_for_me`. Autoresearch retains all 13 subcommands plus `/autoresearch`.
 See [commands and workflows](docs/workflows.md) for the full research command set.
 
 `/autowork` is the repository-development command. Upgrade existing installations
@@ -45,7 +51,7 @@ with the migration procedure in [installation](docs/installation.md).
 ## A typical workflow
 
 ```text
-/repo-interview Design a caching layer for this repository
+/plan_with_me Design a caching layer for this repository
 /autowork Implement that accepted specification; commit locally, no push
 ```
 
@@ -58,7 +64,7 @@ user priority changes are reconciled before task selection.
 Already have an idea? Plan it first, then authorize execution:
 
 ```text
-/autoresearch:plan Reduce cache latency; do not implement yet
+/plan_for_me Reduce cache latency; do not implement yet
 /autowork Implement the next ready cache task from TODO.md; commit locally, no push
 ```
 
@@ -185,7 +191,7 @@ live messaging. In the new CLI chat, try:
 
 ```text
 /toolset list
-/repo-interview questions only: help me clarify a caching improvement; ask one question, then stop
+/plan_with_me questions only: help me clarify a caching improvement; ask one question, then stop
 ```
 
 Expected first success: the agent asks one relevant question and changes no files.

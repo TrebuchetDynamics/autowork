@@ -8,18 +8,21 @@ metadata:
     tags: [interview, requirements, documentation, planning]
 ---
 
-# Repo Interview
+# Plan With Me
 
 The interactive companion to [repo-docs](../repo-docs/SKILL.md). Learn what the
 owner wants by asking focused questions, then reconcile the answers into existing
 documentation and actionable tasks. Follow the [shared contract](../shared/COMMON-CONTRACT.md)
 and [plan handoff](../shared/PLAN-HANDOFF.md).
 
-`/repo-interview` (`/repo_interview` on Telegram) starts an interview about the
+`/plan_with_me` (`/plan-with-me` also works in CLI) starts an interview about the
 current repository; arguments narrow the topic. Its default scope includes saving
 answered decisions and maintaining affected docs. `questions only`, `audit` or
 `read-only` means no file changes. It does not authorize code changes or start
 autowork. Honor any separate implementation authority already given.
+
+The stable skill ID remains `repo-interview`; old commands remain compatibility
+aliases. The public command means ask the user and plan together.
 
 ## Learn enough to ask a useful question
 

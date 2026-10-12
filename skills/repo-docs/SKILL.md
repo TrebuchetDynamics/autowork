@@ -8,9 +8,10 @@ metadata:
     tags: [documentation, governance, technical-writing, ste-inspired, backlog, todo]
 ---
 
-# Repo Docs
+# Docs Sync
 
 Keep docs accurate and distinguish intent from implementation. Reuse owners.
+The stable skill ID remains `repo-docs`; `/repo-docs` and `/repo_docs` are compatibility aliases.
 Follow [the shared skill contract](../shared/COMMON-CONTRACT.md) for study, hygiene,
 safety and evidence; use `wiki-docs` for raw-source-to-wiki compilation.
 
@@ -32,7 +33,7 @@ a documentation-only request never launches autowork.
 | Maintain | Update affected owners only. |
 | Audit | Read/report; write only when explicitly authorized. |
 
-Bare `/repo-docs` or `/repo_docs` means Bootstrap + Maintain: inspect, build every
+Bare `/docs_sync` or `/docs-sync` means Bootstrap + Maintain: inspect, build every
 applicable core owner, correct supported drift, and run goal-gap analysis. Arguments
 narrow scope. Explicit Audit/read-only scope changes no files, including TODO.md,
 goals.json and BLOCKERS.md. Task-addition/brainstorming persistence is narrow

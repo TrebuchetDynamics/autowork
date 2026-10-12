@@ -108,5 +108,7 @@ def register(ctx):
         )
     from .autoresearch_commands import register as register_autoresearch
     register_autoresearch(ctx, skills, _invoke)
+    from .workflow_commands import register as register_workflows
+    register_workflows(ctx, skills, _invoke)
     from .bundle import register_bundle
     register_bundle(ctx, _invoke)
