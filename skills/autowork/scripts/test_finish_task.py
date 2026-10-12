@@ -1,5 +1,6 @@
 """Disposable Git fixtures for the worker's validation/commit gate."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -28,13 +29,13 @@ class FinishTaskTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], text=True).strip()
 
-    def finish(self, check='pass', files=('owned',)):
+    def finish(self, check='pass', files=('owned',), env=None):
         script = Path(__file__).with_name('finish_task.py')
         self.assertTrue(script.exists(), 'missing executable validation/commit completion gate')
         result = subprocess.run([sys.executable, str(script), '--repo', str(self.root),
             '--profile', 'fixture', '--card', 'one', '--message', 'Implement task',
             '--check-json', json.dumps([sys.executable, '-c', check]), '--', *files],
-            text=True, capture_output=True, timeout=30)
+            text=True, capture_output=True, timeout=30, env=env)
         return result, json.loads(result.stdout)
 
     def preserved(self):
@@ -49,6 +50,86 @@ class FinishTaskTests(unittest.TestCase):
         self.assertEqual(self.git('show', receipt['commit'] + ':owned'), 'task')
         self.assertEqual(self.git('show', receipt['commit'] + ':foreign'), 'base')
         self.assertEqual(self.git('rev-parse', receipt['branch']), receipt['commit'])
+        self.preserved()
+
+    def routed_repository(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        other = Path(temporary.name)
+        for args in (('init', '-q'), ('config', 'user.name', 'Other'),
+                     ('config', 'user.email', 'other@example.invalid')):
+            subprocess.run(['git', '-C', str(other), *args], check=True)
+        (other / 'owned').write_text('foreign base')
+        subprocess.run(['git', '-C', str(other), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(other), 'commit', '-qm', 'foreign base'], check=True)
+        (other / 'owned').write_text('unvalidated foreign edit')
+        subprocess.run(['git', '-C', str(other), 'add', 'owned'], check=True)
+        return other, dict(os.environ, GIT_DIR=str(other / '.git'),
+                           GIT_WORK_TREE=str(other), GIT_INDEX_FILE=str(other / '.git/index'))
+
+    def foreign_snapshot(self, other):
+        refs = subprocess.check_output(['git', '-C', str(other), 'show-ref'])
+        return refs, (other / '.git/index').read_bytes(), (other / 'owned').read_bytes()
+
+    def test_wrapper_cannot_be_routed_to_foreign_repository(self):
+        other, env = self.routed_repository()
+        before = self.foreign_snapshot(other)
+        result, receipt = self.finish(env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.git('rev-parse', receipt['branch']), receipt['commit'])
+        self.assertEqual(self.git('show', receipt['commit'] + ':owned'), 'task')
+        self.assertEqual(self.foreign_snapshot(other), before)
+        self.preserved()
+
+    def test_direct_script_cannot_be_routed_to_foreign_repository(self):
+        other, env = self.routed_repository()
+        before = self.foreign_snapshot(other)
+        result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
+            str(self.root), 'fixture', 'one', 'Implement task', 'owned'],
+            env=env, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        branch, sha = result.stdout.split()
+        self.assertEqual(self.git('rev-parse', branch), sha)
+        self.assertEqual(self.git('show', sha + ':owned'), 'task')
+        self.assertEqual(self.foreign_snapshot(other), before)
+        self.preserved()
+
+    def test_acceptance_git_uses_requested_repository_and_its_real_index(self):
+        other, env = self.routed_repository()
+        before = self.foreign_snapshot(other)
+        check = (
+            'import subprocess; from pathlib import Path; '
+            "assert Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip()) == Path.cwd(); "
+            "assert subprocess.check_output(['git', 'show', ':foreign'], text=True) == 'someone else'"
+        )
+        result, receipt = self.finish(check, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(receipt['status'], 'committed')
+        self.assertEqual(self.foreign_snapshot(other), before)
+        self.preserved()
+
+    def test_index_override_alone_does_not_hijack_acceptance_or_commit(self):
+        other, _ = self.routed_repository()
+        before = self.foreign_snapshot(other)
+        env = dict(os.environ, GIT_INDEX_FILE=str(other / '.git/index'))
+        check = "import subprocess; assert subprocess.check_output(['git', 'show', ':foreign'], text=True) == 'someone else'"
+        result, receipt = self.finish(check, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.git('show', receipt['commit'] + ':owned'), 'task')
+        self.assertEqual(self.foreign_snapshot(other), before)
+        self.preserved()
+
+    def test_requested_repository_reference_hook_is_still_enforced(self):
+        other, env = self.routed_repository()
+        hook = self.root / '.git/hooks/reference-transaction'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(0o755)
+        before = self.foreign_snapshot(other)
+        result, receipt = self.finish(env=env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(receipt['status'], 'commit_failed')
+        self.assertEqual(self.git('branch', '--list', 'agent/*'), '')
+        self.assertEqual(self.foreign_snapshot(other), before)
         self.preserved()
 
     def test_failed_validation_never_creates_commit(self):

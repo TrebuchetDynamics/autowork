@@ -23,7 +23,13 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 
 Ordinary installation skips existing resources. `/toolset update` updates bundled
 content, including the pinned engineering pack, while preserving conflicts. External
-imports are not upgraded by that command. Two
+imports are not upgraded by that command. A checkout revision alone does not prove
+that native profile copies match it. The updater recognizes exact same-path
+historical copies in bounded trusted Git history; unknown drift is preserved and
+reported as incomplete for reconciliation. Historical byte equality does not
+prove an older copy was unintentional or compatible with an active worker. Review
+intentional pins and quiesce/reconcile active runs before updating; see the
+[update boundary and recovery](installation.md#update-all-profiles). Two
 machines with the same Toolset checkout can therefore have different external
 versions. Native scans remain enabled; blocked imports mean incomplete setup.
 `--yes-deps` permits declared dependency installation, not a scanner bypass.

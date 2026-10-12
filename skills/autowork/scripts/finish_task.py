@@ -11,6 +11,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from candidate_identity import git_environment
+
 
 def fingerprint(repo, files):
     result = {}
@@ -27,10 +29,11 @@ def fingerprint(repo, files):
 
 def finish(repo, profile, card, message, files, checks, timeout):
     receipts = []
+    environment = git_environment()
     before = fingerprint(repo, files)
     for command in checks:
         try:
-            completed = subprocess.run(command, cwd=repo, timeout=timeout, stdout=sys.stderr)
+            completed = subprocess.run(command, cwd=repo, timeout=timeout, stdout=sys.stderr, env=environment)
             receipts.append({'argv': command, 'exit_code': completed.returncode})
         except (OSError, subprocess.TimeoutExpired) as exc:
             return {'status': 'validation_failed', 'checks': receipts, 'error': str(exc)}, 1
@@ -42,14 +45,14 @@ def finish(repo, profile, card, message, files, checks, timeout):
     try:
         result = subprocess.run(['bash', str(Path(__file__).with_name('agent_commit.sh')),
             str(repo), profile, card, message, *files], capture_output=True, text=True,
-            env={**os.environ, 'AGENT_COMMIT_JSON': '0'}, timeout=timeout)
+            env={**environment, 'AGENT_COMMIT_JSON': '0'}, timeout=timeout)
         if result.returncode:
             return {'status': 'commit_failed', 'checks': receipts, 'error': result.stderr.strip()}, 1
         branch, sha, *rest = result.stdout.strip().split()
         if rest:
             return {'status': 'no_changes', 'checks': receipts, 'source_commit': sha}, 0
         readback = subprocess.check_output(['git', '-C', str(repo), 'rev-parse',
-                                           'refs/heads/' + branch], text=True).strip()
+                                           'refs/heads/' + branch], text=True, env=environment).strip()
         if readback != sha:
             raise ValueError('Task ref changed before commit readback')
         return {'status': 'committed', 'checks': receipts, 'branch': branch, 'commit': sha,

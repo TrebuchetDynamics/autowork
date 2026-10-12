@@ -8,6 +8,10 @@
 # agents' dirty work are untouched. Never pushes, never touches main/master.
 # Prints the branch and new commit sha.
 set -euo pipefail
+# Select the explicit repository even when invoked from another Git process.
+# Keep configuration/hooks intact; create our own temporary index only below.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 [ $# -ge 5 ] || { echo "usage: agent_commit.sh repo profile card message file..." >&2; exit 2; }
 repo=$1 profile=$2 card=$3 msg=$4; shift 4

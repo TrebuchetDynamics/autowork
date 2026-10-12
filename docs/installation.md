@@ -201,7 +201,19 @@ Non-Git plugin distributions need a supported Git installation before this updat
 
 Bundled native skill copies are synchronized, including shared references and
 upstream deletions of unmodified files. Compatible local edits are merged;
-conflicting edits are preserved for reconciliation. Missing bundle installations
+conflicting edits are preserved for reconciliation. If the checkout already advanced,
+the updater can refresh a native file whose bytes exactly match that same path in
+trusted upstream history (at most 100 path-changing commits, cached per checkout).
+It does not infer a merge base for modified older copies. Unknown differences on
+unchanged upstream paths are reported as `drift`, with an `incomplete` result;
+all checkout/profile writes are deferred until those files are reconciled. Check
+mode reports the same drift and planned copies without applying them. History
+outside the bounded window or unavailable in a shallow checkout may require manual
+reconciliation; files absent from both checkout revisions are not inventoried.
+An exact byte match establishes historical content, not whether someone intended
+to pin it. There is no per-file pin setting in this updater: review intentional
+pins before invoking an update, and retain them outside the managed copy if needed.
+Missing bundle installations
 are linked to the updated source. Native enablement loads the plugin and applies
 its documented runtime defaults; per-profile bundle-only finalization verifies
 registrations and refreshes gateway commands. Separate native checkouts remain
@@ -209,14 +221,17 @@ separate. It does not upgrade unrelated plugins, Hermes Agent or external import
 Existing setup prerequisites still apply; this is not a policy-neutral operation.
 
 `maintenance/toolset-update/latest.json` in the root Hermes home records status,
-source revisions, profiles and the backup location. `run.log` holds setup details;
+source revisions, profiles, unresolved drift paths/actions and the backup location. `run.log` holds setup details;
 per-run backups include original skill files and a manifest. An `incomplete` result
 may follow partial application: preserve the backups, fix the reported cause and
 rerun. There is no automatic rollback. A stopped gateway is reported by setup;
 an unreachable live gateway is not treated as verified wiring.
 
 Workers and schedules are not restarted or changed. Update between active tasks
-when possible because runtime/helper files change. Existing conversations may
+after quiescing or reconciling running workers because runtime/helper files change.
+Historical byte matching does not establish compatibility with an active run or
+its pinned execution files, manifests or evidence; update receipts do not qualify
+that compatibility. Existing conversations may
 retain already-loaded instructions; open a new conversation to load updated skills.
 The new `/toolset update` handler itself first needs the normal plugin reload if
 upgrading from a version that does not register it.

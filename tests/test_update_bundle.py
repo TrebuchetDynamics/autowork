@@ -1,8 +1,12 @@
 """Offline update tests using local Git remotes, never a live Hermes home."""
 import importlib.util
+import contextlib
+import io
+import json
 from pathlib import Path
 import subprocess
 import tempfile
+from types import ModuleType
 import unittest
 from unittest.mock import patch
 
@@ -29,6 +33,8 @@ class UpdateTests(unittest.TestCase):
             (home/'skills/demo/SKILL.md').write_text('old\n')
         spec=importlib.util.spec_from_file_location('update_under_test',ROOT/'update_bundle.py')
         self.mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.mod)
+        self.setup_stub = ModuleType('setup_bundle')
+        self.setup_stub.live_profiles = lambda root: self.profiles
     def git(self,path,*args):
         return subprocess.check_output(['git','-C',str(path),*args],stderr=subprocess.DEVNULL,text=True).strip()
     def advance(self):
@@ -43,6 +49,102 @@ class UpdateTests(unittest.TestCase):
         for _,home in self.profiles:self.assertEqual((home/'skills/demo/SKILL.md').read_text(),'new\n')
         self.assertEqual(self.git(self.repo,'rev-parse','HEAD'),self.git(self.remote,'rev-parse','HEAD'))
         self.assertEqual(self.plan()['writes'],[])
+    def test_already_advanced_checkout_refreshes_historical_native_copies(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        plan = self.plan()
+        self.assertEqual(len(plan['writes']), 2)
+        self.mod.apply(plan, self.home / 'backups')
+        for _, home in self.profiles:
+            self.assertEqual((home / 'skills/demo/SKILL.md').read_text(), 'new\n')
+
+    def test_modified_old_copy_is_drift_not_an_invented_merge_base(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text('old\ncustomization\n')
+        plan = self.plan()
+        self.assertEqual([item['path'] for item in plan['drift']], [str(path)])
+        with self.assertRaisesRegex(ValueError, 'drift'):
+            self.mod.apply(plan, self.home / 'backups')
+        self.assertFalse((self.home / 'backups').exists())
+        self.assertEqual(path.read_text(), 'old\ncustomization\n')
+        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'old\n')
+
+    def test_history_does_not_match_other_paths_or_unreachable_branches(self):
+        (self.remote / 'skills/demo/other.md').write_text('unrelated\n')
+        self.git(self.remote, 'add', '.')
+        self.git(self.remote, 'commit', '-m', 'other path')
+        self.git(self.remote, 'checkout', '-b', 'untrusted')
+        (self.remote / 'skills/demo/SKILL.md').write_text('branch-only\n')
+        self.git(self.remote, 'commit', '-am', 'branch only')
+        self.git(self.remote, 'checkout', 'main')
+        self.git(self.repo, 'fetch', 'origin', 'untrusted:refs/heads/untrusted')
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        for (_, home), content in zip(self.profiles, ('unrelated\n', 'branch-only\n')):
+            (home / 'skills/demo/SKILL.md').write_text(content)
+        plan = self.plan()
+        self.assertEqual(len(plan['drift']), 2)
+        self.assertFalse(any(path.name == 'SKILL.md' for path, *_ in plan['writes']))
+
+    def test_historical_lookup_is_cached_per_checkout_and_path(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        with patch.object(self.mod, 'git', wraps=self.mod.git) as calls:
+            self.plan()
+        history = [call for call in calls.call_args_list if call.args[1] == 'log']
+        self.assertEqual(len(history), 1)
+        self.assertIn('-100', history[0].args)
+
+    def test_older_copy_refreshes_when_checkout_and_upstream_also_differ(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        (self.remote / 'skills/demo/SKILL.md').write_text('latest\n')
+        self.git(self.remote, 'commit', '-am', 'another update')
+        self.mod.apply(self.plan(), self.home / 'backups')
+        for _, home in self.profiles:
+            self.assertEqual((home / 'skills/demo/SKILL.md').read_text(), 'latest\n')
+
+    def test_check_and_update_report_unresolved_drift_without_profile_writes(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text('custom\n')
+        prepare = self.mod.prepare
+        for check in (True, False):
+            with self.subTest(check=check):
+                args = ['--hermes-home', str(self.home)] + (['--check'] if check else [])
+                with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+                     patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+                     patch.object(self.mod, 'finalize_profiles') as finalize, \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(self.mod.main(args), 1)
+                receipt = json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
+                self.assertEqual(receipt['status'], 'incomplete')
+                self.assertEqual(receipt['drift'][0]['path'], str(path))
+                self.assertIn('reconcile', receipt['action'])
+                self.assertNotIn('backup', receipt)
+                finalize.assert_not_called()
+                self.assertEqual(path.read_text(), 'custom\n')
+                self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'old\n')
+
+    def test_check_reports_stale_copies_without_applying_them(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        prepare = self.mod.prepare
+        with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+             patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+             patch.object(self.mod, 'finalize_profiles') as finalize, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.mod.main(['--hermes-home', str(self.home), '--check']), 0)
+        receipt = json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
+        self.assertEqual(receipt['status'], 'update_available')
+        self.assertEqual(receipt['skill_files'], 2)
+        finalize.assert_not_called()
+        for _, home in self.profiles:
+            self.assertEqual((home / 'skills/demo/SKILL.md').read_text(), 'old\n')
+
     def test_new_pinned_engineering_tree_reaches_every_profile(self):
         payloads = {
             'SKILL.md': 'Hermes adapter\n',

@@ -58,10 +58,42 @@ def merge_file(old, local, new, path):
         return result.stdout
 
 
+HISTORY_LIMIT = 100
+
+
+def historical_copy(repo, state, relative, local):
+    """Recognize exact same-path bytes in bounded, trusted reachable history."""
+    cache = state.setdefault('history', {})
+    if relative not in cache:
+        # Raw records expose both sides of changes, including an old blob whose
+        # last modification falls before the bounded history window. Do not follow
+        # renames or consult other refs: neither establishes this path's baseline.
+        records = git(repo, 'log', '--format=', '--raw', '--no-abbrev',
+                      '--no-renames', '-m', f'-{HISTORY_LIMIT}', state['after'],
+                      '--', f':(literal){relative}')
+        oids = set()
+        for line in records.splitlines():
+            if not line.startswith(b':'):
+                continue
+            fields = line.split(b'\t', 1)[0].split()
+            if len(fields) != 5:
+                continue
+            for mode, oid in ((fields[0][1:], fields[2]), (fields[1], fields[3])):
+                if mode in (b'100644', b'100755'):
+                    oids.add(oid)
+        blobs = state.setdefault('history_blobs', {})
+        for oid in oids:
+            if oid not in blobs:
+                blobs[oid] = git(repo, 'cat-file', 'blob', oid.decode())
+        cache[relative] = [blobs[oid] for oid in oids]
+    return local in cache[relative]
+
+
 def prepare(source, profiles, *, upstream=UPSTREAM):
     """Fetch trusted main, then preflight ALL sources and destinations before writes."""
     sources = {}
     writes = []
+    drift = []
     for name, home in profiles:
         plugin = home / 'plugins/hermes-toolset'
         if (home / 'plugins').is_symlink() or (plugin.is_symlink() and not plugin.exists()):
@@ -90,15 +122,25 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
             local = path.read_bytes() if path.exists() else None
             old, new = state['old'].get(relative), state['new'].get(relative)
             # Missing native copies are provisioned, including on profiles not installed yet.
-            merged = new if local is None and new is not None else merge_file(old, local, new, path)
+            if local is None and new is not None:
+                merged = new
+            elif local is not None and local != new and local != old and historical_copy(repo, state, relative, local):
+                merged = new
+            else:
+                merged = merge_file(old, local, new, path)
+                if old == new and local != new:
+                    drift.append({'profile': name, 'path': str(path),
+                                  'reason': 'Local bytes differ from current upstream and no exact historical baseline was found'})
             current_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
             mode = current_mode | (0o111 if relative in state['executables'] else 0)
             if merged != local or (merged is not None and mode != current_mode):
                 writes.append((path, local, merged, mode))
-    return {'sources': sources, 'writes': writes, 'profiles': [n for n, _ in profiles]}
+    return {'sources': sources, 'writes': writes, 'drift': drift, 'profiles': [n for n, _ in profiles]}
 
 
 def apply(plan, backup):
+    if plan.get('drift'):
+        raise ValueError('Unresolved native skill drift; reconcile the reported files before updating')
     # Recheck every destination before advancing any checkout.
     for path, old, new, mode in plan['writes']:
         safe_path(path)
@@ -203,7 +245,11 @@ def main(argv=None):
             result['skill_files'] = len(plan['writes'])
             changed = bool(plan['writes']) or any(s['before'] != s['after'] for s in plan['sources'].values())
             missing = any(not (h / 'plugins/hermes-toolset').exists() for _, h in profiles)
-            if args.check:
+            result['drift'] = plan['drift']
+            if plan['drift']:
+                result.update(status='incomplete',
+                              action='Review the listed native skill files, back up customizations or intentional pins, and reconcile them with the fetched revision before rerunning /toolset update. No checkout or profile changes were applied.')
+            elif args.check:
                 result['status'] = 'update_available' if changed or missing else 'up_to_date'
             else:
                 stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
