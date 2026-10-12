@@ -16,8 +16,8 @@ across profiles, and verification that gateway commands were registered.
 | Clarify a project | `/repo-interview Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core for questions/chat summary; Graphify + file/terminal tools to save decisions |
 | Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. | Core + configured model |
 | Maintain docs and tasks | `/repo-docs Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | Graphify + file/terminal tools |
-| Develop a repository | `/autowork Implement the accepted cache specification` | Inspects the repo’s stage, plans missing work, maintains tasks, executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; Graphify for docs preparation |
-| Research and improve | `/autoresearch:plan Reduce cache latency` | Derives measurements and a plan; records accepted follow-ups through repo-docs. Other research commands can execute bounded experiments. | Research/experiment tools for the selected protocol; Graphify to record tasks |
+| Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, uses bounded Autoresearch when planning is needed or the queue is empty, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; Graphify for docs preparation |
+| Research and improve | `/autoresearch:plan Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through repo-docs. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; Graphify to record tasks |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
@@ -42,10 +42,30 @@ with the migration procedure in [installation](docs/installation.md).
 ```
 
 The interview asks questions and uses repo-docs to save accepted decisions and
-tasks automatically; a separate docs command is unnecessary. Once that design is
-accepted, autowork implements it and reports task outcomes and delivery status.
-A blocked dependency stays blocked; a passing build alone does not complete a task.
-Documentation-only requests do not start implementation or recurring jobs.
+tasks automatically; a separate docs command is unnecessary. **TODO.md is the
+central work queue** for plans, user orders and progress. Its task details and
+Now/Next ordering stay synchronized with the goals.json execution index; explicit
+user priority changes are reconciled before task selection.
+
+Already have an idea? Plan it first, then authorize execution:
+
+```text
+/autoresearch:plan Reduce cache latency; do not implement yet
+/autowork Implement the next ready cache task from TODO.md; commit locally, no push
+```
+
+Autoresearch saves in-scope findings and actionable tasks by default; you do not
+need to say “save.” It reuses task IDs and links supporting plans rather than
+creating a competing backlog. Explicit `read-only`, `chat-only`, `no-write` or
+`--dry-run` requests write nothing. Planning alone starts neither implementation
+nor a recurring job.
+
+Autowork uses a clear runnable task directly. When substantive planning is needed
+or the observed queue is empty, it invokes bounded Autoresearch, records useful
+work in TODO.md and retries selection in the same run. Under broad repository
+scope, that can include evidenced documentation, UI/accessibility, test or refactor
+work. It preserves dependencies, active workers and live-operation limits; it does
+not invent tasks to inflate completion counts. See [the TODO work-center contract](skills/shared/TODO-WORKCENTER.md).
 
 Illustrative result after an authorized task completes—not a test receipt:
 
@@ -57,6 +77,14 @@ Checks: cache acceptance tests passed; required review passed.
 Next: CACHE-02 — Verify eviction behavior [eligible, not started].
 Delivery: local commit <SHA>; not pushed, as requested.
 ```
+
+A resumed worker is **RUNNING**, not completed. **COMPLETED** requires verified
+task acceptance and closure; a passing build or successful dispatch is insufficient.
+For a genuine user-dependent blocker, the report leads with **Action needed from
+you:** the exact action and target, why it is needed, and what will resume afterward.
+Autowork performs already-authorized repairs without asking again. These are
+[reporting instructions](skills/autowork/references/dispatch-and-reporting.md),
+not a guarantee that every cron occurrence completes a task.
 
 ## Read before installing
 
