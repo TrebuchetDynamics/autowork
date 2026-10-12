@@ -65,6 +65,31 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertFalse(receipt['dispatch_attempted'])
         for path,contents in before.items():self.assertEqual(path.read_bytes(),contents)
 
+    def test_repository_cycle_searches_beyond_registered_writer(self):
+        self.ready_backlog()
+        registry = self.repo / 'docs/coordination/worktree-registry.jsonl'
+        registry.parent.mkdir(parents=True)
+        registry.write_text(json.dumps({'task':'T1','owner':'writer',
+            'worktree':'/fixture/writer','status':'ACTIVE'}) + '\n')
+        _, receipt = self.run_cycle('--scope', 'repository')
+        self.assertFalse(receipt['backlog_ready'])
+        self.assertFalse(receipt['dispatch_attempted'])
+        self.assertEqual(receipt['work_search']['state'], 'no_unclaimed_candidate')
+        self.assertEqual(receipt['work_search']['held_claims'][0]['task'], 'T1')
+        self.assertEqual(receipt['action'], 'discover_repository_work')
+        ledger = self.repo / 'goals.json'; data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'].append({'id':'T2','title':'Independent','goal':'G1','status':'open','section':'Now'})
+        ledger.write_text(json.dumps(data))
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text() + '\n- [ ] T2: Independent\n  Goal: G1\n'
+            '  Scope: independent\n  Acceptance: test passes\n  Dependencies: None\n'
+            '  Ownership: fixture\n  Sources: [Accepted](SPEC.md#slice)\n')
+        _, receipt = self.run_cycle('--scope', 'repository')
+        self.assertEqual(receipt['action'], 'prepare_independent_candidate')
+        self.assertIn('T2', receipt['next_action'])
+        self.assertFalse(receipt['dispatch_attempted'])
+
     def test_parent_session_is_bound_in_request_and_delivery(self):
         self.state.mkdir();owner=self.root/'parent';owner.mkdir()
         (self.state/'owner-route.json').write_text(json.dumps({'consumer':str(self.repo),

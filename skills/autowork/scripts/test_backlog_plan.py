@@ -42,6 +42,10 @@ class BacklogPlanTests(unittest.TestCase):
             self.cycle['recovery']['gate']=gate
             self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],action)
 
+    def test_observed_queue_does_not_hide_held_selected_task(self):
+        self.cycle.update(scope='repository', backlog_ready=False, ready_queue=[{'id':'T2'}])
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'discover_repository_work')
+
     def test_receipt_requires_actual_evidence_and_known_outcome(self):
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'','no_supported_delta')
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'fixture://receipt','completed')

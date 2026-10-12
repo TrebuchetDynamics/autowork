@@ -95,8 +95,10 @@ def ready_queue(consumer, limit=3):
         revision = goals.revision(repo)
         data = goals.normalize(goals.load(repo))
         chosen = first['selected_task']
+        held_ids = {row['task'] for row in first.get('held_claims', [])}
         candidates = [t for t, _ in goals.eligible(data)
-                      if t['status'] == 'open' and t['goal'] == chosen['goal']][:limit]
+                      if t['status'] == 'open' and t['goal'] == chosen['goal']
+                      and t['id'] not in held_ids][:limit]
     checked = retry_selection.select(repo, plan=first['plan'], task_ids=[t['id'] for t in candidates])
     if goals.revision(repo) != revision:
         raise ValueError('consumer changed during queue validation')

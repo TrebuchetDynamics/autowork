@@ -29,6 +29,76 @@ class RetrySelectionTests(unittest.TestCase):
         import retry_selection
         return retry_selection.select(consumer or self.consumer, **kwargs)
 
+    def claim(self, task='T1', status='ACTIVE', workspace='/fixture/writer'):
+        path = self.consumer / 'docs/coordination/worktree-registry.jsonl'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('a') as stream:
+            stream.write(json.dumps({'task': task, 'owner': 'writer',
+                                     'worktree': workspace, 'status': status}) + '\n')
+
+    def test_open_ledger_task_with_registered_writer_is_not_ready(self):
+        self.claim()
+        result = self.retry(plan='SPEC.md#accepted', task_ids=['T1'])
+        self.assertEqual(result['state'], 'backlog_reconciled_not_eligible')
+        self.assertIsNone(result['selected_task'])
+        self.assertIn('registered writer', ' '.join(result['reasons']))
+
+    def test_claimed_primary_does_not_hide_independent_frontier(self):
+        import retry_selection
+        self.claim()
+        p = self.consumer / 'goals.json'; data = json.loads(p.read_text())
+        data['goals'].append({'id':'G2','title':'Independent','status':'unmet',
+                             'source':'SPEC.md#accepted','tasks':['T2']})
+        data['tasks'].append({'id':'T2','goal':'G2','title':'Independent',
+                             'status':'open','section':'Now'})
+        p.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text() + '\n- [ ] T2: Independent\n  Goal: G2\n'
+            '  Scope: independent files\n  Acceptance: test passes\n  Dependencies: None\n'
+            '  Ownership: fixture\n  Sources: [Plan](SPEC.md#accepted)\n')
+        before = {p: p.read_bytes(), todo: todo.read_bytes()}
+        result = retry_selection.repository_frontier(self.consumer)
+        self.assertEqual([r['task']['id'] for r in result['candidates']], ['T2'])
+        self.assertTrue(result['candidates'][0]['requires_fallback_attestation'])
+        self.assertEqual(result['held_claims'][0]['task'], 'T1')
+        for path, content in before.items(): self.assertEqual(path.read_bytes(), content)
+        # The same-milestone queue must not reinsert the excluded first writer.
+        data['goals'].pop()
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'][1]['goal'] = 'G1'
+        p.write_text(json.dumps(data))
+        todo.write_text(todo.read_text().replace('Goal: G2', 'Goal: G1'))
+        self.assertEqual(self.retry()['selected_task']['id'], 'T2')
+        import progress_runtime
+        self.assertEqual([t['id'] for t in progress_runtime.ready_queue(self.consumer)['tasks']], ['T2'])
+
+    def test_release_of_one_workspace_does_not_release_another(self):
+        self.claim(workspace='/fixture/one'); self.claim(workspace='/fixture/two')
+        self.claim(status='RELEASED', workspace='/fixture/one')
+        self.assertEqual(self.retry(plan='SPEC.md#accepted', task_ids=['T1'])['state'],
+                         'backlog_reconciled_not_eligible')
+        self.claim(status='RELEASED', workspace='/fixture/two')
+        self.assertEqual(self.retry()['state'], 'ready_for_autowork')
+
+    def test_registry_change_during_check_invalidates_selection(self):
+        import retry_selection
+        from unittest.mock import patch
+        original = retry_selection.goals.backlog_check
+        def intervening_claim(args):
+            self.claim()
+            return original(args)
+        with patch.object(retry_selection.goals, 'backlog_check', side_effect=intervening_claim):
+            result = self.retry()
+        self.assertEqual(result['state'], 'draft_saved')
+        self.assertIsNone(result['selected_task'])
+        self.assertIn('consumer changed during retry', result['reasons'])
+
+    def test_malformed_registry_is_not_treated_as_no_claims(self):
+        self.claim()
+        (self.consumer / 'docs/coordination/worktree-registry.jsonl').write_text('{}\n')
+        with self.assertRaisesRegex(ValueError, 'invalid worktree registry'):
+            self.retry()
+
     def test_named_gated_task_still_reports_repairable_contract_defects(self):
         path = self.consumer / 'goals.json'
         data = json.loads(path.read_text())

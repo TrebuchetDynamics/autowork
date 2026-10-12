@@ -142,6 +142,27 @@ must not overwrite a worker's verified completion in the same occurrence.
    carrying existing commit/push authority and original-card identity. The CLI itself
    does not dispatch. Candidate validation is not native admission or implementation.
 
+## Registered claims and independent candidates
+
+An `open` ledger checkbox does not establish that a task is unclaimed. Selection
+reads `docs/coordination/worktree-registry.jsonl` when present, using the latest
+entry for each task/workspace. Unreleased claims remain held, including reviewed
+candidates; only explicit `RELEASED` or `INTEGRATED` entries end that registry hold.
+Other registry formats still require the repository's own ownership checks.
+Never release a claim merely because its writer is old, idle or dirty.
+
+For repository-wide work, a held slice automatically triggers a read-only search
+across dependency-ready tasks. Read `work_search.candidates` in the owner-cycle
+receipt, or run `retry_selection.py /canonical/repo --repository-frontier`.
+For each candidate, check actual file-scope overlap and current ownership; then
+prepare its contract and source snapshot in this occurrence. If
+`requires_fallback_attestation` is true, supply the existing native structured
+fallback evidence for why focused tasks cannot run, using `fallback-file` in the
+handoff request. Rerun the cycle with the candidate's exact plan and task ID.
+Do not change milestone focus, reset claims, or treat this search as completion.
+A rejected candidate lists concrete contract gaps to repair under existing authority.
+An empty focused queue does not mean there are no repository-wide candidates.
+
 ## If the preferred slice remains held
 
 For broad repository development pass `--scope repository`; for explicit named-task

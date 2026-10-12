@@ -279,6 +279,11 @@ def run_locked(args, state):
                 save(path, request)
                 resolved.append(str(path))
         result['resolved_requests'] = resolved
+    if not result['backlog_ready'] and result['scope'] == 'repository':
+        try:
+            result['work_search'] = retry_selection.repository_frontier(consumer)
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            result['work_search'] = {'state': 'unverified', 'error': str(exc)}
     result['repairs'] = [repair for stage in recovery.get('stages', [])
                          if stage.get('stage') == 'repair' for repair in stage.get('repairs', [])]
     result['blocker'] = required_inputs if not ready or result['held_task_ids'] else []
@@ -289,6 +294,11 @@ def run_locked(args, state):
     if result['planning']['action'] == 'discover_repository_work' and not result['dispatch_attempted']:
         result.update(action='discover_repository_work', outcome='ACTION_REQUIRED',
                       next_action=result['planning']['handoff'])
+        candidates = result['work_search'].get('candidates', [])
+        if candidates:
+            candidate = candidates[0]
+            result.update(action='prepare_independent_candidate',
+                next_action=f"Check file-scope ownership for {candidate['task']['id']}; prepare its contract, snapshot and required fallback evidence, then retry this exact candidate")
     elif preparation:
         result.update(action='prepare_execution_handoff',
                       next_action='Prepare the contract, base and snapshot under existing authority; a missing owner route does not delegate ordinary preparation to the user')
