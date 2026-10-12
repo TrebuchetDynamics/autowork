@@ -40,9 +40,10 @@ def decide(cycle, state):
         if receipt.get('input_key')!=token:raise ValueError('planning receipt binding mismatch')
         return {'action':'reuse','receipt':str(path),'reason':'Same consumer inputs already planned; follow its integration or execution outcome'}
     poor_contract=gate in ('accepted_body_repair','accepted_metadata_repair')
-    if poor_contract or cycle.get('unchanged_runs',0)>=2:
+    empty_queue = cycle.get('ready_queue') == [] and not cycle.get('selected_task')
+    if poor_contract or empty_queue or cycle.get('unchanged_runs',0)>=2:
         return {'action':'plan','input_key':token,'skill':'hermes-toolset:autoresearch',
-                'subcommand':'plan','reason':'No ready work and incomplete contracts or repeated hold',
+                'subcommand':'plan','reason':'Observed empty queue, incomplete task contract or repeated hold',
                 'handoff':'Bounded findings -> canonical repo-docs Maintain -> same-occurrence selection',
                 'boundary':'Agent must run the skill; this decision is not model execution or task completion'}
     return {'action':'recover_first','reason':'Attempt ordinary recovery before opening a planning pass'}

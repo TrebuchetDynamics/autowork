@@ -10,7 +10,9 @@ prohibition; equally, do not silently override a genuine repository-wide hold.
 
 ## Make ordinary decisions; do not delegate them back to the user
 
-For a broad development job invoke owner_cycle.py with `--scope repository`.
+When reconciling an existing bound task in a broad development job, invoke
+owner_cycle.py with `--scope repository`. An empty repository with no bound task
+enters the bounded planner directly; do not invent helper inputs.
 Explicit task-only work uses `--scope tasks` (the helper's conservative default).
 `discover_repository_work` is an instruction to act, not a finished occurrence:
 load the bounded planner, choose the most valuable evidenced slice, reconcile its
@@ -43,7 +45,7 @@ hold separate from ordinary engineering choices that can already be made.
    Repair attributable paperwork once and retry selection. Preserve the blocked
    task and its exact dependencies. Do not spend the whole occurrence repeating
    the same repair or waiting for a reply that has not arrived.
-2. If no task can run, read the last `work_search` receipt and inspect one or two
+2. If no task can run, read the last `work_search` receipt if present and inspect one or two
    unexamined, authorized components. Use current source, callers, tests, user
    flows and documentation as evidence. Choose a useful area outside the held
    milestone when the job has broad repository scope. An owner of one slice does

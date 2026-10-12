@@ -46,6 +46,14 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
         "Resolve supporting files relative to that skill's directory.\n\n"
         f"User arguments:\n{raw_args}"
     )
+    if name == "autoresearch":
+        prompt = (
+            "TODO.md is the central work queue. By default, persist actionable "
+            "research/planning findings there through repo-docs and synchronize "
+            "goals.json; reuse task IDs and preserve user ordering. Explicit "
+            "read-only, chat-only, no-write and --dry-run requests write nothing. "
+            "Planning alone does not authorize implementation or timed scheduling.\n\n"
+        ) + prompt
     platform = get_session_env("HERMES_SESSION_PLATFORM")
     chat_id = get_session_env("HERMES_SESSION_CHAT_ID")
     target = {}

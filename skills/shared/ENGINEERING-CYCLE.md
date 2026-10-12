@@ -7,6 +7,11 @@ continuation through that accepted scope; default autowork still hands off one s
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
+Apply [TODO work center](TODO-WORKCENTER.md): TODO.md holds user-facing plans and
+orders; reconcile it with goals.json before selection or rendering. Autoresearch
+persists findings there by default. Autowork invokes bounded planning when useful
+work needs decomposition or the observed queue is empty, then retries execution.
+
 ## Autoresearch evidence enters the same cycle
 
 Use [autoresearch](../autoresearch/SKILL.md) for bounded measured experiments,

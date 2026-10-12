@@ -54,6 +54,7 @@ def main():
                 assert 'hermes-toolset:autoresearch' in queued
                 assert f'Selected subcommand: {name}\n' in queued
                 assert queued.endswith(raw)
+                assert 'TODO.md is the central work queue' in queued
         finally:
             clear_session_vars(tokens)
             manager._cli_ref = None

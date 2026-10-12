@@ -88,6 +88,13 @@ entries without disabling typed commands. Existing command owners keep precedenc
 /autoresearch Goal: reduce parser time Scope: src/parser Metric: milliseconds Verify: python bench.py Iterations: 10
 ```
 
+TODO.md is the central work queue for plans, orders and progress. Autoresearch
+updates it by default and synchronizes goals.json; “do not implement” still saves
+the plan, while explicit read-only/chat-only/no-write/--dry-run writes nothing.
+Autowork reads those orders, executes ready tasks, and invokes bounded Autoresearch
+when tasks need decomposition or the queue is empty. It retries selection in the
+same run. See [the work-center contract](../skills/shared/TODO-WORKCENTER.md).
+
 The [Hermes adapter](../skills/autoresearch/SKILL.md) connects research to repo-docs:
 findings update existing documents, matching tasks are reused, and accepted gaps
 become full TODO.md bodies with goals.json priorities, dependencies and checks.

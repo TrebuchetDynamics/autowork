@@ -164,8 +164,11 @@ to runbook, verification to test-plan, releases to CHANGELOG. Audit reports rank
 incorrect/stale/missing/contradictory/duplicated findings with evidence/consequence/
 correction; it writes nothing.
 
-Read intent, ledger, full bodies, ownership/focus. `goals.json` is tracked machine
-authority; TODO.md is its human view. Commit ledger with docs only when authorized;
+Apply [TODO work center](../shared/TODO-WORKCENTER.md): TODO.md is the central
+user-facing work queue. Before rendering or selection, reconcile attributable user
+orders and priority changes into goals.json; never silently discard them because
+the old index disagrees. Read intent, ledger, full bodies and live execution state.
+`goals.json` is the tracked machine execution index synchronized with that queue. Commit ledger with docs only when authorized;
 never gitignore it. Use supported `scripts/goals.py` operations or write JSON then
 `fmt`. No `add-goal`: write a goal object with intent `source`, then `fmt`.
 `add-task` rejects unknown goals. Goal-less TODO bodies cannot replace ledger state.

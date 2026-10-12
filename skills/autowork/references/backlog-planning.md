@@ -1,7 +1,11 @@
 # Autoresearch Plan fallback
 
-Use this only after owner recovery, when no accepted ready work remains. The
-owner_cycle receipt contains `planning.action`; it does not execute a model.
+Use this when an existing task needs substantive decomposition, or immediately
+when the observed queue has no useful runnable work. First reconcile live workers
+and existing results; do not wait for repeated blocked runs. Apply
+[TODO work center](../../shared/TODO-WORKCENTER.md). An owner_cycle receipt may
+contain `planning.action`; that receipt is optional for entering the skill and
+does not execute a model. Routine acceptance clarification needs no research pass.
 
 - `discover_repository_work`: choose independent work under repository-wide
   authority using [repository maintenance](repository-maintenance.md); the original
@@ -9,7 +13,7 @@ owner_cycle receipt contains `planning.action`; it does not execute a model.
 - `execute_ready_work`: continue the accepted task. Do not plan just to fill a quota.
 - `reconcile_owner`: retain the live writer and its work; do not launch a competing planner.
 - `integrate_existing_inputs`: resolve the existing documentation proposal with
-  its integration owner, or use authorized repo-docs Bootstrap if no backlog exists.
+  the current authorized coordinator, or use repo-docs Bootstrap if no backlog exists.
   Do not create a second proposal while canonical adoption is the missing step.
 - `repair_execution_inputs` / `recover_first`: repair the named prerequisite using
   existing authority; research cannot grant permission or repair routing.
@@ -24,8 +28,11 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
 
 ## One bounded pass
 
-1. Save the triggering owner-cycle JSON as a private immutable per-pass input
-   (use its history receipt), then load `hermes-toolset:autoresearch` with
+1. If there is a triggering owner-cycle JSON, save its immutable history receipt.
+   Otherwise record the current repository revision, TODO/goals state and planning
+   reason in a new or reused research receipt at the authorized research location;
+   do not fabricate a cycle or task ID.
+   Then load `hermes-toolset:autoresearch` with
    `Selected subcommand: plan` and read its `upstream/plan.md`. This is skill
    execution in the current agent, not a shell command or a new scheduled job.
 2. Bind Goal to the accepted milestone or an evidence-backed maintenance outcome
@@ -44,15 +51,19 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    already implemented work to increase task counts.
 4. Load repo-docs narrow Maintain with these findings. Reuse tasks before adding
    them; write full bodies in canonical TODO.md and reconcile goals.json under the
-   actual integration owner. Respect Graphify requirements, current leases and
-   source-bound revision guards. If another owner must integrate, route one
-   attributed request with the planning receipt; record `integration_pending`.
+   current authorized coordinator. Reconcile user TODO orders before rendering.
+   Respect Graphify requirements, actual live writers and source-bound revision
+   guards. Do not require external owner acknowledgement for ordinary local work.
+   If a real concurrent writer prevents integration, preserve its work and record
+   `integration_pending`; continue independent authorized work.
    Never call a detached draft an executable backlog.
 5. Validate and retry the canonical consumer in this same occurrence. If ready,
    continue ordinary native handoff under the original implementation authority.
    Otherwise name the exact missing input and its owner. Report planning as
    planning, not a completed TODO task or product implementation.
-6. Record the completed pass against its original cycle snapshot:
+6. When an actual cycle snapshot exists, record the completed pass against it:
+   For a receipt-free entry, retain the research receipt and saved task IDs instead
+   of invoking the cycle recorder with invented inputs.
 
 ```sh
 python3 <autowork>/scripts/backlog_plan.py record \

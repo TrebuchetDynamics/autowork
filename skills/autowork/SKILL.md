@@ -30,6 +30,8 @@ Only explicit whole-spec requests use `references/whole-spec-execution.md` inste
 For scheduled runs load [scheduled policy](references/scheduled-policy.md).
 Owner consultations: `references/profile-feedback.md`.
 
+Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
+
 ## Operating priorities
 
 1. **Step 0 — reconcile, never fingerprint-exit.** Resolve workspace instructions,

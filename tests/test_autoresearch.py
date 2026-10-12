@@ -30,6 +30,18 @@ class AutoresearchCommands(unittest.TestCase):
                 self.assertIn(f'Selected subcommand: {command}\n', prompt)
                 self.assertTrue(prompt.endswith(raw))
 
+    def test_todo_default_reaches_router_and_aliases_without_losing_restrictions(self):
+        self.skill('autoresearch')
+        self.plugin.register(self.ctx)
+        for alias in ('autoresearch', 'autoresearch:plan', 'autoresearch-plan'):
+            for raw in ('Improve onboarding', 'read-only: inspect onboarding', '--dry-run plan onboarding'):
+                self.ctx.commands[alias](raw)
+                prompt, _ = self.ctx.messages[-1]
+                self.assertIn('TODO.md is the central work queue', prompt)
+                self.assertIn('read-only', prompt)
+                self.assertIn('--dry-run', prompt)
+                self.assertTrue(prompt.endswith(raw))
+
     def test_alias_collision_preserves_existing_owner(self):
         self.skill('autoresearch')
         self.existing['autoresearch:plan'] = {'plugin': 'other'}

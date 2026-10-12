@@ -17,6 +17,19 @@ class BacklogPlanTests(unittest.TestCase):
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'reuse')
         self.cycle['fingerprint']='changed-inputs'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'plan')
+    def test_empty_queue_plans_on_first_occurrence_then_reuses_receipt(self):
+        self.cycle.update(unchanged_runs=0, ready_queue=[], task_ids=[])
+        self.cycle['recovery']['gate']=None
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'plan')
+        backlog_plan.record(self.cycle,self.state,'fixture://empty-queue-plan','canonical_reconciled')
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'reuse')
+
+    def test_unknown_queue_does_not_count_as_observed_empty(self):
+        self.cycle.update(unchanged_runs=0)
+        self.cycle.pop('ready_queue')
+        self.cycle['recovery']['gate']=None
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'recover_first')
+
     def test_missing_canonical_inputs_need_integration_not_another_proposal(self):
         self.cycle['recovery']['gate']='ledger'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'integrate_existing_inputs')

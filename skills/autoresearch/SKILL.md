@@ -12,6 +12,16 @@ repo-docs → TODO.md/goals.json → autowork cycle. Read this adapter first, th
 selected upstream protocol. These integration rules govern host/tool substitutions,
 repository ownership and handoff; preserve upstream research methods and flags.
 
+## Default output: update the work queue
+
+Apply [TODO work center](../shared/TODO-WORKCENTER.md) before planning and closeout.
+Every command saves in-scope actionable findings to TODO.md by default and keeps
+its goals.json execution index synchronized. No extra “save” instruction is needed.
+Planning-only permits documentation/backlog writes, not product implementation;
+explicit read-only, chat-only, no-write and --dry-run requests write nothing.
+Report saved paths, task IDs and the next executable action. Reuse existing plans
+and tasks; preserve user orders before rendering and never claim planning as delivery.
+
 ## Commands and dispatch
 
 `/autoresearch` is the upstream router. `/autoresearch:<command>` is the original
