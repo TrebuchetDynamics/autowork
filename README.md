@@ -107,6 +107,8 @@ not a guarantee that every cron occurrence completes a task.
 
 ## Read before installing
 
+This policy applies to Hermes. [Codex/Pi adapters](docs/cross-host.md) preserve their host settings.
+
 **The defaults are designed for an autonomous fleet, not a policy-neutral command bridge.**
 
 - Full setup targets **every existing live profile**. There is no general
@@ -136,7 +138,7 @@ See [memory and retained data](docs/memory.md) before enabling memory capture.
 
 The standalone command registration code does not require a memory or speech
 service to register commands. The published manifest describes the complete stack;
-there is currently no separate minimal, policy-neutral package.
+there is currently no separate minimal, policy-neutral Hermes package.
 
 ## Try the native plugin in one profile
 
@@ -253,6 +255,8 @@ Hermes `/toolsets` reports enabled tool groups, a different inventory.
 [Testing and compatibility](docs/testing.md) explains checks, exclusions and limits.
 
 ## Documentation
+
+- [Product scope and architecture](docs/project.md) · [Work queue](TODO.md) · [Changelog](CHANGELOG.md)
 
 - [Installation, profile scope and policy opt-out](docs/installation.md)
 - [Commands, Autoresearch and the engineering workflow](docs/workflows.md)

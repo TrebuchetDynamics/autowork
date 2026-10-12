@@ -2,7 +2,8 @@
 
 The command bridge and the full setup are different layers. The bridge registers
 bundled skills; individual workflows need execution tools and may use other skills.
-The published manifest declares OMH, Ponytail and Hermes Speech as stack dependencies.
+The Hermes manifest declares OMH, Ponytail and Hermes Speech as stack dependencies.
+[Codex/Pi packages](cross-host.md) use portable adapters and do not install these integrations.
 `--bundle-only` skips the external-source setup stage; it is not a separately
 packaged minimal plugin and does not disable runtime policy writes.
 
@@ -55,7 +56,7 @@ Hermes Toolset is licensed under the [MIT License](../LICENSE), copyright
 and copyright notices.
 
 - Vendored Impeccable retains its [Apache-2.0 license](../skills/impeccable/LICENSE) and [notices](../skills/impeccable/NOTICE.md). Its official Hermes package is copied unchanged, with supplemental [modern-screenshot](../skills/impeccable/licenses/modern-screenshot-MIT.txt) and [platform-design-skills](../skills/impeccable/licenses/platform-design-skills-MIT.txt) MIT notices.
-- Vendored Addy agent-skills retains its [MIT license and attribution](../skills/engineering/upstream/LICENSE). Upstream protocol bytes are unchanged; SKILL.md filenames become PROTOCOL.md to avoid duplicate host discovery.
+- Vendored Addy agent-skills retains its [MIT license and attribution](../skills/engineering/upstream/LICENSE). Two defensive examples have documented paraphrases with original/adapted hashes; other pinned protocol bytes are preserved. SKILL.md filenames become PROTOCOL.md to avoid duplicate host discovery.
 - Vendored Autoresearch retains its [MIT license and attribution](../skills/autoresearch/upstream/LICENSE).
 - Grill Me declares MIT in its [skill metadata](../skills/grill-me/SKILL.md).
 - Other bundled files may carry individual notices. Retain those notices.

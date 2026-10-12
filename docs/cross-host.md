@@ -16,7 +16,7 @@ codex plugin marketplace add .
 codex plugin add hermes-toolset@hermes-toolset-marketplace
 ```
 
-Once this version is published, Git installation uses:
+Install the published Git source with:
 
 ```sh
 codex plugin marketplace add TrebuchetDynamics/hermes-toolset --ref main
@@ -33,6 +33,11 @@ $hermes-toolset:autowork complete the next ready task; commit locally, no push
 $hermes-toolset:autoresearch debug the failing test
 ```
 
+Use `$hermes-toolset:docs-sync` in Codex; the Hermes spelling `/docs_sync`
+is not a Codex slash command. Adding package files to a Git repository does not
+install that plugin into your Codex configuration. After installation, use the
+next turn if the client refreshes skill discovery; otherwise start a new session.
+
 Codex uses skill invocation, not Hermes slash-command registration. The adapters
 are explicit-only in Codex so installation does not automatically invoke a workflow.
 Use the installed client's plugin marketplace controls to update; remove with
@@ -47,7 +52,7 @@ Requires Pi with package manifests and extension commands. From this checkout:
 pi install .
 ```
 
-Once this version is published, Git installation uses:
+Install the published Git source with:
 
 ```sh
 pi install git:github.com/TrebuchetDynamics/hermes-toolset

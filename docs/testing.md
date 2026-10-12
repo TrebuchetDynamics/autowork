@@ -6,6 +6,7 @@
 uv run --no-project --with-requirements requirements-test.txt python scripts/check.py
 python3 scripts/check.py --list
 python -m py_compile __init__.py bundle.py install-omh.py install-graphify.py
+node --test tests/portable_pi.test.mjs
 ```
 
 The checker runs top-level and maintained bundled workflow tests in separate
@@ -91,3 +92,13 @@ strict YAML rejection, memory conflicts and secret-safe errors (those parser
 cases skip when ruamel.yaml is unavailable). `test_complete_setup.py` separately
 checks orchestration after admission, including no installation calls on dry-run.
 No passing preview is evidence of a live model or Telegram workflow.
+
+## Portable package checks
+
+Codex/Pi packaging and adapter-reference checks run in `tests/test_portable_package.py`.
+The Pi Node tests cover command registration, literal arguments, queued messages
+and packaged support files. CI uses Node 22 for those tests. See
+[cross-host installation and verification](cross-host.md) for tested client versions
+and disposable-home installation checks. Package discovery does not prove model
+execution or completion of an Autowork task; the outstanding qualification is
+tracked in [TODO.md](../TODO.md#toolset-003--qualify-automatic-planning-recovery-with-a-real-bounded-workflow).

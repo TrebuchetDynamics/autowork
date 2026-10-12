@@ -14,7 +14,9 @@ skills/
 
 Use a folder name of 1–32 lowercase letters, digits, hyphens, or underscores,
 starting with a letter or digit. The folder determines the command name; keep
-the skill's frontmatter `name` consistent with it. Underscores become hyphens
+the skill's frontmatter `name` consistent with it for new skills. The three
+existing workflow renames are explicit exceptions in `PUBLIC_SKILLS` in the entry
+point: their stable source paths map to the current public IDs. Underscores become hyphens
 in CLI commands and Telegram uses underscores: `my_skill` becomes `/my-skill`
 in CLI chat and `/my_skill` in Telegram. `my-skill` and `my_skill` cannot coexist.
 
@@ -34,3 +36,11 @@ symlink installation, edit this checkout and restart instead. New commands are
 discovered on startup, not watched live. Telegram's menu has limited capacity;
 Hermes controls which commands appear there.
 
+
+## Portable hosts
+
+Codex and Pi load [portable adapters](../adapters/skills/COMMON.md), not the Hermes
+entry point. Add or update the corresponding adapter and its local references;
+Pi commands are declared in [adapters/pi.mjs](../adapters/pi.mjs). Validate both
+package metadata and command dispatch using [the cross-host checks](cross-host.md#behavior-and-verification).
+Installing or updating Hermes does not install the Codex or Pi package.
