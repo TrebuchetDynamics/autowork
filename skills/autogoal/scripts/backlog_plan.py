@@ -15,6 +15,8 @@ def decide(cycle, state):
     gate=cycle.get('recovery',{}).get('gate')
     if gate=='ownership':
         return {'action':'reconcile_owner','reason':'Planning cannot replace an existing writer'}
+    if cycle.get('admission') == 'handoff_preparation':
+        return {'action':'repair_execution_inputs','reason':'Task is eligible but its execution handoff is missing; prepare inputs or follow the existing owner request, not another plan'}
     if cycle.get('ready_queue') or cycle.get('selected_task'):
         return {'action':'execute_ready_work','reason':'Use the existing accepted task before planning'}
     if gate=='ledger':

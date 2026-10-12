@@ -11,10 +11,8 @@ metadata:
 
 # Autogoal — compatibility execution engine
 
-The primary workflow is [Autowork](../autowork/SKILL.md). When invoked directly
-by a legacy job or skill call, apply its repository-stage preparation first, then
-continue below. If Autowork already prepared this run, do not repeat preparation.
-Keep existing helper paths and private state unchanged.
+Apply [Autowork](../autowork/SKILL.md) preparation once before this execution
+engine, including legacy calls. Preserve existing helper paths and private state.
 
 ## When to use
 
@@ -199,11 +197,10 @@ or reply `[SILENT]` and leave a journal note for the next run.
    then the real handoff (same selected 50/100 budget, 3 attempts), and — only once the helper
    has actually created or returned a card for it — mark the task with
    `goals.py task <repo> <TASK> in_progress`. If the helper answers `already_owned`, no card was
-   created: the profile's live card owns the single worker slot, so do not re-run the helper,
-   do not create a second card for it, and revert an `in_progress` you already wrote (the ledger
-   must not claim an owner that does not exist). An owner request for that same slice *now* is a
-   parallel dispatch, not a reason to retry the helper: send it as a bounded file-disjoint child
-   under **Explicit parallel backlog requests** and leave the ledger and commit to the parent. The picker never implements the slice itself.
+   created: preserve the live card, avoid duplicate dispatch and revert any premature
+   `in_progress`. Explicit parallel requests use bounded file-disjoint children under
+   **Explicit parallel backlog requests**; the parent retains ledger/commit ownership.
+   The picker never implements the slice itself.
 4. **Report** per the Output contract and the user's delivery policy. A request
    for status every occurrence requires a concise nonempty report even when unchanged.
    Otherwise reply exactly `[SILENT]` only after reconciliation and the idle fallback

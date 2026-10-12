@@ -148,22 +148,18 @@ def run_locked(args, state):
             ready = True
     except (ValueError, OSError, TypeError, KeyError, AttributeError) as exc:
         result['queue_gap'] = str(exc)
+    result['backlog_ready'] = ready
+    result['resolved_requests'] = []
+    if ready and args.apply and not args.handoff_request and result['selected_task']:
+        saved = state / 'handoff-requests' / (result['selected_task']['id'] + '.json')
+        if saved.is_file(): args.handoff_request = str(progress_runtime.private_path(saved))
+    preparation = ready and not args.handoff_request
+    required_inputs = list(recovery.get('required_inputs', []))
+    if preparation:
+        required_inputs.append('handoff_request: same consumer/task, explicit contract, immutable base and source snapshot')
+        result.update(outcome='PREPARATION_REQUIRED', admission='handoff_preparation')
+        ready = False
     if ready:
-        resolved = []
-        for path in sorted((state / 'requests').glob('*.json')):
-            request = read_json(path)
-            if (isinstance(request, dict) and request.get('consumer') == consumer
-                    and request.get('plan') == args.plan and request.get('task_ids') == result['task_ids']
-                    and request.get('status') != 'resolved' and args.apply and not result['held_task_ids']):
-                request.update(status='resolved', resolved_at=now,
-                               resolution={'run_id':result['run_id'], 'gate':recovery['gate'],
-                                           'revision':retry_selection.goals.revision(Path(consumer))})
-                save(path, request)
-                resolved.append(str(path))
-        result['resolved_requests'] = resolved
-        if args.apply and not args.handoff_request and result['selected_task']:
-            saved = state / 'handoff-requests' / (result['selected_task']['id'] + '.json')
-            if saved.is_file(): args.handoff_request = str(progress_runtime.private_path(saved))
         result.update(outcome='READY', action='prepare_native_handoff',
                       next_action='Use the existing native handoff with explicit contract and source snapshot')
         if any(s.get('stage') == 'repair' for s in recovery.get('stages', [])):
@@ -187,17 +183,22 @@ def run_locked(args, state):
                               next_action='Reconcile native state before retry; dispatch outcome may be unknown')
     else:
         result['action'] = 'owner_followup_required' if result['unchanged_runs'] >= 2 else 'owner_input_required'
-        request_id = fingerprint({'consumer': consumer, 'plan': args.plan, 'tasks': result['task_ids'],
-                                  'owner': args.integration_owner, 'blocker': key})
+        request_tasks = [result['selected_task']['id']] if preparation and result['selected_task'] else result['task_ids']
+        request_binding = {'consumer': consumer, 'plan': args.plan, 'tasks': request_tasks,
+                           'owner': args.integration_owner, 'blocker': key}
+        if preparation: request_binding['admission'] = 'handoff_preparation'
+        request_id = fingerprint(request_binding)
         path = state / 'requests' / (request_id + '.json')
         request = read_json(path)
         if request is None:
             request = {'version': 1, 'request_id': request_id, 'created_at': now, 'status': 'pending',
                        'owner': args.integration_owner or 'unassigned', 'consumer': consumer,
-                       'plan': args.plan, 'task_ids': result['task_ids'], 'gate': recovery['gate'],
-                       'required_inputs': recovery.get('required_inputs', []),
+                       'plan': args.plan, 'task_ids': request_tasks,
+                       'gate': 'handoff_preparation' if preparation else recovery['gate'],
+                       'required_inputs': required_inputs,
                        'proposal': args.proposal, 'evidence': args.owner_evidence,
-                       'instruction': 'Reconcile accepted canonical inputs under existing integration ownership, then rerun owner cycle',
+                       'instruction': ('Prepare attributed execution prerequisites and the same-task handoff under existing authority; do not replan a ready task' if preparation else
+                                       'Reconcile accepted canonical inputs under existing integration ownership, then rerun owner cycle'),
                        'boundary': 'Local request only; not delivered, acknowledged or integration authority'}
             save(path, request)
         updates = request.setdefault('evidence_updates', [])
@@ -232,6 +233,8 @@ def run_locked(args, state):
                       next_action=('Follow up existing integration request with its owner; do not repeat unchanged validation'
                                    if result['unchanged_runs'] >= 2 else
                                    'Integration owner must reconcile canonical inputs; see integration request'))
+        if preparation:
+            result['next_action'] = 'Prepare the selected task handoff using existing attributable inputs; otherwise resolve the execution-input request with its actual owner'
         # One bounded canonical selection, never an invented task or a focus change.
         try:
             alternate = retry_selection.select(consumer)
@@ -240,9 +243,25 @@ def run_locked(args, state):
                                      'boundary': 'canonical selector only; source/test seam search still required when no eligible candidate'}
         except (ValueError, OSError, TypeError, KeyError, SystemExit) as exc:
             result['work_search'] = {'state': 'unavailable', 'reason': str(exc)}
+    if ready and result['outcome'] == 'QUEUED':
+        resolved = []
+        for path in sorted((state / 'requests').glob('*.json')):
+            request = read_json(path)
+            request_tasks = ([result['selected_task']['id']] if isinstance(request, dict) and request.get('gate') == 'handoff_preparation'
+                             else result['task_ids'])
+            if (isinstance(request, dict) and request.get('consumer') == consumer
+                    and request.get('plan') == args.plan and request.get('task_ids') == request_tasks
+                    and request.get('status') != 'resolved' and args.apply
+                    and (request.get('gate') == 'handoff_preparation' or not result['held_task_ids'])):
+                request.update(status='resolved', resolved_at=now,
+                               resolution={'run_id':result['run_id'], 'gate':recovery['gate'],
+                                           'revision':retry_selection.goals.revision(Path(consumer))})
+                save(path, request)
+                resolved.append(str(path))
+        result['resolved_requests'] = resolved
     result['repairs'] = [repair for stage in recovery.get('stages', [])
                          if stage.get('stage') == 'repair' for repair in stage.get('repairs', [])]
-    result['blocker'] = recovery.get('required_inputs', []) if not ready or result['held_task_ids'] else []
+    result['blocker'] = required_inputs if not ready or result['held_task_ids'] else []
     if result.get('routing_gap') and result['unchanged_runs'] >= 2:
         result['action'] = 'escalate_missing_owner_route'
         result['next_action'] = result['routing_gap']

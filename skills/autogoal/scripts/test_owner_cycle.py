@@ -61,15 +61,35 @@ class OwnerCycleTests(unittest.TestCase):
           'goals':[{'id':'G1','title':'Slice','source':'SPEC.md#slice','status':'unmet','priority':1,'tasks':['T1']}],
           'tasks':[{'id':'T1','title':'Implement fixture','goal':'G1','status':'open','section':'Now'}]}))
         (self.repo/'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] T1: Implement fixture\n  Goal: G1\n  Scope: fixture\n  Acceptance: test passes\n  Dependencies: None\n  Ownership: fixture\n  Sources: [Accepted](SPEC.md#slice)\n')
-    def test_ready_slice_without_handoff_is_ready_not_dispatched(self):
+    def test_ready_slice_without_handoff_requires_preparation_not_dispatch(self):
         self.ready_backlog()
         r, receipt = self.run_cycle()
-        self.assertEqual(r.returncode,0,receipt)
-        self.assertEqual(receipt['outcome'],'READY')
-        self.assertEqual(receipt['planning']['action'],'execute_ready_work')
+        self.assertEqual(r.returncode,1,receipt)
+        self.assertEqual(receipt['outcome'],'PREPARATION_REQUIRED')
+        self.assertEqual(receipt['planning']['action'],'repair_execution_inputs')
         self.assertEqual(receipt['selected_task']['id'],'T1')
         self.assertFalse(receipt['dispatch_attempted'])
         self.assertIn('Implement fixture', (self.state/'report-latest.txt').read_text())
+
+    def test_ready_backlog_missing_handoff_routes_execution_inputs_to_owner(self):
+        self.ready_backlog()
+        owner=self.root/'owner';owner.mkdir();self.state.mkdir()
+        (self.state/'owner-route.json').write_text(json.dumps({'consumer':str(self.repo),
+            'owner':'parent','state_dir':str(owner)}))
+        r,first=self.run_cycle('--apply','--integration-owner','parent')
+        self.assertEqual(r.returncode,1)
+        self.assertEqual(first['outcome'],'PREPARATION_REQUIRED')
+        self.assertTrue(first['backlog_ready'])
+        self.assertTrue(first['blocker'])
+        self.assertEqual(first['planning']['action'],'repair_execution_inputs')
+        request=json.loads(Path(first['integration_request']).read_text())
+        self.assertEqual(request['gate'],'handoff_preparation')
+        self.assertEqual(request['delivery']['state'],'delivered')
+        _,second=self.run_cycle('--apply','--integration-owner','parent')
+        self.assertEqual(second['integration_request'],first['integration_request'])
+        self.assertEqual(second['unchanged_runs'],2)
+        self.assertEqual(second['resolved_requests'],[])
+        self.assertFalse(second['dispatch_attempted'])
 
     def test_supported_repair_retries_and_records_progress_without_task_completion(self):
         import retry_selection
@@ -81,8 +101,8 @@ class OwnerCycleTests(unittest.TestCase):
                    'owner':'fixture','evidence_ref':'fixture://accepted-owner','no_overlapping_writer':True}
         auth=self.root/'authority.json';auth.write_text(json.dumps(authority))
         r,receipt=self.run_cycle('--apply','--authority',str(auth))
-        self.assertEqual(r.returncode,0,receipt)
-        self.assertEqual(receipt['outcome'],'PROGRESS')
+        self.assertEqual(r.returncode,1,receipt)
+        self.assertEqual(receipt['outcome'],'PREPARATION_REQUIRED')
         self.assertEqual(receipt['selected_task']['id'],'T1')
         self.assertEqual([s['stage'] for s in receipt['recovery']['stages']],['diagnose','repair','retry_selection'])
         self.assertEqual(receipt['completed_tasks'],[])
@@ -176,10 +196,10 @@ class OwnerCycleTests(unittest.TestCase):
         _,before=self.run_cycle()
         self.assertEqual(before['recovery']['gate'],'accepted_body_repair')
         _,after=self.run_cycle('--apply')
-        self.assertEqual(after['outcome'],'PROGRESS')
+        self.assertEqual(after['outcome'],'PREPARATION_REQUIRED')
         self.assertIn('Accepted plan',p.read_text())
 
-    def test_delivered_request_closes_only_after_fresh_readiness(self):
+    def test_ready_backlog_does_not_close_request_before_handoff_preparation(self):
         owner=self.root/'owner';owner.mkdir();self.state.mkdir()
         (self.state/'owner-route.json').write_text(json.dumps({'consumer':str(self.repo),
             'owner':'parent','state_dir':str(owner)}))
@@ -194,8 +214,8 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(json.loads(Path(first['integration_request']).read_text())['status'],'resolution_reported')
         self.ready_backlog()
         _,ready=self.run_cycle('--apply','--integration-owner','parent')
-        self.assertEqual(ready['outcome'],'READY')
-        self.assertEqual(json.loads(Path(first['integration_request']).read_text())['status'],'resolved')
+        self.assertEqual(ready['outcome'],'PREPARATION_REQUIRED')
+        self.assertEqual(json.loads(Path(first['integration_request']).read_text())['status'],'resolution_reported')
         self.assertIn('resolved_requests',ready)
 
     def test_blocked_live_task_can_offer_three_offline_tasks_without_releasing_it(self):
@@ -216,8 +236,10 @@ class OwnerCycleTests(unittest.TestCase):
         _,held=self.run_cycle()
         self.assertEqual(held['outcome'],'BLOCKED')
         _,ready=self.run_cycle('--allow-ready-fallback')
-        self.assertEqual(ready['outcome'],'READY')
+        self.assertEqual(ready['outcome'],'PREPARATION_REQUIRED')
         self.assertEqual(ready['selected_task']['id'],'T2')
+        request=json.loads(Path(ready['integration_request']).read_text())
+        self.assertEqual(request['task_ids'],['T2'])
         self.assertEqual([t['id'] for t in ready['ready_queue']],['T2','T3','T4'])
         self.assertEqual(ready['held_task_ids'],['T1'])
         self.assertEqual(ledger.read_bytes(),before)

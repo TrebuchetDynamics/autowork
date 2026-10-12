@@ -191,3 +191,22 @@ configuration, and reads each target back. It creates no jobs, changes no enable
 state and launches no worker. Missing-job profiles remain visible coverage gaps.
 The default auditor checks owning-profile recovery receipts read-only; it never
 performs their product recovery itself.
+
+## Eligible task with no execution handoff
+
+`backlog_ready: true` establishes selection only. `PREPARATION_REQUIRED` means
+no same-task handoff is available; the cycle retains missing execution inputs
+and routes a deduplicated `handoff_preparation` request through the bound owner
+inbox. It exits nonzero and does not resolve existing requests merely because
+the task became eligible. Autoresearch must not replan this ready task.
+
+Continue preparation in this occurrence: assemble the explicit contract, pinned
+base and source snapshot. If accepted inputs are dirty but already attributable
+under existing authority, use `prepare_prerequisites.py` and its real checks;
+no renewed permission is needed for that authorized preparation. Preserve foreign
+bytes and ownership. If attribution is genuinely absent, follow the actual owner
+request and report the exact missing input; a profile name is not attribution.
+Save the supported request under `handoff-requests/<task-id>.json` and rerun the
+cycle with `--apply`; saved requests are consumed by the existing native helper.
+Report execution only after observing its worker, and completion only after its
+acceptance and commit receipts. A routed request alone does not unblock a task.
