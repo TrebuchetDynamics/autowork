@@ -9,6 +9,11 @@ from types import SimpleNamespace
 
 def main():
     root = Path(__file__).resolve().parents[1]
+    from tools.plugin_guard import scan_plugin
+    scan = scan_plugin(root)
+    critical = [(f.file, f.line, f.pattern_id) for f in scan.findings if f.severity == 'critical']
+    assert scan.verdict != 'dangerous', critical
+    print(f"Native install scan: {scan.verdict}; {len(critical)} critical findings")
     with tempfile.TemporaryDirectory(prefix="hermes-toolset-test-") as directory:
         home = Path(directory)
         os.environ["HERMES_HOME"] = str(home)

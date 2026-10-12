@@ -167,7 +167,9 @@
     },
     "skills/browser-testing-with-devtools/SKILL.md": {
       "path": "upstream/skills/browser-testing-with-devtools/PROTOCOL.md",
-      "sha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9"
+      "sha256": "66df0bdfbaee2ef05f8caa0116c4a4fd26822e745787f65828196ce90a4424c1",
+      "upstream_sha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9",
+      "adaptation": "Describe hostile instruction examples indirectly; preserve defensive rules and trust boundaries."
     },
     "skills/ci-cd-and-automation/SKILL.md": {
       "path": "upstream/skills/ci-cd-and-automation/PROTOCOL.md",
@@ -275,7 +277,9 @@
     },
     "skills/source-driven-development/SKILL.md": {
       "path": "upstream/skills/source-driven-development/PROTOCOL.md",
-      "sha256": "c59faf851377f0eeda45306398d16eb96d77ab1c2fd3e1a7fb58e9a0af33c1e9"
+      "sha256": "a1a3a1e63b528ed57906fbd43a06d8cbd6e232e3f1eedde7f85cc8a1f750b44b",
+      "upstream_sha256": "c59faf851377f0eeda45306398d16eb96d77ab1c2fd3e1a7fb58e9a0af33c1e9",
+      "adaptation": "Describe hostile instruction examples indirectly; preserve defensive rules and trust boundaries."
     },
     "skills/spec-driven-development/SKILL.md": {
       "path": "upstream/skills/spec-driven-development/PROTOCOL.md",
@@ -330,5 +334,5 @@
     "test-driven-development",
     "using-agent-skills"
   ],
-  "transform": "SKILL.md filenames become PROTOCOL.md; file bytes unchanged"
+  "transform": "SKILL.md filenames become PROTOCOL.md; bytes unchanged except documented defensive-example adaptations with upstream_sha256."
 }

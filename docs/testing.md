@@ -16,7 +16,7 @@ removed from test subprocesses. Passing this gate does not qualify model/native
 execution. Tests use temporary Git fixtures and may write offline scratch receipts.
 
 `tests/integration_plugin.py` additionally checks the actual Hermes manifest
-reader, loader, bundled skill reader, Telegram menu, CLI queue, gateway routing,
+reader, native install security scan, loader, bundled skill reader, Telegram menu, CLI queue, gateway routing,
 and unload behavior. Run it using Hermes' Python environment with the Hermes
 source root on `PYTHONPATH`. It uses a temporary profile and a capture callback
 instead of sending Telegram messages or calling a model.
