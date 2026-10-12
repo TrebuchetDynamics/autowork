@@ -112,7 +112,7 @@ def private_json(path, data):
         json.dump(data, stream, ensure_ascii=False, indent=2)
 
 
-def run_all(root, output, self_assessment, hermes, seconds):
+def run_all(root, output, self_assessment, hermes, seconds, profiles=None):
     root = root.resolve()
     output = output.resolve()
     if root.parent.name == 'profiles':
@@ -129,11 +129,16 @@ def run_all(root, output, self_assessment, hermes, seconds):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ValueError('another consultation is running; do not contact targets twice') from exc
-        return _run_all(root, output, self_assessment, hermes, seconds)
+        return _run_all(root, output, self_assessment, hermes, seconds, profiles)
 
 
-def _run_all(root, output, self_assessment, hermes, seconds):
+def _run_all(root, output, self_assessment, hermes, seconds, profiles=None):
     targets = discover(root, hermes)
+    if profiles is not None:
+        if (not profiles or len(profiles) != len(set(profiles))
+                or not set(profiles).issubset(set(targets) - {'default'})):
+            raise ValueError('profiles must be unique existing named profiles')
+        targets = ['default'] + [name for name in targets if name in profiles]
     results = {'default': {'profile': 'default', 'status': 'replied', 'mode': 'local-self-assessment', 'reply': redact(self_assessment)}}
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = {pool.submit(consult, name, root, hermes, seconds): name for name in targets if name != 'default'}
@@ -161,10 +166,11 @@ def main():
     parser.add_argument('--self-assessment-file', type=Path, required=True)
     parser.add_argument('--hermes', default='hermes')
     parser.add_argument('--seconds', type=int, default=65)
+    parser.add_argument('--profiles', nargs='+', help='Consult only these existing named profiles')
     args = parser.parse_args()
     if not 5 <= args.seconds <= 180:
         parser.error('seconds must be between 5 and 180')
-    print(json.dumps(run_all(args.root, args.output, args.self_assessment_file.read_text(), args.hermes, args.seconds)))
+    print(json.dumps(run_all(args.root, args.output, args.self_assessment_file.read_text(), args.hermes, args.seconds, args.profiles)))
 
 
 if __name__ == '__main__':

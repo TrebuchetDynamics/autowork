@@ -1,9 +1,11 @@
 # Direct profile feedback for shared-toolset maintenance
 
-The default maintenance audit must ask every real named profile directly what
-it would improve in hermes-toolset. File/log inspection alone is not consultation.
+The default maintenance audit asks the explicitly requested named profiles what
+would improve hermes-toolset; without a target scope, discover every named profile.
+File/log inspection alone is not consultation. Use `--profiles NAME ...` for a
+bounded scope, preserve other profiles' pauses, and never contact excluded targets.
 Discover profiles read-only each occurrence; include default self-assessment and
-record every named profile as replied, failed, or not reached. Never infer an
+record every scoped named profile as replied, failed, or not reached. Never infer an
 answer from its old cron report. Native metadata and profile replies remain
 separate evidence.
 

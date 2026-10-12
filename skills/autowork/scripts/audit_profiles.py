@@ -459,6 +459,12 @@ def collect(args):
             raise ValueError('--state-dir overlaps named profile')
     for ancestor in (state_dir, *state_dir.parents):
         if (ancestor / '.git').exists(): raise ValueError('--state-dir overlaps repository')
+    available = homes(root)
+    requested = getattr(args, 'profiles', None)
+    if requested is not None and (not requested or len(requested) != len(set(requested))
+            or not set(requested).issubset({name for name, _ in available})):
+        raise ValueError('profiles must be unique existing profiles')
+    selected = available if requested is None else [(name, home) for name, home in available if name in requested]
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_path = state_dir / 'collector.lock'
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -469,8 +475,12 @@ def collect(args):
         prior = read_json(state_dir / 'collector-state.json', [], optional=True) or {}
         if not isinstance(prior, dict) or prior.get('schema') != 'fleet-collector-state/v1':
             prior = {}
-        profiles, summaries, next_state = [], [], {'schema': 'fleet-collector-state/v1', 'profiles': {}}
-        for name, home in homes(root):
+        profiles, summaries = [], []
+        prior_profiles = prior.get('profiles', {})
+        if not isinstance(prior_profiles, dict):
+            raise ValueError('collector profile state must be an object')
+        next_state = {'schema': 'fleet-collector-state/v1', 'profiles': dict(prior_profiles)}
+        for name, home in selected:
             row = inspect_profile(name, home, args.launch_cwd.get(name))
             previous = prior.get('profiles', {}).get(name, {})
             row['logs'], log_state = log_chunks(home, previous.get('logs', {}), args.log_bytes,
@@ -504,6 +514,7 @@ def main():
     parser = JsonParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True, help='default Hermes home, not HERMES_HOME of a named profile')
     parser.add_argument('--state-dir', type=Path, required=True)
+    parser.add_argument('--profiles', nargs='+', help='Collect only these existing profiles; keep excluded cursors')
     parser.add_argument('--launch-cwd', action='append', default=[], metavar='PROFILE=/absolute/path')
     parser.add_argument('--log-bytes', type=int, default=16384, help='maximum observed bytes per log file per tick')
     parser.add_argument('--profile-log-bytes', type=int, default=131072)

@@ -35,6 +35,20 @@ class CollectorTests(unittest.TestCase):
     def receipt(self, summary):
         return json.loads(Path(summary['receipt']).read_text())
 
+    def test_scoped_collection_preserves_excluded_profile_cursors(self):
+        for name in ('default', 'one', 'two'):
+            self.profile(name)
+        self.run_collector()
+        before = json.loads((self.state / 'collector-state.json').read_text())
+        _, summary = self.run_collector('--profiles', 'one')
+        self.assertEqual([p['profile'] for p in summary['profiles']], ['one'])
+        after = json.loads((self.state / 'collector-state.json').read_text())
+        for name in ('default', 'two'):
+            self.assertEqual(before['profiles'][name], after['profiles'][name])
+        result, error = self.run_collector('--profiles', 'missing', success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(error['state'], 'collector_failed')
+
     def test_default_all_real_profiles_and_missing_sources(self):
         self.profile('default')
         for name in ('one', 'two', 'added-later', '.hidden', 'gone'):

@@ -15,6 +15,30 @@ class ConsultationTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_explicit_scope_contacts_only_requested_profiles(self):
+        from unittest.mock import patch
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d) / '.hermes'
+            root.mkdir()
+            with patch.object(m, 'discover', return_value=['default', 'one', 'two', 'other']), \
+                    patch.object(m, 'consult', side_effect=lambda name, *a: {'profile': name, 'status': 'replied'}) as call:
+                rows = m.run_all(root, root / 'maintenance/scoped', 'self', 'hermes', 10, profiles=['two', 'one'])
+            self.assertEqual({c.args[0] for c in call.call_args_list}, {'one', 'two'})
+            self.assertEqual({r['profile'] for r in rows}, {'default', 'one', 'two'})
+
+    def test_invalid_scope_refuses_before_provider_calls(self):
+        from unittest.mock import patch
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d) / '.hermes'
+            root.mkdir()
+            for scope in (['missing'], ['one', 'one'], ['default']):
+                with patch.object(m, 'discover', return_value=['default', 'one']), patch.object(m, 'consult') as call:
+                    with self.assertRaises(ValueError):
+                        m.run_all(root, root / 'maintenance/scoped', 'self', 'hermes', 10, profiles=scope)
+                    call.assert_not_called()
+
     def test_filtered_environment(self):
         m = self.load()
         env = m.filtered_env(Path('/home/owner/.hermes'), {'PATH': '/bin', 'HOME': '/foreign', 'OPENAI_API_KEY': 'secret', 'GIT_DIR': '/foreign/git', 'HERMES_PROFILE': 'wrong', 'SSH_AUTH_SOCK': '/sock', 'HTTPS_PROXY': 'http://user:pass@proxy'})

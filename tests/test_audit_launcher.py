@@ -26,6 +26,16 @@ class AuditLauncherTests(unittest.TestCase):
             self.assertEqual(args, [str(helper), '--root', str(home), '--state-dir',
                 str(home / 'maintenance/profile-audit/collector'), '--launch-cwd', 'default=' + str(home),
                 '--log-bytes', '1048576', '--profile-log-bytes', '8388608'])
+            config = home / 'maintenance/profile-audit/config.json'
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({'profiles': ['alpha', 'beta', 'gamma', 'delta']}))
+            result = subprocess.run([sys.executable, str(script)], cwd=home, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)[-5:], ['--profiles', 'alpha', 'beta', 'gamma', 'delta'])
+            config.write_text(json.dumps({'profiles': 'alpha'}))
+            result = subprocess.run([sys.executable, str(script)], cwd=home, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(json.loads(result.stdout)['state'], 'collector_failed')
             helper.unlink()
             result = subprocess.run([sys.executable, str(script)], cwd=home,
                                     capture_output=True, text=True, timeout=10)
