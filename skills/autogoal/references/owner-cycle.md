@@ -201,7 +201,9 @@ inbox. It exits nonzero and does not resolve existing requests merely because
 the task became eligible. Autoresearch must not replan this ready task.
 
 Continue preparation in this occurrence: assemble the explicit contract, pinned
-base and source snapshot. If accepted inputs are dirty but already attributable
+base and source snapshot. In proposal ledger mode, the handoff automatically freezes admitted planning
+files as read-only context; do not wait for those files to be committed. If executable
+source prerequisites are dirty but already attributable
 under existing authority, use `prepare_prerequisites.py` and its real checks;
 no renewed permission is needed for that authorized preparation. Preserve foreign
 bytes and ownership. If attribution is genuinely absent, follow the actual owner

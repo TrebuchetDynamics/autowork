@@ -184,9 +184,9 @@ or reply `[SILENT]` and leave a journal note for the next run.
    no usable milestone task remains (including the TODO fallback); do not double-check
    a usable task with a broad discovery or documentation pass.
 3. **Hand off.** Load `references/handoff.md`. Use backlog-check. Compare
-   the selected source inputs and current `goals.json` against the proposed committed
-   candidate; a clean base commit alone does not include the dirty backlog or its
-   implementation prerequisites. Use [recovery](references/blocker-recovery.md) first;
+   executable inputs against the committed candidate. Proposal workers use frozen
+   read-only planning context; no planning-files commit is needed. Dirty code needs
+   attributable prerequisites per [recovery](references/blocker-recovery.md);
    never copy or commit foreign edits. Treat `--validate-only` as structural
    and ledger admission, not proof that isolated candidate assembly will pass.
    Write the contract file with every field:

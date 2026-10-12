@@ -156,6 +156,22 @@ publication. A parent router must explicitly forward these flags after its own
 gates; adding them to shared code does not change any profile/router or authorize
 live product handoff. `--validate-only` reports selected roles without dispatch.
 
+## Read-only planning context for implementation-only workers
+
+With `--ledger-mode proposal --integration-owner OWNER`, `start_goal.py` freezes
+snapshot-listed `goals.json`, `TODO.md` and the selected goal's Markdown plan in
+the private, hash-pinned worker manifest. These are read-only task context, not
+product changes. They do not need a prerequisite commit or copies in the worker
+checkout. The contract tells the worker to read `planning_context.files` rather
+than stale checkout planning files. The integration owner retains task closure.
+
+This path still requires current canonical eligibility, exact source hashes,
+unchanged planning inputs, existing ownership admission, immutable code and the
+original worker-start guard. Dirty code or other source dependencies still require
+attribution and committed assembly. It does not admit a proposal-only backlog
+absent from the canonical consumer, publish foreign changes or relax main-only
+repository rules. Worker-ledger mode retains exact checkout ledger requirements.
+
 ## Ownership and verification safeguards
 
 Each writing pass uses its own pinned Git worktree, never

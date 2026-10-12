@@ -30,6 +30,54 @@ class PassWorkspaceTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         return module
 
+    def planning_fixture(self):
+        import hashlib, json
+        data={'goals':[{'id':'G1','source':'docs/plan.md#slice'}],
+              'tasks':[{'id':'T1','goal':'G1'}]}
+        (self.root/'goals.json').write_text(json.dumps(data))
+        (self.root/'TODO.md').write_text('T1: accepted fixture work\n')
+        (self.root/'docs').mkdir()
+        (self.root/'docs/plan.md').write_text('# Slice\nStatus: Accepted\n')
+        names=['owned.py','goals.json','TODO.md','docs/plan.md']
+        snapshot={'files':[{'path':n,'sha256':hashlib.sha256((self.root/n).read_bytes()).hexdigest()} for n in names]}
+        admission={'goal_task':'T1','goal':'G1','ledger_sha256':snapshot['files'][1]['sha256']}
+        return snapshot,admission
+
+    def test_proposal_worker_uses_frozen_planning_context_without_committing_owner_dirt(self):
+        module=self.module();snapshot,admission=self.planning_fixture()
+        before=self.git('status','--porcelain')
+        context=module.capture_planning_context(self.root,snapshot,admission,'parent')
+        target=Path(self.tmp.name)/'context-worker'
+        identity=module.prepare(self.root,target,self.base,self.base)
+        manifest={'source_workspace':str(self.root),'candidate_identity':identity,
+                  'files':snapshot['files'],'ledger_sha256':admission['ledger_sha256'],
+                  'ledger_mode':'proposal','planning_context':context}
+        self.assertTrue(module.verify(manifest,target))
+        self.assertFalse((target/'goals.json').exists())
+        self.assertEqual(self.git('status','--porcelain'),before)
+        self.assertEqual(self.git('rev-parse','HEAD'),self.base)
+        (self.root/'TODO.md').write_text('Task withdrawn')
+        with self.assertRaisesRegex(ValueError,'Source changed'):
+            module.verify(manifest,target)
+
+    def test_planning_context_cannot_hide_code_drift_or_grant_ledger_write_role(self):
+        module=self.module();snapshot,admission=self.planning_fixture()
+        context=module.capture_planning_context(self.root,snapshot,admission,'parent')
+        target=Path(self.tmp.name)/'context-worker'
+        identity=module.prepare(self.root,target,self.base,self.base)
+        manifest={'source_workspace':str(self.root),'candidate_identity':identity,
+                  'files':snapshot['files'],'ledger_sha256':admission['ledger_sha256'],
+                  'ledger_mode':'worker','planning_context':context}
+        with self.assertRaises(ValueError):module.verify(manifest,target)
+        manifest['ledger_mode']='proposal'
+        context['files']['owned.py']='base\n'
+        with self.assertRaises(ValueError):module.verify(manifest,target)
+        del context['files']['owned.py']
+        (self.root/'owned.py').write_text('uncommitted code\n')
+        with self.assertRaisesRegex(ValueError,'Source changed'):module.verify(manifest,target)
+        context['files']['TODO.md']='forged task'
+        with self.assertRaises(ValueError):module.verify(manifest,target)
+
     def test_required_sibling_must_be_explicitly_assembled(self):
         self.git('checkout', '-qb', 'sibling')
         (self.root / 'dependency.py').write_text('needed\n')

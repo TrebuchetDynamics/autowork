@@ -52,6 +52,7 @@ def owner_prompt(prompt, enabled):
     pointer = ('Load hermes-toolset:autowork for stage-aware preparation, then hermes-toolset:autogoal references/owner-cycle.md and execute its '
                'owner recovery -> same-invocation retry -> supported handoff cycle '
                'before reporting a recoverable tooling hold or no eligible work. '
+               'For implementation-only workers, use proposal ledger mode: start_goal.py freezes admitted planning files as read-only context, so uncommitted planning files alone do not require a prerequisite commit. Executable source still requires exact committed inputs. '
                'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile autogoal state directory; '
                'apply the unattended continuation contract: process owner inbox/replies, reuse exact saved authority, allow same-milestone ready fallback within original scope, and maintain useful offline tasks. Reconcile actual worker/check/commit receipts for the final report; the readiness helper is not task completion. '
                'Retain actual attempted commands/results and bounded disjoint work_search. '

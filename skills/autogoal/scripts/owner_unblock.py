@@ -202,8 +202,8 @@ def run(args):
         result.update(gate='candidate_validated', candidate_manifest=manifest)
         stage('candidate_validation', repo, candidate_identity=candidate)
     else:
-        result['required_inputs'] = ['candidate_request: explicit target/base/candidate/prerequisites/required_paths/snapshot; or prerequisite_request with existing attribution']
-        result['next_action_argv'] = command + ['--apply', '--candidate-request', '<existing-candidate-request.json>']
+        result['required_inputs'] = ['native handoff: contract/base/source snapshot; proposal workers freeze admitted planning context automatically; only differing executable source needs attributed prerequisites']
+        result['next_action'] = 'Prepare the supported native handoff; do not require a planning-files commit for proposal-only workers'
     return result
 
 

@@ -558,12 +558,18 @@ def main():
             if Path(args.source_snapshot).read_bytes() != snapshot_bytes:
                 raise ValueError('Source snapshot changed since selection; re-evaluate work')
             expected = json.loads(snapshot_bytes)
+            planning_context = (passes.capture_planning_context(workspace, expected, admission, args.integration_owner)
+                                if args.ledger_mode == 'proposal' and admission.get('goal_task') else None)
+            context_paths = set(planning_context['files']) if planning_context else set()
+            required_paths = [name for name in args.required_path if name not in context_paths]
             pass_path = Path(args.pass_root).expanduser().resolve() / (digest[:16] + '-' + uuid.uuid4().hex)
             identity = passes.prepare(workspace, pass_path, args.base, args.candidate or args.base,
-                                      pins, args.required_path)
+                                      pins, required_paths)
             manifest = {'version': 1, 'source_workspace': str(workspace), 'candidate_identity': identity,
                         'files': expected['files'], 'ledger_sha256': admission['ledger_sha256'],
                         'source_snapshot_sha256': hashlib.sha256(snapshot_bytes).hexdigest()}
+            if planning_context:
+                manifest.update(ledger_mode='proposal', planning_context=planning_context)
             manifest_path = journal_dir / ('pass-' + pass_path.name + '.json')
             with manifest_path.open('x') as stream:
                 json.dump(manifest, stream, indent=2)
@@ -577,6 +583,13 @@ def main():
                      'All writes stay in this card native workspace; the source checkout is read-only. '
                      'The same helper can gate an initial write command with `-- <command>`. '
                      'This is an executable preflight, not a filesystem sandbox or native runtime hook.')
+            if planning_context:
+                body += ('\n\nREAD-ONLY PLANNING CONTEXT: The hash-pinned manifest above contains '
+                         '`planning_context.files`: immutable goals.json, TODO.md and selected plan inputs. '
+                         'Read those task instructions there, not stale or missing copies in the worker checkout. '
+                         'They are context only, not adopted product edits. Do not copy, commit or close that '
+                         'ledger; return implementation and acceptance evidence to the named integration owner. '
+                         'Executable source still must match the admitted committed candidate.')
             # No native calls between this final source/ledger/candidate check and create.
             if Path(args.source_snapshot).read_bytes() != snapshot_bytes:
                 raise ValueError('Source snapshot changed during assembly; re-evaluate selection')

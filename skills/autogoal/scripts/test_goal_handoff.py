@@ -13,6 +13,44 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class HandoffTests(unittest.TestCase):
+    def test_proposal_handoff_reaches_native_create_with_uncommitted_planning_only(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);repo=root/'repo';repo.mkdir();home=root/'profile';home.mkdir()
+            def git(*args):return subprocess.check_output(['git','-C',str(repo),*args],text=True).strip()
+            git('init','-q');git('config','user.name','Fixture');git('config','user.email','fixture@local')
+            (repo/'code.py').write_text('print("fixture")\n')
+            git('add','code.py');git('commit','-qm','base');base=git('rev-parse','HEAD')
+            (repo/'goals.json').write_text(json.dumps({'version':1,'primary_milestone':'G1',
+                'goals':[{'id':'G1','title':'Fixture','status':'unmet','priority':1,'source':'PLAN.md#slice','tasks':['T1']}],
+                'tasks':[{'id':'T1','title':'Fixture','goal':'G1','status':'open','section':'Now'}]}))
+            (repo/'TODO.md').write_text('T1 fixture task')
+            (repo/'PLAN.md').write_text('# Slice\nStatus: Accepted\n')
+            snapshot=root/'snapshot.json';snapshot.write_text(json.dumps({'version':1,'workspace':str(repo),
+                'files':[{'path':n,'sha256':m.hashlib.sha256((repo/n).read_bytes()).hexdigest()}
+                         for n in ['code.py','goals.json','TODO.md','PLAN.md']]}))
+            contract=root/'contract';contract.write_text(''.join(f'{key}: concrete {key}\n' for key in m.CONTRACT_FIELDS))
+            before=git('status','--porcelain');created=[]
+            def cli(prefix,*args):
+                if args[:3]==('config','get','terminal.cwd'):return str(repo)
+                if args[:2]==('profile','show'):return 'Path: '+str(home)
+                if args[:3]==('kanban','boards','list'):return json.dumps([{'slug':'default','id':'fixture','db_path':str(home/'board.db')}])
+                if 'list' in args:return '[]'
+                if 'create' in args:
+                    created.append(args)
+                    raise RuntimeError('fixture native create boundary')
+                raise AssertionError(args)
+            argv=['start_goal.py','--profile','fixture','--workspace',str(repo),'--title','Fixture',
+                '--contract-file',str(contract),'--source-snapshot',str(snapshot),'--base',base,
+                '--goal-task','T1','--ledger-mode','proposal','--integration-owner','parent',
+                '--pass-root',str(root/'passes'),'--required-path','PLAN.md','--required-path','code.py']
+            with patch('sys.argv',argv),patch.dict(m.os.environ,{},clear=True),patch.object(m,'run',side_effect=cli):
+                with self.assertRaisesRegex(RuntimeError,'fixture native create boundary'):m.main()
+            self.assertEqual(len(created),1)
+            self.assertIn('READ-ONLY PLANNING CONTEXT',created[0][created[0].index('--body')+1])
+            self.assertEqual(git('status','--porcelain'),before)
+            self.assertEqual(git('rev-parse','HEAD'),base)
+
     def test_progress_contract_requires_concrete_fields(self):
         validator = getattr(m, 'validate_contract', None)
         self.assertTrue(callable(validator), 'Handoff needs a structured contract preflight')

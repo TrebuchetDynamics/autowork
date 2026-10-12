@@ -68,7 +68,9 @@ hidden docs generation, unpause jobs or replace an in_progress task.
 The individual existing helpers remain available for separately authorized steps:
 - Missing/malformed accepted task bodies: source-bound recover_backlog.py under
   canonical revision/ownership guards, then retry the exact consumer gate.
-- Dirty accepted prerequisites excluded from the candidate: prepare_prerequisites.py
+- Uncommitted planning files: use proposal ledger mode with its automatic frozen
+  planning context; no planning-files prerequisite commit is needed.
+- Dirty executable prerequisites excluded from the candidate: prepare_prerequisites.py
   only with existing explicit attribution; never adopt foreign dirty work.
 - No eligible selection after maintenance: retry_selection.py against the actual
   canonical consumer in the same occurrence, not the docs scratch checkout.

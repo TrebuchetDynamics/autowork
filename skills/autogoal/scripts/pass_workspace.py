@@ -43,6 +43,67 @@ def prepare(source, target, base, candidate, prerequisites=None, required_paths=
         raise
 
 
+def planning_paths(ledger, task_id):
+    task = next((t for t in ledger['tasks'] if t['id'] == task_id), None)
+    if task is None:
+        raise ValueError('Planning context must bind an existing selected task')
+    goal = next(g for g in ledger['goals'] if g['id'] == task['goal'])
+    paths = {'goals.json', 'TODO.md'}
+    plan = goal.get('source', '').split('#', 1)[0]
+    if plan:
+        path = Path(plan)
+        if path.is_absolute() or '..' in path.parts or '.git' in path.parts or path.suffix != '.md':
+            raise ValueError('Planning context source must be a local Markdown plan')
+        paths.add(plan)
+    return paths
+
+
+def capture_planning_context(source, snapshot, admission, owner):
+    """Freeze selected planning inputs as context, never as product commits."""
+    if not owner or not admission.get('goal_task'):
+        raise ValueError('Proposal context requires selected task and integration owner')
+    source = Path(source).resolve(strict=True)
+    ledger_bytes = (source / 'goals.json').read_bytes()
+    if hashlib.sha256(ledger_bytes).hexdigest() != admission['ledger_sha256']:
+        raise ValueError('Goal ledger changed before context capture')
+    allowed = planning_paths(json.loads(ledger_bytes), admission['goal_task'])
+    files = {}
+    for row in snapshot['files']:
+        if row['path'] not in allowed:
+            continue
+        file = source / row['path']
+        if any(p.is_symlink() for p in (file, *file.parents)):
+            raise ValueError('Planning context must not traverse symlinks')
+        data = file.read_bytes()
+        if hashlib.sha256(data).hexdigest() != row['sha256']:
+            raise ValueError('Planning source changed during context capture')
+        files[row['path']] = data.decode('utf-8')
+    if files.get('goals.json', '').encode() != ledger_bytes:
+        raise ValueError('Planning snapshot must include exact goal ledger')
+    return {'version': 1, 'goal_task': admission['goal_task'],
+            'integration_owner': owner, 'files': files}
+
+
+def context_paths(manifest):
+    context = manifest.get('planning_context')
+    if context is None:
+        return set()
+    if (manifest.get('ledger_mode') != 'proposal' or context.get('version') != 1
+            or not context.get('integration_owner')):
+        raise ValueError('Frozen planning context requires proposal-only ledger role')
+    files = context['files']
+    allowed = planning_paths(json.loads(files['goals.json']), context['goal_task'])
+    if not set(files).issubset(allowed):
+        raise ValueError('Planning context cannot replace executable source inputs')
+    expected = {row['path']: row['sha256'] for row in manifest['files']}
+    for name, content in files.items():
+        if hashlib.sha256(content.encode('utf-8')).hexdigest() != expected.get(name):
+            raise ValueError('Frozen planning context differs from admitted snapshot')
+    if expected.get('goals.json') != manifest['ledger_sha256']:
+        raise ValueError('Frozen context ledger differs from admission')
+    return set(files)
+
+
 def verify(manifest, workspace):
     workspace = Path(workspace).resolve(strict=True)
     identity = manifest['candidate_identity']
@@ -53,8 +114,11 @@ def verify(manifest, workspace):
     if candidate_identity.git(workspace, 'status', '--porcelain', '--untracked-files=all'):
         raise ValueError('Pass workspace changed before worker start')
     source = Path(manifest['source_workspace']).resolve(strict=True)
+    planning = context_paths(manifest)
     for root in (source, workspace):
         for row in manifest['files']:
+            if root == workspace and row['path'] in planning:
+                continue  # Private immutable context; never copied into the worker tree.
             path = Path(row['path'])
             if path.is_absolute() or '..' in path.parts or '.git' in path.parts:
                 raise ValueError('Unsafe source path')
@@ -64,6 +128,8 @@ def verify(manifest, workspace):
             actual = hashlib.sha256(file.read_bytes()).hexdigest() if file.exists() else None
             if actual != row['sha256']:
                 raise ValueError('Source changed before worker start: ' + row['path'])
+        if root == workspace and 'goals.json' in planning:
+            continue
         ledger = root / 'goals.json'
         actual = hashlib.sha256(ledger.read_bytes()).hexdigest() if ledger.exists() else None
         if actual != manifest['ledger_sha256']:
