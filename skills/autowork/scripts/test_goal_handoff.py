@@ -47,7 +47,17 @@ class HandoffTests(unittest.TestCase):
             with patch('sys.argv',argv),patch.dict(m.os.environ,{},clear=True),patch.object(m,'run',side_effect=cli):
                 with self.assertRaisesRegex(RuntimeError,'fixture native create boundary'):m.main()
             self.assertEqual(len(created),1)
-            self.assertIn('READ-ONLY PLANNING CONTEXT',created[0][created[0].index('--body')+1])
+            body = created[0][created[0].index('--body')+1]
+            self.assertIn('READ-ONLY PLANNING CONTEXT', body)
+            self.assertIn('INITIAL IMPLEMENTATION ONLY', body)
+            self.assertIn('does not apply to review entry or review rework', body)
+            self.assertIn('REVIEW ENTRY (same original card)', body)
+            self.assertIn('Do not rerun pass_workspace.py', body)
+            self.assertIn('original pre-edit admission', body)
+            self.assertIn('finish_task.py receipt', body)
+            self.assertIn('foreign changes', body)
+            self.assertIn('missing or forged admission', body)
+            self.assertIn('moved task ref', body)
             self.assertEqual(git('status','--porcelain'),before)
             self.assertEqual(git('rev-parse','HEAD'),base)
 

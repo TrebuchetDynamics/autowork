@@ -305,6 +305,25 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
                  'No force/delete, other refs/remotes, main push, merge, deploy, release or profile/schedule change. '
                  'This instruction is not runtime permission enforcement or independent approval; preserve all host and '
                  'repository gates, and refuse if current owner authority/ref ownership cannot be confirmed.')
+    body += ('\n\nREVIEW ENTRY (same original card): These are reviewer and review-rework instructions, '
+             'not initial implementation admission. Do not rerun pass_workspace.py against the post-edit '
+             'workspace: it checks the original clean candidate, while finish_task.py preserves HEAD and '
+             'working-tree edits. Verify original pre-edit admission from the original run tool history: '
+             'exact guard command, pinned manifest hash, workspace, successful outcome and ordering before '
+             'the first edit. A newly written receipt or later replay cannot prove that history. '
+             'Bind review to the finish_task.py receipt, exact full commit and task ref; verify the ref '
+             'still names that commit, its ancestry and cumulative diff from the admitted candidate '
+             'against the authorized owned-file scope. Compare owned file contents/modes/deletions with '
+             'that commit; preserve and exclude foreign changes. Run independent checks against an '
+             'isolated snapshot of the finish commit, not the dirty workspace union. Refuse missing or '
+             'forged admission, a moved task ref, unexplained owned-blob drift or out-of-scope committed '
+             'changes; keep the original card and report the exact mismatch. Do not repin the admission '
+             'manifest, reset the workspace, invent a pass or create a replacement. Review rework keeps '
+             'the original admission evidence, verifies the latest reviewed candidate before edits, then '
+             'reruns scoped acceptance and finish_task.py and requests review of the new exact commit. '
+             'For explicit no-commit/no-change contracts, preserve that exception and independently bind '
+             'the authorized source and checks; never fabricate a finish commit. This phase contract is '
+             'review guidance, not an automatic verifier or review approval.')
     return body
 
 
@@ -582,7 +601,7 @@ def main():
             guard = 'python3 ' + shlex.quote(str(Path(__file__).with_name('pass_workspace.py').resolve())) + \
                     ' --manifest ' + shlex.quote(str(manifest_path)) + ' --manifest-sha256 ' + manifest_sha256 + \
                     ' --workspace ' + shlex.quote(str(pass_path))
-            body += ('\n\nMANDATORY WORKER START: Before design, tests or any production edit, run `' + guard +
+            body += ('\n\nMANDATORY WORKER START — INITIAL IMPLEMENTATION ONLY: This command does not apply to review entry or review rework. Before initial design, tests or any production edit, run `' + guard +
                      '`. Refusal means stop on the ORIGINAL card, with exact diagnostic; do not refresh evidence, '
                      'correct stale wording into a new scope, edit production or create a replacement. '
                      'All writes stay in this card native workspace; the source checkout is read-only. '

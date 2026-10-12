@@ -524,6 +524,33 @@ unchanged product tests for a lifecycle error. Separate actual review findings
 from lifecycle refusal. Workers never patch goal/judge code or assume manager
 powers; review handoff never closes qualification or milestone delivery gaps.
 
+## Initial admission and review entry are different phases
+
+The retained card's `MANDATORY WORKER START` command applies only to initial
+implementation. Reviewers and review-rework workers must not run that clean-base
+check against the implemented workspace. `finish_task.py` deliberately preserves
+HEAD, the index and working-tree edits while committing owned files to a task ref.
+A dirty worker checkout after that step is expected, not proof of failed admission.
+
+Before review, inspect the original run's successful pre-edit guard command,
+manifest hash, workspace and tool-event ordering. A copied JSON claim or a replay
+performed after edits does not establish admission. Missing or conflicting history
+stays an explicit gap on the same card; never rewrite the original manifest.
+
+Bind review to the full finish commit and receipt. Verify the task ref still names
+it, ancestry and the cumulative diff from the admitted candidate against scope,
+and owned contents/modes/deletions. Preserve unrelated dirty files and exclude them
+from review. Run independent checks in an isolated snapshot of the finish commit.
+Reject moved refs, unexplained owned changes and foreign committed changes, rather
+than resetting the candidate or treating passing tests as admission evidence.
+After scoped review fixes, rerun acceptance and the finish gate and review the new
+exact commit. Keep explicit no-commit/no-change exceptions honest and source-bound.
+
+For existing cards with older unconditional startup wording, attach this phase
+clarification through the supported same-card handoff under existing authority;
+retain the original command and history. This does not prove a live review passed,
+change an existing card automatically, or authorize skipping native review gates.
+
 ## Budget review and repeat checks deliberately
 
 Only when the contract explicitly requires PRE-WRITE/final reviewer subagents (Operating priority 8), budget them before execution.
