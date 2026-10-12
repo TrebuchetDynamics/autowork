@@ -36,7 +36,7 @@ class CycleGuidanceTests(unittest.TestCase):
         self.assertIn('references/scheduled-policy.md', core)
         text = (ROOT / 'skills/autowork/references/scheduled-policy.md').read_text()
         self.assertIn('# Scheduled policy and profile exceptions', text)
-        self.assertIn('load `hermes-toolset:repo-docs`', text)
+        self.assertIn('load `hermes-toolset:docs-sync`', text)
         self.assertIn('rerun selection in the same occurrence', text)
         self.assertIn('load `hermes-toolset:git-commit-push`', text)
         self.assertIn('exact remote ref and SHA', text)

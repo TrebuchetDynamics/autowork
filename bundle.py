@@ -257,7 +257,14 @@ def diagnose(report, *, core_only=False):
                 if r.get('kind') == 'plugin' and r.get('source') == 'hermes-toolset'}
     missing_commands = sorted(n.replace('_', '-') for n in names
                               if n.replace('_', '-') not in commands)
-    missing_skills = sorted('hermes-toolset:' + n for n in names
+    public_names = set()
+    for name in names:
+        if name == 'grill-me' and 'repo-interview' in names:
+            continue  # Challenge mode is exposed through Plan With Me.
+        text = (ROOT / 'skills' / name / 'SKILL.md').read_text(encoding='utf-8')
+        match = re.search(r'^name: ([a-z0-9_-]+)$', text, re.MULTILINE)
+        public_names.add(match.group(1) if match else name)
+    missing_skills = sorted('hermes-toolset:' + n for n in public_names
                             if 'hermes-toolset:' + n not in report['plugin_skills'])
     if not names:
         errors.append('No bundled skills found')

@@ -38,7 +38,7 @@ subcommands. The agent loads the skill through `skill_view` and performs its
 instructions using the current conversation and tools.
 
 Bundled skills also remain available by their qualified names, such as
-`hermes-toolset:repo-docs`. Supporting files stay next to their `SKILL.md`. Shared contracts live in
+`hermes-toolset:docs-sync`. Supporting files stay next to their `SKILL.md`. Shared contracts live in
 [`skills/shared`](../skills/shared/COMMON-CONTRACT.md), alongside the skill folders;
 the legacy skill copier preserves that support directory too. Resolve helper
 commands from the loaded bundle rather than assuming `~/.hermes/shared-skills`.
@@ -48,17 +48,20 @@ collision; the skipped alias produces a warning and the qualified skill remains
 available. Choose distinctive names to avoid collisions with other plugins,
 local skills, and configured quick commands.
 
-Public names and stable implementation IDs are deliberately different:
+Public skill names match the workflow names. Source directories stay stable for helper links:
 
-| Primary command | Stable skill ID | Compatibility command |
+| Primary command | Public skill ID | Compatibility command |
 | --- | --- | --- |
-| `/plan_with_me` | `repo-interview` | `/repo_interview` |
-| `/plan_for_me` | `autoresearch` (plan protocol) | `/autoresearch_plan` |
-| `/docs_sync` | `repo-docs` | `/repo_docs` |
+| `/plan_with_me` | `plan-with-me` | `/repo_interview` |
+| `/plan_for_me` | `plan-for-me` | `/autoresearch_plan` |
+| `/docs_sync` | `docs-sync` | `/repo_docs` |
 | `/autowork` | `autowork` | None; Autogoal is retired |
 
-Do not rename helper paths, saved receipt keys or qualified skill IDs merely to
-match a public command. Autogoal references in migration code preserve old state;
+Grill Me is the challenge mode of Plan With Me; its old command still works but
+is not advertised as a separate plugin skill. Autoresearch protocols remain
+accessible through their commands and the Plan For Me adapter. Legacy command
+aliases are retained for saved prompts; the Telegram menu shows the new workflow
+names. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
 they do not register a live command. Hindsight is not a bundle integration; its
 negative tests prevent accidental reintroduction. Updating source does not refresh
 an already-running gateway's command registry: use supported plugin reload and
@@ -144,3 +147,13 @@ The [adapter](../skills/engineering/SKILL.md) loads a small relevant selection f
 paths into existing TODO.md/goals.json entries and preserves prior authorization,
 explicit restrictions and actual review requirements. Its protocols are not extra
 workers or independently registered slash commands. See [provenance and updates](dependencies.md#refresh-the-pinned-engineering-pack).
+
+### Automatic planning during execution
+
+Autowork calls Plan For Me itself when preparation is stuck on unclear prerequisites
+or candidate changes. It records a bounded recovery plan through Docs Sync in
+TODO.md/goals.json and retries execution in the same run. No separate planner
+command is required. Named task-family requests stay within that scope; explicit
+no-commit restrictions and live writers still apply. Unchanged inputs resume the
+saved plan rather than generating repeated planning reports. A planning receipt
+is not proof that a worker ran or a task completed.

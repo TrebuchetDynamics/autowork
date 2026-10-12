@@ -59,6 +59,31 @@ class BacklogPlanTests(unittest.TestCase):
         self.cycle.update(scope='repository', backlog_ready=False, ready_queue=[{'id':'T2'}])
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'], 'discover_repository_work')
 
+    def test_handoff_preparation_plans_without_waiting_for_user(self):
+        self.cycle.update(scope='tasks', admission='handoff_preparation',
+                          selected_task={'id':'T1'}, ready_queue=[{'id':'T1'}],
+                          unchanged_runs=0)
+        result=backlog_plan.decide(self.cycle,self.state)
+        self.assertEqual(result['action'],'plan')
+        self.assertEqual(result['skill'],'hermes-toolset:plan-for-me')
+        self.assertTrue(result['execution_required'])
+        backlog_plan.record(self.cycle,self.state,'fixture://recovery-plan','canonical_reconciled')
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'reuse')
+
+    def test_selected_task_with_unresolved_inputs_is_not_ready(self):
+        self.cycle.update(scope='tasks', selected_task={'id':'T1'}, unchanged_runs=0)
+        for gate in ('candidate','source_freshness','prerequisites'):
+            self.cycle['recovery']['gate']=gate
+            result=backlog_plan.decide(self.cycle,self.state)
+            self.assertEqual(result['action'],'plan',gate)
+            self.assertIn('scope',result['boundary'])
+
+    def test_planning_does_not_override_refusal_or_live_writer(self):
+        self.cycle.update(scope='tasks', admission='handoff_preparation', selected_task={'id':'T1'})
+        for gate, expected in [('ownership','reconcile_owner'),('refused','repair_execution_inputs')]:
+            self.cycle['recovery']['gate']=gate
+            self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],expected)
+
     def test_receipt_requires_actual_evidence_and_known_outcome(self):
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'','no_supported_delta')
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'fixture://receipt','completed')

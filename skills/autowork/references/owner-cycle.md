@@ -33,6 +33,16 @@ external-owner workflow, pass `--require-owner` to the cycle or selector; the
 owner-request, inbox and registry-release instructions below apply to that opt-in.
 No new schedule, publication authority or live-operation permission is implied.
 
+## Scheduled execution and explicit planning requests
+
+Treat an already authorized Autowork cron as execution. A separate explicit `plan`
+conversation remains planning-only; it neither grants new implementation authority
+nor revokes the job's standing scope. Honor explicit pauses and no-write limits.
+Re-read native review state instead of repeating a prior occurrence's pending-review
+report. Gate and integrate the exact approved offline candidate, then continue eligible
+selection. Report partial reviewed/integrated slices separately from full TODO or live
+acceptance; an open combined task does not mean no implementation occurred.
+
 ## Run the executable cycle
 
 Use the shared runner rather than assembling status JSON by hand:

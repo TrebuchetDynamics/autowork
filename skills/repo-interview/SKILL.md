@@ -1,5 +1,5 @@
 ---
-name: repo-interview
+name: plan-with-me
 description: "Use when the user wants to be interviewed about a repository's goals, requirements or unresolved decisions, then capture answers in project docs and plans."
 license: MIT
 metadata:
@@ -21,8 +21,14 @@ answered decisions and maintaining affected docs. `questions only`, `audit` or
 `read-only` means no file changes. It does not authorize code changes or start
 autowork. Honor any separate implementation authority already given.
 
-The stable skill ID remains `repo-interview`; old commands remain compatibility
-aliases. The public command means ask the user and plan together.
+The public skill ID is `plan-with-me`; old commands remain compatibility
+aliases. Source directories stay stable for supporting files. The public command means ask the user and plan together.
+
+## Challenge mode
+
+For “grill me”, “challenge this plan” or the compatibility `/grill_me` command,
+read [the questioning protocol](../grill-me/SKILL.md) on demand. This is a mode of
+Plan With Me, not a second required planning workflow.
 
 ## Learn enough to ask a useful question
 

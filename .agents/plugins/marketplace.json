@@ -1,0 +1,12 @@
+{
+  "name": "hermes-toolset-marketplace",
+  "plugins": [
+    {
+      "name": "hermes-toolset",
+      "source": {
+        "source": "local",
+        "path": "."
+      }
+    }
+  ]
+}

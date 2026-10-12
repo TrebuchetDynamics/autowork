@@ -1,12 +1,33 @@
-# Autoresearch Plan fallback
+# Automatic Plan For Me recovery
 
-Use this when an existing task needs substantive research or decomposition. An
-empty queue first needs bounded inspection; an obvious repair can be recorded and
-executed without a research protocol. First reconcile live workers
-and existing results; do not wait for repeated blocked runs. Apply
-[TODO work center](../../shared/TODO-WORKCENTER.md). An owner_cycle receipt may
-contain `planning.action`; that receipt is optional for entering the skill and
-does not execute a model. Routine acceptance clarification needs no research pass.
+Autowork invokes `hermes-toolset:plan-for-me` itself when handoff preparation,
+candidate drift or unclear prerequisites prevent execution. The user need not
+send `/plan_for_me`, and no additional approval is needed for in-scope planning.
+First attempt an obvious local repair; if it cannot resolve the hold immediately,
+run one bounded planning pass in this occurrence, not after repeated cron reports.
+A ready task needs no planning ceremony. Reconcile actual live writers first.
+Apply [TODO work center](../../shared/TODO-WORKCENTER.md). A `planning.action`
+receipt directs the agent; it does not execute the skill or prove progress.
+
+## Preparation stalls
+
+For an isolated base missing local dependencies, inspect the exact diff and its
+callers. Classify each prerequisite as committed and usable, attributable and
+authorized, explicitly excluded (including no-commit), actively changing, or
+unverified. Choose a supported route: use a verified committed base, finish an
+authorized prerequisite, reduce the slice to independent useful behavior, or
+select another eligible task within the requested scope. Recheck changed files
+before handoff; do not freeze a stale candidate or silently drop acceptance.
+Never import forbidden/foreign edits or remove a genuine dependency to force admission.
+
+For a named task family, keep planning and execution within that family and its
+necessary authorized prerequisites. Broader maintenance needs broader authority.
+Save decisions, task bodies, dependency order and exact blockers in canonical
+TODO.md/goals.json through Docs Sync, then retry selection and handoff immediately.
+Continue under the original execution request; do not end with “plan ready—run
+Autowork?” or ask the user to invoke the planner. If no route exists, identify the
+single precise missing input or restriction to change and what it would enable.
+Repeated unchanged inputs resume the saved plan's next action, not another plan.
 
 - `discover_repository_work`: choose independent work under repository-wide
   authority using [repository maintenance](repository-maintenance.md); the original
@@ -20,8 +41,8 @@ does not execute a model. Routine acceptance clarification needs no research pas
   existing authority; research cannot grant permission or repair routing.
 - `reuse`: read the bound prior receipt and act on its integration/execution outcome.
   Do not repeat the plan against identical inputs.
-- `plan`: prepare the bounded task in this occurrence. Use the research pass below
-  only for unresolved questions; direct evidence and a clear repair need no protocol.
+- `plan`: execute Plan For Me using the bounded pass below, reconcile tasks and
+  retry execution in this occurrence. The helper returning `plan` is not execution.
 
 These decisions cover the bound task, not the entire repository. For a broad
 development request with no runnable task, use [repository maintenance](repository-maintenance.md)
@@ -34,7 +55,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    Otherwise record the current repository revision, TODO/goals state and planning
    reason in a new or reused research receipt at the authorized research location;
    do not fabricate a cycle or task ID.
-   Then load `hermes-toolset:autoresearch` with
+   Then load `hermes-toolset:plan-for-me` with
    `Selected subcommand: plan` and read its `upstream/plan.md`. This is skill
    execution in the current agent, not a shell command or a new scheduled job.
 2. Bind Goal to the accepted milestone or an evidence-backed maintenance outcome

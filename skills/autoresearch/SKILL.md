@@ -1,11 +1,14 @@
 ---
-name: autoresearch
-description: "Use for explicit Autoresearch commands or bounded investigation of unresolved hypotheses, planning tradeoffs and measured experiments. Not required for ordinary implementation or a ready task."
+name: plan-for-me
+description: "Investigate the repository, decide an approach and save plans and tasks. Includes on-demand Autoresearch experiment protocols; not required for a ready implementation task."
 version: 0.1.0
 license: MIT
 ---
 
-# Autoresearch for Hermes
+# Plan For Me
+
+Default to the plan protocol when invoked as a skill without an explicit subcommand.
+Explicit Autoresearch subcommands select their own protocol.
 
 Run the pinned Udit Goenka autoresearch protocols with Hermes tools and the existing
 repo-docs → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
@@ -28,7 +31,7 @@ explicit read-only, chat-only, no-write and --dry-run requests write nothing.
 Report saved paths, task IDs and the next executable action. Reuse existing plans
 and tasks; preserve user orders before rendering and never claim planning as delivery.
 
-## Plan For Me
+## Planning and protocol selection
 
 `/plan_for_me` (also `/plan-for-me`) is the primary planning command. It routes
 to this adapter's `plan` protocol: investigate the repository, choose a supported
@@ -98,7 +101,7 @@ loop or ask again for settled implementation choices.
 
 This handoff is required after planning/discovery and at each bounded execution
 checkpoint, including plateau, failure and completion. Load
-`hermes-toolset:repo-docs` (or the verified sibling SKILL.md) in **narrow Maintain**
+`hermes-toolset:docs-sync` (or the verified sibling SKILL.md) in **narrow Maintain**
 for affected owners; do not start a whole-repository bootstrap implicitly.
 
 1. Supply a compact finding receipt: command/run path, accepted requirement/source,

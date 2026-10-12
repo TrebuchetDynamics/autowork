@@ -1,0 +1,32 @@
+{
+  "name": "hermes-toolset",
+  "version": "0.2.0",
+  "description": "Hermes Toolset workflows for the Pi coding agent",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TrebuchetDynamics/hermes-toolset.git"
+  },
+  "files": [
+    "adapters/",
+    "skills/",
+    "LICENSE",
+    "README.md",
+    "docs/cross-host.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./adapters/pi.mjs"
+    ],
+    "skills": [
+      "./adapters/skills"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -38,7 +38,7 @@ under broad repository authorization: inspect a distinct component, record justi
 TODO tasks and execute an eligible slice now. Do not confuse a cached task-specific
 planning receipt with completed repository-wide discovery.
 
-When no runnable task remains and no live worker owns the affected work, load `hermes-toolset:repo-docs`
+When no runnable task remains and no live worker owns the affected work, load `hermes-toolset:docs-sync`
 for narrow task/document reconciliation grounded in existing accepted intent; use
 Bootstrap only for applicable missing documentation. Then
 rerun selection in the same occurrence. Respect concurrent docs ownership and ledger

@@ -5,6 +5,10 @@ questions and research to documented tasks, implementation, checks and commits.
 Use the same workflows in Hermes CLI and Telegram. Install into one profile with
 the native plugin manager, or deploy across your fleet with the setup tools.
 
+**Codex and Pi are also supported** through native packages with portable workflow
+adapters. See [Codex and Pi installation](docs/cross-host.md) for their install and
+invocation syntax. The Hermes fleet installer below is only for Hermes.
+
 Hermes already supports skills and plugins. This bundle adds a coordinated set of
 repository workflows, automatic slash-command registration, shared installation
 across profiles, and verification that gateway commands were registered. It includes
@@ -27,10 +31,10 @@ CLI; Telegram displays underscores. Old `/repo_interview`, `/repo_docs` and
 | Workflow | Example in CLI chat | Result and possible changes | Readiness needed |
 | --- | --- | --- | --- |
 | Clarify a project | `/plan_with_me Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
-| Challenge a plan | `/grill-me Review this cache design` | Questions assumptions before implementation. | Core + configured model |
+| Challenge a plan | `/plan_with_me Challenge this cache design` | Questions assumptions before implementation. | Core + configured model |
 | Maintain docs and tasks | `/docs_sync Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
 | Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, calls bounded Autoresearch for unresolved planning or research questions, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; supporting tools only when needed |
-| Research and improve | `/plan_for_me Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through repo-docs. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
+| Research and improve | `/plan_for_me Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through docs_sync. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
@@ -55,7 +59,7 @@ with the migration procedure in [installation](docs/installation.md).
 /autowork Implement that accepted specification; commit locally, no push
 ```
 
-The interview asks questions and uses repo-docs to save accepted decisions and
+The interview asks questions and uses docs_sync to save accepted decisions and
 tasks automatically; a separate docs command is unnecessary. **TODO.md is the
 central work queue** for plans, user orders and progress. Its task details and
 Now/Next ordering stay synchronized with the goals.json execution index; explicit

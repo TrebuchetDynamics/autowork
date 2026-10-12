@@ -1,0 +1,7 @@
+{
+  "name": "hermes-toolset",
+  "version": "0.2.0",
+  "description": "Repository planning, documentation, research and execution workflows for Codex.",
+  "license": "MIT",
+  "skills": "./adapters/skills/"
+}

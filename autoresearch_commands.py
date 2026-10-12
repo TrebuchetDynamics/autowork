@@ -31,4 +31,4 @@ def register(ctx, skills, invoke):
             # CLI colon commands still accept empty text and run upstream setup.
             ctx.register_command(alias, partial(_dispatch, invoke, ctx, path, command),
                                  description=f'Autoresearch: {command}',
-                                 args_hint='<instructions>' if separator == ':' else '[instructions]')
+                                 args_hint='<instructions>' if separator == ':' or command == 'plan' else '[instructions]')

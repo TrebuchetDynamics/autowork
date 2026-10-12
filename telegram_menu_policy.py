@@ -11,7 +11,7 @@ def menu_patch(raw):
     if isinstance(priority, str): priority = [priority]
     if not isinstance(priority, list): priority = []
     names = json.loads((Path(__file__).parent / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
-    wanted = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'autoresearch'] + ['autoresearch_' + name for name in names]
+    wanted = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork'] + ['autoresearch_' + name for name in names if name != 'plan']
     merged = list(dict.fromkeys([str(p) for p in priority if str(p).strip()] + wanted))
     # Preserve the user's cap and prepend/append/replace preference. Their explicit
     # higher-priority entries may still fill an intentionally small menu.

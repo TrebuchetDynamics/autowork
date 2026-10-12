@@ -13,9 +13,9 @@ class WorkflowCommands(unittest.TestCase):
         self.plugin.register(self.ctx)
         self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture')
         for command, skill, subcommand in (
-                ('plan_with_me', 'repo-interview', None),
-                ('docs_sync', 'repo-docs', None),
-                ('plan_for_me', 'autoresearch', 'plan')):
+                ('plan_with_me', 'plan-with-me', None),
+                ('docs_sync', 'docs-sync', None),
+                ('plan_for_me', 'plan-for-me', 'plan')):
             for spelling in (command, command.replace('_', '-')):
                 with self.subTest(spelling=spelling):
                     self.assertIn(spelling, self.ctx.commands)
@@ -42,3 +42,19 @@ class WorkflowCommands(unittest.TestCase):
         self.plugin.register(self.ctx)
         for command in ('docs-sync', 'docs_sync', 'plan-with-me', 'plan-for-me'):
             self.assertNotIn(command, self.ctx.commands)
+
+    def test_catalog_uses_current_names_and_grilling_is_a_mode(self):
+        for name in ('repo-interview', 'repo-docs', 'autoresearch', 'grill-me'):
+            self.skill(name)
+        self.plugin.register(self.ctx)
+        self.assertEqual(set(self.ctx.skills), {'plan-with-me', 'docs-sync', 'plan-for-me'})
+        self.ctx.commands['grill-me']('challenge my cache plan')
+        prompt, _ = self.ctx.messages[-1]
+        self.assertIn('skill_view(name="hermes-toolset:plan-with-me")', prompt)
+        self.assertIn('../grill-me/SKILL.md', prompt)
+        self.assertTrue(prompt.endswith('challenge my cache plan'))
+
+    def test_foreign_namespace_keeps_its_own_skill_identity(self):
+        path = self.skill('autoresearch')
+        self.plugin._invoke(self.ctx, 'autoresearch', path, 'debug', namespace='other')
+        self.assertIn('skill_view(name="other:autoresearch")', self.ctx.messages[-1][0])

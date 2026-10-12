@@ -13,7 +13,9 @@ metadata:
 
 First apply [repository-stage preparation](references/repository-stages.md), then
 use the execution and completion rules below.
-Local work needs no external owner; [autonomous recovery](references/owner-cycle.md) takes precedence over owner-handoff wording.
+Local recovery needs no external owner: [recovery](references/owner-cycle.md).
+Stalled preparation automatically invokes [Plan For Me](references/backlog-planning.md),
+updates TODO.md and retries execution; never wait for the user to invoke it.
 
 ## When to use
 

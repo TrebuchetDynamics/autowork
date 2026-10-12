@@ -29,8 +29,8 @@ purpose and a useful bounded outcome are already clear.
 | Repeated blocker | Repair attributable inputs, follow through owner handoff, or execute independent accepted work. Escalate only the exact external input still missing. |
 | Mature repo with no open task | Check one bounded source/test/user-flow seam against documented intent; implement a demonstrated gap, or report evidence that no useful authorized delta was found. |
 
-Use `hermes-toolset:autoresearch` subcommand `plan` for unresolved discovery questions and
-`hermes-toolset:repo-docs` for canonical tasks. Planning follows
+Use `hermes-toolset:plan-for-me` subcommand `plan` for unresolved discovery questions and
+`hermes-toolset:docs-sync` for canonical tasks. Planning follows
 [bounded backlog planning](backlog-planning.md): at most
 three useful slices, measurable checks, no invented scope or repetitive replanning.
 For a new backlog, derive tasks from the user's development request and existing

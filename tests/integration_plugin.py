@@ -108,8 +108,8 @@ def main():
         assert result == 'executed' and called == [True]
         commands = get_plugin_commands()
         assert {"autowork", "impeccable", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"} <= commands.keys()
-        assert manager.find_plugin_skill("hermes-toolset:repo-docs") == root / "skills/repo-docs/SKILL.md"
-        payload = json.loads(skill_view("hermes-toolset:repo-docs"))
+        assert manager.find_plugin_skill("hermes-toolset:docs-sync") == root / "skills/repo-docs/SKILL.md"
+        payload = json.loads(skill_view("hermes-toolset:docs-sync"))
         assert "error" not in payload, payload
 
         # A deliberately core-only fixture must pass core diagnostics while
@@ -131,21 +131,21 @@ def main():
 
         menu, _ = telegram_menu_commands()
         assert "git_commit_push" in dict(menu), menu
-        assert "repo_docs" in dict(menu), menu
-        assert "repo_interview" in dict(menu), menu
+        assert "repo_docs" not in dict(menu), menu
+        assert "repo_interview" not in dict(menu), menu
         assert "impeccable" in dict(menu), menu
         for public in ('plan_with_me', 'plan_for_me', 'docs_sync'):
             assert public in dict(menu), menu
             assert public in commands and public.replace('_', '-') in commands
-        interview = json.loads(skill_view("hermes-toolset:repo-interview"))
+        interview = json.loads(skill_view("hermes-toolset:plan-with-me"))
         assert "error" not in interview, interview
 
         cli = SimpleNamespace(_pending_input=Queue(), _agent_running=False)
         manager._cli_ref = cli
         tokens = set_session_vars()
         try:
-            for public, target in [('plan_with_me', 'repo-interview'),
-                                   ('plan_for_me', 'autoresearch'), ('docs_sync', 'repo-docs')]:
+            for public, target in [('plan_with_me', 'plan-with-me'),
+                                   ('plan_for_me', 'plan-for-me'), ('docs_sync', 'docs-sync')]:
                 assert commands[public]['handler']('read-only: example') is None
                 message = cli._pending_input.get_nowait()
                 assert f'hermes-toolset:{target}' in message, message
@@ -154,7 +154,7 @@ def main():
                     assert 'Selected subcommand: plan' in message
             assert commands["repo-docs"]["handler"]("update the README") is None
             queued = cli._pending_input.get_nowait()
-            assert 'skill_view(name="hermes-toolset:repo-docs")' in queued
+            assert 'skill_view(name="hermes-toolset:docs-sync")' in queued
             assert "update the README" in queued
         finally:
             clear_session_vars(tokens)
@@ -173,7 +173,7 @@ def main():
             clear_session_vars(tokens)
         manager.unload("hermes-toolset")
         assert "repo-docs" not in manager._plugin_commands
-        assert manager.find_plugin_skill("hermes-toolset:repo-docs") is None
+        assert manager.find_plugin_skill("hermes-toolset:docs-sync") is None
         # Broken YAML must remain recoverable, never replaced by fallback defaults.
         config_path.write_text('approvals: [broken')
         before = config_path.read_bytes()

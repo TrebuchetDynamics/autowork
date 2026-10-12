@@ -31,6 +31,21 @@ class OwnerCronTests(unittest.TestCase):
         legacy = scope + module.MARKER + 'process owner inbox/replies; proposal ledger mode'
         self.assertNotIn('process owner inbox/replies', module.owner_prompt(legacy, False))
 
+    def test_scheduled_execution_consumes_plans_and_approved_results(self):
+        module = load()
+        prompt = module.owner_prompt('Offline work authorized. Preserve live-operation exclusions.', True)
+        for rule in ('This scheduled invocation is execution, not a planning-only request',
+                     'A separate explicit plan request remains planning-only',
+                     'Reconcile newly approved exact candidates',
+                     'continue eligible implementation in the same occurrence',
+                     'Do not ask whether to implement already authorized offline work',
+                     'Report reviewed offline slices separately from full TODO acceptance'):
+            self.assertIn(rule, prompt)
+        self.assertIn('Preserve live-operation exclusions', prompt)
+        self.assertIn('Do not push or deploy', prompt)
+        self.assertIn('do not trigger recovery', prompt)
+        self.assertEqual(module.owner_prompt(prompt, True), prompt)
+
     def test_scoped_offline_isolation_permission_keeps_main_and_external_limits(self):
         module = load()
         scope = ('User authorizes isolated task branches/worktrees for offline work. '

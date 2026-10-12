@@ -8,6 +8,13 @@ import re
 
 SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 logger = logging.getLogger(__name__)
+PUBLIC_SKILLS = {
+    "repo-interview": "plan-with-me",
+    "repo-docs": "docs-sync",
+    "autoresearch": "plan-for-me",
+}
+
+
 _NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}\Z")
 
 
@@ -39,9 +46,13 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
 
     if not path.is_file():
         return f"Skill {name!r} no longer exists. Update the plugin and restart Hermes."
+    public = PUBLIC_SKILLS.get(name, name) if namespace == "hermes-toolset" else name
+    if namespace == "hermes-toolset" and name == "grill-me" and (SKILLS_DIR / "repo-interview/SKILL.md").is_file():
+        public = "plan-with-me"
+        raw_args = "Challenge mode: read ../grill-me/SKILL.md and stress-test the plan.\n\n" + raw_args
     prompt = (
         f"The user invoked the /{name} skill command. "
-        f'Load skill_view(name="{namespace}:{name}") and follow its instructions '
+        f'Load skill_view(name="{namespace}:{public}") and follow its instructions '
         "to perform the requested work in this conversation. "
         "Resolve supporting files relative to that skill's directory.\n\n"
         f"User arguments:\n{raw_args}"
@@ -49,7 +60,7 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
     if name == "autoresearch":
         prompt = (
             "TODO.md is the central work queue. By default, persist actionable "
-            "research/planning findings there through repo-docs and synchronize "
+            "research/planning findings there through docs_sync and synchronize "
             "goals.json; reuse task IDs and preserve user ordering. Explicit "
             "read-only, chat-only, no-write and --dry-run requests write nothing. "
             "Planning alone does not authorize implementation or timed scheduling.\n\n"
@@ -97,14 +108,18 @@ def register(ctx):
     apply_runtime_defaults(ctx)
     existing = get_plugin_commands()
     for name, command, path in skills:
-        ctx.register_skill(name, path)
+        # Keep source directories stable for helper paths and active workers;
+        # publish only the current workflow identities in the skill catalog.
+        if name != "grill-me" or not any(n == "repo-interview" for n, _, _ in skills):
+            ctx.register_skill(PUBLIC_SKILLS.get(name, name), path)
         if resolve_command(command) is not None or command in existing:
             logger.warning("Skipping /%s: command already exists; use skill_view('hermes-toolset:%s').",
                            command, name)
             continue
         ctx.register_command(
             command, partial(_invoke, ctx, name, path),
-            description=f"Run the {name} skill", args_hint="[instructions]",
+            description=f"Run the {PUBLIC_SKILLS.get(name, name)} skill",
+            args_hint="<instructions>" if name in PUBLIC_SKILLS or name == "grill-me" else "[instructions]",
         )
     from .autoresearch_commands import register as register_autoresearch
     register_autoresearch(ctx, skills, _invoke)

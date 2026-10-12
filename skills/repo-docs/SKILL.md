@@ -1,5 +1,5 @@
 ---
-name: repo-docs
+name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
 version: 0.9.0
 license: MIT
@@ -11,7 +11,7 @@ metadata:
 # Docs Sync
 
 Keep docs accurate and distinguish intent from implementation. Reuse owners.
-The stable skill ID remains `repo-docs`; `/repo-docs` and `/repo_docs` are compatibility aliases.
+The public skill ID is `docs-sync`; `/repo-docs` and `/repo_docs` are compatibility aliases.
 Follow [the shared skill contract](../shared/COMMON-CONTRACT.md) for study, hygiene,
 safety and evidence; use `wiki-docs` for raw-source-to-wiki compilation.
 

@@ -29,7 +29,7 @@ def main():
         assert (home / 'skills/engineering/upstream/references/security-checklist.md').is_file()
         assert 'No update receipt yet' in commands['toolset']['handler']('update status')
         names = json.loads((root / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
-        payload = json.loads(skill_view('hermes-toolset:autoresearch'))
+        payload = json.loads(skill_view('hermes-toolset:plan-for-me'))
         assert 'error' not in payload, payload
         menu, _ = telegram_menu_commands(telegram_menu_max_commands())
         menu = dict(menu)
@@ -39,8 +39,8 @@ def main():
             assert f'autoresearch:{name}' in commands
             assert f'autoresearch-{name}' in commands
             assert f'autoresearch{name}' not in menu
-        assert all('autoresearch_' + name in menu for name in names), menu
-        assert 'autoresearch' in menu, menu
+        assert all('autoresearch_' + name in menu for name in names if name != 'plan'), menu
+        assert 'plan_for_me' in menu and 'autoresearch' not in menu, menu
         assert 'autowork' in menu, menu
         assert 'autogoal' not in commands and 'autogoal' not in menu
         cli = SimpleNamespace(_pending_input=Queue(), _agent_running=False)
@@ -54,7 +54,7 @@ def main():
                 raw = 'Goal: cache latency\n--chain evals; do not implement'
                 assert commands[f'autoresearch:{name}']['handler'](raw) is None
                 queued = cli._pending_input.get_nowait()
-                assert 'hermes-toolset:autoresearch' in queued
+                assert 'hermes-toolset:plan-for-me' in queued
                 assert f'Selected subcommand: {name}\n' in queued
                 assert queued.endswith(raw)
                 assert 'TODO.md is the central work queue' in queued
