@@ -3,7 +3,7 @@
 ## Verify
 
 ```sh
-uv run --no-project --with PyYAML python scripts/check.py
+uv run --no-project --with-requirements requirements-test.txt python scripts/check.py
 python3 scripts/check.py --list
 python -m py_compile __init__.py bundle.py install-omh.py install-graphify.py
 ```

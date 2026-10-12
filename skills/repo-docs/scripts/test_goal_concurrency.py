@@ -2,6 +2,7 @@
 import fcntl
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -87,10 +88,12 @@ class ConcurrencyTests(unittest.TestCase):
         worker = Path(self.tmp.name) / 'worker'
         self.git('worktree', 'add', '-b', 'worker', worker)
         local = Path((worker / '.git').read_text().strip().removeprefix('gitdir: '))
+        # Recent Git versions create this directory during worktree setup.
+        (local / 'refs').mkdir(exist_ok=True)
         # Make the overridden common directory a valid Git directory, using real
         # primary objects/refs; clean discovery still identifies a linked checkout.
         for name in ('objects', 'refs'):
-            (local / name).symlink_to(self.repo / '.git' / name, target_is_directory=True)
+            shutil.copytree(self.repo / '.git' / name, local / name, dirs_exist_ok=True)
         before = {name: (worker / name).read_bytes() for name in ('goals.json', 'TODO.md')}
         # Force common == local without replacing GIT_DIR, independently of the first fix.
         env = dict(os.environ, GIT_COMMON_DIR=str(local))
