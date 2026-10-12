@@ -104,7 +104,7 @@ def context_paths(manifest):
     return set(files)
 
 
-def verify(manifest, workspace):
+def verify(manifest, workspace, *, admitted_task=None):
     workspace = Path(workspace).resolve(strict=True)
     identity = manifest['candidate_identity']
     if (str(workspace) != identity['workspace']
@@ -115,6 +115,26 @@ def verify(manifest, workspace):
         raise ValueError('Pass workspace changed before worker start')
     source = Path(manifest['source_workspace']).resolve(strict=True)
     planning = context_paths(manifest)
+    source_ledger_hashes = {manifest['ledger_sha256']}
+    pinned_ledger = None
+    task_id = manifest.get('goal_task') or admitted_task
+    if 'goals.json' in planning:
+        context = manifest['planning_context']
+        task_id = context['goal_task']
+        pinned_ledger = context['files']['goals.json'].encode('utf-8')
+    elif task_id and (workspace / 'goals.json').is_file():
+        pinned_ledger = (workspace / 'goals.json').read_bytes()
+    if pinned_ledger is not None:
+        if hashlib.sha256(pinned_ledger).hexdigest() != manifest['ledger_sha256']:
+            raise ValueError('Pinned ledger differs from admission')
+        ledger = json.loads(pinned_ledger)
+        selected = [t for t in ledger['tasks'] if t['id'] == task_id]
+        if (len(selected) == 1 and selected[0].get('status') == 'open'
+                and selected[0].get('section') in ('Now', 'Next')):
+            # Derive the one admitted task transition from immutable original bytes.
+            selected[0]['status'] = 'in_progress'
+            data = (json.dumps(ledger, indent=2, sort_keys=True, ensure_ascii=False) + '\n').encode('utf-8')
+            source_ledger_hashes.add(hashlib.sha256(data).hexdigest())
     for root in (source, workspace):
         for row in manifest['files']:
             if root == workspace and row['path'] in planning:
@@ -126,19 +146,20 @@ def verify(manifest, workspace):
             if not file.is_relative_to(root):
                 raise ValueError('Source path escapes workspace')
             actual = hashlib.sha256(file.read_bytes()).hexdigest() if file.exists() else None
-            if actual != row['sha256']:
+            if (actual != row['sha256'] and not
+                    (root == source and row['path'] == 'goals.json' and actual in source_ledger_hashes)):
                 raise ValueError('Source changed before worker start: ' + row['path'])
         if root == workspace and 'goals.json' in planning:
             continue
         ledger = root / 'goals.json'
         actual = hashlib.sha256(ledger.read_bytes()).hexdigest() if ledger.exists() else None
-        if actual != manifest['ledger_sha256']:
+        if actual not in (source_ledger_hashes if root == source else {manifest['ledger_sha256']}):
             raise ValueError('Goal ledger changed before worker start')
     return True
 
 
-def run_checked(manifest, workspace, command):
-    verify(manifest, workspace)
+def run_checked(manifest, workspace, command, *, admitted_task=None):
+    verify(manifest, workspace, admitted_task=admitted_task)
     return subprocess.run(command, cwd=workspace, env=candidate_identity.git_environment(),
                           timeout=180, check=True).returncode
 
@@ -312,6 +333,31 @@ def run_main_only(manifest, command, *, ownership_guard=None, timeout=180):
         os.close(fd)
 
 
+def legacy_admitted_task(manifest_path, digest, manifest, workspace):
+    """Recover a missing task binding only from the exact existing handoff receipt."""
+    journal = Path(manifest_path).parent
+    paths = [journal / 'goal-handoff.json', *sorted((journal / 'handoffs').glob('*.json'))]
+    matches = set()
+    for path in paths:
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            row = json.loads(path.read_text())
+        except (ValueError, OSError):
+            continue
+        if (isinstance(row, dict) and row.get('pass_manifest_sha256') == digest
+                and row.get('pass_manifest_path') == str(manifest_path)
+                and row.get('pass_manifest') == manifest
+                and row.get('workspace') == str(workspace)
+                and row.get('source_workspace') == manifest['source_workspace']
+                and isinstance(row.get('task_id'), str) and row['task_id']
+                and isinstance(row.get('goal_task'), str) and row['goal_task']):
+            matches.add(row['goal_task'])
+    if len(matches) > 1:
+        raise ValueError('Conflicting original handoff task bindings')
+    return next(iter(matches), None)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('isolated', 'main-only'), default='isolated')
@@ -329,11 +375,13 @@ def main():
     if hashlib.sha256(manifest_bytes).hexdigest() != args.manifest_sha256:
         parser.exit(2, 'Pass manifest changed; preserve original card and re-evaluate\n')
     manifest = json.loads(manifest_bytes)
+    admitted_task = (None if manifest.get('goal_task') or manifest.get('planning_context') else
+                     legacy_admitted_task(args.manifest, args.manifest_sha256, manifest, args.workspace))
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     if command:
-        run_checked(manifest, args.workspace, command)
+        run_checked(manifest, args.workspace, command, admitted_task=admitted_task)
     else:
-        verify(manifest, args.workspace)
+        verify(manifest, args.workspace, admitted_task=admitted_task)
         print(json.dumps({'outcome': 'worker_start_admitted', 'workspace': args.workspace}))
 
 

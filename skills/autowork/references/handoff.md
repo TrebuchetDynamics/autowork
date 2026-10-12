@@ -172,6 +172,15 @@ attribution and committed assembly. It does not admit a proposal-only backlog
 absent from the canonical consumer, publish foreign changes or relax main-only
 repository rules. Worker-ledger mode retains exact checkout ledger requirements.
 
+At first start, workers may accept only the admitted task's `open` → `in_progress`
+bookkeeping when its pinned section is `Now` or `Next`. The guard derives that one
+serialized-ledger hash from the pinned candidate ledger or frozen proposal context,
+never current source. New manifests bind `goal_task`; older manifests recover that
+binding from the existing handoff receipt only when manifest bytes/hash, workspace
+and source identity match. Conflicting bindings refuse. All other source, task and
+planning changes still refuse admission. Preserve the original card, candidate,
+manifest and context pins; do not roll back task status to silence the guard.
+
 ## Ownership and verification safeguards
 
 Each writing pass uses its own pinned Git worktree, never

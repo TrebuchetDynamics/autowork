@@ -567,7 +567,8 @@ def main():
                                       pins, required_paths)
             manifest = {'version': 1, 'source_workspace': str(workspace), 'candidate_identity': identity,
                         'files': expected['files'], 'ledger_sha256': admission['ledger_sha256'],
-                        'source_snapshot_sha256': hashlib.sha256(snapshot_bytes).hexdigest()}
+                        'source_snapshot_sha256': hashlib.sha256(snapshot_bytes).hexdigest(),
+                        'goal_task': args.goal_task}
             if planning_context:
                 manifest.update(ledger_mode='proposal', planning_context=planning_context)
             manifest_path = journal_dir / ('pass-' + pass_path.name + '.json')

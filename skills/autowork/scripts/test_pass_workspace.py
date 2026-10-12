@@ -60,6 +60,201 @@ class PassWorkspaceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Source changed'):
             module.verify(manifest,target)
 
+    def admitted_transition_fixture(self):
+        import hashlib, json
+        module = self.module()
+        snapshot, admission = self.planning_fixture()
+        ledger = json.loads((self.root / 'goals.json').read_text())
+        ledger['version'] = 1
+        ledger['goals'][0].update(title='Fixture goal', status='unmet', tasks=['T1', 'T2'])
+        ledger['tasks'][0].update(title='Selected task', status='open', section='Next')
+        ledger['tasks'].append({'id': 'T2', 'goal': 'G1', 'title': 'Other task',
+                                'status': 'open', 'section': 'Next'})
+        (self.root / 'goals.json').write_text(json.dumps(ledger))
+        goals = Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py'
+        subprocess.run(['python3', str(goals), 'fmt', str(self.root)], check=True, capture_output=True)
+        snapshot['files'][1]['sha256'] = hashlib.sha256((self.root / 'goals.json').read_bytes()).hexdigest()
+        admission['ledger_sha256'] = snapshot['files'][1]['sha256']
+        context = module.capture_planning_context(self.root, snapshot, admission, 'parent')
+        target = Path(self.tmp.name) / 'transition-worker'
+        identity = module.prepare(self.root, target, self.base, self.base)
+        manifest = {'version': 1, 'source_workspace': str(self.root), 'candidate_identity': identity,
+                    'files': snapshot['files'], 'ledger_sha256': admission['ledger_sha256'],
+                    'ledger_mode': 'proposal', 'planning_context': context}
+        subprocess.run(['python3', str(goals), 'task', str(self.root), 'T1', 'in_progress'],
+                       check=True, capture_output=True)
+        return module, manifest, target
+
+    def worker_transition_fixture(self):
+        import json
+        module, proposal, _ = self.admitted_transition_fixture()
+        source_ledger = self.root / 'goals.json'
+        changed = source_ledger.read_bytes()
+        source_ledger.write_text(proposal['planning_context']['files']['goals.json'])
+        self.git('add', '.'); self.git('commit', '-qm', 'admitted worker inputs')
+        base = self.git('rev-parse', 'HEAD')
+        target = Path(self.tmp.name) / 'ledger-worker'
+        identity = module.prepare(self.root, target, base, base)
+        manifest = {'version':1, 'source_workspace':str(self.root),
+            'candidate_identity':identity, 'files':proposal['files'],
+            'ledger_sha256':proposal['ledger_sha256'], 'goal_task':'T1'}
+        source_ledger.write_bytes(changed)
+        return module, manifest, target
+
+    def test_worker_ledger_allows_only_bound_task_start_bookkeeping(self):
+        import json
+        module, manifest, target = self.worker_transition_fixture()
+        self.assertTrue(module.verify(manifest, target))
+        manifest['goal_task'] = 'T2'
+        with self.assertRaises(ValueError): module.verify(manifest, target)
+        manifest.pop('goal_task')
+        with self.assertRaises(ValueError): module.verify(manifest, target)
+
+    def test_legacy_worker_uses_exact_existing_handoff_without_repinning(self):
+        import json, hashlib
+        module, manifest, target = self.worker_transition_fixture()
+        manifest.pop('goal_task')
+        path = Path(self.tmp.name) / 'pass.json'
+        path.write_text(json.dumps(manifest)); pinned = path.read_bytes()
+        digest = hashlib.sha256(pinned).hexdigest()
+        receipt = {'pass_manifest_path':str(path), 'pass_manifest_sha256':digest,
+            'workspace':str(target), 'source_workspace':str(self.root),
+            'pass_manifest':manifest, 'goal_task':'T1', 'task_id':'original-card'}
+        handoff = path.parent / 'goal-handoff.json'
+        handoff.write_text(json.dumps(receipt))
+        args = ['python3',str(Path(__file__).with_name('pass_workspace.py')),
+            '--manifest',str(path),'--manifest-sha256',digest,'--workspace',str(target)]
+        result = subprocess.run(args,capture_output=True,text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(path.read_bytes(), pinned)
+        receipt['goal_task'] = 'T2';handoff.write_text(json.dumps(receipt))
+        self.assertNotEqual(subprocess.run(args,capture_output=True).returncode, 0)
+        receipt['goal_task'] = 'T1';receipt['pass_manifest_sha256'] = '0'*64
+        handoff.write_text(json.dumps(receipt))
+        self.assertNotEqual(subprocess.run(args,capture_output=True).returncode, 0)
+
+    def test_same_admitted_task_transition_preserves_pinned_context_and_first_guard(self):
+        import hashlib, json
+        module, manifest, target = self.admitted_transition_fixture()
+        receipt = Path(self.tmp.name) / 'manifest.json'
+        receipt.write_text(json.dumps(manifest))
+        pinned = receipt.read_bytes()
+        digest = hashlib.sha256(pinned).hexdigest()
+        result = subprocess.run(['python3', str(Path(__file__).with_name('pass_workspace.py')),
+                                 '--manifest', str(receipt), '--manifest-sha256', digest,
+                                 '--workspace', str(target), '--', 'python3', '-c',
+                                 "open('owned.py','w').write('authorized initial write')"],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((target / 'owned.py').read_text(), 'authorized initial write')
+        self.assertEqual(receipt.read_bytes(), pinned)
+        self.assertEqual(json.loads(manifest['planning_context']['files']['goals.json'])['tasks'][0]['status'], 'open')
+        self.assertFalse((target / 'goals.json').exists())
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.base)
+
+    def test_admitted_transition_rejects_every_other_source_delta_before_write(self):
+        import copy, json
+        module, manifest, target = self.admitted_transition_fixture()
+        original = (self.root / 'goals.json').read_bytes()
+        current = json.loads(original)
+        mutations = [
+            ('task title', lambda d: d['tasks'][0].update(title='Changed scope')),
+            ('task goal', lambda d: d['tasks'][0].update(goal='Other goal')),
+            ('task dependencies', lambda d: d['tasks'][0].update(depends_on=['T2'])),
+            ('task scope', lambda d: d['tasks'][0].update(scope='Changed scope')),
+            ('task acceptance', lambda d: d['tasks'][0].update(acceptance=['Changed check'])),
+            ('task ownership', lambda d: d['tasks'][0].update(owner='foreign')),
+            ('needs decision', lambda d: d['tasks'][0].update(section='Needs decision')),
+            ('done status', lambda d: d['tasks'][0].update(status='done')),
+            ('other task status', lambda d: d['tasks'][1].update(status='in_progress')),
+            ('other task title', lambda d: d['tasks'][1].update(title='Changed task')),
+            ('goal status', lambda d: d['goals'][0].update(status='partial')),
+            ('goal acceptance', lambda d: d['goals'][0].update(acceptance=['Changed check'])),
+            ('goal plan', lambda d: d['goals'][0].update(source='docs/other.md')),
+            ('goal dependencies', lambda d: d['goals'][0].update(depends_on=['Other'])),
+            ('focus', lambda d: d.update(primary_milestone='Other')),
+            ('duplicate task', lambda d: d['tasks'].append(copy.deepcopy(d['tasks'][0]))),
+        ]
+        command = ['python3', '-c', "open('owned.py','w').write('wrong')"]
+        for name, mutate in mutations:
+            with self.subTest(delta=name):
+                changed = copy.deepcopy(current)
+                mutate(changed)
+                (self.root / 'goals.json').write_text(json.dumps(changed, indent=2, sort_keys=True) + '\n')
+                with self.assertRaisesRegex(ValueError, 'Source changed'):
+                    module.run_checked(manifest, target, command)
+                self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+        (self.root / 'goals.json').write_bytes(original + b'\n')
+        with self.assertRaisesRegex(ValueError, 'Source changed'):
+            module.run_checked(manifest, target, command)
+        (self.root / 'goals.json').write_bytes(original)
+        for name in ('owned.py', 'TODO.md', 'docs/plan.md'):
+            with self.subTest(file=name):
+                path = self.root / name
+                before = path.read_bytes()
+                path.write_bytes(before + b'changed\n')
+                with self.assertRaisesRegex(ValueError, 'Source changed'):
+                    module.run_checked(manifest, target, command)
+                path.write_bytes(before)
+        self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+
+    def test_status_tolerance_cannot_promote_held_or_previously_claimed_context(self):
+        import json, hashlib
+        module, manifest, target = self.admitted_transition_fixture()
+        original = manifest['planning_context']['files']['goals.json']
+        current = (self.root / 'goals.json').read_bytes()
+        for field, value in [('section', 'Needs decision'), ('status', 'in_progress'),
+                             ('status', 'done')]:
+            with self.subTest(original_field=field, original_value=value):
+                (self.root / 'goals.json').write_bytes(current)
+                ledger = json.loads(original)
+                ledger['tasks'][0][field] = value
+                frozen = json.dumps(ledger, indent=2, sort_keys=True) + '\n'
+                digest = hashlib.sha256(frozen.encode()).hexdigest()
+                manifest['planning_context']['files']['goals.json'] = frozen
+                manifest['ledger_sha256'] = digest
+                next(r for r in manifest['files'] if r['path'] == 'goals.json')['sha256'] = digest
+                if field == 'status' and value == 'in_progress':
+                    ledger['tasks'][0]['status'] = 'open'
+                    (self.root / 'goals.json').write_text(json.dumps(ledger, indent=2, sort_keys=True) + '\n')
+                with self.assertRaisesRegex(ValueError, 'Source changed'):
+                    module.run_checked(manifest, target, ['python3', '-c',
+                                       "open('owned.py','w').write('wrong')"])
+                self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+
+    def test_admitted_transition_requires_original_bound_proposal_manifest(self):
+        import copy, json, hashlib
+        module, manifest, target = self.admitted_transition_fixture()
+        command = ['python3', '-c', "open('owned.py','w').write('wrong')"]
+        for name, mutate in [
+                ('missing context', lambda m: m.pop('planning_context')),
+                ('unbound task', lambda m: m['planning_context'].update(goal_task='absent')),
+                ('foreign task', lambda m: m['planning_context'].update(goal_task='T2')),
+                ('missing owner', lambda m: m['planning_context'].update(integration_owner='')),
+                ('ledger writer', lambda m: m.update(ledger_mode='worker')),
+                ('stale ledger pin', lambda m: m.update(ledger_sha256='0' * 64)),
+                ('forged context', lambda m: m['planning_context']['files'].update(
+                    {'goals.json': (self.root / 'goals.json').read_text()})),
+                ('foreign workspace', lambda m: m['candidate_identity'].update(workspace=str(self.root)))]:
+            with self.subTest(manifest=name):
+                changed = copy.deepcopy(manifest)
+                mutate(changed)
+                with self.assertRaises(ValueError):
+                    module.run_checked(changed, target, command)
+        receipt = Path(self.tmp.name) / 'manifest.json'
+        receipt.write_text(json.dumps(manifest))
+        digest = hashlib.sha256(receipt.read_bytes()).hexdigest()
+        changed = copy.deepcopy(manifest)
+        changed['planning_context']['integration_owner'] = 'foreign'
+        receipt.write_text(json.dumps(changed))
+        result = subprocess.run(['python3', str(Path(__file__).with_name('pass_workspace.py')),
+                                 '--manifest', str(receipt), '--manifest-sha256', digest,
+                                 '--workspace', str(target), '--', *command],
+                                capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('manifest changed', result.stderr)
+        self.assertEqual((target / 'owned.py').read_text(), 'base\n')
+
     def test_planning_context_cannot_hide_code_drift_or_grant_ledger_write_role(self):
         module=self.module();snapshot,admission=self.planning_fixture()
         context=module.capture_planning_context(self.root,snapshot,admission,'parent')
