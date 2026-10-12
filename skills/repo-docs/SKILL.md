@@ -112,14 +112,17 @@ neutral. Relocation does not purge Git history. Never copy secrets/production da
 ## 4. Core document owners
 
 Bootstrap accounts for all applicable roles, reusing equivalent existing paths.
-README, PRD, spec, test-plan, runbook and CHANGELOG are product/service baselines;
-OpenAPI/ADRs are conditional. Narrow Maintain updates only affected roles. Absence
+Use [document scaffolding](references/document-scaffold.md) for role ownership,
+section templates and conditional documents. Roles need not be separate files.
+README, PRD, architecture, spec, test-plan, runbook and CHANGELOG are product/service baselines;
+other roles are conditional. Narrow Maintain updates only affected roles. Absence
 of a default filename alone does not establish inapplicability.
 
 | Role | Owns |
 | --- | --- |
 | README | Purpose, prerequisites, shortest supported setup/run/test and navigation. |
 | PRD | Why/what: users, approved goals/scope, constraints, measurable acceptance. |
+| architecture | Current system map, boundaries, data flow and source-backed relationships. |
 | ADR | One durable architectural choice, alternatives and consequences. |
 | spec | How: components/data/interfaces, failures, security, migration, rollout. |
 | OpenAPI | Exact owned HTTP contract, following authoritative input/generator. |
