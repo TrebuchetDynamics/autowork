@@ -190,6 +190,42 @@ class RetrySelectionTests(unittest.TestCase):
         self.assertIn('T1: already in progress', result['reasons'])
         self.assertEqual(before, path.read_bytes())
 
+    def test_in_progress_task_does_not_starve_independent_open_work(self):
+        import retry_selection
+        import progress_runtime
+        path = self.consumer / 'goals.json'
+        data = json.loads(path.read_text())
+        data['tasks'][0]['status'] = 'in_progress'
+        data['goals'][0]['tasks'].extend(['T2', 'T3'])
+        data['tasks'].extend([
+            {'id': 'T2', 'goal': 'G1', 'title': 'Independent', 'status': 'open', 'section': 'Now'},
+            {'id': 'T3', 'goal': 'G1', 'title': 'Dependent', 'status': 'open', 'section': 'Now',
+             'depends_on': ['T1']}])
+        path.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        for tid, deps in [('T2', 'None'), ('T3', 'T1')]:
+            with todo.open('a') as stream:
+                stream.write(f'\n- [ ] {tid}: Follow-up\n  Goal: G1\n'
+                    f'  Scope: separate files\n  Acceptance: tests pass\n  Dependencies: {deps}\n'
+                    '  Ownership: fixture\n  Sources: [Plan](SPEC.md#accepted)\n')
+        before = {p: p.read_bytes() for p in (path, todo)}
+        for require_owner in (False, True):
+            with self.subTest(require_owner=require_owner):
+                result = retry_selection.select(self.consumer, require_owner=require_owner)
+                self.assertEqual(result['state'], 'ready_for_autowork', result)
+                self.assertEqual(result['selected_task']['id'], 'T2')
+                self.assertEqual(result['reconciliation_task_ids'], ['T1'])
+                queue = progress_runtime.ready_queue(self.consumer, require_owner=require_owner)
+                self.assertEqual([t['id'] for t in queue['tasks']], ['T2'])
+                frontier = retry_selection.repository_frontier(self.consumer, require_owner=require_owner)
+                self.assertEqual([c['task']['id'] for c in frontier['candidates']], ['T2'])
+                dependent = retry_selection.select(self.consumer, plan='SPEC.md#accepted', task_ids=['T3'])
+                self.assertNotEqual(dependent['state'], 'ready_for_autowork')
+                duplicate = retry_selection.select(self.consumer, plan='SPEC.md#accepted', task_ids=['T1'])
+                self.assertNotEqual(duplicate['state'], 'ready_for_autowork')
+        for p, content in before.items():
+            self.assertEqual(p.read_bytes(), content)
+
     def test_named_plan_cannot_substitute_unknown_requested_task(self):
         result = self.retry(plan='SPEC.md#accepted', task_ids=['T-not-here'])
         self.assertEqual(result['state'], 'draft_saved')

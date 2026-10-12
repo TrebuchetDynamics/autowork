@@ -577,8 +577,11 @@ def backlog_check(a):
             for dep in g.get('depends_on', []):
                 if goals[dep]['status'] != 'met':
                     ineligible.append(f'{tid}: unmet goal dependency {dep}')
-        if picks and picks[0] not in ids:
-            ineligible.append(f'current frontier {picks[0]} precedes requested plan')
+        # In-progress work is reconciled separately; it must not starve a new,
+        # dependency-ready admission. Keep priority ordering among open tasks.
+        open_picks = [tid for tid in picks if tasks[tid]['status'] == 'open']
+        if open_picks and open_picks[0] not in ids:
+            ineligible.append(f'current frontier {open_picks[0]} precedes requested plan')
     authority = backlog_authority(repo, identity)
     if identity and ((authority is not None and authority != repo) or (authority is None and not identity[1])):
         reasons.append('native backlog authority changed during check')

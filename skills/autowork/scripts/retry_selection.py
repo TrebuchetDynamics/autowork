@@ -76,13 +76,18 @@ def select(consumer, *, canonical_repo=None, plan=None, task_ids=None, require_o
         result['held_claims'] = claims if require_owner else []
         picks = [(task, goal) for task, goal in goals.eligible(goals.normalize(data))
                  if task['id'] not in held_ids]
+        result['reconciliation_task_ids'] = [t['id'] for t in data['tasks']
+                                              if t['status'] == 'in_progress']
+        # Existing work belongs to reconciliation, not another new dispatch.
+        # Retain the diagnostic path when there is no open alternative.
+        open_picks = [(task, goal) for task, goal in picks if task['status'] == 'open']
         # Explicit recovery must diagnose contracts even when execution is gated.
         # Eligibility still runs inside backlog_check after contract validation.
         if not picks and plan is None:
             result.update(state='backlog_reconciled_not_eligible', reasons=['no current dependency-ready ledger task'])
             return result
         if plan is None:
-            first, owner = picks[0]
+            first, owner = (open_picks or picks)[0]
             if data.get('primary_milestone') and first['goal'] != data['primary_milestone']:
                 result.update(state='backlog_reconciled_not_eligible',
                               reasons=['focused milestone has no eligible slice; unrelated fallback needs attestation'])

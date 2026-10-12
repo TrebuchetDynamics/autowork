@@ -16,6 +16,16 @@ These operating priorities apply to every Autowork run.
    (`hermes kanban schedule <id> "retry_exhausted: …"`) and is not reselected until
    its source, prerequisite or contract fingerprint changes. Pick disjoint work
    instead. A parked or triage card blocks only its own slice.
+   Reconcile `retry_selection.py`'s `reconciliation_task_ids` before dispatch:
+   observe an active worker, resume an idle candidate, or finish verified review,
+   commit and integration under existing authority. A review-approved candidate
+   awaiting closeout needs a closeout action, not another inspection of its tests.
+   The selector keeps in-progress work out of the new-task frontier, so an
+   independent open task can be considered without changing the original task's
+   status. Dependency and native admission checks still apply. If closeout cannot
+   proceed, check overlap and execute an independent candidate in the same run.
+   Preserve paused jobs; do not call a paused schedule stalled. Report the concrete
+   action and remaining step, not merely the same task ID and unchanged evidence.
 6. **Vague acceptance.** If criteria are vague, the worker rewrites them in its
    first turn as 1–3 observable checks under `Interpreted acceptance:` and proceeds.
    Ask an owner question (priority 9) only when the possible readings lead to
