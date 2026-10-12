@@ -16,6 +16,12 @@ class ScheduledProgressTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, policy)
 
+    def test_new_worker_completion_is_not_hidden_by_picker_zero(self):
+        policy = (ROOT / 'skills/autowork/references/dispatch-and-reporting.md').read_text()
+        self.assertIn('newly reconciled worker completion', policy)
+        self.assertIn('no new implementation by the picker', policy)
+        self.assertIn('Do not count the same completion again', policy)
+
     def test_direct_feedback_preserves_owner_authority_and_paused_jobs(self):
         policy = (ROOT / 'skills/autowork/references/profile-feedback.md').read_text()
         for phrase in ('scripts/profile-consult.py', 'Fresh named consultations',

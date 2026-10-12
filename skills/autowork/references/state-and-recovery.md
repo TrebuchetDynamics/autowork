@@ -185,6 +185,13 @@ are coverage gaps, never healthy/no-work results. Keep helper state separate fro
 legacy audit receipts; do not silently migrate old cursors whose inspected ranges
 are unproved. Preserve the prior report and use explicit default-owned state paths.
 
+If raw unread suffixes grow, first drain them through `audit_profiles.py` using
+its existing `--log-bytes` and `--profile-log-bytes` budgets and the same collector
+state; the analyzer cannot read bytes not yet retained. Increase the shared cron
+launcher's budgets rather than resetting cursors or deleting logs. Keep bulk
+receipts below the analyzer's 16 MiB input cap, and verify remaining bytes per
+profile plus replay deduplication. Never paste bulk payloads into model context.
+
 Before reporting an ever-growing retained backlog, run the deterministic analyzer:
 `python scripts/analyze_audit_logs.py --root <default-home> --receipts-dir
 <default-home>/maintenance/profile-audit --state-dir

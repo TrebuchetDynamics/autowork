@@ -36,7 +36,7 @@ implementation details. Keep internal Kanban/card/run IDs and routine boilerplat
 in durable receipts unless needed for diagnosis.
 
 ```text
-<PROJECT / profile> — <OUTCOME>; <N> TODO tasks completed this run / completion count unverified
+<PROJECT / profile> — <OUTCOME>; <N> verified TODO completions since previous occurrence / completion count unverified
 Task: TODO.md <ID> — <exact title> [<canonical task state or unverified>].
 This run: <concrete change or none>; checks: <actual result and material failures>.
 Next: TODO.md <ID> — <exact title> [eligible / blocked by <IDs or reason>]; or next eligible: none; or not evaluated.
@@ -66,9 +66,15 @@ new work this occurrence from earlier evidence. For mixed outcomes name complete
 task IDs separately and retain the failed/blocked task; do not imply every task passed.
 
 Read current canonical TODO bodies, goals.json, ownership and completion receipts
-before composing the report. List every task actually completed this occurrence by
-ID and title. Do not count a previously completed task again. If none, say **0 TODO
-tasks completed**. If completion evidence could not be read, say **completion count
+before composing the report. Count a newly reconciled worker completion when the
+previous occurrence recorded that task as unfinished and current canonical state,
+acceptance and required review prove it done. Attribute it to the original worker;
+report COMPLETED even with no new implementation by the picker. List its TODO ID
+and title as completed since the previous occurrence. Do not count the same completion again;
+an old done task or delivery-only update is not another completion. Without a
+trustworthy prior baseline, label the new-completion count unverified, not zero.
+If the baseline proves no new completions, say **0 TODO tasks completed**.
+If completion evidence could not be read, say **completion count
 unverified** rather than guessing zero. If the task is known only by ID, show that ID
 and `title unverified`; if there is no verified task binding, say `Task: not identified`
 and name the missing source. Never invent a title from a job label or card summary.

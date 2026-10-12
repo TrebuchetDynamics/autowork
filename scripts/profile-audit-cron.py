@@ -13,5 +13,6 @@ if not helper.is_file():
 sys.path.insert(0, str(helper.parent.resolve()))
 sys.argv = [str(helper), '--root', str(home), '--state-dir',
             str(home / 'maintenance/profile-audit/collector'),
-            '--launch-cwd', 'default=' + str(Path.cwd())]
+            '--launch-cwd', 'default=' + str(Path.cwd()),
+            '--log-bytes', '1048576', '--profile-log-bytes', '8388608']
 runpy.run_path(str(helper), run_name='__main__')

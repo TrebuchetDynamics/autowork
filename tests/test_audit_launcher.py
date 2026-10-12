@@ -24,7 +24,8 @@ class AuditLauncherTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             args = json.loads(result.stdout)
             self.assertEqual(args, [str(helper), '--root', str(home), '--state-dir',
-                str(home / 'maintenance/profile-audit/collector'), '--launch-cwd', 'default=' + str(home)])
+                str(home / 'maintenance/profile-audit/collector'), '--launch-cwd', 'default=' + str(home),
+                '--log-bytes', '1048576', '--profile-log-bytes', '8388608'])
             helper.unlink()
             result = subprocess.run([sys.executable, str(script)], cwd=home,
                                     capture_output=True, text=True, timeout=10)
