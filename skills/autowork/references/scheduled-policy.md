@@ -73,6 +73,25 @@ Respect separately recorded pause/resume decisions.
 
 ## Progress and decision loop
 
+Before selecting new work, reconcile an already approved candidate: identify its
+exact commit, remaining task scope and current canonical ancestry; perform authorized
+integration and ledger closure when its checks/review cover that scope. Approval alone
+does not close a larger task. Do not repeatedly inspect the same approved commit while
+its actionable closeout is untouched. Preserve paused schedules; an interactive or
+previously launched worker can still be running while its cron is paused.
+
+For installed helper drift, compare exact source/installed revisions and the helper
+actually pinned by the active card. Update idle installations through the supported
+toolset updater; do not replace running workers' pinned helpers or silently migrate
+their evidence. Report the affected helper, compatibility finding, update/defer action
+and next retry. Drift alone is not a demonstrated runtime defect.
+
+Repeated recovery reporting must name the earliest missing transition, the concrete
+repair/closeout attempted, its result, and the same-run retry or precise unavailable
+input. A diagnosis-only receipt is not a repair, and a later unrelated worker result
+is not proof that recovery succeeded. Take an authorized action rather than repeatedly
+emitting the same audit; do not invent busywork when no supported action remains.
+
 On each occurrence account for accepted_goal -> eligible_task -> implementation ->
 passing_checks -> required review/local commit -> authorized_publication separately.
 Bind evidence to the actual task/card/run, source and check receipt; changed HEAD,

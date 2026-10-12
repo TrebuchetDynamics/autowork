@@ -605,7 +605,12 @@ def main():
                      'correct stale wording into a new scope, edit production or create a replacement. '
                      'All writes stay in this card native workspace; the source checkout is read-only. '
                      'The same helper can gate an initial write command with `-- <command>`. '
-                     'This is an executable preflight, not a filesystem sandbox or native runtime hook.')
+                     'This is an executable preflight, not a filesystem sandbox or native runtime hook. '
+                     'Before this guard, check applicable repository instructions for explicit writer registration. '
+                     'If required, the coordinator must register this exact card/workspace/base/owned scope '
+                     'and bind its read-only verifier before edits; a generic worker_start_admitted receipt '
+                     'alone does not establish repository registration. Use handoff.md registration guidance; '
+                     'wait on this original card for preparation, not a replacement worker or retrospective entry.')
             if planning_context:
                 body += ('\n\nREAD-ONLY PLANNING CONTEXT: The hash-pinned manifest above contains '
                          '`planning_context.files`: immutable goals.json, TODO.md and selected plan inputs. '

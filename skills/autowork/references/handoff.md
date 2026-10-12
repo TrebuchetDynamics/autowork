@@ -5,6 +5,40 @@ and integrate without external owner acknowledgement. `owner` identifies the
 executor. Proposal/external-owner sections apply only to explicitly split roles;
 actual live-writer conflicts and source/acceptance checks remain mandatory.
 
+## Explicit repository registration requirements
+
+Before implementation, inspect applicable repository instructions for required writer
+registration. No such requirement means no extra registry or gate. When required,
+the coordinator registers the original card through the repository's supported
+process before releasing it for edits; this is routine preparation under existing
+authority, not a new request for user approval. Do not leave it until review.
+
+For a JSONL registry, use `scripts/writer_registration.py` as a read-only check.
+Prepare a private JSON requirement with `registry` (absolute canonical path),
+`sha256` (current registry hash), `fields` (semantic-to-top-level-key mapping), and
+`expected` (exact values). Required semantic keys are `card`, `task`, `workspace`,
+`base` (full commit), and `scope` (exact relative owned files). Map any repository
+status/lease requirements as additional keys in both fields and expected. Inspect
+the real schema; do not convert a registry or fabricate records to fit this helper.
+Ambiguous history requires the repository's supported current-state verifier.
+
+Example mapping: `{"card":"native_card","task":"task_id","workspace":"workspace",
+"base":"base_commit","scope":"owned_files","status":"status"}`.
+The coordinator binds expected scope to the actual card contract, not a guessed file
+list. Pin the requirement SHA in the card, then append
+`--writer-registration /private/requirement.json --writer-registration-sha256 <sha>`
+to its original `pass_workspace.py` startup command. This checks registration before
+admission and binds it to the native HERMES_KANBAN_TASK, task, workspace and base.
+It does not auto-discover prose requirements, create registrations or fence later
+registry changes. Repositories with other registry formats need their own verifier.
+
+If native creation precedes registration, the worker waits on the same card without
+editing until the coordinator completes preparation. Preserve the original manifest.
+A changed registry hash requires fresh readback and an explicit prerequisite update,
+not silently accepting stale evidence. A missed historical registration needs truthful
+same-card reconciliation; never backdate it or rerun initial admission after edits.
+Unchanged product checks need not repeat solely for a coordination correction.
+
 ## Picker run liveness
 
 Reconcile the card by its runs, not its status string: `hermes kanban runs <card>` plus

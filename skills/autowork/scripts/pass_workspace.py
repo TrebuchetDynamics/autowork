@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -368,12 +369,32 @@ def legacy_admitted_task(manifest_path, digest, manifest, workspace):
     return next(iter(matches), None)
 
 
+def check_registration(manifest, workspace, requirement_path, digest, card):
+    raw = Path(requirement_path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError('Registration requirement changed')
+    requirement = json.loads(raw)
+    expected = requirement['expected']
+    if (not card or expected['card'] != card
+            or expected['workspace'] != str(Path(workspace).resolve(strict=True))
+            or expected['base'] != manifest['candidate_identity']['base_commit']
+            or expected['task'] != manifest.get('goal_task')):
+        raise ValueError('Registration does not bind the admitted task/card/workspace/base')
+    registration_spec = importlib.util.spec_from_file_location('writer_registration',
+        Path(__file__).with_name('writer_registration.py'))
+    module = importlib.util.module_from_spec(registration_spec)
+    registration_spec.loader.exec_module(module)
+    return module.verify(requirement['registry'], requirement['sha256'], requirement['fields'], expected)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('isolated', 'main-only'), default='isolated')
     parser.add_argument('--manifest', required=True)
     parser.add_argument('--manifest-sha256', required=True, help='Exact hash embedded in original card')
     parser.add_argument('--workspace', required=True)
+    parser.add_argument('--writer-registration', help='Explicit repository registration requirement JSON')
+    parser.add_argument('--writer-registration-sha256', help='Coordinator-pinned requirement hash')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.mode == 'main-only':
@@ -385,6 +406,14 @@ def main():
     if hashlib.sha256(manifest_bytes).hexdigest() != args.manifest_sha256:
         parser.exit(2, 'Pass manifest changed; preserve original card and re-evaluate\n')
     manifest = json.loads(manifest_bytes)
+    if args.writer_registration or args.writer_registration_sha256:
+        try:
+            if not (args.writer_registration and args.writer_registration_sha256):
+                raise ValueError('Registration requirement and hash must be supplied together')
+            check_registration(manifest, args.workspace, args.writer_registration,
+                               args.writer_registration_sha256, os.environ.get('HERMES_KANBAN_TASK'))
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            parser.exit(2, str(error) + '\n')
     admitted_task = (None if manifest.get('goal_task') or manifest.get('planning_context') else
                      legacy_admitted_task(args.manifest, args.manifest_sha256, manifest, args.workspace))
     command = args.command[1:] if args.command[:1] == ['--'] else args.command

@@ -116,6 +116,30 @@ class PassWorkspaceTests(unittest.TestCase):
             module.run_checked(manifest, target, ['python3', '-c', "open('owned.py','w').write('wrong')"])
         self.assertEqual((target / 'owned.py').read_text(), 'authorized initial write')
 
+    def test_registration_cli_rejection_prevents_command_and_optional_path_still_runs(self):
+        import hashlib, json, os, sys
+        _, manifest, target = self.worker_transition_fixture()
+        pinned = Path(self.tmp.name) / 'manifest.json'
+        pinned.write_text(json.dumps(manifest))
+        command = [sys.executable, str(Path(__file__).with_name('pass_workspace.py')),
+                   '--manifest', str(pinned), '--manifest-sha256', hashlib.sha256(pinned.read_bytes()).hexdigest(),
+                   '--workspace', str(target)]
+        marker = target / 'must-not-run'
+        write = ['--', sys.executable, '-c', "from pathlib import Path; Path('must-not-run').touch()"]
+        requirement = Path(self.tmp.name) / 'requirement.json'
+        requirement.write_text('{}')
+        variants = [ ['--writer-registration', str(requirement)],
+                     ['--writer-registration', str(requirement), '--writer-registration-sha256', '0'*64],
+                     ['--writer-registration', str(requirement), '--writer-registration-sha256',
+                      hashlib.sha256(requirement.read_bytes()).hexdigest()] ]
+        for flags in variants:
+            result = subprocess.run(command + flags + write, capture_output=True, env=dict(os.environ, HERMES_KANBAN_TASK='card-1'))
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertFalse(marker.exists())
+        result = subprocess.run(command + write, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(marker.exists())
+
     def test_worker_rejects_foreign_candidate_blob_despite_clean_matching_worktree(self):
         import json
         module, manifest, target = self.worker_transition_fixture()
