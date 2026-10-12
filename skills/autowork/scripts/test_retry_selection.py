@@ -27,7 +27,17 @@ class RetrySelectionTests(unittest.TestCase):
     def retry(self, consumer=None, **kwargs):
         self.assertIsNotNone(importlib.util.find_spec('retry_selection'), 'missing consumer retry helper')
         import retry_selection
+        kwargs.setdefault('require_owner', True)
         return retry_selection.select(consumer or self.consumer, **kwargs)
+
+    def test_default_requires_no_owner_release_for_open_task(self):
+        import retry_selection
+        self.claim()
+        result = retry_selection.select(self.consumer)
+        self.assertEqual(result['state'], 'ready_for_autowork')
+        self.assertEqual(result['selected_task']['id'], 'T1')
+        self.assertEqual(result['held_claims'], [])
+        self.assertEqual(result['recorded_claims'][0]['owner'], 'writer')
 
     def claim(self, task='T1', status='ACTIVE', workspace='/fixture/writer'):
         path = self.consumer / 'docs/coordination/worktree-registry.jsonl'
@@ -57,7 +67,7 @@ class RetrySelectionTests(unittest.TestCase):
             '  Scope: independent files\n  Acceptance: test passes\n  Dependencies: None\n'
             '  Ownership: fixture\n  Sources: [Plan](SPEC.md#accepted)\n')
         before = {p: p.read_bytes(), todo: todo.read_bytes()}
-        result = retry_selection.repository_frontier(self.consumer)
+        result = retry_selection.repository_frontier(self.consumer, require_owner=True)
         self.assertEqual([r['task']['id'] for r in result['candidates']], ['T2'])
         self.assertTrue(result['candidates'][0]['requires_fallback_attestation'])
         self.assertEqual(result['held_claims'][0]['task'], 'T1')
@@ -70,7 +80,7 @@ class RetrySelectionTests(unittest.TestCase):
         todo.write_text(todo.read_text().replace('Goal: G2', 'Goal: G1'))
         self.assertEqual(self.retry()['selected_task']['id'], 'T2')
         import progress_runtime
-        self.assertEqual([t['id'] for t in progress_runtime.ready_queue(self.consumer)['tasks']], ['T2'])
+        self.assertEqual([t['id'] for t in progress_runtime.ready_queue(self.consumer, require_owner=True)['tasks']], ['T2'])
 
     def test_release_of_one_workspace_does_not_release_another(self):
         self.claim(workspace='/fixture/one'); self.claim(workspace='/fixture/two')

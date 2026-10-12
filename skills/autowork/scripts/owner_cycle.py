@@ -106,6 +106,7 @@ def run_locked(args, state):
     result = {'version': 1, 'timestamp': now, 'run_id': uuid.uuid4().hex,
               'task_ids': args.tasks.split(','), 'plan': args.plan, 'completed_tasks': [],
               'scope': getattr(args, 'scope', 'tasks'),
+              'coordination_mode': 'owner' if getattr(args, 'require_owner', False) else 'autonomous',
               'dispatch_attempted': False, 'implementation': 'not_executed',
               'delivery': 'no product commit or push by this runner', 'outcome': 'BLOCKED',
               'work_search': {'state': 'not_evaluated'},
@@ -135,7 +136,7 @@ def run_locked(args, state):
     result['held_task_ids'] = []
     result['ready_queue'] = []
     try:
-        queue = progress_runtime.ready_queue(consumer)
+        queue = progress_runtime.ready_queue(consumer, require_owner=getattr(args, "require_owner", False))
         result['ready_queue'] = queue['tasks']
         result['queue_shortfall'] = queue['shortfall']
         alternate = queue['selection']
@@ -183,7 +184,7 @@ def run_locked(args, state):
             except (ValueError, OSError, TypeError, KeyError, subprocess.SubprocessError) as exc:
                 result.update(outcome='FAILED', handoff={'error': str(exc)},
                               next_action='Reconcile native state before retry; dispatch outcome may be unknown')
-    else:
+    elif getattr(args, 'require_owner', False):
         result['action'] = 'owner_followup_required' if result['unchanged_runs'] >= 2 else 'owner_input_required'
         request_tasks = [result['selected_task']['id']] if preparation and result['selected_task'] else result['task_ids']
         request_binding = {'consumer': consumer, 'plan': args.plan, 'tasks': request_tasks,
@@ -257,12 +258,15 @@ def run_locked(args, state):
             result['next_action'] = 'Prepare the selected task handoff using existing attributable inputs; otherwise resolve the execution-input request with its actual owner'
         # One bounded canonical selection, never an invented task or a focus change.
         try:
-            alternate = retry_selection.select(consumer)
+            alternate = retry_selection.select(consumer, require_owner=getattr(args, "require_owner", False))
             result['work_search'] = {'state': alternate['state'], 'candidate': alternate.get('selected_task'),
                                      'reasons': alternate.get('reasons', []),
                                      'boundary': 'canonical selector only; source/test seam search still required when no eligible candidate'}
         except (ValueError, OSError, TypeError, KeyError, SystemExit) as exc:
             result['work_search'] = {'state': 'unavailable', 'reason': str(exc)}
+    else:
+        result.update(outcome='ACTION_REQUIRED', action='repair_local_inputs',
+            next_action='Reconcile existing local work, repair canonical inputs and prepare execution yourself; no owner acknowledgement required. Preserve live writers and verify changes before adoption.')
     if ready and result['outcome'] == 'QUEUED':
         resolved = []
         for path in sorted((state / 'requests').glob('*.json')):
@@ -281,7 +285,7 @@ def run_locked(args, state):
         result['resolved_requests'] = resolved
     if not result['backlog_ready'] and result['scope'] == 'repository':
         try:
-            result['work_search'] = retry_selection.repository_frontier(consumer)
+            result['work_search'] = retry_selection.repository_frontier(consumer, require_owner=getattr(args, "require_owner", False))
         except (ValueError, OSError, TypeError, KeyError) as exc:
             result['work_search'] = {'state': 'unverified', 'error': str(exc)}
     result['repairs'] = [repair for stage in recovery.get('stages', [])
@@ -332,6 +336,8 @@ def main(argv=None):
         parser.add_argument('--' + name)
     parser.add_argument('--scope', choices=('tasks', 'repository'), default='tasks',
                         help='Repository-wide development authority permits independent maintenance selection; named-task calls stay scoped by default')
+    parser.add_argument('--require-owner', action='store_true',
+                        help='Opt into external owner requests and recorded claim release gates')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--allow-ready-fallback', action='store_true', help='Allow an accepted same-milestone task when the preferred slice is held')
     parser.add_argument('--acknowledge', action='store_true', help='Record supplied owner acknowledgement, not inferred consent')

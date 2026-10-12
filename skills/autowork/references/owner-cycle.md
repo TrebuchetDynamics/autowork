@@ -1,8 +1,37 @@
-# Required owner recovery cycle
+# Autonomous recovery cycle
 
-This is execution inside the existing owner's scope, not permission to replace a
-worker, alter product intent, take over an integration owner or bypass admission.
-A cron tick is not successful progress merely because it produced a status.
+## Default: no external owner required
+
+Autowork is the local planner, implementer, reviewer and integrator. It does not
+need an owner profile, parent-session reply, release acknowledgement or mailbox
+route to perform already authorized repository work. This default takes precedence
+over the owner-handoff requirements later in this compatibility reference.
+Recorded `ACTIVE` claims and owner names are attribution and discovery evidence,
+not indefinite approval gates. Selection retains them as `recorded_claims`.
+
+Before adopting existing work, inspect current native workers and actual file
+conflicts. A genuinely running overlapping worker must finish or be coordinated;
+otherwise preserve its candidate, review the changes and tests, and continue or
+integrate the bounded local work yourself. Dirty files, an old claim or an idle
+parent session alone do not require someone's release. Do not overwrite unrelated
+changes. Use a fresh isolated candidate and serialize canonical integration when
+necessary. Keep actual dependencies, test failures and explicit external-action
+limits; do not mark work complete until verified.
+
+When canonical documents or ordinary execution inputs are missing, repair or
+bootstrap them from accepted scope in the same occurrence. Supply your own
+attribution and exact source/revision evidence for the existing repair APIs; their
+`owner` field identifies the executor, not a person whose approval is required.
+Prepare native worker contracts in default `worker` mode. Use `proposal` mode and
+external handoffs only when the user explicitly requests that division of work.
+
+`owner_cycle.py` defaults to `coordination_mode=autonomous`, never creates owner
+requests, and returns local repair/preparation actions. Existing route files do not
+turn owner gating back on. The agent must execute those actions, not report the
+helper's readiness receipt as completed work. To explicitly request the legacy
+external-owner workflow, pass `--require-owner` to the cycle or selector; the
+owner-request, inbox and registry-release instructions below apply to that opt-in.
+No new schedule, publication authority or live-operation permission is implied.
 
 ## Run the executable cycle
 
@@ -11,7 +40,7 @@ Use the shared runner rather than assembling status JSON by hand:
 ```sh
 python3 <autowork>/scripts/owner_cycle.py /absolute/consumer \
   --plan SPEC.md#slice --tasks T1 \
-  --state-dir "$HERMES_HOME/autowork" --integration-owner ACTUAL_OWNER
+  --state-dir "$HERMES_HOME/autowork"
 ```
 
 Resolve the actual owning profile home first; never guess default from a named
@@ -43,7 +72,7 @@ The runner's bounded work search uses the canonical selector. When no candidate
 is found, inspect one accepted source/test seam as below; an empty selector does
 not prove all independent work exhausted. Keep offline and live acceptance separate.
 
-## Unattended continuation contract
+## Optional external-owner continuation (`--require-owner`)
 
 At the beginning of every authorized owner occurrence, read this profile's
 `autowork/inbox/` with `progress_runtime.py inbox --state-dir OWN_HOME/autowork`.
@@ -144,7 +173,7 @@ must not overwrite a worker's verified completion in the same occurrence.
 
 ## Registered claims and independent candidates
 
-An `open` ledger checkbox does not establish that a task is unclaimed. Selection
+In optional `--require-owner` mode, an `open` ledger checkbox does not establish that a task is unclaimed. Selection
 reads `docs/coordination/worktree-registry.jsonl` when present, using the latest
 entry for each task/workspace. Unreleased claims remain held, including reviewed
 candidates; only explicit `RELEASED` or `INTEGRATED` entries end that registry hold.

@@ -119,7 +119,8 @@ def run(args):
         if any(tasks[tid]['status'] != 'open' for tid in ids):
             return held('ownership', ['reconcile original task ownership; only unclaimed open ledger tasks can be repaired'],
                         [sys.executable, str(Path(recovery.__file__).with_name('goals.py')), 'focus', str(repo), '--json'])
-    selected = retry_selection.select(repo, plan=args.plan, task_ids=ids)
+    selected = retry_selection.select(repo, plan=args.plan, task_ids=ids,
+                                          require_owner=getattr(args, "require_owner", False))
     result['selection'] = selected
     reasons = selected['reasons']
     metadata = 'plan section lacks explicit Status: Accepted' in reasons
@@ -149,7 +150,8 @@ def run(args):
             repairs = (repair_metadata(locked, args.plan, ids, authority) if metadata else
                        recovery.repair(locked, args.plan, ids, authority['source_commit']))
             stage('repair', locked, repairs=repairs, authority=authority)
-        selected = retry_selection.select(repo, plan=args.plan, task_ids=ids)
+        selected = retry_selection.select(repo, plan=args.plan, task_ids=ids,
+                                          require_owner=getattr(args, "require_owner", False))
         result['selection'] = selected
         stage('retry_selection', repo, state=selected['state'])
     if selected['state'] != 'ready_for_autowork':
@@ -168,7 +170,8 @@ def run(args):
         stage('prerequisites', repo, candidate_identity=prepared['candidate_identity'])
         if not prepared['source_fresh']:
             return held('source_freshness', ['reconcile changed source; do not refresh attribution'], command)
-        result['selection'] = retry_selection.select(repo, plan=args.plan, task_ids=ids)
+        result['selection'] = retry_selection.select(repo, plan=args.plan, task_ids=ids,
+                                          require_owner=getattr(args, "require_owner", False))
         stage('retry_selection', repo, state=result['selection']['state'])
         if result['selection']['state'] != 'ready_for_autowork':
             return held('consumer_readiness', result['selection']['reasons'], command)
@@ -214,6 +217,7 @@ def main():
         parser.add_argument('--' + name, required=True)
     for name in ('canonical-repo', 'authority', 'prerequisite-request', 'candidate-request'):
         parser.add_argument('--' + name)
+    parser.add_argument('--require-owner', action='store_true')
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
     try:

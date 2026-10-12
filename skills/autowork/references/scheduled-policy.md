@@ -9,6 +9,15 @@ Start with `hermes-toolset:autowork` for repository-stage preparation, then use 
 existing worker engine and state. Missing task files alone are bootstrap work; an
 unintegrated owner proposal still requires reconciliation.
 
+Autonomous coordination is the default. The running agent handles local planning,
+implementation, review and integration without waiting for another owner or parent.
+Historical claims are attribution; check actual running workers and conflicting
+writes. Continue/review/adopt idle local candidates while preserving their bytes
+and provenance. Use the default worker role. External-owner requests and proposal
+roles are opt-in through `--require-owner`, never implied by old route files or
+owner fields in receipts. Earlier owner-only wording in this workflow is superseded
+for authorized local work; scope, pauses and explicit external-action limits remain.
+
 Before a blocked or idle report, execute [the owner recovery cycle](owner-cycle.md).
 Use owner_cycle.py --apply --allow-ready-fallback --scope repository for broad repository development;
 use --scope tasks for a job limited to its named tasks and omit fallback for literal

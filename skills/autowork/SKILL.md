@@ -13,6 +13,7 @@ metadata:
 
 First apply [repository-stage preparation](references/repository-stages.md), then
 use the execution and completion rules below.
+Local work needs no external owner; [autonomous recovery](references/owner-cycle.md) takes precedence over owner-handoff wording.
 
 ## When to use
 

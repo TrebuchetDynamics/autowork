@@ -13,6 +13,9 @@ def key(cycle):
 
 def decide(cycle, state):
     gate=cycle.get('recovery',{}).get('gate')
+    if cycle.get('coordination_mode') == 'autonomous' and gate in ('ledger', 'ownership', 'owner_authority'):
+        return {'action': 'repair_local_inputs' if gate != 'ownership' else 'reconcile_live_work',
+                'reason': 'The current agent coordinates local recovery; no external owner acknowledgement is required. Preserve live workers and verify existing candidates.'}
     if gate=='ownership':
         return {'action':'reconcile_owner','reason':'Planning cannot replace an existing writer'}
     if cycle.get('admission') == 'handoff_preparation':

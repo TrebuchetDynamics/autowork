@@ -54,7 +54,7 @@ def accepted_task_plan(repo, task, goal):
     return candidates[0] if candidates else plan
 
 
-def select(consumer, *, canonical_repo=None, plan=None, task_ids=None):
+def select(consumer, *, canonical_repo=None, plan=None, task_ids=None, require_owner=False):
     if (plan is None) != (task_ids is None):
         raise ValueError('named-plan retry requires both plan and task IDs')
     with goals.coordination(consumer, canonical_repo) as repo:
@@ -71,8 +71,9 @@ def select(consumer, *, canonical_repo=None, plan=None, task_ids=None):
             result['reasons'] = problems
             return result
         claims, registry_blob = registered_claims(repo)
-        held_ids = {row['task'] for row in claims}
-        result['held_claims'] = claims
+        held_ids = {row['task'] for row in claims} if require_owner else set()
+        result['recorded_claims'] = claims
+        result['held_claims'] = claims if require_owner else []
         picks = [(task, goal) for task, goal in goals.eligible(goals.normalize(data))
                  if task['id'] not in held_ids]
         # Explicit recovery must diagnose contracts even when execution is gated.
@@ -121,7 +122,7 @@ def select(consumer, *, canonical_repo=None, plan=None, task_ids=None):
         return result
 
 
-def repository_frontier(consumer, limit=3):
+def repository_frontier(consumer, limit=3, *, require_owner=False):
     """Find alternatives without changing focus, task status, claims or admission."""
     with goals.coordination(consumer) as repo:
         revision = goals.revision(repo)
@@ -130,14 +131,14 @@ def repository_frontier(consumer, limit=3):
         if problems:
             raise ValueError('; '.join(problems))
         claims, registry_blob = registered_claims(repo)
-    held_ids = {r['task'] for r in claims}
+    held_ids = {r['task'] for r in claims} if require_owner else set()
     candidates, rejected = [], []
     for task, goal in goals.eligible(goals.normalize(data)):
         if task['status'] != 'open' or task['id'] in held_ids:
             continue
         try:
             plan = accepted_task_plan(repo, task, goal)
-            checked = select(repo, plan=plan, task_ids=[task['id']])
+            checked = select(repo, plan=plan, task_ids=[task['id']], require_owner=require_owner)
         except ValueError as exc:
             rejected.append({'task_id': task['id'], 'reasons': [str(exc)]})
             continue
@@ -153,7 +154,8 @@ def repository_frontier(consumer, limit=3):
             goals.checked_bytes(repo / REGISTRY) != registry_blob):
         raise ValueError('consumer changed during frontier search; retry selection')
     return {'state': 'candidates_found' if candidates else 'no_unclaimed_candidate',
-            'candidates': candidates, 'held_claims': claims, 'rejected': rejected,
+            'candidates': candidates, 'recorded_claims': claims,
+            'held_claims': claims if require_owner else [], 'rejected': rejected,
             'boundary': 'Read-only candidates, not dispatch authorization. Check file-scope overlap, current owner and native admission.'}
 
 
@@ -161,6 +163,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('consumer', help='actual repository consumer, not the documentation scratch checkout')
     parser.add_argument('--canonical-repo')
+    parser.add_argument('--require-owner', action='store_true', help='Opt into recorded owner release gates')
     parser.add_argument('--repository-frontier', action='store_true')
     parser.add_argument('--plan')
     parser.add_argument('--tasks')
@@ -169,11 +172,11 @@ def main():
         if args.repository_frontier:
             if args.plan or args.tasks or args.canonical_repo:
                 parser.error('frontier takes the canonical consumer without named-task options')
-            result = repository_frontier(args.consumer)
+            result = repository_frontier(args.consumer, require_owner=args.require_owner)
             print(json.dumps(result, indent=2))
             return 0 if result['candidates'] else 2
         result = select(args.consumer, canonical_repo=args.canonical_repo, plan=args.plan,
-                        task_ids=args.tasks.split(',') if args.tasks is not None else None)
+                        task_ids=args.tasks.split(',') if args.tasks is not None else None, require_owner=args.require_owner)
     except (ValueError, OSError, TypeError, KeyError) as error:
         parser.exit(1, str(error) + '\n')
     print(json.dumps(result, indent=2))

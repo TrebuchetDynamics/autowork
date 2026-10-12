@@ -19,11 +19,34 @@ class OwnerCycleTests(unittest.TestCase):
         subprocess.run(['git','init','-q',str(self.repo)],check=True)
         self.state = self.root / 'state'
 
-    def run_cycle(self, *extra):
+    def run_cycle(self, *extra, require_owner=True):
         r = subprocess.run([sys.executable,str(SCRIPT),str(self.repo),'--plan','SPEC.md#slice',
-                            '--tasks','T1','--state-dir',str(self.state),*extra],capture_output=True,text=True)
+                            '--tasks','T1','--state-dir',str(self.state),
+                            *(['--require-owner'] if require_owner else []),*extra],capture_output=True,text=True)
         self.assertTrue(r.stdout, r.stderr)
         return r, json.loads((self.state/'unblock-latest.json').read_text())
+
+    def test_default_continues_locally_without_owner_route_or_request(self):
+        _, receipt = self.run_cycle('--apply', require_owner=False)
+        self.assertEqual(receipt['outcome'], 'ACTION_REQUIRED')
+        self.assertEqual(receipt['action'], 'repair_local_inputs')
+        self.assertNotIn('integration_request', receipt)
+        self.assertNotIn('routing_gap', receipt)
+        self.assertFalse((self.state / 'requests').exists())
+        self.assertEqual(receipt['coordination_mode'], 'autonomous')
+
+    def test_default_open_task_does_not_wait_for_recorded_owner(self):
+        self.ready_backlog()
+        registry = self.repo / 'docs/coordination/worktree-registry.jsonl'
+        registry.parent.mkdir(parents=True)
+        registry.write_text(json.dumps({'task':'T1','owner':'old-writer',
+            'worktree':'/fixture/writer','status':'ACTIVE'}) + '\n')
+        _, receipt = self.run_cycle('--apply', '--integration-owner', 'old-writer', require_owner=False)
+        self.assertTrue(receipt['backlog_ready'])
+        self.assertEqual(receipt['action'], 'prepare_execution_handoff')
+        self.assertNotIn('integration_request', receipt)
+        self.assertNotIn('routing_gap', receipt)
+        self.assertFalse(receipt['dispatch_attempted'])
 
     def test_missing_ledger_requests_integration_instead_of_validate_loop(self):
         r, receipt = self.run_cycle('--integration-owner','parent')

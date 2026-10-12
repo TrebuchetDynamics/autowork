@@ -84,10 +84,10 @@ def read_reply(request, delivery):
     return reply
 
 
-def ready_queue(consumer, limit=3):
+def ready_queue(consumer, limit=3, *, require_owner=False):
     """Validate a bounded same-plan frontier; no focus changes or task invention."""
     import retry_selection
-    first = retry_selection.select(consumer)
+    first = retry_selection.select(consumer, require_owner=require_owner)
     if first['state'] != 'ready_for_autowork':
         return {'tasks': [], 'selection': first, 'target': limit, 'shortfall': limit}
     goals = retry_selection.goals
@@ -99,12 +99,12 @@ def ready_queue(consumer, limit=3):
         candidates = [t for t, _ in goals.eligible(data)
                       if t['status'] == 'open' and t['goal'] == chosen['goal']
                       and t['id'] not in held_ids][:limit]
-    checked = retry_selection.select(repo, plan=first['plan'], task_ids=[t['id'] for t in candidates])
+    checked = retry_selection.select(repo, plan=first['plan'], task_ids=[t['id'] for t in candidates], require_owner=require_owner)
     if goals.revision(repo) != revision:
         raise ValueError('consumer changed during queue validation')
     if checked['state'] != 'ready_for_autowork':
         # Revalidate the frontier rather than reuse the earlier snapshot.
-        fresh = retry_selection.select(consumer)
+        fresh = retry_selection.select(consumer, require_owner=require_owner)
         tasks = [fresh['selected_task']] if fresh['state'] == 'ready_for_autowork' else []
         return {'tasks': tasks, 'selection': fresh, 'target':limit, 'shortfall':limit-len(tasks),
                 'queue_gap':checked['reasons']}

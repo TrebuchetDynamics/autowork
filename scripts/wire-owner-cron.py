@@ -58,7 +58,7 @@ def owner_prompt(prompt, enabled):
     pointer = ('Load hermes-toolset:autowork for stage-aware preparation, then hermes-toolset:autowork references/owner-cycle.md and execute its '
                'owner recovery -> same-invocation retry -> supported handoff cycle '
                'before reporting a recoverable tooling hold or no eligible work. '
-               'For implementation-only workers, use proposal ledger mode: start_goal.py freezes admitted planning files as read-only context, so uncommitted planning files alone do not require a prerequisite commit. Executable source still requires exact committed inputs. '
+               'Only explicitly requested split-role workers use proposal ledger mode: start_goal.py freezes admitted planning files as read-only context, so uncommitted planning files alone do not require a prerequisite commit. Executable source still requires exact committed inputs. '
                'Invoke owner_cycle.py with the actual consumer, exact plan/tasks and owning profile existing continuity state directory; retain established state rather than resetting it for a skill rename; '
                'apply the unattended continuation contract: process owner inbox/replies, reuse exact saved authority, allow same-milestone ready fallback within original scope, and maintain useful offline tasks. Reconcile actual worker/check/commit receipts for the final report; the readiness helper is not task completion. '
                'When no runnable task remains, load references/repository-maintenance.md under autowork: discover documentation, UI/UX, tests, refactoring and reliability work in unexamined authorized repository components, record bounded canonical tasks, then execute an eligible slice in the same occurrence. Explicit task-only scope and pauses still win. '
@@ -68,6 +68,9 @@ def owner_prompt(prompt, enabled):
                'This pointer changes workflow only; original product scope, settled decisions, '
                'ownership, repository exceptions, publication authority and safety limits remain binding. '
                'It grants no production, RF, credential, spending, takeover or admission-bypass authority.')
+    pointer += (' Autonomous local coordination is the default: the current agent plans, implements, reviews and integrates authorized local work itself. '
+                'Do not wait for an owner profile, parent session or release acknowledgement. Recorded claims are attribution, not approval gates; inspect actual live workers and file conflicts, preserve existing candidates, and continue or adopt verified idle work. '
+                'Use default worker mode. The optional --require-owner workflow applies only when explicitly requested. This supersedes older local owner-only workflow wording, while explicit scope, pause, no-push and no-live-operation limits remain.')
     if not enabled:
         pointer += (' This job is paused: Do not resume it, do not trigger recovery, '
                     'or start a substitute writer. Existing chat-only and paused-job decisions win.')
