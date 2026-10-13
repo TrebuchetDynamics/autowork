@@ -9,6 +9,15 @@ import re
 REQUIRED = {'card', 'task', 'workspace', 'base', 'scope'}
 
 
+def unique_object(pairs):
+    row = {}
+    for key, value in pairs:
+        if key in row:
+            raise ValueError('Registration contains duplicate JSON field: ' + key)
+        row[key] = value
+    return row
+
+
 def verify(registry, digest, fields, expected):
     """Match mapped top-level fields; caller supplies repository-specific policy."""
     if not REQUIRED <= expected.keys() or fields.keys() != expected.keys():
@@ -35,14 +44,6 @@ def verify(registry, digest, fields, expected):
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != digest:
         raise ValueError('Registration evidence changed; inspect current registry')
-    def unique_object(pairs):
-        row = {}
-        for key, value in pairs:
-            if key in row:
-                raise ValueError('Registration registry contains duplicate JSON field: ' + key)
-            row[key] = value
-        return row
-
     rows = [json.loads(line, object_pairs_hook=unique_object)
             for line in data.decode().splitlines() if line.strip()]
     if any(not isinstance(row, dict) for row in rows):
@@ -72,7 +73,7 @@ def main():
         raw = Path(args.requirement).read_bytes()
         if hashlib.sha256(raw).hexdigest() != args.requirement_sha256:
             raise ValueError('Registration requirement changed')
-        requirement = json.loads(raw)
+        requirement = json.loads(raw, object_pairs_hook=unique_object)
         verify(requirement['registry'], requirement['sha256'], requirement['fields'], requirement['expected'])
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(2, str(error) + '\n')

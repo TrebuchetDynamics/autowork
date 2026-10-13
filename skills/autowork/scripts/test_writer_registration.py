@@ -50,6 +50,24 @@ class RegistrationTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['outcome'], 'writer_registration_verified')
+            valid_requirement = requirement.read_bytes()
+            variants = [
+                ('top', b'{"registry":"foreign",' + valid_requirement[1:]),
+                ('expected', valid_requirement.replace(b'"expected": {', b'"expected": {"card":"foreign",', 1)),
+                ('fields', valid_requirement.replace(b'"fields": {', b'"fields": {"card":"foreign",', 1)),
+            ]
+            for name, ambiguous in variants:
+                with self.subTest(requirement_duplicate=name):
+                    requirement.write_bytes(ambiguous)
+                    ambiguous_pin = hashlib.sha256(ambiguous).hexdigest()
+                    rejected = subprocess.run(command[:-1] + [ambiguous_pin], capture_output=True, text=True)
+                    self.assertEqual(rejected.returncode, 2, rejected.stdout)
+                    self.assertIn('duplicate JSON field', rejected.stderr)
+                    with self.assertRaisesRegex(ValueError, 'duplicate JSON field'):
+                        guard.check_registration(manifest, tmp, requirement, ambiguous_pin, 'card-1')
+                    self.assertEqual(requirement.read_bytes(), ambiguous)
+                    self.assertEqual(path.read_bytes(), before)
+            requirement.write_bytes(valid_requirement)
             for wrong_manifest in (dict(manifest, goal_task='T2'),
                                    dict(manifest, candidate_identity=dict(base_commit='b'*40))):
                 with self.assertRaises(ValueError):

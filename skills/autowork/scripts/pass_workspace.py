@@ -390,17 +390,17 @@ def check_registration(manifest, workspace, requirement_path, digest, card):
     raw = Path(requirement_path).read_bytes()
     if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError('Registration requirement changed')
-    requirement = json.loads(raw)
+    registration_spec = importlib.util.spec_from_file_location('writer_registration',
+        Path(__file__).with_name('writer_registration.py'))
+    module = importlib.util.module_from_spec(registration_spec)
+    registration_spec.loader.exec_module(module)
+    requirement = json.loads(raw, object_pairs_hook=module.unique_object)
     expected = requirement['expected']
     if (not card or expected['card'] != card
             or expected['workspace'] != str(Path(workspace).resolve(strict=True))
             or expected['base'] != manifest['candidate_identity']['base_commit']
             or expected['task'] != manifest.get('goal_task')):
         raise ValueError('Registration does not bind the admitted task/card/workspace/base')
-    registration_spec = importlib.util.spec_from_file_location('writer_registration',
-        Path(__file__).with_name('writer_registration.py'))
-    module = importlib.util.module_from_spec(registration_spec)
-    registration_spec.loader.exec_module(module)
     return module.verify(requirement['registry'], requirement['sha256'], requirement['fields'], expected)
 
 
