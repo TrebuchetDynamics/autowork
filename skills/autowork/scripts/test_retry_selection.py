@@ -136,6 +136,123 @@ class RetrySelectionTests(unittest.TestCase):
             stream.write(json.dumps({'task': task, 'owner': 'writer',
                                      'worktree': workspace, 'status': status}) + '\n')
 
+    def registry_rows(self, rows):
+        import retry_selection
+        path = self.consumer / retry_selection.REGISTRY
+        path.parent.mkdir(parents=True, exist_ok=True)
+        blob = ''.join(json.dumps(row) + '\n' for row in rows).encode()
+        path.write_bytes(blob)
+        claims = retry_selection.registered_claims(self.consumer)[0]
+        self.assertEqual(path.read_bytes(), blob)
+        return claims
+
+    def test_partial_update_retains_unique_original_claim_and_metadata(self):
+        original = {'task': 'T1', 'owner': 'writer', 'worktree': '/fixture/one',
+                    'status': 'ACTIVE', 'scope': ['source.rs'], 'initial_gate': 'not_observed'}
+        claims = self.registry_rows([original,
+            {'task': 'T1', 'owner': 'writer', 'status': 'INTEGRATED_VERIFIED', 'result': 'offline'}])
+        self.assertEqual(claims, [dict(original, status='INTEGRATED_VERIFIED', result='offline')])
+        self.assertEqual(self.retry(plan='SPEC.md#accepted', task_ids=['T1'])['state'],
+                         'backlog_reconciled_not_eligible')
+
+    def test_alias_claim_and_partial_update_bind_without_releasing_other_workspace(self):
+        original = {'task_id': 'T1', 'owner': 'writer', 'workspace': '/fixture/one',
+                    'status': 'ACTIVE', 'scope': ['source.rs']}
+        other = {'task': 'T1', 'owner': 'other', 'worktree': '/fixture/two', 'status': 'ACTIVE'}
+        claims = self.registry_rows([original, other,
+            {'task': 'T1', 'owner': 'writer', 'status': 'INTEGRATED'}])
+        self.assertEqual(claims, [other])
+        self.assertEqual(self.retry(plan='SPEC.md#accepted', task_ids=['T1'])['state'],
+                         'backlog_reconciled_not_eligible')
+
+    def test_matching_aliases_and_explicit_release_are_supported(self):
+        claims = self.registry_rows([
+            {'task': 'T1', 'task_id': 'T1', 'owner': 'writer', 'worktree': '/fixture/one',
+             'workspace': '/fixture/one', 'status': 'ACTIVE'},
+            {'task_id': 'T1', 'owner': 'writer', 'workspace': '/fixture/one', 'status': 'RELEASED'}])
+        self.assertEqual(claims, [])
+        self.assertEqual(self.retry()['state'], 'ready_for_autowork')
+
+    def test_alias_partial_live_claim_does_not_starve_disjoint_open_task(self):
+        import retry_selection
+        import progress_runtime
+        self.registry_rows([
+            {'task_id': 'T1', 'owner': 'writer', 'workspace': '/fixture/one', 'status': 'ACTIVE'},
+            {'task_id': 'T1', 'owner': 'writer', 'status': 'REVIEW_APPROVED_UNINTEGRATED'}])
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'].append(dict(data['tasks'][0], id='T2', title='Disjoint'))
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text() + '\n- [ ] T2: Disjoint\n  Goal: G1\n'
+            '  Scope: other.rs only\n  Acceptance: tests pass\n  Dependencies: None\n'
+            '  Ownership: fixture\n  Sources: [Plan](SPEC.md#accepted)\n')
+        before = {p: p.read_bytes() for p in (ledger, todo, self.consumer / retry_selection.REGISTRY)}
+        self.assertEqual(self.retry()['selected_task']['id'], 'T2')
+        self.assertEqual([c['task']['id'] for c in
+            retry_selection.repository_frontier(self.consumer, require_owner=True)['candidates']], ['T2'])
+        self.assertEqual([t['id'] for t in
+            progress_runtime.ready_queue(self.consumer, require_owner=True)['tasks']], ['T2'])
+        held = self.retry(plan='SPEC.md#accepted', task_ids=['T1'])
+        self.assertEqual(held['state'], 'backlog_reconciled_not_eligible')
+        self.assertEqual(held['held_claims'][0]['status'], 'REVIEW_APPROVED_UNINTEGRATED')
+        for path, content in before.items():
+            self.assertEqual(path.read_bytes(), content)
+
+    def test_partial_update_does_not_guess_among_historical_workspaces(self):
+        import retry_selection
+        self.claim(status='RELEASED', workspace='/fixture/one')
+        self.claim(workspace='/fixture/two')
+        path = self.consumer / retry_selection.REGISTRY
+        with path.open('a') as stream:
+            stream.write(json.dumps({'task': 'T1', 'owner': 'writer', 'status': 'INTEGRATED'}) + '\n')
+        before = path.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'ambiguous.*worktree'):
+            retry_selection.registered_claims(self.consumer)
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_registry_rejects_conflicting_aliases_missing_and_malformed_identities(self):
+        import retry_selection
+        original = {'task': 'T1', 'owner': 'writer', 'worktree': '/fixture/one', 'status': 'ACTIVE'}
+        cases = [dict(original, task_id='T2'), dict(original, workspace='/fixture/two'),
+                 dict(original, owner='other'), dict(original, task=' '),
+                 dict(original, task='T 1'), dict(original, worktree='relative'),
+                 dict(original, worktree=''), dict(original, workspace=None),
+                 dict(original, owner=None), dict(original, status=''),
+                 {'task': 'T1', 'owner': 'writer', 'status': 'RELEASED', 'worktree': None},
+                 {'task': 'T2', 'owner': 'writer', 'status': 'INTEGRATED'},
+                 {'owner': 'writer', 'status': 'INTEGRATED', 'worktree': '/fixture/one'},
+                 {'task': 'T1', 'status': 'INTEGRATED'}]
+        path = self.consumer / retry_selection.REGISTRY
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for row in cases:
+            with self.subTest(row=row):
+                path.write_text(json.dumps(original) + '\n' + json.dumps(row) + '\n')
+                before = path.read_bytes()
+                with self.assertRaisesRegex(ValueError, 'invalid worktree registry.*:2:'):
+                    retry_selection.registered_claims(self.consumer)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_completion_empty_release_fields_and_status_prefixes_keep_holds(self):
+        for status in ('ACTIVE', 'COMPLETED', 'REVIEW_APPROVED_UNINTEGRATED',
+                       'INTEGRATED_VERIFIED', 'INTEGRATED_OFFLINE', 'RELEASED_VERIFIED',
+                       'RELEASED_NO_CHANGE', 'PLANNING_INTEGRATED', 'PREPARATION_FAILED'):
+            with self.subTest(status=status):
+                row = {'task_id': 'T1', 'owner': 'writer', 'workspace': '/fixture/one',
+                       'status': status, 'created_at': '2000-01-01', 'removed_at': None,
+                       'integrated_commit_sha': None, 'released_at': ''}
+                self.assertEqual(self.registry_rows([row])[0]['status'], status)
+
+    def test_duplicate_identity_json_keys_are_not_last_writer_wins(self):
+        import retry_selection
+        path = self.consumer / retry_selection.REGISTRY
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"task":"T1","task":"T2","owner":"writer",'
+                        '"worktree":"/fixture/one","status":"ACTIVE"}\n')
+        with self.assertRaisesRegex(ValueError, 'invalid worktree registry'):
+            retry_selection.registered_claims(self.consumer)
+
     def test_open_ledger_task_with_registered_writer_is_not_ready(self):
         self.claim()
         result = self.retry(plan='SPEC.md#accepted', task_ids=['T1'])

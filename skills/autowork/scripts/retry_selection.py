@@ -22,22 +22,62 @@ def registered_claims(repo):
     """Read the repository's append-only claims; never infer release from age."""
     blob = goals.checked_bytes(Path(repo) / REGISTRY)
     latest = {}
+
+    def unique_object(pairs):
+        row = {}
+        for key, value in pairs:
+            if key in row:
+                raise ValueError('duplicate JSON field')
+            row[key] = value
+        return row
+
     for number, line in enumerate((blob or b'').decode('utf-8').splitlines(), 1):
         if not line.strip():
             continue
         location = f'invalid worktree registry {REGISTRY}:{number}'
+
+        def refuse(detail):
+            raise ValueError(f'{location}: {detail}; reconcile repository ownership')
+
         try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f'{location}: malformed JSON; reconcile repository ownership') from exc
+            row = json.loads(line, object_pairs_hook=unique_object)
+        except ValueError:
+            raise ValueError(f'{location}: malformed JSON or duplicate field; '
+                             'reconcile repository ownership') from None
         if not isinstance(row, dict):
-            raise ValueError(f'{location}: expected object; reconcile repository ownership')
-        missing = [key for key in ('task', 'worktree', 'status', 'owner')
-                   if not isinstance(row.get(key), str) or not row[key]]
+            refuse('expected object')
+        # Aliases are exact identifiers, not paths or task IDs to repair.
+        for key, alias in (('task', 'task_id'), ('worktree', 'workspace')):
+            present = [row[name] for name in (key, alias) if name in row]
+            if any(not isinstance(value, str) or not value.strip() or value != value.strip()
+                   or any(ord(char) < 32 for char in value) for value in present):
+                refuse(f'nonempty string required for {key}/{alias}')
+            if len(present) == 2 and present[0] != present[1]:
+                refuse(f'conflicting {key}/{alias} aliases')
+            if present:
+                row[key] = present[0]
+        missing = [key for key in ('task', 'status', 'owner')
+                   if not isinstance(row.get(key), str) or not row[key].strip()
+                   or row[key] != row[key].strip()
+                   or any(ord(char) < 32 for char in row[key])]
         if missing:
-            raise ValueError(f'{location}: nonempty string required for {", ".join(missing)}; '
-                             'reconcile repository ownership')
-        latest[(row['task'], row['worktree'])] = row
+            refuse(f'nonempty string required for {", ".join(missing)}')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', row['task']):
+            refuse('malformed task identity')
+        if 'worktree' not in row:
+            # Include released history: selecting only live matches invents a transfer.
+            matches = [r for r in latest.values()
+                       if r['task'] == row['task'] and r['owner'] == row['owner']]
+            if len(matches) != 1:
+                refuse('missing or ambiguous historical worktree for partial update')
+            row['worktree'] = matches[0]['worktree']
+        if not Path(row['worktree']).is_absolute() or '..' in Path(row['worktree']).parts:
+            refuse('malformed worktree identity; absolute path required')
+        key = (row['task'], row['worktree'])
+        previous = latest.get(key, {})
+        if previous and previous['owner'] != row['owner']:
+            refuse('conflicting historical owner for task/worktree')
+        latest[key] = dict(previous, **row)
     # Completed/reviewed candidates still need owner integration. Only explicit
     # release/integration ends this adapter's hold, and native checks still run.
     held = [r for r in latest.values() if r['status'].upper() not in ('RELEASED', 'INTEGRATED')]
