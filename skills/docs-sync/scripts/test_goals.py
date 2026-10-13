@@ -1,9 +1,12 @@
 """Unit tests for goals.py (no network, no LLM)."""
 import json
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 SCRIPT = Path(__file__).with_name('goals.py')
@@ -31,6 +34,230 @@ def sample():
             {'id': 'TASK-003', 'goal': 'GOAL-5', 'title': 'Implement undo', 'status': 'open', 'section': 'Next'},
         ],
     }
+
+
+class InitializationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.repo = self.root / 'consumer'
+        self.repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        (self.repo / 'SPEC.md').write_text('# Slice\n\nStatus: Accepted\n')
+        self.intent = self.root / 'intent.json'
+        self.data = {'version': 1, 'goals': [
+            {'id': 'G1', 'title': 'Startup works', 'source': 'SPEC.md#slice',
+             'status': 'unmet', 'tasks': ['T1']}], 'tasks': [
+            {'id': 'T1', 'goal': 'G1', 'title': 'Verify startup',
+             'status': 'open', 'section': 'Now'}]}
+        self.intent.write_text(json.dumps(self.data))
+        self.body = ('# TODO\n\n## Now\n\n- [ ] T1: Verify startup\n'
+                     '  Goal: G1\n  Scope: startup check\n'
+                     '  Acceptance: startup check passes\n  Dependencies: None\n'
+                     '  Status: open\n  Ownership: fixture owner\n'
+                     '  Sources: [Slice](SPEC.md#slice)\n\nContinuation retained.\n')
+        self.input_todo = self.root / 'tasks.md'
+        self.input_todo.write_text(self.body)
+
+    def init(self, *args):
+        return run('init', str(self.repo), '--intent', str(self.intent), *args)
+
+    def snapshot(self):
+        return {name: (self.repo / name).read_bytes() if (self.repo / name).exists() else None
+                for name in ('goals.json', 'TODO.md', 'TODO.archive.md')}
+
+    def test_empty_consumer_and_unchanged_repeat(self):
+        result = self.init('--todo-file', str(self.input_todo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.repo / 'TODO.md').read_text(), self.body)
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+        for cmd in ('fmt', 'render'):
+            result = run(cmd, str(self.repo))
+            self.assertEqual(result.returncode, 0, result.stderr)
+        first = self.snapshot()
+        # Once rendered, omit --todo-file: existing TODO remains authoritative.
+        self.assertEqual(self.init().returncode, 0)
+        self.assertEqual(self.snapshot(), first)
+        result = run('backlog-check', str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)['state'], 'ready_for_autowork')
+        for cmd in ('fmt', 'render'):
+            self.assertEqual(run(cmd, str(self.repo)).returncode, 0)
+        self.assertEqual(self.snapshot(), first)
+
+    def test_documented_initialization_commands_on_empty_and_todo_only_git_consumers(self):
+        source_root = SCRIPT.resolve().parents[3]
+        scaffold = source_root / 'skills/docs-sync/references/document-scaffold.md'
+        section = scaffold.read_text().split('## First task-index initialization\n', 1)[1].split('\n## Conditional documents', 1)[0]
+        blocks = re.findall(r'```(?:markdown|json|sh)\n(.*?)\n```', section, re.S)
+        self.assertEqual(len(blocks), 4)
+        (self.repo / 'SPEC.md').unlink()  # The documented plan lives in the supplied TODO.
+        self.intent.write_text(blocks[1] + '\n')
+        self.input_todo.write_text(blocks[2] + '\n')
+        commands = blocks[3].replace('/absolute/toolset', str(source_root)).replace(
+            '/absolute/consumer', str(self.repo)).replace('/absolute/intent.json', str(self.intent)).replace(
+                '/absolute/tasks.md', str(self.input_todo)).splitlines()
+        for todo_only in (False, True):
+            with self.subTest(todo_only=todo_only):
+                for name in ('goals.json', 'TODO.md'):
+                    (self.repo / name).unlink(missing_ok=True)
+                if todo_only:
+                    (self.repo / 'TODO.md').write_bytes(self.input_todo.read_bytes())
+                result = None
+                for index, command in enumerate(commands):
+                    argv = shlex.split(command)
+                    argv[0] = sys.executable
+                    if todo_only and index == 0:
+                        argv = argv[:-2]  # TODO-only path omits --todo-file.
+                    result = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                assert result is not None
+                self.assertEqual(json.loads(result.stdout)['state'], 'ready_for_autowork')
+                first = self.snapshot()
+                self.assertEqual(self.init().returncode, 0)
+                self.assertEqual(self.snapshot(), first)
+
+    def test_todo_only_preserves_bodies_history_and_metadata(self):
+        (self.repo / 'TODO.md').write_text(self.body)
+        (self.repo / 'TODO.archive.md').write_text('# Prior history\n')
+        self.data['primary_milestone'] = 'G1'
+        self.data['tasks'][0]['owner'] = {'name': 'fixture', 'lease': 'preserved'}
+        self.intent.write_text(json.dumps(self.data))
+        before = self.snapshot()
+        result = self.init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.snapshot()['TODO.md'], before['TODO.md'])
+        self.assertEqual(self.snapshot()['TODO.archive.md'], before['TODO.archive.md'])
+        actual = json.loads((self.repo / 'goals.json').read_text())
+        self.assertEqual(actual['primary_milestone'], 'G1')
+        self.assertEqual(actual['tasks'][0]['owner'], self.data['tasks'][0]['owner'])
+        first = self.snapshot()
+        self.assertEqual(self.init().returncode, 0)
+        self.assertEqual(self.snapshot(), first)
+
+    def test_invalid_inputs_leave_content_unchanged(self):
+        cases = [self.body.replace('  Acceptance: startup check passes\n', ''),
+                 self.body.replace('Ownership:', 'Owner:'),
+                 self.body.replace('Goal: G1', 'Goal: G2'),
+                 self.body.replace('Status: open', 'Status: done'),
+                 self.body + '\n- [ ] T1: Duplicate\n',
+                 self.body + '\n- [ ] T2: Unindexed\n',
+                 self.body + '\n<!-- goals:coverage:begin -->\n']
+        for body in cases:
+            with self.subTest(body=body):
+                self.input_todo.write_text(body)
+                before = self.snapshot()
+                result = self.init('--todo-file', str(self.input_todo))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('Traceback', result.stderr)
+                self.assertEqual(self.snapshot(), before)
+        self.input_todo.write_text(self.body)
+        (self.repo / 'SPEC.md').write_text('# Slice\n\nStatus: Proposed\n')
+        before = self.snapshot()
+        result = self.init('--todo-file', str(self.input_todo))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Accepted', result.stderr)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_missing_and_unsafe_inputs_fail_without_partial_writes(self):
+        for args in ((), ('--todo-file', str(self.root / 'missing.md'))):
+            before = self.snapshot()
+            result = self.init(*args)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(self.snapshot(), before)
+        (self.repo / 'TODO.md').symlink_to(self.input_todo)
+        result = self.init()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('symlink', result.stderr)
+        self.assertFalse((self.repo / 'goals.json').exists())
+
+    def test_existing_or_conflicting_state_is_not_overwritten(self):
+        (self.repo / 'TODO.md').write_text(self.body)
+        self.assertEqual(self.init().returncode, 0)
+        self.data['tasks'][0]['title'] = 'Different intent'
+        self.intent.write_text(json.dumps(self.data))
+        before = self.snapshot()
+        result = self.init()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('existing', result.stderr)
+        self.assertEqual(self.snapshot(), before)
+        (self.repo / 'goals.json').write_text('{"version": 2, "goals": [], "tasks": []}')
+        before = self.snapshot()
+        result = self.init()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.snapshot(), before)
+        self.input_todo.write_text(self.body + '\nConflicting continuation.\n')
+        result = self.init('--todo-file', str(self.input_todo))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_malformed_intent_and_nonlocal_sources_are_refused(self):
+        original = json.dumps(self.data)
+        cases = [original.replace('"version": 1', '"version": 2'),
+                 original.replace('"version": 1', '"version": 1, "version": 1'),
+                 original.replace('SPEC.md#slice', '../SPEC.md#slice'),
+                 original.replace('SPEC.md#slice', 'https://example.invalid/spec#slice'),
+                 original.replace('SPEC.md#slice', 'SPEC.md#absent'),
+                 original.replace('"tasks": ["T1"]', '"tasks": ["MISSING"]'),
+                 '{malformed', '[]']
+        for raw in cases:
+            with self.subTest(raw=raw):
+                self.intent.write_text(raw)
+                before = self.snapshot()
+                result = self.init('--todo-file', str(self.input_todo))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('Traceback', result.stderr)
+                self.assertEqual(self.snapshot(), before)
+
+    def test_in_progress_and_completed_history_are_preserved(self):
+        self.data['tasks'][0]['status'] = 'in_progress'
+        self.data['tasks'][0]['lease'] = {'owner': 'fixture', 'token': 'keep'}
+        self.data['goals'].append({'id': 'OLD', 'title': 'Previous outcome',
+                                  'source': 'SPEC.md#slice', 'status': 'met', 'tasks': [],
+                                  'evidence': [{'kind': 'executed', 'ref': 'prior fixture check', 'result': 'pass'}]})
+        self.intent.write_text(json.dumps(self.data))
+        (self.repo / 'TODO.md').write_text(self.body.replace('Status: open', 'Status: in_progress'))
+        (self.repo / 'TODO.archive.md').write_text('# Existing history\n\nKeep all bytes.\n')
+        before = self.snapshot()
+        result = self.init()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        actual = json.loads((self.repo / 'goals.json').read_text())
+        self.assertEqual(actual['tasks'][0]['status'], 'in_progress')
+        self.assertEqual(actual['tasks'][0]['lease'], self.data['tasks'][0]['lease'])
+        self.assertEqual(next(g for g in actual['goals'] if g['id'] == 'OLD')['evidence'],
+                         self.data['goals'][1]['evidence'])
+        self.assertEqual(before['TODO.md'], self.snapshot()['TODO.md'])
+        self.assertEqual(before['TODO.archive.md'], self.snapshot()['TODO.archive.md'])
+        self.assertNotIn('primary_milestone', actual)
+
+    def test_ledger_write_failure_rolls_back_only_new_todo(self):
+        import goals
+        args = type('Args', (), {'repo': str(self.repo), 'intent': str(self.intent),
+                                'todo_file': str(self.input_todo)})()
+        original = goals.atomic_write
+
+        def fail_ledger(path, text, **kwargs):
+            if path.name == 'goals.json':
+                raise OSError('fixture replacement failure')
+            return original(path, text, **kwargs)
+
+        for existing_todo in (False, True):
+            if existing_todo:
+                (self.repo / 'TODO.md').write_text(self.body)
+            before = self.snapshot()
+            with goals.coordination(self.repo), patch.object(goals, 'atomic_write', fail_ledger):
+                with self.assertRaises(SystemExit):
+                    goals.initialize(args)
+            self.assertEqual(self.snapshot(), before)
+
+    def test_missing_todo_with_existing_ledger_is_not_success(self):
+        (self.repo / 'goals.json').write_text(json.dumps(self.data))
+        before = self.snapshot()
+        result = self.init('--todo-file', str(self.input_todo))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('existing goals.json', result.stderr)
+        self.assertEqual(self.snapshot(), before)
 
 
 class GoalsTests(unittest.TestCase):

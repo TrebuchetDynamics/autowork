@@ -4,6 +4,8 @@
 TODO.md stays the human view; its `Goal coverage` table is rendered from this file.
 Agents change goals.json only through these commands, never by hand-editing JSON.
 
+  goals.py init <repo> --intent JSON [--todo-file MARKDOWN]
+                                                initialize from accepted intent and full task bodies; never overwrite
   goals.py validate <repo>                       structural + evidence-rule check (exit 1 on errors)
   goals.py fmt <repo>                            canonical byte-stable rewrite (applies the "met" rule)
   goals.py next <repo> [--json]                  next eligible open task (dependencies satisfied)
@@ -64,7 +66,7 @@ RESULTS = ('pass', 'fail')
 STATUS_RANK = {'unverified': 0, 'partial': 1, 'unmet': 2, 'met': 3}
 SECTION_RANK = {'Now': 0, 'Next': 1}
 BEGIN, END = '<!-- goals:coverage:begin -->', '<!-- goals:coverage:end -->'
-TRANSACTION = ContextVar('goals_transaction', default=None)
+TRANSACTION: ContextVar[tuple[Path, str] | None] = ContextVar('goals_transaction', default=None)
 UNSPECIFIED = object()
 
 
@@ -700,20 +702,23 @@ def task_bodies(text):
     return bodies
 
 
-def backlog_check(a):
-    """Check the consumer, not the author's fixture; never mutate the backlog."""
+def backlog_receipt(a, *, candidate=None):
+    """Check consumer contracts; candidate bytes are only for init preflight."""
     repo = Path(a.repo)
     blobs = {name: checked_bytes(repo / name) for name in ('TODO.md', 'goals.json')}
+    if candidate is not None:
+        blobs.update(candidate)
     reasons = [f'missing {name}' for name, blob in blobs.items() if blob is None]
     identity = git_identity(repo)
-    if identity is None:
+    if identity is None and candidate is None:
         reasons.append('unbound non-Git fixture is not consumer authority')
     plan_path, _, anchor = a.plan.partition('#')
     plan = repo / plan_path
     if not plan_path or Path(plan_path).is_absolute() or '..' in Path(plan_path).parts:
         reasons.append('plan must be repo-relative')
     else:
-        blobs[plan_path] = checked_bytes(plan)
+        if plan_path not in blobs:
+            blobs[plan_path] = checked_bytes(plan)
         if blobs[plan_path] is None:
             reasons.append('missing accepted plan')
     ids = a.tasks.split(',')
@@ -845,7 +850,8 @@ def backlog_check(a):
         reasons.append('native backlog authority changed during check')
     binding = {'git_common_dir': str(identity[0]) if identity else None,
                'registered_authority': str(authority) if authority else None}
-    if any(checked_bytes(repo / name) != blob for name, blob in blobs.items()):
+    if any(checked_bytes(repo / name) != blob for name, blob in blobs.items()
+           if candidate is None or name not in candidate):
         reasons.append('inputs changed during check')
     state = ('draft_saved' if reasons else 'backlog_reconciled_not_eligible'
              if ineligible else 'ready_for_autowork')
@@ -867,13 +873,124 @@ def backlog_check(a):
             reasons.append('stale receipt')
             receipt['state'] = 'draft_saved'
             receipt['reasons'] = reasons + ineligible
+    return (1 if reasons else 2 if ineligible else 0), receipt
+
+
+def backlog_check(a):
+    """Check the consumer, not the author's fixture; never mutate the backlog."""
+    code, receipt = backlog_receipt(a)
     print(json.dumps(receipt, indent=2, sort_keys=True))
-    return 1 if reasons else 2 if ineligible else 0
+    return code
+
+
+def initialize(a):
+    """Create only after all input/consumer checks; repeats never rewrite bytes."""
+    repo = Path(a.repo)
+    try:
+        intent_path = Path(a.intent)
+        intent_blob = checked_bytes(intent_path)
+        if intent_blob is None:
+            sys.exit('missing intent file; supply version-1 accepted goal/task intent')
+        data = parse_ledger(intent_blob)
+        problems = errors(data)
+        if problems:
+            sys.exit('\n'.join(problems) + '\ninit refused; no write')
+        if not data['goals'] or not data['tasks']:
+            sys.exit('init requires accepted goals and complete task intent; no write')
+        # Normalize a copy; compare full objects including extension metadata.
+        normalized = normalize(json.loads(json.dumps(data)))
+        ledger = json.dumps(normalized, indent=2, sort_keys=True, ensure_ascii=False) + '\n'
+        original_todo = checked_bytes(repo / 'TODO.md')
+        supplied = checked_bytes(Path(a.todo_file)) if a.todo_file else None
+        if a.todo_file and supplied is None:
+            sys.exit('missing --todo-file input; no write')
+        if original_todo is not None and supplied is not None and original_todo != supplied:
+            sys.exit('existing TODO.md conflicts with --todo-file; reconcile intent; no write')
+        todo = original_todo if original_todo is not None else supplied
+        if todo is None:
+            sys.exit('missing TODO.md; supply complete task bodies with --todo-file; no write')
+        text = todo.decode('utf-8')
+        # Rendering is separate, but reject unsafe coverage before any write.
+        render_text(repo, normalized, text)
+        bodies = task_bodies(text)
+        for task in normalized['tasks']:
+            if task['status'] == 'done':
+                continue  # Closed history may live in the established archive.
+            entries = bodies.get(task['id'], [])
+            if len(entries) == 1:
+                fields = task_fields(entries[0][0])
+                if not fields.get('Ownership'):
+                    sys.exit(f'{task["id"]}: missing Ownership; no write')
+                statuses = re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Status:(?:\*\*)?[ \t]*([^\r\n]*)',
+                                      task_prose(entries[0][0]), re.M)
+                if statuses and (len(statuses) != 1 or statuses[0].strip() != task['status']):
+                    sys.exit(f'{task["id"]}: Status conflicts with intent; no write')
+        candidate = {'goals.json': ledger.encode('utf-8'), 'TODO.md': todo}
+        sources = {}
+        for goal in normalized['goals']:
+            source = goal['source']
+            if not isinstance(source, str) or '#' not in source or re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', source):
+                sys.exit('init requires local accepted source path#heading for every goal; no write')
+            if not goal['tasks']:
+                blobs, reasons = dict(candidate), []
+                section = local_reference(repo, source, blobs, reasons)
+                acceptance = plan_acceptance_error(section)
+                if acceptance:
+                    reasons.append(acceptance)
+                if reasons:
+                    sys.exit('\n'.join(reasons) + '\ninit refused; no write')
+                sources.update({name: hashlib.sha256(blob).hexdigest() if blob is not None else None
+                                for name, blob in blobs.items()})
+                continue
+            check = argparse.Namespace(repo=str(repo), plan=source,
+                                       tasks=','.join(goal['tasks']), receipt=None)
+            code, receipt = backlog_receipt(check, candidate=candidate)
+            if code == 1:
+                sys.exit('\n'.join(receipt['reasons']) + '\ninit refused; no write')
+            sources.update(receipt['sha256'])
+        existing = checked_bytes(path_of(repo))
+        if existing is not None:
+            if original_todo is None:
+                sys.exit('existing goals.json has no TODO.md; reconcile bodies through maintenance; no write')
+            current = load(repo)
+            if errors(current) or normalize(current) != normalized:
+                sys.exit('existing goals.json conflicts with intent; use maintenance commands to reconcile; no write')
+            print('ok already initialized; no write'); return
+        # Freeze referenced sources and inputs too, not just the ledger pair.
+        if checked_bytes(intent_path) != intent_blob or (a.todo_file and checked_bytes(Path(a.todo_file)) != supplied):
+            sys.exit('initialization inputs changed; no write')
+        for name, digest in sources.items():
+            if name not in candidate:
+                blob = checked_bytes(repo / name)
+                if (hashlib.sha256(blob).hexdigest() if blob is not None else None) != digest:
+                    sys.exit('accepted sources changed; no write')
+        # Roll back only our exact new TODO bytes if ledger replacement fails.
+        # This is cooperative coordination, not a crash-atomic two-file commit.
+        if original_todo is None:
+            atomic_write(repo / 'TODO.md', text, expected_bytes=None)
+            digest = hashlib.sha256()
+            for name, blob in (('goals.json', None), ('TODO.md', todo)):
+                digest.update(name.encode() + b'\0')
+                digest.update(b'missing\0' if blob is None else str(len(blob)).encode() + b'\0' + blob)
+            TRANSACTION.set((repo, digest.hexdigest()))
+        try:
+            atomic_write(path_of(repo), ledger, expected_bytes=None)
+        except (OSError, SystemExit):
+            if original_todo is None and checked_bytes(repo / 'TODO.md') == todo:
+                (repo / 'TODO.md').unlink()
+            raise
+        print('ok initialized; run fmt, validate, render and backlog-check')
+    except (OSError, ValueError, TypeError) as exc:
+        sys.exit(f'init input/write error: {exc}; reconcile inputs before retrying')
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
+    init = sub.add_parser('init', help='create a version-1 index from accepted intent without overwriting existing state')
+    init.add_argument('repo')
+    init.add_argument('--intent', required=True, help='JSON file using the existing version-1 goals/tasks schema')
+    init.add_argument('--todo-file', help='complete Markdown bodies when TODO.md is absent; must byte-match if it exists')
     for name in ('validate', 'fmt', 'render', 'revision'):
         sub.add_parser(name).add_argument('repo')
     ar = sub.add_parser('archive'); ar.add_argument('repo')
@@ -918,6 +1035,8 @@ def main():
 
 
 def execute(a):
+    if a.cmd == 'init':
+        initialize(a); return
     if a.cmd == 'archive':
         data = load(a.repo) if path_of(a.repo).exists() else None
         result = archive_tasks(a.repo, data, verified_tasks=tuple(filter(None, a.verified_tasks.split(','))))

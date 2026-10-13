@@ -71,6 +71,15 @@ completion requires executed passing evidence and all linked tasks done. Full
 scope, acceptance, dependencies and ownership stay in TODO task bodies; rendering
 coverage does not reconstruct those bodies or prove their acceptance.
 
+`goals.py init <repo> --intent FILE [--todo-file FILE]` provides the first-index
+interface for empty and TODO-only repositories. It reuses the version-1 schema
+and consumer body checks, requires user-supplied local accepted source headings,
+and preserves existing TODO/history/ownership/focus rather than inferring intent.
+Equivalent existing state is a byte-preserving no-op; conflicts require explicit
+maintenance, not overwrite. Run formatting, validation, rendering and consumer
+readiness separately. See the
+[executable initialization path](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization).
+
 Ledger operations share a Git-common-directory advisory lock and support revision
 checks. A linked worktree needs explicit canonical targeting unless a registered
 backlog authority is already bound. Stale revisions and unsafe paths are refused;
@@ -86,8 +95,8 @@ completion metadata stays live. See the
 
 Setup, upgrade, migration and removal procedures remain with the
 [installation runbook](installation.md) and [recovery guide](uninstall.md).
-Preview success is not rollback protection; no schema initialization interface or
-live qualification is added by documenting these existing contracts.
+Preview success is not rollback protection. The task-index initialization helper
+does not initialize installer/runtime stores or add live qualification.
 
 ## Data and trust boundaries
 
@@ -108,9 +117,9 @@ is the authoritative boundary description.
 [TODO.md](../TODO.md) owns implementation priorities. Its open entries describe planned
 changes; completed entries record bounded local results and qualification limits.
 The [goals.json](../goals.json) index now mirrors the open queue, including the
-Needs decision policy gate. TOOLSET-002 still
-owns a repeatable first-time initialization interface; seeding this repository's
-documented JSON schema does not implement that interface. Historical completion
+Needs decision policy gate. TOOLSET-002 owns independent review and integration of
+the first-time initialization interface described above; offline helper execution
+does not close its canonical task before review. Historical completion
 notes remain in TODO and its established archive; they are not new executed proof.
 Ledger eligibility does not establish native admission, ownership or execution.
 
