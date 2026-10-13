@@ -70,10 +70,20 @@ class RegistrationTests(unittest.TestCase):
             requirement.write_bytes(valid_requirement)
             for wrong_manifest in (dict(manifest, goal_task='T2'),
                                    dict(manifest, candidate_identity=dict(base_commit='b'*40))):
-                with self.assertRaises(ValueError):
+                with self.assertRaisesRegex(ValueError, 'mismatched fields: ' + ('task' if wrong_manifest.get('goal_task') == 'T2' else 'base')):
                     guard.check_registration(wrong_manifest, tmp, requirement, pin, 'card-1')
             for card in (None, 'foreign'):
-                with self.assertRaises(ValueError): guard.check_registration(manifest, tmp, requirement, pin, card)
+                with self.assertRaisesRegex(ValueError, 'mismatched fields: card'):
+                    guard.check_registration(manifest, tmp, requirement, pin, card)
+            other_workspace = Path(tmp) / 'other'
+            other_workspace.mkdir()
+            with self.assertRaisesRegex(ValueError, 'mismatched fields: workspace'):
+                guard.check_registration(manifest, other_workspace, requirement, pin, 'card-1')
+            with self.assertRaisesRegex(ValueError, 'mismatched fields: card, base, task'):
+                guard.check_registration(dict(manifest, goal_task='T2',
+                    candidate_identity=dict(base_commit='b'*40)), tmp, requirement, pin, None)
+            self.assertEqual(requirement.read_bytes(), valid_requirement)
+            self.assertEqual(path.read_bytes(), before)
             with self.assertRaises(ValueError): guard.check_registration(manifest, tmp, requirement, '0'*64, 'card-1')
             for field in fields.values():
                 with self.subTest(duplicate_field=field):

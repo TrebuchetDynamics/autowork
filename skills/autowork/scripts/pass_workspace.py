@@ -396,11 +396,13 @@ def check_registration(manifest, workspace, requirement_path, digest, card):
     registration_spec.loader.exec_module(module)
     requirement = json.loads(raw, object_pairs_hook=module.unique_object)
     expected = requirement['expected']
-    if (not card or expected['card'] != card
-            or expected['workspace'] != str(Path(workspace).resolve(strict=True))
-            or expected['base'] != manifest['candidate_identity']['base_commit']
-            or expected['task'] != manifest.get('goal_task')):
-        raise ValueError('Registration does not bind the admitted task/card/workspace/base')
+    admitted = dict(card=card, workspace=str(Path(workspace).resolve(strict=True)),
+                    base=manifest['candidate_identity']['base_commit'], task=manifest.get('goal_task'))
+    mismatched = [key for key, value in admitted.items()
+                  if expected[key] != value or (key == 'card' and not value)]
+    if mismatched:
+        raise ValueError('Registration does not bind the admitted task/card/workspace/base; '
+                         'mismatched fields: ' + ', '.join(mismatched))
     return module.verify(requirement['registry'], requirement['sha256'], requirement['fields'], expected)
 
 
