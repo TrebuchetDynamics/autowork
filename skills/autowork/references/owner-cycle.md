@@ -33,6 +33,27 @@ external-owner workflow, pass `--require-owner` to the cycle or selector; the
 owner-request, inbox and registry-release instructions below apply to that opt-in.
 No new schedule, publication authority or live-operation permission is implied.
 
+## Native runtime limits stay operation-scoped
+
+Saved handoff IDs restore registration consistency, not authenticated worker
+identity or authority for claim-protected operations. Keep shell ownership
+scrubbing intact; never export identity, infer a lease from a workspace path, or
+use caller-supplied IDs to impersonate a worker. Use protected native lifecycle
+tools only through their actual authenticated context.
+
+If that context is unavailable, preserve the original card/history and record the
+exact affected operation. Continue supported coordinator-side preparation,
+reviewed-candidate integration and independent authorized offline work in isolated
+registered workspaces. Check an accepted named fallback against its own goal's
+frontier and retain the normal source-bound milestone fallback and live-ownership
+gates. A held native operation is not a profile-wide BLOCKED verdict. Coordinator
+CLI controls use coordinator authority; they do not authenticate a worker.
+
+Respect a source restriction: inability to extend one runtime route does not
+license Hermes Agent edits, tunneling commands through unrelated tools, or another
+core-edit-or-stop ultimatum. Report the unavailable route separately from actual
+implementation and remaining acceptance.
+
 ## Scheduled execution and explicit planning requests
 
 Treat an already authorized Autowork cron as execution. A separate explicit `plan`
