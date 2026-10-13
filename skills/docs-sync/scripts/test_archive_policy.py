@@ -11,21 +11,21 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class ArchivePolicyTests(unittest.TestCase):
     def test_shipped_skill_uses_the_archive_contract(self):
-        policy = ROOT / 'repo-docs/references/todo-archive.md'
+        policy = ROOT / 'docs-sync/references/todo-archive.md'
         self.assertTrue(policy.is_file(), 'Missing live-backlog/archive contract')
         text = policy.read_text()
         for requirement in ('todo.archive.md', 'docs/TODO-archive.md',
                             'verbatim', 'goals.json', 'Audit', 'append-only',
                             'dated pass-notes', 'multiplicity'):
             self.assertIn(requirement, text)
-        skill = (ROOT / 'repo-docs/SKILL.md').read_text()
+        skill = (ROOT / 'docs-sync/SKILL.md').read_text()
         self.assertIn('references/todo-archive.md', skill)
         self.assertIn('archive', skill)
         self.assertIn('dated pass-notes', skill)
 
 
     def test_goal_helpers_preserve_archive_and_ignore_historical_queue(self):
-        script = ROOT / 'repo-docs/scripts/goals.py'
+        script = ROOT / 'docs-sync/scripts/goals.py'
         for name in ('todo.archive.md', 'docs/TODO-archive.md'):
             with self.subTest(archive=name), tempfile.TemporaryDirectory() as directory:
                 repo = Path(directory)

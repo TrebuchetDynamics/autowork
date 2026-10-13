@@ -6,7 +6,7 @@ description: "Create or maintain source-backed project documentation and the cen
 # Docs Sync
 
 Read the [host contract](../COMMON.md) and use the shared
-[document scaffold](../../../skills/repo-docs/references/document-scaffold.md).
+[document scaffold](../../../skills/docs-sync/references/document-scaffold.md).
 Bare invocation bootstraps missing applicable roles and updates supported drift;
 scoped requests change only affected owners. Audit/read-only changes no files.
 Reuse paths and combine roles for small repos; never generate empty documentation.
@@ -20,7 +20,7 @@ dependencies and ownership. Keep Now/Next/Needs decision distinct. Preserve exis
 IDs, completed work, active writers and priorities; never manufacture work.
 
 If goals.json exists, synchronize it using the bundled
-[goals helper](../../../skills/repo-docs/scripts/goals.py): inspect `--help`, then
+[goals helper](../../../skills/docs-sync/scripts/goals.py): inspect `--help`, then
 fmt/validate/render with the absolute repository path. Its rendering does not create
 full task bodies. Do not create a second tracker when the repository already has an
 authoritative equivalent. Use source inspection for routine edits; graph tools only

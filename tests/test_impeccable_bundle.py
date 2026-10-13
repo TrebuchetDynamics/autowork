@@ -39,6 +39,9 @@ class CompleteBundleTests(unittest.TestCase):
             for _, home in homes:
                 self.assertTrue((home/'skills/impeccable/SKILL.md').is_file())
                 for folder in (ROOT/'skills').iterdir():
+                    if folder.name in {'repo-docs', 'repo-interview'}:
+                        self.assertFalse((home/'skills'/folder.name).exists())
+                        continue
                     if not (folder/'SKILL.md').is_file() and folder.name != 'shared':
                         continue
                     for source in folder.rglob('*'):

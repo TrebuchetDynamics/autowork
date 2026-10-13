@@ -41,7 +41,7 @@ class PipelineTests(unittest.TestCase):
                            capture_output=True, text=True, timeout=30)
         self.base = subprocess.run(['git', '-C', str(self.repo), 'rev-parse', 'HEAD'],
                                    check=True, capture_output=True, text=True, timeout=30).stdout.strip()
-        result = subprocess.run([sys.executable, str(ROOT / 'repo-docs/scripts/goals.py'),
+        result = subprocess.run([sys.executable, str(ROOT / 'docs-sync/scripts/goals.py'),
                                  'next', str(self.repo), '--json'], check=True,
                                 capture_output=True, text=True, timeout=30)
         self.selected = json.loads(result.stdout)[0]['task']

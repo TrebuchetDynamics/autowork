@@ -72,7 +72,7 @@ Apply [TODO work center](../shared/TODO-WORKCENTER.md). TODO.md is the human wor
 queue and goals.json is its synchronized execution index. Map upstream
 `tasks/todo.md` and `tasks/plan.md` onto existing canonical tasks and linked plans;
 never create a competing backlog or duplicate task IDs. Reuse accepted specs,
-quality requirements and decisions. Repo-docs reconciles documentation and tasks;
+quality requirements and decisions. Docs Sync reconciles documentation and tasks;
 Autoresearch performs bounded research/planning; Autowork remains the executor.
 
 Carry existing user authorization through phases. Routine engineering choices and

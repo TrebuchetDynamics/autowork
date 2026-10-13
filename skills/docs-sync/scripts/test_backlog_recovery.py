@@ -98,15 +98,25 @@ class BacklogRecoveryTests(unittest.TestCase):
         self.assertNotIn('[Accepted plan]', one)
         self.assertIn('[Accepted plan](SPEC.md#slice)', two)
 
-    def test_empty_missing_and_duplicate_sources_are_not_manufactured(self):
-        for sources in ('', '  Sources:\n', '  Sources: [One](README.md)\n  Sources: [Two](README.md)\n'):
+    def test_missing_sources_uses_accepted_binding_and_is_idempotent(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(self.body.replace('  Sources: [Slice](SPEC.md#slice)\n', ''))
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        once = todo.read_bytes()
+        self.assertIn(b'Sources: [Accepted plan](SPEC.md#slice)', once)
+        self.assertEqual(self.invoke().returncode, 0)
+        self.assertEqual(todo.read_bytes(), once)
+
+    def test_empty_and_duplicate_sources_require_reconciliation(self):
+        for sources in ('  Sources:\n', '  Sources: [One](README.md)\n  Sources: [Two](README.md)\n'):
             with self.subTest(sources=sources):
                 (self.repo / 'README.md').write_text('fixture\n')
                 (self.repo / 'TODO.md').write_text(self.body.replace('  Sources: [Slice](SPEC.md#slice)\n', sources))
                 before = (self.repo / 'TODO.md').read_bytes()
                 result = self.invoke()
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn('unique nonempty Sources', result.stderr)
+                self.assertIn('empty or ambiguous Sources', result.stderr)
                 self.assertEqual(before, (self.repo / 'TODO.md').read_bytes())
 
     def test_proposed_plan_and_duplicate_bodies_are_not_changed(self):

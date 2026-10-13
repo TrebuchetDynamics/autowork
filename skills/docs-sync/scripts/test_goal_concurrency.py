@@ -60,7 +60,7 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(initialized.returncode, 0, initialized.stderr)
         env = dict(os.environ, GIT_DIR=str(other / '.git'))
         before = (self.repo / 'goals.json').read_bytes()
-        with (self.repo / '.git' / '.repo-docs-goals.lock').open('a') as lock:
+        with (self.repo / '.git' / '.docs-sync-goals.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             p = subprocess.Popen([sys.executable, str(SCRIPT), 'task', str(self.repo), 'T1', 'done'],
                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -79,7 +79,7 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(p.returncode, 0, out + err)
         data = json.loads((self.repo / 'goals.json').read_text())
         self.assertEqual(next(t for t in data['tasks'] if t['id'] == 'T1')['status'], 'done')
-        self.assertFalse((other / '.git' / '.repo-docs-goals.lock').exists())
+        self.assertFalse((other / '.git' / '.docs-sync-goals.lock').exists())
 
     def test_common_dir_override_cannot_make_linked_worktree_canonical(self):
         self.git('init')
@@ -143,7 +143,7 @@ assert dict(os.environ) == before
         for overrides in variants:
             with self.subTest(overrides=overrides):
                 env = dict(os.environ, IDENTITY_SENTINEL='retained', **overrides)
-                with (self.repo / '.git' / '.repo-docs-goals.lock').open('a') as lock:
+                with (self.repo / '.git' / '.docs-sync-goals.lock').open('a') as lock:
                     fcntl.flock(lock, fcntl.LOCK_EX)
                     p = subprocess.Popen([sys.executable, '-c', harness, str(SCRIPT.parent),
                                           'task', str(self.repo), 'T1', 'in_progress'],
@@ -186,7 +186,7 @@ assert dict(os.environ) == before
         denied = self.cli('task', worker, 'T1', 'done')
         self.assertNotEqual(denied.returncode, 0)
         self.assertIn('canonical', denied.stderr)
-        with (self.repo / '.git' / '.repo-docs-goals.lock').open('a') as lock:
+        with (self.repo / '.git' / '.docs-sync-goals.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             processes = [self.start('add-task', self.repo, 'T3', '--goal', 'G', '--title', 'Third'),
                          self.start('evidence', worker, 'G', '--kind', 'executed', '--ref', 'worker-check',
@@ -216,7 +216,7 @@ assert dict(os.environ) == before
         alias.symlink_to(self.repo, target_is_directory=True)
         self.assertEqual(self.cli('fmt', alias).returncode, 0)
         for name, command in [('goals.json', 'fmt'), ('TODO.md', 'render'),
-                              ('.repo-docs-goals.lock', 'fmt')]:
+                              ('.docs-sync-goals.lock', 'fmt')]:
             path = self.repo / name
             saved = path.read_bytes()
             path.unlink()
@@ -300,7 +300,7 @@ goals.main()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Git repository identity', result.stderr)
         self.assertEqual((self.repo / 'goals.json').read_bytes(), before)
-        self.assertFalse((self.repo / '.repo-docs-goals.lock').exists())
+        self.assertFalse((self.repo / '.docs-sync-goals.lock').exists())
 
     def test_nongit_fixture_works_without_git_executable(self):
         env = dict(os.environ, PATH='')
@@ -327,7 +327,7 @@ goals.main()
 
     def test_parallel_mutations_and_render_wait_for_one_repository_lock(self):
         before = (self.repo / 'goals.json').read_bytes()
-        with (self.repo / '.repo-docs-goals.lock').open('a') as lock:
+        with (self.repo / '.docs-sync-goals.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             processes = [self.start('add-task', self.repo, 'T3', '--goal', 'G', '--title', 'Third'),
                          self.start('evidence', self.repo, 'G', '--kind', 'executed', '--ref', 'check-a', '--result', 'pass'),

@@ -18,8 +18,8 @@ if __name__ != '__main__':
     raise unittest.SkipTest('Standalone live harness; run explicitly with a fresh fixture')
 
 fixture = Path(sys.argv[1] if len(sys.argv) > 1 else
-               os.path.join((os.environ.get('HERMES_HOME') or os.path.expanduser('~/.hermes')), 'cache/scratch/repo-docs-goalgap-regression'))
-receipt = Path((os.environ.get('HERMES_HOME') or os.path.expanduser('~/.hermes'))) / 'install-receipts/repo-docs' / str(int(time.time()))
+               os.path.join((os.environ.get('HERMES_HOME') or os.path.expanduser('~/.hermes')), 'cache/scratch/docs-sync-goalgap-regression'))
+receipt = Path((os.environ.get('HERMES_HOME') or os.path.expanduser('~/.hermes'))) / 'install-receipts/docs-sync' / str(int(time.time()))
 receipt.mkdir(parents=True)
 
 protected = ['pubspec.yaml', 'lib/main.dart', 'test/counter_test.dart']
@@ -37,10 +37,10 @@ if set(initial) != set(protected) | {'README.md'}:
 
 env = os.environ.copy()
 env['HERMES_EPHEMERAL_SYSTEM_PROMPT'] = (
-    f'This is an isolated repo-docs behavioral regression. Only documentation writes inside {fixture} '
+    f'This is an isolated docs-sync behavioral regression. Only documentation writes inside {fixture} '
     'are authorized. Do not change source, tests, manifest or agent-instruction files. Do not install '
     'tools, run Flutter, access network, modify profiles/configuration/schedules or tasks, dispatch '
-    'goals, commit, push or touch production. Follow the actual bare repo-docs Bootstrap/Maintain '
+    'goals, commit, push or touch production. Follow the actual bare docs-sync Bootstrap/Maintain '
     'policy, preserving byte-exact no-op on a second pass. The README states the accepted intent; no '
     'user action is required. The fixture has no platform runners; do not imply product tests ran.')
 command = ['hermes', 'chat', '--in', str(fixture), '--oneshot', '-Q',

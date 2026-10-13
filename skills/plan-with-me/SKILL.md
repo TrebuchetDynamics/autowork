@@ -1,6 +1,6 @@
 ---
 name: plan-with-me
-description: "Use when the user wants to be interviewed about a repository's goals, requirements or unresolved decisions, then capture answers in project docs and plans."
+description: "Use when the user wants collaborative planning: research the repository, clarify their initial request and important decisions through questions, then save docs and tasks."
 license: MIT
 metadata:
   version: 0.1.0
@@ -10,9 +10,11 @@ metadata:
 
 # Plan With Me
 
-The interactive companion to [repo-docs](../repo-docs/SKILL.md). Learn what the
-owner wants by asking focused questions, then reconcile the answers into existing
-documentation and actionable tasks. Follow the [shared contract](../shared/COMMON-CONTRACT.md)
+The interactive counterpart to Plan For Me: investigate with Autoresearch, refine
+the initial request through focused questions, and save the plan and tasks. Read
+the pinned [plan protocol](../autoresearch/upstream/plan.md) and apply the
+[interactive planning adaptations](../shared/RESEARCH-PLAN.md#interactive-planning-plan-with-me).
+Use Docs Sync to reconcile findings and answers into existing documentation. Follow the [shared contract](../shared/COMMON-CONTRACT.md)
 and [plan handoff](../shared/PLAN-HANDOFF.md).
 
 `/plan_with_me` (`/plan-with-me` also works in CLI) starts an interview about the
@@ -22,13 +24,15 @@ answered decisions and maintaining affected docs. `questions only`, `audit` or
 autowork. Honor any separate implementation authority already given.
 
 The public skill ID is `plan-with-me`; old commands remain compatibility
-aliases. Source directories stay stable for supporting files. The public command means ask the user and plan together.
+aliases. The source directory is `skills/plan-with-me/`. The public command means ask the user and plan together.
 
 ## Challenge mode
 
 For “grill me”, “challenge this plan” or the compatibility `/grill_me` command,
 read [the questioning protocol](../grill-me/SKILL.md) on demand. This is a mode of
-Plan With Me, not a second required planning workflow.
+Plan With Me, not a second required planning workflow. The interactive adaptations
+override its whole-frontier rounds and generic approval prompt: one question at a
+time, no exhaustive interrogation or repeat approval of settled answers.
 
 ## Resume without repeating the interview
 
@@ -42,7 +46,7 @@ documentation/ledger checks once; do not restart Docs Sync after each response.
 
 Read repository instructions, the user's current request, relevant existing docs,
 accepted decisions and scoped source/tests. Reuse the actual README/PRD/spec/ADR
-and backlog owners; do not perform a full repo-docs bootstrap before asking.
+and backlog owners; do not perform a full docs-sync bootstrap before asking.
 Distinguish implemented behavior from intended behavior. Do not ask the user for
 facts you can establish from the repository, or reopen settled answers without
 new contradictory evidence.
@@ -108,7 +112,7 @@ a material inference or unresolved conflict. Clear contextual approval counts;
 do not demand a magic word or re-approve answers already given. If a draft needs
 acceptance, present the concrete draft and bind the reply to that scope.
 
-In writable mode, run a narrow repo-docs Maintain pass for the affected owners, applying its
+In writable mode, run a narrow docs-sync Maintain pass for the affected owners, applying its
 canonical ledger and concurrency rules. Default invocation already requests
 this persistence, so do not ask again whether to save. Accepted intent becomes
 bounded Now/Next tasks with dependencies, acceptance and verification. Unanswered

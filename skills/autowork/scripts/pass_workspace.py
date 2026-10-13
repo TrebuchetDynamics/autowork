@@ -135,7 +135,7 @@ def verify(manifest, workspace, *, admitted_task=None):
         ledger = json.loads(pinned_ledger)
         selected = [t for t in ledger['tasks'] if t['id'] == task_id]
         goals_spec = importlib.util.spec_from_file_location('pass_goals',
-            Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py')
+            Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py')
         assert goals_spec is not None and goals_spec.loader is not None
         goals = importlib.util.module_from_spec(goals_spec)
         goals_spec.loader.exec_module(goals)

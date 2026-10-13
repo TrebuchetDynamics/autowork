@@ -29,7 +29,7 @@ Keep installed-native-CLI control suites opt-in even when they make zero model c
 
 For milestone-first changes, exercise the real `goals.py focus <repo> <GOAL>` write,
 `focus <repo> --json` read and `next <repo> --json` ordering. Run
-`repo-docs/scripts/test_milestone_focus.py` and `test_goals.py`; dependencies remain
+`docs-sync/scripts/test_milestone_focus.py` and `test_goals.py`; dependencies remain
 mandatory and focused Next must precede unrelated Now. Inspect the generated
 `start_goal.py` worker body as well as skill prose: injected delivery/review rules
 must agree with policy. Run `autowork/scripts/test_workflow_handoff.py` plus the

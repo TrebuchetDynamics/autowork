@@ -65,7 +65,7 @@ hold separate from ordinary engineering choices that can already be made.
    - Performance/developer tooling: a measured bottleneck or a broken local/CI
      workflow. Identify the observable before/after result.
 4. For nontrivial decomposition, run one bounded Autoresearch Plan pass over the
-   chosen component, then repo-docs Maintain (Bootstrap only if truly absent).
+   chosen component, then docs-sync Maintain (Bootstrap only if truly absent).
    A `planning.action` of `reuse`, `integrate_existing_inputs` or
    `repair_execution_inputs` describes the original task, not coverage of all
    maintenance areas. Reuse that task's evidence while exploring a distinct seam;

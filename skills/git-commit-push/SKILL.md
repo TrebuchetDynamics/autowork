@@ -320,7 +320,7 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 
 - Never commit secrets, `.env*`, credentials, private keys, logs, caches, build output,
   databases or service data roots, `.understand-anything/` or other generated artifacts, or machine state.
-- **Project ledgers are not generated artifacts.** `goals.json` (the repo-docs goal ledger,
+- **Project ledgers are not generated artifacts.** `goals.json` (the docs-sync goal ledger,
   written via `goals.py`), `TODO.md`, `BLOCKERS.md`, and impeccable's `PRODUCT.md`, `DESIGN.md`
   (+ sidecar) and `.impeccable/` config/briefs are tracked project files. Ship them with
   the work that changed them; check them with `goals.py validate` for goals.json. Only

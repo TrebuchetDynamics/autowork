@@ -60,6 +60,18 @@ class OwnerUnblockTests(unittest.TestCase):
         self.assertTrue(result.stdout, result.stderr)
         return result, json.loads(result.stdout)
 
+    def test_missing_sources_restored_from_existing_accepted_goal(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(self.body.replace('  Sources: [Readme](README.md)\n', ''))
+        self.authority['expected_revision'] = retry_selection.goals.revision(self.repo)
+        self.auth.write_text(json.dumps(self.authority))
+        before_ledger = (self.repo / 'goals.json').read_bytes()
+        result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
+        self.assertEqual(result.returncode, 0, receipt)
+        self.assertIn('Sources: [Accepted plan](SPEC.md#slice)', todo.read_text())
+        self.assertEqual((self.repo / 'goals.json').read_bytes(), before_ledger)
+        self.assertEqual(self.git('write-tree'), self.index)
+
     def accepted_history(self, status='Status: Accepted', missing_body=False):
         plan = '# Slice\n\n' + status + '\nScope: startup only\n\n# Foreign\nStatus: Proposed\nForeign bytes\n'
         (self.repo / 'SPEC.md').write_text(plan)

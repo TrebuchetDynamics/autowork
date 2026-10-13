@@ -84,6 +84,16 @@ class BacklogPlanTests(unittest.TestCase):
             self.cycle['recovery']['gate']=gate
             self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],expected)
 
+    def test_draft_saved_repairs_shared_backlog_before_unrelated_discovery(self):
+        self.cycle.update(scope='repository', backlog_ready=False, unchanged_runs=0)
+        self.cycle['recovery']['selection'] = {
+            'state': 'draft_saved', 'reasons': ['T9: missing Acceptance']}
+        result = backlog_plan.decide(self.cycle, self.state)
+        self.assertEqual(result['action'], 'plan')
+        self.assertIn('documentation', result['reason'])
+        backlog_plan.record(self.cycle, self.state, 'fixture://repair', 'integration_pending')
+        self.assertEqual(backlog_plan.decide(self.cycle, self.state)['action'], 'reuse')
+
     def test_receipt_requires_actual_evidence_and_known_outcome(self):
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'','no_supported_delta')
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'fixture://receipt','completed')

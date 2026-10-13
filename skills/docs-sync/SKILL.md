@@ -251,7 +251,7 @@ ledger history. Verify multiplicity, continuations, links and second-pass bytes,
 not just counts. Archive never queues work. Audit changes neither file.
 
 Fix real monitor drift; intentional planned/external/generated references use exact
-tracked `.repo-docs-drift-ignore` lines. Unstated speculative goals get a question
+tracked `.docs-sync-drift-ignore` lines. Unstated speculative goals get a question
 (default: not in scope), not tasks; explicit booking instruction supplies intent.
 
 ### Consumer-bound brainstorming handoff check

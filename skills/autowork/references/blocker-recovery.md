@@ -9,7 +9,7 @@ intent, review approval, native admission, credentials or delivery destinations.
 As the canonical integration owner, use `terminal` to get `goals.py revision` and run:
 
 ```sh
-python3 <skills-root>/repo-docs/scripts/recover_backlog.py /absolute/consumer \
+python3 <skills-root>/docs-sync/scripts/recover_backlog.py /absolute/consumer \
   --plan docs/spec.md#accepted-slice --tasks TASK1 \
   --expected-revision <current-token> --source-commit <full-immutable-commit>
 ```
@@ -26,7 +26,7 @@ Conflicting bodies, changed intent and missing acceptance remain unreconciled.
 Existing accepted goal intent supplies a missing Sources link, not a new approval.
 The referenced section must already say `Status: Accepted`. If acceptance metadata
 or the plan itself is absent, recover actual owner evidence and reconcile that owner
-through repo-docs first; do not insert approval merely to obtain a passing gate.
+through docs-sync first; do not insert approval merely to obtain a passing gate.
 The consumer supports header-inline Goal, continued Sources and an explicit `Section:`
 within `## Now / Next`; ambiguous sections still refuse. No product/profile changes
 are authorized by this command. Linked worktrees still require canonical authority.
@@ -60,7 +60,7 @@ Do not publish private input ancestry merely because a local commit was prepared
 
 ## Retry against the consumer, not a docs scratch tree
 
-After the bounded repo-docs fallback has reconciled its proposal into the real
+After the bounded docs-sync fallback has reconciled its proposal into the real
 consumer, use `terminal` to run:
 
 ```sh

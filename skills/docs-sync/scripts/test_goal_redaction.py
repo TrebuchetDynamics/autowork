@@ -130,7 +130,7 @@ class RedactionTests(unittest.TestCase):
 
     def test_redaction_waits_for_existing_common_git_lock(self):
         import fcntl
-        with (self.repo / '.git' / '.repo-docs-goals.lock').open('a') as lock:
+        with (self.repo / '.git' / '.docs-sync-goals.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             process = subprocess.Popen([sys.executable, str(SCRIPT), 'redact', str(self.repo),
                 '--replacements-file', str(self.mapping), '--archive-dir', str(self.archive)],

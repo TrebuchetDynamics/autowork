@@ -9,8 +9,6 @@ import re
 SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 logger = logging.getLogger(__name__)
 PUBLIC_SKILLS = {
-    "repo-interview": "plan-with-me",
-    "repo-docs": "docs-sync",
     "autoresearch": "plan-for-me",
 }
 
@@ -25,6 +23,8 @@ def _discover_skills():
     commands = set()
     for folder in sorted(root.iterdir()):
         path = folder / "SKILL.md"
+        if folder.name in {"repo-docs", "repo-interview"}:
+            continue  # Retired local worker snapshots are never discoverable skills.
         if not folder.is_dir() or not path.is_file():
             continue
         name = folder.name
@@ -47,7 +47,7 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
     if not path.is_file():
         return f"Skill {name!r} no longer exists. Update the plugin and restart Hermes."
     public = PUBLIC_SKILLS.get(name, name) if namespace == "hermes-toolset" else name
-    if namespace == "hermes-toolset" and name == "grill-me" and (SKILLS_DIR / "repo-interview/SKILL.md").is_file():
+    if namespace == "hermes-toolset" and name == "grill-me" and (SKILLS_DIR / "plan-with-me/SKILL.md").is_file():
         public = "plan-with-me"
         raw_args = "Challenge mode: read ../grill-me/SKILL.md and stress-test the plan.\n\n" + raw_args
     prompt = (
@@ -57,7 +57,7 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
         "Resolve supporting files relative to that skill's directory.\n\n"
         f"User arguments:\n{raw_args}"
     )
-    if name == "autoresearch":
+    if namespace == "hermes-toolset" and name == "autoresearch":
         prompt = (
             "TODO.md is the central work queue. By default, persist actionable "
             "research/planning findings there through docs_sync and synchronize "
@@ -108,10 +108,11 @@ def register(ctx):
     apply_runtime_defaults(ctx)
     existing = get_plugin_commands()
     for name, command, path in skills:
-        # Keep source directories stable for helper paths and active workers;
-        # publish only the current workflow identities in the skill catalog.
-        if name != "grill-me" or not any(n == "repo-interview" for n, _, _ in skills):
+        # Canonical folders own the current skill identities.
+        if name != "grill-me" or not any(n == "plan-with-me" for n, _, _ in skills):
             ctx.register_skill(PUBLIC_SKILLS.get(name, name), path)
+        if name in {"docs-sync", "plan-with-me"}:
+            continue  # workflow_commands reserves both public spellings atomically.
         if resolve_command(command) is not None or command in existing:
             logger.warning("Skipping /%s: command already exists; use skill_view('hermes-toolset:%s').",
                            command, name)

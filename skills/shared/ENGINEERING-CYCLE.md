@@ -1,6 +1,6 @@
 # Repository engineering cycle
 
-Use the existing repo-docs backlog and autowork executor. This is workflow guidance,
+Use the existing docs-sync backlog and autowork executor. This is workflow guidance,
 not a scheduler, new database or `/cycle` command. Documentation work alone never
 launches autowork. Only an explicit whole-spec implementation request authorizes
 continuation through that accepted scope; default autowork still hands off one slice.
@@ -25,8 +25,8 @@ Installation makes skills available, not mandatory to load or invoke.
 | Ready task with clear checks | Autowork executes; no research or documentation prepass. |
 | Known small repair, empty queue | Record one bounded task and execute; no research ceremony. |
 | Unresolved hypothesis, tradeoff or measured optimization | Bounded Autoresearch, then return findings to the same Autowork task. |
-| Affected docs, accepted decisions or task metadata | Narrow repo-docs Maintain; no repository bootstrap. |
-| User requirements that evidence cannot answer | repo-interview; Grill Me only for requested/advisable adversarial questioning. |
+| Affected docs, accepted decisions or task metadata | Narrow docs-sync Maintain; no repository bootstrap. |
+| User requirements that evidence cannot answer | plan-with-me; Grill Me only for requested/advisable adversarial questioning. |
 | Specific engineering method gap | Engineering reference adapter and the relevant protocol only. |
 | UI/design work | Impeccable when relevant; no design pass for unrelated changes. |
 
@@ -45,7 +45,7 @@ changes a decision or artifact; never manufacture receipts for unused skills.
 Use [autoresearch](../autoresearch/SKILL.md) for bounded measured experiments,
 diagnosis, adversarial analysis and research-driven planning. Its original command
 protocols are vendored with a pinned revision. `plan`/`learn`/`improve` and all
-research checkpoints route findings through repo-docs narrow Maintain: update
+research checkpoints route findings through docs-sync narrow Maintain: update
 existing document owners, deduplicate accepted tasks, schedule Now/Next in TODO.md
 and canonical goals.json, and run the consumer handoff gate. TSV/handoff files are
 evidence, never a competing task queue. Autowork retains task ownership, execution,
@@ -101,7 +101,7 @@ namespace or assume another profile's home. Existing imports are left intact.
 | --- | --- | --- |
 | Missing owner intent that evidence cannot resolve | `interview-me` | Ask only the material owner question; routine engineering decisions use the autonomy rule above. |
 | Missing specification | `spec-driven-development` | Reuse the accepted spec/PRD; do not restart accepted design. |
-| Changed behavior or architectural decision | `documentation-and-adrs` | Amend affected docs/ADR with observed facts; repo-docs owns backlog reconciliation. |
+| Changed behavior or architectural decision | `documentation-and-adrs` | Amend affected docs/ADR with observed facts; docs-sync owns backlog reconciliation. |
 | Accepted work needs bounded tasks | `planning-and-task-breakdown` | Add dependencies, scope and checks to canonical `goals.json` and root `TODO.md`. |
 | A consequential planning assumption needs scrutiny | `doubt-driven-development` | Test the artifact/contract; record corrections and unresolved risks. |
 | Implement an eligible slice | `incremental-implementation` | Keep one observable result, owned files and task ID. |
@@ -136,8 +136,8 @@ Load only relevant skills, not this whole table. Adapt upstream examples such as
 `tasks/todo.md`, new spec files and automatic commits to existing owners and
 permissions; never create a competing backlog or duplicate accepted tasks.
 
-For repo-docs, apply these skills through
-[decisive planning](../repo-docs/references/decisive-planning.md): evidence-backed
+For docs-sync, apply these skills through
+[decisive planning](../docs-sync/references/decisive-planning.md): evidence-backed
 Now/Next ordering, bounded bodies and repaired consumer contracts are the outputs.
 Record selected skill → changed owner/decision/check; a list of loaded skills does
 not establish application. A usable accepted backlog does not need repeated planning.
@@ -167,7 +167,7 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
 
 ## One canonical backlog, one executor, one closure owner
 
-1. Repo-docs reconciles accepted requirements into existing goal/task IDs and full
+1. Docs Sync reconciles accepted requirements into existing goal/task IDs and full
    TODO bodies. Use [plan handoff](PLAN-HANDOFF.md) and its consumer backlog-check;
    drafts, missing acceptance and unresolved dependencies do not become ready work.
    A usable backlog skips another bootstrap or broad audit.
@@ -195,7 +195,7 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    --result pass|fail` for actual check receipts. The helper requires all goal tasks
    done and an executed pass to promote an unmet goal; it does not independently
    verify review, source freshness or truth of caller-supplied evidence.
-   Run narrow repo-docs Maintain to reconcile affected docs and task bodies, then
+   Run narrow docs-sync Maintain to reconcile affected docs and task bodies, then
    `goals.py validate <repo>` and `goals.py render <repo>`; use canonical authority
    and revision guards and preserve concurrent edits. Rendering covers only the
    goal table, not implementation docs or TODO task-body status.

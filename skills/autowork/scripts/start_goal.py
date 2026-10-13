@@ -73,7 +73,7 @@ def require_milestone_admission(workspace, goal_task=None, snapshot_file=None, f
         if not any(row['path'] == 'goals.json' and row['sha256'] == ledger_digest for row in snapshot['files']):
             raise ValueError('Focused admission source evidence must include the fresh goal ledger')
     spec = importlib.util.spec_from_file_location('admission_goals',
-        Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py')
+        Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py')
     assert spec is not None and spec.loader is not None
     goals = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(goals)
@@ -185,7 +185,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
         if ledger_mode != 'proposal' or integration_owner != raw['owner']:
             raise ValueError('scoped publication requires coherent proposal/integration-owner role')
     goals_command = shlex.join([sys.executable, str(
-        Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py')])
+        Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py')])
     cycle_path = Path(__file__).resolve().parents[2] / 'shared/ENGINEERING-CYCLE.md'
     engineering_path = Path(__file__).resolve().parents[2] / 'engineering/SKILL.md'
     body = (REVIEW_DOD + '\n\n' + contract + '\n\nExecution: This is the selected autowork slice, not a picker. '
@@ -195,7 +195,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'using accepted constraints, repository conventions and focused evidence; do not ask for '
             'approval of equivalent engineering options or reopen settled decisions. '
             'Use zero supporting skills when the contract and repository checks suffice. '
-            'Do not run the full skill lifecycle or invoke Autoresearch/repo-docs merely to enter a phase. '
+            'Do not run the full skill lifecycle or invoke Autoresearch/docs-sync merely to enter a phase. '
             f'When a concrete method gap exists, consult the pinned Addy adapter at `{engineering_path}` '
             'and load only the relevant protocol; stop loading once the gap is resolved. '
             'Record the pinned revision only for protocols actually applied. For material use, record '
@@ -248,7 +248,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'at the tested source before marking a canonical task done. Pending review leaves that task '
             'in_progress and dependent tasks ineligible; finish this worker at review handoff and let the '
             'authorized owner reconcile closure later. When the '
-            'contract names a goals.json task, finish with the repo-docs helper (never hand-edit the JSON): '
+            'contract names a goals.json task, finish with the docs-sync helper (never hand-edit the JSON): '
             f'`{goals_command} task <repo> <TASK> done`, then '
             f'`{goals_command} evidence <repo> <GOAL> --kind executed --ref "<exact command>" --result pass|fail` '
             'for each check you actually ran (a goal is met only with an executed pass), then '
@@ -292,7 +292,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'command recognition, then run only the missing authorized check; never alter or bypass '
             'the ledger, disable the gate, or rerun unrelated suites to manufacture progress.')
     if ledger_mode == 'proposal':
-        start = body.rindex('When the contract names a goals.json task, finish with the repo-docs helper')
+        start = body.rindex('When the contract names a goals.json task, finish with the docs-sync helper')
         end = body.index('Use native ', start) + len('Use native ')
         body = (body[:start] + 'Canonical ledger proposals only: do not mutate goals.json, TODO goal coverage or '
                 'goal evidence in either the canonical checkout or worker copy. Do not run goals.py task/evidence/render '

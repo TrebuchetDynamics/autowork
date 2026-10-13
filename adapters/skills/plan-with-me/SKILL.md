@@ -1,11 +1,18 @@
 ---
 name: plan-with-me
-description: "Ask the user focused questions and save requirements, decisions and actionable repository tasks."
+description: "Research the repository, refine the user request through focused questions, and save the plan and actionable tasks."
 ---
 
 # Plan With Me
 
-Read the [host contract](../COMMON.md). Ask one useful question at a time, using
+Read the [host contract](../COMMON.md), pinned
+[Autoresearch plan protocol](../../../skills/autoresearch/upstream/plan.md) and
+[interactive planning adaptations](../../../skills/shared/RESEARCH-PLAN.md#interactive-planning-plan-with-me).
+Refine the initial prompt into a working brief and investigate relevant evidence.
+For important assumptions or explicit challenge mode, use
+[Grill Me](../../../skills/grill-me/SKILL.md) with the adaptations above; no
+whole-frontier questionnaire or repeated approval of settled answers.
+Ask one useful question at a time, using
 native user-input tools or chat. Inspect existing docs/source first so questions
 resolve product intent rather than facts already in the repo. Decide routine
 engineering details yourself. Honor questions-only/read-only without writing files.

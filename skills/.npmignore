@@ -1,3 +1,6 @@
+# Local compatibility snapshots are not package skills.
+/repo-docs/
+/repo-interview/
 **/__pycache__/
 **/*.pyc
 **/.pytest_cache/

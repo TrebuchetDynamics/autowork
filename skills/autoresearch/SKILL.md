@@ -11,8 +11,10 @@ Default to the plan protocol when invoked as a skill without an explicit subcomm
 Explicit Autoresearch subcommands select their own protocol.
 
 Run the pinned Udit Goenka autoresearch protocols with Hermes tools and the existing
-repo-docs → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
-selected upstream protocol. These integration rules govern host/tool substitutions,
+docs-sync → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
+selected upstream protocol. For `plan`, also apply the
+[planning adaptations](../shared/RESEARCH-PLAN.md) before following upstream phases.
+These integration rules govern host/tool substitutions,
 repository ownership and handoff; preserve upstream research methods and flags.
 
 When called by Autowork, investigate the named uncertainty and return to its
@@ -53,7 +55,7 @@ Supported commands: `plan`, `debug`, `fix`, `security`, `ship`, `probe`, `scenar
    accept `/autoresearch NAME ...` when the first token is a listed command.
    Preserve the remaining arguments, including `Goal:`, `Scope:`, `Metric:`,
    `Direction:`, `Verify:`, `Guard:`, `Iterations:`, and upstream flags.
-2. Bare invocation loads [upstream router](upstream/ROUTER.md): explicit metric or
+2. Explicit bare `/autoresearch` loads [upstream router](upstream/ROUTER.md): explicit metric or
    verify uses [classic loop](upstream/autoresearch.md); a natural-language goal
    uses its orchestrator; no goal uses setup. Honor `--classic` and `--auto`.
 3. Load only the selected protocol and references it requires. In upstream files,
@@ -77,7 +79,7 @@ agents actually ran. Record unavailable tools/checks honestly.
 
 Load [engineering cycle](../shared/ENGINEERING-CYCLE.md). Inspect project rules,
 accepted intent, current docs, canonical goals/TODO, active task ownership, dirty
-changes and existing research receipts. Resolve canonical authority with repo-docs;
+changes and existing research receipts. Resolve canonical authority with docs-sync;
 an experiment worktree's copied backlog is not canonical. Reuse the current task
 and requirement IDs. Research logs, TSV and upstream `handoff.json` remain evidence,
 not a second backlog or proof of completion. Use a unique per-run output directory
@@ -86,7 +88,7 @@ under the existing research owner (avoid minute-timestamp collisions).
 The selected Autoresearch protocol is normally sufficient. Consult an Addy
 protocol only for a concrete method gap or explicit request; do not add a phase
 sequence or separate review/versioning workflow to an analysis-only command.
-Record the decision/artifact/check each selected skill changed. `repo-interview`
+Record the decision/artifact/check each selected skill changed. `plan-with-me`
 or `grill-me` handles genuinely missing owner intent; routine reversible choices
 are autonomous. Existing accepted scope is enough: do not repeat upstream's generic
 “confirm”/“run now?” questions when the user already authorized that action.
@@ -97,14 +99,14 @@ scope only, up to three useful slices, canonical reconciliation, same-occurrence
 selection and a persisted input-bound receipt. Do not launch a recurring research
 loop or ask again for settled implementation choices.
 
-## Document and schedule through repo-docs
+## Document and schedule through docs-sync
 
 Apply the [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 Persist new actionable findings at a bounded checkpoint; unchanged checkpoints
 reuse their existing receipt and do not trigger another documentation pass.
 A new investigation result does not automatically require a docs edit: if the
-existing task and docs already cover its conclusion and scope, acceptance, sources
-and dependencies remain correct, return the decision/evidence to the same Autowork
+existing task and docs already preserve its material reasoning/evidence and scope,
+acceptance, sources and dependencies remain correct, return the decision/evidence to the same Autowork
 coordinator without invoking Docs Sync. Keep any needed execution receipt in the
 existing task journal. When documentation or backlog actually needs a change, load
 `hermes-toolset:docs-sync` (or the verified sibling SKILL.md) in **narrow Maintain**
@@ -118,7 +120,7 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
    matching goals and tasks before creating anything. Preserve active leases,
    ownership, focus, completed history and unrelated edits. An in-progress cache
    benchmark remains that same task, not a second “research cache” task.
-3. For accepted unmet work, have repo-docs reconcile canonical `goals.json` and
+3. For accepted unmet work, have docs-sync reconcile canonical `goals.json` and
    full **TODO.md** bodies: Goal/payoff, Sources (research receipt plus graph/source
    evidence), bounded Scope/exclusions, measurable Acceptance/checks,
    `Dependencies:` and `Ownership:`. Order **Now/Next** with actual ledger priority
@@ -126,7 +128,7 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
    unknown; produce implementation plus verification slices for known gaps.
    Keep speculative product ideas Proposed/Needs decision unless the user's
    request already supplies acceptance. No invented approval or priority changes.
-4. After the final changed batch, run repo-docs `goals.py fmt`, `validate`, `render` and consumer `backlog-check`
+4. After the final changed batch, run docs-sync `goals.py fmt`, `validate`, `render` and consumer `backlog-check`
    against the actual canonical repository and accepted source heading. Repair
    supported missing metadata; never fabricate `Status: Accepted`. Report the
    exact state/exit, touched task IDs and eligible next slice. Repeat reconciliation
@@ -168,7 +170,7 @@ replace the accepted-task commit, review or canonical completion evidence.
 deploy, publication and external messages need the actual user-authorized scope;
 research success or command chaining alone provides none. Carry prior authorization
 without reasking. Do not close canonical tasks just because an upstream handoff
-says COMPLETE: use repo-docs evidence and autowork's normal closure gates.
+says COMPLETE: use docs-sync evidence and autowork's normal closure gates.
 
 Finish with: result/stop reason; metric/check evidence; changed document owners;
 TODO/goals task IDs and Now/Next; consumer readiness or blocker; committed SHA when

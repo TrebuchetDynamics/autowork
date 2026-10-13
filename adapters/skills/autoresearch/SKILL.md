@@ -11,7 +11,8 @@ question. A selected subcommand NAME loads upstream/NAME.md; bare research uses
 upstream/ROUTER.md. Resolve its scripts/references beneath upstream/. Supported selectors: plan, debug, fix, security, ship, probe, scenario,
 predict, reason, learn, improve, evals, regression. With no selector, choose a relevant
 protocol from the user's goal. Plan routes to [Plan For Me](../plan-for-me/SKILL.md)
-without recursively invoking research for routine decisions.
+which loads the plan protocol directly with its persistence adaptations. Do not
+route back here from Plan For Me.
 
 Before an experiment specify goal, scope, baseline, metric/units, verification,
 guards and a finite iteration budget. Use native filesystem, terminal and search

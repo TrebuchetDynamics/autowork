@@ -71,7 +71,7 @@ class PassWorkspaceTests(unittest.TestCase):
         ledger['tasks'].append({'id': 'T2', 'goal': 'G1', 'title': 'Other task',
                                 'status': 'open', 'section': 'Next'})
         (self.root / 'goals.json').write_text(json.dumps(ledger))
-        goals = Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py'
+        goals = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py'
         subprocess.run(['python3', str(goals), 'fmt', str(self.root)], check=True, capture_output=True)
         snapshot['files'][1]['sha256'] = hashlib.sha256((self.root / 'goals.json').read_bytes()).hexdigest()
         admission['ledger_sha256'] = snapshot['files'][1]['sha256']

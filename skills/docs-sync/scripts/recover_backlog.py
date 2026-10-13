@@ -110,8 +110,19 @@ def repair(repo, plan, ids, pin=None):
         body, _, _ = goals.task_bodies(text)[tid][0]
         sources = field(body, 'Sources')
         fields = goals.task_fields(body)
-        if sources is None or 'Sources' not in fields:
-            raise ValueError('existing body lacks unique nonempty Sources; do not invent a contract: ' + tid)
+        if sources is None:
+            # The existing goal already binds the accepted source. Restore only
+            # that clerical link; scope and acceptance are never synthesized.
+            header = re.search(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?' + re.escape(tid)
+                               + r'`?(?:\*\*)?(?=\s|:)', text, re.M)
+            if header is None or text[header.end():header.end() + len(body)] != body:
+                raise ValueError('selected task span cannot be located: ' + tid)
+            position = header.end() + len(body.rstrip())
+            text = text[:position] + '\n  Sources: [Accepted plan](' + plan + ')\n' + text[position:]
+            repairs.append(tid + ': restored accepted goal source field')
+            continue
+        if 'Sources' not in fields:
+            raise ValueError('existing body has empty or ambiguous Sources; reconcile it explicitly: ' + tid)
         links = re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', fields['Sources'])
         if plan not in links:
             # The ledger already binds this exact accepted intent; add only its link.

@@ -25,7 +25,7 @@ box, a research recommendation or a generated plan alone.
 ## Save research by default
 
 An Autoresearch invocation in a repository includes permission to persist its
-in-scope findings and plan through repo-docs. The user need not say “save”.
+in-scope findings and plan through docs-sync. The user need not say “save”.
 For explicit read-only, chat-only, no-write or --dry-run requests, write nothing and
 return proposed task updates in chat. A planning-only or “do not implement” request
 still saves planning documents and TODO entries; it does not change product code.

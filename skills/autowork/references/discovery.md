@@ -7,15 +7,15 @@ extends discovery beyond a blocked milestone into disjoint documentation, UI/UX,
 tests, refactoring and reliability work. The milestone-only search below applies
 to narrower scope; retained fingerprints cover only the inspected seams.
 
-## Start with a bounded repo-docs pass
+## Start with a bounded docs-sync pass
 
 Only when no usable backlog task remains, a missing/stale backlog without an
-enabled `repo-docs` job may need a bounded pass (Operating priority 2), at most once
+enabled `docs-sync` job may need a bounded pass (Operating priority 2), at most once
 per day. With such a job, skip this section and search the milestone's gaps.
 Do not repeat a docs pass merely because a picker tick arrived. First resolve the active workspace, read
 repository instructions and explicit task boundaries, and check live ownership.
 These safety checks do not replace the documentation pass. Load the active
-profile's `repo-docs` skill for the needed reconciliation. Consult the STE-inspired
+profile's `docs-sync` skill for the needed reconciliation. Consult the STE-inspired
 reference only for substantive writing guidance, not a link or ID repair. Merely mentioning the command, finding TODO.md, or
 printing `/docs_sync` is not execution. Do not spawn a separate picker, invoke a
 recursive autowork, or enqueue another worker for this prerequisite.
@@ -34,7 +34,7 @@ When any live worker/cron owns the affected workspace or instructions require
 read-only work, perform an Audit pass only. Do not write shared TODO/docs or
 claim ownership. Reconcile the live task instead of launching another. A terminal
 blocked card still blocks only its slice and dependencies; its exclusions and
-owned files remain binding. Missing repo-docs is a prerequisite blocker: disclose
+owned files remain binding. Missing docs-sync is a prerequisite blocker: disclose
 it rather than silently pretending the pass ran or installing another profile's
 skills. The default manager's Hermes configuration directory is not a product
 repo: record `not_applicable_manager` with the actual boundary, do not bootstrap
@@ -75,9 +75,9 @@ claiming a worker started. Unchanged no-op reporting remains silent under cron.
 4. Prefer explicit Now/Next, in-progress, unblocked, unresolved, failed-gate, and acceptance criteria sections over historical dates or unchecked boxes. Treat completed/archived/superseded plans as historical until live evidence proves otherwise. Verify named paths, implementation, tests, and known receipts. A stale unchecked box is not a new task. A recently modified document is not proof of priority. If the repo uses a board, inspect its current state with the available approved read tooling; do not create/claim/move tickets merely because a document mentions them.
 5. If no usable project queue exists, select a concrete defect or missing validation already evidenced by current logs, tests, the user's request, or documented requirements. A bounded investigation or regression reproduction is useful work if its output and success signal are clear. Do not invent features, manufacture failures, expand product scope, or perform broad speculative cleanup. If no evidence-backed candidate remains, report the sources checked and the exact missing decision/source instead of a bare filename complaint.
 
-### Consume the repo-docs handoff
+### Consume the docs-sync handoff
 
-When `repo-docs` maintains a root `TODO.md`, use its evidence-backed `Now` and
+When `docs-sync` maintains a root `TODO.md`, use its evidence-backed `Now` and
 `Next` items as candidates, not automatic execution permission. Prefer tasks
 linked (`Goal: <id>`) to partial or unmet milestone goals in its `Goal coverage`
 table. When you finish a slice, update that goal's row and its task status, so the
@@ -87,8 +87,8 @@ these against current repository state before selecting. Skip `Done`, proposed o
 unapproved work, and `Blocked / Needs decision` items until their actual gate is
 resolved. Preserve task IDs and authoritative tracker links rather than copying the
 queue into a competing ledger. A standalone bare `/docs_sync` (or the profile's
-`repo-docs` cron job) maintains docs and this handoff. `/autowork` runs the bounded
-repo-docs pass above only when Operating priority 2 calls for missing/stale backlog
+`docs-sync` cron job) maintains docs and this handoff. `/autowork` runs the bounded
+docs-sync pass above only when Operating priority 2 calls for missing/stale backlog
 repair without an enabled docs job, then selects one remaining eligible slice under its existing
 goal-worker contract. Do not manufacture tasks
 when no supported candidate exists.

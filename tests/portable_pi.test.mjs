@@ -31,7 +31,7 @@ test('npm package excludes local bytecode and keeps portable support files', asy
   const paths = new Set(packed.files.map(f => f.path));
   assert.equal([...paths].some(p => p.includes('__pycache__') || p.endsWith('.pyc')), false);
   for (const path of ['adapters/pi.mjs', 'adapters/skills/COMMON.md',
-    'skills/repo-docs/scripts/goals.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE']) {
+    'skills/docs-sync/scripts/goals.py', 'skills/autoresearch/upstream/plan.md', 'skills/impeccable/LICENSE']) {
     assert.equal(paths.has(path), true, path);
   }
 });

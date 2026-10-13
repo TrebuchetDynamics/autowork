@@ -252,14 +252,15 @@ def diagnose(report, *, core_only=False):
     own = next((p for p in report['plugins'] if p['name'] == 'hermes-toolset'), {})
     if not own.get('enabled') or own.get('error'):
         errors.append('hermes-toolset is not loaded cleanly')
-    names = {p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')}
+    names = {p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')
+             if p.parent.name not in {'repo-docs', 'repo-interview'}}
     commands = {r['command'] for r in report['commands']
                 if r.get('kind') == 'plugin' and r.get('source') == 'hermes-toolset'}
     missing_commands = sorted(n.replace('_', '-') for n in names
                               if n.replace('_', '-') not in commands)
     public_names = set()
     for name in names:
-        if name == 'grill-me' and 'repo-interview' in names:
+        if name == 'grill-me' and 'plan-with-me' in names:
             continue  # Challenge mode is exposed through Plan With Me.
         text = (ROOT / 'skills' / name / 'SKILL.md').read_text(encoding='utf-8')
         match = re.search(r'^name: ([a-z0-9_-]+)$', text, re.MULTILINE)

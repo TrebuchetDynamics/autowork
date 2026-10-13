@@ -3,13 +3,14 @@
 Keep ideas and unanswered decisions in their existing documentation owner until
 accepted. An accepted plan section names its status (`Status: Accepted`), scope,
 acceptance and sources. Preserve existing task/goal IDs and completed history.
-Repo-docs reconciles accepted work into `goals.json` and complete `TODO.md` task
+Docs Sync reconciles accepted work into `goals.json` and complete `TODO.md` task
 bodies; rendered goal coverage alone is not an executable task.
 
 ## One planning pass, one handoff
 
-Plan With Me owns missing user decisions. Plan For Me owns bounded investigation
-and engineering choices. Docs Sync owns persistence. Autowork owns execution and
+Plan With Me investigates and resolves consequential choices with the user. Plan
+For Me investigates and chooses within delegated scope. Both share the Autoresearch
+planning method; neither starts a second planner for the same question. Docs Sync owns persistence. Autowork owns execution and
 closeout. These are responsibilities within the same conversation, not mandatory
 separate agents or repeated startup passes. Do not chain all four for a ready task.
 
@@ -55,7 +56,7 @@ that same coordinator in the same occurrence. Do not ask “implement now?”, s
 a second planning cycle, or spawn a competing worker. Genuine product decisions
 or external authority remain explicit; choose routine reversible details yourself.
 
-Resolve `goals.py` from the sibling repo-docs skill as described in the
+Resolve `goals.py` from the sibling docs-sync skill as described in the
 [shared contract](COMMON-CONTRACT.md). Use its supported mutations and validate
 and render the canonical ledger; preserve concurrency/revision guards. Check the
 actual consumer with `backlog-check <repo> --plan path#heading --tasks T1,T2`.
@@ -64,11 +65,11 @@ Report its JSON state and exit: `draft_saved` (1),
 Readiness is not execution authorization or a live ownership check.
 
 Diagnose all check reasons before closing the handoff. When existing owner acceptance
-unambiguously covers the section, repo-docs repairs its exact status metadata and
+unambiguously covers the section, docs-sync repairs its exact status metadata and
 other clerical contract defects in the authorized Maintain pass, then reruns the
 same consumer check. Preserve approval evidence, scope exclusions and Proposed
 decisions. Missing approval stays draft. See
-[decisive planning](../repo-docs/references/decisive-planning.md); never stop at a
+[decisive planning](../docs-sync/references/decisive-planning.md); never stop at a
 repairable `draft_saved` or substitute queue size for an ordered implementation plan.
 
 For an explicit plan slice, select only its named IDs. Reconcile existing workers,

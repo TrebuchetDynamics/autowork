@@ -35,7 +35,7 @@ Repeated unchanged inputs resume the saved plan's next action, not another plan.
 - `execute_ready_work`: continue the accepted task. Do not plan just to fill a quota.
 - `reconcile_owner`: retain the live writer and its work; do not launch a competing planner.
 - `integrate_existing_inputs`: resolve the existing documentation proposal with
-  the current authorized coordinator, or use repo-docs Bootstrap if no backlog exists.
+  the current authorized coordinator, or use docs-sync Bootstrap if no backlog exists.
   Do not create a second proposal while canonical adoption is the missing step.
 - `repair_execution_inputs` / `recover_first`: repair the named prerequisite using
   existing authority; research cannot grant permission or repair routing.
@@ -72,7 +72,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    Separate offline implementation/regression acceptance from live qualification.
    Keep live gates on their own task. Do not remove real dependencies or duplicate
    already implemented work to increase task counts.
-4. Load repo-docs narrow Maintain with these findings. Reuse tasks before adding
+4. Load docs-sync narrow Maintain with these findings. Reuse tasks before adding
    them; write full bodies in canonical TODO.md and reconcile goals.json under the
    current authorized coordinator. Reconcile user TODO orders before rendering.
    Respect Graphify requirements, actual live writers and source-bound revision

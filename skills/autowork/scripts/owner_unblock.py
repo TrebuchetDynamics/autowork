@@ -15,7 +15,7 @@ import pass_workspace
 
 goals = retry_selection.goals
 # Share the canonical transaction context with the existing recovery writer.
-spec = importlib.util.spec_from_file_location('owner_recovery', Path(__file__).resolve().parents[2] / 'repo-docs/scripts/recover_backlog.py')
+spec = importlib.util.spec_from_file_location('owner_recovery', Path(__file__).resolve().parents[2] / 'docs-sync/scripts/recover_backlog.py')
 recovery = importlib.util.module_from_spec(spec)
 previous = sys.modules.get('goals')
 sys.modules['goals'] = goals
@@ -125,7 +125,7 @@ def run(args):
     reasons = selected['reasons']
     metadata = 'plan section lacks explicit Status: Accepted' in reasons
     repairable = bool(reasons) and all(reason in ('missing TODO.md', 'plan section lacks explicit Status: Accepted') or any(reason in (
-        tid + ': missing or duplicate task body', tid + ': Sources do not link accepted plan') for tid in ids)
+        tid + ': missing or duplicate task body', tid + ': missing Sources', tid + ': Sources do not link accepted plan') for tid in ids)
         for reason in reasons)
     if repairable:
         required = ['authority', 'expected_revision=' + revision,

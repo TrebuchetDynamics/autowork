@@ -29,6 +29,12 @@ def decide(cycle, state):
         return {'action':'execute_ready_work','reason':'Use the existing accepted task before planning'}
     if gate=='ledger':
         return {'action':'integrate_existing_inputs','reason':'Reconcile canonical backlog with its owner; do not create another detached plan'}
+    selection = cycle.get('recovery', {}).get('selection', {})
+    if gate == 'consumer_readiness' and selection.get('state') == 'draft_saved':
+        return planning_decision(cycle, state,
+            'Repair the reported canonical documentation contract before searching for unrelated work; '
+            'the same backlog errors can block every candidate. Use exact consumer reasons, '
+            'preserve unresolved intent, then retry selection in this occurrence')
     if (cycle.get('scope') == 'repository' and gate in
             ('consumer_readiness','owner_authority','source_freshness','prerequisites','candidate')):
         return {'action':'discover_repository_work', 'execution_required':True,

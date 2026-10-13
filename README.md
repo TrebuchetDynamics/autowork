@@ -30,7 +30,7 @@ CLI; Telegram displays underscores. Old `/repo_interview`, `/repo_docs` and
 
 | Workflow | Example in CLI chat | Result and possible changes | Readiness needed |
 | --- | --- | --- | --- |
-| Clarify a project | `/plan_with_me Design a caching layer` | Asks focused questions and records decisions in existing docs. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
+| Clarify a project | `/plan_with_me Design a caching layer` | Researches the repo, clarifies your request with focused questions, and saves the plan and tasks. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
 | Challenge a plan | `/plan_with_me Challenge this cache design` | Questions assumptions before implementation. | Core + configured model |
 | Maintain docs and tasks | `/docs_sync Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
 | Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, calls bounded Autoresearch for unresolved planning or research questions, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; supporting tools only when needed |

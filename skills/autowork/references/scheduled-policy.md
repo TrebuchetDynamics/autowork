@@ -32,7 +32,7 @@ Before another no-progress report, follow the owner-cycle `planning.action` and
 [bounded Autoresearch Plan fallback](backlog-planning.md). Run plan only when the
 gate requests preparation and research is actually needed; a known bounded repair
 can use direct evidence. Persist the result against the triggering input fingerprint.
-Planning findings must reach canonical repo-docs reconciliation before selection.
+Planning findings must reach canonical docs-sync reconciliation before selection.
 If the bound task stays held, run [repository maintenance](repository-maintenance.md)
 under broad repository authorization: inspect a distinct component, record justified
 TODO tasks and execute an eligible slice now. Do not confuse a cached task-specific

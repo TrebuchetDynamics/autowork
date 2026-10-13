@@ -14,6 +14,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Renamed bundled source folders to `docs-sync` and `plan-with-me`; old command
+  spellings remain aliases, while retired local snapshots are excluded from discovery
+  and installation. Updated helper, package and documentation references.
+
 - Planning workflows share one incremental handoff: resume decisions, scope open
   questions to dependent tasks, batch affected docs, reuse unchanged validation
   and return to authorized Autowork execution without another planning cycle.

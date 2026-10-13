@@ -36,7 +36,7 @@ def install(source, profiles, *, dry_run=False, report=print, skills=None):
     if not source.is_dir() or source.is_symlink():
         raise ValueError(f'Missing or symlinked skills folder: {source}')
     if skills is None:
-        skills = sorted(p for p in source.iterdir() if not p.name.startswith('.') and p.name != '__pycache__' and p.is_dir())
+        skills = sorted(p for p in source.iterdir() if not p.name.startswith('.') and p.name not in {'__pycache__', 'repo-docs', 'repo-interview'} and p.is_dir())
     if not skills:
         raise ValueError(f'No skill folders found in {source}')
     ignore = shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo', '.pytest_cache', '.git', '.DS_Store')

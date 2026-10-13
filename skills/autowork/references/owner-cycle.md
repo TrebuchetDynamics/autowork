@@ -33,6 +33,25 @@ external-owner workflow, pass `--require-owner` to the cycle or selector; the
 owner-request, inbox and registry-release instructions below apply to that opt-in.
 No new schedule, publication authority or live-operation permission is implied.
 
+## Document admission is actionable work
+
+Before invoking recovery with `--apply`, read the saved continuation and any retained
+operation receipt. Bind the actual plan path/anchor and consumer's current reasons;
+a prior wrong source is not a reason to repeat or abandon the same operation blindly.
+Resume its supported next action when inputs permit, preserving uncertain dispatch.
+
+A `draft_saved` result means document validation failed, not that no useful work
+exists. Repair the exact reported metadata/body/link errors through narrow Docs Sync
+before searching for unrelated product defects: legacy task bodies can block the
+entire backlog, including any new candidate. Use Plan For Me only for genuinely
+missing decomposition or evidence. An absent Sources field may be reconstructed
+from the task's existing accepted goal source; never invent scope or acceptance.
+Preserve conflicting intent and ask for that precise decision only when necessary.
+Retry the real consumer after the repair in the same occurrence. `ACTION_REQUIRED`
+is an instruction to act, not a completed recovery or sufficient stopping condition.
+When unresolved, report the exact reason strings, affected task/document, attempted
+repair and missing evidence; “document admission pending” alone is not actionable.
+
 ## Native runtime limits stay operation-scoped
 
 Saved handoff IDs restore registration consistency, not authenticated worker
@@ -141,7 +160,7 @@ original held task and blocker. It never changes focus, releases live qualificat
 steals ownership or dispatches without an exact handoff payload.
 
 Maintain a **target of three** small ready tasks from accepted scope. The runner
-reports the validated queue and shortfall. When short, perform one bounded repo-docs
+reports the validated queue and shortfall. When short, perform one bounded docs-sync
 Maintain pass under the existing integration owner: split remaining implementation,
 offline regression tests and live qualification into distinct acceptance criteria.
 Preserve the live task and its gate; create an offline task only for demonstrably
@@ -185,14 +204,14 @@ must not overwrite a worker's verified completion in the same occurrence.
    scope, acceptance, ownership and product authority stay unchanged. A malformed
    acceptance marker is not a new product decision when acceptance of the exact
    scope is already evidenced; use the supported immutable-provenance repair when
-   available or the bounded repo-docs metadata procedure. Never manufacture acceptance.
+   available or the bounded docs-sync metadata procedure. Never manufacture acceptance.
    Explicit named-task diagnosis runs even when the task is in Needs decision or
    has unmet dependencies. Repairing its documented contract does not release that
    execution gate. If diagnosis exposes an attributable repair, use the existing
    recovery authority and retry; do not replace an available repair with another
    pending follow-up request. Report repairs separately from task completions.
 4. A missing consumer ledger requires integration of existing accepted owner inputs,
-   not repeated `validate` calls against an absent file. Perform scoped repo-docs
+   not repeated `validate` calls against an absent file. Perform scoped docs-sync
    Bootstrap/Maintain under its canonical integration owner (or send an attributed
    proposal to that actual owner if it is live), then retry the consumer in this tick.
    Do not leave completed maintenance in an abandoned scratch checkout. Readiness

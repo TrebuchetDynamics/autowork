@@ -16,7 +16,7 @@ import retry_selection
 import source_freshness
 
 SCRIPTS = Path(__file__).parent
-DOCS = SCRIPTS.parents[1] / 'repo-docs/scripts'
+DOCS = SCRIPTS.parents[1] / 'docs-sync/scripts'
 
 
 class BlockerRecoveryPipelineTests(unittest.TestCase):

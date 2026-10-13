@@ -16,7 +16,7 @@ class PickerPolicyTests(unittest.TestCase):
             self.assertIn(phrase,text)
     def test_no_early_exit_and_terminal_results_continue(self):
         text=full_text()
-        for phrase in ['version: 0.25.0', "Ask, don't block", 'otherwise run the repo-docs fallback', 'goals.py next', 'never fingerprint-exit', 'Resume the saved continuation before discovery', 'A completed card is not a stop condition', 'Disable change-only fingerprint monitors', 'autowork_gate.py', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
+        for phrase in ['version: 0.25.0', "Ask, don't block", 'otherwise run the docs-sync fallback', 'goals.py next', 'never fingerprint-exit', 'Resume the saved continuation before discovery', 'A completed card is not a stop condition', 'Disable change-only fingerprint monitors', 'autowork_gate.py', 'CONTINUE selection', 'work_search', 'not a runtime guarantee']:
             self.assertIn(phrase, text)
         for obsolete in ['Step 0 — fast exit', 'return `[SILENT]` immediately', 'Step 0 fast exit bounds']:
             self.assertNotIn(obsolete, text)
@@ -35,8 +35,8 @@ class PickerPolicyTests(unittest.TestCase):
             self.assertIn('Reconcile once', text)
             self.assertIn('discovery only when no usable task remains', text)
             self.assertIn('50 turns by default', text)
-            self.assertNotIn('or\n   the profile has no `repo-docs` cron job', text)
-        self.assertIn('Do not run a repo-docs prepass for a usable backlog task', core)
+            self.assertNotIn('or\n   the profile has no `docs-sync` cron job', text)
+        self.assertIn('Do not run a docs-sync prepass for a usable backlog task', core)
         self.assertIn('Goal budget rationale:', handoff)
         self.assertIn('--goal-max-turns 100', handoff)
         self.assertIn('Do not split debugging, fixes, tests or review handoff into intermediate cards', handoff)

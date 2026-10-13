@@ -55,7 +55,7 @@ class CorrectnessTests(unittest.TestCase):
         self.assertEqual(held['canonical_readiness']['state'], 'unknown')
         self.assertIn('canonical authority unbound linked worktree', held['canonical_readiness']['gate'])
         self.assertNotEqual(held['state'], 'ready_for_autowork')
-        self.assertFalse((root / '.git/.repo-docs-goals.lock').exists())
+        self.assertFalse((root / '.git/.docs-sync-goals.lock').exists())
 
     def test_current_handoff_matches_reconcile_top_level_precedence(self):
         home = self.root / 'home'

@@ -178,10 +178,10 @@ class PluginTests(unittest.TestCase):
     def test_repository_skills_are_all_discovered(self):
         self.plugin.SKILLS_DIR = ROOT / "skills"
         self.plugin.register(self.ctx)
-        self.assertTrue({"autowork", "git-commit-push", "git-pull-merge", "grill-me", "lgtm", "repo-docs", "repo-interview"}
+        self.assertTrue({"autowork", "git-commit-push", "git-pull-merge", "grill-me", "lgtm", "docs-sync", "plan-with-me"}
                         <= set(self.ctx.commands))
         self.assertNotIn('grill-me', self.ctx.skills)
-        self.assertEqual(self.ctx.skills['plan-with-me'], ROOT / 'skills/repo-interview/SKILL.md')
+        self.assertEqual(self.ctx.skills['plan-with-me'], ROOT / 'skills/plan-with-me/SKILL.md')
         self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture-chat')
         self.ctx.commands['grill_me'.replace('_', '-')]('review this plan')
         self.assertIn('hermes-toolset:plan-with-me', self.ctx.messages[-1][0])

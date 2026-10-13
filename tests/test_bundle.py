@@ -193,7 +193,7 @@ class BundleTests(unittest.TestCase):
                              'tools': 0, 'commands': 6, 'hooks': 2, 'error': None}],
                 'plugin_skills': ['ponytail:ponytail', 'ponytail:ponytail-help'],
                 'commands': [{'command': 'ponytail', 'telegram': 'ponytail', 'source': 'ponytail'},
-                             {'command': 'repo-docs', 'telegram': 'repo_docs', 'source': 'hermes-toolset'}],
+                             {'command': 'docs-sync', 'telegram': 'docs_sync', 'source': 'hermes-toolset'}],
                 'missing_plugins': [], 'missing_skills': ['blocked-skill'],
                 'unchecked_skill_sources': [], 'telegram_menu_hidden': 12}
 
@@ -204,13 +204,13 @@ class BundleTests(unittest.TestCase):
         self.assertIn('0 tools, 6 commands, 2 skills, 2 hooks', output)
         self.assertIn('blocked-skill', output)
         self.assertIn('/toolsets', output)
-        self.assertNotIn('/repo-docs', output)
+        self.assertNotIn('/docs-sync', output)
 
     def test_list_filter_shows_only_matches_and_distinct_telegram_aliases(self):
         with patch.object(self.bundle, 'inventory', return_value=self.report()):
-            output = self.bundle.list_commands('list repo-docs')
+            output = self.bundle.list_commands('list docs-sync')
             ponytail = self.bundle.list_commands('list ponytail')
-        self.assertIn('/repo-docs (Telegram: /repo_docs)', output)
+        self.assertIn('/docs-sync (Telegram: /docs_sync)', output)
         self.assertNotIn('/ponytail —', output)
         self.assertNotIn('/ponytail /ponytail', ponytail)
 

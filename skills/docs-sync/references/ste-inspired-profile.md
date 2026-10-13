@@ -2,9 +2,9 @@
 
 ## Scope and authority
 
-Apply this profile by default to new and changed English technical prose in an authorized repo-docs task. It is an STE-inspired project policy, not an official ASD mode or a claim of full compliance. Repository instructions, accepted requirements, technical accuracy, operational safety, and literal preservation take priority over style. Do not translate other languages or rewrite unrelated documents without authorization.
+Apply this profile by default to new and changed English technical prose in an authorized docs-sync task. It is an STE-inspired project policy, not an official ASD mode or a claim of full compliance. Repository instructions, accepted requirements, technical accuracy, operational safety, and literal preservation take priority over style. Do not translate other languages or rewrite unrelated documents without authorization.
 
-Repo-docs controls documentation ownership, truth, status, and lifecycle. This profile controls how supported facts are expressed. Neither replaces the other. A short, direct instruction can still be wrong or unsafe.
+Docs Sync controls documentation ownership, truth, status, and lifecycle. This profile controls how supported facts are expressed. Neither replaces the other. A short, direct instruction can still be wrong or unsafe.
 
 The reference edition is ASD-STE100 Issue 9, dated 2025-01-15. The official standard and governed project terminology are necessary for strict conformance work. This reference is a workflow summary, not the rulebook or dictionary. Do not use an unofficial word list or remembered rule as proof of compliance.
 

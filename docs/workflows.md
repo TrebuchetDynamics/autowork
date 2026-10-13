@@ -26,8 +26,12 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
 | `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps |
 
-Use `/plan_with_me` when you want questions before planning. It asks one at a
-time, reuses existing answers, and saves decisions through repo-docs. Add
+Both planners use the pinned Autoresearch planning method and save evidence,
+decisions and actionable tasks through Docs Sync. `/plan_with_me` improves your
+initial request with one focused question at a time about ambiguities and important
+choices; it researches facts itself and can challenge assumptions using Grill Me.
+`/plan_for_me` investigates and chooses within your delegated scope. Both reuse
+existing answers and plans. Add
 `questions only` for an interview without file changes.
 
 For example, type `/docs_sync update the architecture documentation` in Hermes
@@ -67,7 +71,7 @@ negative tests prevent accidental reintroduction. Updating source does not refre
 an already-running gateway's command registry: use supported plugin reload and
 verify activation before claiming the new names work in messaging.
 
-Repo-docs and autowork decide routine engineering choices autonomously within the
+Docs Sync and autowork decide routine engineering choices autonomously within the
 accepted scope. They carry decisions into worker contracts and apply relevant
 [Addy agent-skills](https://github.com/addyosmani/agent-skills) throughout planning,
 implementation and verification, including API, UI, migration, CI and operational
@@ -118,7 +122,7 @@ for unresolved research or decomposition questions. An empty queue starts with
 bounded inspection; an obvious repair needs no research pass. It retries selection in the
 same run. See [the work-center contract](../skills/shared/TODO-WORKCENTER.md).
 
-The [Hermes adapter](../skills/autoresearch/SKILL.md) connects research to repo-docs:
+The [Hermes adapter](../skills/autoresearch/SKILL.md) connects research to docs-sync:
 findings update existing documents, matching tasks are reused, and accepted gaps
 become full TODO.md bodies with goals.json priorities, dependencies and checks.
 This schedules the backlog; it does not create a timer. Autowork can execute
@@ -181,3 +185,16 @@ Autowork consumes the saved decisions and check results, then verifies current
 source and ownership before dispatch. No changes means no repeat documentation
 pass. An optional unanswered question holds its dependent tasks only. Standalone
 planning still does not authorize implementation.
+
+### Source names and compatibility
+
+Docs Sync lives in `skills/docs-sync/`; Plan With Me lives in
+`skills/plan-with-me/`. Old repo-docs/repo-interview command spellings route to
+those canonical skills and are hidden from the command menu. Retired host-local
+worker snapshots are not installed, packaged or registered as skills.
+
+`skills/autoresearch/` still contains the Autoresearch protocol suite; its public
+planning skill is Plan For Me. Bare Plan For Me selects planning; explicit
+`/autoresearch` selects the research router. Non-planning protocols remain available.
+The legacy worker-contract field `Repo-docs pass` and receipt key `repo_docs_pass`
+remain internal compatibility fields, not additional skills or commands.

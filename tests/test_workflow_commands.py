@@ -8,7 +8,7 @@ class WorkflowCommands(unittest.TestCase):
     skill = fixture.PluginTests.skill
 
     def test_new_names_route_to_existing_skills_and_preserve_arguments(self):
-        for name in ('repo-interview', 'repo-docs', 'autoresearch'):
+        for name in ('plan-with-me', 'docs-sync', 'autoresearch'):
             self.skill(name)
         self.plugin.register(self.ctx)
         self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture')
@@ -30,12 +30,31 @@ class WorkflowCommands(unittest.TestCase):
         self.assertTrue({'repo-interview', 'repo-docs', 'autoresearch-plan'} <= self.ctx.commands.keys())
 
     def test_alias_pair_preserves_existing_command_owner(self):
-        self.skill('repo-docs')
+        self.skill('docs-sync')
         self.existing['docs-sync'] = {'plugin': 'other'}
         self.plugin.register(self.ctx)
         self.assertNotIn('docs-sync', self.ctx.commands)
         self.assertNotIn('docs_sync', self.ctx.commands)
         self.assertIn('repo-docs', self.ctx.commands)
+
+    def test_retired_local_snapshots_are_not_discovered_or_installed(self):
+        for name in ('repo-docs', 'repo-interview', 'docs-sync', 'plan-with-me'):
+            self.skill(name)
+        discovered = self.plugin._discover_skills()
+        self.assertEqual({name for name, _, _ in discovered}, {'docs-sync', 'plan-with-me'})
+        self.plugin.register(self.ctx)
+        self.assertEqual(set(self.ctx.skills), {'docs-sync', 'plan-with-me'})
+        for old, canonical in [('repo-docs','docs-sync'),('repo-interview','plan-with-me')]:
+            self.ctx.commands[old]('resume')
+            self.assertIn('hermes-toolset:'+canonical,self.ctx.messages[-1][0])
+
+    def test_legacy_alias_pair_preserves_foreign_owner(self):
+        self.skill('docs-sync')
+        self.existing['repo-docs'] = {'plugin':'other'}
+        self.plugin.register(self.ctx)
+        self.assertNotIn('repo-docs',self.ctx.commands)
+        self.assertNotIn('repo_docs',self.ctx.commands)
+        self.assertIn('docs_sync',self.ctx.commands)
 
     def test_missing_skills_do_not_advertise_workflows(self):
         self.skill('other')
@@ -44,7 +63,7 @@ class WorkflowCommands(unittest.TestCase):
             self.assertNotIn(command, self.ctx.commands)
 
     def test_catalog_uses_current_names_and_grilling_is_a_mode(self):
-        for name in ('repo-interview', 'repo-docs', 'autoresearch', 'grill-me'):
+        for name in ('plan-with-me', 'docs-sync', 'autoresearch', 'grill-me'):
             self.skill(name)
         self.plugin.register(self.ctx)
         self.assertEqual(set(self.ctx.skills), {'plan-with-me', 'docs-sync', 'plan-for-me'})
@@ -58,3 +77,4 @@ class WorkflowCommands(unittest.TestCase):
         path = self.skill('autoresearch')
         self.plugin._invoke(self.ctx, 'autoresearch', path, 'debug', namespace='other')
         self.assertIn('skill_view(name="other:autoresearch")', self.ctx.messages[-1][0])
+        self.assertNotIn('TODO.md is the central work queue', self.ctx.messages[-1][0])

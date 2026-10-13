@@ -19,8 +19,8 @@ not overwrite or automatic reinterpretation of the proposal.
 Every CLI command takes an exclusive advisory lock before reading the ledger.
 The lock covers loading, command validation, mutation, replacement, and rendering
 for that invocation. In Git repositories, the lock lives at
-`<git-common-dir>/.repo-docs-goals.lock`. Primary and linked worktrees share it.
-Without Git metadata, local fixtures use `<resolved-repo>/.repo-docs-goals.lock`.
+`<git-common-dir>/.docs-sync-goals.lock`. Primary and linked worktrees share it.
+Without Git metadata, local fixtures use `<resolved-repo>/.docs-sync-goals.lock`.
 Do not remove an active lock file: replacing its inode can create two lock owners.
 
 Before Git repository-identity subprocesses, construct an environment that removes

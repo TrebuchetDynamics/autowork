@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""goals.json: the machine-readable goal list that repo-docs writes and autowork reads.
+"""goals.json: the machine-readable goal list that docs-sync writes and autowork reads.
 
 TODO.md stays the human view; its `Goal coverage` table is rendered from this file.
 Agents change goals.json only through these commands, never by hand-editing JSON.
@@ -241,7 +241,7 @@ def coordination(repo, canonical_repo=None):
     elif identity is not None and not identity[1]:
         sys.exit('linked worktree requires --canonical-repo <primary checkout>; return a scoped proposal to the integration owner')
     lock_dir = identity[0] if identity is not None else repo
-    lock_path = lock_dir / '.repo-docs-goals.lock'
+    lock_path = lock_dir / '.docs-sync-goals.lock'
     if lock_path.is_symlink():
         sys.exit(f'refusing symlink lock: {lock_path}')
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)

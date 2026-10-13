@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-GOALS = ROOT / 'skills/repo-docs/scripts/goals.py'
+GOALS = ROOT / 'skills/docs-sync/scripts/goals.py'
 
 
 def worker_module():
@@ -58,7 +58,7 @@ class CycleGuidanceTests(unittest.TestCase):
                             'tasks/todo.md', 'review acceptance', 'NOT_CHECKED'):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, text)
-        for path in ('repo-docs/SKILL.md', 'autowork/SKILL.md',
+        for path in ('docs-sync/SKILL.md', 'autowork/SKILL.md',
                      'autowork/references/whole-spec-execution.md'):
             self.assertIn('ENGINEERING-CYCLE.md', (ROOT / 'skills' / path).read_text())
 

@@ -67,7 +67,7 @@ Full setup runs OMH doctor, checks every profile, and refreshes live commands.
 Native plugin loading provisions missing bundled skills, so full setup is not
 required for the core questions-only interview. Use setup for external integrations,
 OMH configuration and fleet-wide provisioning; native installation does not perform
-those steps. Saving interview decisions through repo-docs additionally requires
+those steps. Saving interview decisions through docs-sync additionally requires
 Graphify and the relevant file/terminal tools.
 Use `hermes toolset setup --dry-run` to preview target profiles.
 

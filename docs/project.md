@@ -31,7 +31,7 @@ unattended completion; verification must distinguish dispatch, execution and del
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
 | Autowork recovery | [planning decision](../skills/autowork/scripts/backlog_plan.py), [cycle](../skills/autowork/scripts/owner_cycle.py) | Return bounded recovery actions; the agent executes them and reports actual results |
-| Task index | [goals helper](../skills/repo-docs/scripts/goals.py) | Validate and update an existing goals.json and render its TODO coverage block; full task bodies remain documentation |
+| Task index | [goals helper](../skills/docs-sync/scripts/goals.py) | Validate and update an existing goals.json and render its TODO coverage block; full task bodies remain documentation |
 | Codex package | [manifest](../.codex-plugin/plugin.json), [marketplace](../.agents/plugins/marketplace.json) | Install portable skills into Codex; no Hermes gateway or configuration dependency |
 | Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands and pass literal arguments to portable workflows |
 | Portable behavior | [host contract](../adapters/skills/COMMON.md) | Use the current host's tools; preserve permissions, memory and credentials |

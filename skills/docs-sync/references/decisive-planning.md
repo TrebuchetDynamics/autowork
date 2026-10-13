@@ -55,7 +55,7 @@ Record selected skill → changed owner/decision/check. A catalog listing is not
 application evidence. Missing capabilities never authorize installation, scanner
 bypass, fabricated review or expanded scope.
 Read imported skills as supporting instructions; do not rewrite their SKILL.md
-files or self-improvement metadata during a repo-docs pass. Such instruction edits
+files or self-improvement metadata during a docs-sync pass. Such instruction edits
 require a separate authorized task.
 
 ## Repair clerical handoff failures before stopping

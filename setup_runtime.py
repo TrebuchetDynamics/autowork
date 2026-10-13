@@ -4,7 +4,8 @@ from pathlib import Path
 
 def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reload=False):
     errors = []
-    bundled = {p.parent.name for p in (bundle / 'skills').glob('*/SKILL.md')}
+    bundled = {p.parent.name for p in (bundle / 'skills').glob('*/SKILL.md')
+               if p.parent.name not in {'repo-docs', 'repo-interview'}}
     commands = {r['command'] for r in inventory['commands']
                 if r.get('kind') == 'plugin' and r.get('source') == 'hermes-toolset'}
     missing = sorted(bundled - commands)

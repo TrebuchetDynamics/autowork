@@ -31,7 +31,7 @@ execution index yet; native ledger admission must not be inferred from this queu
 
 - Status: open
 - Goal: Let Docs Sync bootstrap a native-consumable backlog without manual JSON edits.
-- Sources: [goals helper](skills/repo-docs/scripts/goals.py), [document scaffold](skills/repo-docs/references/document-scaffold.md), [project contract](docs/project.md).
+- Sources: [goals helper](skills/docs-sync/scripts/goals.py), [document scaffold](skills/docs-sync/references/document-scaffold.md), [project contract](docs/project.md).
 - Evidence: The CLI documents command-only ledger mutation but exposes no init or
   add-goal command. This repository currently has TODO.md and no goals.json.
 - Scope: Establish and document a supported bootstrap operation; preserve full task

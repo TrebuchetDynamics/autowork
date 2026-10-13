@@ -60,10 +60,10 @@ Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
    finds no eligible delta. Record `work_search`: milestone/source, checked seam
    and evidence, candidates, eligibility/rejection reasons and next seam. This is
    prompt policy, not a runtime guarantee of autonomous progress.
-2. **Use runnable backlog first; otherwise run the repo-docs fallback.**
+2. **Use runnable backlog first; otherwise run the docs-sync fallback.**
    Explicit plan slices follow [the shared handoff](../shared/PLAN-HANDOFF.md):
    select within the named IDs, never an unrelated global task.
-   Do not run a repo-docs prepass for a usable backlog task, even without a docs cron.
+   Do not run a docs-sync prepass for a usable backlog task, even without a docs cron.
    Record `Repo-docs pass: existing backlog <source/receipt>` or the actual fallback result.
    With no runnable task and no overlapping writer, apply the scheduled fallback
    above and load discovery.md as needed; reuse current docs-owner evidence rather
@@ -72,7 +72,7 @@ Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
    **Selection order:** reconcile live work, then read `goals.py focus <repo> --json`
    with `<skills-root>` the loaded skill directory’s parent. Select ONE primary milestone; retain it
    until delivered or explicitly reprioritized. Run
-   `python3 "<skills-root>/repo-docs/scripts/goals.py" next <repo> --json`
+   `python3 "<skills-root>/docs-sync/scripts/goals.py" next <repo> --json`
    and choose a dependency-ready, unclaimed slice advancing that focus, not the
    first unrelated task. If focus is absent, record the accepted milestone and
    missing focus explicitly; do not invent CLI syntax. Without goals.json use
@@ -85,7 +85,7 @@ Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
    and quote its task ID and goal ID. Mark it with `goals.py task <repo> <TASK>
    in_progress` at handoff. If the backlog is stale against the code (a task already
    done, a path gone), correct that one entry via `goals.py task`, then pick again;
-   repo-docs' next run does the rest.
+   docs-sync' next run does the rest.
 3–9. Apply [iteration and decisions](references/iteration-and-decisions.md) for
     environment repair, retries, acceptance, review and genuinely missing user input.
 10. **Ownership.** Each writing pass uses its own pinned Git worktree, never
@@ -151,7 +151,7 @@ or reply `[SILENT]` and leave a journal note for the next run.
    Load `references/state-and-recovery.md` for schema/session/recovery details and
    `references/blockers-and-history.md` for failed/blocked cards. Retry limits still apply.
 2. **Select.** Read `goals.py focus <repo> --json`, then run `goals.py next <repo> --json`
-   through the repo-docs script path (pass `<repo>` as the absolute repo path — a bare
+   through the docs-sync script path (pass `<repo>` as the absolute repo path — a bare
    directory name fails to resolve); choose an eligible slice of that primary milestone (priority 2). If held, run [recovery](references/owner-cycle.md) and [planning](references/backlog-planning.md). Resolve routine engineering choices first. If it still needs a material
    owner action or decision, run `goals.py section <repo> <TASK> "Needs decision"` and ask (hard-blockers).
    If it bundles excluded scope, register the in-scope slice with `goals.py add-task` and park the rest.

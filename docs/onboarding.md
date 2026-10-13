@@ -64,7 +64,7 @@ Answer the questions, then say `finish`. Expected evidence is a useful summary
 grounded in your actual answers, with unresolved choices left open and no file
 changes. This uses the configured model and ordinary repository read access;
 supporting imported skills have a documented fallback. Questions-only mode does
-not run repo-docs Maintain and needs no Graphify, memory or speech service.
+not run docs-sync Maintain and needs no Graphify, memory or speech service.
 This is an operator-run exercise, not a recorded clean-install/model test.
 
 ## Telegram smoke check
@@ -93,7 +93,7 @@ working directory is not confinement. See Hermes' [profile and workspace guidanc
 ## Optional: see decisions become a task
 
 This exercise writes documentation and a task; it needs a configured model and
-file/terminal tools. Saving answers uses narrow repo-docs Maintain. A small utility
+file/terminal tools. Saving answers uses narrow docs-sync Maintain. A small utility
 with clear requirements can use direct source evidence without Graphify. Broader
 architecture or dependency analysis may benefit from that integration; native
 installation does not configure it. Use [full setup](installation.md) when those

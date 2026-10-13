@@ -21,7 +21,7 @@ purpose and a useful bounded outcome are already clear.
 | Observed state | Work to do now |
 | --- | --- |
 | Empty/scaffold repo with known purpose | Inspect tooling, define the smallest working vertical slice and its acceptance, scaffold and implement it. |
-| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Reconcile canonical TODO.md/goals.json through scoped repo-docs. |
+| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Reconcile canonical TODO.md/goals.json through scoped docs-sync. |
 | Ready tasks exist | Read their complete bodies and select accepted, dependency-ready work; skip replanning. |
 | Tests/build fail | Reproduce the failure, diagnose and fix with regression coverage; ordinary engineering failures are work. |
 | Task combines offline work and live qualification | Separate their acceptance; finish useful offline implementation/tests while preserving the live gate. |
@@ -36,7 +36,7 @@ three useful slices, measurable checks, no invented scope or repetitive replanni
 For a new backlog, derive tasks from the user's development request and existing
 project intent; record decisions as agent decisions under that scope, never a
 fabricated historical user approval. Existing accepted plans and competing owners
-remain authoritative. Satisfy repo-docs prerequisites rather than quietly omitting them.
+remain authoritative. Satisfy docs-sync prerequisites rather than quietly omitting them.
 
 For broad repository development, follow [repository maintenance](repository-maintenance.md)
 whenever no runnable task remains. Discover useful docs, UI/UX, tests, refactoring

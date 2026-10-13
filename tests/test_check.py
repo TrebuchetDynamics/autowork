@@ -39,14 +39,14 @@ class OfflineCheckTests(unittest.TestCase):
         self.write('skills/autowork/scripts/test_budget_controller.py', sentinel)
         self.write('vendor/examples/test_external.py', sentinel)
         self.write('skills/autowork/references/vendor/test_external.py', sentinel)
-        self.write('skills/repo-docs/scripts/test_goal_gap_regression.py', sentinel)
+        self.write('skills/docs-sync/scripts/test_goal_gap_regression.py', sentinel)
         self.write('skills/autowork/scripts/test_native_lifecycle_controls.py', sentinel)
         self.write('tests/integration_plugin.py', sentinel)
         result = self.run_check('--list')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('RUN tests/test_unit.py', result.stdout)
         self.assertIn('RUN skills/autowork/scripts/test_budget_controller.py', result.stdout)
-        self.assertIn('EXCLUDE skills/repo-docs/scripts/test_goal_gap_regression.py [model]', result.stdout)
+        self.assertIn('EXCLUDE skills/docs-sync/scripts/test_goal_gap_regression.py [model]', result.stdout)
         self.assertIn('EXCLUDE skills/autowork/scripts/test_native_lifecycle_controls.py [native]', result.stdout)
         self.assertIn('EXCLUDE tests/integration_plugin.py [integration]', result.stdout)
         self.assertNotIn('test_external.py', result.stdout)
@@ -67,7 +67,7 @@ class Check(unittest.TestCase):
         for name in ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX', 'HERMES_NATIVE_HANDOFF_TEST'):
             self.assertNotIn(name, os.environ)
 ''')
-        self.write('skills/repo-docs/scripts/test_goal_gap_regression.py',
+        self.write('skills/docs-sync/scripts/test_goal_gap_regression.py',
                    "raise RuntimeError('live model imported')\n")
         env = dict(os.environ, CONTAINMENT_LINUX_TESTS='1', RUN_CONTROLLER_BRIDGE_LINUX='1',
                    HERMES_NATIVE_HANDOFF_TEST='1')
@@ -82,7 +82,7 @@ class Check(unittest.TestCase):
 class Check(unittest.TestCase):
     def test_failure(self): self.fail('deliberate regression')
 ''')
-        self.write('skills/repo-docs/scripts/test_marker.py', '''from pathlib import Path
+        self.write('skills/docs-sync/scripts/test_marker.py', '''from pathlib import Path
 import unittest
 class Check(unittest.TestCase):
     def test_marker(self): Path('checked').write_text('yes')
@@ -90,7 +90,7 @@ class Check(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('deliberate regression', result.stdout + result.stderr)
-        self.assertTrue((self.root / 'skills/repo-docs/scripts/checked').is_file())
+        self.assertTrue((self.root / 'skills/docs-sync/scripts/checked').is_file())
 
     def test_timeout_is_a_failure_not_a_skip(self):
         self.write('tests/test_hang.py', 'import time; time.sleep(3)\n')

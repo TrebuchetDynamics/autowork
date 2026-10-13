@@ -264,7 +264,7 @@ class Harness:
                              'status': 'open', 'section': 'Now'}]}
         (self.repo / 'goals.json').write_text(json.dumps(ledger))
         (self.repo / 'README.md').write_text('Isolated native harness repository.\n')
-        selected = self.command([sys.executable, str(ROOT / 'repo-docs/scripts/goals.py'),
+        selected = self.command([sys.executable, str(ROOT / 'docs-sync/scripts/goals.py'),
                                  'next', str(self.repo), '--json'])[0]['task']
         body = ('TASK: create artifact.txt containing exactly native-lifecycle\\n.\n'
                 'DELIVERABLE: artifact.txt in the assigned isolated repository.\n'

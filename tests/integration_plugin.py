@@ -56,6 +56,9 @@ def main():
         # Enabling/loading the plugin must wire native discovery without setup.
         # Every bundled skill must be provisioned by native plugin loading.
         for source in (root / 'skills').glob('*/SKILL.md'):
+            if source.parent.name in {'repo-docs', 'repo-interview'}:
+                assert not (home / 'skills' / source.parent.name).exists()
+                continue
             assert (home / 'skills' / source.parent.name / 'SKILL.md').is_file(), source.parent.name
         assert (home / 'skills/impeccable/reference/routing.md').is_file()
         assert (home / 'skills/impeccable/scripts/impeccable').is_file()
@@ -107,8 +110,8 @@ def main():
             runner, event=None, command='new', title='New', detail='test', execute=execute))
         assert result == 'executed' and called == [True]
         commands = get_plugin_commands()
-        assert {"autowork", "impeccable", "git-commit-push", "git-pull-merge", "lgtm", "repo-docs", "repo-interview"} <= commands.keys()
-        assert manager.find_plugin_skill("hermes-toolset:docs-sync") == root / "skills/repo-docs/SKILL.md"
+        assert {"autowork", "impeccable", "git-commit-push", "git-pull-merge", "lgtm", "docs-sync", "plan-with-me"} <= commands.keys()
+        assert manager.find_plugin_skill("hermes-toolset:docs-sync") == root / "skills/docs-sync/SKILL.md"
         payload = json.loads(skill_view("hermes-toolset:docs-sync"))
         assert "error" not in payload, payload
 
@@ -152,7 +155,7 @@ def main():
                 assert message.endswith('read-only: example'), message
                 if public == 'plan_for_me':
                     assert 'Selected subcommand: plan' in message
-            assert commands["repo-docs"]["handler"]("update the README") is None
+            assert commands["docs-sync"]["handler"]("update the README") is None
             queued = cli._pending_input.get_nowait()
             assert 'skill_view(name="hermes-toolset:docs-sync")' in queued
             assert "update the README" in queued
@@ -172,7 +175,7 @@ def main():
         finally:
             clear_session_vars(tokens)
         manager.unload("hermes-toolset")
-        assert "repo-docs" not in manager._plugin_commands
+        assert "docs-sync" not in manager._plugin_commands
         assert manager.find_plugin_skill("hermes-toolset:docs-sync") is None
         # Broken YAML must remain recoverable, never replaced by fallback defaults.
         config_path.write_text('approvals: [broken')

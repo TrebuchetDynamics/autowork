@@ -42,7 +42,7 @@ class PreflightTests(unittest.TestCase):
     def test_incomplete_skill_and_plugin_conflicts_abort_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
-            (home / 'skills/repo-docs').mkdir(parents=True)
+            (home / 'skills/docs-sync').mkdir(parents=True)
             (home / 'plugins').mkdir()
             (home / 'plugins/hermes-toolset').write_text('owned')
             before = sorted(str(p) for p in home.rglob('*'))

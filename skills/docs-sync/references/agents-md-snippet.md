@@ -1,4 +1,4 @@
-# AGENTS.md snippet for repo-docs
+# AGENTS.md snippet for docs-sync
 
 Merge this into a repository's existing `AGENTS.md`; do not replace its other
 instructions.
@@ -6,7 +6,7 @@ instructions.
 ```markdown
 ## Documentation
 
-Use the `repo-docs` skill for documentation work and changes affecting product
+Use the `docs-sync` skill for documentation work and changes affecting product
 behavior, architecture, APIs, setup, test strategy, operations, or release notes.
 Assess documentation impact before completing implementation work; update only
 affected canonical documents and preserve established paths. Do not rewrite

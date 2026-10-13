@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retry selection against the canonical consumer after bounded repo-docs maintenance."""
+"""Retry selection against the canonical consumer after bounded docs-sync maintenance."""
 import argparse
 from contextlib import redirect_stdout
 import importlib.util
@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 import sys
 
-spec = importlib.util.spec_from_file_location('retry_goals', Path(__file__).resolve().parents[2] / 'repo-docs/scripts/goals.py')
+spec = importlib.util.spec_from_file_location('retry_goals', Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py')
 assert spec is not None and spec.loader is not None
 goals = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(goals)
