@@ -67,10 +67,81 @@ execution index yet; native ledger admission must not be inferred from this queu
 - Dependencies: None; requires a configured isolated model/native environment.
 - Owner: Next authorized Autowork coordinator; no active claim recorded here.
 
+### TOOLSET-009 — Account for archival in the shared rendering contract
+
+- Status: open; planned, not implemented.
+- Priority: Medium; independent of TOOLSET-008.
+- Goal: Agents review and deliver every artifact changed by a render operation.
+- Sources: [engineering cycle](skills/shared/ENGINEERING-CYCLE.md),
+  [renderer](skills/docs-sync/scripts/goals.py),
+  [archive contract](skills/docs-sync/references/todo-archive.md).
+- Evidence: ENGINEERING-CYCLE.md says rendering changes only the goal table;
+  the separate local archival changes make goals.py render delegate to
+  archive_tasks with coverage rendering enabled and move completed bodies into
+  the established archive. Those changes and test_todo_archive.py remain outside
+  this delivery. The user's planning
+  request adopts the audit finding and asks to document and inspect that effect.
+- Scope: Correct the shared cycle's render description and closeout sequence.
+  Require readback/diff review of TODO.md and the actual archive selected by the
+  helper; include attributable archive changes in the handoff and any separately
+  authorized commit. Reuse the existing archive contract and regression coverage.
+- Exclusions: No renderer behavior change, archive rename, mass task migration,
+  unrelated contract rewrite, implementation during planning, or implied commit.
+- Acceptance: The contract states both coverage rendering and automatic archival;
+  it requires post-render verification of preserved open bodies, complete archived
+  bodies, valid links and byte stability on an unchanged second pass. When an
+  existing archive has a custom path, verification uses that path. No claim that
+  instruction tests prove model adherence or live completion.
+- Checks: From skills/docs-sync/scripts, run
+  `python3 -m unittest test_todo_archive`; check changed Markdown links and
+  `git diff --check`. Review the final wording against render/archive_tasks.
+  These are planned implementation checks, not new passing evidence.
+- Dependencies: Separate integration of the local archival implementation and
+  skills/docs-sync/scripts/test_todo_archive.py; verify their presence before
+  applying the contract change. No dependency on TOOLSET-008.
+- Owner: Next authorized implementer; no active claim or implementation authority
+  is created by this planning pass.
+- Next action: Make the bounded contract correction after implementation is authorized.
+
 ## Needs decision
 
-None currently identified for the bounded tasks above. Unavailable live test access
-must be reported when encountered; it is not evidence that a product task is done.
+### TOOLSET-008 — Make Autowork continuation authority consistent
+
+- Status: needs decision; planned, not implemented.
+- Priority: High.
+- Goal: Closing an authorized batch cannot silently authorize starting another.
+- Sources: [engineering cycle](skills/shared/ENGINEERING-CYCLE.md),
+  [Autowork contract](skills/autowork/SKILL.md),
+  [scheduled policy](skills/autowork/references/scheduled-policy.md),
+  [portable Autowork](adapters/skills/autowork/SKILL.md),
+  [workflow checks](tests/test_workflow_cycle.py).
+- Evidence: The cycle's introduction limits default Autowork to one slice, while
+  its final step tells an active invocation/job to hand off the next batch. The
+  user's planning request adopts the correction: separate closeout from new work
+  and require standing continuation authority for another batch.
+- Scope: Align the cycle's introduction and final step with the accepted stopping
+  rule; reconcile directly affected native/portable and scheduled instructions.
+  Keep closeout of the current batch distinct from admission of a new batch.
+- Decision pending: Does recurrence itself authorize multiple batches within an
+  occurrence, or must the saved job prompt explicitly grant that authority?
+  Recommendation: one batch unless the prompt explicitly authorizes continuation.
+  No answer or acceptance of that recommendation has been recorded.
+- Exclusions: No live job edits, scheduler changes, worker dispatch, new runtime
+  gates, permission expansion, budget reset, or implementation during planning.
+- Acceptance: A default interactive invocation stops after its one batch; required
+  closeout can finish without admitting another. An explicit one-task restriction
+  always wins. An explicit multi-batch/whole-spec mandate can continue within its
+  existing scope, budget, ownership and review gates. Scheduled runs follow the
+  user's resolved policy consistently across the affected instructions.
+- Checks: Review a scenario table covering default interactive, explicit one-task,
+  explicit continuation, recurring default, and exhausted budget/pending review.
+  Extend the relevant contract checks where useful; run
+  `python3 -m unittest discover -s tests -p test_workflow_cycle.py`, check affected
+  links and `git diff --check`. New scenarios and checks have not yet been executed;
+  offline policy checks do not prove agent behavior.
+- Dependencies: Resolve the scheduled-run question; no dependency on TOOLSET-009.
+- Owner: User for the open policy choice; next authorized implementer for the fix.
+- Next action: Record the answer and finalize this task's scheduled acceptance case.
 
 ## Completed local changes
 
