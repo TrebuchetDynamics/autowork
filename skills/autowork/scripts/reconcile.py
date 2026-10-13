@@ -58,9 +58,9 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
     delivery = evaluate(current_evidence, repo)
     # A next action is a coordinator instruction, not proof of process liveness,
     # review approval, integration authority, or completed acceptance.
-    terminal_run = latest.get('status') in {'blocked', 'failed', 'completed', 'cancelled', 'interrupted'} or latest.get('ended_at') is not None
+    terminal_run = latest.get('status') in {'blocked', 'failed', 'crashed', 'completed', 'cancelled', 'interrupted'} or latest.get('ended_at') is not None
     review_handoff = task['status'] == 'review' and latest.get('outcome') == 'review_requested'
-    if task['status'] in {'running', 'review'} and terminal_run and not review_handoff:
+    if task['status'] in {'running', 'review', 'ready', 'todo'} and terminal_run and not review_handoff:
         next_action = 'reconcile_run_state'
     elif task['status'] in {'running', 'review'}:
         next_action = 'observe_current_run'
@@ -140,6 +140,8 @@ def main():
                             if result.get('next_action') in {'recover_original_card', 'reconcile_run_state'} else None)}
     if closeout_pending:
         result['human_report'] += '; closeout pending: verify review/candidate and integrate under existing authority'
+    elif blocked_count >= 2:
+        result['human_report'] += '; recovery required: change approach on the original card; verify current claim and supported lifecycle transition without resetting allocation or pins'
     elif previous == projection:
         result['human_report'] = None
     result['report_changed'] = previous != projection

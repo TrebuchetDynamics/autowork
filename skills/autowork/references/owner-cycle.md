@@ -78,7 +78,7 @@ implementation and remaining acceptance.
 An existing card with partial work and a session/budget failure needs execution
 recovery, not another product plan. Read its saved continuation, current card,
 latest run status/end time and accounting evidence before choosing an action.
-A card still marked running with a terminated latest run is inconsistent state,
+A card still marked running, todo or ready with a terminated latest run is inconsistent state,
 not proof of a live worker. `reconcile_run_state` requires checking the original
 run/process and supported lifecycle controls before resuming; it never authorizes
 a duplicate worker. Preserve consumed turns/cost, retry counts and uncertain charges.

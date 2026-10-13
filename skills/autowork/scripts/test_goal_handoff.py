@@ -44,10 +44,46 @@ class HandoffTests(unittest.TestCase):
                 '--contract-file',str(contract),'--source-snapshot',str(snapshot),'--base',base,
                 '--goal-task','T1','--ledger-mode','proposal','--integration-owner','parent',
                 '--pass-root',str(root/'passes'),'--required-path','PLAN.md','--required-path','code.py']
+            missing_base = argv.copy()
+            position = missing_base.index('--base')
+            del missing_base[position:position + 2]
+            with patch('sys.argv',missing_base),patch.dict(m.os.environ,{},clear=True),patch.object(m,'run',side_effect=cli):
+                with self.assertRaises(SystemExit): m.main()
+            self.assertEqual(list((home / 'autowork/runtimes').glob('*')), [],
+                             'Pre-create refusal must not retain an unreferenced runtime')
+            original_snapshot = snapshot.read_bytes()
+            freeze = m.runtime_bundle.freeze
+            def change_source_after_freeze(*args):
+                runtime = freeze(*args)
+                snapshot.write_bytes(original_snapshot + b' ')
+                return runtime
+            with patch('sys.argv',argv),patch.dict(m.os.environ,{},clear=True),patch.object(m,'run',side_effect=cli), \
+                 patch.object(m.runtime_bundle, 'freeze', side_effect=change_source_after_freeze):
+                with self.assertRaisesRegex(SystemExit, 'Source snapshot changed during assembly'): m.main()
+            self.assertEqual(list((home / 'autowork/runtimes').glob('*')), [])
+            snapshot.write_bytes(original_snapshot)
             with patch('sys.argv',argv),patch.dict(m.os.environ,{},clear=True),patch.object(m,'run',side_effect=cli):
                 with self.assertRaisesRegex(RuntimeError,'fixture native create boundary'):m.main()
             self.assertEqual(len(created),1)
             body = created[0][created[0].index('--body')+1]
+            self.assertNotIn(str(Path(m.__file__).resolve().parents[2]), body)
+            manifests = list((home / 'autowork').glob('pass-*.json'))
+            manifests = [path for path in manifests
+                         if Path(json.loads(path.read_text())['helper_runtime']['root']).exists()]
+            self.assertEqual(len(manifests), 1)
+            runtime = json.loads(manifests[0].read_text())['helper_runtime']
+            self.assertIn(runtime['root'], body)
+            self.assertIn(runtime['sha256'], body)
+            import runtime_bundle
+            frozen = runtime_bundle.verify(runtime)
+            self.assertIn('autowork/scripts/writer_registration.py', frozen['files'])
+            self.assertIn('autowork/scripts/agent_commit.sh', frozen['files'])
+            self.assertIn('docs-sync/scripts/todo_archive.py', frozen['files'])
+            import re, shlex
+            guard = re.search(r'Before initial design, tests or any production edit, run `([^`]+)`', body).group(1)
+            admitted = subprocess.run(shlex.split(guard), text=True, capture_output=True)
+            self.assertEqual(admitted.returncode, 0, admitted.stderr)
+            self.assertEqual(json.loads(admitted.stdout)['outcome'], 'worker_start_admitted')
             self.assertIn('READ-ONLY PLANNING CONTEXT', body)
             self.assertIn('INITIAL IMPLEMENTATION ONLY', body)
             self.assertIn('does not apply to review entry or review rework', body)

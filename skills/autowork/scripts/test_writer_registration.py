@@ -90,4 +90,28 @@ class RegistrationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.verify(path, hashlib.sha256(b'').hexdigest(), fields, expected)
 
+class DriftDiagnosticsTests(unittest.TestCase):
+    def test_drift_diagnosis_never_admits_or_rewrites_evidence(self):
+        import writer_registration as module
+        with tempfile.TemporaryDirectory() as directory:
+            registry = Path(directory) / 'writers.jsonl'
+            expected = dict(card='card-1', task='T1', workspace=directory, base='a'*40, scope=['src/a.py'])
+            fields = {key: key for key in expected}
+            original = (json.dumps(expected) + '\n').encode()
+            digest = hashlib.sha256(original).hexdigest()
+            cases = [
+                (original + (json.dumps(dict(expected, card='other')) + '\n').encode(), 'current_row_matches'),
+                ((json.dumps(dict(expected, task='T2')) + '\n').encode(), 'current_row_mismatch'),
+                ((json.dumps(dict(expected, card='other')) + '\n').encode(), 'current_row_missing'),
+                (original + original, 'current_row_ambiguous'),
+                (b'{"card":"wrong",' + original[1:], 'registry_invalid'),
+                (b'not json\n', 'registry_invalid'),
+            ]
+            for content, diagnosis in cases:
+                with self.subTest(diagnosis=diagnosis):
+                    registry.write_bytes(content)
+                    with self.assertRaisesRegex(ValueError, diagnosis):
+                        module.verify(registry, digest, fields, expected)
+                    self.assertEqual(registry.read_bytes(), content)
+
 if __name__ == '__main__': unittest.main()

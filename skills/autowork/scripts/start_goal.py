@@ -9,12 +9,17 @@ import os
 import re
 import sqlite3
 import shlex
+import shutil
 import uuid
 from urllib.parse import quote
 from pathlib import Path
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+_runtime_spec = importlib.util.spec_from_file_location('worker_runtime_bundle', Path(__file__).with_name('runtime_bundle.py'))
+runtime_bundle = importlib.util.module_from_spec(_runtime_spec)
+_runtime_spec.loader.exec_module(runtime_bundle)
 
 BUDGET = 100
 ACTIVE = {'ready', 'running', 'todo', 'review', 'changes_requested'}
@@ -171,7 +176,7 @@ def validate_publication_authority(authority, workspace, profile, goal_task, con
 
 
 def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
-                    integration_owner=None, publication_authority=None):
+                    integration_owner=None, publication_authority=None, helper_runtime=None):
     if ledger_mode not in ('worker', 'proposal'):
         raise ValueError('ledger mode must be worker or proposal')
     if ledger_mode == 'proposal' and (not isinstance(integration_owner, str) or
@@ -189,10 +194,13 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
         validate_publication_authority(raw, raw['workspace'], raw['profile'], raw['goal_task'], contract)
         if ledger_mode != 'proposal' or integration_owner != raw['owner']:
             raise ValueError('scoped publication requires coherent proposal/integration-owner role')
-    goals_command = shlex.join([sys.executable, str(
-        Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py')])
-    cycle_path = Path(__file__).resolve().parents[2] / 'shared/ENGINEERING-CYCLE.md'
-    engineering_path = Path(__file__).resolve().parents[2] / 'engineering/SKILL.md'
+    helper_root = Path(helper_runtime['root']) if helper_runtime else Path(__file__).resolve().parents[2]
+    goals_command = (runtime_bundle.command(helper_runtime, 'docs-sync/scripts/goals.py') if helper_runtime else
+                     shlex.join([sys.executable, str(helper_root / 'docs-sync/scripts/goals.py')]))
+    finish_command = (runtime_bundle.command(helper_runtime, 'autowork/scripts/finish_task.py') if helper_runtime else
+                      shlex.join([sys.executable, str(helper_root / 'autowork/scripts/finish_task.py')]))
+    cycle_path = helper_root / 'shared/ENGINEERING-CYCLE.md'
+    engineering_path = helper_root / 'engineering/SKILL.md'
     body = (REVIEW_DOD + '\n\n' + contract + '\n\nExecution: This is the selected autowork slice, not a picker. '
             'Implement and verify this contract only. Do not discover or enqueue another task. '
             f'Read the bundled engineering cycle at `{cycle_path}` for verified skill routing, '
@@ -223,7 +231,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'Ponytail application: before implementation, choose the smallest complete change: omit unneeded extras, then prefer '
             'existing repository code, standard library/platform, installed dependency, and finally minimal new code. '
             'Cover connected callers, tests, fixtures and config; a smaller partial fix is not complete. '
-            f'Use the task-scoped guidance at `{Path(__file__).resolve().parents[1] / "references/ponytail.md"}`. '
+            f'Use the task-scoped guidance at `{helper_root / "autowork/references/ponytail.md"}`. '
             'For material implementation choices, resolve `ponytail:ponytail` or its verified active skill path; '
             'a retired compatibility shim is not the method. If unavailable, apply the bundled fallback and name that limitation. '
             'Record decision, reused paths, omitted extras and check/result in the existing task receipt; '
@@ -234,7 +242,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'never waive safety, acceptance criteria or required checks for a smaller diff. '
             'Read repository instructions and preserve dirty-file ownership. Hermes Agent/Desktop/Conduit '
             'and other upstream/vendor references are unmodified; changes stay inside the boundaries this profile\'s SOUL authorizes. '
-            f'Mandatory completion gate: run `python3 {Path(__file__).with_name("finish_task.py").resolve()} '
+            f'Mandatory completion gate: run `{finish_command} '
             '--repo <workspace> --profile <profile> --card <card-id> --message "<task summary>" '
             '--check-json \'["<check executable>", "<arg>"]\' -- <owned-file>...` before review handoff or kanban_complete; '
             'repeat --check-json for each required acceptance command. Its agent_commit.sh helper commits '
@@ -532,8 +540,8 @@ def main():
         if args.publication_authority:
             publication = validate_publication_authority(json.loads(Path(args.publication_authority).read_text()),
                                                          args.workspace, args.profile, args.goal_task, contract)
-        role_body = build_task_body(role_contract, args.goal_max_turns, ledger_mode=args.ledger_mode,
-                                    integration_owner=args.integration_owner, publication_authority=publication)
+        build_task_body(role_contract, args.goal_max_turns, ledger_mode=args.ledger_mode,
+                        integration_owner=args.integration_owner, publication_authority=publication)
     except (ValueError, OSError, TypeError, KeyError) as error:
         raise SystemExit(str(error)) from error
     if args.validate_only:
@@ -594,7 +602,6 @@ def main():
         canonical_board = next(b for b in boards if b['slug'] == 'default')
         board_id = canonical_board.get('id') or canonical_board.get('board_id') or str(Path(canonical_board['db_path']).resolve())
         digest = hashlib.sha256((args.profile + '\n' + str(workspace) + '\n' + args.title + '\n' + contract).encode()).hexdigest()
-        body = role_body
         # Final check after live ownership reconciliation, immediately before create.
         try:
             require_fresh_sources(args.source_snapshot, workspace)
@@ -607,6 +614,8 @@ def main():
         except (ValueError, OSError, TypeError, KeyError) as error:
             raise SystemExit(str(error)) from error
         # Assembly uses only attributed committed inputs, never the dirty checkout union.
+        helper_runtime = None
+        dispatch_ready = False
         try:
             if not args.base:
                 raise ValueError('New write passes require --base full immutable commit')
@@ -630,17 +639,26 @@ def main():
             pass_path = Path(args.pass_root).expanduser().resolve() / (digest[:16] + '-' + uuid.uuid4().hex)
             identity = passes.prepare(workspace, pass_path, args.base, args.candidate or args.base,
                                       pins, required_paths)
+            helper_runtime = runtime_bundle.freeze(Path(__file__).resolve().parents[2], journal_dir / 'runtimes')
+            body = build_task_body(role_contract, args.goal_max_turns, ledger_mode=args.ledger_mode,
+                                   integration_owner=args.integration_owner, publication_authority=publication,
+                                   helper_runtime=helper_runtime)
+            body += ('\n\nHELPER RUNTIME: The commands below bind this card to the frozen bundle at ' +
+                     shlex.quote(helper_runtime['root']) + ' with manifest SHA256 ' + helper_runtime['sha256'] +
+                     '. Use these verified entry commands for the entire card, including rework and closeout. '
+                     'Do not substitute helpers from a shared checkout or refreshed profile installation. '
+                     'A missing or changed bundle is an original-card recovery hold; never silently rebind it.')
             manifest = {'version': 1, 'source_workspace': str(workspace), 'candidate_identity': identity,
                         'files': expected['files'], 'ledger_sha256': admission['ledger_sha256'],
                         'source_snapshot_sha256': hashlib.sha256(snapshot_bytes).hexdigest(),
-                        'goal_task': args.goal_task}
+                        'goal_task': args.goal_task, 'helper_runtime': helper_runtime}
             if planning_context:
                 manifest.update(ledger_mode='proposal', planning_context=planning_context)
             manifest_path = journal_dir / ('pass-' + pass_path.name + '.json')
             with manifest_path.open('x') as stream:
                 json.dump(manifest, stream, indent=2)
             manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-            guard = 'python3 ' + shlex.quote(str(Path(__file__).with_name('pass_workspace.py').resolve())) + \
+            guard = runtime_bundle.command(helper_runtime, 'autowork/scripts/pass_workspace.py') + \
                     ' --manifest ' + shlex.quote(str(manifest_path)) + ' --manifest-sha256 ' + manifest_sha256 + \
                     ' --workspace ' + shlex.quote(str(pass_path))
             body += ('\n\nMANDATORY WORKER START — INITIAL IMPLEMENTATION ONLY: This command does not apply to review entry or review rework. Before initial design, tests or any production edit, run `' + guard +
@@ -669,8 +687,15 @@ def main():
                 raise ValueError('Goal admission changed during assembly')
             require_fresh_sources(args.source_snapshot, workspace)
             passes.verify(manifest, pass_path)
+            runtime_bundle.verify(helper_runtime)
+            dispatch_ready = True
         except (ValueError, OSError, TypeError, KeyError) as error:
             raise SystemExit(str(error)) from error
+        finally:
+            # No native creation has been attempted in this block. After it, a
+            # transport failure may hide a created card, so retain its runtime.
+            if helper_runtime is not None and not dispatch_ready:
+                shutil.rmtree(helper_runtime['root'])
         created = json.loads(run(prefix, *board, 'create', args.title, '--body', body,
                                  '--assignee', args.profile, '--workspace', 'dir:' + str(pass_path),
                                  '--goal', '--goal-max-turns', str(args.goal_max_turns), '--max-retries', str(MAX_RETRIES),
@@ -710,6 +735,7 @@ def main():
                    'workspace': str(pass_path), 'source_workspace': str(workspace),
                    'pass_manifest': manifest, 'pass_manifest_path': str(manifest_path),
                    'pass_manifest_sha256': manifest_sha256,
+                   'helper_runtime': helper_runtime,
                    'goal_mode': True, 'goal_max_turns': args.goal_max_turns,
                    'max_retries': MAX_RETRIES,
                    'budget_policy': {'allocation_scope': 'worker_invocation',

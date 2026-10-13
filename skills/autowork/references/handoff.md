@@ -49,11 +49,26 @@ not silently accepting stale evidence. A missed historical registration needs tr
 same-card reconciliation; never backdate it or rerun initial admission after edits.
 Unchanged product checks need not repeat solely for a coordination correction.
 
+On a changed registry hash, the verifier still refuses admission but classifies the
+current evidence as `current_row_matches`, `current_row_mismatch`,
+`current_row_missing`, `current_row_ambiguous` or `registry_invalid`.
+`current_row_matches` describes the expected fields only: it does not establish
+that other changes are harmless or authorize refreshing a pin. Preserve the old
+requirement and refusal receipt, inspect the repository's registration/claim rules,
+and use its supported same-card prerequisite transition to record any justified
+update. If that operation is unavailable, name the exact missing capability;
+parser hardening or unchanged retries cannot release this hold.
+
 ## Picker run liveness
 
-Reconcile the card by its runs, not its status string: `hermes kanban runs <card>` plus
-`reconcile.py`'s `worker_observed`/heartbeat is the liveness evidence, and one card can
-read `running` for hours across several crashed attempts and a review→running cycle.
+Reconcile the card by its runs and current claim/process evidence, not its status
+string. `reconcile.py`'s `worker_observed` means a recorded run belongs to this
+profile; it does not establish process liveness. A card can read `running` across
+crashed attempts, or `todo`/`ready` after a terminal blocked run. Those inconsistent
+states require original-card reconciliation before treating the task as queued or
+releasing its ownership. After two unchanged blocked observations, change recovery
+approach; do not create a replacement or reset allocation. The normal admission
+guard remains in force until a supported lifecycle transition resolves the claim.
 
 ## Executable owner unblock pipeline
 
@@ -420,10 +435,19 @@ Before create, the helper checks original snapshot bytes, fresh source/ledger,
 unchanged admission and the exact clean candidate again after assembly, with no
 intervening native CLI lookup. Handoff receipts embed the immutable candidate
 identity, expected source fingerprints and ledger hash, plus an exclusive manifest
-file and its hash. The card includes this initial worker gate:
+file and its hash. New handoffs also snapshot the bundled Autowork, Docs Sync,
+shared and engineering helper trees under the profile's private
+`autowork/runtimes` directory. Runtime files are read-only, and the manifest pins
+their bytes and modes. The card and handoff receipt retain the runtime path and
+hash. Its startup, completion and goal commands verify that entire snapshot before
+executing a helper, including sibling imports and shell dependencies. An update
+to a shared checkout or profile copy does not change this card's snapshot.
+
+Use the exact generated command from the card, shaped as follows:
 
 ```sh
-python3 <this-skill-directory>/scripts/pass_workspace.py \
+python3 -I <frozen-runtime>/autowork/scripts/runtime_bundle.py \
+  <frozen-runtime> <runtime-manifest-sha256> autowork/scripts/pass_workspace.py \
   --manifest <exact-card-manifest.json> --manifest-sha256 <hash-from-original-card> \
   --workspace <exact-card-worktree>
 ```
@@ -440,6 +464,13 @@ workspace, ID and budget. `already_owned`, native idempotency reconciliation and
 non-dispatch `--validate-only` do not migrate active cards. New shared-checkout
 write dispatch without a base now explicitly refuses; structural validation is
 not a write-pass admission proof.
+
+Retain each runtime while its card, review or closeout remains resumable. Missing or
+changed runtime files are a same-card recovery hold, not permission to silently
+rebuild/rebind a bundle. Historical cards may still reference mutable shared paths:
+inspect their actual commands before integrating updates; deferring a profile copy
+alone does not isolate those workers. The snapshot is a consistency boundary on a
+trusted host, not protection against a writer replacing its verifier or racing it.
 
 Local real-Git tests and mocked native create/readback exercise this path; they
 are **not live dispatch or worker adoption proof**. The gate is executable but

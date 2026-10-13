@@ -15,6 +15,35 @@ else:
     m = None
 
 class ReconcileTests(unittest.TestCase):
+    def test_terminal_run_behind_queued_card_requires_reconciliation(self):
+        for card_status in ('todo', 'ready'):
+            for run_status in ('blocked', 'failed', 'crashed', 'completed', 'cancelled', 'interrupted'):
+                snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': card_status},
+                            'runs': [{'id': 197, 'profile': 'fixture', 'status': run_status}]}
+                with self.subTest(card=card_status, run=run_status), patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                    result = m.reconcile([], Path('.'), 'fixture', 't_fixture')
+                    self.assertEqual(result['next_action'], 'reconcile_run_state')
+
+    def test_terminal_todo_escalates_without_changing_original_card(self):
+        import contextlib, io
+        snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'todo'},
+                    'runs': [{'id': 197, 'profile': 'fixture', 'status': 'blocked',
+                              'ended_at': 123, 'worker_pid': None}]}
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory, \
+             patch.object(m, 'run', return_value=json.dumps(snapshot)), \
+             patch.object(m, 'profile_home', return_value=Path(directory)), \
+             patch('sys.argv', ['reconcile.py', '--profile', 'fixture', '--task-id', 't_fixture']):
+            for index in range(2):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output): m.main()
+                result = json.loads(output.getvalue())
+                self.assertEqual(result['continuation']['unchanged_blocked_observations'], index + 1)
+            self.assertTrue(result['attention_required'])
+            self.assertEqual(result['continuation']['follow_up'], 'change_recovery_approach')
+            self.assertIn('recovery', result['human_report'])
+            self.assertEqual(result['task_id'], 't_fixture')
+            self.assertEqual(result['status'], 'todo')
+
     def test_completed_card_supersedes_ready_creation_receipt(self):
         self.assertIsNotNone(m, 'Missing read-only reconciliation helper')
         with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:

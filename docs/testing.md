@@ -22,6 +22,15 @@ entries. Receipts created before the `execution-cwd-v1` resolution policy cannot
 be reused; preserve them and run the check with a new receipt path. An unresolved
 executable also prevents reuse.
 
+New native Autowork handoffs snapshot their helper runtime and pin its manifest.
+Offline regressions execute startup, completion and goal entry points from that
+snapshot, change the original installation, and verify that changed bundled
+dependencies refuse execution. Reconciliation tests cover terminal runs behind
+`todo`/`ready` cards and repeated-blocker escalation. Registration drift tests keep
+admission closed while distinguishing matching, missing, mismatched, ambiguous and
+malformed current evidence. None of these checks releases an existing native claim
+or migrates historical cards, installed profiles or saved schedules.
+
 Offline Autowork regressions cover missing-ledger recovery receipts, TODO/ledger
 dependency and completion mismatches, and goal/task dependency deadlocks. A `met`
 goal with unfinished tasks fails validation; `goals.py fmt` reopens it as `partial`

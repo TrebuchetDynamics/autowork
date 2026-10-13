@@ -18,6 +18,36 @@ def unique_object(pairs):
     return row
 
 
+def read_rows(data):
+    rows = [json.loads(line, object_pairs_hook=unique_object)
+            for line in data.decode().splitlines() if line.strip()]
+    if any(not isinstance(row, dict) for row in rows):
+        raise ValueError('Registration registry must contain JSON objects')
+    return rows
+
+
+def matches_field(actual, expected, key):
+    return (isinstance(actual, list) and sorted(actual) == sorted(expected)
+            if key == 'scope' else actual == expected)
+
+
+def drift_diagnosis(data, fields, expected):
+    """Describe current bytes only; no claim about which historical bytes changed."""
+    try:
+        rows = read_rows(data)
+        candidates = [row for row in rows if row.get(fields['card']) == expected['card']]
+        if not candidates:
+            return 'current_row_missing'
+        if len(candidates) != 1:
+            return 'current_row_ambiguous'
+        if all(matches_field(candidates[0].get(fields[key]), value, key)
+               for key, value in expected.items()):
+            return 'current_row_matches'
+        return 'current_row_mismatch'
+    except (ValueError, TypeError, RecursionError):
+        return 'registry_invalid'
+
+
 def verify(registry, digest, fields, expected):
     """Match mapped top-level fields; caller supplies repository-specific policy."""
     if not REQUIRED <= expected.keys() or fields.keys() != expected.keys():
@@ -43,11 +73,12 @@ def verify(registry, digest, fields, expected):
         raise ValueError('Registration registry must be an absolute non-symlink path')
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != digest:
-        raise ValueError('Registration evidence changed; inspect current registry')
-    rows = [json.loads(line, object_pairs_hook=unique_object)
-            for line in data.decode().splitlines() if line.strip()]
-    if any(not isinstance(row, dict) for row in rows):
-        raise ValueError('Registration registry must contain JSON objects')
+        diagnosis = drift_diagnosis(data, fields, expected)
+        if path.read_bytes() != data:
+            diagnosis = 'registry_changed_during_diagnosis'
+        raise ValueError('Registration evidence changed; inspect current registry: ' + diagnosis +
+                         '; admission refused; reconcile the original prerequisite through the repository supported process, never silently refresh pins')
+    rows = read_rows(data)
     # Refuse ambiguous histories instead of guessing which registration is current.
     candidates = [row for row in rows if row.get(fields['card']) == expected['card']]
     if len(candidates) != 1:
@@ -55,9 +86,7 @@ def verify(registry, digest, fields, expected):
     row = candidates[0]
     for key, value in expected.items():
         actual = row.get(fields[key])
-        matches = (isinstance(actual, list) and sorted(actual) == sorted(value)
-                   if key == 'scope' else actual == value)
-        if not matches:
+        if not matches_field(actual, value, key):
             raise ValueError('Writer registration mismatch: ' + key)
     if path.read_bytes() != data:
         raise ValueError('Registration changed during verification')
