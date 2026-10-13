@@ -191,3 +191,34 @@ Source section: Now
   unattended execution and minimum supported versions remain NOT_CHECKED.
 
 <!-- End of verified TOOLSET-001 entry. -->
+
+
+<!-- TOOLSET-002 local integration -->
+
+### TOOLSET-002 — Provide a supported first-time task-index initialization path
+
+- [x] TOOLSET-002 — Provide a supported first-time task-index initialization path
+- Status: done; reviewed commit 7f07b182 integrated into local main at 73a8efc.
+- Completion evidence: Independent same-card review approved the exact implementation;
+  the composed integration candidate passed all four offline directories (247/437/135/8
+  tests, two skipped). Empty/TODO-only initialization, conflict preservation and
+  repeat-byte stability are covered. Live model/native/Telegram qualification is excluded.
+- Goal: BACKLOG — Let Docs Sync bootstrap a native-consumable backlog without manual JSON edits.
+- Sources: [accepted scope](docs/project.md#accepted-requirements), [goals helper](skills/docs-sync/scripts/goals.py), [document scaffold](skills/docs-sync/references/document-scaffold.md), [project contract](docs/project.md).
+- Evidence: The CLI documents command-only ledger mutation but exposes no init or
+  add-goal command. Docs Sync can seed the documented JSON schema and run fmt;
+  this pass initializes this repository's index without implementing a CLI entry point.
+- Scope: Establish and document a supported bootstrap operation; preserve full task
+  bodies and existing IDs, then validate/render a machine index for this queue.
+- Exclusions: No invented accepted plans, completion evidence or overwrite of an
+  existing ledger; do not launch workers as part of document initialization.
+- Acceptance: Empty-repository bootstrap and an existing TODO-only repository have
+  reproducible coverage; repeated initialization preserves bytes; existing/conflicting
+  state is preserved; generated task/body links pass consumer checks.
+- Checks: Extend goals-helper fixture tests; run `python3 scripts/check.py` and the
+  supported validator/render idempotency checks on the generated queue.
+- Dependencies: None.
+- Ownership: Original worker and independent reviewer finished the local candidate;
+  canonical integration and closure remain with its coordinator. Do not redispatch.
+
+<!-- end TOOLSET-002 -->

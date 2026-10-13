@@ -8,36 +8,14 @@ No task below is implemented by this documentation pass. [goals.json](goals.json
 indexes the open work below; historical completion notes remain in their existing
 owners. Ledger eligibility is not worker admission or live qualification.
 
-Waiting: TOOLSET-002's reviewed initialization interface needs canonical integration;
-TOOLSET-003 is the planned isolated live-recovery qualification. TOOLSET-001 is
-integrated locally; its completion evidence is in [the archive](TODO.archive.md).
+TOOLSET-002's reviewed first-index initialization is integrated locally;
+TOOLSET-003 remains the isolated live-recovery qualification. TOOLSET-001 and
+TOOLSET-002 completion evidence is in [the archive](TODO.archive.md).
 Fast-startup plan: TOOLSET-012 implements the composed default preflight; TOOLSET-013
 qualifies measured startup after it. Existing queue priorities and ownership are
 preserved. TOOLSET-008 remains an owner policy question.
 
 ## Next
-
-### TOOLSET-002 — Provide a supported first-time task-index initialization path
-
-- [ ] TOOLSET-002 — Provide a supported first-time task-index initialization path
-- Status: in_progress; reviewed implementation awaits canonical integration and closure.
-- Goal: BACKLOG — Let Docs Sync bootstrap a native-consumable backlog without manual JSON edits.
-- Sources: [accepted scope](docs/project.md#accepted-requirements), [goals helper](skills/docs-sync/scripts/goals.py), [document scaffold](skills/docs-sync/references/document-scaffold.md), [project contract](docs/project.md).
-- Evidence: The CLI documents command-only ledger mutation but exposes no init or
-  add-goal command. Docs Sync can seed the documented JSON schema and run fmt;
-  this pass initializes this repository's index without implementing a CLI entry point.
-- Scope: Establish and document a supported bootstrap operation; preserve full task
-  bodies and existing IDs, then validate/render a machine index for this queue.
-- Exclusions: No invented accepted plans, completion evidence or overwrite of an
-  existing ledger; do not launch workers as part of document initialization.
-- Acceptance: Empty-repository bootstrap and an existing TODO-only repository have
-  reproducible coverage; repeated initialization preserves bytes; existing/conflicting
-  state is preserved; generated task/body links pass consumer checks.
-- Checks: Extend goals-helper fixture tests; run `python3 scripts/check.py` and the
-  supported validator/render idempotency checks on the generated queue.
-- Dependencies: None.
-- Ownership: Original worker and independent reviewer finished the local candidate;
-  canonical integration and closure remain with its coordinator. Do not redispatch.
 
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
@@ -220,7 +198,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | Goal | Status | Evidence | Task |
 | --- | --- | --- | --- |
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass | — |
-| BACKLOG: Provide repeatable first-time backlog initialization | partial | — | TOOLSET-002 |
+| BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass | — |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | — | TOOLSET-003 |
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass | — |
 | CONTINUATION: Resolve and align continuation authority | unmet | — | TOOLSET-008 |

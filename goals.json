@@ -20,11 +20,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)",
+          "result": "pass"
+        }
+      ],
       "id": "BACKLOG",
       "priority": 20,
       "source": "docs/project.md#accepted-requirements",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "TOOLSET-002"
       ],
@@ -108,14 +114,6 @@
   "tasks": [
     {
       "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-002",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Provide a supported first-time task-index initialization path"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -165,6 +163,14 @@
       "section": "Done",
       "status": "done",
       "title": "Align portable skill discovery with the current public workflows"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-002",
+      "section": "Done",
+      "status": "done",
+      "title": "Provide a supported first-time task-index initialization path"
     },
     {
       "depends_on": [],
