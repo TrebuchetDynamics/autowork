@@ -85,6 +85,69 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertEqual((code, receipt['state']), (1, 'draft_saved'))
         self.assertIn('plan section lacks explicit Status: Accepted', receipt['reasons'])
 
+    def test_fenced_task_examples_are_not_executable_contracts(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        for fence in ('```', '~~~~', '   ```markdown'):
+            with self.subTest(fence=fence):
+                closing = '~~~' if fence == '~~~~' else '```'
+                # A shorter closing fence must not end a four-character block.
+                end = '\n~~~~\n' if fence == '~~~~' else '\n'
+                self.todo.write_text(self.body + '\n' + fence + '\n'
+                                     '## Needs decision\n- [ ] T1: example only\n'
+                                     '  Goal: EXAMPLE\n' + closing + end)
+                code, receipt = self.check()
+                self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'), receipt)
+
+    def test_fenced_heading_does_not_steal_real_plan_anchor(self):
+        self.plan.write_text('```markdown\n# Slice\nStatus: Proposed\n```\n\n'
+                             '# Slice\n\nStatus: Accepted\n')
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'), receipt)
+
+    def test_fenced_fields_and_headings_do_not_end_the_real_task(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        self.todo.write_text(self.body.replace('  Acceptance: startup check passes',
+            '  ```markdown\n## Example\n  Goal: EXAMPLE\n  ```\n'
+            '  Acceptance: startup check passes'))
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'), receipt)
+
+    def test_unclosed_fence_cannot_supply_plan_acceptance(self):
+        self.plan.write_text('# Slice\n\n```markdown\nStatus: Accepted\n')
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (1, 'draft_saved'), receipt)
+
+    def test_fenced_example_links_are_not_required_inputs(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        self.todo.write_text(self.body + '\n```markdown\n[Example](missing-example.md)\n```\n')
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'), receipt)
+
+    def test_generated_coverage_fields_are_not_part_of_task_contract(self):
+        import goals
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        self.todo.write_text(self.body + '\n' + goals.BEGIN + '\nScope: generated example\n'
+                            '[Example](missing-example.md)\n' + goals.END + '\n')
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'), receipt)
+
+    def test_generated_coverage_cannot_supply_missing_acceptance(self):
+        import goals
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        self.todo.write_text(self.body.replace('  Acceptance: startup check passes\n', '')
+                            + '\n' + goals.BEGIN + '\nAcceptance: example only\n'
+                            + goals.END + '\n')
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (1, 'draft_saved'), receipt)
+        self.assertIn('T1: missing Acceptance', receipt['reasons'])
+
+    def test_fenced_acceptance_example_does_not_accept_proposed_plan(self):
+        self.plan.write_text('# Slice\n\nStatus: Proposed\n\n'
+                             '```markdown\nStatus: Accepted\n```\n')
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (1, 'draft_saved'), receipt)
+        self.assertIn('plan section lacks explicit Status: Accepted', receipt['reasons'])
+
     def add_frontier(self, same_goal=False):
         self.plan.write_text('# Slice\n\nStatus: Accepted\n\n# Other\n\nStatus: Accepted\n')
         data = json.loads((self.repo / 'goals.json').read_text())

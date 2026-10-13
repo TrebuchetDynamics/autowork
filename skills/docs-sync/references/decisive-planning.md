@@ -83,6 +83,14 @@ plus `Scope: setup behavior only` when actual approval proves that scope. It can
 authorize a still-Proposed authentication redesign in another section. The checker
 stays read-only: it diagnoses metadata, never decides human intent.
 
+Keep executable task fields and acceptance metadata outside fenced code examples.
+The consumer ignores fenced examples and generated coverage when reading task
+contracts; clerical recovery preserves their original text. A task may link a
+more specific accepted plan than its goal's source: automatic selection uses the
+goal plan when the task links it, otherwise the task's unique accepted source.
+Multiple accepted task sources without that goal binding require an explicit
+plan/task selection, not a guessed choice or a rewritten approval.
+
 ## Finish with an actionable handoff
 
 Report actual state/exit, approval source, Now/Next IDs, why Now comes first,

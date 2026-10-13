@@ -30,7 +30,7 @@ def committed(repo, pin, name):
 
 def field(body, label):
     return re.search(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?' + label
-                     + r':(?:\*\*)?[ \t]*([^\n]*)', body, re.M)
+                     + r':(?:\*\*)?[ \t]*([^\n]*)', goals.task_prose(body), re.M)
 
 
 def repair(repo, plan, ids, pin=None):
@@ -63,7 +63,7 @@ def repair(repo, plan, ids, pin=None):
             if any(entry != entries[0] for entry in entries[1:]):
                 raise ValueError('conflicting or duplicate bodies require owner reconciliation: ' + tid)
             headers = list(re.finditer(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?' + re.escape(tid)
-                                      + r'`?(?:\*\*)?(?=\s|:)', text, re.M))
+                                      + r'`?(?:\*\*)?(?=\s|:)', goals.task_prose(text), re.M))
             if len(headers) != len(entries):
                 raise ValueError('duplicate spans cannot be safely located: ' + tid)
             block = entries[0][0]
@@ -89,19 +89,21 @@ def repair(repo, plan, ids, pin=None):
                 raise ValueError('immutable source lacks unique full body: ' + tid)
             body, mark, _ = history[0]
             fields = goals.task_fields(body)
-            ownership = fields.get('Ownership') or re.search(r'(?:^|\.\s+)Ownership:[ \t]*\S[^\n]*', body, re.M)
+            ownership = fields.get('Ownership') or re.search(
+                r'(?:^|\.\s+)Ownership:[ \t]*\S[^\n]*', goals.task_prose(body), re.M)
             if mark != ' ' or not ownership or any(label not in fields for label in
                                    ('Goal', 'Scope', 'Acceptance', 'Dependencies', 'Sources')):
                 raise ValueError('immutable source lacks unfinished complete body: ' + tid)
             if not re.match(r'`?' + re.escape(task['goal']) + r'`?(?:[.\s]|$)', fields['Goal']):
                 raise ValueError('immutable body goal differs: ' + tid)
             section = task.get('section', 'Next')
-            sections = list(re.finditer(r'^##\s+' + re.escape(section) + r'\s*$', text, re.M))
+            prose = goals.task_prose(text)
+            sections = list(re.finditer(r'^##\s+' + re.escape(section) + r'\s*$', prose, re.M))
             if len(sections) > 1:
                 raise ValueError('duplicate TODO section: ' + section)
             entry = '\n- [ ] ' + tid + body.rstrip() + '\n\n'
             if sections:
-                following = re.search(r'^##\s', text[sections[0].end():], re.M)
+                following = re.search(r'^##\s', prose[sections[0].end():], re.M)
                 end = sections[0].end() + following.start() if following else len(text)
                 text = text[:end] + entry + text[end:]
             else:
@@ -114,7 +116,7 @@ def repair(repo, plan, ids, pin=None):
             # The existing goal already binds the accepted source. Restore only
             # that clerical link; scope and acceptance are never synthesized.
             header = re.search(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?' + re.escape(tid)
-                               + r'`?(?:\*\*)?(?=\s|:)', text, re.M)
+                               + r'`?(?:\*\*)?(?=\s|:)', goals.task_prose(text), re.M)
             if header is None or text[header.end():header.end() + len(body)] != body:
                 raise ValueError('selected task span cannot be located: ' + tid)
             position = header.end() + len(body.rstrip())
@@ -127,7 +129,7 @@ def repair(repo, plan, ids, pin=None):
         if plan not in links:
             # The ledger already binds this exact accepted intent; add only its link.
             header = re.search(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?' + re.escape(tid)
-                               + r'`?(?:\*\*)?(?=\s|:)', text, re.M)
+                               + r'`?(?:\*\*)?(?=\s|:)', goals.task_prose(text), re.M)
             if header is None:
                 raise ValueError('selected task header cannot be located: ' + tid)
             start = header.end() + sources.end()

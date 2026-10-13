@@ -43,12 +43,12 @@ def accepted_task_plan(repo, task, goal):
         return ('#' in ref and not problems and
                 re.search(r'^\s*(?:\*\*)?Status:(?:\*\*)?\s*Accepted\s*$', section, re.M | re.I))
     plan = goal['source']
-    if accepted(plan):
-        return plan
     todo = goals.checked_bytes(repo / 'TODO.md')
     entries = goals.task_bodies(todo.decode('utf-8')).get(task['id'], []) if todo else []
     sources = goals.task_fields(entries[0][0]).get('Sources', '') if len(entries) == 1 else ''
     candidates = sorted({ref for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', sources) if accepted(ref)})
+    if plan in candidates:
+        return plan
     if len(candidates) > 1:
         raise ValueError('multiple accepted task-source plans; preserve an explicit named slice')
     return candidates[0] if candidates else plan

@@ -395,6 +395,26 @@ def render(repo, data):
     atomic_write(todo, text)
 
 
+def markdown_prose(text):
+    """Mask fenced examples without changing offsets used for clerical repairs."""
+    lines = []
+    fence = None
+    for line in text.splitlines(keepends=True):
+        if fence is not None:
+            lines.append(re.sub(r'[^\r\n]', ' ', line))
+            if re.fullmatch(r' {0,3}' + re.escape(fence[0]) +
+                            '{' + str(len(fence)) + r',}[ \t]*(?:\r?\n)?', line):
+                fence = None
+            continue
+        opening = re.match(r' {0,3}(`{3,}|~{3,})([^\r\n]*)', line)
+        if opening and not (opening[1][0] == '`' and '`' in opening[2]):
+            fence = opening[1]
+            lines.append(re.sub(r'[^\r\n]', ' ', line))
+        else:
+            lines.append(line)
+    return ''.join(lines)
+
+
 def local_reference(repo, ref, blobs, reasons):
     """Resolve maintained Markdown links inside this authority; bind whole files."""
     if re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', ref):
@@ -416,8 +436,8 @@ def local_reference(repo, ref, blobs, reasons):
         reasons.append(f'missing reference {ref}')
         return ''
     if not anchor:
-        return blob.decode('utf-8') if path.suffix.lower() in ('.md', '.markdown') else ''
-    text = blob.decode('utf-8')
+        return markdown_prose(blob.decode('utf-8')) if path.suffix.lower() in ('.md', '.markdown') else ''
+    text = markdown_prose(blob.decode('utf-8'))
     headings = []
     counts = {}
     for match in re.finditer(r'^#{1,6}\s+(.+?)\s*#*\s*$', text, re.M):
@@ -433,8 +453,15 @@ def local_reference(repo, ref, blobs, reasons):
     return text[headings[found][2]:end]
 
 
+def task_prose(text):
+    """Ignore examples and generated coverage while retaining source offsets."""
+    return re.sub(re.escape(BEGIN) + r'.*?' + re.escape(END),
+                  lambda m: re.sub(r'[^\r\n]', ' ', m[0]), markdown_prose(text), flags=re.S)
+
+
 def task_fields(body):
     """Read maintained fields, including continued Sources and header-inline Goal."""
+    body = task_prose(body)
     matches = list(re.finditer(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):(?:\*\*)?[ \t]*', body, re.M))
     fields = {}
     for i, match in enumerate(matches):
@@ -450,19 +477,19 @@ def task_fields(body):
 
 def task_bodies(text):
     """Only checkbox entries outside generated coverage are task contracts."""
-    text = re.sub(re.escape(BEGIN) + r'.*?' + re.escape(END), '', text, flags=re.S)
-    matches = list(re.finditer(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?([A-Za-z0-9][A-Za-z0-9_-]*)`?(?:\*\*)?(?=\s|:)', text, re.M))
+    prose = task_prose(text)
+    matches = list(re.finditer(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?([A-Za-z0-9][A-Za-z0-9_-]*)`?(?:\*\*)?(?=\s|:)', prose, re.M))
     bodies = {}
     for i, match in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        block = text[match.end():end]
-        section_end = re.search(r'^##\s', block, re.M)
+        section_end = re.search(r'^##\s', prose[match.end():end], re.M)
         if section_end:
-            block = block[:section_end.start()]
-        sections = re.findall(r'^##\s+(.+)', text[:match.start()], re.M)
+            end = match.end() + section_end.start()
+        block = text[match.end():end]
+        sections = re.findall(r'^##\s+(.+)', prose[:match.start()], re.M)
         section = sections[-1] if sections else ''
         if section == 'Now / Next':
-            explicit = re.findall(r'(?:^|\.\s+)Section:[ \t]*(Now|Next|Needs decision)(?=\.|\s*$)', block, re.M)
+            explicit = re.findall(r'(?:^|\.\s+)Section:[ \t]*(Now|Next|Needs decision)(?=\.|\s*$)', prose[match.end():end], re.M)
             if len(explicit) == 1:
                 section = explicit[0]
         bodies.setdefault(match[2], []).append((block, match[1], section))
@@ -550,7 +577,7 @@ def backlog_check(a):
             sources = re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', fields.get('Sources', ''))
             if tid in ids and a.plan not in sources:
                 reasons.append(f'{tid}: Sources do not link accepted plan')
-            for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', body):
+            for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', task_prose(body)):
                 local_reference(repo, ref, blobs, reasons)
         for g in data['goals']:
             local_reference(repo, g['source'], blobs, reasons)

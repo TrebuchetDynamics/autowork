@@ -171,6 +171,17 @@ class RetrySelectionTests(unittest.TestCase):
         self.assertEqual(result['plan'], 'SPEC.md#accepted')
         self.assertEqual(result['selected_task']['id'], 'T1')
 
+    def test_task_plan_takes_precedence_over_unlinked_accepted_goal_plan(self):
+        (self.consumer / 'SLICE.md').write_text('# Slice\n\nStatus: Accepted\n')
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text().replace('SPEC.md#accepted', 'SLICE.md#slice'))
+        before = todo.read_bytes()
+        result = self.retry()
+        self.assertEqual(result['state'], 'ready_for_autowork', result)
+        self.assertEqual(result['plan'], 'SLICE.md#slice')
+        self.assertEqual(result['selected_task']['id'], 'T1')
+        self.assertEqual(todo.read_bytes(), before)
+
     def test_absent_consumer_is_draft_even_when_docs_scratch_has_backlog(self):
         (self.consumer / 'goals.json').unlink()
         result = self.retry()

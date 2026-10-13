@@ -108,6 +108,31 @@ class BacklogRecoveryTests(unittest.TestCase):
         self.assertEqual(self.invoke().returncode, 0)
         self.assertEqual(todo.read_bytes(), once)
 
+    def test_binding_repair_preserves_fenced_duplicate_example(self):
+        (self.repo / 'README.md').write_text('fixture\n')
+        example = '```markdown\n' + self.body + '```\n\n'
+        todo = self.repo / 'TODO.md'
+        actual = self.body.replace('[Slice](SPEC.md#slice)', '[Other](README.md)')
+        todo.write_text(example + actual)
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(todo.read_text(), example + actual.replace(
+            '[Other](README.md)', '[Other](README.md) [Accepted plan](SPEC.md#slice)'))
+
+    def test_example_ownership_cannot_qualify_restored_contract(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(self.body.replace('  Ownership: fixture\n', '')
+                        + '\n```markdown\nOwnership: example only\n```\n')
+        self.git('add', 'TODO.md')
+        self.git('commit', '-qm', 'Example is not task ownership')
+        pin = self.git('rev-parse', 'HEAD')
+        todo.write_text('# TODO\n\n## Now\n')
+        before = todo.read_bytes()
+        result = self.invoke('--source-commit', pin)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('immutable source lacks unfinished complete body', result.stderr)
+        self.assertEqual(todo.read_bytes(), before)
+
     def test_empty_and_duplicate_sources_require_reconciliation(self):
         for sources in ('  Sources:\n', '  Sources: [One](README.md)\n  Sources: [Two](README.md)\n'):
             with self.subTest(sources=sources):
