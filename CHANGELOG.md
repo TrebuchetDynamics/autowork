@@ -21,8 +21,8 @@ claim of a tagged release, completed installation or live workflow qualification
 - Verification commands now remap repository-root arguments into the frozen
   candidate checkout. Receipt directories are created before check execution,
   avoiding lost successful results from missing parent directories. Timed-out
-  finish-task acceptance commands terminate their POSIX process group so child
-  writers cannot continue after the validation failure is reported.
+  finish-task acceptance commands and interrupted validation terminate their POSIX
+  process group so child writers cannot continue after the helper exits.
 
 - Ready autonomous tasks prepare their native handoff without an unnecessary
   research pass; saved failure evidence still requires reconciliation. A recorded

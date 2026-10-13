@@ -146,6 +146,33 @@ class FinishTaskTests(unittest.TestCase):
         self.assertEqual(self.git('branch', '--list', 'agent/*'), '')
         self.preserved()
 
+    @unittest.skipUnless(os.name == 'posix', 'process group termination requires POSIX')
+    def test_interrupted_acceptance_stops_child_writers(self):
+        import signal, time
+        child = ('import time; from pathlib import Path; Path("child-ready").touch(); '
+                 'time.sleep(0.7); Path("escaped").touch()')
+        parent = f'import subprocess, sys, time; subprocess.Popen([sys.executable, "-c", {child!r}]); time.sleep(5)'
+        command = [sys.executable, str(Path(__file__).with_name('finish_task.py')),
+                   '--repo', str(self.root), '--profile', 'fixture', '--card', 'one',
+                   '--message', 'Task', '--check-json', json.dumps([sys.executable, '-c', parent]), '--', 'owned']
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 5
+            while not (self.root/'child-ready').exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue((self.root/'child-ready').exists(), 'acceptance did not start')
+            process.send_signal(signal.SIGINT)
+            process.communicate(timeout=8)
+            self.assertNotEqual(process.returncode, 0)
+            time.sleep(0.8)
+            self.assertFalse((self.root/'escaped').exists(), 'interrupted acceptance left a writer alive')
+            self.assertEqual(self.git('branch', '--list', 'agent/*'), '')
+            self.preserved()
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=8)
+
     def test_failed_validation_never_creates_commit(self):
         result, receipt = self.finish('raise SystemExit(7)')
         self.assertNotEqual(result.returncode, 0)

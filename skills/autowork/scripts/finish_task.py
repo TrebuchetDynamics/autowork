@@ -29,12 +29,12 @@ def fingerprint(repo, files):
 
 
 def run_acceptance(command, repo, timeout, environment):
-    # A timeout must release child writers before another occurrence can recover.
+    # A timeout or cancellation must release child writers before recovery.
     with subprocess.Popen(command, cwd=repo, stdout=sys.stderr, env=environment,
                           start_new_session=os.name == 'posix') as process:
         try:
             return process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except BaseException:
             try:
                 if os.name == 'posix':
                     os.killpg(process.pid, signal.SIGKILL)
