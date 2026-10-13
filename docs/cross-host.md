@@ -2,9 +2,11 @@
 
 Hermes Toolset provides native packages for three hosts. Codex and Pi use the
 portable adapters, not the Hermes plugin loader. Neither requires Hermes installed.
-These adapters expose 11 skills: the four main workflows, Autoresearch, Engineering,
-Impeccable, Grill Me, LGTM, Git Commit Push and Git Pull Merge. Supporting protocols
-are bundled and loaded only when needed. Hermes profile creation, Telegram routing,
+These adapters expose 11 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+Cron Autowork, Autoresearch, Engineering, Impeccable, LGTM, Git Commit Push and
+Git Pull Merge. Grill Me is Plan With Me's challenge mode, not a twelfth skill.
+Supporting protocols are bundled and loaded only when needed. Hermes profile
+creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
 
 ## Codex
@@ -27,6 +29,7 @@ Start a new Codex session in your project. Invoke the namespaced native skills:
 
 ```text
 $hermes-toolset:plan-with-me questions only: ask one question about this project
+$hermes-toolset:plan-with-me challenge this plan; read-only, no implementation
 $hermes-toolset:plan-for-me investigate the next useful improvement; save the plan
 $hermes-toolset:docs-sync update the docs and TODO.md
 $hermes-toolset:autowork complete the next ready task; commit locally, no push
@@ -63,6 +66,7 @@ Local installs refer to this checkout; keep it in place. The extension registers
 
 ```text
 /plan_with_me questions only: ask one question about this project
+/grill_me challenge this plan; questions only, no implementation
 /plan_for_me investigate the next useful improvement; save the plan
 /docs_sync update the docs and TODO.md
 /autowork complete the next ready task; commit locally, no push
@@ -70,9 +74,16 @@ Local installs refer to this checkout; keep it in place. The extension registers
 ```
 
 All 13 `/autoresearch_<protocol>` commands are available. The other commands are
+`/cron_autowork` (scheduling guidance through host capabilities, not a Hermes timer),
 `/autoresearch`, `/engineering`, `/impeccable`, `/grill_me`, `/lgtm`,
 `/git_commit_push` and `/git_pull_merge`. Native `/skill:<name>` invocation is also
 available; skill names use hyphens. Command arguments remain literal prompt text.
+`/grill_me` loads Plan With Me with explicit challenge mode and preserves the
+request unchanged. The old standalone `grill-me` skill is no longer discoverable;
+use `$hermes-toolset:plan-with-me` in Codex or `/skill:plan-with-me` in Pi with
+`challenge` in the request. Autoresearch stays independent; its `plan` selector
+routes to Plan For Me, which reads the pinned plan protocol directly, never back
+through Autoresearch. All other selectors retain their shipped protocols.
 A command entered during an active turn is queued as a follow-up, not injected as
 shell code. Existing same-name third-party skills or commands may cause host collision
 diagnostics; inspect those rather than assuming this package replaced them.
@@ -102,10 +113,13 @@ python3 -m unittest discover -s tests -p test_portable_package.py
 node --test tests/portable_pi.test.mjs
 ```
 
-Validated locally with Codex CLI 0.162.1 and Pi 1.0.2: native marketplace/plugin
-and Pi installation into temporary homes, Pi package/extension loading, plus
-literal-argument and queued-command tests. These are tested versions, not an
-established minimum-version guarantee.
+Validated locally with Codex CLI 0.162.1 and Pi 1.2.0: native marketplace/plugin
+and Pi installation into isolated temporary homes, Codex app-server skill discovery
+and Pi's installed resource loader discover 11 portable skills. Pi loads 25 commands,
+including `/grill_me` compatibility and all 13 research selectors. Archive extraction
+tests check installed references, literal arguments and queued commands without
+checkout files. No credentials or configured live accounts are used. These are
+tested versions, not an established minimum-version guarantee.
 These checks do not prove model output quality, Git delivery or Telegram execution.
 The model smoke test is the questions-only invocation above: one useful question,
 no repository edits. Follow it with planning and a bounded disposable-repo task

@@ -12,7 +12,7 @@ const workflows = {
   autoresearch: ['autoresearch', 'Run bounded research or experiments'],
   engineering: ['engineering', 'Apply a focused engineering method'],
   impeccable: ['impeccable', 'Improve interface design'],
-  grill_me: ['grill-me', 'Challenge a plan through focused questions'],
+  grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
   git_commit_push: ['git-commit-push', 'Validate, commit and push owned changes'],
   git_pull_merge: ['git-pull-merge', 'Integrate upstream changes'],
@@ -20,12 +20,12 @@ const workflows = {
 
 /** Native Pi command adapter. No subprocess, permission changes or install hooks. */
 export default function register(pi) {
-  const entries = Object.entries(workflows).map(([command, [skill, description]]) => ({command, skill, description}));
+  const entries = Object.entries(workflows).map(([command, [skill, description, mode]]) => ({command, skill, description, mode}));
   for (const protocol of protocols) {
     entries.push({command: `autoresearch_${protocol}`, skill: 'autoresearch',
       description: `Autoresearch ${protocol}`, protocol});
   }
-  for (const {command, skill, description, protocol} of entries) {
+  for (const {command, skill, description, protocol, mode} of entries) {
     pi.registerCommand(command, {
       description,
       handler: async (args, ctx) => {
@@ -34,6 +34,7 @@ export default function register(pi) {
         const message = `Use this portable Hermes Toolset workflow. Source: ${fileURLToPath(file)}\n`
           + `Resolve its relative references from that directory.\n\n${body}\n\n`
           + (protocol ? `Selected subcommand: ${protocol}\n\n` : '')
+          + (mode ? `Selected mode: ${mode}\n\n` : '')
           + `User request (preserve scope and restrictions):\n${args}`;
         pi.sendUserMessage(message, ctx.isIdle() ? undefined : {deliverAs: 'followUp'});
       },

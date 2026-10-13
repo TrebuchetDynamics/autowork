@@ -21,7 +21,9 @@ class PortablePackageTests(unittest.TestCase):
     def test_portable_skills_and_references_are_self_contained(self):
         folder = ROOT / 'adapters/skills'
         names = {p.parent.name for p in folder.glob('*/SKILL.md')}
-        self.assertTrue({'plan-with-me', 'plan-for-me', 'docs-sync', 'autowork', 'autoresearch'} <= names)
+        self.assertEqual(names, {'plan-with-me', 'plan-for-me', 'docs-sync', 'autowork',
+            'cron-autowork', 'autoresearch', 'engineering', 'impeccable', 'lgtm',
+            'git-commit-push', 'git-pull-merge'})
         for source in folder.rglob('*.md'):
             text = source.read_text()
             if source.name == 'SKILL.md':
@@ -35,5 +37,23 @@ class PortablePackageTests(unittest.TestCase):
         self.assertNotIn('start_goal.py', worker)
         self.assertNotIn('finish_task.py', worker)
         self.assertIn('native tools', worker)
+
+    def test_challenge_is_a_planning_mode_and_research_plan_is_not_recursive(self):
+        folder = ROOT / 'adapters/skills'
+        challenge = (folder / 'grill-me/PROTOCOL.md').read_text()
+        self.assertNotIn('name: grill-me', challenge)
+        planner = (folder / 'plan-with-me/SKILL.md').read_text()
+        self.assertIn('../grill-me/PROTOCOL.md', planner)
+        self.assertIn('questions-only', planner)
+        plan = (folder / 'plan-for-me/SKILL.md').read_text()
+        self.assertIn('../../../skills/autoresearch/upstream/plan.md', plan)
+        self.assertNotIn('../autoresearch/SKILL.md', plan)
+        research = (folder / 'autoresearch/SKILL.md').read_text()
+        self.assertIn('../plan-for-me/SKILL.md', research)
+        selectors = json.loads((ROOT / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
+        self.assertEqual(len(selectors), 13)
+        for selector in selectors:
+            self.assertIn(selector, research)
+            self.assertTrue((ROOT / f'skills/autoresearch/upstream/{selector}.md').is_file())
 
 if __name__ == '__main__': unittest.main()
