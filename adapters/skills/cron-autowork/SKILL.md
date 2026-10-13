@@ -14,6 +14,15 @@ profile, CLI, Kanban or gateway on Codex/Pi. Omit inapplicable Hermes identity
 wording from the template and bind the native workspace and skill settings instead.
 Never emulate those identities. Unsupported execution binding is a setup limitation.
 
+Honor the shared Telegram delivery and setup confirmation contract when Telegram
+reporting is requested or the selected Hermes backend supplies that default. Bind
+the explicit destination independently of this host's invocation channel. Use an
+available authorized messaging integration for the confirmation, and retain its
+receipt. If that integration is unavailable, report **setup confirmation not delivered**;
+do not substitute a local reply as proof of Telegram delivery. If the scheduler
+cannot support the required Telegram route, report **not scheduled** for a new job
+and preserve an existing job instead of silently changing its destination.
+
 If no scheduler is exposed, prepare the concrete prompt, repository, cadence,
 timezone, scope and delivery specification and report **not scheduled**. Do not
 install another agent, write a system crontab, create a background loop or claim

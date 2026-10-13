@@ -206,3 +206,9 @@ skill lists existing jobs first, binds the actual repository/workdir and profile
 updates a matching job, and verifies the saved cadence, prompt and execution limits.
 A new job without a cadence asks for one. `prompt only` creates no job. Portable
 hosts without a scheduler return a specification explicitly marked not scheduled.
+New Hermes jobs default to a resolved Telegram chat/topic, independent of whether
+setup starts in CLI, Telegram or another surface. Explicit delivery/quiet preferences
+remain authoritative. After saving, setup confirms in that Telegram destination;
+recurring jobs report every occurrence by default, including unchanged blockers.
+Setup confirmation, job execution and scheduled message delivery have separate
+receipts. Scheduling alone does not trigger an immediate development run.

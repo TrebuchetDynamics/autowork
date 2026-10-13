@@ -59,6 +59,25 @@
         "TOOLSET-008"
       ],
       "title": "Resolve and align continuation authority"
+    },
+    {
+      "depends_on": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)",
+          "result": "pass"
+        }
+      ],
+      "id": "CRON-REPORTING",
+      "priority": 60,
+      "source": "docs/workflows.md",
+      "status": "partial",
+      "tasks": [
+        "TOOLSET-010",
+        "TOOLSET-011"
+      ],
+      "title": "Make Telegram scheduling reports reliable across invocation surfaces"
     }
   ],
   "tasks": [
@@ -95,12 +114,30 @@
       "title": "Account for archival in the shared rendering contract"
     },
     {
+      "depends_on": [
+        "TOOLSET-010"
+      ],
+      "goal": "CRON-REPORTING",
+      "id": "TOOLSET-011",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the updated reporting workflow on the affected profile"
+    },
+    {
       "depends_on": [],
       "goal": "CONTINUATION",
       "id": "TOOLSET-008",
       "section": "Needs decision",
       "status": "open",
       "title": "Make Autowork continuation authority consistent"
+    },
+    {
+      "depends_on": [],
+      "goal": "CRON-REPORTING",
+      "id": "TOOLSET-010",
+      "section": "Done",
+      "status": "done",
+      "title": "Bind Telegram reports and setup confirmation independently of invocation"
     }
   ],
   "version": 1

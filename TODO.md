@@ -123,6 +123,28 @@ question. Existing order is preserved, not a new implementation mandate.
   evidenced remaining corrections, then reconcile this same task's completion.
 
 
+- [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
+  - Status: open; target environment unavailable in this checkout.
+  - Goal: CRON-REPORTING — Verify setup confirmation and scheduled delivery separately.
+  - Sources: [reporting contract](skills/cron-autowork/SKILL.md),
+    [verification boundaries](docs/workflows.md), TOOLSET-010 archived source delivery.
+  - Evidence: The user-referenced profile/job was absent from this machine's local
+    profile job stores during source diagnosis; no live confirmation or cron run was verified.
+  - Scope: On the original configured host, install the updated bundle through its
+    supported path, identify the existing job and inspect execution/output/delivery evidence.
+    Reconcile the requested Telegram route and capture setup and next scheduled-report receipts.
+  - Exclusions: No duplicate job, implicit resume, immediate development run, budget reset,
+    push, deployment, USB formatting or changes to real PCs. Preserve existing task scope.
+  - Acceptance: A setup request from another surface confirms once in the intended
+    profile's Telegram chat/topic; a scheduled occurrence has separately attributable
+    execution and Telegram delivery evidence. Failed/queued delivery is reported honestly.
+  - Checks: Installed skill/source readback, saved job route/state comparison and actual
+    message receipt; scheduled result/readback. These live checks have not been executed.
+  - Dependencies: TOOLSET-010.
+  - Environment prerequisite: Access to the original host with the affected profile/job
+    and its authorized Telegram transport; do not substitute another profile.
+  - Ownership: Next coordinator with access to that environment; no active claim.
+
 ## Needs decision
 
 ### TOOLSET-008 — Make Autowork continuation authority consistent
@@ -193,5 +215,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | — | TOOLSET-003 |
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | partial | — | TOOLSET-009 |
 | CONTINUATION: Resolve and align continuation authority | unmet | — | TOOLSET-008 |
+| CRON-REPORTING: Make Telegram scheduling reports reliable across invocation surfaces | partial | executed <code>Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)</code> → pass | TOOLSET-011 |
 
 <!-- goals:coverage:end -->

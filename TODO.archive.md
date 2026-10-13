@@ -58,3 +58,41 @@ Source section: Completed local changes
   helper itself does not merge, dispatch, authenticate liveness or resume jobs.
 
 <!-- End of migrated task history. -->
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+- [x] TOOLSET-010 — Bind Telegram reports and setup confirmation independently of invocation
+  - Status: done (source instructions, offline contract checks and independent scenario review).
+  - Goal: CRON-REPORTING — Resolve Telegram reporting independently of the invoking surface.
+  - Sources: User request to report in Telegram from any invocation surface;
+    [native workflow](skills/cron-autowork/SKILL.md),
+    [portable workflow](adapters/skills/cron-autowork/SKILL.md),
+    [workflow documentation](docs/workflows.md).
+  - Scope delivered: Explicit profile/chat/topic routing, one setup confirmation,
+    nonempty per-occurrence reports, delivery receipt checks and truthful failure reporting.
+  - Exclusions: No live profile/job changes, unrequested immediate execution,
+    cross-profile messaging, push, deployment or real-device operations.
+  - Acceptance checked: Guidance covers CLI and Telegram topic setup, explicit local/quiet
+    preferences, existing-job repair, missing transports and queued/ambiguous delivery.
+    Setup confirmation remains distinct from scheduled execution and message delivery.
+  - Checks: `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests`
+    passed: 246 tests run, two skipped; five cron contract tests passed. Independent
+    before/after scenario review approved the source changes. Markdown links and diff checks passed.
+  - Remaining qualification: Instructions and fixtures do not prove live agent behavior;
+    TOOLSET-011 owns installation and Telegram receipt verification on the affected host.
+  - Dependencies: None.
+  - Ownership: Current Autowork coordinator for local closeout; no live worker claim.
+
+Closeout repair for TOOLSET-010: task-source links to archive policies and test
+code were incorrectly treated as history destinations, blocking this move.
+Owner discovery now uses navigation outside task bodies; default/custom-owner
+regression cases reproduce the failure and pass after the fix. All 36 archive,
+policy and redaction tests passed, with independent preservation review.
+Combined closeout validation: `uv run --python 3.12 --no-project
+--with-requirements requirements-test.txt python scripts/check.py` passed
+(803 tests run, two skipped; eight live/native modules excluded).
+Existing open bodies and prior archive bytes were preserved; the completed
+entry appears exactly once and a repeated render was byte-stable.
