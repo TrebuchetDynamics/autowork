@@ -106,6 +106,36 @@ cases skip when ruamel.yaml is unavailable). `test_complete_setup.py` separately
 checks orchestration after admission, including no installation calls on dry-run.
 No passing preview is evidence of a live model or Telegram workflow.
 
+## First-index initialization checks
+
+From `skills/docs-sync/scripts`, run:
+
+```sh
+python3 -m unittest test_goals test_goal_concurrency test_handoff_reconciliation
+python3 goals.py init --help
+```
+
+Initialization fixtures use real disposable Git consumers. They exercise empty
+and TODO-only repositories, accepted-source and full-body binding, preserved
+continuations/history/focus/ownership, byte-stable repeats, conflicting/incompatible
+input refusal, unsafe paths, replacement failure rollback, concurrent locking,
+stale revisions and linked-worktree canonical targeting. Consumer checks bind the
+actual initialized repository, including a plan inside TODO; readiness is not a
+live lease, model execution or Telegram delivery. Execute the
+[documented initialization example](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization)
+against a disposable consumer and run `fmt`, `validate`, `render`, then
+`backlog-check` with its exact source and task IDs. `init` does not infer acceptance
+or automatically render/archive bodies.
+
+The safe root gate remains:
+
+```sh
+uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py
+```
+
+These offline helper checks do not qualify installed model behavior, native task
+execution, publication or Telegram reporting. Keep those live gates separate.
+
 ## Archive and ownership regression checks
 
 From `skills/docs-sync/scripts`, run:

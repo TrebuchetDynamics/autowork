@@ -51,6 +51,73 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout.strip()
 
+    def init_inputs(self):
+        from test_goals import InitializationTests
+        fixture = InitializationTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        return fixture
+
+    def test_init_stale_revision_and_linked_worktree_authority(self):
+        fixture = self.init_inputs()
+        consumer = fixture.repo
+        token = self.cli('revision', consumer).stdout.strip()
+        (consumer / 'TODO.md').write_text(fixture.body)
+        before = fixture.snapshot()
+        result = self.cli('init', consumer, '--intent', fixture.intent, '--expected-revision', token)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('stale revision', result.stderr)
+        self.assertEqual(fixture.snapshot(), before)
+        subprocess.run(['git', '-C', str(consumer), 'add', 'SPEC.md', 'TODO.md'], check=True)
+        subprocess.run(['git', '-C', str(consumer), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+        worker = Path(self.tmp.name) / 'worker'
+        subprocess.run(['git', '-C', str(consumer), 'worktree', 'add', '-q', '-b', 'init-worker', str(worker)], check=True)
+        result = self.cli('init', worker, '--intent', fixture.intent)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('linked worktree requires', result.stderr)
+        self.assertFalse((worker / 'goals.json').exists())
+        self.assertEqual(fixture.snapshot(), before)
+        # Explicit same-repository primary targeting uses the existing policy.
+        result = self.cli('init', worker, '--intent', fixture.intent, '--canonical-repo', consumer)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((consumer / 'goals.json').exists())
+        self.assertFalse((worker / 'goals.json').exists())
+        # A pre-existing native binding wins; a registered worker alone did not.
+        (consumer / 'goals.json').unlink()
+        subprocess.run(['git', '-C', str(consumer), 'config', '--local',
+                        'repoDocs.backlogAuthority', str(worker)], check=True)
+        result = self.cli('init', consumer, '--intent', fixture.intent,
+                          '--canonical-repo', consumer)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('does not match native backlog authority', result.stderr)
+        self.assertFalse((consumer / 'goals.json').exists())
+        result = self.cli('init', consumer, '--intent', fixture.intent)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((worker / 'goals.json').exists())
+        self.assertFalse((consumer / 'goals.json').exists())
+
+    def test_concurrent_init_is_serialized_and_repeat_is_noop(self):
+        fixture = self.init_inputs()
+        consumer = fixture.repo
+        args = ('init', consumer, '--intent', fixture.intent, '--todo-file', fixture.input_todo)
+        with (consumer / '.git' / '.docs-sync-goals.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            processes = [self.start(*args) for _ in range(2)]
+            try:
+                for process in processes:
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        process.communicate(timeout=0.3)
+                self.assertIsNone(fixture.snapshot()['goals.json'])
+                self.assertIsNone(fixture.snapshot()['TODO.md'])
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                self.finish(processes)
+        self.assertEqual((consumer / 'TODO.md').read_text(), fixture.body)
+        before = fixture.snapshot()
+        self.assertEqual(self.cli(*args).returncode, 0)
+        self.assertEqual(fixture.snapshot(), before)
+
     def test_git_dir_override_cannot_bypass_explicit_repository_lock(self):
         self.git('init')
         other = Path(self.tmp.name) / 'other'

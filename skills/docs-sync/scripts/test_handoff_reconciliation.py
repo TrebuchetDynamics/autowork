@@ -49,6 +49,31 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertIn('plan section lacks explicit Status: Accepted', receipt['reasons'])
         self.assertIn('T1: missing or duplicate task body', receipt['reasons'])
 
+    def test_init_checks_actual_todo_only_consumer_with_embedded_plan(self):
+        ledger = self.repo / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['source'] = 'TODO.md#accepted-slice'
+        intent = self.repo / 'intent.json'
+        intent.write_text(json.dumps(data))
+        ledger.unlink()
+        self.todo.write_text('# TODO\n\n## Accepted slice\n\nStatus: Accepted\n\n' +
+                             ('## Now' + self.body.partition('## Now')[2]).replace(
+                                 'SPEC.md#slice', 'TODO.md#accepted-slice'))
+        # Existing body ownership stays authoritative; no synthetic owner claim.
+        before = self.todo.read_bytes()
+        result = subprocess.run([sys.executable, str(SCRIPT), 'init', str(self.repo),
+                                 '--intent', str(intent)], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.todo.read_bytes(), before)
+        result = subprocess.run([sys.executable, str(SCRIPT), 'backlog-check', str(self.repo),
+                                 '--plan', 'TODO.md#accepted-slice', '--tasks', 'T1'],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt['authoritative_repo'], str(self.repo))
+        self.assertEqual(receipt['state'], 'ready_for_autowork')
+        self.assertEqual(receipt['live_ownership'], 'unknown')
+
     def test_duplicate_json_keys_cannot_authorize_autowork(self):
         self.plan.write_text('# Slice\n\nStatus: Accepted\n')
         path = self.repo / 'goals.json'

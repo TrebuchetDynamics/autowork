@@ -184,8 +184,18 @@ user-facing work queue. Before rendering or selection, reconcile attributable us
 orders and priority changes into goals.json; never silently discard them because
 the old index disagrees. Read intent, ledger, full bodies and live execution state.
 `goals.json` is the tracked machine execution index synchronized with that queue. Commit ledger with docs only when authorized;
-never gitignore it. Use supported `scripts/goals.py` operations or write JSON then
-`fmt`. No `add-goal`: write a goal object with intent `source`, then `fmt`.
+never gitignore it. For a first index, use `scripts/goals.py init <repo> --intent FILE`
+with user-supplied version-1 goal/task intent and existing full TODO bodies. If TODO
+is absent, supply those bodies with `--todo-file FILE`. Follow the executable
+[initialization example](references/document-scaffold.md#first-task-index-initialization).
+Initialization requires local source headings with explicit `Status: Accepted`;
+it does not infer approval, requirements or task metadata from prose. Preserve IDs,
+history, ownership and focus in the input. It refuses conflicting existing state;
+an unchanged repeat leaves both content files byte-identical. Then run `fmt`,
+`validate`, `render` and the actual consumer's `backlog-check`. Initialization is
+not dispatch or model qualification. For maintenance, use supported operations
+or reconcile goal objects with intent `source` under the canonical owner, then
+`fmt`. There is no `add-goal` command; `init` is not a merge/migration interface.
 `add-task` rejects unknown goals. Goal-less TODO bodies cannot replace ledger state.
 
 1. Collect stated requirements/acceptance, planned design/ADR work, test/operations
