@@ -577,9 +577,13 @@ def backlog_check(a):
             for dep in g.get('depends_on', []):
                 if goals[dep]['status'] != 'met':
                     ineligible.append(f'{tid}: unmet goal dependency {dep}')
-        # In-progress work is reconciled separately; it must not starve a new,
-        # dependency-ready admission. Keep priority ordering among open tasks.
-        open_picks = [tid for tid in picks if tasks[tid]['status'] == 'open']
+        # In-progress work is reconciled separately. A named plan checks its own
+        # goals' ordered frontier, not unrelated goals in the global queue.
+        # Cross-milestone execution still needs start_goal's source-bound fallback
+        # and live ownership checks; metadata readiness does not grant that authority.
+        requested_goals = {tasks[tid]['goal'] for tid in ids if tid in tasks}
+        open_picks = [tid for tid in picks if tasks[tid]['status'] == 'open'
+                      and tasks[tid]['goal'] in requested_goals]
         if open_picks and open_picks[0] not in ids:
             ineligible.append(f'current frontier {open_picks[0]} precedes requested plan')
     authority = backlog_authority(repo, identity)
@@ -594,6 +598,9 @@ def backlog_check(a):
     receipt = {'state': state, 'authority_binding': binding,
                'authoritative_repo': str(repo), 'plan': a.plan, 'task_ids': ids,
                'primary_milestone': data.get('primary_milestone') if data else None,
+               'focus_fallback_required': bool(data and data.get('primary_milestone')
+                    and any(t['id'] in ids and t['goal'] != data['primary_milestone']
+                            for t in data['tasks'])),
                'eligible_task_ids': picks, 'live_ownership': 'unknown',
                'sha256': {name: hashlib.sha256(blob).hexdigest() if blob is not None else None
                           for name, blob in blobs.items()}, 'reasons': reasons + ineligible}

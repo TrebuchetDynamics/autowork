@@ -85,6 +85,41 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertEqual((code, receipt['state']), (1, 'draft_saved'))
         self.assertIn('plan section lacks explicit Status: Accepted', receipt['reasons'])
 
+    def add_frontier(self, same_goal=False):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n\n# Other\n\nStatus: Accepted\n')
+        data = json.loads((self.repo / 'goals.json').read_text())
+        goal = 'G1' if same_goal else 'G2'
+        if same_goal:
+            data['goals'][0]['tasks'].insert(0, 'T0')
+        else:
+            data['primary_milestone'] = 'G2'
+            data['goals'].append({'id': 'G2', 'title': 'Other work', 'source': 'SPEC.md#other',
+                                  'status': 'unmet', 'priority': 0, 'tasks': ['T0']})
+        data['tasks'].insert(0, {'id': 'T0', 'goal': goal, 'title': 'Earlier work',
+                                 'status': 'open', 'section': 'Now'})
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        self.todo.write_text(self.body + f'\n- [ ] T0: Earlier work\n'
+                             f'  Goal: {goal}\n  Scope: separate check\n'
+                             '  Acceptance: check passes\n  Dependencies: None\n'
+                             '  Ownership: fixture owner\n  Sources: [Other](SPEC.md#other)\n')
+        subprocess.run([sys.executable, str(SCRIPT), 'fmt', str(self.repo)],
+                       check=True, capture_output=True)
+
+    def test_other_goal_frontier_does_not_starve_named_ready_plan(self):
+        self.add_frontier()
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'))
+        self.assertEqual(receipt['primary_milestone'], 'G2')
+        self.assertTrue(receipt['focus_fallback_required'])
+        self.assertEqual(receipt['live_ownership'], 'unknown')
+        self.assertIn('T0', receipt['eligible_task_ids'])
+
+    def test_same_goal_frontier_order_remains_required(self):
+        self.add_frontier(same_goal=True)
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (2, 'backlog_reconciled_not_eligible'))
+        self.assertIn('current frontier T0 precedes requested plan', receipt['reasons'])
+
     def test_invalid_ledger_is_reported_alongside_missing_status(self):
         (self.repo / 'goals.json').write_text('{bad json')
         code, receipt = self.check()

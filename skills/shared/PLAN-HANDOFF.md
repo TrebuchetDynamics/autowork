@@ -24,7 +24,11 @@ repairable `draft_saved` or substitute queue size for an ordered implementation 
 
 For an explicit plan slice, select only its named IDs. Reconcile existing workers,
 dependencies, current source and primary milestone before handoff. A usable
-backlog does not require a fresh documentation prepass. If the named slice differs
+backlog does not require a fresh documentation prepass. The consumer checks the
+ordered frontier within the named tasks' goals, never an unrelated global goal.
+Its `focus_fallback_required` field is a warning, not execution authority: a named
+slice outside the primary milestone still needs the unchanged source-bound native
+fallback gate. If the named slice differs
 from the primary milestone, retain the focus unless the owner reprioritizes it;
 use start_goal's existing `--goal-task` and structured `--fallback-file` admission
 with fresh source evidence and attributed reasons, as specified in
