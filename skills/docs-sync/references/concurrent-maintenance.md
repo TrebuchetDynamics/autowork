@@ -82,6 +82,13 @@ marked block remain unchanged, including CRLF and trailing blank lines.
 When no coverage section exists, rendering appends it without trimming existing
 bytes. An existing unmarked `## Goal coverage` section retains its legacy
 migration behavior. Rendering does not create task bodies or archive entries.
+Fenced examples are not replacement targets. Unmatched, reversed or duplicate
+coverage markers are rejected before writing; reconcile their intended boundaries
+without deleting task bodies. Generated table values are escaped so multiline
+titles and evidence cannot become task entries or coverage markers. Redaction
+preflights this rendering before changing the ledger or archiving originals.
+`validate` also checks goal/task membership and the task-ID spelling supported by
+TODO bodies; `add-task` refuses unsupported IDs before writing.
 After all accepted mutations, run `validate` and a final `render` against the
 canonical target. Mutations retain the existing CLI behavior: they do not
 implicitly render. A render before a later mutation describes its own snapshot,

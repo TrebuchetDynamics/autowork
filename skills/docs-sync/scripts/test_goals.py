@@ -101,6 +101,32 @@ class GoalsTests(unittest.TestCase):
         self.assertNotEqual(run('add-task', str(self.repo), 'TASK-009', '--goal', 'GOAL-4', '--title', 'dup').returncode, 0)
         self.assertNotEqual(run('add-task', str(self.repo), 'TASK-010', '--goal', 'NOPE', '--title', 'x').returncode, 0)
 
+    def test_add_task_rejects_ids_that_todo_cannot_parse(self):
+        run('fmt', str(self.repo))
+        path = self.repo / 'goals.json'
+        before = path.read_bytes()
+        for identifier in ('TASK 1', 'TASK.1', '_TASK', 'TASK:1', ''):
+            with self.subTest(identifier=identifier):
+                result = run('add-task', str(self.repo), identifier, '--goal', 'GOAL-4', '--title', 'Work')
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn('invalid task ID', result.stderr)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_validate_detects_missing_or_wrong_goal_task_membership(self):
+        run('fmt', str(self.repo))
+        original = self.data()
+        for members in ([], ['TASK-001']):
+            with self.subTest(members=members):
+                data = json.loads(json.dumps(original))
+                data['goals'][0]['tasks'] = members
+                path = self.repo / 'goals.json'
+                path.write_text(json.dumps(data))
+                before = path.read_bytes()
+                result = run('validate', str(self.repo))
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn('GOAL-1: task membership does not match ledger', result.stdout)
+                self.assertEqual(path.read_bytes(), before)
+
 
     def test_section_moves_task_out_of_selection(self):
         run('fmt', str(self.repo))

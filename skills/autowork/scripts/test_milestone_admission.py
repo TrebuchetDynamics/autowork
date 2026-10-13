@@ -29,6 +29,8 @@ class AdmissionFixtures(unittest.TestCase):
             for g in ['G1', 'G2']], 'tasks': [
             {'id': t, 'title': t, 'goal': g, 'status': 'open', 'section': 'Next', 'depends_on': deps}
             for t, g, deps in [('T1', 'G1', []), ('T2', 'G1', []), ('T3', 'G1', ['T1']), ('T4', 'G2', [])]]}
+        for goal in self.ledger['goals']:
+            goal['tasks'] = [task['id'] for task in self.ledger['tasks'] if task['goal'] == goal['id']]
         self.write_ledger()
         (self.root / 'spec.md').write_text('fixture source')
         self.snapshot = self.root / 'snapshot.json'

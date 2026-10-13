@@ -36,6 +36,7 @@ from contextvars import ContextVar
 import fcntl
 from graphlib import CycleError, TopologicalSorter
 import hashlib
+import html
 import json
 import os
 import tempfile
@@ -46,6 +47,7 @@ from pathlib import Path
 
 GOAL_STATUS = ('unmet', 'partial', 'unverified', 'met')
 TASK_STATUS = ('open', 'in_progress', 'done')
+TASK_ID = r'[A-Za-z0-9][A-Za-z0-9_-]*'
 SECTIONS = ('Now', 'Next', 'Needs decision', 'Done')
 KINDS = ('executed', 'inspection')
 RESULTS = ('pass', 'fail')
@@ -138,11 +140,16 @@ def errors(data):
         for t in g.get('tasks', []):
             if t not in tids:
                 errs.append(f'{gid}: unknown task {t}')
+        actual = {t.get('id') for t in tasks if t.get('goal') == gid}
+        if actual != set(g.get('tasks', [])):
+            errs.append(f'{gid}: task membership does not match ledger')
         open_tasks = [t for t in tasks if t.get('goal') == gid and t.get('status') != 'done']
         if g.get('status') != 'met' and not open_tasks:
             errs.append(f'{gid}: {g.get("status")} goal has no open task')
     for t in tasks:
         tid = t.get('id', '?')
+        if not isinstance(tid, str) or re.fullmatch(TASK_ID, tid) is None:
+            errs.append(f'invalid task ID {tid!r}: use letters, digits, underscores or hyphens; start with a letter or digit')
         for k in ('id', 'goal', 'title', 'status'):
             if not t.get(k):
                 errs.append(f'{tid}: missing {k}')
@@ -329,6 +336,9 @@ def redact(repo, data, replacements_file, archive_dir):
                     changed = True
     if not changed:
         print('ok no redaction needed'); return
+    # Validate the second write before changing the ledger. A malformed TODO
+    # must not leave a partially redacted pair that becomes a no-op on retry.
+    render_text(repo, data)
     originals = {n: checked_bytes(repo / n) for n in ('goals.json', 'TODO.md')}
     token = TRANSACTION.get()[1]
     destination = archive / token
@@ -385,27 +395,43 @@ def eligible(data):
     return [(t, g) for *_, t, g in sorted(out, key=lambda r: r[:5])]
 
 
-def render(repo, data):
+def render_text(repo, data):
+    def cell(value):
+        return (html.escape(value, quote=False).replace('|', '&#124;').replace('`', '&#96;')
+                .replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>'))
+
     tasks = {t['id']: t for t in data['tasks']}
     rows = ['| Goal | Status | Evidence | Task |', '| --- | --- | --- | --- |']
     for g in data['goals']:
-        ev = '; '.join(f"{e['kind']}" + (' (redacted historical evidence)' if e.get('redacted') else '')
-                       + f" `{e['ref']}` → {e['result']}" for e in g['evidence']) or '—'
+        ev = '; '.join(cell(e['kind']) + (' (redacted historical evidence)' if e.get('redacted') else '')
+                       + f" <code>{cell(e['ref'])}</code> → {cell(e['result'])}" for e in g['evidence']) or '—'
         open_t = [t for t in g['tasks'] if tasks.get(t, {}).get('status') != 'done']
-        rows.append(f"| {g['id']}: {g['title']} | {g['status']} | {ev} | {', '.join(open_t) or '—'} |")
+        rows.append(f"| {cell(g['id'])}: {cell(g['title'])} | {cell(g['status'])} | {ev} | {cell(', '.join(open_t)) or '—'} |")
     block = '\n'.join([BEGIN, '', 'Generated from `goals.json` by `goals.py render`. `met` requires an executed, passing check.', '', *rows, '', END])
     todo = Path(repo) / 'TODO.md'
     text = todo.read_bytes().decode('utf-8') if todo.exists() else '# TODO\n\n## Goal coverage\n\n'
-    if BEGIN in text and END in text:
-        text = text[:text.index(BEGIN)] + block + text[text.index(END) + len(END):]
-    elif '## Goal coverage' in text:
-        head, tail = text.split('## Goal coverage', 1)
-        nxt = re.search(r'\n## ', tail)
-        rest = tail[nxt.start():] if nxt else '\n'
-        text = head + '## Goal coverage\n\n' + block + '\n' + rest
+    prose = markdown_prose(text)
+    begins = list(re.finditer(re.escape(BEGIN), prose))
+    ends = list(re.finditer(re.escape(END), prose))
+    headings = list(re.finditer(r'^##[ \t]+Goal coverage[ \t]*\r?$', prose, re.M))
+    if begins or ends:
+        if len(begins) != 1 or len(ends) != 1 or begins[0].start() >= ends[0].start():
+            sys.exit('ambiguous coverage markers in TODO.md; reconcile their boundaries; no write')
+        text = text[:begins[0].start()] + block + text[ends[0].end():]
+    elif headings:
+        if len(headings) != 1:
+            sys.exit('multiple Goal coverage sections in TODO.md; choose the maintained section; no write')
+        heading = headings[0]
+        nxt = re.search(r'\n#{1,2}[ \t]+', prose[heading.end():])
+        rest = text[heading.end() + nxt.start():] if nxt else '\n'
+        text = text[:heading.end()] + '\n\n' + block + '\n' + rest
     else:
         text = text + '\n\n## Goal coverage\n\n' + block + '\n'
-    atomic_write(todo, text)
+    return text
+
+
+def render(repo, data):
+    atomic_write(Path(repo) / 'TODO.md', render_text(repo, data))
 
 
 def markdown_prose(text):
@@ -571,8 +597,10 @@ def backlog_check(a):
             reasons.extend(ledger_errors)
             if ledger_errors:
                 data = None
-            elif not reasons:
-                picks = [t['id'] for t, _ in eligible(normalize(json.loads(ledger_blob)))]
+            else:
+                data = normalize(data)
+                if not reasons:
+                    picks = [t['id'] for t, _ in eligible(data)]
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             reasons.append(f'invalid backlog: {exc}')
             data = None
@@ -615,9 +643,6 @@ def backlog_check(a):
                 local_reference(repo, ref, blobs, reasons)
         for g in data['goals']:
             local_reference(repo, g['source'], blobs, reasons)
-            actual = {t['id'] for t in data['tasks'] if t['goal'] == g['id']}
-            if actual != set(g.get('tasks', [])):
-                reasons.append(f'{g["id"]}: task membership does not match ledger')
     ineligible = []
     if data is not None and not reasons:
         tasks = {t['id']: t for t in data['tasks']}
@@ -782,6 +807,8 @@ def execute(a):
         task['section'] = a.section
         dump(a.repo, data); print(f'ok {a.task} -> {a.section}'); return
     if a.cmd == 'add-task':
+        if re.fullmatch(TASK_ID, a.task) is None:
+            sys.exit('invalid task ID: use letters, digits, underscores or hyphens; start with a letter or digit; no write')
         if any(x['id'] == a.task for x in data['tasks']):
             sys.exit(f'task {a.task} already exists')
         goal = next((x for x in data['goals'] if x['id'] == a.goal), None) or sys.exit(f'unknown goal {a.goal}')

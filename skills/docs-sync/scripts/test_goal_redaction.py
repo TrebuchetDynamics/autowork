@@ -109,6 +109,17 @@ class RedactionTests(unittest.TestCase):
         self.assertEqual(before, self.snapshot())
         self.assertFalse(self.archive.exists())
 
+    def test_invalid_coverage_refuses_before_partial_redaction(self):
+        with (self.repo / 'TODO.md').open('ab') as stream:
+            stream.write(b'\n<!-- goals:coverage:begin -->\nUnfinished coverage\n')
+        before = self.snapshot()
+        for _ in range(2):
+            result = self.redact()
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn('coverage markers', result.stderr)
+            self.assertEqual(before, self.snapshot())
+        self.assertFalse(self.archive.exists())
+
     def test_archive_inside_repo_or_symlink_alias_is_refused(self):
         self.archive.symlink_to(self.repo, target_is_directory=True)
         for archive in (self.repo / 'private', self.archive):

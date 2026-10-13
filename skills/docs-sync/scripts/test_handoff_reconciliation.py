@@ -203,6 +203,19 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(any(reason.startswith('invalid backlog:') for reason in receipt['reasons']))
 
+    def test_completed_task_without_optional_section_reports_ineligible(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        path = self.repo / 'goals.json'
+        data = json.loads(path.read_text())
+        data['tasks'][0]['status'] = 'done'
+        data['tasks'][0].pop('section', None)
+        data['goals'][0]['status'] = 'met'
+        data['goals'][0]['evidence'] = [{'kind': 'executed', 'ref': 'fixture check', 'result': 'pass'}]
+        path.write_text(json.dumps(data))
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (2, 'backlog_reconciled_not_eligible'))
+        self.assertIn('T1: not eligible (status=done, section=Done, goal=met)', receipt['reasons'])
+
 
 if __name__ == '__main__':
     unittest.main()
