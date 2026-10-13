@@ -11,7 +11,7 @@ metadata:
 # Docs Sync
 
 Keep docs accurate and distinguish intent from implementation. Reuse owners.
-The public skill ID is `docs-sync`; `/repo-docs` and `/repo_docs` are compatibility aliases.
+The public skill ID is `docs-sync`; invoke it with `/docs_sync` or `/docs-sync`.
 Follow [the shared skill contract](../shared/COMMON-CONTRACT.md) for study, hygiene,
 safety and evidence; use `wiki-docs` for raw-source-to-wiki compilation.
 

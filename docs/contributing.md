@@ -14,9 +14,8 @@ skills/
 
 Use a folder name of 1–32 lowercase letters, digits, hyphens, or underscores,
 starting with a letter or digit. The folder determines the command name; keep
-the skill's frontmatter `name` consistent with it for new skills. The three
-existing workflow renames are explicit exceptions in `PUBLIC_SKILLS` in the entry
-point: their stable source paths map to the current public IDs. Underscores become hyphens
+the skill's frontmatter `name` consistent with it. Workflow commands and their
+aliases are registered explicitly in `workflow_commands.py`. Underscores become hyphens
 in CLI commands and Telegram uses underscores: `my_skill` becomes `/my-skill`
 in CLI chat and `/my_skill` in Telegram. `my-skill` and `my_skill` cannot coexist.
 

@@ -1,14 +1,14 @@
 ---
-name: plan-for-me
-description: "Investigate the repository, decide an approach and save plans and tasks. Includes on-demand Autoresearch experiment protocols; not required for a ready implementation task."
+name: autoresearch
+description: "Run the pinned Autoresearch protocols for repository research and bounded experiments; not required for a ready implementation task."
 version: 0.1.0
 license: MIT
 ---
 
-# Plan For Me
+# Autoresearch
 
-Default to the plan protocol when invoked as a skill without an explicit subcommand.
-Explicit Autoresearch subcommands select their own protocol.
+Without an explicit subcommand, use the upstream router to select a protocol
+from the user's goal. Explicit Autoresearch subcommands select their own protocol.
 
 Run the pinned Udit Goenka autoresearch protocols with Hermes tools and the existing
 docs-sync → TODO.md/goals.json → autowork cycle. Read this adapter first, then the
@@ -35,12 +35,11 @@ and tasks; preserve user orders before rendering and never claim planning as del
 
 ## Planning and protocol selection
 
-`/plan_for_me` (also `/plan-for-me`) is the primary planning command. It routes
-to this adapter's `plan` protocol: investigate the repository, choose a supported
-approach, and save the plan and tasks. Decide routine engineering choices without
-an interview; ask only for consequential missing product intent or authority.
-`/autoresearch:plan` and `/autoresearch_plan` remain compatibility aliases. Other
-Autoresearch commands keep their existing behavior and names.
+Use the dedicated [Plan For Me skill](../plan-for-me/SKILL.md) through
+`/plan_for_me` (also `/plan-for-me`) to investigate, choose an approach and save
+the plan and tasks. `/autoresearch:plan` and `/autoresearch_plan` still select
+this adapter's pinned `plan` protocol with the same planning adaptations.
+Other Autoresearch commands keep their existing behavior and names.
 
 ## Commands and dispatch
 

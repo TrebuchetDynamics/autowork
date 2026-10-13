@@ -57,9 +57,9 @@ Public skill names match the workflow names. Source directories stay stable for 
 
 | Primary command | Public skill ID | Compatibility command |
 | --- | --- | --- |
-| `/plan_with_me` | `plan-with-me` | `/repo_interview` |
+| `/plan_with_me` | `plan-with-me` | None |
 | `/plan_for_me` | `plan-for-me` | `/autoresearch_plan` |
-| `/docs_sync` | `docs-sync` | `/repo_docs` |
+| `/docs_sync` | `docs-sync` | None |
 | `/autowork` | `autowork` | None; Autogoal is retired |
 
 Grill Me is the challenge mode of Plan With Me; its old command still works but
@@ -139,7 +139,7 @@ state live under `autowork/`; upgrades preserve existing work through migration.
 ## Pinned engineering protocols
 
 `/engineering` (the same spelling in Telegram) selects Addy engineering methods for
-the current phase. Autowork, Repo Docs and Autoresearch load this adapter through the
+the current phase. Autowork, Docs Sync and Autoresearch load this adapter through the
 shared engineering cycle; no separate command is normally needed. Examples:
 
 ```text
@@ -190,12 +190,12 @@ planning still does not authorize implementation.
 ### Source names and compatibility
 
 Docs Sync lives in `skills/docs-sync/`; Plan With Me lives in
-`skills/plan-with-me/`. Old repo-docs/repo-interview command spellings route to
-those canonical skills and are hidden from the command menu. Retired host-local
-worker snapshots are not installed, packaged or registered as skills.
+`skills/plan-with-me/`. Neither workflow registers legacy command aliases.
+Retired host-local worker snapshots are not installed, packaged or registered as skills.
 
-`skills/autoresearch/` still contains the Autoresearch protocol suite; its public
-planning skill is Plan For Me. Bare Plan For Me selects planning; explicit
+Plan For Me lives in `skills/plan-for-me/` and is registered as its own skill.
+It applies the pinned planning protocol from `skills/autoresearch/`, which remains
+the separate Autoresearch skill and protocol suite. `/plan_for_me` selects planning;
 `/autoresearch` selects the research router. Non-planning protocols remain available.
 The legacy worker-contract field `Repo-docs pass` and receipt key `repo_docs_pass`
 remain internal compatibility fields, not additional skills or commands.

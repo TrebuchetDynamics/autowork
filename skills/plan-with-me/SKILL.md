@@ -23,8 +23,8 @@ answered decisions and maintaining affected docs. `questions only`, `audit` or
 `read-only` means no file changes. It does not authorize code changes or start
 autowork. Honor any separate implementation authority already given.
 
-The public skill ID is `plan-with-me`; old commands remain compatibility
-aliases. The source directory is `skills/plan-with-me/`. The public command means ask the user and plan together.
+The public skill ID is `plan-with-me`, and the source directory is
+`skills/plan-with-me/`. The public command means ask the user and plan together.
 
 ## Challenge mode
 

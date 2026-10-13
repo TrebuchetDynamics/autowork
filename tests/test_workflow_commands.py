@@ -8,14 +8,14 @@ class WorkflowCommands(unittest.TestCase):
     skill = fixture.PluginTests.skill
 
     def test_new_names_route_to_existing_skills_and_preserve_arguments(self):
-        for name in ('plan-with-me', 'docs-sync', 'autoresearch'):
+        for name in ('plan-with-me', 'plan-for-me', 'docs-sync', 'autoresearch'):
             self.skill(name)
         self.plugin.register(self.ctx)
         self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture')
-        for command, skill, subcommand in (
-                ('plan_with_me', 'plan-with-me', None),
-                ('docs_sync', 'docs-sync', None),
-                ('plan_for_me', 'plan-for-me', 'plan')):
+        for command, skill in (
+                ('plan_with_me', 'plan-with-me'),
+                ('docs_sync', 'docs-sync'),
+                ('plan_for_me', 'plan-for-me')):
             for spelling in (command, command.replace('_', '-')):
                 with self.subTest(spelling=spelling):
                     self.assertIn(spelling, self.ctx.commands)
@@ -25,9 +25,11 @@ class WorkflowCommands(unittest.TestCase):
                     self.assertIn('hermes-toolset:' + skill, prompt)
                     self.assertTrue(prompt.endswith(raw))
                     self.assertEqual(routing['origin']['chat_id'], 'fixture')
-                    if subcommand:
-                        self.assertIn('Selected subcommand: plan\n', prompt)
-        self.assertTrue({'repo-interview', 'repo-docs', 'autoresearch-plan'} <= self.ctx.commands.keys())
+                    if command == 'plan_for_me':
+                        self.assertIn('TODO.md is the central work queue', prompt)
+        self.assertIn('autoresearch-plan', self.ctx.commands)
+        for retired in ('repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'):
+            self.assertNotIn(retired, self.ctx.commands)
 
     def test_cron_autowork_command_routes_without_creating_a_schedule(self):
         self.skill('cron-autowork')
@@ -41,13 +43,31 @@ class WorkflowCommands(unittest.TestCase):
         self.assertTrue(prompt.endswith(raw))
         self.assertEqual(routing['origin']['chat_id'], 'fixture')
 
+    def test_plan_for_me_is_registered_and_installed_from_its_own_source(self):
+        source = fixture.ROOT / 'skills/plan-for-me/SKILL.md'
+        self.assertTrue(source.is_file())
+        self.plugin.SKILLS_DIR = fixture.ROOT / 'skills'
+        self.plugin.register(self.ctx)
+        self.assertEqual(self.ctx.skills['plan-for-me'], source)
+        self.assertEqual(self.ctx.skills['autoresearch'], fixture.ROOT / 'skills/autoresearch/SKILL.md')
+        installed = self.root.parent / 'home/skills/plan-for-me/SKILL.md'
+        self.assertEqual(installed.read_bytes(), source.read_bytes())
+
+    def test_plan_for_me_reserves_both_spellings_for_existing_owners(self):
+        self.skill('plan-for-me')
+        self.existing['plan_for_me'] = {'plugin': 'other'}
+        self.plugin.register(self.ctx)
+        self.assertNotIn('plan-for-me', self.ctx.commands)
+        self.assertNotIn('plan_for_me', self.ctx.commands)
+
     def test_alias_pair_preserves_existing_command_owner(self):
         self.skill('docs-sync')
         self.existing['docs-sync'] = {'plugin': 'other'}
         self.plugin.register(self.ctx)
         self.assertNotIn('docs-sync', self.ctx.commands)
         self.assertNotIn('docs_sync', self.ctx.commands)
-        self.assertIn('repo-docs', self.ctx.commands)
+        self.assertNotIn('repo-docs', self.ctx.commands)
+        self.assertNotIn('repo_docs', self.ctx.commands)
 
     def test_retired_local_snapshots_are_not_discovered_or_installed(self):
         for name in ('repo-docs', 'repo-interview', 'docs-sync', 'plan-with-me'):
@@ -56,11 +76,12 @@ class WorkflowCommands(unittest.TestCase):
         self.assertEqual({name for name, _, _ in discovered}, {'docs-sync', 'plan-with-me'})
         self.plugin.register(self.ctx)
         self.assertEqual(set(self.ctx.skills), {'docs-sync', 'plan-with-me'})
-        for old, canonical in [('repo-docs','docs-sync'),('repo-interview','plan-with-me')]:
-            self.ctx.commands[old]('resume')
-            self.assertIn('hermes-toolset:'+canonical,self.ctx.messages[-1][0])
+        for retired in ('repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'):
+            self.assertNotIn(retired, self.ctx.commands)
+        self.ctx.commands['docs_sync']('resume')
+        self.assertIn('hermes-toolset:docs-sync', self.ctx.messages[-1][0])
 
-    def test_legacy_alias_pair_preserves_foreign_owner(self):
+    def test_foreign_retired_command_does_not_block_docs_sync(self):
         self.skill('docs-sync')
         self.existing['repo-docs'] = {'plugin':'other'}
         self.plugin.register(self.ctx)
@@ -75,10 +96,10 @@ class WorkflowCommands(unittest.TestCase):
             self.assertNotIn(command, self.ctx.commands)
 
     def test_catalog_uses_current_names_and_grilling_is_a_mode(self):
-        for name in ('plan-with-me', 'docs-sync', 'autoresearch', 'grill-me'):
+        for name in ('plan-with-me', 'plan-for-me', 'docs-sync', 'autoresearch', 'grill-me'):
             self.skill(name)
         self.plugin.register(self.ctx)
-        self.assertEqual(set(self.ctx.skills), {'plan-with-me', 'docs-sync', 'plan-for-me'})
+        self.assertEqual(set(self.ctx.skills), {'plan-with-me', 'docs-sync', 'plan-for-me', 'autoresearch'})
         self.ctx.commands['grill-me']('challenge my cache plan')
         prompt, _ = self.ctx.messages[-1]
         self.assertIn('skill_view(name="hermes-toolset:plan-with-me")', prompt)

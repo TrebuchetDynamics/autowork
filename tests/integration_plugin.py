@@ -110,6 +110,7 @@ def main():
             runner, event=None, command='new', title='New', detail='test', execute=execute))
         assert result == 'executed' and called == [True]
         commands = get_plugin_commands()
+        assert not {'repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'} & commands.keys(), commands.keys()
         assert {"autowork", "impeccable", "git-commit-push", "git-pull-merge", "lgtm", "docs-sync", "plan-with-me"} <= commands.keys()
         assert manager.find_plugin_skill("hermes-toolset:docs-sync") == root / "skills/docs-sync/SKILL.md"
         payload = json.loads(skill_view("hermes-toolset:docs-sync"))
@@ -153,8 +154,7 @@ def main():
                 message = cli._pending_input.get_nowait()
                 assert f'hermes-toolset:{target}' in message, message
                 assert message.endswith('read-only: example'), message
-                if public == 'plan_for_me':
-                    assert 'Selected subcommand: plan' in message
+                assert manager.find_plugin_skill('hermes-toolset:' + target) == root / 'skills' / target / 'SKILL.md'
             assert commands["docs-sync"]["handler"]("update the README") is None
             queued = cli._pending_input.get_nowait()
             assert 'skill_view(name="hermes-toolset:docs-sync")' in queued

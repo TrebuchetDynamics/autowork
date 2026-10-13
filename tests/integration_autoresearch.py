@@ -29,7 +29,7 @@ def main():
         assert (home / 'skills/engineering/upstream/references/security-checklist.md').is_file()
         assert 'No update receipt yet' in commands['toolset']['handler']('update status')
         names = json.loads((root / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
-        payload = json.loads(skill_view('hermes-toolset:plan-for-me'))
+        payload = json.loads(skill_view('hermes-toolset:autoresearch'))
         assert 'error' not in payload, payload
         menu, _ = telegram_menu_commands(telegram_menu_max_commands())
         menu = dict(menu)
@@ -54,7 +54,7 @@ def main():
                 raw = 'Goal: cache latency\n--chain evals; do not implement'
                 assert commands[f'autoresearch:{name}']['handler'](raw) is None
                 queued = cli._pending_input.get_nowait()
-                assert 'hermes-toolset:plan-for-me' in queued
+                assert 'hermes-toolset:autoresearch' in queued
                 assert f'Selected subcommand: {name}\n' in queued
                 assert queued.endswith(raw)
                 assert 'TODO.md is the central work queue' in queued

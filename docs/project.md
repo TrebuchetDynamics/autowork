@@ -41,11 +41,11 @@ model performs the workflow; command registration alone does not run it. Codex
 loads portable skills directly. Pi commands read adapter instructions and send a
 user message, queued as a follow-up when the session is busy.
 
-Source skill directory names remain stable for helper/reference paths. Hermes
-publishes `plan-with-me`, `plan-for-me` and `docs-sync`, while old typed commands
-remain compatibility routes. The portable package currently exposes separate
-Autoresearch and Grill Me skills too; this catalog difference is tracked as
-TOOLSET-001, not described as already unified.
+Hermes publishes `plan-with-me`, `plan-for-me`, `docs-sync` and `autoresearch`
+from their matching source directories. The retired repo-interview and repo-docs
+commands are not registered. The portable package still exposes Grill Me as a
+separate skill; this catalog difference is tracked as TOOLSET-001, not described
+as already unified. Shared protocols retain their existing helper/reference paths.
 
 ## Data and trust boundaries
 

@@ -59,7 +59,8 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    reason in a new or reused research receipt at the authorized research location;
    do not fabricate a cycle or task ID.
    Then load `hermes-toolset:plan-for-me` with
-   `Selected subcommand: plan` and read its `upstream/plan.md`. This is skill
+   `Selected subcommand: plan` and follow its link to the pinned
+   [plan protocol](../../autoresearch/upstream/plan.md). This is skill
    execution in the current agent, not a shell command or a new scheduled job.
 2. Bind Goal to the accepted milestone or an evidence-backed maintenance outcome
    under broad repository authorization; Scope to its unfinished code,

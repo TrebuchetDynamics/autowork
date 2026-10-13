@@ -23,8 +23,8 @@ Explicit specialist commands still work independently within their stated scope.
 The main commands are **`/plan_with_me`** (ask and plan together),
 **`/plan_for_me`** (investigate and decide), **`/docs_sync`** (maintain docs and
 TODO.md), and **`/autowork`** (execute). Underscore and hyphen spellings work in
-CLI; Telegram displays underscores. Old `/repo_interview`, `/repo_docs` and
-`/autoresearch_plan` commands remain compatibility aliases.
+CLI; Telegram displays underscores. `/autoresearch_plan` remains a compatibility
+command for planning.
 
 ## What you can do
 
@@ -213,7 +213,7 @@ to produce a useful decision summary in chat. The separate
 saves docs and a TODO.md task; it requires file/terminal tools; Graphify is relevant to relationship analysis.
 
 The bundled engineering pack is available without external skill imports. Autowork,
-Autoresearch and Repo Docs use its planning, implementation, debugging and review
+Autoresearch and Docs Sync use its planning, implementation, debugging and review
 methods while keeping TODO.md as the shared queue. Application receipts identify
 the protocol revision and actual decision/check; loading a skill is not proof of use.
 
