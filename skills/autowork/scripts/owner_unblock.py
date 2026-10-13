@@ -49,8 +49,13 @@ def repair_metadata(repo, plan, ids, authority):
         raise ValueError('immutable source must contain unique explicit Status: Accepted')
     if old and not re.match(r'[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*Accepted\b', old[0][0], re.I):
         raise ValueError('current explicit unaccepted status conflicts with historical acceptance')
-    if status.sub('', current) != status.sub('', historical):
+    current_scope = goals.local_reference(repo, plan, blobs, reasons, include_children=True)
+    historical_scope = goals.local_reference(repo, plan, {name: source.encode()}, reasons, include_children=True)
+    def without_status(scope, matches):
+        return scope[:matches[0].start()] + scope[matches[0].end():] if matches else scope
+    if without_status(current_scope, old) != without_status(historical_scope, new):
         raise ValueError('immutable accepted plan scope differs from current section')
+    current = current_scope
     if old:
         repaired = current[:old[0].start()] + new[0][0] + current[old[0].end():]
     else:

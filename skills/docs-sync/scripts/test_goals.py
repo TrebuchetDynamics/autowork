@@ -57,6 +57,64 @@ class GoalsTests(unittest.TestCase):
         run('fmt', str(self.repo)); first = (self.repo / 'goals.json').read_bytes()
         run('fmt', str(self.repo)); self.assertEqual(first, (self.repo / 'goals.json').read_bytes())
 
+    def test_met_goal_with_open_work_is_invalid_and_fmt_reopens_it(self):
+        data = sample()
+        evidence = [{'kind': 'executed', 'result': 'pass', 'ref': 'prior check'}]
+        data['goals'][0]['evidence'] = evidence
+        path = self.repo / 'goals.json'
+        path.write_text(json.dumps(data))
+        self.assertIn('GOAL-1: met goal has unfinished tasks', run('validate', str(self.repo)).stdout)
+        before = path.read_bytes()
+        picks = json.loads(run('next', str(self.repo), '--json').stdout)
+        self.assertEqual(picks[0]['task']['id'], 'TASK-002')
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(run('fmt', str(self.repo)).returncode, 0)
+        self.assertEqual(self.data()['goals'][0]['status'], 'partial')
+        self.assertEqual(self.data()['goals'][0]['evidence'], evidence)
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+
+    def test_cross_level_dependency_cycle_is_diagnosed(self):
+        data = sample()
+        data['goals'][0]['status'] = 'unverified'
+        # GOAL-4 needs TASK-001, which needs TASK-003, which waits for GOAL-4.
+        data['tasks'][0]['depends_on'] = ['TASK-003']
+        path = self.repo / 'goals.json'
+        path.write_text(json.dumps(data))
+        before = path.read_bytes()
+        for command in ('validate', 'next'):
+            result = run(command, str(self.repo))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('cross-level dependency cycle', result.stdout + result.stderr)
+            self.assertIn('TASK-001', result.stdout + result.stderr)
+        self.assertEqual(path.read_bytes(), before)
+        # A forward dependency between goals remains valid and runnable.
+        data['tasks'][0].pop('depends_on')
+        data['tasks'][2]['depends_on'] = ['TASK-001']
+        path.write_text(json.dumps(data))
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+
+    def test_cross_level_graph_separates_goal_and_task_ids(self):
+        data = sample()
+        data['goals'][0]['status'] = 'unverified'
+        data['goals'][0]['id'] = 'TASK-002'
+        data['tasks'][1]['goal'] = 'TASK-002'
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+        picks = json.loads(run('next', str(self.repo), '--json').stdout)
+        self.assertEqual(picks[0]['task']['id'], 'TASK-002')
+
+    def test_completed_dependency_does_not_create_cross_level_deadlock(self):
+        data = sample()
+        data['goals'][0]['status'] = 'unverified'
+        data['goals'][2]['status'] = 'met'
+        data['goals'][2]['evidence'] = [{'kind': 'executed', 'result': 'pass', 'ref': 'historical check'}]
+        data['tasks'][2]['status'] = 'done'
+        data['tasks'][0]['depends_on'] = ['TASK-003']
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+        picks = json.loads(run('next', str(self.repo), '--json').stdout)
+        self.assertIn('TASK-001', [row['task']['id'] for row in picks])
+
     def test_next_orders_by_priority_then_status_and_respects_dependencies(self):
         run('fmt', str(self.repo))
         self.assertTrue(run('next', str(self.repo)).stdout.startswith('TASK-002'))  # GOAL-1 priority 1 first

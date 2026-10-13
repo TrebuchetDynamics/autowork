@@ -39,6 +39,43 @@ class RetrySelectionTests(unittest.TestCase):
         self.assertEqual(result['held_claims'], [])
         self.assertEqual(result['recorded_claims'][0]['owner'], 'writer')
 
+    def test_todo_only_dependency_prevents_selection(self):
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'].append(dict(data['tasks'][0], id='T2', section='Next'))
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        body = todo.read_text()
+        todo.write_text(body.replace('Dependencies: None', 'Dependencies: [T2](TODO.md)') +
+                        body.replace('# TODO\n\n## Now', '## Next').replace('T1:', 'T2:'))
+        before = {p: p.read_bytes() for p in (ledger, todo)}
+        result = self.retry()
+        self.assertEqual(result['state'], 'draft_saved', result)
+        self.assertIn('T1: Dependencies name T2 absent from ledger', result['reasons'])
+        for path, contents in before.items():
+            self.assertEqual(path.read_bytes(), contents)
+
+    def test_reopened_todo_task_prevents_selecting_another_task(self):
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'].append(dict(data['tasks'][0], id='T2'))
+        data['tasks'][0].update(status='done', section='Done')
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        body = todo.read_text()
+        todo.write_text(body + body.replace('T1:', 'T2:'))
+        result = self.retry()
+        self.assertEqual(result['state'], 'draft_saved', result)
+        self.assertIn('T1: checkbox/section does not match done ledger task', result['reasons'])
+        # Completed tasks may be archived entirely or retained as checked history.
+        for history in ('', body.replace('## Now', '## Done').replace('[ ]', '[x]')):
+            todo.write_text(history + body.replace('T1:', 'T2:'))
+            result = self.retry()
+            self.assertEqual(result['state'], 'ready_for_autowork', result)
+            self.assertEqual(result['selected_task']['id'], 'T2')
+
     def claim(self, task='T1', status='ACTIVE', workspace='/fixture/writer'):
         path = self.consumer / 'docs/coordination/worktree-registry.jsonl'
         path.parent.mkdir(parents=True, exist_ok=True)

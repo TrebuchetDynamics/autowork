@@ -35,6 +35,15 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertFalse((self.state / 'requests').exists())
         self.assertEqual(receipt['coordination_mode'], 'autonomous')
 
+    def test_repository_scope_missing_ledger_saves_repair_receipt(self):
+        result, receipt = self.run_cycle('--scope', 'repository', '--apply', require_owner=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(receipt['outcome'], 'ACTION_REQUIRED')
+        self.assertEqual(receipt['recovery']['gate'], 'ledger')
+        self.assertIn('goals.json', str(receipt['work_search']))
+        self.assertFalse(receipt['dispatch_attempted'])
+        self.assertFalse((self.repo / 'goals.json').exists())
+
     def test_default_open_task_does_not_wait_for_recorded_owner(self):
         self.ready_backlog()
         registry = self.repo / 'docs/coordination/worktree-registry.jsonl'

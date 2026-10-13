@@ -122,6 +122,7 @@ class MilestoneFocusTests(unittest.TestCase):
                     data['tasks'][1]['status'] = 'done'
                 else:
                     data['goals'][1]['status'] = 'met'
+                    data['tasks'][1]['status'] = 'done'
                     data['goals'][1]['evidence'] = [
                         {'kind': 'executed', 'ref': 'test milestone', 'result': 'pass'}]
                 self.assertEqual(self.picks(copy.deepcopy(data)), ['FOCUS'])
@@ -137,6 +138,7 @@ class MilestoneFocusTests(unittest.TestCase):
                     data['tasks'][0]['section'] = 'Needs decision'
                 else:
                     data['goals'][0]['status'] = 'met'
+                    data['tasks'][0]['status'] = 'done'
                     data['goals'][0]['evidence'] = [
                         {'kind': 'executed', 'ref': 'test milestone', 'result': 'pass'}]
                 self.assertEqual(self.picks(data), ['OTHER'])

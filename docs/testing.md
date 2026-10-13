@@ -16,6 +16,19 @@ integration suites are explicitly excluded with reasons; live opt-in flags are
 removed from test subprocesses. Passing this gate does not qualify model/native
 execution. Tests use temporary Git fixtures and may write offline scratch receipts.
 
+Autowork check receipts fingerprint the command executable using the check's
+working directory and execution environment, including relative or empty `PATH`
+entries. Receipts created before the `execution-cwd-v1` resolution policy cannot
+be reused; preserve them and run the check with a new receipt path. An unresolved
+executable also prevents reuse.
+
+Offline Autowork regressions cover missing-ledger recovery receipts, TODO/ledger
+dependency and completion mismatches, and goal/task dependency deadlocks. A `met`
+goal with unfinished tasks fails validation; `goals.py fmt` reopens it as `partial`
+when executed passing evidence exists, preserving that evidence. Plan-status
+recovery compares the complete heading subtree, including nested sections and
+fenced examples, while preserving unrelated sibling sections.
+
 `tests/integration_plugin.py` additionally checks the actual Hermes manifest
 reader, native install security scan, loader, bundled skill reader, Telegram menu, CLI queue, gateway routing,
 and unload behavior. Run it using Hermes' Python environment with the Hermes

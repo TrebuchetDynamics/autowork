@@ -100,6 +100,39 @@ class OwnerUnblockTests(unittest.TestCase):
         self.assertEqual(self.git('write-tree'), index)
         self.assertEqual((self.repo / 'foreign.txt').read_bytes(), b'foreign staged\x00bytes')
 
+    def test_metadata_repair_checks_nested_scope_preserves_siblings(self):
+        plan = ('# Slice\n\nStatus: Accepted\nSummary stays.\n'
+                '## Scope\nGenerate a read-only report.\n'
+                '### Detail\nKeep runtime unchanged.\n'
+                'Status: Proposed\n```text\n# Example heading\nSample output.\n```\n'
+                '# Foreign\nStatus: Proposed\nForeign bytes\n')
+        path = self.repo / 'SPEC.md'
+        path.write_text(plan)
+        self.git('add', 'SPEC.md', 'TODO.md', 'goals.json')
+        self.git('commit', '-qm', 'nested accepted plan')
+        self.authority['accepted_plan_source_commit'] = self.git('rev-parse', 'HEAD')
+        self.auth.write_text(json.dumps(self.authority))
+        head, index = self.git('rev-parse', 'HEAD'), self.git('write-tree')
+        current = plan.replace('Status: Accepted\n', '').replace('Foreign bytes', 'Foreign changes')
+        for old, new in (('Generate a read-only report.', 'Modify runtime behavior.'),
+                         ('Keep runtime unchanged.', 'Change runtime.'),
+                         ('Status: Proposed\n```', 'Status: Accepted\n```'),
+                         ('Sample output.', 'Different output.')):
+            with self.subTest(scope=old):
+                path.write_text(current.replace(old, new))
+                before = {p: p.read_bytes() for p in (path, self.repo / 'TODO.md', self.repo / 'goals.json')}
+                result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
+                self.assertNotEqual(result.returncode, 0, receipt)
+                self.assertIn('scope differs', str(receipt))
+                for p, content in before.items():
+                    self.assertEqual(p.read_bytes(), content)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+                self.assertEqual(self.git('write-tree'), index)
+        path.write_text(current)
+        result, receipt = self.run_cli('--apply', '--authority', str(self.auth))
+        self.assertEqual(result.returncode, 0, receipt)
+        self.assertEqual(path.read_text(), plan.replace('Foreign bytes', 'Foreign changes'))
+
     def test_missing_metadata_with_body_repair_ready(self):
         plan, current = self.accepted_history(missing_body=True)
         (self.repo / 'SPEC.md').write_text(current.replace('Status: Accepted (implementation only)\n', '', 1))

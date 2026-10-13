@@ -25,8 +25,8 @@ Agents change goals.json only through these commands, never by hand-editing JSON
   goals.py add-task <repo> <TASK> --goal <GOAL> --title <text> [--section Now|Next|Needs decision] [--depends-on T1,T2]
   goals.py evidence <repo> <GOAL> --kind executed|inspection --ref <cmd/path> --result pass|fail [--ran-at ISO]
 
-Rule (the met rule): a goal is `met` only with at least one evidence entry of kind `executed`
-and result `pass`. Anything else claimed as met is downgraded to `unverified` by fmt.
+Rule (the met rule): a goal is `met` only with executed+pass evidence and all tasks done.
+Fmt downgrades missing evidence to `unverified`, or reopens unfinished work as `partial`.
 Optional `primary_milestone` names one existing goal. Its eligible tasks sort first,
 even in Next; all eligible fallback tasks remain available after them in next --json.
 """
@@ -82,6 +82,9 @@ def normalize(data):
         g.setdefault('priority', 100)
         if g.get('status') == 'met' and not proven(g):
             g['status'] = 'unverified'
+        elif g.get('status') == 'met' and any(
+                t.get('goal') == g['id'] and t.get('status') != 'done' for t in tasks):
+            g['status'] = 'partial'
         g['evidence'] = sorted(g['evidence'], key=lambda e: (e.get('kind', ''), e.get('ref', '')))
         g['depends_on'] = sorted(set(g['depends_on'])); g['tasks'] = sorted(set(g['tasks']))
     for t in tasks:
@@ -105,6 +108,28 @@ def dependency_cycles(data):
             TopologicalSorter({row['id']: row.get('depends_on', []) for row in rows}).prepare()
         except CycleError as exc:
             problems.append(f'{kind} dependency cycle: ' + ' -> '.join(exc.args[1]))
+    if problems:
+        return problems
+    # Goal completion waits for its tasks; each task also waits for its goal's
+    # prerequisites. These edges can deadlock even when both ledgers are DAGs.
+    goals = {g['id']: g for g in data['goals']}
+    tasks = {t['id']: t for t in data['tasks']}
+    active_tasks = {tid for tid, t in tasks.items() if t.get('status') != 'done'}
+    active_goals = {gid for gid, g in goals.items() if g.get('status') != 'met'
+                    or not proven(g) or any(tasks[tid].get('goal') == gid for tid in active_tasks)}
+    graph = {}
+    for gid in active_goals:
+        graph[('goal', gid)] = [('task', tid) for tid in active_tasks if tasks[tid].get('goal') == gid]
+    for tid in active_tasks:
+        task = tasks[tid]
+        graph[('task', tid)] = ([('task', dep) for dep in task.get('depends_on', []) if dep in active_tasks] +
+                               [('goal', dep) for dep in goals.get(task.get('goal'), {}).get('depends_on', [])
+                                if dep in active_goals])
+    try:
+        TopologicalSorter(graph).prepare()
+    except CycleError as exc:
+        problems.append('cross-level dependency cycle: ' +
+                        ' -> '.join(f'{kind} {identifier}' for kind, identifier in exc.args[1]))
     return problems
 
 
@@ -144,6 +169,8 @@ def errors(data):
         if actual != set(g.get('tasks', [])):
             errs.append(f'{gid}: task membership does not match ledger')
         open_tasks = [t for t in tasks if t.get('goal') == gid and t.get('status') != 'done']
+        if g.get('status') == 'met' and open_tasks:
+            errs.append(f'{gid}: met goal has unfinished tasks (run fmt to reopen)')
         if g.get('status') != 'met' and not open_tasks:
             errs.append(f'{gid}: {g.get("status")} goal has no open task')
     for t in tasks:
@@ -474,8 +501,12 @@ def plan_acceptance_error(section):
     return ''
 
 
-def local_reference(repo, ref, blobs, reasons):
-    """Resolve maintained Markdown links inside this authority; bind whole files."""
+def local_reference(repo, ref, blobs, reasons, *, include_children=False):
+    """Resolve maintained links; optionally return the raw full heading subtree.
+
+    Acceptance metadata belongs to the heading's introduction. Scope recovery
+    must compare all descendants, including fenced examples, byte for byte.
+    """
     if re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', ref):
         return ''  # Remote sources are not locally qualified.
     name, _, anchor = ref.partition('#')
@@ -499,17 +530,19 @@ def local_reference(repo, ref, blobs, reasons):
     text = markdown_prose(blob.decode('utf-8'))
     headings = []
     counts = {}
-    for match in re.finditer(r'^#{1,6}\s+(.+?)\s*#*\s*$', text, re.M):
-        slug = re.sub(r'[^\w\- ]', '', match[1].lower()).replace(' ', '-')
+    for match in re.finditer(r'^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*\r?$', text, re.M):
+        slug = re.sub(r'[^\w\- ]', '', match[2].lower()).replace(' ', '-')
         count = counts.get(slug, 0)
         counts[slug] = count + 1
-        headings.append((slug + (f'-{count}' if count else ''), match.start(), match.end()))
+        headings.append((slug + (f'-{count}' if count else ''), match.start(), match.end(), len(match[1])))
     found = next((i for i, row in enumerate(headings) if row[0] == anchor), None)
     if found is None:
         reasons.append(f'missing anchor {ref}')
         return ''
-    end = headings[found + 1][1] if found + 1 < len(headings) else len(text)
-    return text[headings[found][2]:end]
+    end = next((row[1] for row in headings[found + 1:]
+                if not include_children or row[3] <= headings[found][3]), len(text))
+    source = blob.decode('utf-8') if include_children else text
+    return source[headings[found][2]:end]
 
 
 def task_prose(text):
@@ -617,9 +650,11 @@ def backlog_check(a):
                 reasons.append(f'{tid}: executable body has no ledger task')
         for t in data['tasks']:
             tid = t['id']
-            if t['status'] == 'done':
-                continue
             entries = bodies.get(tid, [])
+            if t['status'] == 'done':
+                if any(mark == ' ' for _, mark, _ in entries):
+                    reasons.append(f'{tid}: checkbox/section does not match done ledger task')
+                continue
             if len(entries) != 1:
                 reasons.append(f'{tid}: missing or duplicate task body')
                 continue
@@ -633,9 +668,13 @@ def backlog_check(a):
             if checked != ' ' or section != t.get('section', 'Next'):
                 reasons.append(f'{tid}: checkbox/section does not match ledger')
             goal = next(g for g in data['goals'] if g['id'] == t['goal'])
-            for dep in t.get('depends_on', []) + goal.get('depends_on', []):
-                if not re.search(r'(?<![\w-])' + re.escape(dep) + r'(?![\w-])', fields.get('Dependencies', '')):
-                    reasons.append(f'{tid}: Dependencies do not name {dep}')
+            expected = set(t.get('depends_on', []) + goal.get('depends_on', []))
+            named = {dep for dep in known | {g['id'] for g in data['goals']}
+                     if re.search(r'(?<![\w-])' + re.escape(dep) + r'(?![\w-])', fields.get('Dependencies', ''))}
+            for dep in sorted(expected - named):
+                reasons.append(f'{tid}: Dependencies do not name {dep}')
+            for dep in sorted(named - expected):
+                reasons.append(f'{tid}: Dependencies name {dep} absent from ledger')
             sources = re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', fields.get('Sources', ''))
             if tid in ids and reference_key(a.plan) not in {reference_key(ref) for ref in sources}:
                 reasons.append(f'{tid}: Sources do not link accepted plan')

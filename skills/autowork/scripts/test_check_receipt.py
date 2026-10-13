@@ -108,6 +108,68 @@ class ReceiptTests(unittest.TestCase):
                 tool.write_text('#!/bin/sh\n# changed toolchain\nexit 0\n')
                 self.assertFalse(module.reusable(receipt, root, command))
 
+    def test_workspace_path_executable_changes_reject_reuse(self):
+        import os
+        from contextlib import chdir
+        from unittest.mock import patch
+        module = self.load()
+        cases = (('bin', 'bin', 'workspace', 'bin'),
+                 ('', '.', 'workspace', '.'),
+                 ('.', '.', 'workspace', '.'),
+                 ('bin', 'bin', 'workspace:local', 'local/bin'))
+        for search_path, tool_dir, workspace, decoy_dir in cases:
+            with self.subTest(path=search_path, workspace=workspace), tempfile.TemporaryDirectory() as tmp:
+                parent = Path(tmp)
+                root = parent / workspace
+                root.mkdir()
+                (root / 'input').write_text('unchanged')
+                tool = root / tool_dir / 'receipt-test-tool'
+                tool.parent.mkdir(exist_ok=True)
+                tool.write_text('#!/bin/sh\nexit 0\n')
+                tool.chmod(0o700)
+                # A caller-side namesake must never supply the executed tool's hash.
+                decoy = parent / decoy_dir / tool.name
+                decoy.parent.mkdir(parents=True, exist_ok=True)
+                decoy.write_text('#!/bin/sh\nexit 99\n')
+                decoy.chmod(0o700)
+                command = [tool.name]
+                with chdir(parent), patch.dict(os.environ, PATH=search_path):
+                    receipt = module.execute(root, ['input'], command, 5, resource_lock=parent / 'lock')
+                    self.assertEqual(receipt['outcome'], 'passed')
+                    self.assertTrue(module.reusable(receipt, root, command))
+                    tool.write_text('#!/bin/sh\nexit 1\n')
+                    fresh = module.execute(root, ['input'], command, 5, resource_lock=parent / 'lock')
+                    self.assertEqual(fresh['outcome'], 'failed')
+                    self.assertFalse(module.reusable(receipt, root, command))
+
+    def test_receipts_without_execution_directory_resolution_policy_are_not_reused(self):
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'input').write_text('unchanged')
+            command = [sys.executable, '-c', 'pass']
+            receipt = module.execute(root, ['input'], command, 5, resource_lock=root / 'lock')
+            self.assertTrue(module.reusable(receipt, root, command))
+            for key in ('runtime', 'runtime_after'):
+                receipt[key].pop('command_resolution_policy', None)
+            self.assertFalse(module.reusable(receipt, root, command))
+
+    def test_runtime_uses_default_search_path_for_empty_execution_environment(self):
+        import hashlib
+        import os
+        import shutil
+        from unittest.mock import patch
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            decoy = root / 'sh'
+            decoy.write_text('#!/bin/sh\nexit 99\n')
+            decoy.chmod(0o700)
+            expected = hashlib.sha256(Path(shutil.which('sh', path=os.defpath)).read_bytes()).hexdigest()
+            with patch.dict(os.environ, PATH=str(root)):
+                actual = module.runtime(['sh'], root, execution_env={})
+            self.assertEqual(actual['command_executable_sha256'], expected)
+
     def test_reuse_cannot_change_declared_input_contract(self):
         module = self.load()
         with tempfile.TemporaryDirectory() as tmp:

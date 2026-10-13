@@ -205,6 +205,7 @@ class HandoffReconciliationTests(unittest.TestCase):
 
     def test_completed_task_without_optional_section_reports_ineligible(self):
         self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        self.todo.write_text(self.body.replace('## Now', '## Done').replace('[ ]', '[x]'))
         path = self.repo / 'goals.json'
         data = json.loads(path.read_text())
         data['tasks'][0]['status'] = 'done'

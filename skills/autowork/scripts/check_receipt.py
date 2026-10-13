@@ -202,6 +202,20 @@ def runtime(command=None, root=None, execution_env=None, *, normalize_checkout=N
     import shutil
     environment = check_environment(execution_env)
     actual_environment_hash = hashlib.sha256(json.dumps(environment, sort_keys=True).encode()).hexdigest()
+    executable = None
+    if command:
+        cwd = Path(root or '.').resolve()
+        name = command[0]
+        # Popen searches after changing cwd. Resolve relative/empty PATH entries
+        # there too, using the actual environment before checkout normalization.
+        candidates = ([cwd / name] if os.path.dirname(name) else
+                      [cwd / entry / name for entry in os.get_exec_path(environment)])
+        # Keep candidate paths separate: cwd itself may contain a PATH separator.
+        for candidate in candidates:
+            resolved = shutil.which(str(candidate))
+            if resolved:
+                executable = hashlib.sha256(Path(resolved).read_bytes()).hexdigest()
+                break
     if normalize_checkout is None:
         normalize_checkout = execution_env is not None
     if normalize_checkout and root is not None:
@@ -213,13 +227,8 @@ def runtime(command=None, root=None, execution_env=None, *, normalize_checkout=N
                     '<candidate-checkout>' + value[len(checkout):]
                     if value == checkout or value.startswith(checkout + os.sep) else value
                     for value in environment[key].split(os.pathsep))
-    executable = None
-    if command:
-        name = command[0]
-        resolved = str(Path(root or '.').resolve() / name) if '/' in name and not Path(name).is_absolute() else shutil.which(name, path=(execution_env or os.environ).get('PATH'))
-        if resolved and Path(resolved).is_file():
-            executable = hashlib.sha256(Path(resolved).read_bytes()).hexdigest()
     return {'python': sys.version, 'platform': platform.platform(),
+            'command_resolution_policy': 'execution-cwd-v1',
             'command_executable_sha256': executable,
             'execution_environment_sha256': actual_environment_hash,
             'executable_sha256': hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
@@ -321,6 +330,8 @@ def reusable(receipt, root, command, *, candidate=None, paths=None, external_pat
             return False
     else:
         current = json.loads(json.dumps(runtime(command, root)))
+    if not current['command_executable_sha256']:
+        return False
     def comparable(value):
         value = json.loads(json.dumps(value))
         if exact and isinstance(value, dict):

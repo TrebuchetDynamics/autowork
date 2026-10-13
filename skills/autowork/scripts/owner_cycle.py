@@ -292,7 +292,7 @@ def run_locked(args, state):
     if not result['backlog_ready'] and result['scope'] == 'repository':
         try:
             result['work_search'] = retry_selection.repository_frontier(consumer, require_owner=getattr(args, "require_owner", False))
-        except (ValueError, OSError, TypeError, KeyError) as exc:
+        except (ValueError, OSError, TypeError, KeyError, SystemExit) as exc:
             result['work_search'] = {'state': 'unverified', 'error': str(exc)}
     result['repairs'] = [repair for stage in recovery.get('stages', [])
                          if stage.get('stage') == 'repair' for repair in stage.get('repairs', [])]
