@@ -76,6 +76,61 @@ class RetrySelectionTests(unittest.TestCase):
                 self.assertEqual(result['state'], 'ready_for_autowork', result)
                 self.assertEqual(result['selected_task']['id'], 'T1')
 
+    def test_dependency_identifiers_keep_exact_word_and_hyphen_boundaries(self):
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].extend(['T2', 'T2-extra'])
+        data['tasks'].extend(dict(data['tasks'][0], id=tid, section='Next')
+                             for tid in ('T2', 'T2-extra'))
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        body = todo.read_text()
+        rest = ''.join(body.replace('# TODO\n\n## Now', '## Next').replace('T1:', tid + ':')
+                       for tid in ('T2', 'T2-extra'))
+        cases = [
+            ('T2', ['T2']),
+            ('[T2](TODO.md), `T2-extra`; G1.', ['G1', 'T2', 'T2-extra']),
+            ('T2-extra', ['T2-extra']),
+            ('T20 preT2 T2post _T2 T2_ -T2 T2- αT2 T2é', []),
+            ('T2/T2-extra', ['T2', 'T2-extra']),
+            ('None. Coordinate with T2 and T2-extra.', []),
+        ]
+        for declaration, expected in cases:
+            with self.subTest(declaration=declaration):
+                todo.write_text(body.replace('Dependencies: None', 'Dependencies: ' + declaration) + rest)
+                result = self.retry()
+                reasons = [reason for reason in result['reasons'] if reason.startswith('T1: Dependencies')]
+                self.assertEqual(reasons, [f'T1: Dependencies name {tid} absent from ledger' for tid in expected])
+                self.assertEqual(result['state'], 'draft_saved' if expected else 'ready_for_autowork')
+
+    def test_non_token_goal_dependencies_remain_binding(self):
+        ledger = self.consumer / 'goals.json'
+        original = json.loads(ledger.read_text())
+        todo = self.consumer / 'TODO.md'
+        original_body = todo.read_text()
+        for goal_id in ('G.release', 'Release 1', 'G[release]', 'G.release.v2'):
+            for declared in (False, True):
+                with self.subTest(goal=goal_id, declared=declared):
+                    data = json.loads(json.dumps(original))
+                    data['goals'].append(dict(id=goal_id, title='Prerequisite', source='SPEC.md#accepted',
+                                             status='unmet', tasks=['T2']))
+                    data['tasks'].append(dict(id='T2', goal=goal_id, title='Prerequisite',
+                                              status='open', section='Next'))
+                    if declared:
+                        data['goals'][0]['depends_on'] = [goal_id]
+                    ledger.write_text(json.dumps(data))
+                    todo.write_text(original_body.replace('Dependencies: None', 'Dependencies: ' + goal_id) +
+                                    original_body.replace('# TODO\n\n## Now', '## Next')
+                                    .replace('T1:', 'T2:').replace('Goal: G1', 'Goal: ' + goal_id))
+                    result = self.retry(plan='SPEC.md#accepted', task_ids=['T1'])
+                    if declared:
+                        self.assertEqual(result['state'], 'backlog_reconciled_not_eligible', result)
+                        self.assertIn('T1: unmet goal dependency ' + goal_id, result['reasons'])
+                        self.assertNotIn('T1: Dependencies do not name ' + goal_id, result['reasons'])
+                    else:
+                        self.assertEqual(result['state'], 'draft_saved', result)
+                        self.assertIn('T1: Dependencies name ' + goal_id + ' absent from ledger', result['reasons'])
+
     def test_dependency_notes_cannot_satisfy_missing_ledger_prerequisite(self):
         ledger = self.consumer / 'goals.json'
         data = json.loads(ledger.read_text())

@@ -756,6 +756,12 @@ def backlog_check(a):
         assert todo_blob is not None
         bodies = task_bodies(todo_blob.decode('utf-8'))
         known = {t['id'] for t in data['tasks']}
+        goals_by_id = {g['id']: g for g in data['goals']}
+        dependency_ids = known | goals_by_id.keys()
+        # Goal IDs predate TASK_ID and may contain punctuation or spaces. Keep
+        # their exact legacy matching, compiling only those exceptional IDs once.
+        non_token_goals = {gid: re.compile(r'(?<![\w-])' + re.escape(gid) + r'(?![\w-])')
+                           for gid in goals_by_id if re.fullmatch(r'[\w-]+', gid) is None}
         for tid, entries in bodies.items():
             if tid not in known and any(mark == ' ' and section in SECTION_RANK
                                        for _, mark, section in entries):
@@ -779,7 +785,7 @@ def backlog_check(a):
                 reasons.append(f'{tid}: Goal does not match ledger')
             if checked != ' ' or section != t.get('section', 'Next'):
                 reasons.append(f'{tid}: checkbox/section does not match ledger')
-            goal = next(g for g in data['goals'] if g['id'] == t['goal'])
+            goal = goals_by_id[t['goal']]
             expected = set(t.get('depends_on', []) + goal.get('depends_on', []))
             dependencies = fields.get('Dependencies', '')
             # An explicit None declaration can be followed by coordination or
@@ -788,8 +794,12 @@ def backlog_check(a):
             # matching for actual prerequisite lists, including numbered lists.
             if re.match(r'none\b', dependencies, re.I):
                 dependencies = re.split(r'\.(?:\s|$)', dependencies, maxsplit=1)[0]
-            named = {dep for dep in known | {g['id'] for g in data['goals']}
-                     if re.search(r'(?<![\w-])' + re.escape(dep) + r'(?![\w-])', dependencies)}
+            # Tokens preserve the old (?<![\w-])ID(?![\w-]) boundaries for task
+            # and simple goal IDs; exceptional goal IDs use the compiled fallback.
+            # Parse the field once; scanning every known ID per task is quadratic
+            # and thrashes Python's regex cache on large backlogs.
+            named = set(re.findall(r'[\w-]+', dependencies)) & dependency_ids
+            named.update(gid for gid, pattern in non_token_goals.items() if pattern.search(dependencies))
             for dep in sorted(expected - named):
                 reasons.append(f'{tid}: Dependencies do not name {dep}')
             for dep in sorted(named - expected):

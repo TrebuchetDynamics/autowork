@@ -31,6 +31,21 @@ admission closed while distinguishing matching, missing, mismatched, ambiguous a
 malformed current evidence. None of these checks releases an existing native claim
 or migrates historical cards, installed profiles or saved schedules.
 
+Backlog dependency validation parses each Dependencies field once and intersects
+its tokens with the known task/goal IDs. It preserves exact word/hyphen boundaries,
+including Unicode adjacency and explicit None declarations. Legacy goal IDs with
+spaces or punctuation retain their original matching through precompiled patterns.
+The selection-cost regression bounds regex operations rather than relying on a wall-clock timeout;
+fresh source, contract, dependency, ordering and ownership checks still run.
+
+Local Python 3.12 measurement on October 13, 2026: a 600-task selection fell from
+10.080 seconds at `7df64e4` to 0.312 seconds (about 32× faster). A 100-task selection
+fell from 0.034 to 0.026 seconds. Each result is the median of three unprofiled
+`retry_selection.select` calls on a temporary Git fixture with open tasks, one
+accepted plan, no dependencies and a cleared regex cache before each call. Both
+versions selected the same first task. These measure the selection helper only,
+not model execution, native dispatch or total cron duration.
+
 Offline Autowork regressions cover missing-ledger recovery receipts, TODO/ledger
 dependency and completion mismatches, and goal/task dependency deadlocks. A `met`
 goal with unfinished tasks fails validation; `goals.py fmt` reopens it as `partial`
