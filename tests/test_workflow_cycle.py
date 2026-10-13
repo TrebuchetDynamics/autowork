@@ -230,7 +230,9 @@ class LedgerCycleTests(unittest.TestCase):
         todo = (self.repo / 'TODO.md').read_text()
         self.assertNotIn('- [ ]', todo)
         for body in self.bodies.values():
-            self.assertIn(body.replace('- [ ]', '- [x]', 1), todo.split('## Done\n', 1)[1])
+            completed = body.replace('- [ ]', '- [x]', 1)
+            self.assertNotIn(completed, todo)
+            self.assertEqual((self.repo / 'TODO.archive.md').read_text().count(completed), 1)
         self.assertFalse((self.repo / 'tasks/todo.md').exists())
 
 

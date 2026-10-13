@@ -14,6 +14,8 @@ Agents change goals.json only through these commands, never by hand-editing JSON
                                                 redact historical refs/sources and render under one lock
   goals.py revision <repo>                       content token for goals.json and TODO.md
   goals.py render <repo>                         rewrite TODO.md's goal-coverage block from goals.json
+  goals.py archive <repo> [--verified-tasks T1,T2]
+                                                move closed task bodies to TODO.archive.md; keep ledger history
   goals.py backlog-check <repo> --plan path#heading --tasks T1,T2 [--receipt prior.json]
                                                 read-only consumer-bound completion receipt (0 ready, 1 draft, 2 ineligible)
   Every command accepts --expected-revision TOKEN and --canonical-repo PRIMARY.
@@ -41,6 +43,7 @@ import fcntl
 from graphlib import CycleError, TopologicalSorter
 import hashlib
 import html
+import importlib.util
 import json
 import math
 import os
@@ -62,6 +65,7 @@ STATUS_RANK = {'unverified': 0, 'partial': 1, 'unmet': 2, 'met': 3}
 SECTION_RANK = {'Now': 0, 'Next': 1}
 BEGIN, END = '<!-- goals:coverage:begin -->', '<!-- goals:coverage:end -->'
 TRANSACTION = ContextVar('goals_transaction', default=None)
+UNSPECIFIED = object()
 
 
 def path_of(repo):
@@ -375,7 +379,7 @@ def coordination(repo, canonical_repo=None):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def atomic_write(path, text):
+def atomic_write(path, text, *, expected_bytes=UNSPECIFIED):
     fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8', newline='') as stream:
@@ -387,6 +391,8 @@ def atomic_write(path, text):
         snapshot = TRANSACTION.get()
         if snapshot is not None and revision(snapshot[0]) != snapshot[1]:
             sys.exit(f'stale write: {path}; repository changed during command; no write')
+        if expected_bytes is not UNSPECIFIED and checked_bytes(path) != expected_bytes:
+            sys.exit(f'stale write: {path}; file changed during command; no write')
         os.replace(name, path)
     finally:
         if os.path.exists(name):
@@ -472,7 +478,7 @@ def redact(repo, data, replacements_file, archive_dir):
         digest.update(name.encode() + b'\0')
         digest.update(b'missing\0' if blob is None else str(len(blob)).encode() + b'\0' + blob)
     TRANSACTION.set((repo, digest.hexdigest()))
-    render(repo, data)
+    render(repo, data, archive=False)
     print(f'ok redacted historical metadata; originals archived at {destination}')
 
 
@@ -493,7 +499,7 @@ def eligible(data):
     return [(t, g) for *_, t, g in sorted(out, key=lambda r: r[:5])]
 
 
-def render_text(repo, data):
+def render_text(repo, data, text=None):
     def cell(value):
         return (html.escape(value, quote=False).replace('|', '&#124;').replace('`', '&#96;')
                 .replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>'))
@@ -507,7 +513,8 @@ def render_text(repo, data):
         rows.append(f"| {cell(g['id'])}: {cell(g['title'])} | {cell(g['status'])} | {ev} | {cell(', '.join(open_t)) or '—'} |")
     block = '\n'.join([BEGIN, '', 'Generated from `goals.json` by `goals.py render`. `met` requires an executed, passing check.', '', *rows, '', END])
     todo = Path(repo) / 'TODO.md'
-    text = todo.read_bytes().decode('utf-8') if todo.exists() else '# TODO\n\n## Goal coverage\n\n'
+    if text is None:
+        text = todo.read_bytes().decode('utf-8') if todo.exists() else '# TODO\n\n## Goal coverage\n\n'
     prose = markdown_prose(text)
     begins = list(re.finditer(re.escape(BEGIN), prose))
     ends = list(re.finditer(re.escape(END), prose))
@@ -528,7 +535,41 @@ def render_text(repo, data):
     return text
 
 
-def render(repo, data):
+def archive_tasks(repo, data, *, render_coverage=False, verified_tasks=()):
+    """Save and verify history before removing live bodies, under coordination()."""
+    spec = importlib.util.spec_from_file_location('docs_sync_todo_archive', Path(__file__).with_name('todo_archive.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if data is not None:
+        problems = errors(normalize(data), allow_pending_evidence=True)
+        if problems:
+            sys.exit('\n'.join(problems))
+    todo = Path(repo) / 'TODO.md'
+    before = checked_bytes(todo)
+    text = before.decode('utf-8') if before is not None else '# TODO\n\n'
+    if data is not None:
+        # Archival must not hide an invalid generated region inside a moved body.
+        render_text(repo, data, text)
+    plan = module.prepare(repo, data, text, mask=task_prose, checked_bytes=checked_bytes,
+                          verified_tasks=verified_tasks,
+                          boundaries=[m.start() for m in re.finditer(re.escape(BEGIN), markdown_prose(text))])
+    output = render_text(repo, data, plan['text']) if render_coverage else plan['text']
+    if plan['archive']:
+        path = plan['path']
+        path.parent.mkdir(parents=True, exist_ok=True)
+        expected = plan['after'].encode('utf-8')
+        if plan['before'] != expected:
+            atomic_write(path, plan['after'], expected_bytes=plan['before'])
+        if checked_bytes(path) != expected:
+            sys.exit('archive verification failed; TODO.md retained; retry after reconciliation')
+    if output.encode('utf-8') != before and (before is not None or render_coverage):
+        atomic_write(todo, output, expected_bytes=before)
+    return {key: plan[key] for key in ('moved', 'retained', 'archive')}
+
+
+def render(repo, data, *, archive=True):
+    if archive:
+        return archive_tasks(repo, data, render_coverage=True)
     atomic_write(Path(repo) / 'TODO.md', render_text(repo, data))
 
 
@@ -825,6 +866,8 @@ def main():
     sub = ap.add_subparsers(dest='cmd', required=True)
     for name in ('validate', 'fmt', 'render', 'revision'):
         sub.add_parser(name).add_argument('repo')
+    ar = sub.add_parser('archive'); ar.add_argument('repo')
+    ar.add_argument('--verified-tasks', default='', help='explicitly verified closed IDs in a TODO-only repository')
     n = sub.add_parser('next'); n.add_argument('repo'); n.add_argument('--json', action='store_true')
     f = sub.add_parser('focus'); f.add_argument('repo'); f.add_argument('goal', nargs='?')
     f.add_argument('--clear', action='store_true', help='remove primary milestone focus')
@@ -865,6 +908,10 @@ def main():
 
 
 def execute(a):
+    if a.cmd == 'archive':
+        data = load(a.repo) if path_of(a.repo).exists() else None
+        result = archive_tasks(a.repo, data, verified_tasks=tuple(filter(None, a.verified_tasks.split(','))))
+        print(json.dumps(result)); return
     data = load(a.repo)
 
     if a.cmd == 'redact':

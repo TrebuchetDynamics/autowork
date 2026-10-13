@@ -199,8 +199,11 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    verify review, source freshness or truth of caller-supplied evidence.
    Run narrow docs-sync Maintain to reconcile affected docs and task bodies, then
    `goals.py validate <repo>` and `goals.py render <repo>`; use canonical authority
-   and revision guards and preserve concurrent edits. Rendering covers only the
-   goal table, not implementation docs or TODO task-body status.
+   and revision guards and preserve concurrent edits. Rendering updates goal
+   coverage and automatically archives explicitly closed, ledger-done task bodies
+   under the [archive contract](../docs-sync/references/todo-archive.md). It does
+   not reconcile task-body status or implementation docs. Read back and review
+   TODO.md and the selected archive before delivering their changes together.
 6. Re-read `next` and ownership after reconciliation. Under an active Autowork
    invocation/job, finish authorized closeout and hand off the next eligible batch
    within its accepted scope and remaining occurrence budget. An explicit whole-spec

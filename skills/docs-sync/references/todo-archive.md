@@ -4,10 +4,42 @@
 
 - `goals.json` owns machine-readable goal/task state and evidence. Keep completed task records and executed receipts in the ledger. Change it through `goals.py`; archiving prose is not a goal-status change.
 - `TODO.md` owns the live human/worker backlog: navigation, compact generated Goal coverage, and open `Now`, `Next`, and `Blocked / Needs decision` entries. Keep active ownership, dependencies and unresolved questions visible. Retain the generated coverage table, including compact met-goal rows; do not edit its rows by hand merely to shorten the file.
-- `todo.archive.md` is the default repository-root history owner. Reuse an established equivalent such as `docs/TODO-archive.md`; preserve its spelling and layout. Do not create a second archive or rename existing history to match the default. Link the canonical archive near the top of `TODO.md`.
+- `TODO.archive.md` is the default repository-root history owner. Reuse an established equivalent such as `todo.archive.md` or `docs/TODO-archive.md`; preserve its spelling and layout. Do not create a second archive or rename existing history to match the default. Link the canonical archive near the top of `TODO.md`.
 - `BLOCKERS.md` remains the owner-question ledger. The archive is not authoritative for current decisions, task eligibility, goal status, dirty files or runtime health. History never queues work.
 
 Create the archive with substantive moved history when it is needed. Do not create an empty history scaffold on every pass. An Audit/read-only pass edits neither TODO, the archive nor the ledger.
+
+## Automatic task archival
+
+Every writing Docs Sync Bootstrap/Maintain pass and Autowork verified closeout
+includes archival; do not wait for a separate user request or a scheduled docs job.
+Reconcile completion evidence and the live checkbox/Status with the ledger first.
+Run `goals.py archive <repo>` for archive-only maintenance. `goals.py render <repo>`
+automatically performs the same move before saving updated coverage. Both operate
+under the existing canonical-repository lock. Read-only commands never archive.
+
+The helper moves whole top-level checkbox entries or `### TASK-ID — Title`
+sections only when they are explicitly closed and their ledger task is `done`.
+A met goal alone, an unchecked task, an open subtask or conflicting status cannot
+authorize a move. It keeps completed ledger records and goal evidence, including
+pending broader qualification. An archive-only result lists `moved`, `retained`
+and the canonical `archive`; report retained conflicts and reconcile from evidence.
+Ambiguous overlapping task-shaped headings keep the whole affected unit live,
+including unknown tasks with missing metadata; independent clear entries still move.
+
+For a repository without goals.json, the writing agent verifies the completion
+checks, then invokes `goals.py archive <repo> --verified-tasks ID1,ID2` with only
+the verified, explicitly closed task IDs. This is an explicit caller attestation,
+not a check runner. It cannot override an existing ledger or archive an open task.
+Do not create a synthetic ledger merely to archive existing prose.
+
+The helper preserves original entry bytes and prior archive bytes, verifies the
+archive before removing live text, and retries interrupted moves by whole-block
+containment and multiplicity. Conflicting archive owners, symlinks, changed source
+or changed archive bytes are refused. A crash may leave a duplicate live entry;
+rerun the command to finish safely. The cooperative lock does not prevent a writer
+that ignores it from editing files. Broader historical narratives and dated
+pass-notes still follow the preservation procedure below.
 
 ## What belongs in history
 

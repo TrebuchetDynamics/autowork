@@ -11,6 +11,15 @@ card. Run in the current session; delegate only when available and appropriate u
 the user's instructions. Use a separate worktree when real concurrent writes need
 isolation, and preserve all unrelated edits.
 
+At verified closeout and initial reconciliation of completed bodies, automatically
+move those bodies from TODO.md to `TODO.archive.md` (or the established archive).
+Reconcile the task checkbox/Status and ledger, then run the bundled
+[goals helper](../../../skills/docs-sync/scripts/goals.py) with `archive <repo>`.
+Without goals.json, inspect completion checks and pass the verified closed IDs as
+`archive <repo> --verified-tasks ID1,ID2`. Preserve ledger records/evidence and report
+retained conflicts. Follow the [archive contract](../../../skills/docs-sync/references/todo-archive.md);
+explicit read-only runs write nothing.
+
 1. Read repo instructions, TODO.md, accepted plans and current changes. Reconcile
    active work and approved candidates before choosing another task. Finish authorized
    closeout after checks/review; local integration and publication are distinct.

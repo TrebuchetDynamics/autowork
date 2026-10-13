@@ -50,7 +50,7 @@ a compact human overview outside generated regions, linking to existing task bod
 | Next | Ordered ready tasks or their explicit prerequisites |
 | Needs planning | Specific unresolved questions and the task they affect |
 | Waiting | External qualification/input, plus local work that can continue |
-| Done | Verified results and commit/evidence links, or the existing archive |
+| Done | Link to TODO.archive.md (or the existing archive); completed bodies live there |
 
 These are presentation categories, not new ledger statuses or a second task list.
 Never rename parser-bound sections or duplicate task bodies just to fit this table.

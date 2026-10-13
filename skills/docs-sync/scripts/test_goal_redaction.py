@@ -162,10 +162,10 @@ from pathlib import Path
 sys.path.insert(0, sys.argv.pop(1))
 import goals
 original = goals.render
-def edited(repo, data):
+def edited(repo, data, **kwargs):
     with (Path(repo) / 'TODO.md').open('ab') as stream:
         stream.write(b'Owner continuation\\n')
-    return original(repo, data)
+    return original(repo, data, **kwargs)
 goals.render = edited
 goals.main()
 '''

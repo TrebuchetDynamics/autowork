@@ -14,7 +14,7 @@ class ArchivePolicyTests(unittest.TestCase):
         policy = ROOT / 'docs-sync/references/todo-archive.md'
         self.assertTrue(policy.is_file(), 'Missing live-backlog/archive contract')
         text = policy.read_text()
-        for requirement in ('todo.archive.md', 'docs/TODO-archive.md',
+        for requirement in ('TODO.archive.md', 'todo.archive.md', 'docs/TODO-archive.md',
                             'verbatim', 'goals.json', 'Audit', 'append-only',
                             'dated pass-notes', 'multiplicity'):
             self.assertIn(requirement, text)
@@ -22,6 +22,15 @@ class ArchivePolicyTests(unittest.TestCase):
         self.assertIn('references/todo-archive.md', skill)
         self.assertIn('archive', skill)
         self.assertIn('dated pass-notes', skill)
+
+    def test_both_workflows_require_the_executable_archive_step(self):
+        for name in ('docs-sync', 'autowork'):
+            for folder in (ROOT, ROOT.parent / 'adapters/skills'):
+                with self.subTest(skill=name, folder=folder):
+                    text = (folder / name / 'SKILL.md').read_text()
+                    self.assertIn('archive', text)
+                    self.assertIn('TODO.archive.md', text)
+                    self.assertIn('--verified-tasks', text)
 
 
     def test_goal_helpers_preserve_archive_and_ignore_historical_queue(self):

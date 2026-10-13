@@ -19,6 +19,14 @@ into bounded TODO.md tasks with ID, outcome, sources, scope/exclusions, acceptan
 dependencies and ownership. Keep Now/Next/Needs decision distinct. Preserve existing
 IDs, completed work, active writers and priorities; never manufacture work.
 
+Automatically move verified completed bodies out of TODO.md into `TODO.archive.md`
+during writing passes, preserving an existing archive owner. Use the bundled goals
+helper's `archive <repo>` command; `render` also archives closed ledger-done tasks.
+Reconcile checkbox/Status and ledger completion first. Without goals.json, verify
+completion checks and call `archive <repo> --verified-tasks ID1,ID2` with the closed
+IDs. Preserve whole entries and ledger evidence; report retained conflicts. Apply
+the [archive contract](../../../skills/docs-sync/references/todo-archive.md).
+
 If goals.json exists, synchronize it using the bundled
 [goals helper](../../../skills/docs-sync/scripts/goals.py): inspect `--help`, then
 fmt/validate/render with the absolute repository path. Its rendering does not create

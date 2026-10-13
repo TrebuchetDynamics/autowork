@@ -43,6 +43,14 @@ Owner consultations: `references/profile-feedback.md`.
 
 Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
 
+At verified closeout and reconciliation of completed bodies, align TODO and ledger
+status, then run `python3 "<skills-root>/docs-sync/scripts/goals.py" archive <repo>`.
+This automatically moves closed bodies to `TODO.archive.md` or the existing archive;
+do not wait for a Docs Sync job. Keep ledger evidence. Without goals.json, inspect
+checks and pass verified closed IDs with `archive <repo> --verified-tasks ID1,ID2`.
+Report retained conflicts; read-only runs skip this write. Follow the
+[archive contract](../docs-sync/references/todo-archive.md).
+
 ## Operating priorities
 
 1. **Step 0 — reconcile, never fingerprint-exit.** Resolve workspace instructions,

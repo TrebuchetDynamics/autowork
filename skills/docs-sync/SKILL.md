@@ -247,8 +247,16 @@ picks, not claimed work. Needs decision/focus is not eligibility or live availab
 "No eligible follow-ups" requires all goals met with executed evidence and `next`
 printing `none`; otherwise report the actual gap.
 
+Every writing Bootstrap/Maintain pass automatically archives completed task bodies:
+`goals.py render <repo>` performs the move with coverage rendering, or run
+`goals.py archive <repo>` for archive-only maintenance. Reconcile completion
+evidence, checkbox/Status and ledger first; inspect the archive result's retained
+IDs instead of claiming they moved. In TODO-only repositories, inspect executed
+completion checks and use `goals.py archive <repo> --verified-tasks ID1,ID2` for
+the verified closed IDs. Audit/read-only passes write nothing.
+
 Load [the TODO archive contract](references/todo-archive.md) before moving completed
-bodies, creating history or dated pass-notes. Default `todo.archive.md`; reuse
+bodies, creating history or dated pass-notes. Default `TODO.archive.md`; reuse
 `docs/TODO-archive.md` or actual linked owner. Live TODO keeps open bodies/context/
 coverage. Move completed bodies/pass-notes verbatim to append-only history; retain
 ledger history. Verify multiplicity, continuations, links and second-pass bytes,

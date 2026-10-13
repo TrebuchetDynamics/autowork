@@ -63,8 +63,9 @@ is the authoritative boundary description.
 
 ## Planned work and verification
 
-[TODO.md](../TODO.md) owns implementation priorities. Its entries describe proposed
-changes, not completed capabilities. The repository has no goals.json at this
+[TODO.md](../TODO.md) owns implementation priorities. Its open entries describe planned
+changes; completed entries record bounded local results and qualification limits.
+The repository has no goals.json at this
 baseline; TODO is the queue and native ledger initialization is tracked separately.
 Do not fabricate a machine index or claim native admission from a Markdown task.
 
