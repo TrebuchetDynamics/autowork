@@ -174,9 +174,15 @@ def run_locked(args, state):
                 native = result['handoff']['result']
                 if result['handoff']['exit_code'] != 0:
                     result.update(outcome='FAILED', next_action='Reconcile native state before retry; dispatch outcome may be unknown')
-                elif native.get('outcome') == 'handed_off':
+                elif (native.get('outcome') == 'handed_off' or
+                      (native.get('outcome') == 'notification_blocked'
+                       and isinstance(native.get('task_id'), str) and native['task_id'].strip()
+                       and native.get('goal_mode') is True)):
                     result['outcome'] = 'QUEUED'  # card status alone is not worker liveness
                     result['next_action'] = 'Observe original native card/run; do not dispatch a replacement'
+                    if native.get('outcome') == 'notification_blocked':
+                        result['notification_warning'] = native.get('notification_error') or 'Notification setup failed'
+                        result['next_action'] += '; repair its notification separately without repeating admission'
                 elif native.get('outcome') in ('already_owned', 'workspace_owned'):
                     result.update(outcome='BLOCKED', next_action='Reconcile the original native owner/card')
                 else:
@@ -310,7 +316,7 @@ def run_locked(args, state):
         result.update(action='plan_execution_recovery',
                       next_action=result['planning'].get('handoff', result['planning']['reason']))
     elif preparation:
-        result.update(action='prepare_execution_handoff',
+        result.update(action='prepare_execution_handoff', outcome='PREPARATION_REQUIRED',
                       next_action='Prepare the contract, base and snapshot under existing authority; a missing owner route does not delegate ordinary preparation to the user')
     save(state / 'history' / (result['run_id'] + '.json'), result)
     save(state / 'unblock-latest.json', result)

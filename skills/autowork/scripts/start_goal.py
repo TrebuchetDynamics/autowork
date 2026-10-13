@@ -16,7 +16,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-BUDGET = 50
+BUDGET = 100
 ACTIVE = {'ready', 'running', 'todo', 'review', 'changes_requested'}
 # Parked cards (triage after a terminal run, scheduled backoff) block only their own slice:
 # a same-title handoff is refused, disjoint work proceeds. See SKILL.md 'Operating priorities'.
@@ -31,7 +31,7 @@ CONTRACT_FIELDS = ('Objective', 'Scope', 'Verification', 'Source', 'Project payo
                    'Repo-docs pass')
 
 
-def validate_contract(text, goal_max_turns=BUDGET):
+def validate_contract(text, goal_max_turns=None):
     """Validate structure, not truth, priority, permissions or executable proof."""
     fields = {}
     current = None
@@ -47,6 +47,9 @@ def validate_contract(text, goal_max_turns=BUDGET):
     for field in CONTRACT_FIELDS:
         if not fields.get(field, '').strip():
             raise ValueError(f'Missing or empty contract field: {field}')
+    if goal_max_turns is None:
+        goal_max_turns = BUDGET
+        fields.setdefault('Goal budget rationale', 'Default allocation for one coherent implementation and recovery outcome.')
     if goal_max_turns == 100 and not fields.get('Goal budget rationale', '').strip():
         raise ValueError('100 turns requires a nonempty Goal budget rationale: in the contract')
     return {key: value.strip() for key, value in fields.items()}
@@ -429,6 +432,15 @@ def save_receipt(journal_dir, receipt):
     if target.exists():
         original = target.read_bytes()
         previous = json.loads(original)
+        # Reconcile accepts this legacy continuation wrapper; archive its complete
+        # original bytes while using the nested handoff for identity and filenames.
+        if (isinstance(previous, dict) and previous.get('task_id') is None
+                and isinstance(previous.get('current_handoff'), dict)):
+            previous = previous['current_handoff']
+        if (not isinstance(previous, dict) or not isinstance(previous.get('task_id'), str)
+                or not previous['task_id'] or Path(previous['task_id']).name != previous['task_id']
+                or previous['task_id'] in ('.', '..')):
+            raise ValueError('Invalid prior task ID; preserve the existing handoff receipt')
         identity = lambda row: (row.get('board_id'), row.get('task_id'), row.get('created_at'))
         if identity(previous) != identity(receipt):
             history = journal_dir / 'handoffs'
@@ -480,8 +492,8 @@ def main():
                    help='Default worker closure, or proposals for the sole integration owner')
     p.add_argument('--integration-owner', help='Required named owner for proposal ledger mode')
     p.add_argument('--publication-authority', help='Exact owner-evidence JSON binding one remote task ref; default no push')
-    p.add_argument('--goal-max-turns', type=int, choices=(50, 100), default=BUDGET,
-                   help='New worker budget; never resizes an existing owned card')
+    p.add_argument('--goal-max-turns', type=int, choices=(50, 100),
+                   help='New worker budget (default: 100); never resizes an existing owned card')
     p.add_argument('--goal-task', help='Exact dependency-ready ledger task identity')
     p.add_argument('--fallback-file', help='Structured JSON fallback attestations bound to selection evidence')
     p.add_argument('--source-snapshot', help='Scoped evidence snapshot captured before candidate selection')
@@ -499,13 +511,18 @@ def main():
     if os.environ.get('HERMES_KANBAN_TASK'):
         raise SystemExit('Already a goal worker: execute the assigned card, never launch a nested goal.')
     contract = Path(args.contract_file).read_text().strip()
+    role_contract = contract
     try:
-        validate_contract(contract, args.goal_max_turns)
+        fields = validate_contract(contract, args.goal_max_turns)
+        if args.goal_max_turns is None:
+            args.goal_max_turns = BUDGET
+            if not re.search(r'^\s*Goal budget rationale:', contract, re.MULTILINE):
+                role_contract += '\nGoal budget rationale: ' + fields['Goal budget rationale']
         publication = None
         if args.publication_authority:
             publication = validate_publication_authority(json.loads(Path(args.publication_authority).read_text()),
                                                          args.workspace, args.profile, args.goal_task, contract)
-        role_body = build_task_body(contract, args.goal_max_turns, ledger_mode=args.ledger_mode,
+        role_body = build_task_body(role_contract, args.goal_max_turns, ledger_mode=args.ledger_mode,
                                     integration_owner=args.integration_owner, publication_authority=publication)
     except (ValueError, OSError, TypeError, KeyError) as error:
         raise SystemExit(str(error)) from error

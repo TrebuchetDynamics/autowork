@@ -15,6 +15,26 @@ class ReceiptTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_new_receipt_directory_is_prepared_before_check(self):
+        import json, subprocess
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'input').write_text('fixture')
+            receipt = root/'new'/'nested'/'check.json'
+            argv = [sys.executable, module.__file__, 'run', '--workspace', str(root),
+                    '--receipt', str(receipt), '--path', 'input', '--', sys.executable, '-c', 'pass']
+            result = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(receipt.read_text())['outcome'], 'passed')
+            receipt.unlink()
+            receipt.parent.rmdir()
+            (root/'new'/'nested').write_text('not a directory')
+            argv[-1] = 'from pathlib import Path; Path("should-not-run").touch()'
+            refused = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse((root/'should-not-run').exists(), 'destination failure discovered after executing check')
+
     def test_terminal_metadata_is_removed_from_execution_and_reuse_identity(self):
         import os
         from unittest.mock import patch
@@ -426,6 +446,22 @@ class CandidateReceiptTests(unittest.TestCase):
         receipt = module.execute(self.root, ['input'], ['git', '-C', str(self.root), 'branch', '-f',
                                  'sibling', next_commit], 5, candidate=candidate)
         self.assertEqual(receipt['outcome'], 'candidate_changed')
+
+    def test_repository_root_argument_uses_frozen_candidate_not_dirty_source(self):
+        module = self.load()
+        script = self.root/'runner.py'
+        script.write_text('import sys\nfrom pathlib import Path\nassert (Path(sys.argv[1])/"input").read_text() == "base"\n')
+        self.git('add', 'runner.py')
+        self.git('commit', '-qm', 'runner')
+        self.base = self.git('rev-parse', 'HEAD')
+        candidate = self.identity()
+        (self.root/'input').write_text('uncommitted unrelated value')
+        command = [sys.executable, str(script), str(self.root)]
+        receipt = module.execute(self.root, ['input', 'runner.py'], command, 5, candidate=candidate)
+        self.assertEqual(receipt['outcome'], 'passed')
+        self.assertEqual(receipt['qualification'], 'exact_candidate')
+        self.assertTrue(module.reusable(receipt, self.root, command, candidate=candidate))
+        self.assertEqual((self.root/'input').read_text(), 'uncommitted unrelated value')
 
     def test_absolute_workspace_script_executes_candidate_copy(self):
         module = self.load()

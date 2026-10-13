@@ -23,7 +23,7 @@ class PickerPolicyTests(unittest.TestCase):
 
     def test_preserves_authority_and_no_busywork(self):
         text=full_text()
-        for phrase in ['No exhaustive scan, broad suite, fabricated task','financial/live/scope gates stay','not product acceptance','exactly `[SILENT]`','goal_max_turns: 50','push, deploy, publish, spend money, place trades','agent/<profile>/<card-id>','never\n    push']:
+        for phrase in ['No exhaustive scan, broad suite, fabricated task','financial/live/scope gates stay','not product acceptance','exactly `[SILENT]`','goal_max_turns: 100','push, deploy, publish, spend money, place trades','agent/<profile>/<card-id>','never\n    push']:
             self.assertIn(phrase,text)
 
     def test_usable_backlog_takes_short_path_and_worker_owns_whole_outcome(self):
@@ -34,7 +34,7 @@ class PickerPolicyTests(unittest.TestCase):
         for text in (core,):
             self.assertIn('Reconcile once', text)
             self.assertIn('discovery only when no usable task remains', text)
-            self.assertIn('50 turns by default', text)
+            self.assertIn('100 turns by default', text)
             self.assertNotIn('or\n   the profile has no `docs-sync` cron job', text)
         self.assertIn('Do not run a docs-sync prepass for a usable backlog task', core)
         self.assertIn('Goal budget rationale:', handoff)

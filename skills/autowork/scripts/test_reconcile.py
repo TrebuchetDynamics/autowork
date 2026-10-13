@@ -170,6 +170,16 @@ class ReconcileTests(unittest.TestCase):
             self.assertEqual(result['run_status'], status)
             self.assertFalse(result['delivery']['delivered'])
 
+    def test_ended_review_failure_needs_recovery_not_endless_observation(self):
+        for outcome in ('failed', 'blocked', 'cancelled', 'completed'):
+            snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'review'},
+                        'runs': [{'id': 8, 'profile': 'fixture', 'status': 'completed',
+                                  'outcome': outcome, 'ended_at': 123}]}
+            with self.subTest(outcome=outcome), patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                result = m.reconcile([], Path('.'), 'fixture', 't_fixture')
+            self.assertEqual(result['next_action'], 'reconcile_run_state')
+            self.assertFalse(result['delivery']['delivered'])
+
     def test_report_projection_distinguishes_new_runs_and_outcomes(self):
         import contextlib, io
         with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
@@ -236,7 +246,34 @@ class ReconcileTests(unittest.TestCase):
             self.assertLessEqual(len(outputs[1]['summary']),1200)
             self.assertIn('evidence_digest',outputs[2]['changed_fields'])
 
-    def test_repeated_cli_reconciliation_suppresses_only_human_report(self):
+    def test_closeout_counter_resets_on_new_evidence_and_stops_when_delivered(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory, EvidenceFixture() as f:
+            home = Path(directory)
+            (home/'autowork').mkdir()
+            (home/'autowork/goal-handoff.json').write_text(json.dumps({'task_id': 't_fixture'}))
+            snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'done'},
+                        'runs': [{'id': 7, 'profile': 'fixture', 'metadata': {}}]}
+            outputs = []
+            with patch.object(m, 'profile_home', return_value=home), \
+                 patch('sys.argv', ['reconcile.py', '--profile', 'fixture', '--repo', str(f.repo)]):
+                for index in range(5):
+                    if index == 2:
+                        snapshot['runs'][0]['metadata'] = {'new_evidence': 'candidate changed'}
+                    if index == 3:
+                        snapshot['runs'][0]['metadata'] = {'delivery_evidence': f.integrated()}
+                    with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                        buffer = io.StringIO()
+                        with contextlib.redirect_stdout(buffer):
+                            m.main()
+                        outputs.append(json.loads(buffer.getvalue()))
+            self.assertEqual([o['continuation']['unchanged_closeout_observations'] for o in outputs],
+                             [1, 2, 1, 0, 0])
+            self.assertEqual(outputs[3]['next_action'], 'reconcile_task_and_select')
+            self.assertFalse(outputs[4]['attention_required'])
+            self.assertIsNone(outputs[4]['human_report'])
+
+    def test_pending_closeout_stays_visible_and_escalates_without_dispatch(self):
         import contextlib
         import io
         with tempfile.TemporaryDirectory(dir=SCRATCH) as directory, EvidenceFixture() as f:
@@ -261,7 +298,11 @@ class ReconcileTests(unittest.TestCase):
                 self.assertEqual(cli.call_count, 2, 'Reporting cache must never skip live readback')
             self.assertEqual(outputs[0]['delivery']['state'], 'implemented')
             self.assertIsNotNone(outputs[0]['human_report'])
-            self.assertIsNone(outputs[1]['human_report'])
+            self.assertIsNotNone(outputs[1]['human_report'])
+            self.assertFalse(outputs[1]['report_changed'])
+            self.assertTrue(outputs[1]['attention_required'])
+            self.assertEqual(outputs[1]['continuation']['unchanged_closeout_observations'], 2)
+            self.assertEqual(outputs[1]['continuation']['follow_up'], 'resolve_closeout_gap')
             self.assertTrue(outputs[1]['selection_required'])
             self.assertEqual(outputs[1]['continuation']['next_action'], 'verify_and_integrate')
             self.assertEqual(outputs[1]['changed_fields'], [])

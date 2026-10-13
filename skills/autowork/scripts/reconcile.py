@@ -59,7 +59,8 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
     # A next action is a coordinator instruction, not proof of process liveness,
     # review approval, integration authority, or completed acceptance.
     terminal_run = latest.get('status') in {'blocked', 'failed', 'completed', 'cancelled', 'interrupted'} or latest.get('ended_at') is not None
-    if task['status'] == 'running' and terminal_run:
+    review_handoff = task['status'] == 'review' and latest.get('outcome') == 'review_requested'
+    if task['status'] in {'running', 'review'} and terminal_run and not review_handoff:
         next_action = 'reconcile_run_state'
     elif task['status'] in {'running', 'review'}:
         next_action = 'observe_current_run'
@@ -112,10 +113,17 @@ def main():
         except (OSError, ValueError):
             pass  # A corrupt report cache cannot prevent readback or discovery.
     previous_count = previous.pop('_blocked_observations', 0) if isinstance(previous, dict) else 0
+    previous_closeout = previous.pop('_closeout_observations', 0) if isinstance(previous, dict) else 0
+    if type(previous_closeout) is not int or previous_closeout < 0:
+        previous_closeout = 0
     if type(previous_count) is not int or previous_count < 0:
         previous_count = 0
     blocked_count = ((previous_count + 1 if previous == projection else 1)
                      if result.get('next_action') in {'recover_original_card', 'reconcile_run_state'} else 0)
+    closeout_pending = result.get('next_action') == 'verify_and_integrate'
+    closeout_count = ((previous_closeout + 1 if previous == projection else 1)
+                      if closeout_pending else 0)
+    result['attention_required'] = closeout_pending or blocked_count >= 2
     result['changed_fields'] = sorted(k for k, v in projection.items()
                                       if not isinstance(previous, dict) or previous.get(k) != v)
     result['continuation'] = {
@@ -124,16 +132,21 @@ def main():
         'candidate': result.get('delivery', {}).get('candidate'),
         'fresh_readback_required': True,
         'unchanged_blocked_observations': blocked_count,
-        'follow_up': 'change_recovery_approach' if blocked_count >= 2 else result.get('next_action'),
+        'unchanged_closeout_observations': closeout_count,
+        'follow_up': ('resolve_closeout_gap' if closeout_count >= 2 else
+                      'change_recovery_approach' if blocked_count >= 2 else result.get('next_action')),
         'reuse': 'Resume this phase; read changed inputs and outstanding acceptance only',
         'retry_condition': ('Changed failing inputs or a different supported repair; never repeat an identical failure'
                             if result.get('next_action') in {'recover_original_card', 'reconcile_run_state'} else None)}
-    if previous == projection:
+    if closeout_pending:
+        result['human_report'] += '; closeout pending: verify review/candidate and integrate under existing authority'
+    elif previous == projection:
         result['human_report'] = None
     result['report_changed'] = previous != projection
     cache.parent.mkdir(parents=True, exist_ok=True)
     temporary = cache.with_suffix(cache.suffix + '.tmp')
-    temporary.write_text(json.dumps(dict(projection, _blocked_observations=blocked_count), sort_keys=True) + '\n')
+    temporary.write_text(json.dumps(dict(projection, _blocked_observations=blocked_count,
+                                          _closeout_observations=closeout_count), sort_keys=True) + '\n')
     temporary.replace(cache)
     if args.compact:
         result.pop('metadata', None)

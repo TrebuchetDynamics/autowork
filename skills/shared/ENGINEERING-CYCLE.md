@@ -199,8 +199,11 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    `goals.py validate <repo>` and `goals.py render <repo>`; use canonical authority
    and revision guards and preserve concurrent edits. Rendering covers only the
    goal table, not implementation docs or TODO task-body status.
-6. Re-read `next` and ownership after reconciliation. Continue only inside the
-   explicit whole-spec mandate; otherwise report the next eligible slice and stop.
+6. Re-read `next` and ownership after reconciliation. Under an active Autowork
+   invocation/job, finish authorized closeout and hand off the next eligible batch
+   within its accepted scope and remaining occurrence budget. An explicit whole-spec
+   mandate also continues within its named scope. A planning-only or one-task request
+   without standing continuation authority reports the next slice and stops.
    Exhausted budget, unresolved review/capability or ownership is recorded honestly;
    it never grants broader scope. Report implementation, checks, review, integration
    and delivery separately. Offline fixtures are not native/model execution proof.

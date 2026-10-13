@@ -79,6 +79,7 @@ in durable receipts unless needed for diagnosis.
 Action needed from you: <only for a genuine user-dependent blocker; exact action, target, reason and what resumes>.
 Task: TODO.md <ID> — <exact title> [<canonical task state or unverified>].
 This run: <concrete change or none>; checks: <actual result and material failures>.
+Remaining: <required parent outcomes still missing; optional followups separate; omit for completed tasks>.
 Next: TODO.md <ID> — <exact title> [eligible / blocked by <IDs or reason>]; or next eligible: none; or not evaluated.
 Delivery: <commit SHA and push result, or no commit/push>. Blocker/action: <when applicable>.
 ```

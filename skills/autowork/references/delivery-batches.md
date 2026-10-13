@@ -19,8 +19,8 @@ A batch is neither a file-count quota nor an unlimited rewrite. Split for a real
 boundary: unresolved prerequisite, live writer conflict, different authority/live
 environment, independent failure domain, or demonstrated worker-budget limit.
 Record the concrete reason in the existing contract's Scope/Stop conditions; no
-new approval form or mandatory planning artifact. Use the supported 50-turn default
-or 100 with a Goal budget rationale when one coherent outcome needs it. Do not
+new approval form or mandatory planning artifact. Use the supported 100-turn default
+or an explicit 50-turn override for bounded work. Do not
 reset budgets, bypass exact-file admission, or widen an active worker's contract
 silently. Reconcile an active original card before changing its supported scope.
 
@@ -32,7 +32,13 @@ original candidate and avoid an overlapping replacement worker.
 
 ## Spend verification on changed behavior
 
-Keep one concise remaining-work checklist in the existing TODO body or receipt.
+Keep one concise remaining-work checklist in the existing TODO body or receipt:
+`Required outcome | remaining code/tests | acceptance evidence | batch or split reason`.
+Separate optional hardening from required acceptance. A guard-only batch must name
+the acceptance failure it repairs and the product change it unlocks. After it passes,
+resume that change; do not grow a chain of precautionary guard tasks. New evidence
+of a real regression still requires repair. Optional improvements go to Next without
+becoming new blockers for already accepted scope.
 Reuse accepted plans and source-bound review results; no fresh docs audit merely
 because a cron fired. Read only changed inputs and outstanding acceptance gaps.
 Run discriminating checks while implementing. Before review run the union of the
@@ -50,7 +56,16 @@ Do not add overlapping test counts or equate receipt validation with product tes
 Reconcile newly approved work and finish authorized local integration before
 starting another audit. Recompute remaining parent acceptance and prepare the next
 coherent batch in the same occurrence when the slot is free and budget permits.
-Do not wait for the next cron tick merely to make a routine decision. The picker
+Do not wait for the next cron tick merely to make a routine decision.
+When reporting queued/running/review work, use one `reconcile.py --compact` readback
+immediately before returning the waiting report. Reuse it if already taken at this
+final boundary; elapsed drafting time alone can make the initial readback stale. A newly terminal result returns to closeout now:
+verify exact review approval, reuse still-valid check receipts, integrate and publish
+under existing authority, then select the next batch. This is one final readback,
+not a polling loop, fresh history scan or test rerun. If still active, report it and
+return. If the occurrence budget expires, save the exact closeout step and reason;
+do not silently treat it as completed or replenish worker budgets.
+The picker
 may return after verified asynchronous handoff; do not busy-poll or invent a
 background continuation. Reuse existing terminal notifications/continuations;
 never create another schedule, resume a paused job, or replace a live worker.
@@ -97,3 +112,13 @@ observations are saved in the existing projection. At two, change the supported
 repair approach or pursue independent authorized work; no blind retry, new worker
 overlap, claim fabrication or upstream Hermes Agent edits. These counts describe
 observations, not failed execution attempts, and never reset worker retry budgets.
+
+Pending `verify_and_integrate` stays visible even with `report_changed: false`.
+`attention_required` is a coordination hint, never approval or integration authority.
+Two identical closeout observations return `resolve_closeout_gap`: perform the missing
+verification/integration step, or record the exact failed command or missing input
+and its retry condition. No new guard/planning card just to postpone closeout. Counts
+reset when the candidate/run/evidence changes; they are observations, not elapsed
+minutes or proof of a stalled process. A terminal review run on a still-review card
+requires state reconciliation; a normal `review_requested` worker handoff may still
+be awaiting the reviewer. Neither condition permits assuming approval.

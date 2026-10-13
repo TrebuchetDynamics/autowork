@@ -54,7 +54,7 @@ class PipelineTests(unittest.TestCase):
         with sqlite3.connect(self.db) as db:
             db.execute('CREATE TABLE tasks (id TEXT, goal_mode INTEGER, goal_max_turns INTEGER)')
         self.tasks, self.runs, self.created = [], [], 0
-        self.expected_budget = 50
+        self.expected_budget = 100
         self.created_body = ''
 
     def cli(self, prefix, *args):
@@ -73,6 +73,9 @@ class PipelineTests(unittest.TestCase):
             budget = int(args[args.index('--goal-max-turns') + 1])
             self.assertEqual(budget, self.expected_budget)
             self.created_body = args[args.index('--body') + 1]
+            digest = hashlib.sha256(('fixture\n' + str(self.repo) + '\n' + self.selected['title'] +
+                                     '\n' + self.contract.read_text().strip()).encode()).hexdigest()
+            self.assertEqual(args[args.index('--idempotency-key') + 1], 'autowork:' + digest)
             self.assertEqual(args[args.index('--completion-contract') + 1], 'local-only')
             workspace = args[args.index('--workspace') + 1]
             self.assertTrue(workspace.startswith('dir:'))
@@ -119,8 +122,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(first['max_retries'], 1)
         self.assertFalse(first['budget_policy']['automatic_failure_retries'])
         self.assertEqual(first['budget_policy']['cumulative_enforcement'], 'not_available')
-        self.assertEqual(first['goal_max_turns'], 50)
-        self.assertIn('50-turn budget', self.created_body)
+        self.assertEqual(first['goal_max_turns'], 100)
+        self.assertIn('100-turn budget', self.created_body)
         self.assertEqual(self.dispatch()['outcome'], 'already_owned')
         self.assertEqual(self.created, 1)
         self.assertEqual(first['workspace'], self.tasks[0]['workspace_path'])
@@ -157,6 +160,41 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(observed['metadata']['review_ack'], receipt)
         self.assertEqual(self.dispatch()['outcome'], 'already_owned')
         self.assertEqual(self.created, 1)
+
+    def test_default_100_budget_matches_body_native_readback_and_journal(self):
+        self.expected_budget = 100
+        contract = self.contract.read_bytes()
+        result = self.dispatch()
+        self.assertEqual(result['goal_max_turns'], 100)
+        self.assertEqual(result['max_retries'], 1)
+        self.assertFalse(result['budget_policy']['automatic_failure_retries'])
+        self.assertIn('100-turn budget', self.created_body)
+        self.assertIn('Goal budget rationale:', self.created_body)
+        self.assertEqual(self.contract.read_bytes(), contract)
+        self.assertEqual(json.loads((self.home / 'autowork/goal-handoff.json').read_text()), result)
+
+    def test_owner_cycle_inherits_default_and_preserves_explicit_50(self):
+        import owner_cycle
+        from types import SimpleNamespace
+        request = self.root / 'handoff.json'
+        options = {'profile': 'fixture', 'title': self.selected['title'],
+                   'contract-file': str(self.contract), 'source-snapshot': str(self.snapshot)}
+        args = SimpleNamespace(consumer=str(self.repo), handoff_request=str(request))
+        run = subprocess.run
+        for budget in (None, 50):
+            with self.subTest(budget=budget):
+                if budget is not None:
+                    options['goal-max-turns'] = budget
+                request.write_text(json.dumps({'consumer': str(self.repo), 'task_id': 'T', 'options': options}))
+                with patch.object(owner_cycle.subprocess, 'run',
+                                  side_effect=lambda argv, **kwargs: run(argv + ['--validate-only'], **kwargs)) as cli:
+                    result = owner_cycle.handoff(args, self.selected)
+                self.assertEqual(result['exit_code'], 0, result)
+                self.assertEqual(result['result']['goal_max_turns'], 100 if budget is None else budget)
+                cli.assert_called_once()
+                if budget is None:
+                    self.assertNotIn('--goal-max-turns', result['argv'])
+        self.assertFalse((self.home / 'autowork').exists())
 
     def test_explicit_100_budget_matches_body_native_readback_and_journal(self):
         self.expected_budget = 100
@@ -211,6 +249,14 @@ class PipelineTests(unittest.TestCase):
                     cli.assert_not_called()
                 self.assertFalse((self.home / 'autowork').exists())
 
+    def test_default_100_refuses_supplied_empty_rationale_before_cli(self):
+        self.contract.write_text(self.contract.read_text() + 'Goal budget rationale:   \n')
+        with patch.object(self, 'cli') as cli:
+            with self.assertRaisesRegex(SystemExit, 'Goal budget rationale'):
+                self.dispatch()
+            cli.assert_not_called()
+        self.assertFalse((self.home / 'autowork').exists())
+
     def test_invalid_budget_rejects_before_any_cli_or_journal_mutation(self):
         for budget in ('0', '20', '51', '101', '-1', '100.0', 'many'):
             with self.subTest(budget=budget), patch.object(self, 'cli') as cli, contextlib.redirect_stderr(io.StringIO()):
@@ -222,15 +268,32 @@ class PipelineTests(unittest.TestCase):
 
     def test_duplicate_budget_selection_preserves_original_card_session_and_receipt(self):
         self.contract.write_text(self.contract.read_text() + 'Goal budget rationale: coherent larger outcome\n')
-        original = self.dispatch()
+        self.expected_budget = 50
+        original = self.dispatch('--goal-max-turns', '50')
         receipt = (self.home / 'autowork/goal-handoff.json').read_bytes()
         self.tasks[0]['status'] = 'running'
         self.runs.append({'id': 1, 'profile': 'fixture', 'metadata': {'worker_session_id': 'fixture_session'}})
-        result = self.dispatch('--goal-max-turns', '100')
+        result = self.dispatch()
         self.assertEqual(result['task_id'], original['task_id'])
         self.assertEqual(result['goal_max_turns'], 50)
         self.assertEqual(self.created, 1)
         self.assertEqual(self.runs[0]['metadata']['worker_session_id'], 'fixture_session')
+        self.assertEqual((self.home / 'autowork/goal-handoff.json').read_bytes(), receipt)
+
+    def test_default_100_preserves_exhausted_original_card_and_cumulative_history(self):
+        self.expected_budget = 50
+        original = self.dispatch('--goal-max-turns', '50')
+        self.tasks[0].update(status='triage', goal_turns_used=50)
+        self.runs.append({'id': 1, 'profile': 'fixture', 'outcome': 'max_turns',
+                          'metadata': {'worker_session_id': 'fixture_session', 'goal_turns_used': 50}})
+        history = json.dumps({'tasks': self.tasks, 'runs': self.runs}, sort_keys=True)
+        receipt = (self.home / 'autowork/goal-handoff.json').read_bytes()
+        result = self.dispatch()
+        self.assertEqual(result['outcome'], 'already_owned')
+        self.assertEqual(result['task_id'], original['task_id'])
+        self.assertEqual(result['goal_max_turns'], 50)
+        self.assertEqual(self.created, 1)
+        self.assertEqual(json.dumps({'tasks': self.tasks, 'runs': self.runs}, sort_keys=True), history)
         self.assertEqual((self.home / 'autowork/goal-handoff.json').read_bytes(), receipt)
 
     def test_validate_only_reports_selected_budget_without_cli_or_writes(self):

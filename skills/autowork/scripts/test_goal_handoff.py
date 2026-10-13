@@ -146,7 +146,7 @@ class HandoffTests(unittest.TestCase):
         self.assertIn('Before calling kanban_complete', body)
         self.assertIn('Acceptance evidence:', body)
         self.assertIn('NOT_CHECKED', body)
-        self.assertIn('50-turn budget', body)
+        self.assertIn('100-turn budget', body)
         self.assertTrue(body.startswith(m.REVIEW_DOD + '\n\n' + text))
         self.assertIn('NOT part of this goal', body)
 
@@ -239,6 +239,34 @@ class HandoffTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(m, 'run', return_value='Profile: fixture\nPath:    ' + directory + '\n'):
                 self.assertEqual(m.profile_home(['hermes', '-p', 'fixture']), Path(directory).resolve())
+
+    def test_nested_continuation_receipt_can_be_archived_before_next_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = Path(directory)
+            prior = {'task_id': None, 'current_handoff': {'task_id': 't_old',
+                     'board_id': 'default', 'created_at': '2026-01-01T00:00:00Z'},
+                     'notes': 'retain original history'}
+            original = json.dumps(prior).encode()
+            (journal/'goal-handoff.json').write_bytes(original)
+            new = {'task_id': 't_new', 'board_id': 'default', 'created_at': '2026-01-02T00:00:00Z'}
+            m.save_receipt(journal, new)
+            self.assertEqual(json.loads((journal/'goal-handoff.json').read_text()), new)
+            self.assertEqual((journal/'handoffs/t_old.json').read_bytes(), original)
+            archives = list((journal/'handoffs').glob('2026-01-01*.json'))
+            self.assertEqual(len(archives), 1)
+            self.assertEqual(archives[0].read_bytes(), original)
+
+    def test_invalid_nested_identity_preserves_receipt_without_archival(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = Path(directory)
+            target = journal/'goal-handoff.json'
+            for task_id in (None, '', '..', '../escape', 123):
+                original = json.dumps({'task_id': None, 'current_handoff': {'task_id': task_id}}).encode()
+                target.write_bytes(original)
+                with self.subTest(task_id=task_id), self.assertRaisesRegex(ValueError, 'prior task ID'):
+                    m.save_receipt(journal, {'task_id': 't_new'})
+                self.assertEqual(target.read_bytes(), original)
+                self.assertFalse((journal/'handoffs').exists())
 
     def test_receipt_survives_notification_failure_preserves_previous(self):
         with tempfile.TemporaryDirectory() as directory:

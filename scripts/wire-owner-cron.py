@@ -64,6 +64,8 @@ def owner_prompt(prompt, enabled):
         'Do not ask whether to implement already authorized offline work; ask only for a genuinely missing material decision or external-action authority. '
         'No external owner acknowledgement is required. Use default worker mode and supported native helpers where needed. '
         'Reconcile actual running workers and completed results first; preserve original cards, budgets and useful candidates. '
+        'New workers receive 100 turns by default: omit --goal-max-turns so start_goal.py supplies the default Goal budget rationale; retain an explicit --goal-max-turns 50 override when bounded work calls for it. '
+        'Preserve existing-card limits, cumulative usage and worker sessions; use --max-retries 1 for new cards and never automatically retry or reset an exhausted or interrupted worker. '
         'Use reconcile.py --compact and its saved continuation; read full evidence only for the next required decision. '
         'After two unchanged blocked observations, change the supported recovery approach or select independent authorized work; never repeat an identical failed command. '
         'Keep Hermes Agent unchanged. Never export worker identity or treat a saved handoff as authenticated runtime authority. '

@@ -41,6 +41,17 @@ class OwnerCronTests(unittest.TestCase):
         self.assertIn('Offline removal only; no deployment.', prompt)
         self.assertIn('Do not push or deploy', prompt)
 
+    def test_generated_prompt_defaults_new_workers_to_100_without_reset_or_retry(self):
+        module = load()
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                prompt = module.owner_prompt('Offline work only.', enabled)
+                for rule in ('100 turns by default', 'omit --goal-max-turns',
+                             'explicit --goal-max-turns 50', 'cumulative usage',
+                             '--max-retries 1', 'never automatically retry or reset'):
+                    self.assertIn(rule, prompt)
+                self.assertEqual(module.owner_prompt(prompt, enabled), prompt)
+
     def test_scheduled_execution_consumes_plans_and_approved_results(self):
         module = load()
         prompt = module.owner_prompt('Offline work authorized. Preserve live-operation exclusions.', True)

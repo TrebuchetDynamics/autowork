@@ -23,8 +23,20 @@ def decide(cycle, state):
     preparation = cycle.get('admission') == 'handoff_preparation'
     held_inputs = gate in ('source_freshness', 'prerequisites', 'candidate')
     if preparation or (held_inputs and cycle.get('scope') != 'repository'):
-        return planning_decision(cycle, state,
+        decision = planning_decision(cycle, state,
             'Resolve the blocked handoff or prerequisites within the authorized task scope')
+        fallback = cycle.get('fallback_selection') or {}
+        fallback_ready = (isinstance(fallback, dict) and fallback.get('state') == 'ready_for_autowork'
+                          and isinstance(fallback.get('selected_task'), dict)
+                          and fallback['selected_task'] == cycle.get('selected_task'))
+        if (preparation and cycle.get('coordination_mode') == 'autonomous'
+                and cycle.get('backlog_ready') is True and cycle.get('selected_task')
+                and (gate in ('ready_for_autowork', 'candidate_validated') or fallback_ready)
+                and decision['action'] == 'plan'):
+            return {'action': 'prepare_execution_handoff', 'execution_required': True,
+                    'reason': 'Accepted task is ready; missing handoff artifacts are routine preparation, not a research gap',
+                    'handoff': 'Build the contract, immutable base and source snapshot from this accepted task, then retry native admission. Research only a concrete unresolved choice; preserve any prior failure receipt.'}
+        return decision
     if not held_inputs and cycle.get('backlog_ready', True) and (cycle.get('ready_queue') or cycle.get('selected_task')):
         return {'action':'execute_ready_work','reason':'Use the existing accepted task before planning'}
     if gate=='ledger':

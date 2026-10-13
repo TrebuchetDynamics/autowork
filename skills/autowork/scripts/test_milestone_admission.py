@@ -81,6 +81,9 @@ class AdmissionFixtures(unittest.TestCase):
             if args[3] == 'create':
                 self.creates += 1
                 if not create_existing:
+                    with sqlite3.connect(db_path) as db:
+                        db.execute('UPDATE tasks SET goal_max_turns=? WHERE id=?',
+                                   (int(args[args.index('--goal-max-turns') + 1]), 'fixture_card'))
                     task['max_retries'] = int(args[args.index('--max-retries') + 1])
                     task['workspace_path'] = args[args.index('--workspace') + 1].removeprefix('dir:')
                 self.created_body = args[args.index('--body') + 1]

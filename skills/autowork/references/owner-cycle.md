@@ -137,7 +137,11 @@ pending requests; integration remains the repository owner's job.
 For an already authorized handoff, pass `--apply --handoff-request /private/handoff.json`.
 Its object contains canonical `consumer`, exact selected `task_id`, and `options`
 using start_goal.py option names (profile, title, contract-file, source-snapshot,
-base and explicitly supplied prerequisite/worker-role options). The runner calls
+base and explicitly supplied prerequisite/worker-role options). Omit `goal-max-turns`
+to inherit the helper's 100-turn default and default rationale; explicit 50 remains
+supported, while explicit 100 requires a nonempty contract rationale. Existing
+cards retain their limits, cumulative usage and sessions; no automatic retry/reset.
+The runner calls
 that helper only after fresh readiness. Native ownership, snapshot, contract and
 admission checks still run there. A card handoff is QUEUED, never task completion;
 failed/uncertain dispatch requires native reconciliation. Without a handoff request,
@@ -332,8 +336,9 @@ performs their product recovery itself.
 
 `backlog_ready: true` establishes selection only. `PREPARATION_REQUIRED` means
 no same-task handoff is available; the cycle retains missing execution inputs
-and routes a deduplicated `handoff_preparation` request through the bound owner
-inbox. It exits nonzero and does not resolve existing requests merely because
+and returns `prepare_execution_handoff` in autonomous mode. Only explicit owner
+mode routes a deduplicated request through the bound owner inbox. It exits nonzero
+and does not resolve existing requests merely because
 the task became eligible. Autoresearch must not replan this ready task.
 
 Continue preparation in this occurrence: assemble the explicit contract, pinned
@@ -348,6 +353,12 @@ Save the supported request under `handoff-requests/<task-id>.json` and rerun the
 cycle with `--apply`; saved requests are consumed by the existing native helper.
 Report execution only after observing its worker, and completion only after its
 acceptance and commit receipts. A routed request alone does not unblock a task.
+
+A persisted native goal card with `notification_blocked` still has a recorded
+handoff. The cycle returns `QUEUED` with `notification_warning`; reconcile that
+original card and repair its transport separately. Do not rerun admission to fix
+a Telegram notification. Missing card identity or an uncertain/failed native call
+still requires reconciliation and is never reported as successful dispatch.
 
 
 ## A profile mailbox is not its parent session

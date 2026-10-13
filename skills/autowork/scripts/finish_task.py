@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -27,17 +28,35 @@ def fingerprint(repo, files):
     return result
 
 
+def run_acceptance(command, repo, timeout, environment):
+    # A timeout must release child writers before another occurrence can recover.
+    with subprocess.Popen(command, cwd=repo, stdout=sys.stderr, env=environment,
+                          start_new_session=os.name == 'posix') as process:
+        try:
+            return process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                if os.name == 'posix':
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+            process.wait()
+            raise
+
+
 def finish(repo, profile, card, message, files, checks, timeout):
     receipts = []
     environment = git_environment()
     before = fingerprint(repo, files)
     for command in checks:
         try:
-            completed = subprocess.run(command, cwd=repo, timeout=timeout, stdout=sys.stderr, env=environment)
-            receipts.append({'argv': command, 'exit_code': completed.returncode})
+            code = run_acceptance(command, repo, timeout, environment)
+            receipts.append({'argv': command, 'exit_code': code})
         except (OSError, subprocess.TimeoutExpired) as exc:
             return {'status': 'validation_failed', 'checks': receipts, 'error': str(exc)}, 1
-        if completed.returncode:
+        if code:
             return {'status': 'validation_failed', 'checks': receipts}, 1
     if fingerprint(repo, files) != before:
         return {'status': 'source_changed', 'checks': receipts,

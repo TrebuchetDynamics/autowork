@@ -43,7 +43,7 @@ class OwnerCycleTests(unittest.TestCase):
             'worktree':'/fixture/writer','status':'ACTIVE'}) + '\n')
         _, receipt = self.run_cycle('--apply', '--integration-owner', 'old-writer', require_owner=False)
         self.assertTrue(receipt['backlog_ready'])
-        self.assertEqual(receipt['action'], 'plan_execution_recovery')
+        self.assertEqual(receipt['action'], 'prepare_execution_handoff')
         self.assertNotIn('integration_request', receipt)
         self.assertNotIn('routing_gap', receipt)
         self.assertFalse(receipt['dispatch_attempted'])
@@ -266,6 +266,47 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(request['acknowledgement']['evidence'],'fixture://actual-reply')
         self.assertFalse((self.repo/'goals.json').exists())
 
+    def test_ready_task_prepares_directly_without_a_research_pass(self):
+        self.ready_backlog()
+        _, receipt = self.run_cycle('--apply', require_owner=False)
+        self.assertTrue(receipt['backlog_ready'])
+        self.assertEqual(receipt['action'], 'prepare_execution_handoff')
+        self.assertEqual(receipt['planning']['action'], 'prepare_execution_handoff')
+        self.assertFalse(receipt['dispatch_attempted'])
+        self.assertFalse((self.state / 'planning').exists())
+
+    def test_notification_failure_preserves_successful_native_handoff(self):
+        import owner_cycle
+        from unittest.mock import patch
+        self.ready_backlog()
+        native = {'outcome': 'notification_blocked', 'task_id': 't_fixture',
+                  'goal_mode': True, 'status': 'ready', 'notification_error': 'transport unavailable'}
+        with patch.object(owner_cycle, 'handoff', return_value={'exit_code': 0, 'result': native}) as handoff:
+            code = owner_cycle.main([str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                '--state-dir', str(self.state), '--apply', '--handoff-request', '/private/request'])
+        receipt = json.loads((self.state/'unblock-latest.json').read_text())
+        self.assertEqual(code, 0)
+        self.assertEqual(receipt['outcome'], 'QUEUED')
+        self.assertEqual(receipt['notification_warning'], 'transport unavailable')
+        self.assertEqual(receipt['handoff']['result']['task_id'], 't_fixture')
+        self.assertIn('original', receipt['next_action'])
+        handoff.assert_called_once()
+
+    def test_notification_error_without_recorded_card_is_not_success(self):
+        import owner_cycle
+        from unittest.mock import patch
+        self.ready_backlog()
+        for native in ({'outcome': 'notification_blocked'},
+                       {'outcome': 'notification_blocked', 'task_id': 't_fixture', 'goal_mode': False}):
+            with self.subTest(native=native), patch.object(owner_cycle, 'handoff',
+                    return_value={'exit_code': 0, 'result': native}):
+                code = owner_cycle.main([str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                    '--state-dir', str(self.state), '--apply', '--handoff-request', '/private/request'])
+            receipt = json.loads((self.state/'unblock-latest.json').read_text())
+            self.assertEqual(code, 1)
+            self.assertEqual(receipt['outcome'], 'BLOCKED')
+            self.assertNotIn('notification_warning', receipt)
+
     def test_failed_or_uncertain_handoff_persists_reconciliation_receipt(self):
         import owner_cycle
         from unittest.mock import patch
@@ -359,6 +400,12 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(ledger.read_bytes(),before)
         self.assertFalse(ready['dispatch_attempted'])
         self.assertIn('T1', (self.state/'report-latest.txt').read_text())
+        _, autonomous = self.run_cycle('--allow-ready-fallback', require_owner=False)
+        self.assertEqual(autonomous['action'], 'prepare_execution_handoff')
+        self.assertEqual(autonomous['selected_task']['id'], 'T2')
+        self.assertEqual(autonomous['held_task_ids'], ['T1'])
+        self.assertFalse(autonomous['dispatch_attempted'])
+        self.assertEqual(ledger.read_bytes(), before)
 
     def test_saved_native_handoff_is_used_for_ready_task(self):
         import owner_cycle

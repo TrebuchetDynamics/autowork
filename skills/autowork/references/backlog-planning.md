@@ -33,6 +33,9 @@ Repeated unchanged inputs resume the saved plan's next action, not another plan.
   authority using [repository maintenance](repository-maintenance.md); the original
   task remains held. Run discovery and execution, not another blocked summary.
 - `execute_ready_work`: continue the accepted task. Do not plan just to fill a quota.
+- `prepare_execution_handoff`: the accepted task or verified ready fallback only
+  needs its contract, base and snapshot. Prepare them directly; no research pass
+  is required. Reconcile a saved failure receipt before retrying the same inputs.
 - `reconcile_owner`: retain the live writer and its work; do not launch a competing planner.
 - `integrate_existing_inputs`: resolve the existing documentation proposal with
   the current authorized coordinator, or use docs-sync Bootstrap if no backlog exists.

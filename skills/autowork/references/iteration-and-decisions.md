@@ -11,7 +11,8 @@ These operating priorities apply to every Autowork run.
    limits into contracts for work inside their scope. Give workers the scope
    they need; a harness or fixture correction needed to reach acceptance is in
    scope by default.
-5. **Retry and backoff across runs.** The handoff helper gives each card 3 attempts.
+5. **Retry and backoff across runs.** New cards use `--max-retries 1`: no automatic failure retry.
+   Supported same-card recovery must preserve cumulative usage; never reset an exhausted allocation.
    A card that blocks twice with no new evidence is parked
    (`hermes kanban schedule <id> "retry_exhausted: …"`) and is not reselected until
    its source, prerequisite or contract fingerprint changes. Pick disjoint work
@@ -30,8 +31,8 @@ These operating priorities apply to every Autowork run.
    first turn as 1–3 observable checks under `Interpreted acceptance:` and proceeds.
    Ask an owner question (priority 9) only when the possible readings lead to
    materially different product outcomes; continue only independent authorized work
-   until that input arrives. Choose 50 turns, or explicit 100 with `Goal budget rationale:` explaining
-   one coherent outcome. Stop at acceptance, not budget exhaustion; never spend turns
+   until that input arrives. Use 100 turns by default, or an explicit 50-turn override;
+   explicit 100 still requires `Goal budget rationale:` for one coherent outcome. Stop at acceptance, not budget exhaustion; never spend turns
    merely because available. If acceptance cannot fit, narrow it before dispatch.
 7. **Done means scoped done.** Finish after checks pass and owned changes are committed; never rerun an unchanged
    passing gate merely to refresh status metadata. NOT_CHECKED is not qualification.

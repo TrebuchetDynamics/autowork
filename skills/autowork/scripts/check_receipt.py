@@ -101,7 +101,7 @@ def candidate_command(command, root, checkout):
     mapped = []
     for arg in command:
         path = Path(arg)
-        if path.is_absolute() and path != root and path.is_relative_to(root):
+        if path.is_absolute() and path.is_relative_to(root):
             mapped.append(str(checkout / path.relative_to(root)))
         else:
             mapped.append(arg)
@@ -395,6 +395,8 @@ def main():
             return 0 if accepted else 1
         if args.receipt.exists():
             raise ValueError('Receipt already exists; preserve it and choose a new path')
+        # Prepare the destination before paying for a potentially long check.
+        args.receipt.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         receipt = execute(args.workspace, args.path, command, args.timeout, candidate=candidate,
                           resource_lock=args.resource_lock, lock_timeout=args.lock_timeout,
                           external_paths=args.external_path, qualification_scope=scope, generated_outputs=args.generated_output)

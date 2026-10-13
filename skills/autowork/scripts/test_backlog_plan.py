@@ -71,6 +71,19 @@ class BacklogPlanTests(unittest.TestCase):
         backlog_plan.record(self.cycle,self.state,'fixture://recovery-plan','canonical_reconciled')
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'reuse')
 
+    def test_ready_preparation_skips_research_but_preserves_prior_failure(self):
+        self.cycle.update(coordination_mode='autonomous', admission='handoff_preparation',
+                          backlog_ready=True, selected_task={'id': 'T1'})
+        self.cycle['recovery']['gate'] = 'ready_for_autowork'
+        self.assertEqual(backlog_plan.decide(self.cycle, self.state)['action'], 'prepare_execution_handoff')
+        path = backlog_plan.record(self.cycle, self.state, 'fixture://preserved-failure', 'no_supported_delta')
+        before = Path(path).read_bytes()
+        self.assertEqual(backlog_plan.decide(self.cycle, self.state)['action'], 'resolve_recorded_blocker')
+        self.assertEqual(Path(path).read_bytes(), before)
+        self.cycle['fingerprint'] = 'new-inputs'
+        self.cycle['recovery']['gate'] = 'candidate'
+        self.assertEqual(backlog_plan.decide(self.cycle, self.state)['action'], 'plan')
+
     def test_selected_task_with_unresolved_inputs_is_not_ready(self):
         self.cycle.update(scope='tasks', selected_task={'id':'T1'}, unchanged_runs=0)
         for gate in ('candidate','source_freshness','prerequisites'):

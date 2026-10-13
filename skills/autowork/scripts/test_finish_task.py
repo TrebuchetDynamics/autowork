@@ -132,6 +132,20 @@ class FinishTaskTests(unittest.TestCase):
         self.assertEqual(self.foreign_snapshot(other), before)
         self.preserved()
 
+    @unittest.skipUnless(os.name == 'posix', 'process group termination requires POSIX')
+    def test_timed_out_acceptance_stops_child_writers(self):
+        import time, finish_task
+        child = 'import time; from pathlib import Path; time.sleep(0.4); Path("escaped").touch()'
+        parent = f'import subprocess, sys, time; subprocess.Popen([sys.executable, "-c", {child!r}]); time.sleep(5)'
+        receipt, code = finish_task.finish(self.root, 'fixture', 'one', 'Task', ['owned'],
+                                           [[sys.executable, '-c', parent]], 0.15)
+        self.assertEqual(code, 1)
+        self.assertEqual(receipt['status'], 'validation_failed')
+        time.sleep(0.5)
+        self.assertFalse((self.root/'escaped').exists(), 'timed-out acceptance left a writer alive')
+        self.assertEqual(self.git('branch', '--list', 'agent/*'), '')
+        self.preserved()
+
     def test_failed_validation_never_creates_commit(self):
         result, receipt = self.finish('raise SystemExit(7)')
         self.assertNotEqual(result.returncode, 0)

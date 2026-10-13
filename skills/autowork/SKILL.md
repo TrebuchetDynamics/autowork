@@ -19,7 +19,7 @@ updates TODO.md and retries execution; never wait for the user to invoke it.
 
 ## When to use
 
-Default /autowork hands off one bounded native goal worker (50 turns by default; explicit 100 per invocation).
+Default /autowork hands off one bounded native goal worker (100 turns by default; explicit 50 per invocation).
 New cards stop automatic failure retries; continuation must preserve cumulative
 usage and cannot reset an exhausted allocation. See [handoff budget](references/handoff.md#turn-allocation-across-attempts).
 Scope it as a [coherent delivery batch](references/delivery-batches.md), not one card
@@ -128,12 +128,13 @@ Load [dispatch and reporting](references/dispatch-and-reporting.md) before an ex
 ## Each run (picker)
 
 **Picker budget:** At most about 30 tool calls or 10 minutes per scheduled run.
-Reconcile, select, hand off and stop. Delegate deep investigation, source
+Reconcile, finish authorized closeout, select and hand off. Delegate deep investigation, source
 re-verification and checks to the worker. Over budget: hand off the best candidate,
 or reply `[SILENT]` and leave a journal note for the next run.
 
 1. **Reconcile first.** Use `scripts/reconcile.py --profile <profile> [--task-id <id>] --compact`
    once for the prior handoff; reuse its readback instead of repeating show/journal reads.
+   Before a waiting report, apply the final readback in [delivery batching](references/delivery-batches.md#continue-delivery).
    Omit `--compact` only when full evidence is needed for the next action.
    Two unchanged blocked observations require a different supported repair,
    independent authorized work, or one precise external input—not another identical retry.
@@ -175,7 +176,7 @@ or reply `[SILENT]` and leave a journal note for the next run.
    `Expected change`, `Acceptance`, `Stop conditions`, `Repo-docs pass`. Include the
    vertical-slice contract in references/handoff.md within these fields. Build it from the
    goals.json task (quote its task and goal IDs), run `scripts/start_goal.py … --validate-only`,
-   then the real handoff (same selected 50/100 budget, 3 attempts), and — only once the helper
+   then the real handoff (same selected budget: default 100 or explicit 50/100, automatic failure retries disabled), and — only once the helper
    has actually created or returned a card for it — mark the task with
    `goals.py task <repo> <TASK> in_progress`. If the helper answers `already_owned`, no card was
    created: preserve the live card, avoid duplicate dispatch and revert any premature

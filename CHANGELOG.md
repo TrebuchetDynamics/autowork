@@ -18,6 +18,24 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Verification commands now remap repository-root arguments into the frozen
+  candidate checkout. Receipt directories are created before check execution,
+  avoiding lost successful results from missing parent directories. Timed-out
+  finish-task acceptance commands terminate their POSIX process group so child
+  writers cannot continue after the validation failure is reported.
+
+- Ready autonomous tasks prepare their native handoff without an unnecessary
+  research pass; saved failure evidence still requires reconciliation. A recorded
+  goal handoff with notification failure remains queued with a transport warning,
+  rather than being misreported as failed admission. New handoffs can archive the
+  legacy nested continuation receipt without losing its original history.
+
+- Autowork keeps pending closeout visible across unchanged calls, detects ended
+  review runs on stale cards, and refreshes asynchronous state before waiting reports.
+  Batch guidance separates required completion from optional hardening and aligns
+  the shared cycle with authorized same-occurrence continuation. These offline
+  checks do not establish live scheduler throughput or completed product delivery.
+
 - New Autowork cards stop automatic failure retries at the first failed attempt
   and verify that policy in native readback. Handoff receipts distinguish per-run
   turn allocation from unavailable cumulative native enforcement; existing cards
