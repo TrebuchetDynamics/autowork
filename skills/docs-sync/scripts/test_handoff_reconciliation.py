@@ -49,6 +49,15 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertIn('plan section lacks explicit Status: Accepted', receipt['reasons'])
         self.assertIn('T1: missing or duplicate task body', receipt['reasons'])
 
+    def test_duplicate_json_keys_cannot_authorize_autowork(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        path = self.repo / 'goals.json'
+        path.write_text(path.read_text().replace('"version": 1', '"version": 2, "version": 1'))
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (1, 'draft_saved'))
+        self.assertEqual(receipt['eligible_task_ids'], [])
+        self.assertTrue(any('duplicate JSON key' in reason for reason in receipt['reasons']))
+
     def test_clerical_repair_makes_same_slice_ready_without_claiming_it(self):
         self.assertEqual(self.check()[0], 1)
         ledger = (self.repo / 'goals.json').read_bytes()

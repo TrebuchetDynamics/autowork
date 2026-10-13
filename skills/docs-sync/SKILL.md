@@ -228,7 +228,11 @@ prerequisites from corroborated relationships, not graph centrality alone.
 
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
 Acceptance/checks, explicit `Dependencies:` and `Ownership:` fields. Keep the dependency
-key separate because the consumer checker matches field labels exactly. Before handoff,
+key separate because the consumer checker matches field labels exactly. List actual
+prerequisite IDs there, matching the ledger, or explicitly declare `None`.
+Coordination/history sentences following a `None` declaration do not create or
+satisfy task dependencies. Keep those notes in separate fields when possible.
+Before handoff,
 compare each touched body's checkbox and enclosing TODO section with the `goals.json`
 task status/section; `fmt` and `validate` do not prove that consumer binding. Correct
 body placement without promoting a `Needs decision` task or changing focus absent

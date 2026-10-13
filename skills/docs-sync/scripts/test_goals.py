@@ -57,6 +57,100 @@ class GoalsTests(unittest.TestCase):
         run('fmt', str(self.repo)); first = (self.repo / 'goals.json').read_bytes()
         run('fmt', str(self.repo)); self.assertEqual(first, (self.repo / 'goals.json').read_bytes())
 
+    def test_commands_reject_unsupported_version_without_writing(self):
+        path = self.repo / 'goals.json'
+        todo = self.repo / 'TODO.md'
+        todo.write_text('# TODO\n\nKeep this task body.\n')
+        for version in (2, True, '1', None):
+            data = sample()
+            data['version'] = version
+            path.write_text(json.dumps(data))
+            before = (path.read_bytes(), todo.read_bytes())
+            for command in (('fmt',), ('render',), ('next', '--json'), ('validate',),
+                            ('task', 'TASK-001', 'done'), ('focus', 'GOAL-4')):
+                with self.subTest(version=version, command=command):
+                    path.write_bytes(before[0])
+                    todo.write_bytes(before[1])
+                    result = run(command[0], str(self.repo), *command[1:])
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('version must be 1', result.stdout + result.stderr)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertEqual((path.read_bytes(), todo.read_bytes()), before)
+
+    def test_fmt_preserves_extension_metadata(self):
+        data = sample()
+        data['maintenance'] = {'owner': 'fixture', 'revision': 'preserve-me'}
+        data['goals'][0]['custom'] = {'note': 'goal metadata'}
+        data['tasks'][0]['custom'] = ['task metadata']
+        path = self.repo / 'goals.json'
+        path.write_text(json.dumps(data))
+        for command in (('fmt',), ('task', 'TASK-001', 'in_progress')):
+            result = run(command[0], str(self.repo), *command[1:])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = self.data()
+            self.assertEqual(actual['maintenance'], data['maintenance'])
+            self.assertEqual(actual['goals'][0]['custom'], data['goals'][0]['custom'])
+            task = next(t for t in actual['tasks'] if t['id'] == 'TASK-001')
+            self.assertEqual(task['custom'], data['tasks'][0]['custom'])
+
+    def test_malformed_fields_are_rejected_before_normalization(self):
+        cases = [
+            ('tasks', 'depends_on', 'TASK-002'),
+            ('goals', 'depends_on', 'GOAL-4'),
+            ('goals', 'tasks', 'TASK-002'),
+            ('tasks', 'depends_on', [{}]),
+            ('goals', 'evidence', 'pass'),
+            ('goals', 'evidence', [None]),
+            ('goals', 'evidence', [{'kind': [], 'ref': 'check', 'result': 'pass'}]),
+            ('goals', 'priority', 'first'),
+            ('goals', 'id', []),
+        ]
+        path = self.repo / 'goals.json'
+        for collection, field, value in cases:
+            data = sample()
+            data[collection][0][field] = value
+            path.write_text(json.dumps(data))
+            before = path.read_bytes()
+            for command in ('fmt', 'validate', 'next'):
+                with self.subTest(collection=collection, field=field, value=value, command=command):
+                    path.write_bytes(before)
+                    result = run(command, str(self.repo))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(field, result.stdout + result.stderr)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_malformed_containers_have_actionable_diagnostics(self):
+        path = self.repo / 'goals.json'
+        for data, diagnostic in (([], 'must be an object'),
+                                 ({'version': 1, 'goals': {}, 'tasks': []}, 'goals must be a list'),
+                                 ({'version': 1, 'goals': [None], 'tasks': []}, 'goals[0] must be an object')):
+            path.write_text(json.dumps(data))
+            before = path.read_bytes()
+            result = run('fmt', str(self.repo))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(diagnostic, result.stderr)
+            self.assertNotIn('Traceback', result.stderr)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_ambiguous_json_keys_are_never_silently_discarded(self):
+        path = self.repo / 'goals.json'
+        original = json.dumps(sample())
+        cases = [original.replace('"version": 1', '"version": 2, "version": 1'),
+                 original.replace('"status": "open"', '"status": "done", "status": "open"', 1),
+                 original.replace('"result": "pass"', '"result": "fail", "result": "pass"'),
+                 original.replace('"version": 1', '"private-key": "first", "private-key": "last", "version": 1')]
+        for raw in cases:
+            for command in ('fmt', 'validate', 'next', 'render'):
+                with self.subTest(command=command, raw=raw):
+                    path.write_text(raw)
+                    result = run(command, str(self.repo))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('duplicate JSON key', result.stdout + result.stderr)
+                    self.assertNotIn('private-key', result.stdout + result.stderr)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertEqual(path.read_text(), raw)
+
     def test_met_goal_with_open_work_is_invalid_and_fmt_reopens_it(self):
         data = sample()
         evidence = [{'kind': 'executed', 'result': 'pass', 'ref': 'prior check'}]
@@ -123,6 +217,39 @@ class GoalsTests(unittest.TestCase):
         self.assertTrue(run('next', str(self.repo)).stdout.startswith('TASK-001'))  # priority beats status
         picks = json.loads(run('next', str(self.repo), '--json').stdout)
         self.assertNotIn('TASK-003', [p['task']['id'] for p in picks])  # GOAL-5 waits for GOAL-4
+
+    def test_next_rejects_invalid_task_state_and_conflicting_ids(self):
+        path = self.repo / 'goals.json'
+        for defect, diagnostic in (('status', 'status must be one of'),
+                                   ('duplicate', 'duplicate id'),
+                                   ('membership', 'task membership does not match ledger')):
+            data = sample()
+            if defect == 'status':
+                data['tasks'][0]['status'] = 'blocked'
+            elif defect == 'duplicate':
+                data['tasks'].append(dict(data['tasks'][0], status='done'))
+            else:
+                data['goals'][1]['tasks'] = []
+            path.write_text(json.dumps(data))
+            before = path.read_bytes()
+            with self.subTest(defect=defect):
+                result = run('next', str(self.repo), '--json')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(diagnostic, result.stdout + result.stderr)
+                self.assertNotIn('Traceback', result.stderr)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_next_keeps_pending_evidence_gated_without_blocking_independent_work(self):
+        data = sample()
+        data['tasks'][0]['status'] = 'done'
+        path = self.repo / 'goals.json'
+        path.write_text(json.dumps(data))
+        before = path.read_bytes()
+        result = run('next', str(self.repo), '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([row['task']['id'] for row in json.loads(result.stdout)], ['TASK-002'])
+        self.assertIn('GOAL-4: unmet goal has no open task', run('validate', str(self.repo)).stdout)
+        self.assertEqual(path.read_bytes(), before)
 
     def test_executed_pass_promotes_only_when_tasks_done(self):
         run('fmt', str(self.repo))

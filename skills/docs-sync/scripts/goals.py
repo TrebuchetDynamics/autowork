@@ -27,6 +27,10 @@ Agents change goals.json only through these commands, never by hand-editing JSON
 
 Rule (the met rule): a goal is `met` only with executed+pass evidence and all tasks done.
 Fmt downgrades missing evidence to `unverified`, or reopens unfinished work as `partial`.
+Only version 1 ledgers are supported. Incompatible field shapes and duplicate JSON
+keys are rejected before writing; formatting preserves additional metadata.
+Next applies the same normalization in memory, then rejects invalid ledger state;
+completed goals awaiting evidence remain dependency gates, not runnable work.
 Optional `primary_milestone` names one existing goal. Its eligible tasks sort first,
 even in Next; all eligible fallback tasks remain available after them in next --json.
 """
@@ -38,6 +42,7 @@ from graphlib import CycleError, TopologicalSorter
 import hashlib
 import html
 import json
+import math
 import os
 import tempfile
 import re
@@ -63,11 +68,76 @@ def path_of(repo):
     return Path(repo) / 'goals.json'
 
 
+def parse_ledger(blob):
+    """Do not let JSON's last-key-wins behavior erase conflicting author input."""
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('goals.json contains duplicate JSON key; resolve conflicting members before retrying')
+            result[key] = value
+        return result
+    return json.loads(blob, object_pairs_hook=unique_object)
+
+
 def load(repo):
     p = path_of(repo)
     if not p.exists():
         sys.exit(f'{p} not found')
-    return json.loads(p.read_text())
+    try:
+        data = parse_ledger(p.read_text())
+    except json.JSONDecodeError as exc:
+        sys.exit(f'goals.json:{exc.lineno}:{exc.colno}: malformed JSON')
+    except ValueError as exc:
+        sys.exit(str(exc))
+    problems = shape_errors(data)
+    if problems:
+        sys.exit('\n'.join(problems))
+    return data
+
+
+def shape_errors(data):
+    """Reject shapes we cannot safely interpret, without blocking semantic repairs."""
+    if not isinstance(data, dict):
+        return ['goals.json must be an object']
+    problems = []
+    if type(data.get('version')) is not int or data['version'] != 1:
+        problems.append('version must be 1')
+    for collection in ('goals', 'tasks'):
+        rows = data.get(collection)
+        if not isinstance(rows, list):
+            problems.append(f'{collection} must be a list')
+            continue
+        for index, row in enumerate(rows):
+            location = f'{collection}[{index}]'
+            if not isinstance(row, dict):
+                problems.append(f'{location} must be an object')
+                continue
+            if not isinstance(row.get('id'), str) or not row['id']:
+                problems.append(f'{location}.id must be a nonempty string')
+            for field in ('title', 'status', 'goal', 'section'):
+                if field in row and not isinstance(row[field], str):
+                    problems.append(f'{location}.{field} must be a string')
+            fields = ('depends_on', 'tasks') if collection == 'goals' else ('depends_on',)
+            for field in fields:
+                value = row.get(field, [])
+                if not isinstance(value, list) or any(not isinstance(v, str) or not v for v in value):
+                    problems.append(f'{location}.{field} must be a list of nonempty strings')
+            if collection == 'goals':
+                priority = row.get('priority', 100)
+                if type(priority) not in (int, float) or (isinstance(priority, float) and not math.isfinite(priority)):
+                    problems.append(f'{location}.priority must be a finite number')
+                evidence = row.get('evidence', [])
+                if not isinstance(evidence, list):
+                    problems.append(f'{location}.evidence must be a list')
+                else:
+                    for number, entry in enumerate(evidence):
+                        if not isinstance(entry, dict):
+                            problems.append(f'{location}.evidence[{number}] must be an object')
+                        elif any(field in entry and not isinstance(entry[field], str)
+                                 for field in ('kind', 'result', 'ref')):
+                            problems.append(f'{location}.evidence[{number}] fields must be strings')
+    return problems
 
 
 def proven(goal):
@@ -76,6 +146,9 @@ def proven(goal):
 
 def normalize(data):
     """Apply the met rule, fill defaults and sort into a stable order."""
+    problems = shape_errors(data)
+    if problems:
+        raise ValueError('; '.join(problems))
     goals, tasks = data.get('goals', []), data.get('tasks', [])
     for g in goals:
         g.setdefault('depends_on', []); g.setdefault('evidence', []); g.setdefault('tasks', [])
@@ -95,9 +168,8 @@ def normalize(data):
     # Goals keep authoring order (priority, then id); tasks follow section then id.
     goals.sort(key=lambda g: (g['priority'], g['id']))
     tasks.sort(key=lambda t: (SECTIONS.index(t['section']) if t['section'] in SECTIONS else 9, t['id']))
-    normalized = {'version': 1, 'goals': goals, 'tasks': tasks}
-    if 'primary_milestone' in data:
-        normalized['primary_milestone'] = data['primary_milestone']
+    normalized = dict(data)
+    normalized.update(goals=goals, tasks=tasks)
     return normalized
 
 
@@ -133,13 +205,11 @@ def dependency_cycles(data):
     return problems
 
 
-def errors(data):
-    errs = []
+def errors(data, *, allow_pending_evidence=False):
+    errs = shape_errors(data)
+    if errs:
+        return errs
     goals, tasks = data.get('goals'), data.get('tasks')
-    if data.get('version') != 1:
-        errs.append('version must be 1')
-    if not isinstance(goals, list) or not isinstance(tasks, list):
-        return errs + ['goals and tasks must be lists']
     gids = [g.get('id') for g in goals]; tids = [t.get('id') for t in tasks]
     if 'primary_milestone' in data:
         focus = data['primary_milestone']
@@ -171,7 +241,8 @@ def errors(data):
         open_tasks = [t for t in tasks if t.get('goal') == gid and t.get('status') != 'done']
         if g.get('status') == 'met' and open_tasks:
             errs.append(f'{gid}: met goal has unfinished tasks (run fmt to reopen)')
-        if g.get('status') != 'met' and not open_tasks:
+        if (g.get('status') != 'met' and not open_tasks
+                and not (allow_pending_evidence and actual)):
             errs.append(f'{gid}: {g.get("status")} goal has no open task')
     for t in tasks:
         tid = t.get('id', '?')
@@ -625,7 +696,7 @@ def backlog_check(a):
         try:
             ledger_blob = blobs['goals.json']
             assert ledger_blob is not None
-            data = json.loads(ledger_blob)
+            data = parse_ledger(ledger_blob)
             ledger_errors = errors(data)
             reasons.extend(ledger_errors)
             if ledger_errors:
@@ -669,8 +740,15 @@ def backlog_check(a):
                 reasons.append(f'{tid}: checkbox/section does not match ledger')
             goal = next(g for g in data['goals'] if g['id'] == t['goal'])
             expected = set(t.get('depends_on', []) + goal.get('depends_on', []))
+            dependencies = fields.get('Dependencies', '')
+            # An explicit None declaration can be followed by coordination or
+            # history, not executable prerequisites. Do not let those notes
+            # invent edges or satisfy a missing ledger dependency. Keep full
+            # matching for actual prerequisite lists, including numbered lists.
+            if re.match(r'none\b', dependencies, re.I):
+                dependencies = re.split(r'\.(?:\s|$)', dependencies, maxsplit=1)[0]
             named = {dep for dep in known | {g['id'] for g in data['goals']}
-                     if re.search(r'(?<![\w-])' + re.escape(dep) + r'(?![\w-])', fields.get('Dependencies', ''))}
+                     if re.search(r'(?<![\w-])' + re.escape(dep) + r'(?![\w-])', dependencies)}
             for dep in sorted(expected - named):
                 reasons.append(f'{tid}: Dependencies do not name {dep}')
             for dep in sorted(named - expected):
@@ -812,10 +890,13 @@ def execute(a):
     if a.cmd == 'render':
         render(a.repo, normalize(data)); print('ok'); return
     if a.cmd == 'next':
-        cycles = dependency_cycles(data)
-        if cycles:
-            sys.exit('\n'.join(cycles))
-        picks = eligible(normalize(data))
+        data = normalize(data)
+        # Closing the last task precedes recording its evidence. Keep that
+        # goal as a dependency gate while allowing independent work to proceed.
+        problems = errors(data, allow_pending_evidence=True)
+        if problems:
+            sys.exit('\n'.join(problems))
+        picks = eligible(data)
         if a.json:
             print(json.dumps([{'task': t, 'goal': g['id'], 'goal_status': g['status']} for t, g in picks], indent=2))
         elif picks:

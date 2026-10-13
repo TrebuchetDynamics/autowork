@@ -56,6 +56,59 @@ class RetrySelectionTests(unittest.TestCase):
         for path, contents in before.items():
             self.assertEqual(path.read_bytes(), contents)
 
+    def test_dependency_notes_do_not_create_undeclared_prerequisites(self):
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'].append(dict(data['tasks'][0], id='T2', section='Next'))
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        body = todo.read_text()
+        for declaration in (
+                'None. Ownership: coordinate with the T2 owner before overlap.',
+                'None at the ledger level. T2 is preferred first, not a prerequisite.',
+                'None for offline work. Live qualification stays with T2.',
+                'None. T2 is complete; do not repeat its implementation.'):
+            with self.subTest(declaration=declaration):
+                todo.write_text(body.replace('Dependencies: None', 'Dependencies: ' + declaration) +
+                                body.replace('# TODO\n\n## Now', '## Next').replace('T1:', 'T2:'))
+                result = self.retry()
+                self.assertEqual(result['state'], 'ready_for_autowork', result)
+                self.assertEqual(result['selected_task']['id'], 'T1')
+
+    def test_dependency_notes_cannot_satisfy_missing_ledger_prerequisite(self):
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].append('T2')
+        data['tasks'].append(dict(data['tasks'][0], id='T2', status='done', section='Done'))
+        data['tasks'][0]['depends_on'] = ['T2']
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Dependencies: None',
+                        'Dependencies: None. Ownership: coordinate with T2.'))
+        result = self.retry()
+        self.assertEqual(result['state'], 'draft_saved', result)
+        self.assertIn('T1: Dependencies do not name T2', result['reasons'])
+
+    def test_dependency_lists_and_continued_requirements_remain_binding(self):
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].extend(['T2', 'T3'])
+        data['tasks'].extend([dict(data['tasks'][0], id=tid, section='Next') for tid in ('T2', 'T3')])
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        body = todo.read_text()
+        for value in ('\n    1. T2\n    2. T3', '\n    - T2.\n    - T3',
+                      'Required first. T2 must complete before starting; then T3.'):
+            with self.subTest(value=value):
+                todo.write_text(body.replace('Dependencies: None', 'Dependencies: ' + value) +
+                                ''.join(body.replace('# TODO\n\n## Now', '## Next').replace('T1:', tid + ':')
+                                        for tid in ('T2', 'T3')))
+                result = self.retry()
+                self.assertEqual(result['state'], 'draft_saved', result)
+                for tid in ('T2', 'T3'):
+                    self.assertIn(f'T1: Dependencies name {tid} absent from ledger', result['reasons'])
+
     def test_reopened_todo_task_prevents_selecting_another_task(self):
         ledger = self.consumer / 'goals.json'
         data = json.loads(ledger.read_text())
@@ -145,6 +198,25 @@ class RetrySelectionTests(unittest.TestCase):
         (self.consumer / 'docs/coordination/worktree-registry.jsonl').write_text('{}\n')
         with self.assertRaisesRegex(ValueError, 'invalid worktree registry'):
             self.retry()
+
+    def test_registry_diagnostic_locates_bad_record_without_disclosing_contents(self):
+        self.claim(status='INTEGRATED')
+        path = self.consumer / 'docs/coordination/worktree-registry.jsonl'
+        valid = path.read_text()
+        for invalid, detail in (
+                (json.dumps({'task': 'T1', 'owner': 'fixture', 'status': 'INTEGRATED'}), 'worktree'),
+                ('{"private_note": "fixture-do-not-disclose",', 'malformed JSON'),
+                ('[]', 'expected object')):
+            with self.subTest(invalid=invalid):
+                path.write_text(valid + '\n' + invalid + '\n')
+                before = path.read_bytes()
+                with self.assertRaises(ValueError) as raised:
+                    self.retry()
+                message = str(raised.exception)
+                self.assertIn('docs/coordination/worktree-registry.jsonl:3', message)
+                self.assertIn(detail, message)
+                self.assertNotIn('fixture-do-not-disclose', message)
+                self.assertEqual(path.read_bytes(), before)
 
     def test_named_gated_task_still_reports_repairable_contract_defects(self):
         path = self.consumer / 'goals.json'

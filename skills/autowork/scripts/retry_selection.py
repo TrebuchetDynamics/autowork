@@ -22,13 +22,21 @@ def registered_claims(repo):
     """Read the repository's append-only claims; never infer release from age."""
     blob = goals.checked_bytes(Path(repo) / REGISTRY)
     latest = {}
-    for line in (blob or b'').decode('utf-8').splitlines():
+    for number, line in enumerate((blob or b'').decode('utf-8').splitlines(), 1):
         if not line.strip():
             continue
-        row = json.loads(line)
-        if not isinstance(row, dict) or any(not isinstance(row.get(k), str) or not row[k]
-                for k in ('task', 'worktree', 'status', 'owner')):
-            raise ValueError('invalid worktree registry claim; reconcile repository ownership')
+        location = f'invalid worktree registry {REGISTRY}:{number}'
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f'{location}: malformed JSON; reconcile repository ownership') from exc
+        if not isinstance(row, dict):
+            raise ValueError(f'{location}: expected object; reconcile repository ownership')
+        missing = [key for key in ('task', 'worktree', 'status', 'owner')
+                   if not isinstance(row.get(key), str) or not row[key]]
+        if missing:
+            raise ValueError(f'{location}: nonempty string required for {", ".join(missing)}; '
+                             'reconcile repository ownership')
         latest[(row['task'], row['worktree'])] = row
     # Completed/reviewed candidates still need owner integration. Only explicit
     # release/integration ends this adapter's hold, and native checks still run.
