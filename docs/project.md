@@ -48,9 +48,12 @@ user message, queued as a follow-up when the session is busy.
 
 Hermes publishes `plan-with-me`, `plan-for-me`, `docs-sync` and `autoresearch`
 from their matching source directories. The retired repo-interview and repo-docs
-commands are not registered. The portable package still exposes Grill Me as a
-separate skill; this catalog difference is tracked as TOOLSET-001, not described
-as already unified. Shared protocols retain their existing helper/reference paths.
+commands are not registered. Portable discovery exposes the same primary names;
+Grill Me is a Plan With Me challenge reference rather than a separate public skill.
+Pi retains `/grill_me` compatibility. Independent Autoresearch and all 13 selectors
+remain available; its plan selector routes to Plan For Me without a routing loop.
+Shared protocols retain their existing helper/reference paths. Local package
+discovery is distinct from model execution and cross-host live qualification.
 
 ## Data and trust boundaries
 
