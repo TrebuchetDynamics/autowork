@@ -17,7 +17,7 @@ TOOLSET-008 remains an owner policy question. Existing order is preserved, not a
 ### TOOLSET-001 — Align portable skill discovery with the current public workflows
 
 - [ ] TOOLSET-001 — Align portable skill discovery with the current public workflows
-- Status: open
+- Status: in_progress; matches the existing ledger and recorded handoff, not a completion claim.
 - Goal: PORTABLE — Consistent primary workflow names across Hermes, Codex and Pi.
 - Sources: [accepted scope](docs/project.md#accepted-requirements), [public workflow mapping](docs/workflows.md), [portable adapters](adapters/skills/COMMON.md), [Pi registration](adapters/pi.mjs).
 - Evidence: Hermes folds Grill Me into Plan With Me and publishes Plan For Me;
@@ -33,7 +33,8 @@ TOOLSET-008 remains an owner policy question. Existing order is preserved, not a
 - Checks: `python3 -m unittest discover -s tests -p test_portable_package.py`;
   `node --test tests/portable_pi.test.mjs`; native installation/discovery in temporary homes.
 - Dependencies: None.
-- Ownership: Next authorized Autowork coordinator; no active claim recorded here.
+- Ownership: Existing Autowork handoff recorded; preserve its claim and verify live
+  ownership before any resume or new dispatch. This docs pass does not take ownership.
 
 ## Next
 

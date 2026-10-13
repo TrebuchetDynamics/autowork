@@ -36,7 +36,7 @@ unattended completion; verification must distinguish dispatch, execution and del
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
 | Autowork recovery | [planning decision](../skills/autowork/scripts/backlog_plan.py), [cycle](../skills/autowork/scripts/owner_cycle.py) | Return bounded recovery actions; the agent executes them and reports actual results |
-| Task index | [goals helper](../skills/docs-sync/scripts/goals.py) | Validate and update an existing goals.json and render its TODO coverage block; full task bodies remain documentation |
+| Task index and history | [goals helper](../skills/docs-sync/scripts/goals.py), [archive helper](../skills/docs-sync/scripts/todo_archive.py) | Validate and update goals.json, render TODO coverage and archive explicitly closed, ledger-done bodies under the canonical lock; open bodies and ledger history remain |
 | Codex package | [manifest](../.codex-plugin/plugin.json), [marketplace](../.agents/plugins/marketplace.json) | Install portable skills into Codex; no Hermes gateway or configuration dependency |
 | Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands and pass literal arguments to portable workflows |
 | Portable behavior | [host contract](../adapters/skills/COMMON.md) | Use the current host's tools; preserve permissions, memory and credentials |
@@ -51,6 +51,40 @@ from their matching source directories. The retired repo-interview and repo-docs
 commands are not registered. The portable package still exposes Grill Me as a
 separate skill; this catalog difference is tracked as TOOLSET-001, not described
 as already unified. Shared protocols retain their existing helper/reference paths.
+
+## Interface and state contract
+
+The [workflow registrar](../workflow_commands.py) and
+[research registrar](../autoresearch_commands.py) own Hermes aliases and literal
+argument routing. [Pi registration](../adapters/pi.mjs) owns portable commands.
+These are conversation interfaces, not an owned HTTP service; there is no Toolset
+OpenAPI contract. Collisions preserve the existing command owner, as described in
+[workflows](workflows.md#commands).
+
+The task index uses version 1 JSON with goals, tasks, IDs, statuses, dependencies
+and optional milestone focus. [The helper](../skills/docs-sync/scripts/goals.py)
+rejects unsupported versions, duplicate keys and inconsistent membership. Goal
+completion requires executed passing evidence and all linked tasks done. Full
+scope, acceptance, dependencies and ownership stay in TODO task bodies; rendering
+coverage does not reconstruct those bodies or prove their acceptance.
+
+Ledger operations share a Git-common-directory advisory lock and support revision
+checks. A linked worktree needs explicit canonical targeting unless a registered
+backlog authority is already bound. Stale revisions and unsafe paths are refused;
+cooperating locks do not prevent an uncoordinated direct writer. See
+[concurrent maintenance](../skills/docs-sync/references/concurrent-maintenance.md).
+
+Rendering also selects the established archive and moves only explicitly closed,
+ledger-done bodies. Review both TODO and that archive after rendering, preserve
+historical bytes and verify unchanged second-pass output. Ambiguous or conflicting
+completion metadata stays live. See the
+[archive contract](../skills/docs-sync/references/todo-archive.md) and
+[offline checks](testing.md#archive-and-ownership-regression-checks).
+
+Setup, upgrade, migration and removal procedures remain with the
+[installation runbook](installation.md) and [recovery guide](uninstall.md).
+Preview success is not rollback protection; no schema initialization interface or
+live qualification is added by documenting these existing contracts.
 
 ## Data and trust boundaries
 
