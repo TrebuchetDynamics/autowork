@@ -16,3 +16,9 @@ TODO.md tasks through [Docs Sync](../docs-sync/SKILL.md), including acceptance,
 dependencies and Now/Next ordering. Planning does not implement or dispatch workers.
 Explicit read-only/chat-only/no-write/dry-run requests save nothing. Report saved
 paths, task IDs and the next executable task, distinguishing proposals from ready work.
+
+Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
+resume accepted decisions and existing task IDs, investigate only missing evidence,
+persist one affected batch, and reuse input-bound checks. Unchanged findings need
+no new docs pass. Follow this host adapter for execution authority; the shared
+contract does not require Hermes-native tooling on this host.

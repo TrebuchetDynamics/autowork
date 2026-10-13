@@ -140,6 +140,57 @@ class PassWorkspaceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(marker.exists())
 
+    def test_registration_recovers_only_exact_original_handoff_without_environment(self):
+        import hashlib, json, os, sys
+        _, manifest, target = self.worker_transition_fixture()
+        root = Path(self.tmp.name)
+        pinned = root / 'manifest.json'
+        pinned.write_text(json.dumps(manifest))
+        pin = hashlib.sha256(pinned.read_bytes()).hexdigest()
+        expected = dict(card='card-1', task='T1', workspace=str(target),
+                        base=manifest['candidate_identity']['base_commit'], scope=['owned.py'])
+        fields = {key: key for key in expected}
+        registry = root / 'registry.jsonl'
+        registry.write_text(json.dumps(expected)+'\n')
+        requirement = root / 'requirement.json'
+        requirement.write_text(json.dumps(dict(registry=str(registry),
+            sha256=hashlib.sha256(registry.read_bytes()).hexdigest(), fields=fields, expected=expected)))
+        handoff = dict(task_id='card-1', goal_task='T1', pass_manifest_sha256=pin,
+            pass_manifest_path=str(pinned), pass_manifest=manifest, workspace=str(target),
+            source_workspace=manifest['source_workspace'])
+        receipt = root / 'goal-handoff.json'
+        command = [sys.executable, str(Path(__file__).with_name('pass_workspace.py')),
+            '--manifest', str(pinned), '--manifest-sha256', pin, '--workspace', str(target),
+            '--writer-registration', str(requirement), '--writer-registration-sha256',
+            hashlib.sha256(requirement.read_bytes()).hexdigest()]
+        env = {k:v for k,v in os.environ.items() if k != 'HERMES_KANBAN_TASK'}
+        def run():
+            return subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(run().returncode, 2)  # No receipt: do not guess.
+        for key, value in [('task_id','foreign'), ('goal_task','T2'),
+                           ('pass_manifest_sha256','0'*64), ('workspace',str(root))]:
+            receipt.write_text(json.dumps(dict(handoff, **{key:value})))
+            self.assertEqual(run().returncode, 2, key)
+        receipt.write_text(json.dumps(handoff))
+        result = run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['outcome'], 'worker_start_admitted')
+        env['HERMES_KANBAN_TASK'] = 'foreign'
+        self.assertEqual(run().returncode, 2)  # Never override conflicting runtime context.
+        env.pop('HERMES_KANBAN_TASK')
+        (root / 'handoffs').mkdir()
+        (root / 'handoffs/conflict.json').write_text(json.dumps(dict(handoff, task_id='other')))
+        self.assertEqual(run().returncode, 2)
+        (root / 'handoffs/conflict.json').unlink()
+        receipt.rename(root / 'handoffs/original.json')
+        result = run()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Successful guard must not manufacture task identity for subprocesses.
+        child = subprocess.run(command + ['--', sys.executable, '-c',
+            "import os; assert 'HERMES_KANBAN_TASK' not in os.environ"],
+            env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(child.returncode, 0, child.stderr)
+
     def test_worker_rejects_foreign_candidate_blob_despite_clean_matching_worktree(self):
         import json
         module, manifest, target = self.worker_transition_fixture()

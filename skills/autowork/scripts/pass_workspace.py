@@ -344,8 +344,8 @@ def run_main_only(manifest, command, *, ownership_guard=None, timeout=180):
         os.close(fd)
 
 
-def legacy_admitted_task(manifest_path, digest, manifest, workspace):
-    """Recover a missing task binding only from the exact existing handoff receipt."""
+def original_handoff_binding(manifest_path, digest, manifest, workspace):
+    """Recover transport context, not authority, from an exact saved handoff."""
     journal = Path(manifest_path).parent
     paths = [journal / 'goal-handoff.json', *sorted((journal / 'handoffs').glob('*.json'))]
     matches = set()
@@ -363,10 +363,27 @@ def legacy_admitted_task(manifest_path, digest, manifest, workspace):
                 and row.get('source_workspace') == manifest['source_workspace']
                 and isinstance(row.get('task_id'), str) and row['task_id']
                 and isinstance(row.get('goal_task'), str) and row['goal_task']):
-            matches.add(row['goal_task'])
+            matches.add((row['goal_task'], row['task_id']))
     if len(matches) > 1:
         raise ValueError('Conflicting original handoff task bindings')
-    return next(iter(matches), None)
+    return next(iter(matches), (None, None))
+
+
+def legacy_admitted_task(manifest_path, digest, manifest, workspace):
+    return original_handoff_binding(manifest_path, digest, manifest, workspace)[0]
+
+
+def registration_card(manifest_path, digest, manifest, workspace):
+    # Terminal backends may filter the worker environment. The saved handoff
+    # supplies the same identifier without exporting or forging process identity.
+    # This is a registration consistency check, never native lease authentication.
+    card = os.environ.get('HERMES_KANBAN_TASK')
+    if card:
+        return card
+    task, card = original_handoff_binding(manifest_path, digest, manifest, workspace)
+    if task != manifest.get('goal_task') or not card:
+        raise ValueError('Missing task context: no exact original handoff for registration')
+    return card
 
 
 def check_registration(manifest, workspace, requirement_path, digest, card):
@@ -411,7 +428,8 @@ def main():
             if not (args.writer_registration and args.writer_registration_sha256):
                 raise ValueError('Registration requirement and hash must be supplied together')
             check_registration(manifest, args.workspace, args.writer_registration,
-                               args.writer_registration_sha256, os.environ.get('HERMES_KANBAN_TASK'))
+                               args.writer_registration_sha256, registration_card(
+                                   args.manifest, args.manifest_sha256, manifest, args.workspace))
         except (ValueError, OSError, KeyError, TypeError) as error:
             parser.exit(2, str(error) + '\n')
     admitted_task = (None if manifest.get('goal_task') or manifest.get('planning_context') else

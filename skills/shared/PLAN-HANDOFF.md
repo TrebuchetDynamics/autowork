@@ -6,6 +6,55 @@ acceptance and sources. Preserve existing task/goal IDs and completed history.
 Repo-docs reconciles accepted work into `goals.json` and complete `TODO.md` task
 bodies; rendered goal coverage alone is not an executable task.
 
+## One planning pass, one handoff
+
+Plan With Me owns missing user decisions. Plan For Me owns bounded investigation
+and engineering choices. Docs Sync owns persistence. Autowork owns execution and
+closeout. These are responsibilities within the same conversation, not mandatory
+separate agents or repeated startup passes. Do not chain all four for a ready task.
+
+Resume from the current TODO task, accepted section and saved findings. Read only
+relevant changes since that evidence: scope/decisions, source and tests, dependencies,
+repository instructions and task state. A new invocation alone invalidates nothing.
+Do not ask settled questions, regenerate accepted plans or run a broad docs/graph
+pass to rediscover the same facts. If freshness cannot be established, inspect the
+specific uncertain inputs; do not assume unchanged HEAD covers dirty files.
+
+Use the existing task body or planning receipt for a compact continuation:
+- task IDs and canonical plan section;
+- decided scope/exclusions, remaining material questions and their affected tasks;
+- evidence paths and source revision/file fingerprints where available;
+- changed documents, exact checks/results and their input bindings;
+- next executable action and any genuine retry condition.
+No new mandatory file, duplicate tracker or ceremonial approval form. Explicit
+answers and delegated engineering choices carry forward. Proposals remain proposed;
+never infer acceptance from silence or label an entire draft accepted from one answer.
+
+Investigate only the uncertainty preventing the next action. Stop when evidence
+supports a choice within authorized scope and observable acceptance/checks can be
+written. Do not run experiments, interview the user or compare more alternatives
+when conventions and current evidence already answer the question. Preserve a
+material unknown only on its dependent tasks; independent accepted work stays ready.
+
+Persist one coherent batch through narrow Docs Sync, not a pass per finding or
+skill transition. During a long interview, save meaningful decisions for continuity,
+without running the full ledger pipeline after each answer. If no findings, intent,
+implementation or task inputs changed, reuse the saved handoff; do not render,
+rewrite dates, duplicate tasks or create an empty planning commit.
+
+After actual doc/task changes, run the applicable formatter, validator, renderer,
+links and consumer check once on the final batch. Carry their exact results into
+the next stage. Repeat only checks invalidated by changed inputs, failed evidence
+or repository-required fresh checks. A cached readiness result is never native
+admission: Autowork still checks current source, ownership and candidate before
+dispatch. Report stale receipts honestly rather than repinning them.
+
+Standalone planning remains planning-only. When Autowork invoked planning under
+existing implementation authority, return the resolved decision and ready task to
+that same coordinator in the same occurrence. Do not ask “implement now?”, start
+a second planning cycle, or spawn a competing worker. Genuine product decisions
+or external authority remain explicit; choose routine reversible details yourself.
+
 Resolve `goals.py` from the sibling repo-docs skill as described in the
 [shared contract](COMMON-CONTRACT.md). Use its supported mutations and validate
 and render the canonical ledger; preserve concurrency/revision guards. Check the

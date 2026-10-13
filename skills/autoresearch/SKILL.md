@@ -99,8 +99,14 @@ loop or ask again for settled implementation choices.
 
 ## Document and schedule through repo-docs
 
-This handoff is required after planning/discovery and at each bounded execution
-checkpoint, including plateau, failure and completion. Load
+Apply the [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
+Persist new actionable findings at a bounded checkpoint; unchanged checkpoints
+reuse their existing receipt and do not trigger another documentation pass.
+A new investigation result does not automatically require a docs edit: if the
+existing task and docs already cover its conclusion and scope, acceptance, sources
+and dependencies remain correct, return the decision/evidence to the same Autowork
+coordinator without invoking Docs Sync. Keep any needed execution receipt in the
+existing task journal. When documentation or backlog actually needs a change, load
 `hermes-toolset:docs-sync` (or the verified sibling SKILL.md) in **narrow Maintain**
 for affected owners; do not start a whole-repository bootstrap implicitly.
 
@@ -120,7 +126,7 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
    unknown; produce implementation plus verification slices for known gaps.
    Keep speculative product ideas Proposed/Needs decision unless the user's
    request already supplies acceptance. No invented approval or priority changes.
-4. Run repo-docs `goals.py fmt`, `validate`, `render` and consumer `backlog-check`
+4. After the final changed batch, run repo-docs `goals.py fmt`, `validate`, `render` and consumer `backlog-check`
    against the actual canonical repository and accepted source heading. Repair
    supported missing metadata; never fabricate `Status: Accepted`. Report the
    exact state/exit, touched task IDs and eligible next slice. Repeat reconciliation

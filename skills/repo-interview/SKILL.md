@@ -30,6 +30,14 @@ For “grill me”, “challenge this plan” or the compatibility `/grill_me` c
 read [the questioning protocol](../grill-me/SKILL.md) on demand. This is a mode of
 Plan With Me, not a second required planning workflow.
 
+## Resume without repeating the interview
+
+Apply the [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
+Resume saved answers; ask only material unresolved choices. Keep a question scoped
+to the tasks it affects. An unanswered optional feature must not hold independent
+accepted tasks. Save meaningful answers during the interview, then batch final
+documentation/ledger checks once; do not restart Docs Sync after each response.
+
 ## Learn enough to ask a useful question
 
 Read repository instructions, the user's current request, relevant existing docs,

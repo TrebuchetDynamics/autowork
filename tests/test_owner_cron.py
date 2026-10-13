@@ -31,6 +31,16 @@ class OwnerCronTests(unittest.TestCase):
         legacy = scope + module.MARKER + 'process owner inbox/replies; proposal ledger mode'
         self.assertNotIn('process owner inbox/replies', module.owner_prompt(legacy, False))
 
+    def test_delivery_batches_and_reports_are_in_generated_cron_prompt(self):
+        prompt = load().owner_prompt('Offline removal only; no deployment.', True)
+        for rule in ('one coherent delivery batch', 'not one card per file',
+                     'approved exact-source checks', 'lead with delivered behavior',
+                     'parent task remains open', 'reconcile.py --compact',
+                     'two unchanged blocked observations', 'Keep Hermes Agent unchanged'):
+            self.assertIn(rule, prompt)
+        self.assertIn('Offline removal only; no deployment.', prompt)
+        self.assertIn('Do not push or deploy', prompt)
+
     def test_scheduled_execution_consumes_plans_and_approved_results(self):
         module = load()
         prompt = module.owner_prompt('Offline work authorized. Preserve live-operation exclusions.', True)

@@ -8,6 +8,7 @@ explicit --repo enables independent local main/ancestry verification.
 """
 import argparse
 import json
+import hashlib
 from pathlib import Path
 from start_goal import run, profile_home
 from delivery_state import evaluate
@@ -54,7 +55,20 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
     current_evidence = (metadata.get('delivery_evidence')
                         if ownership == 'current_profile' and isinstance(metadata, dict) else None)
     delivery = evaluate(current_evidence, repo)
+    # A next action is a coordinator instruction, not proof of process liveness,
+    # review approval, integration authority, or completed acceptance.
+    if task['status'] in {'running', 'review'}:
+        next_action = 'observe_current_run'
+    elif task['status'] in {'ready', 'todo'}:
+        next_action = 'observe_queued_card'
+    elif task['status'] in {'done', 'reviewed'}:
+        next_action = 'reconcile_task_and_select' if delivery['delivered'] else 'verify_and_integrate'
+    elif task['status'] in {'blocked', 'failed', 'changes_requested'}:
+        next_action = 'recover_original_card'
+    else:
+        next_action = 'reconcile_unknown_state'
     return {'profile': profile, 'task_id': task_id, 'board_id': 'default', 'status': task['status'],
+            'next_action': next_action,
             'delivery': delivery, 'human_report': delivery['progress'], 'selection_required': True,
             'run_profile': owner, 'run_ownership': ownership, 'card_run_observed': bool(runs),
             'title': task.get('title'), 'run_id': latest.get('id'),
@@ -69,6 +83,7 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', required=True)
+    parser.add_argument('--compact', action='store_true', help='Omit raw metadata/event and bound summary; omit flag for full readback')
     parser.add_argument('--task-id')
     parser.add_argument('--repo', type=Path, help='Local Git repository for main ancestry verification')
     parser.add_argument('--report-state', type=Path, help='Report-only cache; never skips reconciliation')
@@ -79,20 +94,49 @@ def main():
     cache = args.report_state or home / 'autowork' / 'reconcile-report.json'
     # Store only the previous validated report projection, not raw worker prose.
     projection = {k: result.get(k) for k in
-                  ('profile', 'board_id', 'task_id', 'status', 'run_ownership', 'delivery')}
+                  ('profile', 'board_id', 'task_id', 'status', 'run_ownership', 'run_id',
+                   'worker_outcome', 'next_action', 'delivery')}
+    projection['evidence_digest'] = hashlib.sha256(json.dumps(
+        {'metadata': result.get('metadata'), 'event': result.get('latest_event'),
+         'error': result.get('error'), 'summary': result.get('summary')}, sort_keys=True).encode()).hexdigest()
     previous = None
     if cache.exists():
         try:
             previous = json.loads(cache.read_text())
         except (OSError, ValueError):
             pass  # A corrupt report cache cannot prevent readback or discovery.
+    previous_count = previous.pop('_blocked_observations', 0) if isinstance(previous, dict) else 0
+    if type(previous_count) is not int or previous_count < 0:
+        previous_count = 0
+    blocked_count = ((previous_count + 1 if previous == projection else 1)
+                     if result.get('next_action') == 'recover_original_card' else 0)
+    result['changed_fields'] = sorted(k for k, v in projection.items()
+                                      if not isinstance(previous, dict) or previous.get(k) != v)
+    result['continuation'] = {
+        'task_id': result.get('task_id'), 'run_id': result.get('run_id'),
+        'phase': result.get('status'), 'next_action': result.get('next_action'),
+        'candidate': result.get('delivery', {}).get('candidate'),
+        'fresh_readback_required': True,
+        'unchanged_blocked_observations': blocked_count,
+        'follow_up': 'change_recovery_approach' if blocked_count >= 2 else result.get('next_action'),
+        'reuse': 'Resume this phase; read changed inputs and outstanding acceptance only',
+        'retry_condition': ('Changed failing inputs or a different supported repair; never repeat an identical failure'
+                            if result.get('next_action') == 'recover_original_card' else None)}
     if previous == projection:
         result['human_report'] = None
     result['report_changed'] = previous != projection
     cache.parent.mkdir(parents=True, exist_ok=True)
     temporary = cache.with_suffix(cache.suffix + '.tmp')
-    temporary.write_text(json.dumps(projection, sort_keys=True) + '\n')
+    temporary.write_text(json.dumps(dict(projection, _blocked_observations=blocked_count), sort_keys=True) + '\n')
     temporary.replace(cache)
+    if args.compact:
+        result.pop('metadata', None)
+        result.pop('latest_event', None)
+        summary = result.get('summary')
+        result['summary_truncated'] = isinstance(summary, str) and len(summary) > 1200
+        if result['summary_truncated']:
+            result['summary'] = summary[:1200]
+        result['full_readback'] = 'Omit --compact to inspect full metadata and summary before an evidence-dependent action'
     print(json.dumps(result, indent=2))
 
 

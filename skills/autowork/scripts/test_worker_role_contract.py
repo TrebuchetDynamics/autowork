@@ -8,6 +8,14 @@ import start_goal as goal
 
 
 class WorkerRoles(unittest.TestCase):
+    def test_worker_finishes_all_in_scope_consumers_before_review(self):
+        body = goal.build_task_body('Objective: Retire obsolete transport\nScope: three named consumers, runners and tests; no deployment')
+        for requirement in ('Complete all named consumers', 'Do not stop after the first file',
+                            'no silent scope expansion', 'Changed inputs invalidate affected evidence'):
+            self.assertIn(requirement, body)
+        self.assertIn('three named consumers, runners and tests; no deployment', body)
+        self.assertIn('One native review lane', body)
+
     def test_cli_explicit_proposal_validation_without_native_calls(self):
         import subprocess
         import sys

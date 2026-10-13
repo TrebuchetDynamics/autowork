@@ -15,6 +15,22 @@ class ReceiptTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_terminal_metadata_is_removed_from_execution_and_reuse_identity(self):
+        import os
+        from unittest.mock import patch
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'input').write_text('same')
+            command = [sys.executable, '-c', "import os; assert 'TERM_SESSION_ID' not in os.environ"]
+            with patch.dict(os.environ, TERM_SESSION_ID='first', PWD=str(root)):
+                receipt = module.execute(root, ['input'], command, 5)
+            self.assertEqual(receipt['outcome'], 'passed')
+            with patch.dict(os.environ, TERM_SESSION_ID='second', PWD=str(root)):
+                self.assertTrue(module.reusable(receipt, root, command))
+            with patch.dict(os.environ, HERMES_KANBAN_TASK='different', PWD=str(root)):
+                self.assertFalse(module.reusable(receipt, root, command))
+
     def test_runtime_fingerprints_actual_execution_environment(self):
         module = self.load()
         import os
@@ -119,6 +135,27 @@ class ReceiptTests(unittest.TestCase):
             result = subprocess.run(base, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 1)
             self.assertEqual(receipt.read_bytes(), before)
+
+    def test_run_or_reuse_executes_once_and_preserves_stale_evidence(self):
+        import subprocess, json
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'input').write_text('fixture')
+            receipt = root/'receipt.json'
+            argv = [sys.executable, module.__file__, 'run-or-reuse', '--workspace', str(root),
+                    '--receipt', str(receipt), '--path', 'input', '--', sys.executable, '-c', 'pass']
+            first = subprocess.run(argv, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(json.loads(first.stdout)['execution'], 'executed')
+            saved = receipt.read_bytes()
+            second = subprocess.run(argv, capture_output=True, text=True)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertEqual(json.loads(second.stdout)['execution'], 'reused')
+            (root/'input').write_text('changed')
+            third = subprocess.run(argv, capture_output=True, text=True)
+            self.assertEqual(third.returncode, 2)
+            self.assertEqual(receipt.read_bytes(), saved)
 
     def test_cli_reuse_cannot_omit_external_input_contract(self):
         import subprocess

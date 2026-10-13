@@ -54,6 +54,16 @@ supported work; silence/defaults are not approval.
 This skill authorizes no code/install/production/instruction/commit/push/release
 work independently. Inherit coding-task scope; examples are not execution orders.
 
+## Incremental caller handoff
+
+Apply the [single-pass handoff](../shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
+A planner or Autowork caller supplies its task, findings and affected owners; reuse
+that verified context and inspect the changed inputs instead of rediscovering the
+repository. Batch supported edits, then validate the final batch once. Unchanged
+findings require no write or render. Return paths, task IDs, input-bound checks and
+the next action to the caller; do not invoke another planner to restate its plan.
+Explicit bare Bootstrap scope still covers all applicable document roles.
+
 ## 2. Discover and coordinate
 
 Identify boundaries/instructions/intent/snapshot and actual owners/generated inputs.

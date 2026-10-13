@@ -19,7 +19,9 @@ isolation, and preserve all unrelated edits.
    [Plan For Me](../plan-for-me/SKILL.md) only when planning/research is needed;
    an obvious repair needs no extra ceremony. Record a complete TODO task via
    [Docs Sync](../docs-sync/SKILL.md), then execute within the user's scope.
-3. Implement the smallest useful slice, run discriminating checks, fix failures and
+3. Batch connected consumers, runners and tests into one useful outcome; split
+   only for concrete dependency, concurrency, authority or budget boundaries.
+   Implement the smallest complete outcome, run discriminating checks, fix failures and
    satisfy required review. Separate offline implementation from live qualification.
    Use installed specialist skills only for concrete gaps, not a mandatory phase chain.
 4. Commit attributable verified work locally unless forbidden. Use ordinary Git and
@@ -42,3 +44,9 @@ For repeated blockage, repair the ordinary metadata/environment issue, choose
 independent accepted work, or identify one precise missing external input. Do not
 repeat the same audit or treat an old ownership label as perpetual denial. Never
 claim unattended scheduling, independent review or live qualification without evidence.
+
+For partial delivery, lead with the delivered behavior and commit stage; report the
+open parent and remaining acceptance separately. Reuse unchanged, source-bound
+checks only when policy allows; changed inputs and mandatory gates need checks.
+Finish authorized closeout and continue the requested scope without a new approval
+round. Do not manufacture parent completion or silently widen an active task.

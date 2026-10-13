@@ -39,6 +39,96 @@ class ConsultationTests(unittest.TestCase):
                         m.run_all(root, root / 'maintenance/scoped', 'self', 'hermes', 10, profiles=scope)
                     call.assert_not_called()
 
+    def history(self, root, name, rows):
+        import sqlite3
+        home = root / 'profiles' / name
+        home.mkdir(parents=True)
+        with sqlite3.connect(home / 'state.db') as db:
+            db.execute('CREATE TABLE sessions (id TEXT, source TEXT, title TEXT, cwd TEXT, git_repo_root TEXT, profile_name TEXT, parent_session_id TEXT, started_at REAL)')
+            db.executemany('INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?)', rows)
+        return home / 'state.db'
+
+    def test_consultation_heavy_history_binds_original_without_transcripts(self):
+        from unittest.mock import patch
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            original = ('original', 'telegram', 'Project repair', '/repo/one', '/repo/one', 'one', None, 1)
+            rows = [original] + [(str(i), 'oneshot', 'Shared hermes-toolset feedback', '/maintenance', None, 'one', None, i) for i in range(2, 502)]
+            rows += [('older', 'cli', 'Older project', None, None, 'one', None, 0),
+                     ('cron', 'cron', 'Project repair', None, None, 'one', None, 600),
+                     ('worker', 'kanban', 'Project repair', None, None, 'one', None, 601),
+                     ('synthetic-cli', 'cli', 'Propose shared hermes-toolset improvements', None, None, 'one', None, 602),
+                     ('foreign', 'cli', 'Foreign project', None, None, 'two', None, 603),
+                     ('child', 'telegram', 'Project repair', None, None, 'one', 'original', 604)]
+            db = self.history(root, 'one', rows)
+            before = db.read_bytes()
+            evidence = m.original_evidence('one', root)
+            self.assertEqual(evidence['session_id'], 'original')
+            self.assertEqual(evidence['cwd'], '/repo/one')
+            self.assertEqual(db.read_bytes(), before)
+            with patch.object(m, 'execute', return_value={'stdout': '{"type":"result","exit_code":0,"text":"ok"}', 'stderr': '', 'returncode': 0, 'timed_out': False}) as run:
+                result = m.consult('one', root, 'hermes', 65)
+            run.assert_called_once()
+            prompt = run.call_args.args[0][-1]
+            self.assertIn('session_id', prompt)
+            self.assertIn('original', prompt)
+            self.assertIn('Do not keyword-search', prompt)
+            self.assertIn('only for profile one', prompt)
+            self.assertNotIn('Foreign project', prompt)
+            self.assertEqual(result['original_evidence'], evidence)
+            self.assertEqual(run.call_args.args[3], 75)
+
+    def test_history_unavailable_is_explicit_and_does_not_search_or_request_links(self):
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+            self.assertFalse((root / 'profiles').exists())
+            self.history(root, 'one', [('only', 'oneshot', 'Feedback', None, None, 'one', None, 1)])
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+            self.assertIn('Do not search', m.QUESTION)
+            self.assertIn('Do not ask the user', m.QUESTION)
+
+    def test_evidence_is_bounded_redacted_and_profile_isolated(self):
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            self.history(root, 'one', [('a', 'cli', 'token=private-value ' + 'x' * 1000, None, None, None, None, 1)])
+            other = self.history(root, 'two', [('b', 'cli', 'Other project', None, None, 'two', None, 2)])
+            evidence = m.original_evidence('one', root)
+            self.assertNotIn('private-value', str(evidence))
+            self.assertLessEqual(len(evidence['title']), 240)
+            self.assertEqual(evidence['session_id'], 'a')
+            db = root / 'profiles/one/state.db'
+            db.unlink()
+            db.symlink_to(other)
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+            for name in ('default', '../two', 'One'):
+                with self.assertRaises(ValueError):
+                    m.original_evidence(name, root)
+
+    def test_unusable_history_fails_closed(self):
+        import sqlite3
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            db = self.history(root, 'one', [('bad id', 'cli', 'Project', None, None, 'one', None, 1)])
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+            with sqlite3.connect(db) as connection:
+                connection.execute('DROP TABLE sessions')
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+            db.write_bytes(b'not a sqlite database')
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+            db.unlink()
+            (root / 'profiles/one').rmdir()
+            (root / 'profiles').rmdir()
+            foreign = root / 'foreign'
+            foreign.mkdir()
+            (root / 'profiles').symlink_to(foreign, target_is_directory=True)
+            self.history(root, 'one', [('other', 'cli', 'Foreign', None, None, 'one', None, 1)])
+            self.assertEqual(m.original_evidence('one', root)['status'], 'unavailable')
+
     def test_filtered_environment(self):
         m = self.load()
         env = m.filtered_env(Path('/home/owner/.hermes'), {'PATH': '/bin', 'HOME': '/foreign', 'OPENAI_API_KEY': 'secret', 'GIT_DIR': '/foreign/git', 'HERMES_PROFILE': 'wrong', 'SSH_AUTH_SOCK': '/sock', 'HTTPS_PROXY': 'http://user:pass@proxy'})

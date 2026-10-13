@@ -20,6 +20,8 @@ updates TODO.md and retries execution; never wait for the user to invoke it.
 ## When to use
 
 Default /autowork hands off one bounded native goal worker (50 turns by default; explicit 100).
+Scope it as a [coherent delivery batch](references/delivery-batches.md), not one card
+per file. Decide routine scope/order/check choices and continue authorized closeout.
 Use [the engineering cycle](../shared/ENGINEERING-CYCLE.md) for skill routing and
 review-gated reconciliation. Apply its autonomous decision rules and phase/domain
 skill menu; carry material decisions and actually applied methods into the worker contract.
@@ -48,8 +50,10 @@ Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
    Reconcile new terminal results, then CONTINUE selection in the same occurrence.
    A completed card is not a stop condition. A genuinely live worker wins: reconcile
    its exact run; never enqueue overlapping work or steal its lease.
-   On EVERY idle occurrence inspect one bounded new seam; broad repository scope
-   permits independent maintenance beyond the held milestone.
+   Resume the saved continuation before discovery. Finish pending integration,
+   review rework or supported recovery first. Inspect a new seam only when no
+   actionable continuation or usable task remains; broad repository scope permits
+   independent maintenance beyond a genuinely held milestone.
    Empty queues, absent TODO/FIXME markers, green tests and unchanged HEAD do not
    prove work is absent. Implement the accepted next slice or fix an evidenced
    defect with a regression instead of repeating audits or ledger-only receipts. Silence is allowed only AFTER the required work search
@@ -126,8 +130,20 @@ Reconcile, select, hand off and stop. Delegate deep investigation, source
 re-verification and checks to the worker. Over budget: hand off the best candidate,
 or reply `[SILENT]` and leave a journal note for the next run.
 
-1. **Reconcile first.** Use `scripts/reconcile.py --profile <profile> [--task-id <id>]`
+1. **Reconcile first.** Use `scripts/reconcile.py --profile <profile> [--task-id <id>] --compact`
    once for the prior handoff; reuse its readback instead of repeating show/journal reads.
+   Omit `--compact` only when full evidence is needed for the next action.
+   Two unchanged blocked observations require a different supported repair,
+   independent authorized work, or one precise external input—not another identical retry.
+   Use `continuation` and `changed_fields` from its saved report projection to resume
+   the phase. Unchanged evidence is not a reason to redo planning or check suites.
+   Check relevant working files and ownership before acting; the report cache is
+   not an authorization or source-freshness proof. Preserve failed attempts and
+   retry only after changed inputs or a concrete different repair.
+   Follow its `next_action`: observe an active run without overlapping it; verify
+   approved terminal work and integrate under existing authority before selecting
+   more work; recover the original blocked card. A hint is not liveness or approval
+   evidence. Finish authorized closeout in this occurrence, not a later scheduled tick.
    Apply owner replies and report new terminal results. Preserve the original card and worker session
    after interruption; a new tick never licenses a replacement, budget reset or overlapping worker.
    Check live ownership again at dispatch (the helper does this under its lock).
@@ -178,3 +194,12 @@ References (load when steps 1–3 require): `references/discovery.md`,
 These proofs do not qualify native/provider execution.
 
 Named plan: [accepted-plan-execution.md](references/accepted-plan-execution.md). Explicit whole spec: `references/whole-spec-execution.md`.
+
+## Upstream boundary
+
+Hermes Agent stays unchanged. Missing authenticated runtime capabilities are not
+permission to patch upstream, export worker identity, manufacture claims or weaken
+admission. A saved handoff can restore registration context only, never authenticate
+a worker. Use supported coordinator/plugin controls; if a particular operation is
+unavailable, preserve that candidate and continue independent authorized work.
+Do not repeatedly request an exception to an explicit no-upstream-edits instruction.

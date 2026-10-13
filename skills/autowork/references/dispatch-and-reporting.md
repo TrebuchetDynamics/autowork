@@ -75,7 +75,7 @@ implementation details. Keep internal Kanban/card/run IDs and routine boilerplat
 in durable receipts unless needed for diagnosis.
 
 ```text
-<PROJECT / profile> — <OUTCOME>; <N> verified TODO completions since previous occurrence / completion count unverified
+<PROJECT / profile> — <OUTCOME>; <delivered behavior or current execution state>
 Action needed from you: <only for a genuine user-dependent blocker; exact action, target, reason and what resumes>.
 Task: TODO.md <ID> — <exact title> [<canonical task state or unverified>].
 This run: <concrete change or none>; checks: <actual result and material failures>.
@@ -113,7 +113,11 @@ report COMPLETED even with no new implementation by the picker. List its TODO ID
 and title as completed since the previous occurrence. Do not count the same completion again;
 an old done task or delivery-only update is not another completion. Without a
 trustworthy prior baseline, label the new-completion count unverified, not zero.
-If the baseline proves no new completions, say **0 TODO tasks completed**.
+If the baseline proves no new completions, record **0 TODO tasks completed** in
+the task-status detail. For verified partial delivery, lead with what was delivered
+and report the parent as open with its remaining acceptance. Do not headline a
+real delivery as zero progress or count a slice as a completed parent. See
+[delivery batching](delivery-batches.md).
 If completion evidence could not be read, say **completion count
 unverified** rather than guessing zero. If the task is known only by ID, show that ID
 and `title unverified`; if there is no verified task binding, say `Task: not identified`

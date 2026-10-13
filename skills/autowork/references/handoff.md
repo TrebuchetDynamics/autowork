@@ -5,6 +5,10 @@ and integrate without external owner acknowledgement. `owner` identifies the
 executor. Proposal/external-owner sections apply only to explicitly split roles;
 actual live-writer conflicts and source/acceptance checks remain mandatory.
 
+Apply [delivery batching](delivery-batches.md) before freezing Scope and Acceptance.
+One admitted card should finish a coherent outcome, including connected consumers
+and tests; a small file count is not an acceptance criterion.
+
 ## Explicit repository registration requirements
 
 Before implementation, inspect applicable repository instructions for required writer
@@ -28,7 +32,13 @@ The coordinator binds expected scope to the actual card contract, not a guessed 
 list. Pin the requirement SHA in the card, then append
 `--writer-registration /private/requirement.json --writer-registration-sha256 <sha>`
 to its original `pass_workspace.py` startup command. This checks registration before
-admission and binds it to the native HERMES_KANBAN_TASK, task, workspace and base.
+admission and binds it to the card, task, workspace and base. Use the inherited
+`HERMES_KANBAN_TASK` when present. If a terminal backend omits it, the guard
+recovers the card only from an exact original saved handoff matching the manifest
+path, hash, contents, source and worker workspace, and goal task. Missing or
+conflicting receipts still refuse admission. Do not export a guessed task ID.
+This verifies registration consistency; it does not authenticate a native process
+or replace runtime lease/ownership checks. It does not prove historical admission.
 It does not auto-discover prose requirements, create registrations or fence later
 registry changes. Repositories with other registry formats need their own verifier.
 

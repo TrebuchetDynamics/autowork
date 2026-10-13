@@ -157,3 +157,27 @@ command is required. Named task-family requests stay within that scope; explicit
 no-commit restrictions and live writers still apply. Unchanged inputs resume the
 saved plan rather than generating repeated planning reports. A planning receipt
 is not proof that a worker ran or a task completed.
+
+### Delivery batches and partial completion
+
+Autowork prepares one coherent outcome per admitted worker: connected consumers,
+runners and tests share a batch when their dependencies and authority permit it.
+One-card concurrency is not a one-file limit. The coordinator chooses routine batch
+boundaries and reuses valid exact-source evidence where repository policy allows;
+required review and changed-input checks still run. See
+[delivery batching](../skills/autowork/references/delivery-batches.md).
+
+A delivered slice is reported by its behavior and commit/integration stage, with
+parent status and remaining acceptance separately. An open parent is not evidence
+of zero progress. These rules do not promise a completion rate or eliminate real
+worker, live-environment or runtime constraints.
+
+### Planning without repeated setup
+
+Plan With Me asks only unresolved user choices; Plan For Me resolves the specific
+engineering uncertainty; Docs Sync persists the affected batch. They share the
+[single-pass handoff](../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
+Autowork consumes the saved decisions and check results, then verifies current
+source and ownership before dispatch. No changes means no repeat documentation
+pass. An optional unanswered question holds its dependent tasks only. Standalone
+planning still does not authorize implementation.

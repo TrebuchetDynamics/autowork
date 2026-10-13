@@ -189,12 +189,22 @@ def _execute_candidate(root, paths, command, timeout, *, candidate=None, generat
         return receipt
 
 
-def runtime(command=None, root=None, execution_env=None):
+def check_environment(environment=None):
+    """Remove display-instance metadata from execution as well as cache identity."""
+    values = dict(os.environ if environment is None else environment)
+    for key in ('TERM_SESSION_ID', 'WINDOWID'):
+        values.pop(key, None)
+    return values
+
+
+def runtime(command=None, root=None, execution_env=None, *, normalize_checkout=None):
     # Hash values only: backend/environment changes invalidate without recording secrets.
     import shutil
-    environment = dict(os.environ if execution_env is None else execution_env)
+    environment = check_environment(execution_env)
     actual_environment_hash = hashlib.sha256(json.dumps(environment, sort_keys=True).encode()).hexdigest()
-    if execution_env is not None and root is not None:
+    if normalize_checkout is None:
+        normalize_checkout = execution_env is not None
+    if normalize_checkout and root is not None:
         # Only ephemeral checkout paths normalize; every other execution value remains bound.
         checkout = str(Path(root).resolve())
         for key in ('PWD', 'PATH', 'PYTHONPATH'):
@@ -237,7 +247,9 @@ def _execute(root, paths, command, timeout, *, execution_env=None):
     before = source_freshness.capture(root, paths)
     if any(row['sha256'] is None for row in before['files']):
         raise ValueError('All declared verification inputs must exist')
-    environment = runtime(command, root, execution_env)
+    normalize_checkout = execution_env is not None
+    execution_env = check_environment(execution_env)
+    environment = runtime(command, root, execution_env, normalize_checkout=normalize_checkout)
     started = time.monotonic()
     process = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, start_new_session=True, env=execution_env)
@@ -258,7 +270,7 @@ def _execute(root, paths, command, timeout, *, execution_env=None):
         stdout, stderr = process.communicate(timeout=5)
         code, output, outcome = None, stdout + stderr, 'timeout'
     after = source_freshness.capture(root, paths)
-    environment_after = runtime(command, root, execution_env)
+    environment_after = runtime(command, root, execution_env, normalize_checkout=normalize_checkout)
     if before != after:
         outcome = 'source_changed'
     elif environment != environment_after:
@@ -325,7 +337,7 @@ def reusable(receipt, root, command, *, candidate=None, paths=None, external_pat
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['run', 'reuse'])
+    parser.add_argument('action', choices=['run', 'reuse', 'run-or-reuse'])
     parser.add_argument('--workspace', required=True, type=Path)
     parser.add_argument('--receipt', required=True, type=Path)
     parser.add_argument('--path', action='append', default=[], help='Explicit source, dependency or environment input')
@@ -370,11 +382,13 @@ def main():
                     raise ValueError('Duplicate prerequisite ref')
                 prerequisites[ref] = pin
             candidate = candidate_identity.capture(args.workspace, args.base, args.candidate, prerequisites, args.tree)
-        if args.action == 'reuse':
+        if args.action == 'reuse' or (args.action == 'run-or-reuse' and args.receipt.exists()):
             started = time.monotonic()
             saved = json.loads(args.receipt.read_text())
             accepted = reusable(saved, args.workspace, command, candidate=candidate,
                                 paths=args.path, external_paths=args.external_path, qualification_scope=scope)
+            if args.action == 'run-or-reuse' and not accepted:
+                raise ValueError('Existing receipt is stale; preserve it and select a new receipt path to execute')
             print(json.dumps({'reusable': accepted, 'execution': 'reused' if accepted else 'reuse_rejected',
                               'attempts': 0, 'elapsed_seconds': time.monotonic() - started,
                               'qualification': 'exact_candidate' if candidate else 'shared_tree_declared_inputs_only'}))

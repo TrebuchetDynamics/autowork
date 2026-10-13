@@ -30,3 +30,9 @@ The scaffold's parent-skill references describe document roles, not permission t
 start Hermes coordination. Use this adapter for execution rules. Keep actual external
 inputs in BLOCKERS.md; internal engineering work belongs in tasks. Saving docs does
 not authorize implementation, commit, push, scheduling or host configuration changes.
+
+Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
+resume accepted decisions and existing task IDs, investigate only missing evidence,
+persist one affected batch, and reuse input-bound checks. Unchanged findings need
+no new docs pass. Follow this host adapter for execution authority; the shared
+contract does not require Hermes-native tooling on this host.

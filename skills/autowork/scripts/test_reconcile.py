@@ -136,6 +136,63 @@ class ReconcileTests(unittest.TestCase):
         self.assertNotIn('merged', result['human_report'])
         self.assertEqual(result['board_id'], 'default')
 
+    def test_phase_specific_next_action_does_not_claim_delivery(self):
+        for status, action in [('running', 'observe_current_run'),
+                               ('review', 'observe_current_run'),
+                               ('ready', 'observe_queued_card'),
+                               ('done', 'verify_and_integrate'),
+                               ('changes_requested', 'recover_original_card'),
+                               ('blocked', 'recover_original_card')]:
+            snapshot = {'task': {'id':'t_fixture','assignee':'fixture','status':status},
+                        'runs':[{'id':7,'profile':'fixture','outcome':'completed'}]}
+            with self.subTest(status=status), patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                result = m.reconcile([], Path('.'), 'fixture', 't_fixture')
+            self.assertEqual(result['next_action'], action)
+            self.assertFalse(result['delivery']['delivered'])
+
+    def test_report_projection_distinguishes_new_runs_and_outcomes(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            home = Path(directory)
+            (home/'autowork').mkdir()
+            (home/'autowork/goal-handoff.json').write_text(json.dumps({'task_id':'t_fixture'}))
+            snapshots = [{'task':{'id':'t_fixture','assignee':'fixture','status':'review'},
+                          'runs':[{'id':rid,'profile':'fixture','outcome':outcome}]}
+                         for rid,outcome in [(7,'review_requested'),(8,'review_requested'),(8,'changes_requested'),(8,'completed')]]
+            with patch.object(m,'run',side_effect=[json.dumps(s) for s in snapshots]), \
+                 patch.object(m,'profile_home',return_value=home), \
+                 patch('sys.argv',['reconcile.py','--profile','fixture']):
+                for _ in snapshots:
+                    buffer=io.StringIO()
+                    with contextlib.redirect_stdout(buffer):m.main()
+                    self.assertTrue(json.loads(buffer.getvalue())['report_changed'])
+
+    def test_compact_repeated_blocker_resets_on_changed_evidence(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            home = Path(directory)
+            (home/'autowork').mkdir()
+            (home/'autowork/goal-handoff.json').write_text(json.dumps({'task_id':'t_fixture'}))
+            snapshot = {'task':{'id':'t_fixture','assignee':'fixture','status':'blocked'},
+                        'runs':[{'id':7,'profile':'fixture','error':'missing binding',
+                                 'summary':'x'*3000, 'metadata':{'large':'y'*10000}}]}
+            outputs=[]
+            with patch.object(m,'profile_home',return_value=home), \
+                 patch('sys.argv',['reconcile.py','--profile','fixture','--compact']):
+                for index in range(4):
+                    if index == 3:snapshot['runs'][0]['summary']='new recovery evidence'
+                    if index == 2:snapshot['runs'][0]['error']='different failure'
+                    with patch.object(m,'run',return_value=json.dumps(snapshot)):
+                        buffer=io.StringIO()
+                        with contextlib.redirect_stdout(buffer):m.main()
+                        outputs.append(json.loads(buffer.getvalue()))
+            self.assertEqual([o['continuation']['unchanged_blocked_observations'] for o in outputs],[1,2,1,1])
+            self.assertEqual(outputs[1]['continuation']['follow_up'],'change_recovery_approach')
+            self.assertNotIn('metadata',outputs[1])
+            self.assertTrue(outputs[1]['summary_truncated'])
+            self.assertLessEqual(len(outputs[1]['summary']),1200)
+            self.assertIn('evidence_digest',outputs[2]['changed_fields'])
+
     def test_repeated_cli_reconciliation_suppresses_only_human_report(self):
         import contextlib
         import io
@@ -163,6 +220,10 @@ class ReconcileTests(unittest.TestCase):
             self.assertIsNotNone(outputs[0]['human_report'])
             self.assertIsNone(outputs[1]['human_report'])
             self.assertTrue(outputs[1]['selection_required'])
+            self.assertEqual(outputs[1]['continuation']['next_action'], 'verify_and_integrate')
+            self.assertEqual(outputs[1]['changed_fields'], [])
+            self.assertEqual(outputs[1]['continuation']['task_id'], 't_fixture')
+            self.assertTrue(outputs[1]['continuation']['fresh_readback_required'])
             self.assertNotIn('discovery_required', outputs[1], 'Reconcile cannot decide backlog eligibility')
             self.assertEqual(outputs[0]['task_id'], outputs[1]['task_id'])
             self.assertEqual(outputs[0]['board_id'], outputs[1]['board_id'])

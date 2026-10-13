@@ -71,3 +71,57 @@ execution index yet; native ledger admission must not be inferred from this queu
 
 None currently identified for the bounded tasks above. Unavailable live test access
 must be reported when encountered; it is not evidence that a product task is done.
+
+## Completed local changes
+
+### TOOLSET-004 — Reduce fragmented Autowork handoffs and misleading zero-progress reports
+
+- Status: done (local implementation and focused contract tests; not a live throughput claim).
+- Goal: Complete connected accepted outcomes with fewer redundant preparation/review cycles.
+- Sources: [delivery batch contract](skills/autowork/references/delivery-batches.md),
+  [worker body generation](skills/autowork/scripts/start_goal.py), [cron prompts](scripts/wire-owner-cron.py).
+- Scope delivered: Coherent-batch guidance, worker/cron prompt propagation, portable
+  coordinator guidance and delivery-first reporting with truthful parent status.
+- Acceptance checked: Generated worker text retains the explicit scope/exclusions,
+  directs completion of every admitted consumer, and retains independent review;
+  generated cron text includes batching, evidence reuse limits and parent reporting.
+- Checks: Worker role contracts (5 tests) and cron prompt tests (15 tests) passed.
+- Remaining qualification: Real model batching and reduced elapsed time are unverified;
+  TOOLSET-003 still owns live bounded recovery qualification.
+- Dependencies: None.
+- Owner: Current repository change; no claim on any product worker or schedule.
+
+### TOOLSET-005 — Recover registration context across filtered terminal environments
+
+- Status: done (local helper regression; live worker recovery not yet verified).
+- Goal: Prevent a missing terminal environment field from holding a correctly registered task.
+- Source: [workspace guard](skills/autowork/scripts/pass_workspace.py).
+- Scope delivered: Exact original-handoff recovery for registration only; no environment
+  forgery, registry mutation, candidate repinning or native ownership bypass.
+- Checks: 22 workspace tests pass, including missing, stale, wrong-task, wrong-card
+  and conflicting handoffs plus conflicting inherited context.
+- Remaining qualification: Existing workers retain their original admitted contracts;
+  they need same-card reconciliation before using a changed helper.
+
+### TOOLSET-006 — Preserve review progress and direct coordinator closeout
+
+- Status: done (local regression coverage; autonomous model follow-through unverified).
+- Goal: Keep new review outcomes visible and direct completed cards to integration checks.
+- Source: [reconciliation helper](skills/autowork/scripts/reconcile.py).
+- Scope delivered: Report-cache identity includes run and outcome; phase-specific next
+  actions distinguish active/queued cards, recovery and terminal closeout.
+- Checks: 12 reconciliation tests pass; terminal hints never claim delivery or approval.
+- Remaining qualification: A model must execute the advised closeout; the read-only
+  helper itself does not merge, dispatch, authenticate liveness or resume jobs.
+
+### TOOLSET-007 — Resume execution and reuse checks across calls
+
+- Status: implemented; offline validation recorded in the current change.
+- Scope: Saved reconciliation projection produces continuation/change fields;
+  pending closeout precedes discovery. Run-or-reuse preserves stale receipts and
+  reuses passing checks under their original input contract. Terminal display
+  IDs are removed from execution and fingerprints; task/security inputs stay bound.
+- Checks: Regression coverage for continuation, actual filtered subprocess
+  environment, relevant environment changes, first execution, reuse and stale refusal.
+- Limits: No automated Git integration or model throughput claim; arbitrary
+  source files and live ownership still require fresh checks before action.
