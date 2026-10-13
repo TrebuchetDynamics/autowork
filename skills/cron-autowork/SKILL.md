@@ -10,6 +10,19 @@ license: MIT
 Use the current scheduler's supported tools; this skill is not a second scheduler.
 Creating this skill or installing the plugin never creates a job automatically.
 
+## Repair command discovery before scheduling
+
+An unknown-command reply occurs before scheduler work; do not recreate a job to
+repair it. Verify the receiving profile's native skill and plugin registration.
+When supported by the installed toolset, run
+`hermes -p PROFILE toolset finalize --hermes-home ROOT --bundle-only` to refresh
+that profile's live gateway command wiring without restarting the shared gateway.
+Require a profile-matched `ready` / `commands_reloaded` receipt. Finalization does
+not update native skill copies or prove the original Telegram invocation succeeded;
+keep installation, live registration and message retry separate. If this route is
+unavailable, request `/reload-skills` in the receiving bot. A fresh subprocess
+resolution alone is not live-cache proof. Preserve schedules, workers and budgets.
+
 ## Resolve the job
 
 Read existing user instructions and the current profile/workspace. Resolve the

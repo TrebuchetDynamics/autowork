@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 
 MARKER = '\n\nSHARED OWNER RECOVERY CYCLE — required execution\n'
+REPAIR_MARKER = '\n\nSHARED TOOLSET REMEDIATION — authorized execution\n'
 AUDIT_MARKER = '\n\nOWNER RECOVERY COVERAGE — read-only\n'
 PRESERVE = ('id', 'name', 'schedule', 'schedule_display', 'repeat', 'enabled', 'state',
             'paused_at', 'paused_reason', 'model', 'provider', 'base_url', 'deliver',
@@ -90,7 +91,36 @@ def owner_prompt(prompt, enabled):
         'End with skipped checks and risks.\n')
 
 
-def audit_prompt(prompt):
+def audit_prompt(prompt, *, repair=False):
+    if repair or REPAIR_MARKER in prompt:
+        original = prompt.split(REPAIR_MARKER, 1)[0].split(AUDIT_MARKER, 1)[0]
+        return original + REPAIR_MARKER + (
+            'This occurrence performs shared-source repair, not proposals-only auditing. '
+            'Read the collector receipt and the newest TWO completed owner responses; '
+            'verify exact original cards/runs, installed helper paths and current source before diagnosing. '
+            'Find the earliest failed transition, prioritizing a repeated owner hold over broad log narration. '
+            'Ask each configured subject once through scripts/profile-consult.py with its explicit --profiles set; '
+            'retain actual replies or transport failures and default self-assessment without recursion. '
+            'Reproduce one evidenced shared-toolset defect with a regression RED; make the smallest source fix, '
+            'run focused checks, then retry the same read-only consumer and retain before/after receipts. '
+            'Inspect callers and other writers; preserve foreign changes and avoid duplicate repair work. '
+            'Qualify only attributable source/dependency closure, not a dirty union. '
+            'Deploy reviewed bundled helper changes only through supported, owner-preserving paths within the granted scope; '
+            'read back actual installed bytes and report refused deployment separately. '
+            'Commit only verified owned source paths locally when attribution is established. Do not push. '
+            'Respect each owner current authority and exclusions; the auditor never borrows owner live/DB/S3 authority. '
+            'No product writes, sibling config/job/memory changes, worker launch, lease takeover, Agent edits or guard bypass. '
+            'Do not reset budgets, retry counters, original cards, candidate pins or history; '
+            'native admission remains separate from registration and metadata readiness. '
+            'Preserve paused jobs; do not trigger schedules or replace blocked workers. '
+            'An owner waiting for a released compatible helper is a maintainer action, not another user permission question. '
+            'On an unavailable native operation, scope the hold to that operation and inspect one disjoint authorized source fix; '
+            'never repeat an unchanged proposal or failed command without changed evidence. '
+            'One collector, one bounded consultation wave and one repair batch per tick; honor existing overlap locks, '
+            'no catch-up runs or automatic budget extensions. '
+            'Report every subject via existing automatic delivery: current task/stage, concrete fix/checks, '
+            'deployed or prepared status, same-consumer result, exact remaining gate and next owner action. '
+            'Successful cron delivery or fixtures alone never proves product recovery. End with skipped checks and risk.\n')
     original = prompt.split(AUDIT_MARKER, 1)[0]
     return original + AUDIT_MARKER + (
         'Load skills/autowork/references/owner-cycle.md. Read each owning profile\'s '

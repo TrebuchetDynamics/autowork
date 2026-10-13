@@ -135,6 +135,28 @@ class OwnerCronTests(unittest.TestCase):
         ready = {'skills': ['hermes-toolset:autowork', 'hermes-toolset:git-commit-push']}
         self.assertEqual(module.autowork_skills(ready), ready['skills'])
 
+    def test_authorized_maintenance_repairs_shared_source_not_products(self):
+        module = load()
+        scope = 'Subjects: alpha, beta, gamma, delta. Preserve paused jobs.'
+        prompt = module.audit_prompt(scope, repair=True)
+        for rule in ('shared-source repair', 'earliest failed transition',
+                     'regression RED', 'same read-only consumer',
+                     'native admission remains separate', 'Do not reset budgets',
+                     'No product writes', 'Preserve paused jobs'):
+            self.assertIn(rule, prompt)
+        self.assertNotIn(module.AUDIT_MARKER, prompt)
+        self.assertEqual(module.audit_prompt(prompt), prompt)
+        self.assertIn('Do not push', prompt)
+
+    def test_repair_mode_is_opt_in_and_sticky_in_existing_audit_wiring(self):
+        module = load()
+        self.assertNotIn('shared-source repair', module.audit_prompt('Audit only.'))
+        scope = 'Maintenance scope; no product mutations.'
+        prompt = module.audit_prompt(scope, repair=True)
+        self.assertTrue(prompt.startswith(scope))
+        self.assertEqual(module.audit_prompt(prompt), prompt)
+        self.assertIn('other writers', prompt)
+
     def test_audit_keeps_read_only_role_after_autowork_attachment(self):
         from unittest.mock import patch
         module = load()
