@@ -68,7 +68,9 @@ Native plugin loading provisions missing bundled skills, so full setup is not
 required for the core questions-only interview. Use setup for external integrations,
 OMH configuration and fleet-wide provisioning; native installation does not perform
 those steps. Saving interview decisions through docs-sync additionally requires
-Graphify and the relevant file/terminal tools.
+the relevant file/terminal tools. Direct source evidence is sufficient for routine
+task and document repairs; Graphify is useful for uncertain cross-component
+relationships, or required when the request explicitly calls for it.
 Use `hermes toolset setup --dry-run` to preview target profiles.
 
 ## Preflight before fleet writes

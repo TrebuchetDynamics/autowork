@@ -1,0 +1,107 @@
+{
+  "goals": [
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "PORTABLE",
+      "priority": 10,
+      "source": "docs/project.md#accepted-requirements",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-001"
+      ],
+      "title": "Align portable workflow discovery"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "BACKLOG",
+      "priority": 20,
+      "source": "docs/project.md#accepted-requirements",
+      "status": "partial",
+      "tasks": [
+        "TOOLSET-002"
+      ],
+      "title": "Provide repeatable first-time backlog initialization"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "RECOVERY",
+      "priority": 30,
+      "source": "docs/project.md#accepted-requirements",
+      "status": "unverified",
+      "tasks": [
+        "TOOLSET-003"
+      ],
+      "title": "Qualify bounded automatic planning recovery"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "ARCHIVAL",
+      "priority": 40,
+      "source": "TODO.md#toolset-009--account-for-archival-in-the-shared-rendering-contract",
+      "status": "partial",
+      "tasks": [
+        "TOOLSET-009"
+      ],
+      "title": "Integrate archival and reconcile the rendering contract"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "CONTINUATION",
+      "priority": 50,
+      "source": "TODO.md#toolset-008--make-autowork-continuation-authority-consistent",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-008"
+      ],
+      "title": "Resolve and align continuation authority"
+    }
+  ],
+  "tasks": [
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-001",
+      "section": "Now",
+      "status": "open",
+      "title": "Align portable skill discovery with the current public workflows"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-002",
+      "section": "Next",
+      "status": "open",
+      "title": "Provide a supported first-time task-index initialization path"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-003",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify automatic planning recovery with a real bounded workflow"
+    },
+    {
+      "depends_on": [],
+      "goal": "ARCHIVAL",
+      "id": "TOOLSET-009",
+      "section": "Next",
+      "status": "open",
+      "title": "Account for archival in the shared rendering contract"
+    },
+    {
+      "depends_on": [],
+      "goal": "CONTINUATION",
+      "id": "TOOLSET-008",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Make Autowork continuation authority consistent"
+    }
+  ],
+  "version": 1
+}

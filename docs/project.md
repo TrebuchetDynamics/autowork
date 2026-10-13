@@ -7,6 +7,11 @@ and [removal/recovery](uninstall.md); outstanding work belongs in [TODO.md](../T
 
 ## Accepted requirements
 
+Status: Accepted
+
+This metadata records the existing accepted workflow scope below; it does not
+accept unresolved policy choices in TODO.md or authorize implementation.
+
 - Plan With Me asks the user for missing requirements and saves accepted decisions.
 - Plan For Me investigates, chooses supported approaches and records plans/tasks.
 - Docs Sync maintains source-backed documents and a central TODO.md work queue.
@@ -65,9 +70,12 @@ is the authoritative boundary description.
 
 [TODO.md](../TODO.md) owns implementation priorities. Its open entries describe planned
 changes; completed entries record bounded local results and qualification limits.
-The repository has no goals.json at this
-baseline; TODO is the queue and native ledger initialization is tracked separately.
-Do not fabricate a machine index or claim native admission from a Markdown task.
+The [goals.json](../goals.json) index now mirrors the open queue, including the
+Needs decision policy gate. TOOLSET-002 still
+owns a repeatable first-time initialization interface; seeding this repository's
+documented JSON schema does not implement that interface. Historical completion
+notes remain in TODO and its established archive; they are not new executed proof.
+Ledger eligibility does not establish native admission, ownership or execution.
 
 [Testing](testing.md) owns executable checks and their limits. Clean installation,
 model execution, Telegram delivery and task completion are distinct acceptance

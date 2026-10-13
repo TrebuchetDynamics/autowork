@@ -64,8 +64,9 @@ Public skill names match the workflow names. Source directories stay stable for 
 
 Grill Me is the challenge mode of Plan With Me; its old command still works but
 is not advertised as a separate plugin skill. Autoresearch protocols remain
-accessible through their commands and the Plan For Me adapter. Legacy command
-aliases are retained for saved prompts; the Telegram menu shows the new workflow
+accessible through their commands and the Plan For Me adapter. Autoresearch compatibility command
+spellings remain available; Plan With Me and Docs Sync do not register the old
+repo-interview or repo-docs aliases. The Telegram menu shows the current workflow
 names. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
 they do not register a live command. Hindsight is not a bundle integration; its
 negative tests prevent accidental reintroduction. Updating source does not refresh
