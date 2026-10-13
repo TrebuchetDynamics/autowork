@@ -29,6 +29,18 @@ class WorkflowCommands(unittest.TestCase):
                         self.assertIn('Selected subcommand: plan\n', prompt)
         self.assertTrue({'repo-interview', 'repo-docs', 'autoresearch-plan'} <= self.ctx.commands.keys())
 
+    def test_cron_autowork_command_routes_without_creating_a_schedule(self):
+        self.skill('cron-autowork')
+        self.plugin.register(self.ctx)
+        self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture')
+        # Telegram normalizes /cron_autowork to the registered hyphen spelling.
+        raw = 'every 30m; repository scope; no push'
+        self.ctx.commands['cron-autowork'](raw)
+        prompt, routing = self.ctx.messages[-1]
+        self.assertIn('hermes-toolset:cron-autowork', prompt)
+        self.assertTrue(prompt.endswith(raw))
+        self.assertEqual(routing['origin']['chat_id'], 'fixture')
+
     def test_alias_pair_preserves_existing_command_owner(self):
         self.skill('docs-sync')
         self.existing['docs-sync'] = {'plugin': 'other'}

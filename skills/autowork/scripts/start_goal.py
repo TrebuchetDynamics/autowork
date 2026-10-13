@@ -21,7 +21,9 @@ ACTIVE = {'ready', 'running', 'todo', 'review', 'changes_requested'}
 # Parked cards (triage after a terminal run, scheduled backoff) block only their own slice:
 # a same-title handoff is refused, disjoint work proceeds. See SKILL.md 'Operating priorities'.
 PARKED = {'triage', 'scheduled', 'blocked'}
-MAX_RETRIES = 3
+# Native max_retries=1 trips on the first failure. Each new worker launch gets
+# the full per-run goal allocation; automatic retries cannot preserve a total cap.
+MAX_RETRIES = 1
 
 
 CONTRACT_FIELDS = ('Objective', 'Scope', 'Verification', 'Source', 'Project payoff',
@@ -259,7 +261,12 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'missing intent, conflicting requirements or authority not already granted; record the recommendation '
             'in BLOCKERS.md and keep independent authorized work moving. Silence is not authorization or '
             'required review acceptance. Report routine decisions as decisions, not unanswered questions. The goal engine has a '
-            f'{goal_max_turns}-turn budget; finish early only when genuinely complete. '
+            f'{goal_max_turns}-turn budget for this worker invocation, not a cumulative card counter. '
+            'Automatic failure retries are disabled. Before any continuation, reconcile all prior runs and '
+            'sessions against the authorized cumulative allocation; unknown usage is not zero. Preserve '
+            'consumed history and retry counts. A new session or --resume with --max-turns is not a '
+            'budget-preserving continuation. Exhausted allocation requires explicit additional budget, '
+            'not another implementation permission or a replacement card. '
             'Review handoff finishes this worker card, not the product milestone: when same-card review is required, '
             'supply implementation/test evidence, then request native review; pending review is not a missing '
             'implementation criterion. Only the authorized review lane can approve closure. If entry is rejected '
@@ -657,6 +664,8 @@ def main():
                               'notification': notification, 'goal_mode': task['goal_mode'],
                               'goal_max_turns': task['goal_max_turns']}))
             return
+        if type(task.get('max_retries')) is not int or task['max_retries'] != MAX_RETRIES:
+            raise ValueError('Native retry limit differs from the requested single-attempt policy; preserve the original card and reconcile it before retrying')
         assert task['goal_mode'] and task['goal_max_turns'] == args.goal_max_turns, task
         assert task['assignee'] == args.profile, task
         assert task['workspace_kind'] == 'dir' and Path(task['workspace_path']).resolve() == pass_path, task
@@ -675,6 +684,11 @@ def main():
                    'pass_manifest': manifest, 'pass_manifest_path': str(manifest_path),
                    'pass_manifest_sha256': manifest_sha256,
                    'goal_mode': True, 'goal_max_turns': args.goal_max_turns,
+                   'max_retries': MAX_RETRIES,
+                   'budget_policy': {'allocation_scope': 'worker_invocation',
+                                     'automatic_failure_retries': False,
+                                     'cumulative_enforcement': 'not_available',
+                                     'resume_requires': 'verified remaining allocation and supported enforcement'},
                    'status': task['status'], 'board_id': task.get('board_id') or board_id,
                    'created_at': created_at.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z'),
                    **admission}

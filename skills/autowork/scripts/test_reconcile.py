@@ -150,6 +150,26 @@ class ReconcileTests(unittest.TestCase):
             self.assertEqual(result['next_action'], action)
             self.assertFalse(result['delivery']['delivered'])
 
+    def test_normal_ended_review_handoff_is_not_a_stale_running_card(self):
+        snapshot = {'task':{'id':'t_fixture','assignee':'fixture','status':'review'},
+                    'runs':[{'id':7,'profile':'fixture','status':'completed',
+                             'outcome':'review_requested','ended_at':123}]}
+        with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+            result = m.reconcile([], Path('.'), 'fixture', 't_fixture')
+        self.assertEqual(result['next_action'], 'observe_current_run')
+
+    def test_terminal_run_on_running_card_requires_state_reconciliation(self):
+        for status, outcome in [('blocked', 'blocked'), ('failed', 'failed'),
+                                ('completed', 'completed')]:
+            snapshot = {'task': {'id':'t_fixture','assignee':'fixture','status':'running'},
+                        'runs':[{'id':7,'task_id':'t_fixture','profile':'fixture',
+                                 'status':status,'outcome':outcome,'ended_at':123}]}
+            with self.subTest(status=status), patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                result = m.reconcile([], Path('.'), 'fixture', 't_fixture')
+            self.assertEqual(result['next_action'], 'reconcile_run_state')
+            self.assertEqual(result['run_status'], status)
+            self.assertFalse(result['delivery']['delivered'])
+
     def test_report_projection_distinguishes_new_runs_and_outcomes(self):
         import contextlib, io
         with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
@@ -166,6 +186,29 @@ class ReconcileTests(unittest.TestCase):
                     buffer=io.StringIO()
                     with contextlib.redirect_stdout(buffer):m.main()
                     self.assertTrue(json.loads(buffer.getvalue())['report_changed'])
+
+    def test_ended_run_change_is_visible_even_with_same_summary(self):
+        import contextlib, io
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            home = Path(directory)
+            (home/'autowork').mkdir()
+            (home/'autowork/goal-handoff.json').write_text(json.dumps({'task_id':'t_fixture'}))
+            snapshot = {'task':{'id':'t_fixture','assignee':'fixture','status':'running'},
+                        'runs':[{'id':7,'profile':'fixture','status':'running','ended_at':None}]}
+            outputs=[]
+            with patch.object(m,'profile_home',return_value=home), \
+                 patch('sys.argv',['reconcile.py','--profile','fixture','--compact']):
+                for index in range(2):
+                    if index:
+                        snapshot['runs'][0].update(status='blocked', ended_at=123)
+                    with patch.object(m,'run',return_value=json.dumps(snapshot)):
+                        buffer=io.StringIO()
+                        with contextlib.redirect_stdout(buffer):m.main()
+                        outputs.append(json.loads(buffer.getvalue()))
+            self.assertTrue(outputs[1]['report_changed'])
+            self.assertIn('run_status', outputs[1]['changed_fields'])
+            self.assertEqual(outputs[1]['continuation']['next_action'], 'reconcile_run_state')
+            self.assertEqual(outputs[1]['continuation']['unchanged_blocked_observations'], 1)
 
     def test_compact_repeated_blocker_resets_on_changed_evidence(self):
         import contextlib, io

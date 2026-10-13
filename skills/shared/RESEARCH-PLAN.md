@@ -39,6 +39,15 @@ Apply the existing [single-pass handoff](PLAN-HANDOFF.md#one-planning-pass-one-h
 for acceptance, batching and reuse. Preserve genuine missing product intent as a
 scoped question, not a reason to stop unrelated authorized planning.
 
+## Existing execution is not a new planning problem
+
+When Autowork already has a card and partial work, distinguish product uncertainty
+from a session-continuation, accounting or runtime failure. If no product decision
+is missing, return the exact failed operation and evidence to the same coordinator
+for supported recovery. Do not create a replacement implementation task, rerun this
+plan protocol, reset its budget or present another product plan as progress. Save
+new technical findings to its existing task journal only when they add evidence.
+
 ## Interactive planning: Plan With Me
 
 Use the same research and persistence method, with the user participating in

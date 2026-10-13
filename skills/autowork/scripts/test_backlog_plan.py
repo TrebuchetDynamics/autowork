@@ -1,4 +1,5 @@
 import tempfile
+import json
 from pathlib import Path
 import unittest
 import backlog_plan
@@ -14,7 +15,7 @@ class BacklogPlanTests(unittest.TestCase):
         first=backlog_plan.decide(self.cycle,self.state)
         self.assertEqual(first['action'],'plan')
         backlog_plan.record(self.cycle,self.state,'fixture://findings','no_supported_delta')
-        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'reuse')
+        self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'resolve_recorded_blocker')
         self.cycle['fingerprint']='changed-inputs'
         self.assertEqual(backlog_plan.decide(self.cycle,self.state)['action'],'plan')
     def test_empty_queue_plans_on_first_occurrence_then_reuses_receipt(self):
@@ -93,6 +94,25 @@ class BacklogPlanTests(unittest.TestCase):
         self.assertIn('documentation', result['reason'])
         backlog_plan.record(self.cycle, self.state, 'fixture://repair', 'integration_pending')
         self.assertEqual(backlog_plan.decide(self.cycle, self.state)['action'], 'reuse')
+
+    def test_no_delta_receipt_does_not_claim_an_executable_repair(self):
+        backlog_plan.record(self.cycle, self.state, 'fixture://investigation', 'no_supported_delta')
+        result = backlog_plan.decide(self.cycle, self.state)
+        self.assertEqual(result['action'], 'resolve_recorded_blocker')
+        self.assertEqual(result['outcome'], 'no_supported_delta')
+        self.assertEqual(result['evidence'], 'fixture://investigation')
+        self.assertNotIn('Resume the recorded repair', result['reason'])
+
+    def test_corrupt_planning_receipt_requires_reinspection_not_a_new_plan(self):
+        path = Path(backlog_plan.record(self.cycle, self.state, 'fixture://result', 'integration_pending'))
+        valid = json.loads(path.read_text())
+        invalid = [dict(valid, consumer='/different/repo'), dict(valid, outcome='completed'),
+                   dict(valid, evidence=''), dict(valid, input_key='stale')]
+        for raw in ('{broken', '[]', '{}', *(json.dumps(item) for item in invalid)):
+            path.write_text(raw)
+            result = backlog_plan.decide(self.cycle, self.state)
+            self.assertEqual(result['action'], 'inspect_planning_receipt')
+            self.assertEqual(path.read_text(), raw)
 
     def test_receipt_requires_actual_evidence_and_known_outcome(self):
         with self.assertRaises(ValueError):backlog_plan.record(self.cycle,self.state,'','no_supported_delta')

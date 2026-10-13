@@ -14,12 +14,14 @@ metadata:
 First apply [repository-stage preparation](references/repository-stages.md), then
 use the execution and completion rules below.
 Local recovery needs no external owner: [recovery](references/owner-cycle.md).
-Stalled preparation automatically invokes [Plan For Me](references/backlog-planning.md),
+Unresolved planning invokes [Plan For Me](references/backlog-planning.md),
 updates TODO.md and retries execution; never wait for the user to invoke it.
 
 ## When to use
 
-Default /autowork hands off one bounded native goal worker (50 turns by default; explicit 100).
+Default /autowork hands off one bounded native goal worker (50 turns by default; explicit 100 per invocation).
+New cards stop automatic failure retries; continuation must preserve cumulative
+usage and cannot reset an exhausted allocation. See [handoff budget](references/handoff.md#turn-allocation-across-attempts).
 Scope it as a [coherent delivery batch](references/delivery-batches.md), not one card
 per file. Decide routine scope/order/check choices and continue authorized closeout.
 Use [the engineering cycle](../shared/ENGINEERING-CYCLE.md) for skill routing and

@@ -2,7 +2,8 @@
 """Read a prior autowork handoff's live card/run; never mutate or dispatch.
 
 The CLI writes only a separate report projection cache. It always reads the board
-again; an unchanged report is not permission to skip the caller's work search.
+again; resume the recorded phase before considering new work. The caller checks
+backlog eligibility; this readback neither dispatches nor proves worker liveness.
 Structured evidence belongs in latest-run metadata.delivery_evidence. Only an
 explicit --repo enables independent local main/ancestry verification.
 """
@@ -57,7 +58,10 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
     delivery = evaluate(current_evidence, repo)
     # A next action is a coordinator instruction, not proof of process liveness,
     # review approval, integration authority, or completed acceptance.
-    if task['status'] in {'running', 'review'}:
+    terminal_run = latest.get('status') in {'blocked', 'failed', 'completed', 'cancelled', 'interrupted'} or latest.get('ended_at') is not None
+    if task['status'] == 'running' and terminal_run:
+        next_action = 'reconcile_run_state'
+    elif task['status'] in {'running', 'review'}:
         next_action = 'observe_current_run'
     elif task['status'] in {'ready', 'todo'}:
         next_action = 'observe_queued_card'
@@ -73,6 +77,8 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
             'run_profile': owner, 'run_ownership': ownership, 'card_run_observed': bool(runs),
             'title': task.get('title'), 'run_id': latest.get('id'),
             'worker_outcome': latest.get('outcome'),
+            'run_status': latest.get('status'), 'run_ended_at': latest.get('ended_at'),
+            'worker_pid': latest.get('worker_pid'),
             'summary': latest.get('summary') or snapshot.get('latest_summary'),
             'error': latest.get('error') or task.get('last_failure_error'),
             'metadata': latest.get('metadata') or {},
@@ -95,7 +101,7 @@ def main():
     # Store only the previous validated report projection, not raw worker prose.
     projection = {k: result.get(k) for k in
                   ('profile', 'board_id', 'task_id', 'status', 'run_ownership', 'run_id',
-                   'worker_outcome', 'next_action', 'delivery')}
+                   'worker_outcome', 'run_status', 'run_ended_at', 'worker_pid', 'next_action', 'delivery')}
     projection['evidence_digest'] = hashlib.sha256(json.dumps(
         {'metadata': result.get('metadata'), 'event': result.get('latest_event'),
          'error': result.get('error'), 'summary': result.get('summary')}, sort_keys=True).encode()).hexdigest()
@@ -109,7 +115,7 @@ def main():
     if type(previous_count) is not int or previous_count < 0:
         previous_count = 0
     blocked_count = ((previous_count + 1 if previous == projection else 1)
-                     if result.get('next_action') == 'recover_original_card' else 0)
+                     if result.get('next_action') in {'recover_original_card', 'reconcile_run_state'} else 0)
     result['changed_fields'] = sorted(k for k, v in projection.items()
                                       if not isinstance(previous, dict) or previous.get(k) != v)
     result['continuation'] = {
@@ -121,7 +127,7 @@ def main():
         'follow_up': 'change_recovery_approach' if blocked_count >= 2 else result.get('next_action'),
         'reuse': 'Resume this phase; read changed inputs and outstanding acceptance only',
         'retry_condition': ('Changed failing inputs or a different supported repair; never repeat an identical failure'
-                            if result.get('next_action') == 'recover_original_card' else None)}
+                            if result.get('next_action') in {'recover_original_card', 'reconcile_run_state'} else None)}
     if previous == projection:
         result['human_report'] = None
     result['report_changed'] = previous != projection

@@ -303,6 +303,9 @@ def run_locked(args, state):
             candidate = candidates[0]
             result.update(action='prepare_independent_candidate',
                 next_action=f"Check file-scope ownership for {candidate['task']['id']}; prepare its contract, snapshot and required fallback evidence, then retry this exact candidate")
+    elif result['planning']['action'] in ('resolve_recorded_blocker', 'inspect_planning_receipt') and not result['dispatch_attempted']:
+        result.update(action=result['planning']['action'], outcome='ACTION_REQUIRED',
+                      next_action=result['planning']['handoff'])
     elif result['planning']['action'] in ('plan', 'reuse') and not result['dispatch_attempted']:
         result.update(action='plan_execution_recovery',
                       next_action=result['planning'].get('handoff', result['planning']['reason']))

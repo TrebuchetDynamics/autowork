@@ -81,6 +81,7 @@ class AdmissionFixtures(unittest.TestCase):
             if args[3] == 'create':
                 self.creates += 1
                 if not create_existing:
+                    task['max_retries'] = int(args[args.index('--max-retries') + 1])
                     task['workspace_path'] = args[args.index('--workspace') + 1].removeprefix('dir:')
                 self.created_body = args[args.index('--body') + 1]
                 return json.dumps(task)

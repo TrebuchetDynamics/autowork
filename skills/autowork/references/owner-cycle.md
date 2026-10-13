@@ -73,6 +73,30 @@ license Hermes Agent edits, tunneling commands through unrelated tools, or anoth
 core-edit-or-stop ultimatum. Report the unavailable route separately from actual
 implementation and remaining acceptance.
 
+## Continuation and accounting failures
+
+An existing card with partial work and a session/budget failure needs execution
+recovery, not another product plan. Read its saved continuation, current card,
+latest run status/end time and accounting evidence before choosing an action.
+A card still marked running with a terminated latest run is inconsistent state,
+not proof of a live worker. `reconcile_run_state` requires checking the original
+run/process and supported lifecycle controls before resuming; it never authorizes
+a duplicate worker. Preserve consumed turns/cost, retry counts and uncertain charges.
+A saved receipt does not grant native claim identity or reset exhausted capacity.
+If verified usage exhausts the allocation, the missing input is additional budget,
+not implementation permission. Report allocation, consumed usage, any unknown usage
+and the specific additional allocation needed on the original card. Do not treat
+history restoration or a new per-turn max as cumulative enforcement.
+
+For a cached `no_supported_delta`, the helper returns `resolve_recorded_blocker`,
+including its evidence and exact outcome. Read that evidence and resolve the failed
+operation, or identify the precise unavailable control/input. Do not pretend there
+is a saved repair, repeat unchanged planning, or stop at “I will refine the plan”.
+Invalid/mismatched planning receipts return `inspect_planning_receipt`; preserve them
+and reconstruct from actual state rather than treating them as successful or absent.
+Use independent authorized work when this operation cannot proceed, while retaining
+its card and budget. A different product idea does not repair native accounting.
+
 ## Scheduled execution and explicit planning requests
 
 Treat an already authorized Autowork cron as execution. A separate explicit `plan`

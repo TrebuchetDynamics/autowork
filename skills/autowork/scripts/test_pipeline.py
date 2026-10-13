@@ -69,7 +69,7 @@ class PipelineTests(unittest.TestCase):
             return json.dumps(self.tasks)
         if args[3] == 'create':
             self.created += 1
-            self.assertEqual(args[args.index('--max-retries') + 1], '3')
+            self.assertEqual(args[args.index('--max-retries') + 1], '1')
             budget = int(args[args.index('--goal-max-turns') + 1])
             self.assertEqual(budget, self.expected_budget)
             self.created_body = args[args.index('--body') + 1]
@@ -84,7 +84,7 @@ class PipelineTests(unittest.TestCase):
                                            timeout=30).stdout.strip(), self.base)
             task = {'id': 't_fixture', 'title': self.selected['title'], 'assignee': 'fixture',
                     'workspace_kind': 'dir', 'workspace_path': str(self.worker_repo),
-                    'completion_contract': 'local-only', 'status': 'ready'}
+                    'completion_contract': 'local-only', 'status': 'ready', 'max_retries': getattr(self, 'readback_retries', 1)}
             self.tasks.append(task)
             with sqlite3.connect(self.db) as db:
                 db.execute('INSERT INTO tasks VALUES (?, ?, ?)', ('t_fixture', 1, budget))
@@ -105,9 +105,20 @@ class PipelineTests(unittest.TestCase):
             start_goal.main()
         return json.loads(output.getvalue())
 
+    def test_native_retry_readback_mismatch_preserves_created_card(self):
+        self.readback_retries = 3
+        with self.assertRaisesRegex(ValueError, 'retry limit differs'):
+            self.dispatch()
+        self.assertEqual(self.created, 1)
+        self.assertEqual(self.tasks[0]['id'], 't_fixture')
+        self.assertEqual(self.tasks[0]['max_retries'], 3)
+
     def test_selected_task_executes_and_fixture_review_acknowledges_exact_candidate(self):
         first = self.dispatch()
         self.assertEqual(first['outcome'], 'handed_off')
+        self.assertEqual(first['max_retries'], 1)
+        self.assertFalse(first['budget_policy']['automatic_failure_retries'])
+        self.assertEqual(first['budget_policy']['cumulative_enforcement'], 'not_available')
         self.assertEqual(first['goal_max_turns'], 50)
         self.assertIn('50-turn budget', self.created_body)
         self.assertEqual(self.dispatch()['outcome'], 'already_owned')

@@ -55,10 +55,28 @@ def planning_decision(cycle, state, reason):
     token=key(cycle)
     path=private_path(Path(state)/'planning'/f'{token}.json')
     if path.exists():
-        receipt=json.loads(path.read_text())
-        if receipt.get('input_key')!=token:raise ValueError('planning receipt binding mismatch')
-        return {'action':'reuse','receipt':str(path),'execution_required':True,
-                'reason':'Resume the recorded repair/integration and retry selection; do not repeat unchanged planning'}
+        try:
+            receipt=json.loads(path.read_text())
+            if (not isinstance(receipt, dict) or receipt.get('version') != 1
+                    or receipt.get('input_key') != token or receipt.get('consumer') != cycle['consumer']
+                    or receipt.get('outcome') not in ('canonical_reconciled', 'integration_pending', 'no_supported_delta')
+                    or not isinstance(receipt.get('evidence'), str) or not receipt['evidence'].strip()):
+                raise ValueError('planning receipt schema or binding mismatch')
+        except (ValueError, OSError):
+            return {'action':'inspect_planning_receipt','receipt':str(path),'execution_required':True,
+                    'reason':'Saved planning evidence is unreadable or mismatched; preserve it and inspect current state before any retry',
+                    'handoff':'Reconcile the original task/card and planning evidence; repair the receipt only from verified inputs. Do not restart planning or dispatch a replacement.'}
+        common = {'receipt':str(path), 'execution_required':True,
+                  'outcome':receipt['outcome'], 'evidence':receipt['evidence']}
+        if receipt['outcome'] == 'no_supported_delta':
+            return dict(common, action='resolve_recorded_blocker',
+                reason='The previous investigation found no supported change; no executable repair was established',
+                handoff='Read the saved evidence and exact failed operation. Reconcile continuation/accounting on the original card through supported controls, preserving consumed budget and partial work. Do not repeat unchanged planning. If no supported recovery exists, state the precise required input and select independent work only within existing repository authority.')
+        return dict(common, action='reuse',
+            reason='Resume the recorded repair/integration and retry selection; do not repeat unchanged planning',
+            handoff=('Read the saved evidence, verify changed inputs, then retry canonical selection without re-planning'
+                     if receipt['outcome'] == 'canonical_reconciled' else
+                     'Read the saved evidence and complete the pending supported integration before retrying selection; preserve active writers'))
     return {'action':'plan','input_key':token,'skill':'hermes-toolset:plan-for-me',
             'subcommand':'plan','reason':reason,'execution_required':True,
             'handoff':'Run bounded planning now -> docs_sync canonical TODO/goals -> retry selection and supported handoff in this occurrence',

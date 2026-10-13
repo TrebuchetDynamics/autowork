@@ -7,8 +7,9 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   const messages = [];
   register({registerCommand: (name, handler) => commands.set(name, handler),
     sendUserMessage: (...args) => messages.push(args)});
-  assert.equal(commands.size, 24);
+  assert.equal(commands.size, 25);
   assert.equal(commands.has('autogoal'), false);
+  assert.equal(commands.has('cron_autowork'), true);
   const raw = 'read-only\n$(literal); --no-push';
   await commands.get('plan_with_me').handler(raw, {isIdle: () => true});
   assert.match(messages[0][0], /# Plan With Me/);

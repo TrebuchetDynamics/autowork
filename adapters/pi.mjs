@@ -7,6 +7,7 @@ const workflows = {
   plan_with_me: ['plan-with-me', 'Ask questions and plan together'],
   plan_for_me: ['plan-for-me', 'Investigate, decide and save the plan'],
   docs_sync: ['docs-sync', 'Keep documentation and TODO tasks accurate'],
+  cron_autowork: ['cron-autowork', 'Create or update an Autowork schedule'],
   autowork: ['autowork', 'Plan, execute, verify and commit a useful task'],
   autoresearch: ['autoresearch', 'Run bounded research or experiments'],
   engineering: ['engineering', 'Apply a focused engineering method'],

@@ -154,6 +154,20 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertFalse(receipt['dispatch_attempted'])
         self.assertIn('Implement fixture', (self.state/'report-latest.txt').read_text())
 
+    def test_saved_no_delta_does_not_restart_planning_or_dispatch(self):
+        import backlog_plan
+        self.ready_backlog()
+        _, first = self.run_cycle(require_owner=False)
+        path = backlog_plan.record(first, self.state, 'fixture://accounting-failure', 'no_supported_delta')
+        before = Path(path).read_bytes()
+        _, second = self.run_cycle(require_owner=False)
+        self.assertEqual(second['action'], 'resolve_recorded_blocker')
+        self.assertEqual(second['outcome'], 'ACTION_REQUIRED')
+        self.assertFalse(second['dispatch_attempted'])
+        self.assertEqual(second['planning']['evidence'], 'fixture://accounting-failure')
+        self.assertIn('preserving consumed budget', second['next_action'])
+        self.assertEqual(Path(path).read_bytes(), before)
+
     def test_ready_backlog_missing_handoff_routes_execution_inputs_to_owner(self):
         self.ready_backlog()
         owner=self.root/'owner';owner.mkdir();self.state.mkdir()

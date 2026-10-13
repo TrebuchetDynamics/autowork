@@ -7,10 +7,26 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/cron_autowork` creates or updates repository-bound Autowork schedules with
+  duplicate checks, preserved paused state and explicit budget/delivery limits.
+  Codex/Pi adapters report unavailable scheduling instead of emulating a daemon.
+
 - Native Codex marketplace/plugin packaging and a Pi package with portable workflow
   adapters and package checks (`bcb72c5`).
 - Adaptive document-role scaffold for Docs Sync (`a16b754`).
 - Verification of explicitly declared writer-registration prerequisites (`d422ea4`).
+
+### Fixed
+
+- New Autowork cards stop automatic failure retries at the first failed attempt
+  and verify that policy in native readback. Handoff receipts distinguish per-run
+  turn allocation from unavailable cumulative native enforcement; existing cards
+  and consumed budgets remain unchanged.
+
+- Autowork distinguishes a planning receipt with no supported change from a repair
+  ready to resume, preserves invalid receipts for inspection, and exposes terminal
+  run state even when its card still says running. Recovery keeps the original
+  task and consumed budget; these checks do not implement native accounting repair.
 
 ### Changed
 

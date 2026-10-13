@@ -24,6 +24,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/grill-me` | `/grill_me` | Stress-test a plan through questions |
 | `/autoresearch` | `/autoresearch` | Route a research goal or run a bounded metric loop |
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
+| `/cron-autowork` | `/cron_autowork` | Create or update a recurring Autowork job; preserve existing scope and paused state |
 | `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
@@ -198,3 +199,9 @@ planning skill is Plan For Me. Bare Plan For Me selects planning; explicit
 `/autoresearch` selects the research router. Non-planning protocols remain available.
 The legacy worker-contract field `Repo-docs pass` and receipt key `repo_docs_pass`
 remain internal compatibility fields, not additional skills or commands.
+
+Use `/cron_autowork` for schedule setup; `/autowork` performs the work. The scheduling
+skill lists existing jobs first, binds the actual repository/workdir and profile,
+updates a matching job, and verifies the saved cadence, prompt and execution limits.
+A new job without a cadence asks for one. `prompt only` creates no job. Portable
+hosts without a scheduler return a specification explicitly marked not scheduled.
