@@ -8,17 +8,19 @@ No task below is implemented by this documentation pass. [goals.json](goals.json
 indexes the open work below; historical completion notes remain in their existing
 owners. Ledger eligibility is not worker admission or live qualification.
 
-Next eligible: TOOLSET-002 provides a repeatable initialization interface, followed
-by TOOLSET-003's isolated live qualification. TOOLSET-001 is integrated locally;
-its completion evidence is in [the archive](TODO.archive.md).
-TOOLSET-008 remains an owner policy question. Existing order is preserved.
+Waiting: TOOLSET-002's reviewed initialization interface needs canonical integration;
+TOOLSET-003 is the planned isolated live-recovery qualification. TOOLSET-001 is
+integrated locally; its completion evidence is in [the archive](TODO.archive.md).
+Fast-startup plan: TOOLSET-012 implements the composed default preflight; TOOLSET-013
+qualifies measured startup after it. Existing queue priorities and ownership are
+preserved. TOOLSET-008 remains an owner policy question.
 
 ## Next
 
 ### TOOLSET-002 — Provide a supported first-time task-index initialization path
 
 - [ ] TOOLSET-002 — Provide a supported first-time task-index initialization path
-- Status: open
+- Status: in_progress; reviewed implementation awaits canonical integration and closure.
 - Goal: BACKLOG — Let Docs Sync bootstrap a native-consumable backlog without manual JSON edits.
 - Sources: [accepted scope](docs/project.md#accepted-requirements), [goals helper](skills/docs-sync/scripts/goals.py), [document scaffold](skills/docs-sync/references/document-scaffold.md), [project contract](docs/project.md).
 - Evidence: The CLI documents command-only ledger mutation but exposes no init or
@@ -34,7 +36,8 @@ TOOLSET-008 remains an owner policy question. Existing order is preserved.
 - Checks: Extend goals-helper fixture tests; run `python3 scripts/check.py` and the
   supported validator/render idempotency checks on the generated queue.
 - Dependencies: None.
-- Ownership: Next authorized Autowork coordinator; no active claim recorded here.
+- Ownership: Original worker and independent reviewer finished the local candidate;
+  canonical integration and closure remain with its coordinator. Do not redispatch.
 
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
@@ -80,6 +83,76 @@ TOOLSET-008 remains an owner policy question. Existing order is preserved.
   - Environment prerequisite: Access to the original host with the affected profile/job
     and its authorized Telegram transport; do not substitute another profile.
   - Ownership: Next coordinator with access to that environment; no active claim.
+
+### TOOLSET-012 — Start ready tasks through one composed default preflight
+
+- [ ] TOOLSET-012 — Start ready tasks through one composed default preflight
+- Status: open; accepted implementation, not started.
+- Goal: STARTUP — Reach useful implementation sooner with less preparation and chat.
+- Sources: [accepted startup plan](docs/project.md#faster-ready-task-startup),
+  [coordinator](skills/autowork/scripts/owner_cycle.py),
+  [real admission](skills/autowork/scripts/start_goal.py),
+  [source capture](skills/autowork/scripts/source_freshness.py),
+  [existing ready-path policy](skills/autowork/SKILL.md).
+- Evidence: Current manual handoff requires source capture, contract composition,
+  separate validate-only and real dispatch; real dispatch validates the same
+  contract and freshness. Reuse existing controls rather than another dispatcher.
+- Scope: Compose a supported default ready-task entry point; reconcile prior work,
+  select/read the accepted body, capture bounded authoritative sources, generate
+  the complete contract, invoke real native admission and persist bookkeeping
+  within one normal-path command. Update affected native/portable guidance and tests.
+  Routine status is compact; detailed evidence goes to private receipts.
+- Exclusions: No speculative source-cache acceptance, skipped ownership/freshness
+  checks, weaker review, arbitrary worker takeover, new scheduler/parallelism,
+  upstream Hermes edits, model/provider changes, push/deployment or live job edits.
+- Acceptance: A complete, dependency-ready fixture follows one composed preflight
+  and one real handoff without invoking separate validate-only, planning, docs audit,
+  a full suite or optional skill loader before dispatch. Required contract fields,
+  source/authority/immutable-base/ownership guards remain. Stale, held, incomplete,
+  interrupted and already-owned cases preserve refusal, original card and budgets;
+  failures are visible and fallback performs only the missing preparation.
+- Checks: Add focused composition and command-count regressions to existing owner
+  cycle/goal-handoff/response-tail suites; run from skills/autowork/scripts
+  `python3 -m unittest test_owner_cycle test_goal_handoff test_source_freshness test_response_tail`;
+  run `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`
+  on the finished candidate, plus affected links and `git diff --check`.
+  These feature checks are planned, not executed by the planning pass.
+- Dependencies: None.
+- Ownership: Next authorized Autowork coordinator; no new claim or dispatch.
+- Decision: Default fast ready path, not opt-in; preserve real admission validation
+  while removing the duplicate coordinator invocation. Native timing belongs to TOOLSET-013.
+
+### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
+
+- [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
+- Status: open; accepted successor, not started.
+- Goal: STARTUP — Verify lower preparation overhead without weakening startup safety.
+- Sources: [accepted startup plan](docs/project.md#faster-ready-task-startup),
+  TOOLSET-012, [native admission](skills/autowork/scripts/start_goal.py),
+  [reporting boundaries](skills/autowork/references/dispatch-and-reporting.md).
+- Scope: Compare manual and composed startup using the same bounded disposable
+  accepted task, source/model/environment and cold/warm conditions. Record request,
+  handoff, queue, admission and first useful action times, tool/model round trips,
+  routine user-visible messages and refusal outcomes in private source-bound receipts.
+  Keep native runtime observations distinct from offline composition tests.
+- Exclusions: No production repositories/messaging, invented benchmark values,
+  arbitrary absolute latency promise, minimum-version claim, budget reset,
+  protection bypass, push/deployment or live schedule/profile changes.
+- Acceptance: Offline comparison demonstrates fewer coordinator preparation round
+  trips and routine messages. Actual isolated native observations identify the
+  first scoped test/reproduction or implementation action after the original guard,
+  not a heartbeat or queued card; comparable timings show no startup regression.
+  Stale/ownership/dependency refusals remain. Report contradictory timings and
+  unqualified environments honestly; a fixture-only pass cannot close live qualification.
+- Checks: Execute TOOLSET-012's composed entry point and its preserved manual
+  baseline in disposable consumers; retain exact argv, source/test/dependency hashes,
+  interpreter/model, enforced limits, timestamps and native run/admission history.
+  The measurement harness/commands must be bound to the implementation at execution;
+  they do not exist as executed evidence in this planning pass.
+- Dependencies: TOOLSET-012.
+- Environment prerequisite: Configured isolated native/model environment with
+  externally enforced spending and descendant limits; unknown usage is not zero.
+- Ownership: Next authorized coordinator with that environment; no active claim.
 
 ## Needs decision
 
@@ -152,5 +225,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass | — |
 | CONTINUATION: Resolve and align continuation authority | unmet | — | TOOLSET-008 |
 | CRON-REPORTING: Make Telegram scheduling reports reliable across invocation surfaces | partial | executed <code>Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)</code> → pass | TOOLSET-011 |
+| STARTUP: Start useful implementation sooner with less preparation | unmet | — | TOOLSET-012, TOOLSET-013 |
 
 <!-- goals:coverage:end -->

@@ -117,3 +117,90 @@ Ledger eligibility does not establish native admission, ownership or execution.
 [Testing](testing.md) owns executable checks and their limits. Clean installation,
 model execution, Telegram delivery and task completion are distinct acceptance
 claims. Offline helper tests do not establish any of those live outcomes.
+
+## Faster ready-task startup
+
+Status: Accepted
+
+The user selected earlier useful implementation with less preparation/tool chatter,
+then explicitly selected the faster ready-task path as the default. This acceptance
+covers that startup outcome, not parallel execution, weaker verification, or a
+changed continuation policy. Implementation and measured runtime qualification
+remain pending in [TOOLSET-012 and TOOLSET-013](../TODO.md).
+
+### Outcome and scope
+
+For a task with accepted intent, complete body and usable sources, perform one
+batched coordinator preflight, derive the handoff from the existing body, and
+invoke the supported native handoff without a separate validation-only round trip.
+The real handoff must still validate the contract internally. Do not start a fresh
+planning/documentation pass or load optional methods on the normal ready path.
+Deeper preparation is a fallback only for an observed missing/conflicting input,
+source drift, ownership conflict, failed admission, or a genuinely ambiguous task.
+Retain pending review/integration/recovery reconciliation before selecting new work.
+
+Use a compact status when dispatch is established; keep routine source/check/contract
+details in private receipts. A queued card is not useful implementation or proof
+of its startup guard. Reports must distinguish queued, admitted, first useful
+worker action, failed/held startup, and completed tasks. Errors and required user
+actions remain visible; less chatter must not hide a failure.
+
+### Evidence and decision
+
+[Autowork](../skills/autowork/SKILL.md) already says to reconcile once, use runnable
+backlog without a fresh docs pass and delegate deep investigation to the worker.
+[Delivery batching](../skills/autowork/references/delivery-batches.md) already
+prescribes compact readback and source-bound check reuse. The observed manual
+coordinator path still required separate source capture, hand-written contract,
+validation-only invocation, real dispatch and status bookkeeping. This is evidence
+of orchestration overhead, not a measured universal runtime bottleneck.
+
+[start_goal.py](../skills/autowork/scripts/start_goal.py) validates the contract,
+ledger eligibility and source freshness during real dispatch. Reuse that boundary
+and existing isolation/ownership admission instead of creating a second dispatcher,
+removing validation or editing upstream Hermes. The
+[owner cycle](../skills/autowork/scripts/owner_cycle.py) is the existing composition
+point to evaluate before adding any new helper.
+
+Decision: Make the ready path default, compose reusable existing controls, and
+move detailed routine readback into receipts. Reason: fewer model/tool round trips
+before implementation while retaining the current refusal and review boundaries.
+No opt-in fast mode, new schedule, extra parallel worker, relaxed budget, skipped
+review, speculative caching or model/provider change is included.
+
+### Acceptance and measurement
+
+TOOLSET-012 owns the offline implementation: one public coordinator entry point
+performs normal ready-task preparation/dispatch, derives all required handoff
+fields from authoritative task context, and does not invoke a separate
+validation-only command, planner, docs audit, full suite or optional skill loader
+before dispatch. Missing required scope/acceptance is a bounded diagnostic/fallback,
+not a fabricated contract. Real admission still checks current source, dependencies,
+canonical authority, ownership, immutable base and original worker-start guard.
+Tests exercise ready, stale, held, missing-context and interrupted-handoff cases.
+
+TOOLSET-013 owns runtime qualification after implementation. Measure separately
+coordinator request-to-handoff, queue wait, admission, and first useful worker
+action (first scoped test/reproduction or implementation operation after admission,
+not heartbeat or card creation). Compare the current manual route and composed
+route against the same disposable task, source, model, environment and cold/warm
+condition. Record elapsed time, coordinator tool/model round trips, user-visible
+routine messages, exact receipts and failures. An offline fixture can verify the
+composition, not actual model startup or universal latency.
+
+The required improvement is fewer coordinator preparation round trips and routine
+messages on the ready path, with source-bound comparable runtime evidence showing
+no startup-latency regression. No absolute time target or percentage improvement
+was requested or measured. Investigate contradictory timing instead of claiming
+success from a lower command count alone. Runtime runs need an isolated configured
+environment with externally enforced spending/descendant limits; absence of that
+environment does not block independent offline implementation.
+
+### Ordered work and exclusions
+
+Within this accepted goal: first TOOLSET-012 implements and offline-verifies the
+composed default path; next TOOLSET-013 measures and qualifies it. Existing queue
+priorities, leases and unresolved TOOLSET-008 continuation policy are preserved;
+this plan does not promote the new goal ahead of them. Planning saves documents
+and backlog only: it does not dispatch, commit, push, resume the interrupted
+publication, modify live profiles/jobs, deploy, or claim faster operation today.

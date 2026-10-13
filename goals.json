@@ -90,6 +90,19 @@
         "TOOLSET-011"
       ],
       "title": "Make Telegram scheduling reports reliable across invocation surfaces"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "STARTUP",
+      "priority": 70,
+      "source": "docs/project.md#faster-ready-task-startup",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-012",
+        "TOOLSET-013"
+      ],
+      "title": "Start useful implementation sooner with less preparation"
     }
   ],
   "tasks": [
@@ -98,7 +111,7 @@
       "goal": "BACKLOG",
       "id": "TOOLSET-002",
       "section": "Next",
-      "status": "open",
+      "status": "in_progress",
       "title": "Provide a supported first-time task-index initialization path"
     },
     {
@@ -118,6 +131,24 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the updated reporting workflow on the affected profile"
+    },
+    {
+      "depends_on": [],
+      "goal": "STARTUP",
+      "id": "TOOLSET-012",
+      "section": "Next",
+      "status": "open",
+      "title": "Start ready tasks through one composed default preflight"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-012"
+      ],
+      "goal": "STARTUP",
+      "id": "TOOLSET-013",
+      "section": "Next",
+      "status": "open",
+      "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
       "depends_on": [],
