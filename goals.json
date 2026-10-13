@@ -38,11 +38,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "cd skills/docs-sync/scripts && python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)",
+          "result": "pass"
+        }
+      ],
       "id": "ARCHIVAL",
       "priority": 40,
-      "source": "TODO.md#toolset-009--account-for-archival-in-the-shared-rendering-contract",
-      "status": "partial",
+      "source": "TODO.archive.md#toolset-009--account-for-archival-in-the-shared-rendering-contract",
+      "status": "met",
       "tasks": [
         "TOOLSET-009"
       ],
@@ -106,14 +112,6 @@
       "title": "Qualify automatic planning recovery with a real bounded workflow"
     },
     {
-      "depends_on": [],
-      "goal": "ARCHIVAL",
-      "id": "TOOLSET-009",
-      "section": "Next",
-      "status": "open",
-      "title": "Account for archival in the shared rendering contract"
-    },
-    {
       "depends_on": [
         "TOOLSET-010"
       ],
@@ -130,6 +128,14 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Make Autowork continuation authority consistent"
+    },
+    {
+      "depends_on": [],
+      "goal": "ARCHIVAL",
+      "id": "TOOLSET-009",
+      "section": "Done",
+      "status": "done",
+      "title": "Account for archival in the shared rendering contract"
     },
     {
       "depends_on": [],

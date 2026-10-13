@@ -215,9 +215,14 @@ never gitignore it. Use supported `scripts/goals.py` operations or write JSON th
 5. Deduplicate ledger/tracker entries. Reread maximum ID immediately before allocation.
    Unchanged evidence must leave goals.json and TODO.md byte-identical on repeat.
 6. Use absolute repo paths. Run `goals.py fmt <repo>`, `goals.py validate <repo>`
-   (must print `ok`), then `goals.py render <repo>`. Render changes Goal coverage
-   markers, not bodies. Match every open/in_progress ID to a full body outside
-   that block. Restore missing bodies from authority under the same ID, retaining
+   (must print `ok`), then `goals.py render <repo>`. Render updates Goal coverage
+   and archives explicitly closed, ledger-done task bodies under the
+   [archive contract](references/todo-archive.md); it does not reconstruct task bodies.
+   Verify open-body preservation, complete archived bodies, links and byte stability
+   on an unchanged second render using the actual selected archive path. Include
+   attributable TODO/archive changes together in handoffs and authorized commits.
+   Match every open/in_progress ID to a full body outside the coverage block.
+   Restore missing bodies from authority under the same ID, retaining
    owners/dependencies. Reread concurrent completion evidence, rerender before
    stability checks, and never reopen done work for queue counts.
 

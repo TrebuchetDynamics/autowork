@@ -96,3 +96,59 @@ Combined closeout validation: `uv run --python 3.12 --no-project
 (803 tests run, two skipped; eight live/native modules excluded).
 Existing open bodies and prior archive bytes were preserved; the completed
 entry appears exactly once and a repeated render was byte-stable.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-009 — Account for archival in the shared rendering contract
+
+- Task: TOOLSET-009 — Account for archival in the shared rendering contract
+- Status: done (source contract acceptance and offline preservation checks).
+- Priority: Medium; independent of TOOLSET-008.
+- Goal: ARCHIVAL — Agents review and deliver every artifact changed by a render operation.
+- Sources: [engineering cycle](skills/shared/ENGINEERING-CYCLE.md),
+  [renderer](skills/docs-sync/scripts/goals.py),
+  [archive contract](skills/docs-sync/references/todo-archive.md),
+  [archive regression tests](skills/docs-sync/scripts/test_todo_archive.py).
+- Evidence: Commit `08701bd` now describes coverage rendering, automatic archival
+  and readback of TODO plus the selected archive in ENGINEERING-CYCLE.md.
+  The original user's planning request adopted the earlier drift finding.
+  This pass does not reopen that implemented wording correction or claim that
+  its complete acceptance criteria have been reviewed by the integration owner.
+- Scope: Correct the shared cycle's render description and closeout sequence.
+  Require readback/diff review of TODO.md and the actual archive selected by the
+  helper; include attributable archive changes in the handoff and any separately
+  authorized commit. Reuse the existing archive contract and regression coverage.
+- Exclusions: No renderer behavior change, archive rename, mass task migration,
+  unrelated contract rewrite, implementation during planning, or implied commit.
+- Acceptance: The contract states both coverage rendering and automatic archival;
+  it requires post-render verification of preserved open bodies, complete archived
+  bodies, valid links and byte stability on an unchanged second pass. When an
+  existing archive has a custom path, verification uses that path. No claim that
+  instruction tests prove model adherence or live completion.
+- Checks: From skills/docs-sync/scripts, run
+  `python3 -m unittest test_todo_archive`; check changed Markdown links and
+  `git diff --check`. Review the final wording against render/archive_tasks.
+  This pass ran test_todo_archive, test_archive_policy, test_render_safety,
+  test_goals and test_handoff_reconciliation: 74 tests passed. Canonical local
+  links, archive-prefix preservation and unchanged second-render bytes passed.
+  These checks do not establish model adherence or replace acceptance review.
+- Dependencies: None; the archival implementation and regression tests are now
+  included with the archive changes. No dependency on TOOLSET-008.
+- Ownership: Next authorized implementer; no active claim or implementation authority
+  is created by this planning pass.
+- Next action: Review the landed wording against all acceptance criteria; make only
+  evidenced remaining corrections, then reconcile this same task's completion.
+- Closeout: Reviewed every acceptance criterion against the shared cycle, Docs Sync
+  and render/archive_tasks. Added explicit open/closed-body preservation, actual
+  custom archive path, links, unchanged second-pass bytes and handoff/commit checks.
+  Removed Docs Sync's contradictory claim that rendering never changes task bodies.
+- Verification: `cd skills/docs-sync/scripts && python3 -m unittest test_todo_archive test_archive_policy test_render_safety`
+  passed (31 tests); changed Markdown links and diff checks passed. Independent
+  acceptance review approved both contract corrections. No model/live qualification claimed.
+- Closure normalization: The duplicate checkbox title is retained as a Task field;
+  the heading and explicit Status own this completed entry's archival boundary.
+
+<!-- End of verified TOOLSET-009 entry. -->

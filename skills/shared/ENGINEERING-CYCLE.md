@@ -203,7 +203,12 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    coverage and automatically archives explicitly closed, ledger-done task bodies
    under the [archive contract](../docs-sync/references/todo-archive.md). It does
    not reconcile task-body status or implementation docs. Read back and review
-   TODO.md and the selected archive before delivering their changes together.
+   TODO.md and the actual selected archive, including a custom history path.
+   Verify complete open bodies remain live, complete closed bodies and prior history
+   survive in the archive, local links resolve, and an unchanged second render leaves
+   both files byte-identical. Include attributable TODO/archive changes in the handoff
+   and any authorized commit together. These checks do not prove model adherence or
+   live task completion.
 6. Re-read `next` and ownership after reconciliation. Under an active Autowork
    invocation/job, finish authorized closeout and hand off the next eligible batch
    within its accepted scope and remaining occurrence budget. An explicit whole-spec

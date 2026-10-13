@@ -10,8 +10,7 @@ owners. Ledger eligibility is not worker admission or live qualification.
 
 Now: TOOLSET-001 aligns portable discovery. Next: TOOLSET-002 provides a repeatable
 initialization interface, followed by TOOLSET-003's isolated live qualification.
-TOOLSET-009 reconciles the rendering contract; TOOLSET-008 remains an owner policy
-question. Existing order is preserved, not a new implementation mandate.
+TOOLSET-008 remains an owner policy question. Existing order is preserved, not a new implementation mandate.
 
 ## Now
 
@@ -81,47 +80,6 @@ question. Existing order is preserved, not a new implementation mandate.
 - Dependencies: None.
 - Environment prerequisite: Requires a configured isolated model/native environment.
 - Ownership: Next authorized Autowork coordinator; no active claim recorded here.
-
-### TOOLSET-009 — Account for archival in the shared rendering contract
-
-- [ ] TOOLSET-009 — Account for archival in the shared rendering contract
-- Status: open; rendering description landed concurrently, acceptance review remains.
-- Priority: Medium; independent of TOOLSET-008.
-- Goal: ARCHIVAL — Agents review and deliver every artifact changed by a render operation.
-- Sources: [engineering cycle](skills/shared/ENGINEERING-CYCLE.md),
-  [renderer](skills/docs-sync/scripts/goals.py),
-  [archive contract](skills/docs-sync/references/todo-archive.md),
-  [archive regression tests](skills/docs-sync/scripts/test_todo_archive.py).
-- Evidence: Commit `08701bd` now describes coverage rendering, automatic archival
-  and readback of TODO plus the selected archive in ENGINEERING-CYCLE.md.
-  The original user's planning request adopted the earlier drift finding.
-  This pass does not reopen that implemented wording correction or claim that
-  its complete acceptance criteria have been reviewed by the integration owner.
-- Scope: Correct the shared cycle's render description and closeout sequence.
-  Require readback/diff review of TODO.md and the actual archive selected by the
-  helper; include attributable archive changes in the handoff and any separately
-  authorized commit. Reuse the existing archive contract and regression coverage.
-- Exclusions: No renderer behavior change, archive rename, mass task migration,
-  unrelated contract rewrite, implementation during planning, or implied commit.
-- Acceptance: The contract states both coverage rendering and automatic archival;
-  it requires post-render verification of preserved open bodies, complete archived
-  bodies, valid links and byte stability on an unchanged second pass. When an
-  existing archive has a custom path, verification uses that path. No claim that
-  instruction tests prove model adherence or live completion.
-- Checks: From skills/docs-sync/scripts, run
-  `python3 -m unittest test_todo_archive`; check changed Markdown links and
-  `git diff --check`. Review the final wording against render/archive_tasks.
-  This pass ran test_todo_archive, test_archive_policy, test_render_safety,
-  test_goals and test_handoff_reconciliation: 74 tests passed. Canonical local
-  links, archive-prefix preservation and unchanged second-render bytes passed.
-  These checks do not establish model adherence or replace acceptance review.
-- Dependencies: None; the archival implementation and regression tests are now
-  included with the archive changes. No dependency on TOOLSET-008.
-- Ownership: Next authorized implementer; no active claim or implementation authority
-  is created by this planning pass.
-- Next action: Review the landed wording against all acceptance criteria; make only
-  evidenced remaining corrections, then reconcile this same task's completion.
-
 
 - [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
   - Status: open; target environment unavailable in this checkout.
@@ -213,7 +171,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PORTABLE: Align portable workflow discovery | unmet | — | TOOLSET-001 |
 | BACKLOG: Provide repeatable first-time backlog initialization | partial | — | TOOLSET-002 |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | — | TOOLSET-003 |
-| ARCHIVAL: Integrate archival and reconcile the rendering contract | partial | — | TOOLSET-009 |
+| ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass | — |
 | CONTINUATION: Resolve and align continuation authority | unmet | — | TOOLSET-008 |
 | CRON-REPORTING: Make Telegram scheduling reports reliable across invocation surfaces | partial | executed <code>Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)</code> → pass | TOOLSET-011 |
 
