@@ -35,7 +35,16 @@ def verify(registry, digest, fields, expected):
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != digest:
         raise ValueError('Registration evidence changed; inspect current registry')
-    rows = [json.loads(line) for line in data.decode().splitlines() if line.strip()]
+    def unique_object(pairs):
+        row = {}
+        for key, value in pairs:
+            if key in row:
+                raise ValueError('Registration registry contains duplicate JSON field: ' + key)
+            row[key] = value
+        return row
+
+    rows = [json.loads(line, object_pairs_hook=unique_object)
+            for line in data.decode().splitlines() if line.strip()]
     if any(not isinstance(row, dict) for row in rows):
         raise ValueError('Registration registry must contain JSON objects')
     # Refuse ambiguous histories instead of guessing which registration is current.

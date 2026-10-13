@@ -57,6 +57,13 @@ class RegistrationTests(unittest.TestCase):
             for card in (None, 'foreign'):
                 with self.assertRaises(ValueError): guard.check_registration(manifest, tmp, requirement, pin, card)
             with self.assertRaises(ValueError): guard.check_registration(manifest, tmp, requirement, '0'*64, 'card-1')
+            for field in fields.values():
+                with self.subTest(duplicate_field=field):
+                    path.write_text('{'+json.dumps(field)+': "foreign",'+before.decode()[1:])
+                    duplicate = path.read_bytes()
+                    with self.assertRaisesRegex(ValueError, 'duplicate JSON field'):
+                        module.verify(path, hashlib.sha256(duplicate).hexdigest(), fields, expected)
+                    self.assertEqual(path.read_bytes(), duplicate)
             path.write_bytes(before + before)
             with self.assertRaises(ValueError):
                 module.verify(path, hashlib.sha256(path.read_bytes()).hexdigest(), fields, expected)
