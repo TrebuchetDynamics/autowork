@@ -77,6 +77,32 @@ class TodoArchiveTests(unittest.TestCase):
         self.assertEqual(self.todo.read_bytes(), before)
         self.assertFalse(self.archive.exists())
 
+    def test_task_source_links_cannot_select_or_conflict_with_archive_owner(self):
+        for linked in (False, True):
+            with self.subTest(linked=linked):
+                owner = self.repo / ('docs/completed.md' if linked else 'TODO.archive.md')
+                owner.parent.mkdir(exist_ok=True)
+                owner.write_text('# Existing history\n')
+                reference = self.repo / 'docs/todo-archive.md'
+                reference.parent.mkdir(exist_ok=True)
+                reference.write_text('# Archive contract; keep unchanged\n')
+                source = ('  Sources: [archive contract](docs/todo-archive.md), '
+                          '[archive regression tests](test_archive.py)\n\n')
+                done, active = self.done + source, self.open + source
+                navigation = '[History](docs/completed.md)\n\n' if linked else ''
+                self.todo.write_text('# TODO\n\n' + navigation + '## Now\n' + active +
+                                     '## Done\n' + done)
+                result = json.loads(self.cli('archive').stdout)
+                self.assertEqual(result['archive'], owner.relative_to(self.repo).as_posix())
+                self.assertIn(done, owner.read_text())
+                self.assertIn(active, self.todo.read_text())
+                self.assertEqual(reference.read_text(), '# Archive contract; keep unchanged\n')
+                self.assertFalse((self.repo / 'test_archive.py').exists())
+                stable = (self.todo.read_bytes(), owner.read_bytes())
+                self.cli('archive')
+                self.assertEqual((self.todo.read_bytes(), owner.read_bytes()), stable)
+                owner.unlink()
+
     def test_closed_checkbox_cannot_override_open_ledger_or_open_subtask(self):
         for body in (self.open.replace('[ ]', '[x]'),
                      self.done + '  - [ ] remaining qualification\n'):

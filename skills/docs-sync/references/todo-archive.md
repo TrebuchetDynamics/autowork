@@ -8,6 +8,8 @@
 - `BLOCKERS.md` remains the owner-question ledger. The archive is not authoritative for current decisions, task eligibility, goal status, dirty files or runtime health. History never queues work.
 
 Create the archive with substantive moved history when it is needed. Do not create an empty history scaffold on every pass. An Audit/read-only pass edits neither TODO, the archive nor the ledger.
+The canonical archive link belongs in navigation outside task bodies. Task-source
+links to archive policies, code or historical evidence do not select an archive owner.
 
 ## Automatic task archival
 

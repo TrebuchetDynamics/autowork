@@ -108,6 +108,12 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
     records, headings = entries(text, prose, set(tasks) | verified)
     records = [(start, min([end] + [point for point in boundaries if point > start]), tid, mark)
                for start, end, tid, mark in records]
+    # Task sources may link to archive code, policies or another task's history.
+    # Only navigation outside task bodies can designate the live TODO's owner.
+    navigation = list(prose)
+    for start, end, _, _ in records:
+        navigation[start:end] = re.sub(r'[^\r\n]', ' ', prose[start:end])
+    navigation = ''.join(navigation)
     overlapping = set()
     for index, row in enumerate(records):
         for following in range(index + 1, len(records)):
@@ -131,7 +137,7 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
             sys.exit('verified task is not explicitly closed or has ambiguous boundaries in TODO.md; no write')
         # An exact command retry after success has no live body left to move.
         # Only recognize closed historical entries; never use an ID to discard live text.
-        owner = archive_owner(repo, prose)
+        owner = archive_owner(repo, navigation)
         history = (checked_bytes(repo / owner) or b'').decode('utf-8')
         historical = mask(history)
         archived, _ = entries(history, historical, unselected)
@@ -141,7 +147,7 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
             sys.exit('verified task is absent from TODO.md and closed archive history; no write')
     if not selected:
         return {'text': text, 'moved': [], 'retained': sorted(set(retained)), 'archive': None}
-    owner = archive_owner(repo, prose)
+    owner = archive_owner(repo, navigation)
     path = repo / owner
     before = checked_bytes(path)
     history = (before or b'').decode('utf-8')
