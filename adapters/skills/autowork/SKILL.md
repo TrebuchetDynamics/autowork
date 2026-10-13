@@ -24,6 +24,11 @@ isolation, and preserve all unrelated edits.
    Implement the smallest complete outcome, run discriminating checks, fix failures and
    satisfy required review. Separate offline implementation from live qualification.
    Use installed specialist skills only for concrete gaps, not a mandatory phase chain.
+   Apply the [Ponytail method](../../../skills/autowork/references/ponytail.md) to
+   material implementation choices: reuse before adding code, complete affected
+   consumers, and record the choice and checks in the existing task. Resolve the
+   actual host skill or use the bundled fallback; apply review criteria within
+   this host's existing review step and reuse unchanged source-bound decisions.
 4. Commit attributable verified work locally unless forbidden. Use ordinary Git and
    the repository's conventions; do not manufacture a Hermes card or receipt. Follow
    repository integration policy and existing authority. Push/deploy requires its

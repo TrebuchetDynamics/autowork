@@ -29,6 +29,9 @@ review-gated reconciliation. Apply its autonomous decision rules and phase/domai
 skill menu; carry material decisions and actually applied methods into the worker contract.
 Installation is availability, not a requirement to load every skill. A clear task
 needs no supporting skill; preserve explicit user methods and required checks.
+Apply [Ponytail's smallest complete change method](references/ponytail.md) to
+implementation choices and the existing review step. Reuse concrete decisions
+and evidence; load the verified skill for material choices, not another audit loop.
 Does not create recurring jobs; existing authorized cron jobs may invoke it.
 
 ## Mode precedence

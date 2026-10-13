@@ -1,4 +1,4 @@
-"""Offline simplicity selection; no worker, model or board dispatch."""
+"""Generated worker contract coverage; no worker, model or board dispatch."""
 import importlib.util
 from pathlib import Path
 import unittest
@@ -10,19 +10,31 @@ SPEC.loader.exec_module(m)
 
 
 class PonytailHandoffTests(unittest.TestCase):
-    def test_implementation_handoff_makes_ponytail_optional_without_waiving_gates(self):
+    def test_worker_and_proposal_handoffs_carry_the_simplification_method(self):
         contract = 'Objective: scoped implementation\nAcceptance: retain required checks'
-        body = m.build_task_body(contract)
-        self.assertIn(contract, body)
-        self.assertIn('Use `ponytail` only for a concrete simplification tradeoff or explicit request', body)
-        self.assertNotIn('Before solution design or implementation, load `ponytail`', body)
-        self.assertIn('preserve relevant regression coverage', body)
-        self.assertIn('never waive safety, acceptance criteria or required checks', body)
-        self.assertNotIn('load `ponytail-review`', body)
-        self.assertIn('no push, merge, deploy', body)
-        guide = (Path(__file__).parents[1] / 'references/handoff.md').read_text()
-        self.assertIn('not as\na mandatory startup step', guide)
-        self.assertIn('Native-tool handoffs', guide)
+        for options in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
+            with self.subTest(options=options):
+                body = m.build_task_body(contract, **options)
+                self.assertIn(contract, body)
+                self.assertIn('Ponytail application:', body)
+                self.assertIn('existing repository code, standard library/platform, installed dependency', body)
+                self.assertIn('smallest complete change', body)
+                self.assertIn('callers, tests, fixtures and config', body)
+                self.assertIn('decision, reused paths, omitted extras and check/result', body)
+                self.assertIn('preserve relevant regression coverage', body)
+                self.assertIn('never waive safety, acceptance criteria or required checks', body)
+                self.assertIn('no push, merge, deploy', body)
+
+    def test_handoff_resolves_real_skills_and_reuses_the_existing_review_lane(self):
+        body = m.build_task_body('Objective: scoped implementation')
+        self.assertIn('ponytail:ponytail', body)
+        self.assertIn('retired compatibility shim', body)
+        self.assertIn('ponytail:ponytail-review', body)
+        self.assertIn('existing review lane', body)
+        self.assertIn('reuse unchanged source-bound decisions', body)
+        guide = Path(__file__).parents[1] / 'references/ponytail.md'
+        self.assertIn(str(guide.resolve()), body)
+        self.assertTrue(guide.is_file(), 'worker must receive an available bundled fallback')
 
 
 if __name__ == '__main__':

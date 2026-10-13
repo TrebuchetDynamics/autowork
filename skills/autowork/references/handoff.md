@@ -804,14 +804,14 @@ before task closure, then reconciles docs/TODO, validates/renders and reselects.
 A direct worker ledger role has the same acceptance/review precondition; pending
 review leaves canonical task status in_progress after worker review handoff.
 
-Use `ponytail` for a concrete simplification tradeoff or explicit request, not as
-a mandatory startup step. Preserve relevant regression coverage, acceptance and
-required checks. Native-tool handoffs follow the same selective-loading policy.
-Use ponytail's integrated complexity review, not a separate ponytail-review load.
-Skill consolidation lesson: archive the old discovery entry with provenance, remove
-it from vendor sync, and verify fresh command resolution; an existing session's
-cached catalog is not proof. Prompt selection is not observed worker adoption or
-measured time/token savings.
+Apply [Ponytail](ponytail.md) before material implementation choices and within
+the existing review lane. Native-tool handoffs carry the same method, skill
+resolution, fallback and receipt requirements as the generated CLI worker body.
+Resolve the installed version: review may be a separate `ponytail:ponytail-review`
+skill or integrated guidance. Loading those criteria does not create another
+reviewer or substitute for required independent review. Preserve regression
+coverage, acceptance and required checks. Reuse prior source-bound decisions.
+Prompt selection is not observed worker adoption or measured time/token savings.
 
 Implement only the selected slice with regression tests and real checks, or execute the selected bounded reproduction/acceptance investigation. Do not ask the user to choose among ordinary safe candidates. Resolve retrievable facts yourself. Iterate fix → rerun until acceptance (Operating priority 4). Stop on the slice's completion, runtime budget, 5 attempts without new evidence, an ownership conflict, or a necessary owner decision. Do not start a second task.
 
