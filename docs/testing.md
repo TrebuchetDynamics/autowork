@@ -106,6 +106,34 @@ cases skip when ruamel.yaml is unavailable). `test_complete_setup.py` separately
 checks orchestration after admission, including no installation calls on dry-run.
 No passing preview is evidence of a live model or Telegram workflow.
 
+## Archive and ownership regression checks
+
+From `skills/docs-sync/scripts`, run:
+
+```sh
+python3 -m unittest test_todo_archive test_archive_policy test_render_safety
+```
+
+These fixtures exercise automatic/archive-only moves, whole-body preservation,
+custom archive paths, CRLF bytes, stale-write refusal and unchanged second passes.
+They preserve open bodies and ledger history and reject ambiguous completion
+metadata. The selected archive and the live TODO must both be inspected after
+rendering; a passing fixture does not prove a real task's acceptance or model
+follow-through. See the [archive contract](../skills/docs-sync/references/todo-archive.md).
+
+From `skills/autowork/scripts`, run:
+
+```sh
+python3 -m unittest test_retry_selection
+```
+
+Ownership fixtures check partial claim updates, exact historical-workspace
+resolution, retained metadata and rejection of conflicting identities. They do
+not establish a live worker's availability or grant a new lease. At the repository
+root, `python3 -m unittest discover -s tests -p test_owner_cron.py` checks prompt
+generation, repair-mode opt-in and preserved job settings without scheduling or
+executing a live repair.
+
 ## Portable package checks
 
 Codex/Pi packaging and adapter-reference checks run in `tests/test_portable_package.py`.

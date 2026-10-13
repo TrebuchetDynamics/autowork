@@ -85,17 +85,18 @@ question. Existing order is preserved, not a new implementation mandate.
 ### TOOLSET-009 — Account for archival in the shared rendering contract
 
 - [ ] TOOLSET-009 — Account for archival in the shared rendering contract
-- Status: open; planned, not implemented.
+- Status: open; rendering description landed concurrently, acceptance review remains.
 - Priority: Medium; independent of TOOLSET-008.
 - Goal: ARCHIVAL — Agents review and deliver every artifact changed by a render operation.
 - Sources: [engineering cycle](skills/shared/ENGINEERING-CYCLE.md),
   [renderer](skills/docs-sync/scripts/goals.py),
   [archive contract](skills/docs-sync/references/todo-archive.md),
   [archive regression tests](skills/docs-sync/scripts/test_todo_archive.py).
-- Evidence: ENGINEERING-CYCLE.md says rendering changes only the goal table;
-  goals.py render delegates to archive_tasks with coverage rendering enabled and
-  may move completed bodies into the established archive. The user's planning
-  request adopts the audit finding and asks to document and inspect that effect.
+- Evidence: Commit `08701bd` now describes coverage rendering, automatic archival
+  and readback of TODO plus the selected archive in ENGINEERING-CYCLE.md.
+  The original user's planning request adopted the earlier drift finding.
+  This pass does not reopen that implemented wording correction or claim that
+  its complete acceptance criteria have been reviewed by the integration owner.
 - Scope: Correct the shared cycle's render description and closeout sequence.
   Require readback/diff review of TODO.md and the actual archive selected by the
   helper; include attributable archive changes in the handoff and any separately
@@ -110,12 +111,16 @@ question. Existing order is preserved, not a new implementation mandate.
 - Checks: From skills/docs-sync/scripts, run
   `python3 -m unittest test_todo_archive`; check changed Markdown links and
   `git diff --check`. Review the final wording against render/archive_tasks.
-  These are planned implementation checks, not new passing evidence.
+  This pass ran test_todo_archive, test_archive_policy, test_render_safety,
+  test_goals and test_handoff_reconciliation: 74 tests passed. Canonical local
+  links, archive-prefix preservation and unchanged second-render bytes passed.
+  These checks do not establish model adherence or replace acceptance review.
 - Dependencies: None; the archival implementation and regression tests are now
   included with the archive changes. No dependency on TOOLSET-008.
 - Ownership: Next authorized implementer; no active claim or implementation authority
   is created by this planning pass.
-- Next action: Make the bounded contract correction after implementation is authorized.
+- Next action: Review the landed wording against all acceptance criteria; make only
+  evidenced remaining corrections, then reconcile this same task's completion.
 
 
 ## Needs decision

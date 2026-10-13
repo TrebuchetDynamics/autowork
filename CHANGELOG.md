@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Automatic completed-task archival during `goals.py render`, plus an archive-only
+  command. Whole closed bodies move to the established archive under the canonical
+  lock; open bodies and ledger history remain (`08701bd`).
+- Opt-in maintenance repair prompt generation with one bounded consultation/repair
+  batch, preserved paused jobs and explicit product/live-operation exclusions.
+  Cron command-discovery guidance separates live registration from message retry
+  and scheduling; neither prompt generation nor registration proves execution
+  (`d136ccd`).
+
 - `/cron_autowork` creates or updates repository-bound Autowork schedules with
   duplicate checks, preserved paused state and explicit budget/delivery limits.
   Codex/Pi adapters report unavailable scheduling instead of emulating a daemon.
@@ -17,6 +26,11 @@ claim of a tagged release, completed installation or live workflow qualification
 - Verification of explicitly declared writer-registration prerequisites (`d422ea4`).
 
 ### Fixed
+
+- Partial worktree-claim updates preserve their unique historical workspace and
+  existing ownership metadata. Conflicting aliases, duplicate JSON fields,
+  ambiguous histories and owner changes are refused instead of permitting task
+  takeover (`07a9f68`).
 
 - Verification commands now remap repository-root arguments into the frozen
   candidate checkout. Receipt directories are created before check execution,
@@ -47,6 +61,12 @@ claim of a tagged release, completed installation or live workflow qualification
   task and consumed budget; these checks do not implement native accounting repair.
 
 ### Changed
+
+- Plan For Me now has its own matching skill directory and identity; Autoresearch
+  remains independently registered. Plan With Me and Docs Sync no longer register
+  the old repo-interview/repo-docs aliases. Autoresearch compatibility commands
+  remain available (`60bbc70`); this supersedes the earlier alias-retention behavior
+  recorded below.
 
 - Renamed bundled source folders to `docs-sync` and `plan-with-me`; old command
   spellings remain aliases, while retired local snapshots are excluded from discovery
