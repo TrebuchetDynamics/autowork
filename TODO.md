@@ -8,33 +8,10 @@ No task below is implemented by this documentation pass. [goals.json](goals.json
 indexes the open work below; historical completion notes remain in their existing
 owners. Ledger eligibility is not worker admission or live qualification.
 
-Now: TOOLSET-001 aligns portable discovery. Next: TOOLSET-002 provides a repeatable
-initialization interface, followed by TOOLSET-003's isolated live qualification.
-TOOLSET-008 remains an owner policy question. Existing order is preserved, not a new implementation mandate.
-
-## Now
-
-### TOOLSET-001 — Align portable skill discovery with the current public workflows
-
-- [ ] TOOLSET-001 — Align portable skill discovery with the current public workflows
-- Status: in_progress; matches the existing ledger and recorded handoff, not a completion claim.
-- Goal: PORTABLE — Consistent primary workflow names across Hermes, Codex and Pi.
-- Sources: [accepted scope](docs/project.md#accepted-requirements), [public workflow mapping](docs/workflows.md), [portable adapters](adapters/skills/COMMON.md), [Pi registration](adapters/pi.mjs).
-- Evidence: Hermes folds Grill Me into Plan With Me and publishes Plan For Me;
-  the portable package still discovers separate Grill Me and Autoresearch skills;
-  Hermes now also registers Autoresearch separately from Plan For Me.
-- Scope: Align portable public discovery and challenge/research routing; update
-  host-specific examples and registration tests. Preserve non-planning protocols
-  and supported compatibility invocations.
-- Exclusions: No Hermes Agent edits, permission changes or removal of user skills.
-- Acceptance: Canonical skills are discoverable on each host; challenge mode and
-  every research protocol resolve to valid instructions without recursive routing.
-  Package references remain valid after installation.
-- Checks: `python3 -m unittest discover -s tests -p test_portable_package.py`;
-  `node --test tests/portable_pi.test.mjs`; native installation/discovery in temporary homes.
-- Dependencies: None.
-- Ownership: Existing Autowork handoff recorded; preserve its claim and verify live
-  ownership before any resume or new dispatch. This docs pass does not take ownership.
+Next eligible: TOOLSET-002 provides a repeatable initialization interface, followed
+by TOOLSET-003's isolated live qualification. TOOLSET-001 is integrated locally;
+its completion evidence is in [the archive](TODO.archive.md).
+TOOLSET-008 remains an owner policy question. Existing order is preserved.
 
 ## Next
 
@@ -169,7 +146,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 
 | Goal | Status | Evidence | Task |
 | --- | --- | --- | --- |
-| PORTABLE: Align portable workflow discovery | unmet | — | TOOLSET-001 |
+| PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | partial | — | TOOLSET-002 |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | — | TOOLSET-003 |
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass | — |

@@ -152,3 +152,42 @@ Source section: Next
   the heading and explicit Status own this completed entry's archival boundary.
 
 <!-- End of verified TOOLSET-009 entry. -->
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-001 — Align portable skill discovery with the current public workflows
+
+- [x] TOOLSET-001 — Align portable skill discovery with the current public workflows
+- Status: done; independent review approved `5e5d043`, integrated locally at `af8e567`.
+- Goal: PORTABLE — Consistent primary workflow names across Hermes, Codex and Pi.
+- Sources: [accepted scope](docs/project.md#accepted-requirements), [public workflow mapping](docs/workflows.md), [portable adapters](adapters/skills/COMMON.md), [Pi registration](adapters/pi.mjs).
+- Evidence: Hermes folds Grill Me into Plan With Me and publishes Plan For Me;
+  the portable package still discovers separate Grill Me and Autoresearch skills;
+  Hermes now also registers Autoresearch separately from Plan For Me.
+- Scope: Align portable public discovery and challenge/research routing; update
+  host-specific examples and registration tests. Preserve non-planning protocols
+  and supported compatibility invocations.
+- Exclusions: No Hermes Agent edits, permission changes or removal of user skills.
+- Acceptance: Canonical skills are discoverable on each host; challenge mode and
+  every research protocol resolve to valid instructions without recursive routing.
+  Package references remain valid after installation.
+- Checks: `python3 -m unittest discover -s tests -p test_portable_package.py`;
+  `node --test tests/portable_pi.test.mjs`; native installation/discovery in temporary homes.
+- Dependencies: None.
+- Ownership: Original Autowork worker and independent reviewer completed the local
+  slice; the current coordinator verified and integrated it. No live claim remains.
+- Completion evidence: `5e5d043b758c63592bade98eae04d3670e1e2376` contains the nine
+  reviewed implementation/test/document paths; `af8e56723e2c3c10f7068bba06cbbed23ef246b8`
+  integrates them while preserving the earlier documentation work.
+  Integration checks: portable Python regressions (3 tests), Pi Node regressions
+  (3 tests), `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`
+  (247 + 427 + 122 + 8 tests, all four directories passed; eight live/native modules
+  excluded), local Markdown links/anchors and `git diff --cached --check` passed.
+  Exact-source independent review also verified native Codex 0.162.1 and Pi 1.2.0
+  discovery in isolated credential-free homes. Model compliance, Telegram delivery,
+  unattended execution and minimum supported versions remain NOT_CHECKED.
+
+<!-- End of verified TOOLSET-001 entry. -->

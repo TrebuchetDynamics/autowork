@@ -2,11 +2,17 @@
   "goals": [
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified",
+          "result": "pass"
+        }
+      ],
       "id": "PORTABLE",
       "priority": 10,
       "source": "docs/project.md#accepted-requirements",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-001"
       ],
@@ -89,14 +95,6 @@
   "tasks": [
     {
       "depends_on": [],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-001",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "Align portable skill discovery with the current public workflows"
-    },
-    {
-      "depends_on": [],
       "goal": "BACKLOG",
       "id": "TOOLSET-002",
       "section": "Next",
@@ -128,6 +126,14 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Make Autowork continuation authority consistent"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-001",
+      "section": "Done",
+      "status": "done",
+      "title": "Align portable skill discovery with the current public workflows"
     },
     {
       "depends_on": [],
