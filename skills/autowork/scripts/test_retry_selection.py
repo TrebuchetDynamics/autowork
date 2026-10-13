@@ -182,6 +182,35 @@ class RetrySelectionTests(unittest.TestCase):
         self.assertEqual(result['selected_task']['id'], 'T1')
         self.assertEqual(todo.read_bytes(), before)
 
+    def test_equivalent_task_sources_are_one_plan(self):
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Sources: [Plan](SPEC.md#accepted)',
+            'Sources: [Plan](SPEC.md#accepted), [Same](./SPEC.md#accepted)'))
+        data_path = self.consumer / 'goals.json'
+        data = json.loads(data_path.read_text())
+        (self.consumer / 'README.md').write_text('Intent\n')
+        data['goals'][0]['source'] = 'README.md'
+        data_path.write_text(json.dumps(data))
+        result = self.retry()
+        self.assertEqual(result['state'], 'ready_for_autowork', result)
+        self.assertEqual(result['plan'], 'SPEC.md#accepted')
+
+    def test_conflicting_plan_status_is_not_ready(self):
+        (self.consumer / 'SPEC.md').write_text('# Accepted\nStatus: Accepted\nStatus: Proposed\n')
+        result = self.retry()
+        self.assertEqual(result['state'], 'draft_saved', result)
+        self.assertIsNone(result['selected_task'])
+        self.assertIn('plan section has conflicting or duplicate Status metadata', result['reasons'])
+
+    def test_dependency_cycle_is_reported_instead_of_empty_queue(self):
+        path = self.consumer / 'goals.json'
+        data = json.loads(path.read_text())
+        data['tasks'][0]['depends_on'] = ['T1']
+        path.write_text(json.dumps(data))
+        result = self.retry()
+        self.assertEqual(result['state'], 'draft_saved', result)
+        self.assertIn('task dependency cycle: T1 -> T1', result['reasons'])
+
     def test_absent_consumer_is_draft_even_when_docs_scratch_has_backlog(self):
         (self.consumer / 'goals.json').unlink()
         result = self.retry()

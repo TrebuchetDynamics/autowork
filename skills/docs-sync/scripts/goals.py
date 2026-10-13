@@ -34,6 +34,7 @@ import argparse
 from contextlib import contextmanager
 from contextvars import ContextVar
 import fcntl
+from graphlib import CycleError, TopologicalSorter
 import hashlib
 import json
 import os
@@ -95,6 +96,16 @@ def normalize(data):
     return normalized
 
 
+def dependency_cycles(data):
+    problems = []
+    for kind, rows in (('goal', data['goals']), ('task', data['tasks'])):
+        try:
+            TopologicalSorter({row['id']: row.get('depends_on', []) for row in rows}).prepare()
+        except CycleError as exc:
+            problems.append(f'{kind} dependency cycle: ' + ' -> '.join(exc.args[1]))
+    return problems
+
+
 def errors(data):
     errs = []
     goals, tasks = data.get('goals'), data.get('tasks')
@@ -144,6 +155,8 @@ def errors(data):
         for d in t.get('depends_on', []):
             if d not in tids:
                 errs.append(f'{tid}: depends_on unknown task {d}')
+    if not errs:
+        errs.extend(dependency_cycles(data))
     return errs
 
 
@@ -415,6 +428,26 @@ def markdown_prose(text):
     return ''.join(lines)
 
 
+def reference_key(ref):
+    """Normalize harmless local spelling differences, never traversal or URLs."""
+    name, separator, anchor = ref.partition('#')
+    path = Path(name or 'TODO.md')
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', ref) or path.is_absolute() or '..' in path.parts:
+        return ref
+    return path.as_posix() + separator + anchor
+
+
+def plan_acceptance_error(section):
+    """One explicit status is required; conflicting metadata is not acceptance."""
+    statuses = re.findall(r'^[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*([^\r\n]*)',
+                          markdown_prose(section), re.M | re.I)
+    if len(statuses) > 1:
+        return 'plan section has conflicting or duplicate Status metadata'
+    if len(statuses) != 1 or statuses[0].strip().lower() != 'accepted':
+        return 'plan section lacks explicit Status: Accepted'
+    return ''
+
+
 def local_reference(repo, ref, blobs, reasons):
     """Resolve maintained Markdown links inside this authority; bind whole files."""
     if re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', ref):
@@ -519,8 +552,9 @@ def backlog_check(a):
         reasons.append('accepted plan requires a heading anchor')
     if plan_path and not Path(plan_path).is_absolute() and '..' not in Path(plan_path).parts:
         decision = local_reference(repo, a.plan, blobs, reasons)
-        if not re.search(r'^\s*(?:\*\*)?Status:(?:\*\*)?\s*Accepted\s*$', decision, re.M | re.I):
-            reasons.append('plan section lacks explicit Status: Accepted')
+        acceptance_error = plan_acceptance_error(decision)
+        if acceptance_error:
+            reasons.append(acceptance_error)
         for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', decision):
             if not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', ref):
                 name, separator, heading = ref.partition('#')
@@ -575,7 +609,7 @@ def backlog_check(a):
                 if not re.search(r'(?<![\w-])' + re.escape(dep) + r'(?![\w-])', fields.get('Dependencies', '')):
                     reasons.append(f'{tid}: Dependencies do not name {dep}')
             sources = re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', fields.get('Sources', ''))
-            if tid in ids and a.plan not in sources:
+            if tid in ids and reference_key(a.plan) not in {reference_key(ref) for ref in sources}:
                 reasons.append(f'{tid}: Sources do not link accepted plan')
             for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', task_prose(body)):
                 local_reference(repo, ref, blobs, reasons)
@@ -714,6 +748,9 @@ def execute(a):
     if a.cmd == 'render':
         render(a.repo, normalize(data)); print('ok'); return
     if a.cmd == 'next':
+        cycles = dependency_cycles(data)
+        if cycles:
+            sys.exit('\n'.join(cycles))
         picks = eligible(normalize(data))
         if a.json:
             print(json.dumps([{'task': t, 'goal': g['id'], 'goal_status': g['status']} for t, g in picks], indent=2))
@@ -726,8 +763,13 @@ def execute(a):
     if a.cmd == 'task':
         task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
         task['status'] = a.status
-        dump(a.repo, data)
         goal = next((g for g in data['goals'] if g['id'] == task['goal']), None)
+        if a.status != 'done':
+            if task.get('section') == 'Done':
+                task['section'] = 'Next'
+            if goal and goal.get('status') == 'met':
+                goal['status'] = 'partial'
+        dump(a.repo, data)
         still_open = [t for t in data['tasks'] if t.get('goal') == task['goal'] and t.get('status') != 'done']
         if a.status == 'done' and goal and goal.get('status') != 'met' and not still_open:
             print(f"WARNING: {goal['id']} is still {goal['status']} with no open task. Record the check you ran: "
@@ -751,6 +793,8 @@ def execute(a):
         data['tasks'].append({'id': a.task, 'goal': a.goal, 'title': a.title, 'status': 'open',
                               'section': a.section, 'depends_on': deps})
         goal['tasks'] = sorted(set(goal.get('tasks', []) + [a.task]))
+        if goal.get('status') == 'met':
+            goal['status'] = 'partial'
         dump(a.repo, data); print(f'ok {a.task} -> {a.goal} ({a.section})'); return
     if a.cmd == 'evidence':
         goal = next((x for x in data['goals'] if x['id'] == a.goal), None) or sys.exit(f'unknown goal {a.goal}')

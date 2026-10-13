@@ -108,6 +108,62 @@ class GoalsTests(unittest.TestCase):
         picks = [p['task']['id'] for p in json.loads(run('next', str(self.repo), '--json').stdout)]
         self.assertNotIn('TASK-002', picks)
 
+    def test_dependency_cycles_are_reported_without_mutation(self):
+        run('fmt', str(self.repo))
+        original = self.data()
+        for kind, key, ids in (('task', 'tasks', ['TASK-001', 'TASK-002']),
+                               ('goal', 'goals', ['GOAL-1', 'GOAL-4'])):
+            for members in (ids[:1], ids):
+                with self.subTest(kind=kind, members=members):
+                    data = json.loads(json.dumps(original))
+                    rows = {row['id']: row for row in data[key]}
+                    for i, identifier in enumerate(members):
+                        rows[identifier]['depends_on'] = [members[(i + 1) % len(members)]]
+                    path = self.repo / 'goals.json'
+                    path.write_text(json.dumps(data))
+                    before = path.read_bytes()
+                    result = run('validate', str(self.repo))
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn(kind + ' dependency cycle:', result.stdout)
+                    for identifier in members:
+                        self.assertIn(identifier, result.stdout)
+                    self.assertEqual(path.read_bytes(), before)
+                    result = run('next', str(self.repo), '--json')
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn(kind + ' dependency cycle:', result.stderr)
+                    self.assertEqual(path.read_bytes(), before)
+
+    def finish_goal(self):
+        self.assertEqual(run('fmt', str(self.repo)).returncode, 0)
+        self.assertEqual(run('task', str(self.repo), 'TASK-002', 'done').returncode, 0)
+        result = run('evidence', str(self.repo), 'GOAL-1', '--kind', 'executed',
+                     '--ref', 'fixture test', '--result', 'pass')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return next(g for g in self.data()['goals'] if g['id'] == 'GOAL-1')['evidence']
+
+    def test_reopened_task_returns_to_queue_and_reopens_completed_goal(self):
+        evidence = self.finish_goal()
+        result = run('task', str(self.repo), 'TASK-002', 'open')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        task = next(t for t in self.data()['tasks'] if t['id'] == 'TASK-002')
+        goal = next(g for g in self.data()['goals'] if g['id'] == 'GOAL-1')
+        self.assertEqual(task['section'], 'Next')
+        self.assertEqual(goal['status'], 'partial')
+        self.assertEqual(goal['evidence'], evidence)
+        picks = json.loads(run('next', str(self.repo), '--json').stdout)
+        self.assertIn('TASK-002', [p['task']['id'] for p in picks])
+
+    def test_new_followup_reopens_completed_goal_without_erasing_evidence(self):
+        evidence = self.finish_goal()
+        result = run('add-task', str(self.repo), 'TASK-009', '--goal', 'GOAL-1',
+                     '--title', 'Follow-up', '--section', 'Now')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        goal = next(g for g in self.data()['goals'] if g['id'] == 'GOAL-1')
+        self.assertEqual(goal['status'], 'partial')
+        self.assertEqual(goal['evidence'], evidence)
+        picks = json.loads(run('next', str(self.repo), '--json').stdout)
+        self.assertIn('TASK-009', [p['task']['id'] for p in picks])
+
 
 if __name__ == '__main__':
     unittest.main()

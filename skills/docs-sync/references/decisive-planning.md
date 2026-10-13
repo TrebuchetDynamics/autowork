@@ -91,6 +91,15 @@ goal plan when the task links it, otherwise the task's unique accepted source.
 Multiple accepted task sources without that goal binding require an explicit
 plan/task selection, not a guessed choice or a rewritten approval.
 
+Use one current Status field per plan section; conflicting status lines are a
+metadata defect, not approval. Equivalent local links such as `./SPEC.md#slice`
+and `SPEC.md#slice` identify the same plan. Dependency cycles are reported with
+their task/goal IDs: correct the unsupported edge from documented intent before
+retrying, rather than treating the queue as empty or removing dependencies blindly.
+Reopening a Done task moves its ledger section to Next; reopening or adding work
+to a met goal makes it partial and preserves prior evidence. Reconcile the TODO
+body and section in the same Docs Sync pass before consumer handoff.
+
 ## Finish with an actionable handoff
 
 Report actual state/exit, approval source, Now/Next IDs, why Now comes first,

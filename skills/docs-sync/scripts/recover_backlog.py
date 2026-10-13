@@ -40,7 +40,7 @@ def repair(repo, plan, ids, pin=None):
         raise ValueError('; '.join(problems))
     reasons, blobs = [], {}
     decision = goals.local_reference(repo, plan, blobs, reasons)
-    if '#' not in plan or not re.search(r'^\s*(?:\*\*)?Status:(?:\*\*)?\s*Accepted\s*$', decision, re.M | re.I):
+    if '#' not in plan or goals.plan_acceptance_error(decision):
         raise ValueError('accepted plan required; recovery cannot manufacture approval')
     if reasons:
         raise ValueError('; '.join(reasons))
@@ -56,7 +56,7 @@ def repair(repo, plan, ids, pin=None):
         if task is None or task['status'] == 'done':
             raise ValueError('existing unfinished task required: ' + tid)
         owner = owners[task['goal']]
-        if owner['source'] != plan:
+        if goals.reference_key(owner['source']) != goals.reference_key(plan):
             raise ValueError('accepted plan is not the goal intent source: ' + tid)
         entries = goals.task_bodies(text).get(tid, [])
         if len(entries) > 1:
@@ -82,7 +82,7 @@ def repair(repo, plan, ids, pin=None):
             prior_goal = next((g for g in prior['goals'] if g['id'] == task['goal']), None)
             if (previous is None or any(previous.get(k, [] if k == 'depends_on' else None) != task.get(k, [] if k == 'depends_on' else None)
                                         for k in ('goal', 'title', 'depends_on'))
-                    or prior_goal is None or prior_goal['source'] != plan):
+                    or prior_goal is None or goals.reference_key(prior_goal['source']) != goals.reference_key(plan)):
                 raise ValueError('immutable task intent differs from current ledger: ' + tid)
             history = goals.task_bodies(committed(repo, pin, 'TODO.md')).get(tid, [])
             if len(history) != 1:
@@ -126,7 +126,7 @@ def repair(repo, plan, ids, pin=None):
         if 'Sources' not in fields:
             raise ValueError('existing body has empty or ambiguous Sources; reconcile it explicitly: ' + tid)
         links = re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', fields['Sources'])
-        if plan not in links:
+        if goals.reference_key(plan) not in {goals.reference_key(ref) for ref in links}:
             # The ledger already binds this exact accepted intent; add only its link.
             header = re.search(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?' + re.escape(tid)
                                + r'`?(?:\*\*)?(?=\s|:)', goals.task_prose(text), re.M)

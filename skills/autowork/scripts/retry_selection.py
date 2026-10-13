@@ -40,13 +40,12 @@ def accepted_task_plan(repo, task, goal):
     def accepted(ref):
         problems = []
         section = goals.local_reference(repo, ref, {}, problems)
-        return ('#' in ref and not problems and
-                re.search(r'^\s*(?:\*\*)?Status:(?:\*\*)?\s*Accepted\s*$', section, re.M | re.I))
-    plan = goal['source']
+        return '#' in ref and not problems and not goals.plan_acceptance_error(section)
+    plan = goals.reference_key(goal['source'])
     todo = goals.checked_bytes(repo / 'TODO.md')
     entries = goals.task_bodies(todo.decode('utf-8')).get(task['id'], []) if todo else []
     sources = goals.task_fields(entries[0][0]).get('Sources', '') if len(entries) == 1 else ''
-    candidates = sorted({ref for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', sources) if accepted(ref)})
+    candidates = sorted({goals.reference_key(ref) for ref in re.findall(r'\[[^\]]*\]\(([^\s)]+)\)', sources) if accepted(ref)})
     if plan in candidates:
         return plan
     if len(candidates) > 1:

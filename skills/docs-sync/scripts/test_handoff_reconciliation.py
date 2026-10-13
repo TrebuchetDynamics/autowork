@@ -85,6 +85,20 @@ class HandoffReconciliationTests(unittest.TestCase):
         self.assertEqual((code, receipt['state']), (1, 'draft_saved'))
         self.assertIn('plan section lacks explicit Status: Accepted', receipt['reasons'])
 
+    def test_equivalent_plan_link_does_not_block_task(self):
+        self.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        self.todo.write_text(self.body.replace('SPEC.md#slice', './SPEC.md#slice'))
+        code, receipt = self.check()
+        self.assertEqual((code, receipt['state']), (0, 'ready_for_autowork'), receipt)
+
+    def test_conflicting_status_lines_do_not_accept_plan(self):
+        for statuses in ('Status: Accepted\nStatus: Proposed',
+                         '**Status:** Proposed\n**Status:** Accepted'):
+            with self.subTest(statuses=statuses):
+                self.plan.write_text('# Slice\n\n' + statuses + '\n')
+                code, receipt = self.check()
+                self.assertEqual((code, receipt['state']), (1, 'draft_saved'), receipt)
+
     def test_fenced_task_examples_are_not_executable_contracts(self):
         self.plan.write_text('# Slice\n\nStatus: Accepted\n')
         for fence in ('```', '~~~~', '   ```markdown'):

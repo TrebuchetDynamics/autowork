@@ -133,6 +133,29 @@ class BacklogRecoveryTests(unittest.TestCase):
         self.assertIn('immutable source lacks unfinished complete body', result.stderr)
         self.assertEqual(todo.read_bytes(), before)
 
+    def test_equivalent_source_binding_needs_no_repair(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(self.body.replace('SPEC.md#slice', './SPEC.md#slice'))
+        ledger = self.repo / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['source'] = './SPEC.md#slice'
+        ledger.write_text(json.dumps(data))
+        before = todo.read_bytes()
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)['repairs'], [])
+        self.assertEqual(todo.read_bytes(), before)
+
+    def test_conflicting_plan_status_cannot_authorize_recovery(self):
+        (self.repo / 'SPEC.md').write_text('# Slice\nStatus: Accepted\nStatus: Proposed\n')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(self.body.replace('  Sources: [Slice](SPEC.md#slice)\n', ''))
+        before = todo.read_bytes()
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('accepted plan required', result.stderr)
+        self.assertEqual(todo.read_bytes(), before)
+
     def test_empty_and_duplicate_sources_require_reconciliation(self):
         for sources in ('  Sources:\n', '  Sources: [One](README.md)\n  Sources: [Two](README.md)\n'):
             with self.subTest(sources=sources):
