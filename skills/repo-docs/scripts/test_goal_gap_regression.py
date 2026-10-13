@@ -11,7 +11,11 @@ import re
 import subprocess
 import sys
 import time
+import unittest
 from pathlib import Path
+
+if __name__ != '__main__':
+    raise unittest.SkipTest('Standalone live harness; run explicitly with a fresh fixture')
 
 fixture = Path(sys.argv[1] if len(sys.argv) > 1 else
                os.path.join((os.environ.get('HERMES_HOME') or os.path.expanduser('~/.hermes')), 'cache/scratch/repo-docs-goalgap-regression'))
