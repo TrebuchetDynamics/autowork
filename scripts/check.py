@@ -2,6 +2,7 @@
 """Run owned offline unittest suites; never import tests while building inventory."""
 import argparse
 from collections import defaultdict
+import math
 import os
 from pathlib import Path
 import signal
@@ -73,7 +74,7 @@ def main(argv=None):
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
     parser.add_argument('--timeout', type=float, default=180, help='seconds allowed per test directory (default: 180)')
     args = parser.parse_args(argv)
-    if args.timeout <= 0:
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be positive')
     root = Path(__file__).resolve().parents[1]
     tests = discover_tests(root)

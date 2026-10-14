@@ -92,6 +92,19 @@ class Check(unittest.TestCase):
         self.assertIn('deliberate regression', result.stdout + result.stderr)
         self.assertTrue((self.root / 'skills/docs-sync/scripts/checked').is_file())
 
+    def test_nonfinite_timeout_is_rejected_before_checks(self):
+        marker = self.root / 'executed'
+        self.write('tests/test_marker.py',
+                   f'from pathlib import Path\nPath({str(marker)!r}).touch()\n')
+        for value in ('nan', 'inf', '-inf'):
+            with self.subTest(timeout=value):
+                marker.unlink(missing_ok=True)
+                result = self.run_check(f'--timeout={value}')
+                self.assertFalse(marker.exists(), result.stdout + result.stderr)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn('--timeout must be positive', result.stderr)
+                self.assertNotIn('CHECK', result.stdout)
+
     def test_timeout_is_a_failure_not_a_skip(self):
         self.write('tests/test_hang.py', 'import time; time.sleep(3)\n')
         result = self.run_check('--timeout', '0.1')
