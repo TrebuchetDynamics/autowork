@@ -11,7 +11,7 @@ age. Never infer an answer from its old cron report. Native metadata and profile
 replies remain separate evidence.
 
 Use the shared executable `scripts/profile-consult.py`, independent of optional
-cron tool schemas and Bot Forge. Run it with the default root, a NEW private
+cron tool schemas. Run it with the default root, a NEW private
 maintenance output directory, and a file containing the auditor's local default
 self-assessment. It dynamically uses native `hermes profile list`; it never
 queries default recursively. Example from shared-source root:
@@ -30,7 +30,7 @@ The environment allowlist excludes inherited provider credentials, GIT selectors
 profile overrides, approval bypass flags and agent/socket handles. Native target
 credentials and rules remain enabled. No resume, yolo, accept-hooks, ignore-rules,
 config patches, implementation or worker dispatch. Only native session bookkeeping
-is permitted. Optional Bot Forge remains absent from the bundle baseline.
+is permitted.
 
 The native `file` and `skills` groups contain writes; empty `--toolsets` selects
 defaults. The verified narrow selection is `session_search`; deferred schema

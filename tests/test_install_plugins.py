@@ -10,7 +10,7 @@ import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'install-plugins.sh'
 MANIFEST = ('https://hermes-agent.nousresearch.com/docs/plugins/omh all profiles\n'
-            'https://hermes-agent.nousresearch.com/docs/plugins/bot-forge default profile only\n')
+            'https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
 
 
 class InstallPluginsTests(unittest.TestCase):
@@ -63,13 +63,13 @@ printf '%s|%s\\n' "$HERMES_HOME" "$*" >> "$CALL_LOG"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls(), [str(self.hermes_root) + '|' + command for command in (
             '-p default plugins install omh', '-p coder plugins install omh',
-            '-p research plugins install omh', '-p default plugins install bot-forge')])
+            '-p research plugins install omh', '-p default plugins install example-plugin')])
 
     def test_dry_run_never_invokes_cli(self):
         result = self.run_installer('--dry-run')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls(), [])
-        self.assertIn('-p default plugins install bot-forge', result.stdout)
+        self.assertIn('-p default plugins install example-plugin', result.stdout)
         self.assertIn('-p coder plugins install omh', result.stdout)
 
     def test_invalid_later_entry_prevents_every_install(self):
@@ -136,7 +136,7 @@ printf '%s|%s\\n' "$HERMES_HOME" "$*" >> "$CALL_LOG"
         result = self.run_installer('--hermes-home', str(other))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls(), [str(other) + '|-p default plugins install omh',
-                                       str(other) + '|-p default plugins install bot-forge'])
+                                       str(other) + '|-p default plugins install example-plugin'])
 
     def test_github_plugin_url_and_existing_install(self):
         self.manifest.write_text('https://github.com/dietrichgebert/ponytail all profiles\n')
@@ -218,7 +218,7 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
         self.assertNotIn('setup must not run', result.stderr)
 
     def test_setup_applies_gateway_default_only_where_bundle_is_installed(self):
-        self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/bot-forge default profile only\n')
+        self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
         plugin = self.hermes_root / 'profiles/coder/plugins/hermes-toolset'
         plugin.mkdir(parents=True)
         (plugin / 'plugin.yaml').write_text('name: hermes-toolset\n')
@@ -228,7 +228,7 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
         self.assertIn(str(self.hermes_root) + '|-p default config set plugins.entries.hermes-toolset.allow_gateway_injection true', self.calls())
 
     def test_setup_disables_command_prompts_only_for_installed_bundle_profiles(self):
-        self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/bot-forge default profile only\n')
+        self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
         plugin = self.hermes_root / 'profiles/coder/plugins/hermes-toolset'
         plugin.mkdir(parents=True)
         (plugin / 'plugin.yaml').write_text('name: hermes-toolset\n')

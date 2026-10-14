@@ -173,7 +173,7 @@ class BundleTests(unittest.TestCase):
         self.assertNotIn('old-import',missing)
         self.assertNotIn('https://github.com/addyosmani/agent-skills',unchecked)
 
-    def test_named_profiles_do_not_require_or_export_bot_forge(self):
+    def test_named_profiles_do_not_require_or_export_unlisted_plugins(self):
         self.manager.home_path = Path(self.tmp.name) / 'profiles/coder'
         self.manager.discover_and_load = lambda: None
         self.manager.list_plugins = lambda: []
@@ -184,11 +184,11 @@ class BundleTests(unittest.TestCase):
         }
         with patch.dict('sys.modules', modules):
             report = self.bundle.inventory()
-        self.assertNotIn('bot-forge', report['missing_plugins'])
-        self.skills = ['bot-forge:bot-forge']
+        self.assertNotIn('example-plugin', report['missing_plugins'])
+        self.skills = ['example-plugin:example-plugin']
         self.assertEqual(self.bundle.register_imported_skills(self.ctx, self.invoke), {})
-        self.assertNotIn('bot-forge', (ROOT / 'plugins/PLUGINS.md').read_text())
-        self.assertNotIn('bot-forge', (ROOT / 'plugin.yaml').read_text())
+        self.assertNotIn('example-plugin', (ROOT / 'plugins/PLUGINS.md').read_text())
+        self.assertNotIn('example-plugin', (ROOT / 'plugin.yaml').read_text())
 
     def test_optional_hindsight_is_not_part_of_bundle_inventory(self):
         self.manager.home_path = Path(self.tmp.name)

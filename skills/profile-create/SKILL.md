@@ -69,7 +69,7 @@ separate approval. Creation does not authorize repository changes, commits or pu
    Inspect `<bundle>/plugin.yaml`, `plugins/defaults.json` and `plugins/PLUGINS.md`
    for the CURRENT required plugin set and source identifiers. Install/enable and
    verify that set in this profile only using native plugin commands; do not bring
-   back removed plugins such as Bot Forge or Hindsight. Existing default-profile
+   back removed plugins such as Hindsight. Existing default-profile
    availability is not proof of target-profile enablement. If a scan blocks an
    install, summarize its verdict and request approval for that exact plugin and
    profile, disclosing approval-policy changes applied on enablement; only then use
