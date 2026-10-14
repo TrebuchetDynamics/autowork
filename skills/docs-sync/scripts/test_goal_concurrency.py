@@ -58,7 +58,75 @@ class ConcurrencyTests(unittest.TestCase):
         self.addCleanup(fixture.doCleanups)
         return fixture
 
-    def test_init_stale_revision_and_linked_worktree_authority(self):
+    def make_worktree(self):
+        self.git('init')
+        self.git('add', 'goals.json', 'TODO.md')
+        self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                 'commit', '-qm', 'fixture')
+        worker = Path(self.tmp.name) / 'worker'
+        self.git('worktree', 'add', '-q', '-b', 'worker', worker)
+        return worker
+
+    def test_default_linked_target_ignores_native_binding_without_foreign_writes(self):
+        worker = self.make_worktree()
+        before = {name: (self.repo / name).read_bytes() for name in ('goals.json', 'TODO.md')}
+        for target in (str(self.repo), str(Path(self.tmp.name) / 'missing'), 'relative-invalid'):
+            with self.subTest(binding=target):
+                for key in ('repoDocs.backlogAuthority', 'hermes.toolsetBacklogAuthority'):
+                    self.git('config', '--local', key, target)
+                result = self.cli('task', worker, 'T1', 'in_progress')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                data = json.loads((worker / 'goals.json').read_text())
+                self.assertEqual(data['tasks'][0]['status'], 'in_progress')
+                self.assertEqual(self.cli('validate', worker).returncode, 0)
+                self.assertEqual(before, {name: (self.repo / name).read_bytes() for name in before})
+        # A stale revision is still scoped to the actual requested worktree.
+        token = self.cli('revision', worker).stdout.strip()
+        (worker / 'TODO.md').write_text(self.body + '\nConcurrent local note\n')
+        current = (worker / 'goals.json').read_bytes()
+        result = self.cli('task', worker, 'T1', 'done', '--expected-revision', token)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('stale revision', result.stderr)
+        self.assertEqual((worker / 'goals.json').read_bytes(), current)
+
+    def test_linked_backlog_check_uses_local_inputs_without_native_config_lookup(self):
+        from test_handoff_reconciliation import HandoffReconciliationTests
+        fixture = HandoffReconciliationTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.plan.write_text('# Slice\n\nStatus: Accepted\n')
+        subprocess.run(['git', '-C', str(fixture.repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(fixture.repo), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+        worker = Path(self.tmp.name) / 'consumer'
+        subprocess.run(['git', '-C', str(fixture.repo), 'worktree', 'add', '-q', '-b', 'consumer', str(worker)], check=True)
+        subprocess.run(['git', '-C', str(fixture.repo), 'config', '--local',
+                        'repoDocs.backlogAuthority', '/nonexistent/stale-native-binding'], check=True)
+        harness = """import sys
+from unittest.mock import patch
+sys.path.insert(0, sys.argv.pop(1))
+import goals
+run = goals.subprocess.run
+def observed(args, **kwargs):
+    assert 'config' not in args, args
+    return run(args, **kwargs)
+with patch.object(goals.subprocess, 'run', observed):
+    goals.main()
+"""
+        snapshot = {root: {name: (root / name).read_bytes() for name in ('goals.json', 'TODO.md')}
+                    for root in (fixture.repo, worker)}
+        result = subprocess.run([sys.executable, '-c', harness, str(SCRIPT.parent),
+                                 'backlog-check', str(worker), '--plan', 'SPEC.md#slice', '--tasks', 'T1'],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt['authoritative_repo'], str(worker))
+        self.assertEqual(receipt['state'], 'ready_for_autowork')
+        self.assertIsNone(receipt['authority_binding']['registered_authority'])
+        for root, files in snapshot.items():
+            self.assertEqual(files, {name: (root / name).read_bytes() for name in files})
+
+    def test_init_stale_revision_and_explicit_worktree_targets(self):
         fixture = self.init_inputs()
         consumer = fixture.repo
         token = self.cli('revision', consumer).stdout.strip()
@@ -74,28 +142,23 @@ class ConcurrencyTests(unittest.TestCase):
         worker = Path(self.tmp.name) / 'worker'
         subprocess.run(['git', '-C', str(consumer), 'worktree', 'add', '-q', '-b', 'init-worker', str(worker)], check=True)
         result = self.cli('init', worker, '--intent', fixture.intent)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('linked worktree requires', result.stderr)
-        self.assertFalse((worker / 'goals.json').exists())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((worker / 'goals.json').exists())
         self.assertEqual(fixture.snapshot(), before)
-        # Explicit same-repository primary targeting uses the existing policy.
+        worker_bytes = (worker / 'goals.json').read_bytes()
+        # Explicit same-repository targeting changes only the requested target.
         result = self.cli('init', worker, '--intent', fixture.intent, '--canonical-repo', consumer)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((consumer / 'goals.json').exists())
-        self.assertFalse((worker / 'goals.json').exists())
-        # A pre-existing native binding wins; a registered worker alone did not.
+        self.assertEqual((worker / 'goals.json').read_bytes(), worker_bytes)
         (consumer / 'goals.json').unlink()
         subprocess.run(['git', '-C', str(consumer), 'config', '--local',
                         'repoDocs.backlogAuthority', str(worker)], check=True)
         result = self.cli('init', consumer, '--intent', fixture.intent,
                           '--canonical-repo', consumer)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('does not match native backlog authority', result.stderr)
-        self.assertFalse((consumer / 'goals.json').exists())
-        result = self.cli('init', consumer, '--intent', fixture.intent)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((worker / 'goals.json').exists())
-        self.assertFalse((consumer / 'goals.json').exists())
+        self.assertTrue((consumer / 'goals.json').exists())
+        self.assertEqual((worker / 'goals.json').read_bytes(), worker_bytes)
 
     def test_concurrent_init_is_serialized_and_repeat_is_noop(self):
         fixture = self.init_inputs()
@@ -148,7 +211,7 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(next(t for t in data['tasks'] if t['id'] == 'T1')['status'], 'done')
         self.assertFalse((other / '.git' / '.docs-sync-goals.lock').exists())
 
-    def test_common_dir_override_cannot_make_linked_worktree_canonical(self):
+    def test_common_dir_override_cannot_redirect_linked_worktree_edits(self):
         self.git('init')
         self.git('add', 'goals.json', 'TODO.md')
         self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture')
@@ -161,14 +224,15 @@ class ConcurrencyTests(unittest.TestCase):
         # primary objects/refs; clean discovery still identifies a linked checkout.
         for name in ('objects', 'refs'):
             shutil.copytree(self.repo / '.git' / name, local / name, dirs_exist_ok=True)
-        before = {name: (worker / name).read_bytes() for name in ('goals.json', 'TODO.md')}
         # Force common == local without replacing GIT_DIR, independently of the first fix.
         env = dict(os.environ, GIT_COMMON_DIR=str(local))
-        denied = subprocess.run([sys.executable, str(SCRIPT), 'task', str(worker), 'T1', 'done'],
+        primary_before = (self.repo / 'goals.json').read_bytes()
+        result = subprocess.run([sys.executable, str(SCRIPT), 'task', str(worker), 'T1', 'done'],
                                 env=env, capture_output=True, text=True, timeout=15)
-        self.assertNotEqual(denied.returncode, 0, denied.stdout + denied.stderr)
-        self.assertIn('canonical', denied.stderr)
-        self.assertEqual(before, {name: (worker / name).read_bytes() for name in before})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.repo / 'goals.json').read_bytes(), primary_before)
+        self.assertEqual(next(t for t in json.loads((worker / 'goals.json').read_text())['tasks'] if t['id'] == 'T1')['status'], 'done')
+        self.assertFalse((local / '.docs-sync-goals.lock').exists())
 
     def test_git_environment_matrix_uses_real_target_and_preserves_caller_environment(self):
         self.git('init')
@@ -223,7 +287,7 @@ assert dict(os.environ) == before
                         out, err = p.communicate(timeout=15)
                 self.assertEqual(p.returncode, 0, out + err)
 
-    def test_primary_git_dir_override_cannot_bypass_linked_canonical_refusal(self):
+    def test_primary_git_dir_override_cannot_redirect_requested_worktree(self):
         self.git('init')
         self.git('add', 'goals.json', 'TODO.md')
         self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture')
@@ -233,9 +297,10 @@ assert dict(os.environ) == before
         env = dict(os.environ, GIT_DIR=str(self.repo / '.git'))
         result = subprocess.run([sys.executable, str(SCRIPT), 'task', str(worker), 'T1', 'done'],
                                 env=env, capture_output=True, text=True, timeout=15)
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('canonical', result.stderr)
-        self.assertEqual(before, {name: (worker / name).read_bytes() for name in before})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(next(t for t in json.loads((worker / 'goals.json').read_text())['tasks'] if t['id'] == 'T1')['status'], 'done')
+        self.assertEqual(json.loads((self.repo / 'goals.json').read_text())['tasks'][0]['status'], 'open')
+        before = {name: (worker / name).read_bytes() for name in before}
         # Both source and canonical discovery use the same sanitized identity.
         result = subprocess.run([sys.executable, str(SCRIPT), 'task', str(worker), 'T1', 'done',
                                  '--canonical-repo', str(self.repo)], env=env,
@@ -243,22 +308,20 @@ assert dict(os.environ) == before
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(before, {name: (worker / name).read_bytes() for name in before})
 
-    def test_linked_worktrees_require_explicit_canonical_target_and_share_lock(self):
+    def test_linked_worktrees_edit_locally_and_explicit_targets_share_lock(self):
         self.git('init')
         self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'add', 'goals.json', 'TODO.md')
         self.git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture')
         worker = Path(self.tmp.name) / 'worker'
         self.git('worktree', 'add', '-b', 'worker', worker)
-        snapshot = (worker / 'goals.json').read_bytes()
-        denied = self.cli('task', worker, 'T1', 'done')
-        self.assertNotEqual(denied.returncode, 0)
-        self.assertIn('canonical', denied.stderr)
+        self.assertEqual(self.cli('validate', worker).returncode, 0)
         with (self.repo / '.git' / '.docs-sync-goals.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             processes = [self.start('add-task', self.repo, 'T3', '--goal', 'G', '--title', 'Third'),
                          self.start('evidence', worker, 'G', '--kind', 'executed', '--ref', 'worker-check',
                                     '--result', 'pass', '--canonical-repo', self.repo),
-                         self.start('render', worker, '--canonical-repo', self.repo)]
+                         self.start('render', worker, '--canonical-repo', self.repo),
+                         self.start('task', worker, 'T2', 'in_progress')]
             try:
                 time.sleep(0.4)
                 self.assertTrue(all(p.poll() is None for p in processes), 'worktree bypassed common Git lock')
@@ -268,8 +331,16 @@ assert dict(os.environ) == before
         data = json.loads((self.repo / 'goals.json').read_text())
         self.assertIn('T3', {t['id'] for t in data['tasks']})
         self.assertEqual(data['goals'][0]['evidence'][0]['ref'], 'worker-check')
-        self.assertEqual((worker / 'goals.json').read_bytes(), snapshot)
+        worker_data = json.loads((worker / 'goals.json').read_text())
+        self.assertEqual(worker_data['tasks'][1]['status'], 'in_progress')
+        self.assertEqual(data['tasks'][1]['status'], 'open')
+        self.assertNotIn('T3', {t['id'] for t in worker_data['tasks']})
         self.assertEqual((worker / 'TODO.md').read_text(), self.body)
+        # Explicit target may name a linked checkout of this same repository.
+        result = self.cli('task', self.repo, 'T1', 'in_progress', '--canonical-repo', worker)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((worker / 'goals.json').read_text())['tasks'][0]['status'], 'in_progress')
+        self.assertEqual(json.loads((self.repo / 'goals.json').read_text())['tasks'][0]['status'], 'open')
         self.assertEqual(self.cli('render', self.repo).returncode, 0)
         self.assertTrue((self.repo / 'TODO.md').read_text().startswith(self.body))
         unrelated = Path(self.tmp.name) / 'unrelated'

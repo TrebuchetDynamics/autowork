@@ -20,9 +20,9 @@ Agents change goals.json only through these commands, never by hand-editing JSON
                                                 move closed task bodies to TODO.archive.md; keep ledger history
   goals.py backlog-check <repo> --plan path#heading --tasks T1,T2 [--receipt prior.json]
                                                 read-only consumer-bound completion receipt (0 ready, 1 draft, 2 ineligible)
-  Every command accepts --expected-revision TOKEN and --canonical-repo PRIMARY.
-  Native common-config repoDocs.backlogAuthority may bind a registered same-repo worktree.
-  Unbound linked worktrees require explicit canonical targeting; workers return proposals.
+  Every command accepts --expected-revision TOKEN and --canonical-repo CHECKOUT.
+  Explicit --canonical-repo targets another verified checkout of the same Git repository.
+  Commands target the requested checkout; legacy native authority config is ignored.
   CLI operations lock the common Git directory (or a local no-Git fixture) before load.
   goals.py task <repo> <TASK> <open|in_progress|done>
   goals.py supersede <repo> <TASK> --by T1,T2 --reason TEXT
@@ -338,51 +338,20 @@ def git_identity(repo):
 
 
 def backlog_authority(repo, identity):
-    """Use only the repository's native common config and registered worktrees."""
-    if identity is None:
-        return None
-    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-    config = subprocess.run(['git', 'config', '--file', str(identity[0] / 'config'),
-                             '--get-all', 'repoDocs.backlogAuthority'],
-                            capture_output=True, text=True, timeout=10, env=env)
-    if config.returncode == 1:
-        return None
-    if config.returncode != 0 or len(config.stdout.splitlines()) != 1:
-        sys.exit('invalid native backlog authority binding')
-    target = Path(config.stdout.strip())
-    if not target.is_absolute():
-        sys.exit('native backlog authority must be an absolute registered worktree')
-    target = target.resolve(strict=True)
-    worktrees = subprocess.run(['git', '-C', str(repo), 'worktree', 'list', '--porcelain'],
-                               capture_output=True, text=True, timeout=10, env=env)
-    registered = [Path(line[9:]).resolve() for line in worktrees.stdout.splitlines()
-                  if line.startswith('worktree ')]
-    target_identity = git_identity(target)
-    if (worktrees.returncode != 0 or target not in registered or target_identity is None
-            or target_identity[0] != identity[0]):
-        sys.exit('native backlog authority is not a registered worktree of this repository')
-    return target
+    """Compatibility for older read-only callers; native bindings are retired."""
+    return None
 
 
 @contextmanager
 def coordination(repo, canonical_repo=None):
     repo = Path(repo).resolve(strict=True)
     identity = git_identity(repo)
-    authority = backlog_authority(repo, identity)
     if canonical_repo is not None:
         target = Path(canonical_repo).resolve(strict=True)
         target_identity = git_identity(target)
         if identity is None or target_identity is None or identity[0] != target_identity[0]:
             sys.exit('canonical target must be in the same repository')
-        if authority is not None and target != authority:
-            sys.exit('canonical target does not match native backlog authority')
-        if authority is None and not target_identity[1]:
-            sys.exit('canonical target must be the primary repository checkout')
         repo = target
-    elif authority is not None:
-        repo = authority
-    elif identity is not None and not identity[1]:
-        sys.exit('linked worktree requires --canonical-repo <primary checkout>; return a scoped proposal to the integration owner')
     lock_dir = identity[0] if identity is not None else repo
     lock_path = lock_dir / '.docs-sync-goals.lock'
     if lock_path.is_symlink():
@@ -390,8 +359,8 @@ def coordination(repo, canonical_repo=None):
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if backlog_authority(repo, identity) != authority:
-            sys.exit('native backlog authority changed while acquiring lock; retry current state')
+        if git_identity(repo) != (target_identity if canonical_repo is not None else identity):
+            sys.exit('Git repository identity changed while acquiring lock; retry current state')
         token = TRANSACTION.set((repo, revision(repo)))
         try:
             yield repo
@@ -859,18 +828,17 @@ def backlog_receipt(a, *, candidate=None):
                     ineligible.append(f'{tid}: unmet goal dependency {dep}')
         # In-progress work is reconciled separately. A named plan checks its own
         # goals' ordered frontier, not unrelated goals in the global queue.
-        # Cross-milestone execution still needs start_goal's source-bound fallback
-        # and live ownership checks; metadata readiness does not grant that authority.
+        # Explicit task scope, current source and actual writer checks still apply;
+        # metadata readiness does not grant execution or publication authority.
         requested_goals = {tasks[tid]['goal'] for tid in ids if tid in tasks}
         open_picks = [tid for tid in picks if tasks[tid]['status'] == 'open'
                       and tasks[tid]['goal'] in requested_goals]
         if open_picks and open_picks[0] not in ids:
             ineligible.append(f'current frontier {open_picks[0]} precedes requested plan')
-    authority = backlog_authority(repo, identity)
-    if identity and ((authority is not None and authority != repo) or (authority is None and not identity[1])):
-        reasons.append('native backlog authority changed during check')
+    if git_identity(repo) != identity:
+        reasons.append('Git repository identity changed during check')
     binding = {'git_common_dir': str(identity[0]) if identity else None,
-               'registered_authority': str(authority) if authority else None}
+               'registered_authority': None}
     if any(checked_bytes(repo / name) != blob for name, blob in blobs.items()
            if candidate is None or name not in candidate):
         reasons.append('inputs changed during check')
@@ -1042,7 +1010,7 @@ def main():
     b.add_argument('--receipt', help='prior JSON stdout receipt to recheck for staleness')
     for parser in sub.choices.values():
         parser.add_argument('--expected-revision', help='refuse if goals.json or TODO.md changed since revision')
-        parser.add_argument('--canonical-repo', help='explicit primary checkout of the same Git repository')
+        parser.add_argument('--canonical-repo', help='explicit target checkout of the same Git repository (default: requested repo)')
     a = ap.parse_args()
     if a.cmd == 'focus' and sum((a.clear, a.goal is not None, a.json)) != 1:
         f.error('provide exactly one of GOAL, --clear or --json')

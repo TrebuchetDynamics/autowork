@@ -187,6 +187,64 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(before, (repo / 'goals.json').read_bytes())
         self.assertEqual(index, (repo / '.git/index').read_bytes())
 
+    def test_todo_only_linked_readiness_ignores_native_authority_and_writes_nothing(self):
+        import audit_profiles
+        from unittest.mock import patch
+        repo = Path(self.tmp.name) / 'repo'
+        repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        (repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] T1: useful change\n'
+                                      '  Scope: bounded change\n  Acceptance: fixture passes\n'
+                                      '  Checks: python3 -m unittest\n  Dependencies: None\n')
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+        worker = Path(self.tmp.name) / 'worker'
+        subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', 'worker', str(worker)], check=True)
+        subprocess.run(['git', '-C', str(repo), 'config', '--local', 'repoDocs.backlogAuthority',
+                        '/nonexistent/old-binding'], check=True)
+        before = {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()}
+        gaps = []
+        with patch.object(audit_profiles.goals, 'backlog_authority', side_effect=AssertionError('native authority queried')):
+            result = audit_profiles.backlog_readiness(worker, gaps)
+        self.assertEqual(result['state'], 'consumer_ready', result)
+        self.assertEqual(result['eligible_task_ids'], ['T1'])
+        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': str(worker)})
+        self.assertEqual(result['live_ownership'], 'unknown')
+        self.assertEqual(gaps, [])
+        self.assertEqual(before, {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()})
+        # An existing malformed index is never ignored in favor of TODO selection.
+        (worker / 'goals.json').write_text('{broken')
+        result = audit_profiles.backlog_readiness(worker, [])
+        self.assertEqual(result['state'], 'invalid')
+
+    def test_indexed_linked_readiness_does_not_require_native_canonical_binding(self):
+        import audit_profiles
+        from unittest.mock import patch
+        repo = Path(self.tmp.name) / 'indexed'
+        repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        (repo / 'SPEC.md').write_text('# Accepted\n\nStatus: Accepted\n')
+        (repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] T1: fixture task\n'
+            '  Goal: G1\n  Scope: bounded change\n  Acceptance: fixture passes\n'
+            '  Checks: python3 -m unittest\n  Dependencies: None\n  Ownership: fixture\n'
+            '  Sources: [Accepted](SPEC.md#accepted)\n')
+        ledger = {'version': 1, 'goals': [{'id': 'G1', 'title': 'fixture',
+            'source': 'SPEC.md#accepted', 'status': 'unmet', 'tasks': ['T1']}],
+            'tasks': [{'id': 'T1', 'title': 'fixture task', 'goal': 'G1', 'status': 'open', 'section': 'Now'}]}
+        (repo / 'goals.json').write_text(json.dumps(audit_profiles.goals.normalize(ledger)))
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture',
+                        '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+        worker = Path(self.tmp.name) / 'indexed-worker'
+        subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', 'worker', str(worker)], check=True)
+        before = {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()}
+        with patch.object(audit_profiles.goals, 'backlog_authority', side_effect=AssertionError('native authority queried')):
+            result = audit_profiles.backlog_readiness(worker, [])
+        self.assertEqual(result['state'], 'consumer_ready', result)
+        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': str(worker)})
+        self.assertEqual(before, {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()})
+
     def test_job_delivery_and_response_coverage_are_not_silently_omitted(self):
         home = self.profile('default')
         (home / 'cron/output/j1').mkdir(parents=True)

@@ -39,22 +39,30 @@ def dirty_count(status):
 
 
 def backlog_readiness(root, gaps):
-    data = read_json(root / 'goals.json', gaps)
-    if data is None:
-        return {'state': 'missing_or_unreadable'}
     try:
+        identity = goals.git_identity(root)
+        canonical = {'state': 'observed', 'repo': safe(root)} if identity else {
+            'state': 'unknown', 'gate': 'non-Git workspace'}
+        ledger_path = root / 'goals.json'
+        if not ledger_path.exists() and not ledger_path.is_symlink():
+            # The direct selector reads TODO contracts without creating locks/state.
+            from task_execution import select
+            goals.checked_bytes(root / 'TODO.md')
+            task = select(root, None, None)
+            return {'state': 'consumer_ready', 'source': 'TODO.md',
+                    'primary_milestone': None, 'eligible_task_ids': [safe(task['id'])],
+                    'tasks': [{'task_id': safe(task['id']), 'state': 'ready_for_autowork',
+                               'reasons': [], 'plan': None}],
+                    'canonical_readiness': canonical, 'live_ownership': 'unknown',
+                    'boundary': 'local task contract only; ownership, candidate and execution not verified'}
+        data = read_json(ledger_path, gaps)
+        if data is None:
+            return {'state': 'invalid'}
         problems = goals.errors(data)
         if problems:
             gaps.append('backlog validation failed')
             return {'state': 'invalid', 'errors': [safe(p) for p in problems]}
         picks = goals.eligible(goals.normalize(data))
-        identity = goals.git_identity(root)
-        authority = goals.backlog_authority(root, identity)
-        canonical = {'state': 'observed', 'repo': safe(authority or root)}
-        if identity is None or (authority is None and not identity[1]):
-            canonical = {'state': 'unknown', 'gate': 'canonical authority unbound linked worktree' if identity else 'non-Git authority'}
-        elif authority is not None and authority != root:
-            canonical = {'state': 'held', 'repo': safe(authority), 'gate': 'observed checkout is not canonical authority'}
         tasks = []
         todo = goals.checked_bytes(root / 'TODO.md')
         bodies = goals.task_bodies(todo.decode('utf-8')) if todo else {}
