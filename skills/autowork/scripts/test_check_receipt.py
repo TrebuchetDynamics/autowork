@@ -346,6 +346,24 @@ class CandidateReceiptTests(unittest.TestCase):
         self.git('branch', 'candidate')
         return candidate_identity.capture(self.root, self.base, 'candidate')
 
+    def test_python_import_does_not_contaminate_exact_candidate(self):
+        import os
+        from unittest.mock import patch
+        module = self.load()
+        (self.root / 'dependency.py').write_text('value = 42\n')
+        (self.root / 'check.py').write_text('import dependency; assert dependency.value == 42\n')
+        self.git('add', 'dependency.py', 'check.py')
+        self.git('commit', '-qm', 'python check')
+        candidate = self.identity()
+        command = [sys.executable, 'check.py']
+        with patch.dict(os.environ, PYTHONDONTWRITEBYTECODE='', PWD=str(self.root)):
+            receipt = module.execute(self.root, ['dependency.py', 'check.py'], command, 10,
+                                     candidate=candidate)
+            self.assertEqual(receipt['outcome'], 'passed', receipt.get('generated_files'))
+            self.assertEqual(receipt['qualification'], 'exact_candidate')
+            self.assertEqual(receipt['generated_files'], [])
+            self.assertTrue(module.reusable(receipt, self.root, command, candidate=candidate))
+
     def test_external_script_argv_cannot_qualify_clean_candidate(self):
         module = self.load()
         candidate = self.identity()

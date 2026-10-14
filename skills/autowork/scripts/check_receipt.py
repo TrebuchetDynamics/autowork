@@ -123,6 +123,8 @@ def candidate_environment(root, checkout):
                 entries.append(entry)
             environment[key] = os.pathsep.join(entries)
     environment['PWD'] = str(checkout)
+    # Python imports must not create undeclared bytecode in the frozen snapshot.
+    environment['PYTHONDONTWRITEBYTECODE'] = '1'
     return environment
 
 
