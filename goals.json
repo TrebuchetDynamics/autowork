@@ -38,7 +38,13 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED",
+          "result": "pass"
+        }
+      ],
       "id": "RECOVERY",
       "priority": 30,
       "source": "docs/project.md#accepted-requirements",
@@ -155,14 +161,6 @@
     },
     {
       "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-015",
-      "section": "Next",
-      "status": "open",
-      "title": "Preserve explicit source refs in behind-only realignment"
-    },
-    {
-      "depends_on": [],
       "goal": "CONTINUATION",
       "id": "TOOLSET-008",
       "section": "Needs decision",
@@ -216,6 +214,14 @@
       "section": "Done",
       "status": "done",
       "title": "Archive completed task headings with their checkbox bodies"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-015",
+      "section": "Done",
+      "status": "done",
+      "title": "Preserve explicit source refs in behind-only realignment"
     }
   ],
   "version": 1
