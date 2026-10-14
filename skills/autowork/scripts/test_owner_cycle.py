@@ -424,15 +424,89 @@ class OwnerCycleTests(unittest.TestCase):
         self.ready_backlog()
         path=self.state/'handoff-requests'/'T1.json';path.parent.mkdir(parents=True)
         path.write_text(json.dumps({'consumer':str(self.repo),'task_id':'T1','options':{}}))
-        with patch.object(owner_cycle,'handoff',return_value={'exit_code':0,'result':{'outcome':'handed_off'}}) as handoff:
-            with redirect_stdout(io.StringIO()):
-                code=owner_cycle.main([str(self.repo),'--plan','SPEC.md#slice','--tasks','T1',
-                    '--state-dir',str(self.state),'--apply'])
-        self.assertEqual(code,0)
-        self.assertEqual(handoff.call_args.args[0].handoff_request,str(path))
-        receipt=json.loads((self.state/'unblock-latest.json').read_text())
-        self.assertEqual(receipt['outcome'],'QUEUED')
-        self.assertEqual(receipt['completed_tasks'],[])
+        preparation = self.state / 'ready-preflights/T1/preparation.json'
+        for retained in (None, {'dispatch_attempted': False, 'usage': 'unknown'}):
+            with self.subTest(retained=retained):
+                if retained is not None:
+                    preparation.parent.mkdir(parents=True)
+                    preparation.write_text(json.dumps(retained))
+                with patch.object(owner_cycle,'handoff',return_value={'exit_code':0,'result':{'outcome':'handed_off'}}) as handoff:
+                    with redirect_stdout(io.StringIO()):
+                        code=owner_cycle.main([str(self.repo),'--plan','SPEC.md#slice','--tasks','T1',
+                            '--state-dir',str(self.state),'--apply'])
+                self.assertEqual(code,0)
+                handoff.assert_called_once()
+                self.assertEqual(handoff.call_args.args[0].handoff_request,str(path))
+                receipt=json.loads((self.state/'unblock-latest.json').read_text())
+                self.assertEqual(receipt['outcome'],'QUEUED')
+                self.assertEqual(receipt['completed_tasks'],[])
+                if retained is not None:
+                    self.assertEqual(json.loads(preparation.read_text()), retained)
+
+    def test_saved_handoff_preserves_attempted_dispatch_without_replay(self):
+        import io
+        import owner_cycle
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        self.ready_backlog()
+        request = self.state / 'handoff-requests/T1.json'
+        request.parent.mkdir(parents=True)
+        request.write_text(json.dumps({'consumer': str(self.repo), 'task_id': 'T1', 'options': {}}))
+        preparation = self.state / 'ready-preflights/T1/preparation.json'
+        preparation.parent.mkdir(parents=True)
+        for usage in ('unknown', {'consumed_turns': 100}):
+            with self.subTest(usage=usage):
+                retained = {'dispatch_attempted': True, 'usage': usage, 'budget': 100,
+                            'max_retries': 1, 'base': 'original', 'sha256': {'snapshot': 'original'}}
+                preparation.write_text(json.dumps(retained))
+                before = {path: path.read_bytes() for path in (request, preparation,
+                          self.repo / 'TODO.md', self.repo / 'goals.json')}
+                task = {'id': 'T1', 'goal': 'G1', 'title': 'Implement fixture', 'status': 'open'}
+                recovery = {'gate': 'candidate_validated', 'authoritative_repo': str(self.repo),
+                            'task_goals': {'T1': 'G1'}, 'required_inputs': [], 'stages': [],
+                            'selection': {'selected_task': task}}
+                with patch.object(owner_cycle.owner_unblock, 'run', return_value=recovery), \
+                        patch.object(owner_cycle.progress_runtime, 'ready_queue',
+                            return_value={'tasks': [], 'shortfall': 3, 'selection': {}}), \
+                        patch.object(owner_cycle, 'handoff', return_value={'exit_code': 1,
+                            'result': {'outcome': 'unverified'}}) as dispatch, redirect_stdout(io.StringIO()):
+                    for _ in range(2):
+                        code = owner_cycle.main([str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                            '--state-dir', str(self.state), '--candidate-request', str(self.state / 'candidate.json'), '--apply'])
+                        receipt = json.loads((self.state / 'unblock-latest.json').read_text())
+                        self.assertEqual(code, 1)
+                        dispatch.assert_not_called()
+                        self.assertTrue(receipt['dispatch_attempted'])
+                        self.assertEqual(receipt['preparation'], retained)
+                        self.assertEqual(receipt['outcome'], 'BLOCKED')
+                        self.assertEqual(receipt['action'], 'reconcile_original_card')
+                        self.assertIn('consumed budget', receipt['next_action'])
+                        self.assertEqual(receipt['completed_tasks'], [])
+                        self.assertNotIn('handoff', receipt)
+                        for path, data in before.items():
+                            self.assertEqual(path.read_bytes(), data)
+
+    def test_saved_handoff_refuses_invalid_preparation(self):
+        import io
+        import owner_cycle
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        self.ready_backlog()
+        request = self.state / 'handoff-requests/T1.json'
+        request.parent.mkdir(parents=True)
+        request.write_text('{}')
+        preparation = self.state / 'ready-preflights/T1/preparation.json'
+        preparation.parent.mkdir(parents=True)
+        for data in ('[]', 'null', '{'):
+            with self.subTest(data=data):
+                preparation.write_text(data)
+                with patch.object(owner_cycle, 'handoff') as dispatch, redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        owner_cycle.main([str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                            '--state-dir', str(self.state), '--apply'])
+                dispatch.assert_not_called()
+                self.assertEqual(preparation.read_text(), data)
+                self.assertEqual(request.read_text(), '{}')
 
     def test_native_json_shapes_and_canonical_handoff_binding(self):
         import owner_cycle

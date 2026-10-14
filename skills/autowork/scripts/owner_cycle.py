@@ -244,7 +244,20 @@ def run_locked(args, state):
             result['preparation_error'] = str(exc)
     if ready and args.apply and not args.handoff_request and result['selected_task'] and not composed:
         saved = state / 'handoff-requests' / (result['selected_task']['id'] + '.json')
-        if saved.is_file(): args.handoff_request = str(progress_runtime.private_path(saved))
+        if saved.is_file():
+            retained = read_json(progress_runtime.private_path(
+                state / 'ready-preflights' / result['selected_task']['id'] / 'preparation.json'), {})
+            if not isinstance(retained, dict):
+                raise ValueError('invalid original preparation receipt; retain it for reconciliation')
+            if retained.get('dispatch_attempted'):
+                result.update(outcome='BLOCKED', action='reconcile_original_card',
+                    dispatch_attempted=True, preparation=retained,
+                    next_action='Prior dispatch attempted; reconcile original native card and consumed budget, never replay saved handoff')
+                save(state / 'history' / (result['run_id'] + '.json'), result)
+                save(state / 'unblock-latest.json', result)
+                save(state / 'report-latest.txt', render(result))
+                return result
+            args.handoff_request = str(progress_runtime.private_path(saved))
     preparation = ready and not args.handoff_request
     required_inputs = list(recovery.get('required_inputs', []))
     if preparation:
