@@ -103,21 +103,22 @@ def cron_responses(home, jobs, gaps):
             paths = sorted(p for p in directory.glob('*.md') if p.is_file() and not p.is_symlink())
             if not paths:
                 gaps.append('cron response missing: ' + identifier); continue
-            path = paths[-1]
-            with path.open('rb') as handle:
-                size = os.fstat(handle.fileno()).st_size
-                start = max(0, size - 32768)
-                handle.seek(start)
-                data = handle.read(32768)
-            truncated = start > 0
-            text = data.decode('utf-8', errors='replace')
-            if truncated:
-                text = '[EARLIER OUTPUT OMITTED; PARTIAL FIRST LINE REDACTED]\n' + text.partition('\n')[2]
-                gaps.append('cron response truncated: ' + identifier)
-            rows.append({'job_id': identifier, 'path': str(path), 'start': start, 'bytes_observed': len(data),
-                         'remaining_bytes': start + max(0, size - start - len(data)), 'sha256': digest(data),
-                         'payload': safe(text), 'analysis': 'not_analyzed',
-                         'boundary': 'latest output file; exact execution association not proved'})
+            for path in paths[-2:]:
+                with path.open('rb') as handle:
+                    size = os.fstat(handle.fileno()).st_size
+                    start = max(0, size - 32768)
+                    handle.seek(start)
+                    data = handle.read(32768)
+                truncated = start > 0
+                text = data.decode('utf-8', errors='replace')
+                if truncated:
+                    text = '[EARLIER OUTPUT OMITTED; PARTIAL FIRST LINE REDACTED]\n' + text.partition('\n')[2]
+                    gaps.append('cron response truncated: ' + identifier)
+                rows.append({'job_id': identifier, 'path': str(path), 'start': start, 'bytes_observed': len(data),
+                             'remaining_bytes': start + max(0, size - start - len(data)), 'sha256': digest(data),
+                             'payload': safe(text), 'analysis': 'not_analyzed',
+                             'output_rank': 1 if path == paths[-1] else 2, 'latest': path == paths[-1],
+                             'boundary': 'newest two output files by filename order; rank 1 is latest; exact execution association not proved'})
         except OSError:
             gaps.append('cron response unreadable: ' + identifier)
     return rows
