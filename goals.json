@@ -53,6 +53,11 @@
           "kind": "executed",
           "ref": "TOOLSET-016: exact 9b894fd same-card review approved; integration b470c68 Python 3.12 scripts/check.py passed 283/448/139/8 offline tests (2 skipped, 8 excluded), bash -n and git diff --check passed; native recovery NOT_CHECKED",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-020: exact 5e05e6b native independent review approved; integration-candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 319/475/139/8 offline tests, two skips/eight excluded; local main integration preservation ZERO_CHANGED; native/model/live qualification unrun",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -212,14 +217,6 @@
     },
     {
       "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-020",
-      "section": "Next",
-      "status": "open",
-      "title": "Reconcile permitted direct-main delivery truthfully"
-    },
-    {
-      "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-001",
       "section": "Done",
@@ -299,6 +296,14 @@
       "section": "Done",
       "status": "done",
       "title": "Apply clean incoming additions and deletions during behind-only realignment"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-020",
+      "section": "Done",
+      "status": "done",
+      "title": "Reconcile permitted direct-main delivery truthfully"
     }
   ],
   "version": 1
