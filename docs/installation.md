@@ -322,3 +322,12 @@ source, and its original backups support later reconciliation.
 Offline tests use real Git repositories and fake native admission; they do not
 establish live scanner acceptance, dependency admission, Telegram delivery or
 original-task recovery.
+
+## Scheduled self-repair
+
+Updated Autowork cron instructions use `scripts/heal-owner-cron.py` for bounded
+repair of their own managed prompt/skill wiring. See [cron self-repair](../skills/autowork/references/cron-autoheal.md)
+for the exact-profile/job command, private receipts and startup limitations. Existing
+saved prompts are not updated merely by installing source: refresh their managed
+wiring through the supported cron interface. A maintainer can invoke the same helper
+for one existing job; it never creates a watchdog or resumes paused schedules.

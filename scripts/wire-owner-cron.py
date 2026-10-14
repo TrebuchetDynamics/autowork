@@ -64,6 +64,13 @@ def owner_prompt(prompt, enabled):
     original = prompt.split(MARKER, 1)[0]
     return original + MARKER + (
         'Load hermes-toolset:autowork and references/owner-cycle.md for autonomous local coordination. '
+        'At entry, follow references/cron-autoheal.md: run scripts/heal-owner-cron.py from the verified Toolset installation '
+        'with --root DEFAULT_HERMES_HOME --profile CURRENT_PROFILE --job-id CURRENT_JOB_ID --repo CANONICAL_REPOSITORY --apply, '
+        'substituting verified current occurrence identity, never guessed values. '
+        'Repair this exact existing job managed wiring and read back the saved result before reporting recovery; '
+        'preserve scope, pauses, schedule, model, delivery and consumed budgets. '
+        'If a failure recurs, fix its attributable Toolset cause within existing authority and verify the same failed consumer; '
+        'do not end with another unchanged diagnosis when a supported local repair is available. '
         'Develop this repository within its established purpose and the scope above. '
         'Handle planning, implementation, testing, review and local integration yourself. '
         'This scheduled invocation is execution, not a planning-only request: consume existing source-bound plans within the standing authorization and continue eligible implementation in the same occurrence. '

@@ -166,3 +166,11 @@ it, and policy tests are not live decision proof.
 Honor explicit status-every-occurrence requests over silence defaults. Report
 profile, fallback outcome, observed worker/checks, actual commit/push or none,
 blocker and next safe action; never fabricate implementation or delivery progress.
+
+## Automatic cron recovery
+
+Follow [cron self-repair](cron-autoheal.md) at occurrence entry and after a failure.
+Use the exact-job healer for managed wiring, verify its saved readback, and fix an
+attributable Toolset cause in the same occurrence within existing authority. Preserve
+pauses, scope and original worker accounting. Startup failures before agent execution
+need an external authorized maintainer; saved wiring is not future execution proof.

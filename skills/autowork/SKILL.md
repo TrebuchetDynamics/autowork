@@ -11,7 +11,7 @@ metadata:
 
 # Autowork
 
-First apply [repository-stage preparation](references/repository-stages.md), then
+Apply [repository preparation](references/repository-stages.md), then
 use the execution and completion rules below.
 Local recovery uses existing authority: [recovery](references/owner-cycle.md).
 Planning resolves material choices via [Plan For Me](references/backlog-planning.md).
@@ -44,7 +44,7 @@ Apply [mode details](references/iteration-and-decisions.md#mode-precedence).
 
 Explicit whole-spec requests use `references/whole-spec-execution.md`; preserve safety, ownership, admission, budgets and review.
 
-For scheduled runs load [scheduled policy](references/scheduled-policy.md).
+Cron: [policy](references/scheduled-policy.md), [self-repair](references/cron-autoheal.md).
 Owner consultations: `references/profile-feedback.md`.
 
 Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).

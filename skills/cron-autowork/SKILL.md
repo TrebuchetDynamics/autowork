@@ -93,6 +93,9 @@ For broad repository scope, replenish justified tasks when none is ready; for a
 task filter, stay within that scope and its authorized prerequisites.
 Preserve consumed budgets, partial work, retry history and paused jobs. A cron tick
 does not grant a fresh allocation to an exhausted card. Do not edit Hermes Agent.
+Follow references/cron-autoheal.md: repair this exact job managed wiring with the
+installed scripts/heal-owner-cron.py and verified occurrence identity; read back.
+Fix attributable Toolset faults within existing authority before the next occurrence.
 Follow saved recovery outcomes; no repeated unchanged audits or planning-only loops.
 Report task ID/title, implemented or integrated slice, checks, commit/publication,
 next task, and the exact unresolved operation/input. Separate parent-task completion
@@ -169,3 +172,10 @@ and delivery error/receipt separately. Reconcile any active run before an explic
 requested run-now through the supported scheduler; never duplicate work or resume
 a paused job implicitly. Report configured, execution observed and Telegram delivery
 verified as separate facts, using actual evidence rather than scheduler health alone.
+
+For an existing Toolset-managed development job, use the bounded
+[cron self-repair path](../autowork/references/cron-autoheal.md). Preserve explicit
+no-write restrictions. The helper repairs managed prompt/skill wiring only; it does
+not infer missing routing or startup settings. When installing a new managed job,
+use `scripts/wire-owner-cron.py`'s `owner_prompt` renderer for its managed section.
+Do not run the fleet updater from a single-job occurrence.
