@@ -28,6 +28,35 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Next
 
+### TOOLSET-024 — Reject malformed goal source fields before task selection
+
+- [ ] TOOLSET-024 — Reject malformed goal source fields before task selection
+- Status: open; malformed non-string source reproduced as valid and eligible.
+- Goal: BACKLOG — Keep accepted-source identity structurally trustworthy for backlog consumers.
+- Sources: [accepted scope](docs/project.md#accepted-requirements), [task-index contract](docs/project.md#interface-and-state-contract), [validator](skills/docs-sync/scripts/goals.py), [regressions](skills/docs-sync/scripts/test_goals.py).
+- Scope: Reject non-string goal source fields in the existing ledger shape validator and add focused offline API/CLI regressions. Preserve supported string sources and additional metadata; document the diagnostic if needed.
+- Acceptance: Object, list, Boolean and numeric source fields cannot validate, normalize or yield eligible tasks. Diagnostics identify the affected goal field without leaking supplied values or traceback. Existing valid string sources, version checks and duplicate-key refusals remain passing. Refused CLI mutations leave ledger/TODO bytes unchanged.
+- Checks: `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py`; repeat for test_milestone_focus.py and test_goal_concurrency.py; `git diff --check`. Independently review the exact candidate before coordinator local integration.
+- Dependencies: None.
+- Ownership: toolset coordinator and one isolated native worker; coordinator owns canonical ledger and integration.
+- Exclusions: No upstream edits, deployment, publication, profile/job/settings changes, live/model qualification, acceptance weakening or foreign edits.
+- Decision: Use the existing shape validator, not new path-format policy. This is a routine agent decision under authorized repository maintenance, not historical user approval. Current reproduction: a nonempty object source returns no shape/semantic errors and an eligible task despite the source-heading contract.
+- Next action: Add a failing malformed-source regression, implement the smallest validator correction, run the named offline suites and return an owned local commit for independent review.
+
+### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+
+- [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+- Status: open; group-aware dry-run is clean in all 9 repositories (2026-10-14): first picks unchanged; the only eligible-order change is the accepted bravo TASK-002 move from 31st to 34th. Apply awaits authorization.
+- Goal: PRIORITY — Make TODO.md order the enforced human priority.
+- Sources: [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
+- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), pause only jobs this work pauses, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, commit locally per repository and resume only passing repositories.
+- Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
+- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, job readback after resume.
+- Dependencies: TOOLSET-028.
+- Ownership: Toolset coordinator under separate live authorization.
+- Exclusions: No push, no unrelated job changes, no resuming jobs that were already paused.
+- Next action: With explicit authorization, re-run each dry-run, then apply with its revision per the rollout sequence.
+
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
 - [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
@@ -73,6 +102,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
 - Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
 
+
 ### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
 
 - [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
@@ -88,36 +118,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Authorized coordinator with that environment; no active claim.
 - Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
 - Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
-
-### TOOLSET-024 — Reject malformed goal source fields before task selection
-
-- [ ] TOOLSET-024 — Reject malformed goal source fields before task selection
-- Status: open; malformed non-string source reproduced as valid and eligible.
-- Goal: BACKLOG — Keep accepted-source identity structurally trustworthy for backlog consumers.
-- Sources: [accepted scope](docs/project.md#accepted-requirements), [task-index contract](docs/project.md#interface-and-state-contract), [validator](skills/docs-sync/scripts/goals.py), [regressions](skills/docs-sync/scripts/test_goals.py).
-- Scope: Reject non-string goal source fields in the existing ledger shape validator and add focused offline API/CLI regressions. Preserve supported string sources and additional metadata; document the diagnostic if needed.
-- Acceptance: Object, list, Boolean and numeric source fields cannot validate, normalize or yield eligible tasks. Diagnostics identify the affected goal field without leaking supplied values or traceback. Existing valid string sources, version checks and duplicate-key refusals remain passing. Refused CLI mutations leave ledger/TODO bytes unchanged.
-- Checks: `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py`; repeat for test_milestone_focus.py and test_goal_concurrency.py; `git diff --check`. Independently review the exact candidate before coordinator local integration.
-- Dependencies: None.
-- Ownership: toolset coordinator and one isolated native worker; coordinator owns canonical ledger and integration.
-- Exclusions: No upstream edits, deployment, publication, profile/job/settings changes, live/model qualification, acceptance weakening or foreign edits.
-- Decision: Use the existing shape validator, not new path-format policy. This is a routine agent decision under authorized repository maintenance, not historical user approval. Current reproduction: a nonempty object source returns no shape/semantic errors and an eligible task despite the source-heading contract.
-- Next action: Add a failing malformed-source regression, implement the smallest validator correction, run the named offline suites and return an owned local commit for independent review.
-
-
-### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
-
-- [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
-- Status: open; group-aware dry-run is clean in all 9 repositories (2026-10-14): first picks unchanged; the only eligible-order change is the accepted bravo TASK-002 move from 31st to 34th. Apply awaits authorization.
-- Goal: PRIORITY — Make TODO.md order the enforced human priority.
-- Sources: [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
-- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), pause only jobs this work pauses, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, commit locally per repository and resume only passing repositories.
-- Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
-- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, job readback after resume.
-- Dependencies: TOOLSET-028.
-- Ownership: Toolset coordinator under separate live authorization.
-- Exclusions: No push, no unrelated job changes, no resuming jobs that were already paused.
-- Next action: With explicit authorization, re-run each dry-run, then apply with its revision per the rollout sequence.
 
 ## Goal coverage
 

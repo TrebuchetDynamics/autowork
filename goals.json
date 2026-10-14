@@ -192,6 +192,17 @@
       "title": "Start useful implementation sooner with less preparation"
     }
   ],
+  "priority_order": {
+    "schema": 1,
+    "tasks": [
+      "TOOLSET-024",
+      "TOOLSET-029",
+      "TOOLSET-003",
+      "TOOLSET-019",
+      "TOOLSET-011",
+      "TOOLSET-013"
+    ]
+  },
   "tasks": [
     {
       "depends_on": [],
