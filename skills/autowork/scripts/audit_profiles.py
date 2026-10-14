@@ -408,8 +408,8 @@ def progress(row, previous):
     evidence = {'continuity': {name: {k: value for k, value in fields.items() if k not in
                  ('worker_session_id', 'run_id', 'status', 'path', 'owner_profile')} for name, fields in row['continuity'].items()}}
     fingerprint = digest(json.dumps(evidence, sort_keys=True).encode())
-    completed = [r for r in row['executions'] if r.get('status') == 'completed' and r.get('finished_at') and r.get('id')]
-    latest = completed[0]['id'] if completed else None
+    finished = [r for r in row['executions'] if r.get('status') in ('completed', 'failed') and r.get('finished_at') and r.get('id')]
+    latest = finished[0]['id'] if finished else None
     meaningful = (any(isinstance(r.get('task_id'), str) and r['task_id'] for r in row['continuity'].values())
                   and row['repo']['state'] == 'observed')
     count = previous.get('consecutive', 0)
@@ -422,7 +422,7 @@ def progress(row, previous):
     if latest: seen.add(latest)
     result = {'consecutive': count, 'state': 'unknown' if not meaningful or not latest else
               'repeated_no_progress' if count >= 2 else 'observed',
-              'boundary': 'new completed cron run with unchanged task/blocker/check/commit evidence; unrelated repo dirt excluded, task-to-cron-run attribution unknown'}
+              'boundary': 'new finished completed or failed cron run with unchanged task/blocker/check/commit evidence; unrelated repo dirt excluded, task-to-cron-run attribution unknown; observation is not auto-pause authorization'}
     saved = {'fingerprint': fingerprint, 'completed_run': latest or previous.get('completed_run'),
              'completed_runs': sorted(seen), 'consecutive': count}
     if not meaningful: row['gaps'].append('no-progress: task/repo evidence unavailable')
