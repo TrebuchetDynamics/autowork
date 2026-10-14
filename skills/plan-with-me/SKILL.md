@@ -3,7 +3,7 @@ name: plan-with-me
 description: "Use when the user wants collaborative planning: research the repository, clarify their initial request and important decisions through questions, then save docs and tasks."
 license: MIT
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   hermes:
     tags: [interview, requirements, documentation, planning]
 ---
@@ -41,6 +41,18 @@ Resume saved answers; ask only material unresolved choices. Keep a question scop
 to the tasks it affects. An unanswered optional feature must not hold independent
 accepted tasks. Save meaningful answers during the interview, then batch final
 documentation/ledger checks once; do not restart Docs Sync after each response.
+
+When the matching task was cancelled, separate permission to revisit its plan,
+to reactivate it and to execute it; ask which boundary changes rather than reviving an
+old execution grant. On reactivation reuse its ID, keep the cancellation in history,
+and report queue eligibility separately from execution authority.
+
+For validation-performance plans: reuse existing phase receipts; ask once whether the
+goal is release latency or developer feedback; restore correctness before optimizing
+(a failing run is not a performance baseline); keep an active frozen candidate
+untouched; then plan one-variable experiments judged by repeated passing full-gate
+times under matched conditions with unchanged test identities. Never invent an SLA,
+and leave a speedup unverified without a repeatable gain. Planning launches nothing.
 
 ## Learn enough to ask a useful question
 

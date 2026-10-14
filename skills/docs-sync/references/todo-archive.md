@@ -23,8 +23,10 @@ under the existing canonical-repository lock. Read-only commands never archive.
 The helper moves whole top-level checkbox entries or `### TASK-ID — Title`
 sections only when they are explicitly closed and their ledger task is `done`.
 A met goal alone, an unchecked task, an open subtask or conflicting status cannot
-authorize a move. Keep one `Status:` line per body, beginning with `done`; put
-review/commit details in a separate evidence field, since a second Status line blocks it. It keeps completed ledger records and goal evidence, including
+authorize a move. A checked body whose ledger task is done needs no added `Status:`
+line when its metadata is consistent; if a Status field exists, keep exactly one,
+beginning with `done`, and put review/commit details in a separate evidence field,
+since a second Status line blocks it. Do not add redundant closure prose. It keeps completed ledger records and goal evidence, including
 pending broader qualification. An archive-only result lists `moved`, `retained`
 and the canonical `archive`; report retained conflicts and reconcile from evidence.
 Ambiguous overlapping task-shaped headings keep the whole affected unit live,
@@ -39,6 +41,13 @@ owning unit; open acceptance items and conflicting statuses keep it live.
 Do not automatically delete old empty headings: reconcile a known residue only
 against its exact existing archived completion body and ledger record, preserving
 the heading in append-only history and leaving unrelated text untouched.
+
+When verified done bodies stay `retained`, inspect their parsed spans first. A
+priority-group heading such as `### P0 — Core work` can match the task-heading
+grammar and overlap its children. After confirming it is a group, not a task,
+format it as `### **P0** — Core work`, check anchors and incoming links, and rerun
+`goals.py archive <repo>`. Never remove a genuine task heading or bypass the overlap
+rule; verify moved bodies byte-for-byte and archive-prefix conservation.
 
 For a repository without goals.json, the writing agent verifies the completion
 checks, then invokes `goals.py archive <repo> --verified-tasks ID1,ID2` with only

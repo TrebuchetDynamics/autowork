@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.11.1
+version: 0.11.2
 license: MIT
 metadata:
   hermes:
@@ -61,6 +61,10 @@ supported work; silence/defaults are not approval.
 
 This skill authorizes no code/install/production/instruction/commit/push/release
 work independently. Inherit coding-task scope; examples are not execution orders.
+For research/design-only work, save actionable findings in TODO.md and sync
+goals.json in the same batch; a research document alone is not the handoff. A
+no-code restriction covers presentation sites too: a suggested docs framework is a
+candidate, not permission to scaffold, install or build it.
 
 ## Incremental caller handoff
 
@@ -69,7 +73,9 @@ A planner or Autowork caller supplies its task, findings and affected owners; re
 that verified context and inspect the changed inputs instead of rediscovering the
 repository. Compare the latest run, reviewed candidate, integrated source and current
 body before retaining a recovery instruction; edit the current frontier in place
-instead of appending successive status blocks. Batch supported edits, then validate
+instead of appending successive status blocks. Reconcile the queue's introductory
+Now/Next and fallback prose with the current ledger too: completed fallback tasks must
+not remain instructions to reimplement them. Batch supported edits, then validate
 the final batch once. Unchanged
 findings require no write or render. Return paths, task IDs, input-bound checks and
 the next action to the caller; do not invoke another planner to restate its plan.
@@ -269,7 +275,10 @@ or reconcile goal objects with intent `source` under the canonical owner, then
    and archives explicitly closed, ledger-done task bodies under the
    [archive contract](references/todo-archive.md); it does not reconstruct task bodies.
    Verify open-body preservation, complete archived bodies, links and byte stability
-   on an unchanged second render using the actual selected archive path. Include
+   on an unchanged second render using the actual selected archive path. Check that
+   the old archive is an exact prefix of the new one, each moved body is verbatim and
+   open contracts are unchanged; compare ledger rows by ID so reordering cannot hide
+   status, evidence, dependency or ownership changes. Include
    attributable TODO/archive changes together in handoffs and authorized commits.
    Match every open/in_progress ID to a full body outside the coverage block;
    done bodies may live in the archive and are not missing work. Restore missing
@@ -283,7 +292,9 @@ Otherwise cite direct source evidence without inventing graph metadata. Derive b
 prerequisites from corroborated relationships, not graph centrality alone.
 
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
-Acceptance/checks, explicit `Dependencies:` and `Ownership:` fields. Keep the dependency
+Acceptance/checks, explicit `Dependencies:` and `Ownership:` fields. Write `Status:` as
+the exact indexed token (`open`, `in_progress` or `done`); put qualifications under
+`Readiness:` or `External gates:`. Keep the dependency
 key separate because the consumer checker matches field labels exactly. List actual
 prerequisite IDs there, or explicitly declare `None`; the consumer expects the task's
 `depends_on` plus its goal's `depends_on`, and treats any known ID on that line as a
@@ -306,7 +317,9 @@ Saving never launches autowork, claims cards, resumes cron or changes schedules.
 TODO.md order is the human priority. `goals.py next <repo> --json` ranks focus, then
 section, then the recorded `priority_order`, with goal priority only as a fallback;
 P labels alone change nothing. To reprioritize, move whole task blocks in TODO.md,
-then run `goals.py reorder <repo>`: it records the new order in goals.json only and
+keeping a newline between the last field and the next task marker (a concatenated
+boundary turns a task into prose), reparse and compare the task-ID set, then run
+`goals.py reorder <repo>`: it records the new order in goals.json only and
 refuses missing or duplicated bodies. Insert a new body where it should rank. An
 unrecorded ledger reports `UNMIGRATED`; migrate it once with
 `goals.py bootstrap-order <repo> --dry-run`, review every proposed move and any
@@ -321,7 +334,9 @@ Every writing Bootstrap/Maintain pass automatically archives completed task bodi
 `goals.py render <repo>` performs the move with coverage rendering, or run
 `goals.py archive <repo>` for archive-only maintenance. Reconcile completion
 evidence, checkbox/Status and ledger first; inspect the archive result's retained
-IDs instead of claiming they moved. In TODO-only repositories, inspect executed
+IDs instead of claiming they moved. If verified bodies stay retained, check for a
+priority-group heading overlapping them (see the archive contract) before adding
+closure metadata; never weaken the overlap guard. In TODO-only repositories, inspect executed
 completion checks and use `goals.py archive <repo> --verified-tasks ID1,ID2` for
 the verified closed IDs. Audit/read-only passes write nothing.
 
@@ -341,7 +356,9 @@ tracked `.docs-sync-drift-ignore` lines. Unstated speculative goals get a questi
 To simplify tasks or speed Autowork, give each live body one concrete next action and
 remove repeated discovery or rationale; keep IDs, order, scope, acceptance, mandatory
 checks, dependencies, ownership, live gates and verified partial delivery. Move long
-history losslessly to the archive. Never rewrite a running worker's assigned contract
+history losslessly to the archive. Keep each live `Sources:` bound to its exact
+accepted product-plan heading; an archive link or a queue-simplification plan does not
+replace it, so rerun the original product-plan checks after compaction. Never rewrite a running worker's assigned contract
 or repin its admission inputs. Report prose reduction, not measured speedup. Follow
 [queue compaction](references/decisive-planning.md#compact-an-existing-queue).
 
@@ -431,7 +448,9 @@ for substantive English-writing guidance when useful, not for a link or ID repai
 translation by default or dictionary-compliance claim from sentence counts.
 Use [bootstrap/idempotency regression](references/bootstrap-idempotency-regression.md)
 for authorized behavioral checks; static text tests do not prove model adherence.
-Run nearest contracts and requested broader gates without new tooling. Bind results
+Run nearest contracts and requested broader gates without new tooling. Run the final
+`fmt`, `validate`, `render`, consumer checks and repeat-pass byte-stability check after
+the last document mutation; earlier passes do not certify a later edit. Bind results
 to tested bytes; inspect full logs/manifests, wait for suites and separate scoped
 passes from unrelated failures. Partial hashes do not qualify the whole tree.
 Check links/anchors/commands/keys/status/acceptance in the dirty checkout and a clean
