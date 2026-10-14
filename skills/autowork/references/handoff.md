@@ -695,6 +695,9 @@ Hermes `delegate_task` children may be refused native Kanban mutation by an enfo
 
 ### Admission recovery and parent continuation
 
+For an existing separately scoped recovery card, use the lifecycle below. Routine
+in-scope reconstruction stays on the current task and needs no new recovery card.
+
 1. Keep candidate assembly separate from product admission. The recovery card owns
    its profile's worker slot: produce attributable immutable closure and a validated
    product launch payload, then finish native review handoff. Assign subsequent
@@ -715,9 +718,13 @@ Hermes `delegate_task` children may be refused native Kanban mutation by an enfo
    scratch. Native cleanup can remove workspace-local handoff files at completion.
    If cleanup already occurred, recover exact retained write arguments or complete
    read results and require original hash matches before reuse. A deterministic
-   reconstruction is acceptable only when its bytes match the original pin; never
+   reconstruction of these pinned artifacts is acceptable only when its bytes match the original pin; never
    refresh a selection to clear refusal. Reject truncated display lines as file bytes;
    recover the complete argument array rather than guessing a truncated shell string.
+   This is not a universal requirement that every accepted spec patch already have
+   a Git ref or historical hash. For recoverable local inputs, execute the saved
+   in-scope reconstruction and validate the task's actual requirements as described
+   in [blocker recovery](blocker-recovery.md#recover-locally-before-declaring-a-blocker).
 4. On each notification, use `hermes kanban show <card> --json` and
    `hermes kanban runs <card> --json`, then filtered owning-profile board queries.
    Reconcile the latest run, not the notification's older status. A review run can

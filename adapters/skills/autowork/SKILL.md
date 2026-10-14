@@ -37,11 +37,22 @@ explicit read-only runs write nothing.
    Preserve stale/held/incomplete/interrupted/owned refusals and consumed budget;
    prepare only the missing input, never replace a card/session or refresh pins.
    The Hermes composed helper is not this host's dispatcher; retain native admission.
+   Planning owns consequential decisions and executable acceptance; follow the
+   [handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
+   Once ready, execute without reconfirmation. Choose reversible details yourself;
+   adapt a failed approach within accepted behavior, exclusions and checks on the
+   same task. Record material deviations; use bounded planning only for a newly
+   discovered consequential choice, not routine debugging or a missing fixture.
 3. Batch connected consumers, runners and tests into one useful outcome; split
    only for concrete dependency, concurrency, authority or budget boundaries.
    Implement the smallest complete outcome, run discriminating checks, fix failures and
    satisfy required review. Separate offline implementation from live qualification.
    Use installed specialist skills only for concrete gaps, not a mandatory phase chain.
+   Run long checks through tracked host background/session execution with a finite
+   command timeout; respect execution deadlines and cancellation. Retain candidate,
+   command, session identity, log and final exit.
+   Reconcile a transport interruption before retrying; never duplicate a live check
+   or call partial output a pass. Finish the authorized closeout in this run.
    Apply the [Ponytail method](../../../skills/autowork/references/ponytail.md) to
    material implementation choices: reuse before adding code, complete affected
    consumers, and record the choice and checks in the existing task. Resolve the
@@ -56,12 +67,21 @@ explicit read-only runs write nothing.
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
 
-If preparation stalls on unclear prerequisites or changing local dependencies,
-invoke [Plan For Me](../plan-for-me/SKILL.md) yourself in this session. Classify the
-inputs, choose a supported in-scope route, update TODO.md through Docs Sync and
-retry execution. Preserve no-commit restrictions and active writers; never import
-foreign edits. Reuse an unchanged recovery plan's next action instead of replanning.
-No separate user planner command or implementation reconfirmation is needed.
+When preparation stalls, execute an existing in-scope recovery step first: rebuild
+recoverable patches/inputs, verify the actual consumer requirements, then retry.
+For scope/attribution, inspect accepted specs and integration receipts as well as
+Git refs; a missing ref alone does not negate valid attribution. Separately required
+immutable pins/ancestry still apply; restoring pinned bytes requires their original
+hash, while new accepted implementation uses its acceptance checks. Preserve foreign
+work, no-commit restrictions and active writers. Invoke
+[Plan For Me](../plan-for-me/SKILL.md) only for a consequential unresolved choice, not a known
+reconstruction. No implementation reconfirmation is needed.
+
+An actual tool `pending_approval` holds the original operation and dependent work
+only. Keep its resume step and supplied request ID, and use the host's supported approval
+mechanism; never approve it yourself or resubmit it through another channel. Continue
+independently authorized work after checking dependencies and resource ownership;
+do not mark the held work complete or silently expand an assigned worker's scope.
 
 For repeated blockage, repair the ordinary metadata/environment issue, choose
 independent accepted work, or identify one precise missing external input. Do not

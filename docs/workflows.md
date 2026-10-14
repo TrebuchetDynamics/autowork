@@ -158,13 +158,18 @@ workers or independently registered slash commands. See [provenance and updates]
 
 ### Automatic planning during execution
 
-Autowork calls Plan For Me itself when preparation is stuck on unclear prerequisites
-or candidate changes. It records a bounded recovery plan through Docs Sync in
-TODO.md/goals.json and retries execution in the same run. No separate planner
-command is required. Named task-family requests stay within that scope; explicit
-no-commit restrictions and live writers still apply. Unchanged inputs resume the
-saved plan rather than generating repeated planning reports. A planning receipt
-is not proof that a worker ran or a task completed.
+Planning resolves consequential design, dependency and product choices and saves
+an executable task with scope, decisions, acceptance and checks. Autowork executes
+that task without another permission round: choose reversible details, implement,
+test, repair and finish authorized closeout. It can adapt a failed implementation
+on the same task while preserving accepted behavior and checks.
+
+Only a newly discovered consequential choice or missing decomposition invokes
+bounded Plan For Me, automatically and within existing authority. Save the decision
+in TODO.md/goals.json and resume execution in the same run. Known recovery steps,
+ordinary candidate changes and debugging stay in execution. Named task-family
+scope, no-commit restrictions and live ownership remain. A planning receipt is not
+proof that a worker ran or a task completed.
 
 ### Delivery batches and partial completion
 

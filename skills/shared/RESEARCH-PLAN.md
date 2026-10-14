@@ -11,6 +11,10 @@ They apply to Plan For Me, Plan With Me and every Autoresearch plan alias on eve
    fetch primary external sources when the decision depends on external behavior or
    current facts. Reading this protocol alone is not research. Reuse still-valid
    evidence and choose ordinary engineering details within delegated scope.
+   Resolve consequential design/dependency choices here so Autowork receives an
+   executable task, not an instruction to repeat the investigation. Record the
+   chosen approach and checks in the existing task; leave reversible coding
+   details to the worker. Follow the [handoff](PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 3. Apply upstream scope, metric, Verify, Guard and bounded-iteration analysis where
    meaningful. A qualitative plan needs observable acceptance, not a fabricated
    numeric metric. If feature tests do not exist yet, record proposed commands as

@@ -4,6 +4,34 @@ Use this after a demonstrated prerequisite/consumer/publication failure. Reconci
 exact live ownership first. These helpers repair engineering preparation, not owner
 intent, review approval, native admission, credentials or delivery destinations.
 
+## Recover locally before declaring a blocker
+
+Check what the task and its actual consumer require. For scope, attribution or a
+harness boundary, inspect the accepted spec and predecessor integration receipts,
+not only Git refs. Verify the receipt's task, relevant artifact and source binding;
+use evidence that satisfies that requirement. A missing named ref is not a blocker
+unless that ref is actually required. Attribution does not replace a separately
+required immutable commit, file hash, ancestry check or executable acceptance.
+
+Reconstruct recoverable spec patches, fixtures and local inputs within existing
+authorization now, in an owned isolated candidate when needed. Use the saved plan
+and retained complete artifacts; do not request implementation permission again or
+create a planning/recovery task merely to prepare inputs for the current task.
+Restoring a pinned artifact requires equality with its original pin. Implementing
+an accepted change without such a pin uses the task's checks; do not invent a
+byte-equality requirement. Preserve foreign work, original admission evidence and
+consumed budget. Retry the failed consumer after repair, then continue execution.
+
+If a tool returns `pending_approval`, preserve its operation, resume step and request
+ID when supplied; a missing display ID does not hold independent work. The host
+approval applies to that operation and work that
+depends on it; it is not missing product intent or a veto on independent work.
+Use the host's supported approval/resume mechanism when available. Do not approve
+it yourself, submit equivalent operations through another channel, or treat silence
+as approval. The coordinator checks dependencies and live resource ownership and
+continues independently authorized work in the same run; an assigned worker stays
+inside its contract. Report the exact pending request once, not repeated planning.
+
 ## Accepted task contracts
 
 As the canonical integration owner, use `terminal` to get `goals.py revision` and run:

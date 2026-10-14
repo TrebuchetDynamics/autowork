@@ -1,9 +1,9 @@
 # External input blockers
 
 Only confirmed USER_INPUT, SUDO or USER_DECISION blockers belong here. Internal
-engineering and integration prerequisites remain in [TODO.md](TODO.md). The
-continuation policy question remains with TOOLSET-008; this file grants no default
-approval or execution authority.
+engineering and integration work remain in [TODO.md](TODO.md). TOOLSET-008 now
+has a planned autonomy/continuation policy; this file creates no extra approval
+step or execution authority.
 
 ## Active
 

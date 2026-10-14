@@ -10,7 +10,16 @@ These operating priorities apply to every Autowork run.
    on a first failure, and never write "one execution/one rerun/no source edit"
    limits into contracts for work inside their scope. Give workers the scope
    they need; a harness or fixture correction needed to reach acceptance is in
-   scope by default.
+   scope by default, subject to explicit exclusions and live ownership. Routine
+   isolated patch reconstruction and local input recovery use existing authority:
+   execute the saved next step, verify it and continue on the same task. Use
+   [blocker recovery](blocker-recovery.md#recover-locally-before-declaring-a-blocker)
+   when evidence lookup or reconstruction is being mistaken for missing authority.
+   If an approach fails, choose another reversible implementation on this card
+   while preserving accepted behavior, exclusions and checks; record material
+   deviations in existing evidence. Neither debugging nor a hard implementation
+   is a reason to ask permission or repeat planning. Resolve only newly exposed
+   consequential choices through the coordinator's bounded planning pass.
 5. **Retry and backoff across runs.** New cards use `--max-retries 1`: no automatic failure retry.
    Supported same-card recovery must preserve cumulative usage; never reset an exhausted allocation.
    A card that blocks twice with no new evidence is parked
@@ -36,6 +45,15 @@ These operating priorities apply to every Autowork run.
    merely because available. If acceptance cannot fit, narrow it before dispatch.
 7. **Done means scoped done.** Finish after checks pass and owned changes are committed; never rerun an unchanged
    passing gate merely to refresh status metadata. NOT_CHECKED is not qualification.
+   For checks likely to exceed the terminal window, use the host's tracked
+   background/session execution from the start, with a finite command timeout
+   appropriate to the gate; respect execution deadlines and cancellation.
+   Save command, candidate identity, session/process
+   identity and log/exit receipt; observe that same run through completion.
+   A transport timeout is not a test verdict: reconcile the original process
+   before retrying, never launch a duplicate live check. Missing final exit/results
+   remains unchecked. Use the required completion helper as the final gate so
+   finishing the commit does not introduce an avoidable second full test run.
    Separate implemented, exact-source/platform qualification and verified main delivery.
    Explain progress in user outcomes: overall goal, current slice, what is still unproved.
    Keep unrelated recovery work separate; IDs and test counts must not obscure that map.
@@ -58,5 +76,9 @@ These operating priorities apply to every Autowork run.
    dependency honestly. Do not relabel incomplete work as done to avoid a pause.
    Existing explicit authority carries forward. Failing tests, missing user-space
    tooling, routine debugging and agent-invented restrictions are not owner decisions.
+   A real tool `pending_approval` holds its original operation and dependent work
+   only. Preserve its resume step and supplied request ID; do not resubmit through another tool
+   or invent approval. The coordinator may select independently authorized,
+   dependency-ready, non-overlapping work; workers stay within their assigned scope.
    Read owner replies (chat / `session_search`) at each run and apply them; do not
    repeatedly return `[SILENT]` for an unanswered material question.

@@ -1,11 +1,13 @@
 # Automatic Plan For Me recovery
 
-Autowork invokes `hermes-toolset:plan-for-me` itself when handoff preparation,
-candidate drift or unclear prerequisites prevent execution. The user need not
-send `/plan_for_me`, and no additional approval is needed for in-scope planning.
-First attempt an obvious local repair; if it cannot resolve the hold immediately,
-run one bounded planning pass in this occurrence, not after repeated cron reports.
-A ready task needs no planning ceremony. Reconcile actual live writers first.
+Autowork invokes `hermes-toolset:plan-for-me` only for a consequential unresolved
+choice or missing decomposition that prevents execution. Routine debugging,
+candidate drift with a known recovery, missing fixtures and reversible approach
+changes stay in execution; difficulty alone does not require another plan.
+The user need not send `/plan_for_me` or approve in-scope planning again. Reconcile
+actual live writers, then execute the saved next action. If new evidence requires
+a material decision, run one bounded planning pass in this occurrence and resume.
+A ready task needs no planning ceremony.
 Apply [TODO work center](../../shared/TODO-WORKCENTER.md). A `planning.action`
 receipt directs the agent; it does not execute the skill or prove progress.
 

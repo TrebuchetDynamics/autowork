@@ -51,7 +51,8 @@
       "status": "unverified",
       "tasks": [
         "TOOLSET-003",
-        "TOOLSET-015"
+        "TOOLSET-015",
+        "TOOLSET-016"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -84,7 +85,7 @@
       "evidence": [],
       "id": "CONTINUATION",
       "priority": 50,
-      "source": "TODO.md#toolset-008--make-autowork-continuation-authority-consistent",
+      "source": "docs/project.md#autonomous-execution-authority",
       "status": "unmet",
       "tasks": [
         "TOOLSET-008"
@@ -140,6 +141,14 @@
       "title": "Qualify automatic planning recovery with a real bounded workflow"
     },
     {
+      "depends_on": [],
+      "goal": "CONTINUATION",
+      "id": "TOOLSET-008",
+      "section": "Next",
+      "status": "open",
+      "title": "Make Autowork continuation authority consistent"
+    },
+    {
       "depends_on": [
         "TOOLSET-010"
       ],
@@ -160,12 +169,14 @@
       "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
-      "depends_on": [],
-      "goal": "CONTINUATION",
-      "id": "TOOLSET-008",
-      "section": "Needs decision",
-      "status": "open",
-      "title": "Make Autowork continuation authority consistent"
+      "depends_on": [
+        "TOOLSET-015"
+      ],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-016",
+      "section": "Next",
+      "status": "in_progress",
+      "title": "Apply clean incoming additions and deletions during behind-only realignment"
     },
     {
       "depends_on": [],

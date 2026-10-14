@@ -275,7 +275,62 @@ environment does not block independent offline implementation.
 
 Within this accepted goal: first TOOLSET-012 implements and offline-verifies the
 composed default path; next TOOLSET-013 measures and qualifies it. Existing queue
-priorities, leases and unresolved TOOLSET-008 continuation policy are preserved;
-this plan does not promote the new goal ahead of them. Planning saves documents
-and backlog only: it does not dispatch, commit, push, resume the interrupted
-publication, modify live profiles/jobs, deploy, or claim faster operation today.
+priorities and leases are preserved; continuation policy is now specified in
+[Autonomous execution authority](#autonomous-execution-authority), not left as a
+routine permission question. Planning saves documents and backlog only: it does
+not dispatch, commit, push, modify live profiles/jobs or claim faster operation.
+
+## Autonomous execution authority
+
+Status: Accepted
+
+The user directed planning to handle complexity and Autowork to execute quickly,
+with more freedom and no repeated permission requests to do already-authorized
+work. The planner chooses the following operating policy under that delegation;
+this does not claim the user separately selected a new batch count or live authority.
+
+- Planning resolves consequential design, decomposition, interfaces, migration and
+  acceptance before handoff. Supply a short executable contract with the remaining
+  outcome, sources, checks, exclusions and actual stop conditions. Do not hand the
+  worker an unresolved design interview or a mandatory skill/planning phase chain.
+- Autowork executes the accepted outcome. It decides reversible implementation
+  details, fixes tests/fixtures and user-space tooling, reconstructs attributable
+  local inputs, and changes a failing approach on the same task without asking to
+  proceed or restarting planning. Preserve accepted behavior and record material
+  deviations. Complexity, a first test failure or a missing fixture is work, not
+  a permission blocker. Do not add agent-invented inspect-only or one-rerun limits.
+- The coordinator handles recovery and completion: reconcile original card/run,
+  preserve consumed budgets and pins, use supported repair/alternate routes, finish
+  reviewed local closeout, and continue eligible non-overlapping work when one
+  operation is held. No repeated unchanged audit or profile-wide blocked verdict.
+- Keep required tests, independent review, ownership, source/integrity checks and
+  actual approval controls. Run discriminating checks while editing; reuse only
+  matching receipts and run required changed-input/final gates once. A transport
+  interruption means observe the existing check, not start it again or call it passed.
+- Escalate only an actual missing external input/authority or consequential product
+  conflict that the accepted outcome cannot resolve. Name the exact held operation
+  and input once; retain its resume step and continue independent accepted work.
+  Do not bypass real pending approval, fake credentials/evidence, seize a live
+  writer, reset exhausted budgets, or infer money/deployment/destructive authority.
+
+Continuation decision: Existing caller scope and saved stop/batch limits control
+execution. Recurrence authorizes the saved occurrence, not extra budgets or wider
+scope. The current job's at-most-one-new-batch limit stays unchanged; authorized
+closeout and work inside that batch need no extra approval. An already explicit
+multi-batch/whole-spec mandate continues within its existing limits. This resolves
+TOOLSET-008's operating-policy question without another user permission round.
+
+Evidence: [iteration rules](../skills/autowork/references/iteration-and-decisions.md)
+already instruct workers to fix failures and choose routine details;
+[owner recovery](../skills/autowork/references/owner-cycle.md) makes external-owner
+mode optional. The current queue had one policy-gated task and separately scoped
+live-environment qualification tasks. Actual runtime blocking frequency was not
+measured. Concurrent instruction edits are evidence inputs, not proof of delivery.
+
+Execution slice: [TOOLSET-008](../TODO.md#toolset-008--make-autowork-continuation-authority-consistent)
+now aligns these semantics across native/portable instructions and generated worker
+contracts, with regression cases for autonomous fixes, known recovery, explicit
+stop limits, pending review/approval and exhausted allocation. Reuse existing
+controls; add no permission framework or extra review lane. Keep native/model
+qualification distinct from offline policy tests. This planning pass saves the
+accepted policy and task only; it launches no implementation or new timer.

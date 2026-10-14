@@ -14,6 +14,28 @@ planning method; neither starts a second planner for the same question. Docs Syn
 closeout. These are responsibilities within the same conversation, not mandatory
 separate agents or repeated startup passes. Do not chain all four for a ready task.
 
+Planning owns consequential complexity: investigate dependencies and compatibility,
+choose an approach within delegated scope, and resolve material product questions
+before marking their dependent implementation ready. A task that still says
+“choose the storage model/API/migration behavior” is not ready for implementation
+when that choice changes the accepted outcome. Resolve it in planning or keep only
+the affected slice pending; independent accepted slices remain executable.
+
+Use the existing task body for the execution handoff: outcome and exclusions,
+decisions and relevant evidence, real dependencies, observable acceptance with
+exact checks, and the next executable action. Include known setup/recovery steps
+and separate live qualification when applicable. This is a content standard, not
+a new schema, receipt or approval gate; fill only actual gaps in existing tasks.
+Do not prescribe every edit or require unknown implementation details up front.
+
+Autowork executes that handoff: inspect the relevant source, implement, test,
+repair, submit required review and finish authorized closeout. Choose routine
+reversible details and adapt a failed local approach on the same task without
+asking permission or reopening planning. Preserve accepted behavior, exclusions,
+real dependencies and mandatory checks. Record material deviations in the existing
+task evidence. Return only a newly discovered consequential decision to bounded
+planning; neither a failing test nor a missing fixture is itself such a decision.
+
 Resume from the current TODO task, accepted section and saved findings. Read only
 relevant changes since that evidence: scope/decisions, source and tests, dependencies,
 repository instructions and task state. A new invocation alone invalidates nothing.

@@ -13,9 +13,10 @@ metadata:
 
 First apply [repository-stage preparation](references/repository-stages.md), then
 use the execution and completion rules below.
-Local recovery needs no external owner: [recovery](references/owner-cycle.md).
-Unresolved planning invokes [Plan For Me](references/backlog-planning.md),
-updates TODO.md and retries execution; never wait for the user to invoke it.
+Local recovery uses existing authority: [recovery](references/owner-cycle.md).
+Planning resolves material choices via [Plan For Me](references/backlog-planning.md).
+Autowork executes: decide reversible details, test, repair and close out without
+reconfirmation. A ready task needs no planning prepass.
 
 ## When to use
 
