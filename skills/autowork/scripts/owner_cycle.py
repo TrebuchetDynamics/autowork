@@ -24,6 +24,7 @@ import progress_runtime
 import backlog_plan
 import ready_preflight
 import reconcile
+import disjoint_fallback
 
 
 def read_json(path, default=None):
@@ -60,7 +61,8 @@ def handoff(args, task, consumer=None):
     allowed = {'profile', 'title', 'contract-file', 'ledger-mode', 'integration-owner',
                'publication-authority', 'goal-max-turns', 'source-snapshot', 'base',
                'candidate', 'required-path', 'prerequisite', 'pass-root', 'disjoint-terminal-triage',
-               'fallback-file'}
+               'fallback-file', 'disjoint-blocked-handoff', 'registration-declaration',
+               'registration-native-python'}
     if not isinstance(options, dict) or set(options) - allowed:
         raise ValueError('unsupported native handoff options')
     argv = [sys.executable, str(Path(__file__).with_name('start_goal.py')),
@@ -118,7 +120,17 @@ def run_locked(args, state):
             prefix = ['hermes', '-p', args.profile]
             prior = reconcile.reconcile(prefix, reconcile.profile_home(prefix), args.profile, repo=Path(args.consumer))
             result['reconciliation'] = prior
-            if prior.get('outcome') != 'no_handoff' and prior.get('next_action') != 'reconcile_task_and_select':
+            distinct = None
+            if getattr(args, 'disjoint_blocked_handoff', None):
+                if prior.get('next_action') != 'recover_original_card' or not args.tasks or ',' in args.tasks:
+                    raise ValueError('Disjoint fallback requires one explicit accepted task and original blocked card')
+                distinct = disjoint_fallback.verify(args.disjoint_blocked_handoff,
+                    reconcile.profile_home(prefix) / 'autowork/goal-handoff.json',
+                    args.consumer, args.profile, args.tasks, args.registration_declaration)
+                if distinct['original_card'] != prior.get('task_id'):
+                    raise ValueError('Fallback original card differs from current reconciliation')
+                result['disjoint_fallback'] = distinct
+            if not distinct and prior.get('outcome') != 'no_handoff' and prior.get('next_action') != 'reconcile_task_and_select':
                 result.update(outcome='BLOCKED', action='reconcile_original_card',
                               next_action=prior['next_action'], selected_task=None,
                               held_task_ids=[], recovery={'gate': 'native_continuity'}, repairs=[], blocker=[])
@@ -420,6 +432,9 @@ def main(argv=None):
     parser.add_argument('--source-path', action='append', default=[], help='Explicit executable/test/dependency-closure file to bind; repeat as needed')
     parser.add_argument('--base', help='Full immutable base; default captures current HEAD once')
     parser.add_argument('--fallback-file', help='Existing structured focused-milestone fallback evidence; never synthesized')
+    parser.add_argument('--disjoint-blocked-handoff', help='Pinned original-card and distinct owned-scope evidence; preserves blocked card')
+    parser.add_argument('--registration-declaration', help='Explicit owned-scope registration declaration for native admission')
+    parser.add_argument('--registration-native-python', help='Installed native runtime launcher for transactional registered creation')
     parser.add_argument('--pass-root', help='Private isolated worktree root forwarded to native admission')
     parser.add_argument('--ledger-mode', choices=('worker', 'proposal'), default='worker')
     parser.add_argument('--verbose', action='store_true', help='Print full private receipt instead of compact ready-path status')

@@ -21,7 +21,9 @@ def compose(args, task, consumer, state, save, selection=None):
     receipt_path = progress_runtime.private_path(directory / 'preparation.json')
     inputs = {'plan': args.plan, 'source_paths': args.source_path, 'base': args.base,
               'ledger_mode': args.ledger_mode, 'integration_owner': args.integration_owner if args.ledger_mode == 'proposal' else None,
-              'fallback_file': args.fallback_file, 'pass_root': args.pass_root}
+              'fallback_file': args.fallback_file, 'pass_root': args.pass_root,
+              **{key: getattr(args, key, None) for key in ('disjoint_blocked_handoff',
+                  'registration_declaration', 'registration_native_python')}}
     if receipt_path.exists():
         receipt = json.loads(receipt_path.read_text())
         if not isinstance(receipt, dict) or receipt.get('version') != 1:
@@ -111,6 +113,9 @@ def compose(args, task, consumer, state, save, selection=None):
     options = {'profile': args.profile, 'title': f"{task['id']} — {task['title']}",
                'contract-file': str(contract_path), 'source-snapshot': str(snapshot_path),
                'base': base, 'required-path': list(args.source_path)}
+    for key in ('disjoint_blocked_handoff', 'registration_declaration', 'registration_native_python'):
+        if getattr(args, key, None):
+            options[key.replace('_', '-')] = getattr(args, key)
     if args.fallback_file:
         options['fallback-file'] = args.fallback_file
     if args.pass_root:
