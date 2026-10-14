@@ -22,7 +22,16 @@ entries. Receipts created before the `execution-cwd-v1` resolution policy cannot
 be reused; preserve them and run the check with a new receipt path. An unresolved
 executable also prevents reuse.
 
-New native Autowork handoffs snapshot their helper runtime and pin its manifest.
+Current Autowork executes repository tasks in the current session without Kanban
+setup or native-card transitions. Its direct-execution, recovery and isolated
+no-agent qualification are described in the
+[project verification contract](project.md#todo-first-delivery-qualification).
+Model-driven recovery and useful-action timing remain the separate TOOLSET-003/013
+checks; no-agent execution is not a substitute.
+
+The following native-handoff coverage is historical/compatibility verification,
+not a startup requirement for the distributed TODO-first path. Legacy native
+Autowork handoffs snapshot their helper runtime and pin its manifest.
 Offline regressions execute startup, completion and goal entry points from that
 snapshot, change the original installation, and verify that changed bundled
 dependencies refuse execution. Reconciliation tests cover terminal runs behind
@@ -130,6 +139,28 @@ cases skip when ruamel.yaml is unavailable). `test_complete_setup.py` separately
 checks orchestration after admission, including no installation calls on dry-run.
 No passing preview is evidence of a live model or Telegram workflow.
 
+## Update self-healing and Telegram menu checks
+
+The implemented update/menu changes in `b021c54` have focused offline contracts:
+
+```sh
+python3 -m unittest discover -s tests -p test_telegram_menu_policy.py
+python3 -m unittest discover -s tests -p test_setup_runtime.py
+python3 -m unittest discover -s tests -p test_update_bundle.py
+```
+
+Menu fixtures check that only current workflow names receive priority, stale
+compatibility entries are removed without deleting user choices, reconciliation
+is idempotent, and typed compatibility registrations remain available with required
+text hints. Finalization fixtures reject settings that remain unhealed after load.
+Local-Git updater fixtures check `settings_healed`, one requested restart after
+change, `not_running` for an absent gateway, and no restart on an unchanged retry.
+
+These use temporary profiles and mocked activation/restart calls. Passing them
+proves the local contracts, not that a real gateway drained, reconnected, refreshed
+Telegram menus, delivered a message or executed a model. Inspect the actual update
+receipt and activation/transport evidence before making those live claims.
+
 ## First-index initialization checks
 
 From `skills/docs-sync/scripts`, run:
@@ -170,6 +201,9 @@ python3 -m unittest test_todo_archive test_archive_policy test_render_safety
 
 These fixtures exercise automatic/archive-only moves, whole-body preservation,
 custom archive paths, CRLF bytes, stale-write refusal and unchanged second passes.
+The source regression added in `586337f` keeps a sibling group heading in TODO
+when the preceding done task is archived; deeper evidence subsections remain with
+that task. This source contract does not prove an installed helper was refreshed.
 They preserve open bodies and ledger history and reject ambiguous completion
 metadata. The selected archive and the live TODO must both be inspected after
 rendering; a passing fixture does not prove a real task's acceptance or model

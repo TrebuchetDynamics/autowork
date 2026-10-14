@@ -36,6 +36,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Completed-task archival keeps sibling priority-group headings in the live TODO
+  while retaining deeper evidence subsections with their owning task (`586337f`).
+
 - Telegram menus no longer advertise compatibility commands (`/autoresearch`,
   `/autoresearch_plan`, `/autoresearch_<protocol>`); they stay typeable. The menu
   policy removes those entries from existing profile priorities. `/toolset update`
@@ -79,6 +82,13 @@ claim of a tagged release, completed installation or live workflow qualification
   task and consumed budget; these checks do not implement native accounting repair.
 
 ### Changed
+
+- Autowork executes and recovers repository tasks directly from TODO.md and its
+  synchronized goals.json index. Historical Kanban cards are not admission, review
+  or deployment prerequisites; actual process/workspace ownership, explicit limits,
+  required checks and independent review remain. Superseded native-only work keeps
+  its failed/unchecked history rather than being reported complete. Isolated
+  no-agent scheduler proof remains distinct from model and Telegram qualification.
 
 - Reconciled guidance that profiles had edited into installed skill copies back
   into Autowork, Cron Autowork, Docs Sync, Git Commit Push, Git Pull Merge, Plan

@@ -46,16 +46,17 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
-- Status: open; partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: hermes-toolset, sierra, landing-golf, india, juliet and golf (the last four after a separate checkpoint commit of their pending queue edits). Not migrated: charlie (a staged 9-file docs batch includes the queue files), bravo (live in-progress claim and active session) and kilo (no commits). All matching jobs were already paused and stay paused.
+- Status: open.
+- Historical migration receipt: partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: hermes-toolset, sierra, landing-golf, india, juliet and golf (the last four after a separate checkpoint commit of their pending queue edits). Not migrated: charlie (a staged 9-file docs batch includes the queue files), bravo (live in-progress claim and active session) and kilo (no commits). All matching jobs were already paused and stay paused.
 - Goal: PRIORITY — Make TODO.md order the enforced human priority.
-- Sources: [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
-- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), pause only jobs this work pauses, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, commit locally per repository and resume only passing repositories.
+- Sources: [accepted priority plan](docs/project.md#todo-owned-task-priority), [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
+- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), preserve stopped/paused jobs, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, and commit locally per repository within the existing migration authority. The later stop-all instruction supersedes automatic resumption.
 - Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
-- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, job readback after resume.
+- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, and job readback confirming stopped/paused state is unchanged.
 - Dependencies: TOOLSET-028.
 - Ownership: Toolset coordinator under separate live authorization.
-- Exclusions: No push, no unrelated job changes, no resuming jobs that were already paused.
-- Next action: After charlie's staged docs batch is committed, bravo's active work closes and kilo has an initial commit, re-run each dry-run and apply with its revision.
+- Exclusions: No push, no unrelated job changes and no job resumption while the owner's stop-all instruction remains in force.
+- Next action: Recheck the remaining repositories' current staged/unstaged changes, actual writers, initial commit and recorded priority state. Re-run the dry-run with a fresh revision for any now-eligible repository; preserve current pauses and genuinely overlapping work. Prior receipt conditions are not permanent holds.
 
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
@@ -81,17 +82,17 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Sources: [accepted recovery plan](docs/project.md#end-to-end-original-task-recovery), [updater](update_bundle.py), [updater tests](tests/test_update_bundle.py), [installation](docs/installation.md).
 - Scope: Extend the existing updater with explicit selected profiles and immutable reviewed local source, native security admission, preflight/staging/backups, installed hash readback and resumable per-profile results. Preserve unselected consumers of shared sources and pinned runtimes.
 - Acceptance: No implicit fetch, profile expansion, scan override, worker restart or configuration/schedule change. Active affected consumers defer; independent eligible targets proceed. Drift/source races refuse before unsafe writes. Retry reuses the same source and backups, unchanged deployment is a no-op, and installed bytes/registrations are verified without claiming product recovery.
-- Checks executed: 52 real-Git/fake-native updater fixtures passed. Independent review found shared-board ownership and interrupted-clone defects; both reproduced and passed after repair. The combined 318/470/139/8 offline gate passed. Native scoped preflight ran; installation and live registration remain unverified.
+- Checks: 52 real-Git/fake-native updater fixtures passed. Independent review found shared-board ownership and interrupted-clone defects; both reproduced and passed after repair. The combined 318/470/139/8 offline gate passed. Native scoped preflight ran; installation and live registration remain unverified.
 - Dependencies: None.
 - Ownership: Shared maintainer for implementation; authorized coordinator for selected-profile deployment.
 - Exclusions: No implicit remote publication, dependency overrides, native scanner bypass, global configuration changes or active-runtime rebinding.
-- Deployment result: Fresh native preflight against clean 51d99d6 deferred three selected profiles for their nonterminal/pinned native ownership. The fourth has a customized `skills/autoresearch/SKILL.md` with additional candidate-selection guidance; its bytes were preserved. No profile installation, scanner override or job change occurred.
+- Historical deployment evidence: Preflight against 51d99d6 deferred three selected profiles under the former native-ownership checks and one for a customized `skills/autoresearch/SKILL.md`; their bytes were preserved. That receipt proves no installation. The TODO-first implementation has since retired card-only vetoes; recheck actual consumers and current customizations rather than treating those old deferrals as present blockers.
 - Next action: Check actual process identity, workspace writers and live helper consumers, then reconcile customized skill drift before scoped installation. Historical cards require no release or reconciliation. Reuse the reviewed updater; do not repeat its completed implementation or label preflight as deployment.
 
 - [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
 - Status: open; original target environment unavailable.
 - Goal: CRON-REPORTING — Verify setup confirmation and scheduled Telegram delivery separately.
-- Sources: [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
+- Sources: [accepted reporting qualification](docs/workflows.md#telegram-reporting-qualification), [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
 - Scope: On the original host/profile, install the updated bundle through its supported path. Identify the existing job, preserve its state/scope, verify its requested Telegram route, then inspect the next scheduled result.
 - Acceptance: A setup request from another surface confirms once in the intended chat/topic; a scheduled occurrence has attributable execution and Telegram message receipts. Report failed, queued or unverified delivery honestly.
 - Checks: Read back installed source and saved route/state; verify the actual setup message and scheduled result/delivery. These live checks are not run.

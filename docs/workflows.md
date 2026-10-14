@@ -65,9 +65,10 @@ Public skill names match the workflow names. Source directories stay stable for 
 Grill Me is the challenge mode of Plan With Me; its old command still works but
 is not advertised as a separate plugin skill. Autoresearch protocols remain
 accessible through their commands and the Plan For Me adapter. Autoresearch compatibility command
-spellings remain available; Plan With Me and Docs Sync do not register the old
-repo-interview or repo-docs aliases. The Telegram menu shows the current workflow
-names. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
+spellings remain typeable but are deliberately omitted from Telegram menu
+advertising, not merely displaced by capacity. Plan With Me and Docs Sync do not
+register the old repo-interview or repo-docs aliases. The Telegram menu prioritizes
+the four current workflow names. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
 they do not register a live command. Hindsight is not a bundle integration; its
 negative tests prevent accidental reintroduction. Updating source does not refresh
 an already-running gateway's command registry: use supported plugin reload and
@@ -107,9 +108,11 @@ subcommands are available:
 Use `/plan_for_me` in CLI or Telegram for planning. Legacy `/autoresearch:plan`
 and `/autoresearch_plan` remain available. Other subcommands retain their names:
 for example, `/autoresearch:debug` in CLI and `/autoresearch_debug` in Telegram.
-`/autoresearch plan ...` also works. Colon commands are omitted
-from Telegram's menu; use the underscore spelling there. Menu capacity can hide
-entries without disabling typed commands. Existing command owners keep precedence.
+`/autoresearch plan ...` also works. Autoresearch compatibility commands, including
+the base and underscore spellings, are intentionally not advertised in Telegram's
+menu; type the desired command with its request text. This is separate from the
+menu capacity limit and does not remove the typed handlers. Existing command
+owners keep precedence.
 
 ```text
 /plan_for_me reduce cache latency; document findings and schedule TODO tasks; do not implement yet
@@ -220,6 +223,20 @@ the separate Autoresearch skill and protocol suite. `/plan_for_me` selects plann
 `/autoresearch` selects the research router. Non-planning protocols remain available.
 The legacy worker-contract field `Repo-docs pass` and receipt key `repo_docs_pass`
 remain internal compatibility fields, not additional skills or commands.
+
+## Telegram reporting qualification
+
+Status: Accepted
+
+The existing reporting requirement and TOOLSET-011 retain the requested Telegram
+destination and separate setup confirmation, actual execution and scheduled
+message delivery. Verify one setup confirmation in the intended chat/topic and
+attributable scheduled execution/delivery on the original host/profile/job.
+Setup or command registration alone cannot close that qualification. Preserve the
+owner's stop-all instruction: this scope creates no replacement job, immediate run
+or permission to resume a schedule.
+
+## Scheduling behavior
 
 Use `/cron_autowork` for schedule setup; `/autowork` performs the work. The scheduling
 skill lists existing jobs first, binds the actual repository/workdir and profile,

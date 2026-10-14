@@ -163,7 +163,7 @@
       ],
       "id": "CRON-REPORTING",
       "priority": 60,
-      "source": "docs/workflows.md",
+      "source": "docs/workflows.md#telegram-reporting-qualification",
       "status": "partial",
       "tasks": [
         "TOOLSET-010",

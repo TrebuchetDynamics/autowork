@@ -194,6 +194,11 @@ changed code, skills or settings requests one graceful `hermes gateway restart`
 (`gateway_restart: requested`): in-flight turns drain first, and workers and
 schedules keep running. A no-op update does not restart the gateway.
 
+`status` is the chat form handled by the plugin; it is not a positional argument
+to the terminal command `hermes toolset update`. Terminal update forms below wait
+for completion. The durable result is stored at the Hermes installation root in
+`maintenance/toolset-update/latest.json`; named profiles share that update status.
+
 Terminal equivalents wait for completion:
 
 ```sh
