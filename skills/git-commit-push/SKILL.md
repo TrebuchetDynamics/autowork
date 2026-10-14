@@ -1,7 +1,7 @@
 ---
 name: git-commit-push
 description: "Use when committing and pushing scoped Git changes."
-version: 1.4.0
+version: 1.4.1
 license: MIT
 metadata:
   hermes:
@@ -91,6 +91,11 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 ## Fast path
 
 1. **Inspect once.**
+   - If the dirty set disappears or changes before committing, re-read `HEAD`, status
+     and the exact remote ref: attribute another writer's commit and verify its scope
+     instead of making an empty or duplicate commit. New uncommitted edits do not
+     invalidate a gate on an unchanged immutable commit, but stay excluded and
+     reported, never called clean.
    - Read repo instructions (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`), then run
      `git status --short --branch`, `git diff --stat`, `git diff --cached --stat`, and
      `git status --porcelain --untracked-files=all`. `git diff --stat` does not list untracked files.

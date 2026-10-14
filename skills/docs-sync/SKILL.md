@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.10.0
+version: 0.10.1
 license: MIT
 metadata:
   hermes:
@@ -18,6 +18,12 @@ safety and evidence; use `wiki-docs` for raw-source-to-wiki compilation.
 Every Bootstrap/Maintain delivers corrected applicable docs and bounded ledger
 work with complete `TODO.md` bodies for every evidenced unmet goal/requirement.
 Findings or rendered coverage alone are insufficient.
+
+After a workflow update, verify the installed helper copies first, then maintain each
+project backlog with freshly loaded instructions; installation does not rewrite
+project documents. Deliver integrated, verified corrections, not only private
+proposals, unless an actual overlapping writer or missing intent prevents them.
+Keep document-only scope separate from implementation, dispatch and schedule changes.
 
 Follow [the shared plan contract](../shared/PLAN-HANDOFF.md) for idea-to-execution
 handoffs. Accepted answers update existing owners; proposals stay outside the

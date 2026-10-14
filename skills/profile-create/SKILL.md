@@ -1,7 +1,7 @@
 ---
 name: profile-create
 description: "Create repo-bound profiles with tools and isolated memory."
-version: 0.1.0
+version: 0.2.0
 author: TrebuchetDynamics
 license: MIT
 platforms: [linux, macos]
@@ -70,9 +70,25 @@ separate approval. Creation does not authorize repository changes, commits or pu
    for the CURRENT required plugin set and source identifiers. Install/enable and
    verify that set in this profile only using native plugin commands; do not bring
    back removed plugins such as Bot Forge or Hindsight. Existing default-profile
-   availability is not proof of target-profile enablement. If the native installer
-   needs approval or a dependency/source is missing, report incomplete setup;
-   never bypass the scan or invoke a fleet-wide installer to configure one profile.
+   availability is not proof of target-profile enablement. If a scan blocks an
+   install, summarize its verdict and request approval for that exact plugin and
+   profile, disclosing approval-policy changes applied on enablement; only then use
+   the native installer's documented override. Consent for one plugin does not
+   cover its dependencies. Never disable scanning globally, copy around it, or
+   invoke a fleet-wide installer to configure one profile. Keep large scan output
+   in a scratch log and show a bounded summary. Inspect the dependency result even
+   on exit zero: `--yes-deps` is Python consent, not proof that declared Node
+   dependencies installed; report affected features unverified. If a dependency or
+   source is missing, report incomplete setup. Refresh native-file inventory after
+   enablement, since registration may already provision bundled copies, and
+   preserve differing files instead of overwriting.
+   Check `required_skills` as well as `imported_plugins` in the defaults. For
+   Graphify, run the targeted source helper for this profile only:
+   ```sh
+   python "<bundle>/install-graphify.py" --hermes-home "<canonical Hermes root>" --profile "<name>"
+   ```
+   and verify a readable `skills/graphify/SKILL.md` in the target; profile setup
+   does not authorize repository instruction edits.
    Configure gateway injection through `hermes -p <name> config set` if required
    by the bundle; do not duplicate shared workflow policy in `SOUL.md` or cron prompts.
 
@@ -98,7 +114,10 @@ separate approval. Creation does not authorize repository changes, commits or pu
    ```
    Verify every required plugin is enabled in the named profile, the repository
    root matches, the identity is correct and the OMH binding is unique. Inspect
-   bundled command discovery for `profile-create`. Do not launch paid chat calls,
+   bundled command discovery for `profile-create`. Run `hermes -p "<name>" toolset
+   doctor` and keep its core-versus-full verdict; core registration is not full
+   integration readiness. Check each command's exit code, since a trailing
+   successful readback can hide an earlier failed install. Do not launch paid chat calls,
    add Telegram credentials, run product tests or restart gateways just for setup.
 
 ## Completion and recovery

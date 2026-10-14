@@ -197,6 +197,19 @@ Preserve completed task statuses, priorities and historical plan bodies during
 source-study adoption. Record research as inspection evidence for the owning goals,
 not as executed proof that the requested product outcome works.
 
+## Reconcile after workflow updates
+
+Resolve the loaded skill's installed helper and verify its bytes against the
+qualified rollout revision; a surviving compatibility copy or a dirty source
+checkout does not prove the updated rules ran. Keep old helper-bound receipts as
+history. Then reconcile as below, applying routine broken-link and stale-source
+wording repairs in the same batch rather than leaving them as owner decisions.
+Before reporting, reread every receipt-bound input and the helper fingerprint;
+rerun receipts whose input closure changed, since one shared ledger edit can
+invalidate several plan checks. Preserve later owner progress; never revert
+another owner's claim to make a preservation check pass. Respect an intentionally
+Markdown-only queue without manufacturing a ledger or native admission.
+
 ## Reconcile divergent task contracts
 
 1. Snapshot canonical TODO, ledger, affected plans and archive; run `validate`.
