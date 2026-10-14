@@ -8,6 +8,7 @@ import subprocess
 
 MARKER = '\n\nSHARED OWNER RECOVERY CYCLE — required execution\n'
 REPAIR_MARKER = '\n\nSHARED TOOLSET REMEDIATION — authorized execution\n'
+PAUSE_MARKER = '\n\nAUDIT AUTO-PAUSE — authorized owner schedules only\n'
 AUDIT_MARKER = '\n\nOWNER RECOVERY COVERAGE — read-only\n'
 PRESERVE = ('id', 'name', 'schedule', 'schedule_display', 'repeat', 'enabled', 'state',
             'paused_at', 'paused_reason', 'model', 'provider', 'base_url', 'deliver',
@@ -91,7 +92,39 @@ def owner_prompt(prompt, enabled):
         'End with skipped checks and risks.\n')
 
 
-def audit_prompt(prompt, *, repair=False):
+def audit_prompt(prompt, *, repair=False, pause_stalled=False):
+    pause_stalled = pause_stalled or PAUSE_MARKER in prompt
+    result = _audit_prompt(prompt.split(PAUSE_MARKER, 1)[0], repair=repair)
+    if not pause_stalled:
+        return result
+    result = result.replace('owner jobs/config/memories', 'owner config/memories')
+    result = result.replace('sibling config/job/memory changes', 'sibling config/memory changes')
+    result = result.replace('change jobs, or replace workers', 'replace workers')
+    return result + PAUSE_MARKER + (
+        'The user authorizes pausing existing development Autowork cron jobs for configured subjects ONLY. '
+        'Never pause the default maintainer, excluded profiles, unrelated jobs or a missing/ambiguous target. '
+        'Match profile, repository and exact existing job ID before action. Preserve already paused jobs. '
+        'Pause after THREE distinct consecutive completed occurrences are blocked/failed with the same '
+        'primary task/blocker and no verified implementation, useful candidate change, acceptance, review '
+        'or integration progress since the latest real progress or relevant repair. '
+        'Use exact run/output IDs and fingerprints; repeated polls are one occurrence. '
+        'A new helper repair or a changed recovery input requires fresh owner observations; '
+        'do not count pre-repair failures against the corrected path. '
+        'Also pause on verified no tasks left: read canonical TODO/goals and saved continuations; '
+        'require the owning agent repository-maintenance/docs-sync work search and its checked scope exhausted receipt. '
+        'An empty board, an empty selector, all work dependency-held or no eligible task is not no tasks left. '
+        'Do not manufacture busywork to keep a schedule enabled. Missing evidence is unknown, not exhaustion. '
+        'Recheck actual worker and manual-continuation liveness immediately before pausing; '
+        'do not classify an actually progressing worker as stalled. Preserve cards, budgets, candidates and history; '
+        'never cancel a worker, trigger a run, reset retries or launch a replacement. '
+        'Use the supported command hermes -p PROFILE cron pause JOB_ID; read back enabled=false '
+        'on that exact job and unchanged cadence/model/delivery, and save before/after plus reason '
+        'and supporting run IDs in default-owned maintenance evidence. Report every pause via existing Telegram delivery. '
+        'Keep auditing paused subjects; never resume automatically. A resume requires explicit user instruction. '
+        'This is the only sibling-job write exception; product/config/memory/live-service writes remain forbidden.\n')
+
+
+def _audit_prompt(prompt, *, repair=False):
     if repair or REPAIR_MARKER in prompt:
         original = prompt.split(REPAIR_MARKER, 1)[0].split(AUDIT_MARKER, 1)[0]
         return original + REPAIR_MARKER + (

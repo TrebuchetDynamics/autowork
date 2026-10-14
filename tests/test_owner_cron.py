@@ -135,6 +135,37 @@ class OwnerCronTests(unittest.TestCase):
         ready = {'skills': ['hermes-toolset:autowork', 'hermes-toolset:git-commit-push']}
         self.assertEqual(module.autowork_skills(ready), ready['skills'])
 
+    def test_audit_auto_pause_is_opt_in_and_sticky(self):
+        module = load()
+        plain = module.audit_prompt('Subjects: alpha, beta.', repair=True)
+        self.assertNotIn('AUTO-PAUSE', plain)
+        prompt = module.audit_prompt(plain, pause_stalled=True)
+        self.assertEqual(module.audit_prompt(prompt), prompt)
+        self.assertEqual(prompt.count(module.PAUSE_MARKER), 1)
+        self.assertIn('shared-source repair', prompt)
+        self.assertIn('Subjects: alpha, beta.', prompt)
+        self.assertNotIn('sibling config/job/memory changes', prompt)
+        self.assertNotIn('change jobs, or replace workers', prompt)
+        readonly = module.audit_prompt('Audit only.', pause_stalled=True)
+        self.assertEqual(module.audit_prompt(readonly), readonly)
+        self.assertNotIn('shared-source repair', readonly)
+
+    def test_audit_auto_pause_requires_verified_stall_or_exhaustion(self):
+        prompt = load().audit_prompt('Scope: configured subjects only.', repair=True,
+                                    pause_stalled=True)
+        for rule in ('THREE distinct consecutive completed occurrences',
+                     'since the latest real progress or relevant repair',
+                     'no eligible task is not no tasks left',
+                     'repository-maintenance/docs-sync work search',
+                     'actual worker and manual-continuation liveness',
+                     'never cancel a worker', 'never resume automatically',
+                     'Never pause the default maintainer',
+                     'cron pause JOB_ID', 'read back enabled=false'):
+            self.assertIn(rule, prompt)
+        self.assertIn('No product writes', prompt)
+        self.assertIn('Do not reset budgets', prompt)
+        self.assertIn('Do not push', prompt)
+
     def test_authorized_maintenance_repairs_shared_source_not_products(self):
         module = load()
         scope = 'Subjects: alpha, beta, gamma, delta. Preserve paused jobs.'
