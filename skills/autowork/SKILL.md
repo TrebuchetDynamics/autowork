@@ -166,13 +166,9 @@ verified new handoff. No separate validate-only, planning, broad docs audit, ful
 suite or optional skill loader belongs before that ready dispatch. Compact output
 points to full private receipts; `--verbose` exposes the full receipt when needed.
 Missing Checks/source closure/non-normalized ledger returns only missing preparation.
-Stale inputs or an attempted/uncertain dispatch preserve original inputs, card and
-consumed budget; reconcile, never refresh pins or dispatch a replacement.
-Only a trusted launcher refusal proving no native creation for the exact recorded
-attempt permits corrected preparation on a later occurrence. The owner-cycle
-helper verifies the attempt/request/launcher binding and archives original inputs
-and proof first; generic errors and historical unknown attempts remain held. See
-[the admission recovery contract](references/owner-cycle.md#composed-ready-preflight).
+Stale inputs/uncertain dispatches retain inputs/card/budget; never replace
+cards. [Proven pre-create refusal](references/owner-cycle.md#composed-ready-preflight)
+permits archived re-preparation.
 Manual explicit handoff requests remain supported for attributed prerequisite or
 split-role recovery; see [the composed contract](references/owner-cycle.md#composed-ready-preflight).
 
