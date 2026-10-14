@@ -136,8 +136,14 @@ def run_locked(args, state):
                     raise ValueError('Fallback original card differs from current reconciliation')
                 result['disjoint_fallback'] = distinct
             if not distinct and prior.get('outcome') != 'no_handoff' and prior.get('next_action') != 'reconcile_task_and_select':
-                result.update(outcome='BLOCKED', action='reconcile_original_card',
-                              next_action=prior['next_action'], selected_task=None,
+                action = prior['next_action']
+                # A live/queued card needs observation, and terminal work needs
+                # coordinator action. Neither is an unavailable prerequisite.
+                outcome = ('WAITING' if action in ('observe_current_run', 'observe_queued_card') else
+                           'ACTION_REQUIRED' if action in ('verify_and_integrate', 'reconcile_run_state') else
+                           'BLOCKED')
+                result.update(outcome=outcome, action='reconcile_original_card',
+                              next_action=action, selected_task=None,
                               held_task_ids=[], recovery={'gate': 'native_continuity'}, repairs=[], blocker=[])
                 capability = prior.get('continuation_capability')
                 if (prior.get('next_action') == 'recover_original_card'
@@ -406,8 +412,9 @@ def run_locked(args, state):
 
 def render(result):
     task = result.get('selected_task') or {}
-    label = task.get('id') or ', '.join(result['task_ids'])
-    title = task.get('title', 'title unverified')
+    prior = result.get('reconciliation') or {}
+    label = task.get('id') or prior.get('task_id') or ', '.join(result['task_ids'])
+    title = task.get('title') or prior.get('title') or 'title unverified'
     return (f"{result['outcome']} — 0 tasks completed by this cycle\n"
             f"Task: {label} — {title}\n"
             f"Recovery: {result['recovery']['gate']}; unchanged runs: {result['unchanged_runs']}\n"
@@ -466,7 +473,7 @@ def main(argv=None):
     except (ValueError, OSError) as exc:
         parser.exit(1, str(exc) + '\n')
     print(json.dumps(result if args.verbose or not args.profile else compact(result, args.state_dir), indent=2))
-    return 0 if result['outcome'] in ('READY', 'PROGRESS', 'QUEUED') else 1
+    return 0 if result['outcome'] in ('READY', 'PROGRESS', 'QUEUED', 'WAITING') else 1
 
 
 if __name__ == '__main__':

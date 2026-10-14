@@ -196,6 +196,22 @@ class OwnerCronTests(unittest.TestCase):
         self.assertNotIn('sibling config/job/memory changes', prompt)
         self.assertEqual(module.audit_prompt(prompt), prompt)
 
+    def test_audit_consultation_filter_follows_authorized_subject_scope(self):
+        module = load()
+        for scope in ('Discover ALL profiles dynamically; consult with no --profiles filter.',
+                      'Consult ONLY alpha and beta using --profiles alpha beta.'):
+            with self.subTest(scope=scope):
+                legacy = scope + module.REPAIR_MARKER + (
+                    'Ask each configured subject once through scripts/profile-consult.py '
+                    'with its explicit --profiles set; retain actual replies.')
+                prompt = module.audit_prompt(legacy)
+                self.assertTrue(prompt.startswith(scope))
+                self.assertNotIn('with its explicit --profiles set', prompt)
+                self.assertIn('Use --profiles only for an explicitly authorized subject subset', prompt)
+                self.assertIn('otherwise omit --profiles and discover all current profiles dynamically', prompt)
+                self.assertIn('default self-assessment without recursion', prompt)
+                self.assertEqual(module.audit_prompt(prompt), prompt)
+
     def test_audit_auto_pause_is_opt_in_and_sticky(self):
         module = load()
         plain = module.audit_prompt('Subjects: alpha, beta.', repair=True)

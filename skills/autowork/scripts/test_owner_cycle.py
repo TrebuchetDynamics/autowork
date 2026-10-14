@@ -590,6 +590,31 @@ class ComposedReadyTests(unittest.TestCase):
         self.assertEqual(receipt['recovery'].get('continuation_capability'), capability)
         self.assertFalse((self.state / 'ready-preflights').exists())
 
+    def test_observation_is_waiting_not_a_failed_cycle(self):
+        self.ready_backlog()
+        for action in ('observe_current_run', 'observe_queued_card'):
+            with self.subTest(action=action):
+                code, receipt, dispatch = self.composed(prior={'task_id': 'original',
+                    'title': 'Original task', 'next_action': action})
+                self.assertEqual(receipt['outcome'], 'WAITING')
+                self.assertEqual(code, 0)
+                self.assertEqual(receipt['completed_tasks'], [])
+                self.assertEqual(receipt['blocker'], [])
+                self.assertIn('original — Original task', (self.state / 'report-latest.txt').read_text())
+                dispatch.assert_not_called()
+
+    def test_closeout_and_state_reconciliation_request_action_not_a_blocker(self):
+        self.ready_backlog()
+        for action in ('verify_and_integrate', 'reconcile_run_state'):
+            with self.subTest(action=action):
+                code, receipt, dispatch = self.composed(prior={'task_id': 'original',
+                    'next_action': action})
+                self.assertEqual(receipt['outcome'], 'ACTION_REQUIRED')
+                self.assertEqual(code, 1)
+                self.assertEqual(receipt['next_action'], action)
+                self.assertEqual(receipt['completed_tasks'], [])
+                dispatch.assert_not_called()
+
     def test_capability_does_not_block_observation_or_closeout(self):
         self.ready_backlog()
         for action in ('reconcile_run_state', 'verify_and_integrate', 'observe_current_run'):
@@ -605,7 +630,7 @@ class ComposedReadyTests(unittest.TestCase):
         before = (self.repo / 'goals.json').read_bytes()
         for action in ('reconcile_run_state', 'observe_current_run', 'verify_and_integrate', 'recover_original_card'):
             code, receipt, dispatch = self.composed(prior={'task_id': 'original', 'next_action': action})
-            self.assertEqual(code, 1)
+            self.assertEqual(code, 0 if action == 'observe_current_run' else 1)
             dispatch.assert_not_called()
             self.assertEqual(receipt['reconciliation']['task_id'], 'original')
             self.assertEqual((self.repo / 'goals.json').read_bytes(), before)

@@ -43,6 +43,15 @@ Prior native work is reconciled first; pending review, interrupted/owned cards a
 unintegrated candidates keep their original lane. Missing handoff continuity is
 not proof of missing ownership: real admission still checks live cards under lock.
 
+Reconciliation returns `WAITING` (exit 0) for an existing running or queued card.
+This means observation is the next action, not proof of process liveness or task
+acceptance. `ACTION_REQUIRED` identifies pending verification/integration or
+card/run reconciliation; execute that next action in this occurrence. It remains
+exit 1 until the coordinator handles it, but it is not an external blocker.
+`BLOCKED` remains for an unavailable continuation prerequisite or unknown state.
+None of these receipts authorizes a replacement worker, resets an allocation,
+or counts a task complete.
+
 `ready_preflight.py` reuses docs-sync's task parser and bounded source capture.
 The body must contain Scope, Acceptance, Checks, Sources and Ownership; the
 canonical ledger must already be normalized. Explicit `--source-path` files bind
