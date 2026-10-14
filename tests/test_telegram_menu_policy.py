@@ -4,7 +4,7 @@ import unittest
 spec=importlib.util.spec_from_file_location('menu_policy',Path(__file__).resolve().parents[1]/'telegram_menu_policy.py')
 policy=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
-WORKFLOWS=['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork']
+WORKFLOWS=['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork']
 
 def priority(raw):
     return policy.menu_patch(raw)['platforms']['telegram']['extra']['command_menu']
@@ -20,7 +20,7 @@ class MenuPolicyTests(unittest.TestCase):
         raw={'platforms':{'telegram':{'extra':{'command_menu':{'priority':old,
              'max_commands':40,'priority_mode':'append'}}}}}
         menu=priority(raw)
-        self.assertEqual(menu['priority'], ['status','custom','autowork','plan_with_me','plan_for_me','docs_sync'])
+        self.assertEqual(menu['priority'], ['status','custom','autowork','plan_with_me','plan_for_me','docs_sync','cron_autowork'])
         raw['platforms']['telegram']['extra']['command_menu'].update(menu)
         self.assertEqual(priority(raw), menu)
         self.assertEqual(raw['platforms']['telegram']['extra']['command_menu']['priority_mode'],'append')

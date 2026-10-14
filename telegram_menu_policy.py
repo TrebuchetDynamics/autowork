@@ -1,6 +1,6 @@
 """Advertise current workflow commands using Hermes' supported menu configuration."""
 
-WORKFLOWS = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork']
+WORKFLOWS = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork']
 # Names this bundle once promoted or registered; compatibility spellings stay
 # typeable but are no longer advertised, so earlier priority entries are removed.
 RETIRED = {'autoresearch', 'autogoal', 'grill_me', 'repo_interview', 'repo_docs'}
