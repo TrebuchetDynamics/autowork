@@ -37,6 +37,13 @@ class RuntimeSetupTests(unittest.TestCase):
         self.assertEqual(report['gateway'],'commands_reloaded')
         self.reload.assert_called_once()
 
+    def test_settings_left_unhealed_after_load_fail_the_profile(self):
+        report,code=self.finish(verify_settings=lambda: ['platforms.telegram.extra.command_menu.priority'])
+        self.assertEqual((code,report['status'],report['settings']),(1,'incomplete','drift'))
+        self.assertTrue(any('not healed' in e for e in report['errors']), report)
+        report,code=self.finish(verify_settings=lambda: [])
+        self.assertEqual((code,report['settings']),(0,'current'))
+
     def test_reload_true_without_registered_command_is_failure(self):
         self.reload.return_value['activations']=[]
         report,code=self.finish(); self.assertEqual(code,1)

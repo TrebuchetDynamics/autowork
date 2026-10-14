@@ -153,6 +153,48 @@ class UpdateTests(unittest.TestCase):
                 self.assertEqual(path.read_text(), 'custom\n')
                 self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'old\n')
 
+    def test_update_heals_profile_settings_and_requests_one_graceful_gateway_restart(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        prepare = self.mod.prepare
+        stale = self.profiles[0][1] / 'config.yaml'
+        stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autoresearch]}}}}\n')
+        def activate(source, root, profiles):
+            stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autowork]}}}}\n')
+            return [{'profile': name, 'status': 'ready'} for name, _ in profiles]
+        for running, expected in ((True, 'requested'), (False, 'not_running')):
+            with self.subTest(running=running), \
+                 patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+                 patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+                 patch.object(self.mod, 'finalize_profiles', side_effect=activate), \
+                 patch.object(self.mod, 'gateway_running', return_value=running), \
+                 patch.object(self.mod, 'request_gateway_restart') as restart, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autoresearch]}}}}\n')
+                self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
+                receipt = json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
+                self.assertEqual(receipt['settings_healed'], [self.profiles[0][0]])
+                self.assertEqual(receipt['gateway_restart'], expected)
+                self.assertEqual(restart.call_count, int(running))
+
+    def test_noop_update_does_not_restart_the_gateway(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        prepare = self.mod.prepare
+        receipts = []
+        with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+             patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+             patch.object(self.mod, 'gateway_running', return_value=True), \
+             patch.object(self.mod, 'request_gateway_restart') as restart, \
+             contextlib.redirect_stdout(io.StringIO()):
+            for _ in range(2):
+                self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
+                receipts.append(json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text()))
+        self.assertEqual([r['status'] for r in receipts], ['updated', 'up_to_date'])
+        self.assertEqual([r['gateway_restart'] for r in receipts], ['requested', 'not_needed'])
+        self.assertEqual(restart.call_count, 1)
+
     def test_check_reports_stale_copies_without_applying_them(self):
         self.advance()
         self.git(self.repo, 'pull', '--ff-only')

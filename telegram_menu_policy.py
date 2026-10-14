@@ -1,6 +1,14 @@
-"""Reserve Autoresearch picker entries using Hermes' supported menu configuration."""
-import json
-from pathlib import Path
+"""Advertise current workflow commands using Hermes' supported menu configuration."""
+
+WORKFLOWS = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork']
+# Names this bundle once promoted or registered; compatibility spellings stay
+# typeable but are no longer advertised, so earlier priority entries are removed.
+RETIRED = {'autoresearch', 'autogoal', 'grill_me', 'repo_interview', 'repo_docs'}
+
+
+def _bundle_owned(name):
+    key = name.strip().lower().lstrip('/').replace('-', '_').replace(':', '_')
+    return key in RETIRED or key.startswith('autoresearch_')
 
 
 def menu_patch(raw):
@@ -10,9 +18,7 @@ def menu_patch(raw):
     priority = menu.get('priority', []) if isinstance(menu, dict) else []
     if isinstance(priority, str): priority = [priority]
     if not isinstance(priority, list): priority = []
-    names = json.loads((Path(__file__).parent / 'skills/autoresearch/UPSTREAM.json').read_text())['commands']
-    wanted = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork'] + ['autoresearch_' + name for name in names if name != 'plan']
-    merged = list(dict.fromkeys([str(p) for p in priority if str(p).strip()] + wanted))
-    # Preserve the user's cap and prepend/append/replace preference. Their explicit
-    # higher-priority entries may still fill an intentionally small menu.
+    kept = [str(p) for p in priority if str(p).strip() and not _bundle_owned(str(p))]
+    merged = list(dict.fromkeys(kept + WORKFLOWS))
+    # Preserve the user's cap, prepend/append/replace preference and their own entries.
     return {'platforms': {'telegram': {'extra': {'command_menu': {'priority': merged}}}}}

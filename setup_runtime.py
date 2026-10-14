@@ -2,7 +2,7 @@
 from pathlib import Path
 
 
-def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reload=False):
+def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reload=False, verify_settings=None):
     errors = []
     bundled = {p.parent.name for p in (bundle / 'skills').glob('*/SKILL.md')
                if p.parent.name not in {'repo-docs', 'repo-interview'}}
@@ -16,7 +16,12 @@ def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reloa
     if not bundle_only:
         for field in ('missing_plugins', 'missing_skills', 'unchecked_skill_sources'):
             if inventory[field]: errors.append(field + ': ' + ', '.join(inventory[field]))
+    # Plugin load re-applies the bundle's profile settings; confirm they actually landed.
+    drift = verify_settings() if verify_settings else []
+    if drift:
+        errors.append('Profile settings not healed: ' + ', '.join(drift))
     result = {'home': str(home), 'bundled_commands': sorted(bundled - set(missing)),
+              'settings': 'drift' if drift else 'current',
               'gateway': 'not_checked', 'errors': errors,
               'note': 'Command registration is verified, not a Telegram message or model invocation. '
                       'Existing sessions may retain their previous tools, prompts and memory provider.'}
@@ -65,7 +70,8 @@ def finalize(bundle, report, args):
     if home != root and home.parent != root / 'profiles':
         return {'status': 'incomplete', 'errors': ['Profile does not belong to requested Hermes root']}, 1
     try:
-        return finish_profile(bundle, home, root, report,
-                              bundle_only=args.bundle_only, no_reload=args.no_reload)
+        from .runtime_defaults import verify_runtime_defaults
+        return finish_profile(bundle, home, root, report, bundle_only=args.bundle_only,
+                              no_reload=args.no_reload, verify_settings=verify_runtime_defaults)
     except (OSError, ValueError, TypeError, ImportError) as exc:
         return {'status': 'incomplete', 'home': str(home), 'errors': [str(exc)]}, 1

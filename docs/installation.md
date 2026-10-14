@@ -186,6 +186,14 @@ initial “requested” message as proof of completion. `/toolset update --check
 fetches upstream and previews changes without advancing checkouts or writing
 profile skills/configuration. It still writes Git fetch metadata and its receipt.
 
+An update also self-heals each profile: plugin activation re-applies the bundle's
+command menu, approval and gateway-injection settings, and finalize fails the
+profile if they did not land. `settings_healed` lists profiles whose config changed.
+Because Telegram menus refresh only when the gateway reconnects, an update that
+changed code, skills or settings requests one graceful `hermes gateway restart`
+(`gateway_restart: requested`): in-flight turns drain first, and workers and
+schedules keep running. A no-op update does not restart the gateway.
+
 Terminal equivalents wait for completion:
 
 ```sh

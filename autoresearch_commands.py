@@ -26,9 +26,8 @@ def register(ctx, skills, invoke):
             if alias in existing or alias in bundled or resolve_command(alias) is not None:
                 logging.getLogger(__name__).warning('Skipping /%s: command already exists.', alias)
                 continue
-            # Telegram drops ':' when generating menus. Its native API excludes
-            # commands with required arguments; advertise the hyphen alias only.
-            # CLI colon commands still accept empty text and run upstream setup.
+            # Compatibility spellings stay typeable but are not advertised: Hermes
+            # omits commands that require text from Telegram menus. Empty text still
+            # dispatches and runs upstream setup.
             ctx.register_command(alias, partial(_dispatch, invoke, ctx, path, command),
-                                 description=f'Autoresearch: {command}',
-                                 args_hint='<instructions>' if separator == ':' or command == 'plan' else '[instructions]')
+                                 description=f'Autoresearch: {command}', args_hint='<instructions>')

@@ -36,6 +36,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Telegram menus no longer advertise compatibility commands (`/autoresearch`,
+  `/autoresearch_plan`, `/autoresearch_<protocol>`); they stay typeable. The menu
+  policy removes those entries from existing profile priorities. `/toolset update`
+  now verifies each profile's re-applied settings, reports `settings_healed`, and
+  requests one graceful gateway restart when anything changed so menus refresh.
+
 - A task body no longer absorbs the next task's own `### ID` heading into its last
   field, which made a following heading read as an unresolved dependency.
 

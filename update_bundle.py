@@ -219,6 +219,31 @@ def finalize_profiles(source, root, profiles):
     return results
 
 
+def config_snapshot(profiles):
+    """Profile config bytes, to see which profiles plugin activation healed."""
+    snapshot = {}
+    for name, home in profiles:
+        path = home / 'config.yaml'
+        snapshot[name] = path.read_bytes() if path.is_file() and not path.is_symlink() else None
+    return snapshot
+
+
+def gateway_running(root):
+    try:
+        pid = json.loads((root / 'gateway.pid').read_text())['pid']
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def request_gateway_restart(root, log):
+    """Graceful restart: Hermes drains in-flight turns, then reconnects and re-pushes menus."""
+    with log.open('ab') as stream:
+        subprocess.Popen(['hermes', 'gateway', 'restart'], stdin=subprocess.DEVNULL, stdout=stream,
+                         stderr=stream, start_new_session=True, env=dict(os.environ, HERMES_HOME=str(root)))
+
+
 def root_home(home):
     home = Path(home).expanduser()
     if home.parent.name == 'profiles':
@@ -699,11 +724,25 @@ def main(argv=None):
                 stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
                 result['backup'] = str(state_dir / stamp)
                 apply(plan, Path(result['backup']))
+                before = config_snapshot(profiles)
                 # Refresh even on equal revisions: a prior setup/reload may have failed.
+                # Plugin activation also re-applies each profile's command menu and settings.
                 result['activation'] = finalize_profiles(source, root, profiles)
+                healed = [name for name, value in config_snapshot(profiles).items() if value != before[name]]
+                result['settings_healed'] = healed
                 ready = all(r['status'] == 'ready' for r in result['activation'])
-                result['status'] = ('updated' if changed or missing else 'up_to_date') if ready else 'incomplete'
-            result['note'] = 'Existing chats may retain loaded instructions. No worker or schedule was restarted.'
+                result['status'] = ('updated' if changed or missing or healed else 'up_to_date') if ready else 'incomplete'
+                # A plugin reload rewires handlers, but Telegram menus refresh only on reconnect.
+                if not ready or not (changed or missing or healed):
+                    result['gateway_restart'] = 'not_needed'
+                elif gateway_running(root):
+                    request_gateway_restart(root, state_dir / 'run.log')
+                    result['gateway_restart'] = 'requested'
+                else:
+                    result['gateway_restart'] = 'not_running'
+            result['note'] = ('Existing chats may retain loaded instructions. A requested gateway restart drains '
+                              'in-flight turns before refreshing commands and Telegram menus; '
+                              'workers and schedules are not restarted.')
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             result.update(status='incomplete', error=str(error),
                           action='Resolve the named checkout/file error and rerun /toolset update. Partial changes, if any, are retained with backups.')
