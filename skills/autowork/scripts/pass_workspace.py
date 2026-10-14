@@ -105,9 +105,20 @@ def context_paths(manifest):
     return set(files)
 
 
-def verify(manifest, workspace, *, admitted_task=None):
+def verify(manifest, workspace, *, admitted_task=None, registration_card_id=None):
     if manifest.get('registration_preparation') is not None:
-        raise ValueError('Required registration preparation is held pending supported native prerequisite transition')
+        if not registration_card_id:
+            raise ValueError('Required registration preparation needs the original card identity')
+        import writer_registration
+        pending = manifest['registration_preparation']
+        expected = dict(pending['expected'], card=registration_card_id, task=manifest['goal_task'],
+                        workspace=str(Path(workspace).resolve()),
+                        base=manifest['candidate_identity']['base_commit'], scope=pending['scope'])
+        try:
+            requirement = writer_registration.prepare_requirement(pending, expected)
+        except ValueError as exc:
+            raise ValueError('Required registration preparation: ' + str(exc)) from exc
+        return verify_registration_preparation(manifest, workspace, requirement)
     return _verify_sources(manifest, workspace, admitted_task=admitted_task)
 
 
@@ -202,8 +213,8 @@ def _verify_sources(manifest, workspace, *, admitted_task=None, coordination=Non
     return True
 
 
-def run_checked(manifest, workspace, command, *, admitted_task=None):
-    verify(manifest, workspace, admitted_task=admitted_task)
+def run_checked(manifest, workspace, command, *, admitted_task=None, registration_card_id=None):
+    verify(manifest, workspace, admitted_task=admitted_task, registration_card_id=registration_card_id)
     return subprocess.run(command, cwd=workspace, env=candidate_identity.git_environment(),
                           timeout=180, check=True).returncode
 
@@ -380,7 +391,8 @@ def run_main_only(manifest, command, *, ownership_guard=None, timeout=180):
 def original_handoff_binding(manifest_path, digest, manifest, workspace):
     """Recover transport context, not authority, from an exact saved handoff."""
     journal = Path(manifest_path).parent
-    paths = [journal / 'goal-handoff.json', *sorted((journal / 'handoffs').glob('*.json'))]
+    paths = [journal / 'goal-handoff.json', *sorted((journal / 'handoffs').glob('*.json')),
+             *sorted(journal.glob('reservation-*.json'))]
     matches = set()
     for path in paths:
         if not path.is_file() or path.is_symlink():
@@ -411,9 +423,12 @@ def registration_card(manifest_path, digest, manifest, workspace):
     # supplies the same identifier without exporting or forging process identity.
     # This is a registration consistency check, never native lease authentication.
     card = os.environ.get('HERMES_KANBAN_TASK')
+    task, saved_card = original_handoff_binding(manifest_path, digest, manifest, workspace)
     if card:
+        if saved_card and saved_card != card:
+            raise ValueError('Worker card differs from original handoff registration')
         return card
-    task, card = original_handoff_binding(manifest_path, digest, manifest, workspace)
+    card = saved_card
     if task != manifest.get('goal_task') or not card:
         raise ValueError('Missing task context: no exact original handoff for registration')
     return card
@@ -469,11 +484,13 @@ def main():
             parser.exit(2, str(error) + '\n')
     admitted_task = (None if manifest.get('goal_task') or manifest.get('planning_context') else
                      legacy_admitted_task(args.manifest, args.manifest_sha256, manifest, args.workspace))
+    registration_card_id = (registration_card(args.manifest, args.manifest_sha256, manifest, args.workspace)
+                            if manifest.get('registration_preparation') else None)
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     if command:
-        run_checked(manifest, args.workspace, command, admitted_task=admitted_task)
+        run_checked(manifest, args.workspace, command, admitted_task=admitted_task, registration_card_id=registration_card_id)
     else:
-        verify(manifest, args.workspace, admitted_task=admitted_task)
+        verify(manifest, args.workspace, admitted_task=admitted_task, registration_card_id=registration_card_id)
         print(json.dumps({'outcome': 'worker_start_admitted', 'workspace': args.workspace}))
 
 

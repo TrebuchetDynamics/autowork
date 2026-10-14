@@ -100,6 +100,9 @@ class HandoffTests(unittest.TestCase):
         prepared = writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
             {'task': card, 'runs': []}, output)
         self.assertEqual(prepared['outcome'], 'registration_prepared_native_transition_unavailable')
+        admitted = subprocess.run(shlex.split(guard), capture_output=True, text=True)
+        self.assertEqual(admitted.returncode, 0, admitted.stderr)
+        self.assertEqual(json.loads(admitted.stdout)['outcome'], 'worker_start_admitted')
         self.assertEqual(receipt_path.read_bytes(), original)
         self.assertEqual(prepared['expected'], expected)
         self.assertTrue((output / 'original-handoff.json').exists())

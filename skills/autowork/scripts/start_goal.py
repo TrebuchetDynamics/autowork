@@ -442,6 +442,22 @@ def record_handoff(prefix, journal_dir, home, profile, receipt):
     return receipt
 
 
+def create_registered(native_python, request_path):
+    """Native API owns transactional creation; retain uncertain requests without retry."""
+    request = json.loads(Path(request_path).read_text())
+    env = dict(os.environ, HERMES_HOME=request['profile_home'], HERMES_KANBAN_BOARD='default',
+               HERMES_KANBAN_DB=request['db_path'], HERMES_KANBAN_HOME=str(Path(request['db_path']).parent))
+    # Preserve worker identity so coordinator-only admission still refuses workers.
+    result = subprocess.run([native_python, str(Path(__file__).with_name('registration_admission.py')),
+        '--request', str(request_path)], capture_output=True, text=True, timeout=120, env=env)
+    if result.returncode:
+        raise ValueError('Registered native admission failed; preserve request/registry and reconcile: ' + result.stderr[-2000:])
+    created = json.loads(result.stdout)
+    if not isinstance(created, dict) or not created.get('id'):
+        raise ValueError('Registered native admission returned no identity; reconcile retained request')
+    return created
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--profile', required=True)
@@ -457,6 +473,8 @@ def main():
     p.add_argument('--goal-task', help='Exact dependency-ready ledger task identity')
     p.add_argument('--fallback-file', help='Structured JSON fallback attestations bound to selection evidence')
     p.add_argument('--source-snapshot', help='Scoped evidence snapshot captured before candidate selection')
+    p.add_argument('--disjoint-blocked-handoff', help='Pinned original blocked card and distinct task owned-scope evidence')
+    p.add_argument('--registration-native-python', help='Installed native runtime launcher for atomic registered creation; requires declaration')
     p.add_argument('--registration-declaration', help='Explicit JSONL coordination registry, field mappings and owned scope; reserve blocked without dispatch')
     p.add_argument('--base', help='Immutable full base commit; required for new Git write passes')
     p.add_argument('--candidate', help='Explicit committed candidate to assemble; defaults to the pinned base')
@@ -471,6 +489,8 @@ def main():
     args = p.parse_args()
     if os.environ.get('HERMES_KANBAN_TASK'):
         raise SystemExit('Already a goal worker: execute the assigned card, never launch a nested goal.')
+    if args.registration_native_python and not args.registration_declaration:
+        raise SystemExit('Transactional registration requires --registration-declaration')
     contract = Path(args.contract_file).read_text().strip()
     role_contract = contract
     try:
@@ -514,6 +534,12 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX)
         board = ['kanban', '--board', 'default']
         tasks = json.loads(run(prefix, *board, 'list', '--json'))
+        distinct = None
+        if args.disjoint_blocked_handoff:
+            import disjoint_fallback
+            distinct = disjoint_fallback.verify(args.disjoint_blocked_handoff,
+                journal_dir / 'goal-handoff.json', workspace, args.profile, args.goal_task,
+                args.registration_declaration)
         disjoint_triage = set()
         for task_id in args.disjoint_terminal_triage:
             detail = json.loads(run(prefix, *board, 'show', task_id, '--json'))
@@ -647,11 +673,17 @@ def main():
             require_fresh_sources(args.source_snapshot, workspace)
             if registration:
                 passes.verify_registration_preparation(manifest, pass_path)
-                body += ('\n\nREQUIRED REGISTRATION: This card is reserved blocked without dispatch. '
-                         'Owned scope: ' + json.dumps(registration['scope']) + '. '
-                         'Use the repository supported operation for this exact native identity, then '
-                         'prepare retained prerequisites with writer_registration.py. Preparation does '
-                         'not release the card or migrate its frozen runtime; those require supported native controls.')
+                if args.registration_native_python:
+                    body += ('\n\nREQUIRED REGISTRATION: Native creation commits only after this exact '
+                             'card/workspace/base/owned scope is registered and its pinned guard verified. '
+                             'Run the mandatory initial guard above; retain its original manifest. '
+                             'Owned scope: ' + json.dumps(registration['scope']) + '.')
+                else:
+                    body += ('\n\nREQUIRED REGISTRATION: This card is reserved blocked without dispatch. '
+                             'Owned scope: ' + json.dumps(registration['scope']) + '. '
+                             'Use the repository supported operation for this exact native identity, then '
+                             'prepare retained prerequisites with writer_registration.py. Preparation does '
+                             'not release the card or migrate its frozen runtime; those require supported native controls.')
             else:
                 passes.verify(manifest, pass_path)
             runtime_bundle.verify(helper_runtime)
@@ -663,23 +695,45 @@ def main():
             # transport failure may hide a created card, so retain its runtime.
             if helper_runtime is not None and not dispatch_ready:
                 shutil.rmtree(helper_runtime['root'])
-        created = json.loads(run(prefix, *board, 'create', args.title, '--body', body,
-                                 '--assignee', args.profile, '--workspace', 'dir:' + str(pass_path),
-                                 '--goal', '--goal-max-turns', str(args.goal_max_turns), '--max-retries', str(MAX_RETRIES),
-                                 '--completion-contract', 'local-only', '--created-by', 'autowork',
-                                 *(['--initial-status', 'blocked'] if registration else []),
-                                 '--idempotency-key', 'autowork:' + digest, '--json'))
+        reservation = journal_dir / ('reservation-' + pass_path.name + '.json')
+        reservation_template = dict(profile=args.profile, board_id=board_id,
+            goal_task=args.goal_task, workspace=str(pass_path), source_workspace=str(workspace),
+            helper_runtime=helper_runtime, goal_mode=True, goal_max_turns=args.goal_max_turns,
+            max_retries=MAX_RETRIES, pass_manifest_path=str(manifest_path),
+            pass_manifest_sha256=manifest_sha256, pass_manifest=manifest,
+            source_snapshot=snapshot_bytes.decode())
+        if distinct:
+            # Re-read original terminal identity after assembly, immediately before new admission.
+            checked = disjoint_fallback.verify(args.disjoint_blocked_handoff,
+                journal_dir / 'goal-handoff.json', workspace, args.profile, args.goal_task,
+                args.registration_declaration)
+            if checked != distinct or str(pass_path) == distinct['original_workspace']:
+                raise ValueError('Original fallback state changed or worker workspace reused')
+            reservation_template['disjoint_fallback'] = distinct
+        if args.registration_native_python:
+            request_path = journal_dir / ('registration-request-' + pass_path.name + '.json')
+            request = dict(db_path=str(Path(canonical_board['db_path']).resolve()),
+                profile=args.profile, profile_home=str(home), manifest_path=str(manifest_path), manifest_sha256=manifest_sha256,
+                receipt_path=str(reservation), handoff_template=reservation_template,
+                task=dict(title=args.title, body=body, assignee=args.profile, workspace_kind='dir',
+                    workspace_path=str(pass_path), goal_mode=True, goal_max_turns=args.goal_max_turns,
+                    max_retries=MAX_RETRIES, completion_contract='local-only', created_by='autowork',
+                    idempotency_key='autowork:' + digest))
+            with request_path.open('x') as stream:
+                json.dump(request, stream, indent=2)
+            created = create_registered(args.registration_native_python, request_path)
+        else:
+            created = json.loads(run(prefix, *board, 'create', args.title, '--body', body,
+                                     '--assignee', args.profile, '--workspace', 'dir:' + str(pass_path),
+                                     '--goal', '--goal-max-turns', str(args.goal_max_turns), '--max-retries', str(MAX_RETRIES),
+                                     '--completion-contract', 'local-only', '--created-by', 'autowork',
+                                     *(['--initial-status', 'blocked'] if registration else []),
+                                     '--idempotency-key', 'autowork:' + digest, '--json'))
         task_id = created['id']
-        if registration:
+        if registration and not args.registration_native_python:
             # Retain the returned identity before any fallible native readback.
-            reservation = journal_dir / ('reservation-' + pass_path.name + '.json')
             with reservation.open('x') as stream:
-                json.dump(dict(native_create=created, profile=args.profile, board_id=board_id,
-                               task_id=task_id, goal_task=args.goal_task, workspace=str(pass_path),
-                               source_workspace=str(workspace), helper_runtime=helper_runtime,
-                               goal_mode=True, goal_max_turns=args.goal_max_turns, max_retries=MAX_RETRIES,
-                               pass_manifest_path=str(manifest_path), pass_manifest_sha256=manifest_sha256,
-                               pass_manifest=manifest, source_snapshot=snapshot_bytes.decode()), stream, indent=2)
+                json.dump(dict(reservation_template, native_create=created, task_id=task_id), stream, indent=2)
         saved = json.loads(run(prefix, *board, 'show', task_id, '--json'))
         task = saved.get('task', saved)
         task.update(goal_fields(prefix, task_id))
@@ -700,7 +754,7 @@ def main():
         assert task['assignee'] == args.profile, task
         assert task['workspace_kind'] == 'dir' and Path(task['workspace_path']).resolve() == pass_path, task
         assert task['completion_contract'] == 'local-only', task
-        if registration and (task['status'] != 'blocked' or saved.get('runs') != []
+        if registration and not args.registration_native_python and (task['status'] != 'blocked' or saved.get('runs') != []
                              or task.get('current_run_id') or task.get('worker_pid')):
             raise ValueError('Required registration reservation is not an unused blocked card; preserve original evidence')
         created_at = task.get('created_at')
@@ -712,7 +766,7 @@ def main():
                 raise ValueError('Native created_at lacks timezone; preserve original card for reconciliation')
         else:
             created_at = datetime.now(timezone.utc)
-        receipt = {'outcome': 'registration_pending' if registration else 'handed_off', 'task_id': task_id, 'profile': args.profile,
+        receipt = {'outcome': 'registration_pending' if registration and not args.registration_native_python else 'handed_off', 'task_id': task_id, 'profile': args.profile,
                    'workspace': str(pass_path), 'source_workspace': str(workspace),
                    'pass_manifest': manifest, 'pass_manifest_path': str(manifest_path),
                    'pass_manifest_sha256': manifest_sha256,
@@ -726,6 +780,8 @@ def main():
                    'status': task['status'], 'board_id': task.get('board_id') or board_id,
                    'created_at': created_at.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z'),
                    **admission}
+        if distinct:
+            receipt['disjoint_fallback'] = distinct
         receipt = record_handoff(prefix, journal_dir, home, args.profile, receipt)
         # Notification setup and dispatch may have advanced the card. Preserve
         # the durable receipt even if this final read fails.
