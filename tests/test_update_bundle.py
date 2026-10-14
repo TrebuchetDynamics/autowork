@@ -267,4 +267,235 @@ class UpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'changed since'):self.mod.apply(plan,self.home/'backups')
         self.assertEqual(p.read_text(),'new user change\n')
 
-if __name__=='__main__':unittest.main()
+
+class ScopedUpdateTests(unittest.TestCase):
+    """Real Git and file publication; the native installer is the external boundary."""
+    git = UpdateTests.git
+    advance = UpdateTests.advance
+
+    def setUp(self):
+        UpdateTests.setUp(self)
+        self.advance()
+        self.revision = self.git(self.remote, 'rev-parse', 'HEAD')
+        self.calls = []
+        self.native = patch.object(self.mod, 'native_call', self.fake_native, create=True)
+        self.native.start(); self.addCleanup(self.native.stop)
+
+    def fake_native(self, action, home, stage, revision, python):
+        self.calls.append((action, str(home)))
+        if action == 'install':
+            self.git(home, 'clone', str(stage), str(home/'plugins/hermes-toolset'))
+        return {'commands': ['autowork', 'toolset']} if action == 'verify' else {'admitted': True}
+
+    def deploy(self, names=('default',), **kwargs):
+        return self.mod.scoped_update(self.home, self.remote, self.revision, names, 'python3', **kwargs)
+
+    def test_scoped_api_exists(self):
+        self.assertTrue(callable(getattr(self.mod, 'scoped_update', None)), 'scoped deployment is missing')
+
+    def test_selected_link_replaced_without_shared_source_or_unselected_writes(self):
+        result = self.deploy()
+        self.assertEqual(result['status'], 'updated')
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'new\n')
+        self.assertFalse((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual((self.repo/'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.assertEqual((self.profiles[1][1]/'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.assertTrue((self.profiles[1][1]/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual(self.git(self.remote, 'rev-parse', 'HEAD'), self.revision)
+        self.assertTrue(result['profiles']['default']['installed_hashes'])
+        self.assertEqual((Path(result['backup'])/'default/original-source/skills/demo/SKILL.md').read_text(), 'old\n')
+
+    def test_unchanged_retry_is_noop_with_original_backup(self):
+        first = self.deploy(); self.calls.clear()
+        second = self.deploy()
+        self.assertEqual(second['status'], 'up_to_date')
+        self.assertEqual(first['backup'], second['backup'])
+        self.assertEqual(self.calls, [])
+
+    def test_scan_refusal_leaves_plugin_skills_settings_and_schedules_intact(self):
+        config = self.home/'config.yaml'; config.write_text('model: unchanged\n')
+        def refuse(action, *args):
+            if action == 'scan': raise ValueError('native scanner caution requires approval')
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', refuse):
+            result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertIn('scanner', result['profiles']['default']['error'])
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.assertEqual(config.read_text(), 'model: unchanged\n')
+
+    def test_dirty_source_and_wrong_reviewed_revision_refuse(self):
+        (self.remote/'plugin.yaml').write_text('local change')
+        with self.assertRaisesRegex(ValueError, 'source'):
+            self.deploy()
+        self.assertFalse((self.home/'maintenance/toolset-update/scoped.json').exists())
+
+    def test_profile_drift_preserved_while_independent_profile_updates(self):
+        (self.home/'skills/demo/SKILL.md').write_text('customization\n')
+        (self.profiles[1][1]/'config.yaml').write_text('{}\n')
+        result = self.deploy(('default', 'work'))
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertEqual(result['profiles']['work']['status'], 'ready')
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'customization\n')
+
+    def test_active_consumer_deferred_while_independent_profile_updates(self):
+        import sqlite3
+        with sqlite3.connect(self.home/'kanban.db') as db:
+            db.execute('create table tasks (status text, current_run_id text, worker_pid integer)')
+            db.execute("insert into tasks values ('running','original-run',123)")
+        (self.profiles[1][1]/'config.yaml').write_text('{}\n')
+        result = self.deploy(('default', 'work'))
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertEqual(result['profiles']['work']['status'], 'ready')
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+
+    def test_interruption_after_native_install_resumes_same_backup(self):
+        def interrupt(action, *args):
+            if action == 'verify': raise OSError('interrupted verification')
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', interrupt): first = self.deploy()
+        self.assertEqual(first['status'], 'incomplete')
+        self.calls.clear()
+        second = self.deploy()
+        self.assertEqual(second['status'], 'updated')
+        self.assertEqual(first['backup'], second['backup'])
+        self.assertNotIn('install', [a for a, _ in self.calls])
+
+    def test_source_race_during_scan_prevents_publication(self):
+        def race(action, *args):
+            if action == 'scan': (self.remote/'plugin.yaml').write_text('raced source')
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', race): result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+
+    def test_destination_race_during_scan_is_not_overwritten(self):
+        path = self.home/'skills/demo/SKILL.md'
+        def race(action, *args):
+            if action == 'scan': path.write_text('concurrent change')
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', race): result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertEqual(path.read_text(), 'concurrent change')
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+
+    def test_killed_after_slot_move_resumes_original_backup(self):
+        class Killed(BaseException): pass
+        def kill(action, *args):
+            if action == 'install': raise Killed()
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', kill), self.assertRaises(Killed): self.deploy()
+        saved = json.loads((self.home/'maintenance/toolset-update/scoped.json').read_text())
+        self.assertFalse((self.home/'plugins/hermes-toolset').exists())
+        result = self.deploy()
+        self.assertEqual(result['status'], 'updated')
+        self.assertEqual(result['backup'], saved['backup'])
+        self.assertEqual((Path(saved['backup'])/'default/file-0').read_text(), 'old\n')
+
+    def test_slot_move_intent_before_rename_resumes_directory_install(self):
+        import shutil
+        slot = self.home/'plugins/hermes-toolset'
+        slot.unlink(); shutil.copytree(self.repo, slot)
+        original = Path.rename
+        class Killed(BaseException): pass
+        def kill(path, target):
+            if path == slot: raise Killed()
+            return original(path, target)
+        with patch.object(Path, 'rename', kill), self.assertRaises(Killed): self.deploy()
+        result = self.deploy()
+        self.assertEqual(result['status'], 'updated')
+        self.assertEqual((slot/'skills/demo/SKILL.md').read_text(), 'new\n')
+
+    def test_staging_extra_code_added_during_scan_is_refused(self):
+        def race(action, home, stage, *args):
+            if action == 'scan': (stage/'extra.py').write_text('print("extra")')
+            return self.fake_native(action, home, stage, *args)
+        with patch.object(self.mod, 'native_call', race): result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+
+    def test_untracked_native_output_cannot_be_reported_ready(self):
+        def extra(action, home, stage, *args):
+            result = self.fake_native(action, home, stage, *args)
+            if action == 'install': (home/'plugins/hermes-toolset/extra.py').write_text('extra')
+            return result
+        with patch.object(self.mod, 'native_call', extra): result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+
+    def test_live_helper_process_defers_selected_skill_replacement(self):
+        import sys
+        process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)',
+                                    str(self.home/'skills/demo/SKILL.md')])
+        self.addCleanup(lambda: (process.terminate(), process.wait()))
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+
+    def test_git_export_attributes_do_not_change_deployed_blob_hashes(self):
+        (self.remote/'.gitattributes').write_text('skills/demo/SKILL.md export-ignore\n')
+        self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'archive attributes')
+        self.revision = self.git(self.remote, 'rev-parse', 'HEAD')
+        result = self.deploy()
+        self.assertEqual(result['status'], 'updated')
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'new\n')
+
+    def test_local_check_never_installs_or_fetches(self):
+        result = self.deploy(check=True)
+        self.assertEqual(result['status'], 'update_available')
+        self.assertEqual(self.calls, [])
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertFalse((self.remote/'.git/FETCH_HEAD').exists())
+
+    def test_unknown_or_empty_selection_is_rejected(self):
+        for names in ((), ('missing',), ('../escape',)):
+            with self.subTest(names=names), self.assertRaises(ValueError): self.deploy(names)
+
+class NativeAdmissionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        package = self.root/'hermes_cli'; package.mkdir()
+        (package/'__init__.py').write_text('')
+        (package/'plugins_cmd.py').write_text('''
+import os
+from pathlib import Path
+
+def _scan_on_install_enabled(): return os.environ.get('FAKE_SCAN') != 'disabled'
+def _scan_plugin_tree(path, source, *, force, **kwargs):
+    assert force is False and not kwargs, 'scan override leaked'
+    if os.environ.get('FAKE_SCAN') == 'caution': raise ValueError('caution refused')
+    return object()
+def cmd_install(source, *, force, ref, enable):
+    assert force is False and enable is False and len(ref) == 40
+    assert source.startswith('file://')
+    Path(os.environ['HERMES_HOME'], 'installed').write_text(source)
+''')
+        self.stage = self.root/'stage'; self.stage.mkdir()
+        self.home = self.root/'home'; self.home.mkdir()
+
+    def run_helper(self, action, scan='safe'):
+        import os, sys
+        return subprocess.run([sys.executable, str(ROOT/'update_bundle_native.py'), action,
+                               str(self.home), str(self.stage), 'a'*40],
+                              env=dict(os.environ, PYTHONPATH=str(self.root), FAKE_SCAN=scan),
+                              capture_output=True, text=True)
+
+    def test_native_adapter_exists(self):
+        self.assertTrue((ROOT/'update_bundle_native.py').is_file(), 'native admission adapter missing')
+
+    def test_native_scan_refusal_and_disabled_scanning_fail_closed(self):
+        for verdict in ('caution', 'disabled'):
+            result = self.run_helper('scan', verdict)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('caution refused' if verdict == 'caution' else 'scanning is disabled', result.stderr)
+            self.assertFalse((self.home/'installed').exists())
+
+    def test_native_installer_gets_exact_local_source_without_force_or_enable(self):
+        result = self.run_helper('install')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.home/'installed').read_text(), self.stage.as_uri())
+
+
+if __name__ == '__main__':
+    unittest.main()

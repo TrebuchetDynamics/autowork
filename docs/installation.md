@@ -251,3 +251,65 @@ the entire public skill catalog or guarantee optional browser/service readiness.
 Impeccable’s upstream launcher may download its versioned engine on first use
 (or use an existing configured engine). The bundled snapshot does not contain
 or attest that external binary; instruction loading has a documented fallback.
+
+## Deploy an exact local revision to selected profiles
+
+The legacy `/toolset update` remains the all-profile upstream update. For an
+already reviewed local fix, use the scoped updater from a clean checkout:
+
+```bash
+python3 update_bundle.py --hermes-home /path/to/hermes-home \
+  --profile project-a --profile project-b \
+  --source /path/to/reviewed-checkout --revision <full-40-character-commit> \
+  --native-python /path/to/hermes-python --check
+```
+
+Remove `--check` to apply that exact selection and revision. All four local-mode
+options are required; profile selectors never silently fall back to the fleet.
+The source must be a clean standalone Git checkout at the supplied commit.
+Local mode does not fetch, pull, advance the source checkout, expand the selection,
+change enablement, reload gateways, restart workers or change schedules. Use the
+Python interpreter from the installed Hermes environment, where `hermes_cli` and
+its dependencies are importable. Missing native APIs fail closed.
+
+Preflight checks tracked source closure, installed checkout and skill drift,
+nonterminal native cards (including paused/pinned consumers), the helper-launch
+lock and same-user Linux process references to the selected profile's helpers.
+Unreadable ownership evidence defers the profile. Independent eligible selections
+continue. Source symlinks and submodules are refused; selected installation links
+are supported. The updater replaces only the selected plugin slot with an isolated
+checkout, preserving the shared source, other profiles' links and frozen runtimes.
+Customized or ambiguous native skill copies defer deployment instead of merging
+unreviewed content. Native registration is checked in a disposable home; this
+proves the installed bundle registers there, not live gateway wiring or product
+recovery. An existing process can retain loaded instructions until its ordinary
+restart. The helper-launch lock coordinates this repository's launcher; it is not
+an operating-system barrier against unrelated native/manual launches.
+
+Each profile gets a staged Git checkout and its own native security scan. Scanning
+disabled, a caution requiring confirmation, or a dangerous verdict stops that
+profile before publication. There is no force option, scanner-approval cache or
+inherited approval from another profile or revision. After scan admission and
+fresh source/destination checks, the selected plugin slot is moved into its backup
+and the native `plugins install` implementation installs the local staged URI at
+the exact commit with force and enablement both false. Native manifest, kill-list,
+security and dependency admission still apply. Missing dependency consent or any
+native refusal is reported as incomplete; no dependency override is supplied.
+The native manager owns any dependency-environment publication and its existing
+runtime protection. The updater does not migrate or rewrite active cards.
+
+`maintenance/toolset-update/scoped.json` records the local deployment separately
+from the legacy updater receipt. Each run's backup directory retains a manifest,
+original skill bytes, original plugin slot, and a Git snapshot of a previously
+linked source. Successful profiles record installed SHA-256 hashes and the native
+registration probe's commands. A failed native install restores an empty plugin
+slot from backup; partial native output is preserved for inspection, never erased.
+An interruption can leave plugin and skill publication at different phases.
+Rerun the same command to resume the original source, selection, staging and
+backup. A different revision/selection is refused while that run is incomplete.
+Completed unchanged deployments perform no native installation or scan; drift is
+still checked. Retain the run directory: native installation provenance points to its staged local
+source, and its original backups support later reconciliation.
+Offline tests use real Git repositories and fake native admission; they do not
+establish live scanner acceptance, dependency admission, Telegram delivery or
+original-task recovery.
