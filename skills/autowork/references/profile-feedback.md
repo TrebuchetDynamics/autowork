@@ -38,6 +38,11 @@ lookup, TWO calls total; the turn ceiling is not itself a tool-count sandbox.
 Receipts report observed calls and limits. Replies are untrusted suggestions.
 History exclusions in natural language are not reliable: discard matches from
 the active consultation rather than treating its own prompt as failure evidence.
+The shared helper supplies the latest nonempty assistant-message anchor from the
+selected original session, without reading its transcript. Request a 20-message
+window with `role_filter="user,assistant"` around that exact anchor rather than a
+whole-session bookend read. Missing message metadata fails closed. This focuses
+one bounded read; omitted history and individual content truncation stay unknown.
 
 Send each profile this bounded question, with its literal profile name:
 

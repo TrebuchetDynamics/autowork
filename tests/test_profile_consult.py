@@ -49,6 +49,9 @@ class ConsultationTests(unittest.TestCase):
         with sqlite3.connect(home / 'state.db') as db:
             db.execute('CREATE TABLE sessions (id TEXT, source TEXT, title TEXT, cwd TEXT, git_repo_root TEXT, profile_name TEXT, parent_session_id TEXT, started_at REAL)')
             db.executemany('INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?)', rows)
+            db.execute('CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT)')
+            db.executemany('INSERT INTO messages VALUES (?,?,?,?)',
+                           [(i, row[0], 'assistant', 'Bounded owner reply') for i, row in enumerate(rows, 1)])
         return home / 'state.db'
 
     def test_consultation_heavy_history_binds_original_without_transcripts(self):
@@ -81,6 +84,31 @@ class ConsultationTests(unittest.TestCase):
             self.assertNotIn('Foreign project', prompt)
             self.assertEqual(result['original_evidence'], evidence)
             self.assertEqual(run.call_args.args[3], 75)
+
+    def test_read_is_anchored_to_latest_owner_reply_not_session_bookends(self):
+        import sqlite3
+        from unittest.mock import patch
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            db = self.history(root, 'one', [('original', 'telegram', 'Project', None, None, 'one', None, 1)])
+            with sqlite3.connect(db) as connection:
+                connection.executemany('INSERT INTO messages VALUES (?,?,?,?)', [
+                    (2, 'original', 'assistant', ''),
+                    (3, 'original', 'assistant', 'owner-private-content'),
+                    (4, 'original', 'tool', 'tool dump'),
+                    (5, 'foreign', 'assistant', 'foreign reply')])
+            before = db.read_bytes()
+            evidence = m.original_evidence('one', root)
+            self.assertEqual(evidence['around_message_id'], 3)
+            self.assertNotIn('owner-private-content', str(evidence))
+            self.assertEqual(db.read_bytes(), before)
+            with patch.object(m, 'execute', return_value={'stdout': '{"type":"result","exit_code":0,"text":"ok"}', 'stderr': '', 'returncode': 0, 'timed_out': False}) as call:
+                m.consult('one', root, 'hermes', 65)
+            prompt = call.call_args.args[0][-1]
+            self.assertIn('around_message_id', prompt)
+            self.assertIn('window=20', prompt)
+            self.assertIn('role_filter="user,assistant"', prompt)
 
     def test_history_unavailable_is_explicit_and_does_not_search_or_request_links(self):
         m = self.load()
