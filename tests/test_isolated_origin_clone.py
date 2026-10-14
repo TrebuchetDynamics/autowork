@@ -74,6 +74,19 @@ class IsolatedOriginCloneTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(destination.exists())
 
+    def test_foreign_shallow_selector_cannot_truncate_history(self):
+        foreign = self.shallow / '.git/shallow'
+        original = foreign.read_bytes()
+        env = dict(os.environ, GIT_SHALLOW_FILE=str(foreign))
+        destination = self.root / 'full history'
+        result = self.invoke(destination, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.git('-C', str(destination), 'rev-list', '--count', 'HEAD').stdout.strip(), '2')
+        self.git('-C', str(destination), 'fsck', '--full')
+        self.assertFalse((destination / '.git/shallow').exists())
+        self.assertFalse((destination / '.git/objects/info/alternates').exists())
+        self.assertEqual(foreign.read_bytes(), original)
+
     def test_inherited_repository_selectors_do_not_redirect_clone(self):
         env = os.environ.copy()
         env.update(GIT_DIR=str(self.shallow / '.git'), GIT_WORK_TREE=str(self.shallow),

@@ -20,7 +20,7 @@ def main():
         parser.error('--expected-main requires an exact lowercase commit hash')
     env = os.environ.copy()
     for name in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR',
-                 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE'):
+                 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_SHALLOW_FILE'):
         env.pop(name, None)
     git = ['git', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']
     subprocess.run(git + ['clone', '--no-local', '--branch', 'main', '--', args.origin, str(destination)], env=env, check=True)
