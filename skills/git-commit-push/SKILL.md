@@ -1,7 +1,7 @@
 ---
 name: git-commit-push
 description: "Use when committing and pushing scoped Git changes."
-version: 1.4.1
+version: 1.4.2
 license: MIT
 metadata:
   hermes:
@@ -117,6 +117,15 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      programmatically; see step 1 of [shared-worktree-safety.md](references/shared-worktree-safety.md).
    - Inventory completed agent/task branches and their unpublished commits in the same first
      pass, so an unsafe checkpoint or live writer cannot hide independent reviewed work.
+     A clean checkout level with its upstream is not a repo-wide NO-OP: list authorized
+     refs with `git for-each-ref --no-merged <target>` and use `git cherry <target> <ref>`
+     plus blob comparison, since cherry-picked work can be delivered under different
+     commit IDs. Never restore an older branch snapshot over newer target code.
+   - For a retained candidate, read its latest continuation and named gate/review
+     receipts first: candidate, verdict, per-check exit codes, log paths and pending
+     action. A stale `running` label cannot override a recorded failing check, nor an
+     older "review pending" a later exact-source approval. Do not dump receipt trees or
+     full process argv.
    - Apply an owner restoration decision only to the named subtree
      (`git restore --source=HEAD --staged --worktree -- <subtree>`, then verify its status);
      never extend it to siblings or untracked files, and re-baseline HEAD/index afterward.
@@ -132,7 +141,10 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      ask is specific. Depth: [shared-worktree-safety.md](references/shared-worktree-safety.md).
 
 2. **Separate eligible completed work from live or out-of-scope work.**
-   - Running cards on this repo: `hermes kanban list --status running --assignee <profile>`.
+   - Check current ownership/continuation evidence and actual writer activity. Query
+     Kanban only when this repository still uses it (`hermes kanban --board <board> list
+     --status running --assignee <profile>`); an empty board or missing historical card
+     does not prove writer release and is never a delivery prerequisite.
    - Path age: `now=$(date +%s); for f in <paths>; do echo "$(( (now - $(stat -c %Y "$f")) / 60 ))m $f"; done`.
      A path written in the last few minutes, while a card owning that area is running, is
      mid-write. Exclude it and name it; it stays dirty for its owner's commit.
@@ -288,7 +300,10 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      authorized. Record the next action with the existing delivery receipt and resume from
      completion evidence; a local-commit status report does not finish a push-and-merge request.
    - On failure, fix the smallest safe cause and rerun only the failed or affected checks
-     (load `systematic-debugging` for a real behavior failure). Preserve passing receipts
+     (load `systematic-debugging` for a real behavior failure). Before reporting HELD,
+     distinguish a failed product assertion from an overbroad source-contract guard;
+     an authorized guard repair keeps its prohibited-boundary and negative assertions.
+     Preserve passing receipts
      for unchanged source, tests, dependencies and tool inputs. A browser-selector-only
      repair needs browser verification, not another full Flutter suite. Repair missing
      verification metadata from the executed receipt; do not rerun an unchanged passing

@@ -170,7 +170,13 @@ enabled state, skill/prompt, scope, limits, delivery and next run. Verify the fu
 saved prompt and failure-delivery field, not a truncated list preview. Check scheduler
 status read-only. Correct attributable mismatches through supported updates; never
 claim active scheduling when the scheduler is unavailable. Finish with those concise
-settings and what was actually verified. Registration and job readback do not prove
+settings and what was actually verified. After an authorized resume, compare
+`next_run_at` with the live clock: an enabled job can keep a stale past occurrence.
+If no run owns the job and the interval is unchanged, re-anchor it with
+`hermes -p PROFILE cron edit JOB_ID --schedule INTERVAL`, read back a future
+occurrence with prompt, routes and history preserved, and disclose the new time;
+never trigger a manual run, recreate the job, or reset a wall-clock schedule without
+checking its timezone. Registration and job readback do not prove
 model execution, a completed task or message delivery.
 
 ## Confirm setup in Telegram

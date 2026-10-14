@@ -136,6 +136,12 @@ For an existing TODO-only repository, retain its full bodies, IDs and sections;
 author the matching intent input and omit `--todo-file`. An accepted source may be
 an existing heading in TODO itself. Missing source/acceptance/body/ownership context,
 duplicate bodies or executable IDs absent from intent fail before content writes.
+Before `init`, compare each body with its intent object: ID, goal, section, checkbox,
+exact Status token and task dependencies. Keep explanatory status text in a separate
+field, use `Ownership:` (not an `Owner` alias), keep external evidence gates out of
+dependency IDs, and link Sources to the goal's actual accepted heading that governs
+the task. Accepting research or bookkeeping does not accept a future production
+outcome; keep unaccepted proposals in TODO rather than relabeling sources to pass.
 An explicit body `Status:` must match the input status; do not claim/reopen a task
 to obtain readiness. No source or approval is inferred from TODO prose.
 

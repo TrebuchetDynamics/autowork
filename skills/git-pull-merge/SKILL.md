@@ -1,7 +1,7 @@
 ---
 name: git-pull-merge
 description: "Use when pulling or merging Git changes safely."
-version: 1.1.0
+version: 1.1.1
 license: MIT
 metadata:
   hermes:
@@ -71,7 +71,10 @@ leaves its partial private destination retained, never deletes owner files.
    - Intersect them with the dirty set from `git status --porcelain`. No overlap → git can update
      safely around the dirty files; go to step 3.
    - **Overlap with your own uncommitted work:** commit it first (`git-commit-push` rules, or the
-     card's `agent_commit.sh` branch), then integrate.
+     card's `agent_commit.sh` branch), then integrate. When authorized reconciliations are
+     already verified on upstream, prefer the rehearsed
+     [published-reconciliation fast-forward](../git-commit-push/references/shared-worktree-safety.md#fast-forward-already-published-reconciliations);
+     it never permits staging unrelated work.
    - **Overlap with someone else's live work** (recent mtime, a running card on that area, see
      `git-commit-push` and its shared-worktree safety reference): do not stash, revert or overwrite it. Integrate into an
      isolated worktree instead (`git worktree add <scratch> <target-branch>`, merge there, verify),
@@ -120,6 +123,9 @@ leaves its partial private destination retained, never deletes owner files.
      (regenerate with the package manager rather than hand-merging), generated files (regenerate).
    - For semantic conflicts, keep both behaviours where they compose. Otherwise prefer the side
      matching the accepted requirement or ADR, and record why in the merge message.
+     Where diagnostics overlap retry/replay changes, preserve error identity (wrapped
+     sentinels, cause unwrapping) separately from display text, and run the auth-stop
+     and redaction tests together: a lost auth-rejection wrapper can keep replaying.
    - For machine-readable ledgers, compare task IDs/statuses and evidence records before choosing a
      whole-file snapshot. Prefer the later reconciled snapshot only after confirming it contains the
      completed work from both sides; merge missing evidence with the repository's supported ledger

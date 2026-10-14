@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.11.0
+version: 0.11.1
 license: MIT
 metadata:
   hermes:
@@ -344,6 +344,14 @@ checks, dependencies, ownership, live gates and verified partial delivery. Move 
 history losslessly to the archive. Never rewrite a running worker's assigned contract
 or repin its admission inputs. Report prose reduction, not measured speedup. Follow
 [queue compaction](references/decisive-planning.md#compact-an-existing-queue).
+
+When asked whether tasks are necessary, separate required behavior, distinct
+package/composed proof, reviewed work awaiting integration and convenience work that
+must not block delivery; prefer shared artifacts and input-matched checks over new
+IDs. When the owner chooses tracked children, keep the parent's ID, acceptance and
+evidence as the aggregate closeout, make the parent depend on the children (never
+the reverse) and give children bounded remaining outcomes. Children done is not the
+parent's acceptance; validate cross-level cycles.
 
 ### Consumer-bound brainstorming handoff check
 

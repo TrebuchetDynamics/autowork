@@ -56,9 +56,12 @@ When no user action is needed, omit the user-action line. Say
 `Autowork next action: <specific repair/resume/check for task ID>` and perform that
 step within the occurrence when possible. If a tool/runtime limitation prevents it,
 name the failed operation and available recovery rather than promising execution.
-A verified active worker is RUNNING, even if this occurrence repaired its admission;
-report that repair under This run. Process observation alone does not prove its
-initial guard, tests or commit passed. A stopped worker awaiting a concrete
+Use RUNNING only when the exact active run and its original pre-edit admission
+success are observed; report any admission repair under This run. A started process
+whose admission result is not yet available is QUEUED with `native process active;
+initial admission unverified`. Never replay the initial guard after edits to
+manufacture that evidence. Process observation alone does not prove tests or commit
+passed. A stopped worker awaiting a concrete
 intervention is BLOCKED; report the failed operation as its cause. A blocked live
 qualification does not block independently authorized offline tasks.
 
@@ -102,8 +105,8 @@ Choose the outcome from evidence, not the cron job title or scheduler exit statu
 | --- | --- |
 | COMPLETED | Named TODO task acceptance and required closure gates passed, with canonical completion verified. This is task success, not whole-project completion. |
 | PROGRESS | Verified partial implementation or a resolved prerequisite advanced the named task; acceptance remains incomplete. State the actual advance. |
-| RUNNING | The same named task has an observed active worker; this occurrence did not complete it. |
-| QUEUED | Handoff is recorded, but worker execution has not yet been observed. |
+| RUNNING | The same named task has an observed active run and verified original admission; this occurrence did not complete it. |
+| QUEUED | Handoff is recorded, but admitted implementation is not yet verified; state observed process activity separately. |
 | BLOCKED | The named task cannot advance because of an unresolved dependency, failed acceptance, ownership or other concrete gate. |
 | FAILED | This occurrence's attempted operation failed and its intended result was not achieved. |
 | NO_CHANGE | Reconciliation found no new task progress or completion. |

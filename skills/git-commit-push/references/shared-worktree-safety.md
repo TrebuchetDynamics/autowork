@@ -55,10 +55,19 @@ Load when asked to commit or push a large or accumulated dirty tree, when `git s
 Before importing an accumulated checkpoint, read `git diff --name-status <fresh-upstream> <checkpoint>` and inspect deleted regression tests, security/permission helpers, supported API surfaces and migration journals first. A checkpoint can carry stale reversions beside completed work, and a clean merge can still delete a helper newer upstream callers need; a clean merge is not eligibility.
 
 - Match topics by blob against upstream and attributed source commits; exclude already-landed bytes. Extract only coherent eligible hunks, with their tests, into a fresh isolated candidate; a reduced suite after test deletion is not qualification.
-- Preserve upstream task identities when a local ID names different work: reuse an equivalent identity, allocate distinct local IDs through the supported ledger workflow, keep historical receipt IDs, and never infer completion from integration.
+- Preserve upstream task identities when a local ID names different work: compare complete bodies, goals and live ownership, then ask for the remapping decision instead of treating it as a textual conflict. After approval, allocate a free ID through the supported ledger workflow, change only current task/goal/plan references, keep receipt and archive IDs as history, never remap a running task or transfer its budget, and never infer completion from integration.
 - Keep published migration identities and their snapshots/journals; remove only a redundant unregistered addition rather than renaming published migrations to match a stale journal.
 - Migrate stale test mocks to the actual owning modules instead of deleting behavioral assertions. Satisfy ignored source dependencies with an isolated clone at the declared revision, never a dummy marker or mutable shared-tree symlink.
 - An independently eligible topic (for example documentation) may ship alone without nearby stale setup changes; report it as that topic, distinct from held runtime and ledger work. Partial shipment does not close the queue.
+
+## Fast-forward already-published reconciliations
+
+Use only after an isolated candidate preserved upstream changes, passed its gates and reached the exact authorized remote ref. This synchronizes published bytes; it is not permission to publish or to overwrite a live writer.
+
+1. Pin shared HEAD and the read-back published commit. Require `git merge-base --is-ancestor <old-head> <published-sha>`, an empty index, and that every dirty path is accounted for by the reconciliation; refuse unrelated staged work.
+2. Rehearse in a fresh private checkout at old HEAD: install only the approved files, `git --literal-pathspecs add -- <paths>`, and require each staged blob (`git rev-parse ':<path>'`) to equal `<published-sha>:<path>` before `git merge --ff-only <published-sha>`.
+3. Under the canonical lock, recheck HEAD, index and file baselines, keep backups, apply only those paths and run `git merge --ff-only <published-sha>` without a new commit, stash or reset. Stop on any unexpected conflict.
+4. Read back local HEAD and the remote ref, selected blobs and residual work. A concurrent remote advance is new input, not proof the publication failed.
 
 ## Temporary-index landing without a development branch
 
