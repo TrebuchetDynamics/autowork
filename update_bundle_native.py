@@ -11,12 +11,60 @@ import sys
 import tempfile
 
 
+def board_inventory():
+    """Resolve native shared boards, then read their current ownership without migrations."""
+    import sqlite3
+    from urllib.parse import quote
+    from hermes_cli import kanban_db
+    from hermes_cli.profiles import normalize_profile_name
+
+    # A worker's single-board pin must not hide the other canonical boards.
+    override = os.environ.pop('HERMES_KANBAN_DB', None)
+    try:
+        boards = kanban_db.list_boards(include_archived=True)
+    finally:
+        if override is not None:
+            os.environ['HERMES_KANBAN_DB'] = override
+    paths = {Path(board['db_path']).expanduser().absolute() for board in boards}
+    if override:
+        paths.add(Path(override).expanduser().absolute())
+    result = {'boards': [], 'tasks': [], 'runs': []}
+    for path in sorted(paths):
+        if any(p.is_symlink() for p in (path, *path.parents)):
+            raise ValueError('Cannot establish ownership through a symlinked native board')
+        result['boards'].append({'path': str(path), 'exists': path.exists()})
+        if not path.exists():
+            continue
+        try:
+            with sqlite3.connect('file:' + quote(str(path)) + '?mode=ro', uri=True) as db:
+                db.row_factory = sqlite3.Row
+                tasks = [dict(row) for row in db.execute(
+                    'SELECT id,status,assignee,current_run_id,worker_pid FROM tasks')]
+                runs = [dict(row) for row in db.execute(
+                    'SELECT id,task_id,profile,status,ended_at,worker_pid FROM task_runs')]
+        except sqlite3.Error as error:
+            raise ValueError(f'Cannot establish native board ownership: {error}') from error
+        for rows, owner in ((tasks, 'assignee'), (runs, 'profile')):
+            for row in rows:
+                if row[owner] is not None:
+                    try:
+                        row[owner] = normalize_profile_name(row[owner])
+                    except (ValueError, TypeError):
+                        row[owner] = None
+                row['board'] = str(path)
+        result['tasks'].extend(tasks)
+        result['runs'].extend(runs)
+    return result
+
+
 def main():
     action, home, source, revision = sys.argv[1:]
     source = Path(source).resolve(strict=True)
     os.environ['HERMES_HOME'] = home
     os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
-    if action in ('scan', 'install'):
+    if action == 'inventory':
+        print(json.dumps(board_inventory()))
+    elif action in ('scan', 'install'):
         from hermes_cli import plugins_cmd as native
         if not native._scan_on_install_enabled():
             raise ValueError('Native security scanning is disabled; scoped deployment requires admission')

@@ -232,7 +232,7 @@ def native_call(action, home, stage, revision, python):
                action, str(home), str(stage), revision]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONDONTWRITEBYTECODE='1')
     # A caller's alternate board/profile must not redirect admission.
-    for key in ('HERMES_PROFILE', 'HERMES_KANBAN_DB'):
+    for key in (('HERMES_PROFILE',) if action == 'inventory' else ('HERMES_PROFILE', 'HERMES_KANBAN_DB')):
         env.pop(key, None)
     result = subprocess.run(command, env=env, stdin=subprocess.DEVNULL,
                             capture_output=True, text=True, timeout=180)
@@ -296,11 +296,8 @@ def check_tree(path, tree):
             raise ValueError(f'Installed/staged bytes changed: {path / relative}')
 
 
-def active_consumers(home):
+def active_consumers(home, profile, python):
     """Fail closed on nonterminal native cards, including paused pinned consumers."""
-    import sqlite3
-    from urllib.parse import quote
-    paths = [home / 'kanban.db', *sorted((home / 'kanban/boards').glob('*/kanban.db'))]
     proc = Path('/proc')
     if not proc.is_dir():
         return 'Native helper process inventory is unavailable on this host'
@@ -318,21 +315,33 @@ def active_consumers(home):
             return 'Cannot establish ownership of a same-user helper process'
         if any(argument.startswith(prefix) for argument in arguments for prefix in prefixes):
             return f'Active helper process references selected profile files (pid {process.name})'
-    found = False
-    for path in paths:
-        if not path.exists():
+    inventory = native_call('inventory', home, home, '', python)
+    runs = {(run['board'], run['id']): run for run in inventory['runs']}
+    terminal = {'done', 'cancelled', 'canceled', 'archived', 'completed', 'failed'}
+    for task in inventory['tasks']:
+        current = runs.get((task['board'], task['current_run_id']))
+        if task['status'] in terminal and not task['worker_pid'] and current is None:
             continue
-        found = True
-        safe_path(path)
-        try:
-            with sqlite3.connect('file:' + quote(str(path)) + '?mode=ro', uri=True) as db:
-                rows = db.execute('SELECT status,current_run_id,worker_pid FROM tasks').fetchall()
-        except sqlite3.Error as error:
-            return f'Cannot establish native worker ownership: {error}'
-        if any(status not in ('done', 'cancelled', 'canceled', 'archived', 'completed')
-               or run or pid for status, run, pid in rows):
-            return 'Active or pinned native consumer; reconcile its original card before deployment'
-    if not found and (home / 'autowork/goal-handoff.json').exists():
+        if task['current_run_id'] is not None and current is None:
+            return 'Cannot establish native ownership: current run is missing'
+        if current is not None and current['task_id'] != task['id']:
+            return 'Cannot establish native ownership: current run belongs to a different card'
+        active = task['status'] not in terminal or task['worker_pid'] or (current and current['ended_at'] is None)
+        if not active:
+            continue
+        owners = [task['assignee']] + ([current['profile']] if current else [])
+        if any(not isinstance(owner, str) or not owner for owner in owners):
+            return 'Cannot establish native ownership of an active or pinned card'
+        if profile in owners:
+            return 'Nonterminal/pinned native card or unresolved worker record; reconcile the original card before deployment'
+    # Include orphan/in-flight runs even when another assignee now owns the card.
+    for run in inventory['runs']:
+        if run['ended_at'] is None:
+            if not isinstance(run['profile'], str) or not run['profile']:
+                return 'Cannot establish native ownership of an unfinished run'
+            if run['profile'] == profile:
+                return 'Unfinished native run recorded for selected profile; reconcile ownership before deployment'
+    if not any(board['exists'] for board in inventory['boards']) and (home / 'autowork/goal-handoff.json').exists():
         return 'Handoff exists but native worker ownership is unavailable'
     return None
 
@@ -343,6 +352,22 @@ def selected_profiles(root, names):
     if not names or len(set(names)) != len(names) or any(n not in available for n in names):
         raise ValueError('Explicit distinct existing profile selection is required')
     return [(name, available[name]) for name in names]
+
+
+def stage_checkout(source, revision, destination, tree):
+    """Publish only a completely checked-out snapshot; interrupted temporaries are unused."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not destination.exists():
+        with tempfile.TemporaryDirectory(prefix=f'.{destination.name}.preparing-',
+                                         dir=destination.parent) as directory:
+            candidate = Path(directory) / 'checkout'
+            git(source, 'clone', '--no-hardlinks', '--no-checkout', str(source), str(candidate))
+            git(candidate, 'checkout', '--detach', revision)
+            source_tree(candidate, revision)
+            check_tree(candidate, tree)
+            candidate.rename(destination)
+    source_tree(destination, revision)
+    check_tree(destination, tree)
 
 
 def scoped_update(root, source, revision, names, python, *, check=False):
@@ -390,7 +415,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
         for name, home in profiles:
             row = run['profiles'].setdefault(name, {'status': 'pending'})
             try:
-                reason = active_consumers(home) if row.get('phase') != 'ready' else None
+                reason = active_consumers(home, name, python) if row.get('phase') != 'ready' else None
                 if reason:
                     raise ValueError(reason)
                 plugin = home / 'plugins/hermes-toolset'
@@ -467,18 +492,13 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                         fcntl.flock(worker_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     except BlockingIOError:
                         raise ValueError('Worker handoff is active')
-                    if not stage.exists():
-                        stage.parent.mkdir(parents=True, exist_ok=True)
-                        git(source, 'clone', '--no-hardlinks', '--no-checkout', str(source), str(stage))
-                        git(stage, 'checkout', '--detach', revision)
-                    source_tree(stage, revision)
-                    check_tree(stage, tree)
+                    stage_checkout(source, revision, stage, tree)
                     # Scan is per profile and repeated on every incomplete retry. No approval cache.
                     native_call('scan', home, stage, revision, python)
                     source_tree(source, revision)
                     source_tree(stage, revision)
                     check_tree(stage, tree)
-                    reason = active_consumers(home)
+                    reason = active_consumers(home, name, python)
                     if reason:
                         raise ValueError(reason)
                     for item in files:
@@ -496,11 +516,8 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                             raise ValueError('Plugin changed since preflight')
                         if row['original_link'] is not None:
                             snapshot = stage.parent / 'original-source'
-                            if not snapshot.exists():
-                                git(source, 'clone', '--no-hardlinks', '--no-checkout',
-                                    row['original_source'], str(snapshot))
-                                git(snapshot, 'checkout', '--detach', row['original_revision'])
-                            check_tree(snapshot, row['original_tree'])
+                            stage_checkout(Path(row['original_source']), row['original_revision'],
+                                           snapshot, row['original_tree'])
                         for index, item in enumerate(files):
                             if item['old'] is not None:
                                 dest = stage.parent / f'file-{index}'

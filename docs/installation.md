@@ -275,8 +275,15 @@ its dependencies are importable. Missing native APIs fail closed.
 Preflight checks tracked source closure, installed checkout and skill drift,
 nonterminal native cards (including paused/pinned consumers), the helper-launch
 lock and same-user Linux process references to the selected profile's helpers.
-Unreadable ownership evidence defers the profile. Independent eligible selections
-continue. Source symlinks and submodules are refused; selected installation links
+Native board discovery uses Hermes' shared `list_boards` contract, including
+archived boards, under `HERMES_KANBAN_HOME` or its native default root; it does not
+guess a database beneath the selected profile's `HERMES_HOME`. An explicit
+`HERMES_KANBAN_DB` is inventoried in addition to those shared boards. Read-only SQL
+binds cards to their assignee and current run's profile, and also checks unfinished
+runs. Unreadable or unknown ownership defers deployment; a nonterminal selected
+card preserves its pins even if no live process is observed. An unfinished database
+record is not proof that a worker is currently running. Known foreign owners do
+not block independent selected profiles. Independent eligible selections continue. Source symlinks and submodules are refused; selected installation links
 are supported. The updater replaces only the selected plugin slot with an isolated
 checkout, preserving the shared source, other profiles' links and frozen runtimes.
 Customized or ambiguous native skill copies defer deployment instead of merging
@@ -286,7 +293,9 @@ recovery. An existing process can retain loaded instructions until its ordinary
 restart. The helper-launch lock coordinates this repository's launcher; it is not
 an operating-system barrier against unrelated native/manual launches.
 
-Each profile gets a staged Git checkout and its own native security scan. Scanning
+Each profile gets a staged Git checkout and its own native security scan. Staging
+and linked-source snapshots are published atomically only after clone, pinned
+checkout and closure checks finish; interrupted temporary clones are never reused. Scanning
 disabled, a caution requiring confirmation, or a dangerous verdict stops that
 profile before publication. There is no force option, scanner-approval cache or
 inherited approval from another profile or revision. After scan admission and

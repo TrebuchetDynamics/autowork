@@ -284,6 +284,18 @@ class ScopedUpdateTests(unittest.TestCase):
         self.native.start(); self.addCleanup(self.native.stop)
 
     def fake_native(self, action, home, stage, revision, python):
+        if action == 'inventory':
+            spec = importlib.util.spec_from_file_location('native_update_fixture', ROOT/'update_bundle_native.py')
+            adapter = importlib.util.module_from_spec(spec); spec.loader.exec_module(adapter)
+            native = ModuleType('hermes_cli.kanban_db')
+            native.list_boards = lambda **kwargs: [
+                {'slug': 'default', 'db_path': str(self.root/'canonical-boards/kanban.db')},
+                {'slug': 'named', 'db_path': str(self.root/'canonical-boards/kanban/boards/named/kanban.db')}]
+            profiles = ModuleType('hermes_cli.profiles')
+            profiles.normalize_profile_name = lambda name: name.strip().lower()
+            with patch.dict('sys.modules', {'hermes_cli': ModuleType('hermes_cli'),
+                                           'hermes_cli.kanban_db': native, 'hermes_cli.profiles': profiles}):
+                return adapter.board_inventory()
         self.calls.append((action, str(home)))
         if action == 'install':
             self.git(home, 'clone', str(stage), str(home/'plugins/hermes-toolset'))
@@ -341,16 +353,57 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual(result['profiles']['work']['status'], 'ready')
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'customization\n')
 
-    def test_active_consumer_deferred_while_independent_profile_updates(self):
+    def board(self, *, named=False, assignee='work', status='running', run_profile=None):
         import sqlite3
-        with sqlite3.connect(self.home/'kanban.db') as db:
-            db.execute('create table tasks (status text, current_run_id text, worker_pid integer)')
-            db.execute("insert into tasks values ('running','original-run',123)")
+        path = self.root / ('canonical-boards/kanban/boards/named/kanban.db' if named else 'canonical-boards/kanban.db')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(path) as db:
+            db.execute('create table tasks (id text, status text, assignee text, current_run_id integer, worker_pid integer)')
+            db.execute('create table task_runs (id integer, task_id text, profile text, status text, ended_at integer, worker_pid integer)')
+            db.execute('insert into tasks values (?, ?, ?, ?, ?)', ('card', status, assignee, 7 if run_profile else None, None))
+            if run_profile:
+                db.execute('insert into task_runs values (?, ?, ?, ?, ?, ?)', (7, 'card', run_profile, 'running', None, 424242))
         (self.profiles[1][1]/'config.yaml').write_text('{}\n')
+        return path
+
+    def test_shared_board_selected_owner_defers_only_affected_profile(self):
+        self.board(assignee='work')
         result = self.deploy(('default', 'work'))
+        self.assertEqual(result['profiles']['work']['status'], 'deferred')
+        self.assertEqual(result['profiles']['default']['status'], 'ready')
+        self.assertTrue((self.profiles[1][1]/'plugins/hermes-toolset').is_symlink())
+
+    def test_named_shared_board_run_owner_checked_separately_from_assignee(self):
+        self.board(named=True, assignee='reviewer', run_profile='work')
+        result = self.deploy(('work',))
+        self.assertEqual(result['profiles']['work']['status'], 'deferred')
+        self.assertEqual(self.calls, [])
+
+    def test_paused_shared_card_keeps_selected_profile_pins(self):
+        self.board(assignee='work', status='paused')
+        result = self.deploy(('work',))
+        self.assertEqual(result['profiles']['work']['status'], 'deferred')
+        self.assertEqual(self.calls, [])
+
+    def test_unknown_shared_card_owner_fails_closed(self):
+        self.board(assignee=None)
+        result = self.deploy(('default',))
         self.assertEqual(result['profiles']['default']['status'], 'deferred')
-        self.assertEqual(result['profiles']['work']['status'], 'ready')
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertIn('ownership', result['profiles']['default']['error'])
+
+    def test_orphan_unfinished_run_keeps_its_profile_protected(self):
+        import sqlite3
+        path = self.board(assignee='reviewer', status='done', run_profile='work')
+        with sqlite3.connect(path) as db:
+            db.execute('update tasks set current_run_id = null')
+        result = self.deploy(('work',))
+        self.assertEqual(result['profiles']['work']['status'], 'deferred')
+
+    def test_malformed_shared_database_is_not_treated_as_idle(self):
+        path = self.root/'canonical-boards/kanban.db'; path.parent.mkdir()
+        path.write_text('not sqlite')
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
 
     def test_interruption_after_native_install_resumes_same_backup(self):
         def interrupt(action, *args):
@@ -442,6 +495,28 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual(result['status'], 'updated')
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'new\n')
 
+    def assert_interrupted_clone_resumes(self, target_name):
+        class Killed(BaseException): pass
+        original_git = self.mod.git
+        def kill(repo, *args):
+            if args[0] == 'clone' and target_name in str(args[-1]):
+                Path(args[-1]).mkdir()
+                (Path(args[-1])/'partial').write_text('interrupted clone')
+                raise Killed()
+            return original_git(repo, *args)
+        with patch.object(self.mod, 'git', kill), self.assertRaises(Killed): self.deploy()
+        saved = json.loads((self.home/'maintenance/toolset-update/scoped.json').read_text())
+        result = self.deploy()
+        self.assertEqual(result['status'], 'updated')
+        self.assertEqual(result['backup'], saved['backup'])
+        self.assertEqual((Path(saved['backup'])/'default/file-0').read_text(), 'old\n')
+
+    def test_interrupted_stage_clone_can_resume(self):
+        self.assert_interrupted_clone_resumes('stage')
+
+    def test_interrupted_original_snapshot_clone_can_resume(self):
+        self.assert_interrupted_clone_resumes('original-source')
+
     def test_local_check_never_installs_or_fetches(self):
         result = self.deploy(check=True)
         self.assertEqual(result['status'], 'update_available')
@@ -482,6 +557,37 @@ def cmd_install(source, *, force, ref, enable):
                                str(self.home), str(self.stage), 'a'*40],
                               env=dict(os.environ, PYTHONPATH=str(self.root), FAKE_SCAN=scan),
                               capture_output=True, text=True)
+
+    def test_inventory_uses_native_shared_resolution_and_keeps_extra_board_pin(self):
+        import os, sqlite3, sys
+        package = self.root/'hermes_cli'
+        (package/'kanban_db.py').write_text('''import os
+from pathlib import Path
+def list_boards(*, include_archived):
+    assert include_archived is True
+    assert 'HERMES_KANBAN_DB' not in os.environ
+    root = Path(os.environ['HERMES_KANBAN_HOME'])
+    return [{'slug': 'default', 'db_path': str(root/'kanban.db')},
+            {'slug': 'named', 'db_path': str(root/'named.db')}]
+''')
+        (package/'profiles.py').write_text('def normalize_profile_name(name): return name.strip().lower()\n')
+        shared = self.root/'native-shared'; shared.mkdir()
+        extra = self.root/'extra.db'
+        for path, owner in ((shared/'kanban.db', 'Work'), (shared/'named.db', 'Other'), (extra, 'Pinned')):
+            with sqlite3.connect(path) as db:
+                db.execute('create table tasks (id text, status text, assignee text, current_run_id integer, worker_pid integer)')
+                db.execute('create table task_runs (id integer, task_id text, profile text, status text, ended_at integer, worker_pid integer)')
+                db.execute('insert into tasks values (?, ?, ?, ?, ?)', ('card', 'paused', owner, None, None))
+        before = {p: p.read_bytes() for p in (shared/'kanban.db', shared/'named.db', extra)}
+        result = subprocess.run([sys.executable, str(ROOT/'update_bundle_native.py'), 'inventory',
+                                 str(self.home), str(self.stage), ''], capture_output=True, text=True,
+                                env=dict(os.environ, PYTHONPATH=str(self.root), HERMES_KANBAN_HOME=str(shared),
+                                         HERMES_KANBAN_DB=str(extra)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        inventory = json.loads(result.stdout)
+        self.assertEqual({t['assignee'] for t in inventory['tasks']}, {'work', 'other', 'pinned'})
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
+        self.assertFalse((self.home/'kanban.db').exists())
 
     def test_native_adapter_exists(self):
         self.assertTrue((ROOT/'update_bundle_native.py').is_file(), 'native admission adapter missing')
