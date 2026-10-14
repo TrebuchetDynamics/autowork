@@ -89,7 +89,7 @@ def discover(root, hermes):
         raise RuntimeError('native profile discovery failed: ' + redact(result['stderr']))
     names = []
     for line in redact(result['stdout']).splitlines():
-        match = re.match(r'^\s*[◆◇*]?([a-z0-9][a-z0-9_-]{0,63})\s{2,}\S', line)
+        match = re.match(r'^\s*[◆◇*]?([a-z0-9][a-z0-9_-]{0,63})\s+\S', line)
         if match:
             names.append(match[1])
     if 'default' not in names or len(names) != len(set(names)):
