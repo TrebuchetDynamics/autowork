@@ -57,7 +57,12 @@ def entries(text, prose, known_ids):
         if not task:
             continue
         end = next((h.start() for h in headings[index + 1:] if len(h[1]) <= len(match[1])), len(text))
-        end = min(end, next((b.start() for b in boxes if b.start() > match.start()), len(text)))
+        first_box = next((b for b in boxes if match.start() < b.start() < end), None)
+        # A separately closed heading-only task can precede an independent
+        # checkbox task. An empty/mismatched wrapper cannot use this exception.
+        if (first_box is not None and first_box[2] != task[1]
+                and explicitly_closed(prose[match.start():first_box.start()], None)):
+            end = first_box.start()
         records.append((match.start(), end, task[1], None))
     for index, match in enumerate(boxes):
         end = boxes[index + 1].start() if index + 1 < len(boxes) else len(text)
@@ -67,7 +72,25 @@ def entries(text, prose, known_ids):
         end = min(end, next((h.start() for h in headings if h.start() > match.start()
                              and (len(h[1]) <= 2 or h.start() in known_headings)), len(text)))
         records.append((match.start(), end, match[2], match[1]))
-    return sorted(records), headings
+    # A task heading immediately followed by its own checkbox is one source
+    # unit, not two tasks. Keep other overlaps visible to prepare(): a different
+    # ID, intervening metadata or another task must never authorize a partial move.
+    combined, consumed = [], set()
+    for start, end, tid, mark in records:
+        if mark is not None:
+            continue
+        heading = next(h for h in headings if h.start() == start)
+        children = [row for row in records if row[3] is not None and start < row[0] < end]
+        if (len(children) == 1 and children[0][2] == tid
+                and children[0][1] <= end
+                and not text[heading.end():children[0][0]].strip()):
+            child = children[0]
+            combined.append((start, end, tid, child[3]))
+            consumed.add(child[0])
+        else:
+            combined.append((start, end, tid, mark))
+    combined.extend(row for row in records if row[3] is not None and row[0] not in consumed)
+    return sorted(combined), headings
 
 
 def rebased_references(repo, owner, block):

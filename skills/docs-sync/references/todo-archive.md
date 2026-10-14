@@ -28,6 +28,16 @@ pending broader qualification. An archive-only result lists `moved`, `retained`
 and the canonical `archive`; report retained conflicts and reconcile from evidence.
 Ambiguous overlapping task-shaped headings keep the whole affected unit live,
 including unknown tasks with missing metadata; independent clear entries still move.
+A task heading immediately followed by one checkbox with the same ID is a single
+unit: archive the heading, checkbox and complete continuation together, once.
+Only whitespace may separate that heading and checkbox; intervening metadata,
+multiple checkboxes or a mismatched ID remain ambiguous rather than permitting
+a partial move. A separately closed heading-only task may still precede an
+independent checkbox task. Nested evidence and fenced examples stay with their
+owning unit; open acceptance items and conflicting statuses keep it live.
+Do not automatically delete old empty headings: reconcile a known residue only
+against its exact existing archived completion body and ledger record, preserving
+the heading in append-only history and leaving unrelated text untouched.
 
 For a repository without goals.json, the writing agent verifies the completion
 checks, then invokes `goals.py archive <repo> --verified-tasks ID1,ID2` with only

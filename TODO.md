@@ -52,8 +52,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Coordinator with that access; no active claim.
 - Next action: Obtain the original environment; do not create a replacement job.
 
-### TOOLSET-012 — Start ready tasks through one composed default preflight
-
 ### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
 
 - [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup

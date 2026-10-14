@@ -241,3 +241,16 @@ Source section: Next
 - Ownership: Existing native worker and original coordinator; preserve its card, pinned inputs, scope and consumed budget. This wording change grants no new authority.
 - Next action: TOOLSET-013 paired native measurement after its enforced environment limits are established; offline implementation does not qualify measured savings.
 
+
+<!-- archived from TODO.md: TOOLSET-014 residue reconciliation -->
+
+Source section: Next
+
+The empty heading below was left live by the earlier checkbox-only move.
+Its exact matching completed checkbox and full evidence body are already above
+in this archive, with Status: done, review fef4241 and integration e2a0838;
+goals.json also records TOOLSET-012 as done. Preserve that existing body unchanged.
+This reconciliation adds no completion or native measurement claim.
+
+### TOOLSET-012 — Start ready tasks through one composed default preflight
+
