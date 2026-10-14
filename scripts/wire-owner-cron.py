@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 
+ROLE_MARKER = '\n\nSCHEDULED JOB ROLE: '
 MARKER = '\n\nSHARED OWNER RECOVERY CYCLE — required execution\n'
 REPAIR_MARKER = '\n\nSHARED TOOLSET REMEDIATION — authorized execution\n'
 PAUSE_MARKER = '\n\nAUDIT AUTO-PAUSE — authorized owner schedules only\n'
@@ -43,6 +44,9 @@ def inventory(root):
 
 
 def is_owner_job(job):
+    if any(ROLE_MARKER + role + '\n' in job.get('prompt', '')
+           for role in ('research-design', 'delivery-sync')):
+        return False
     skills = job.get('skills') or []
     return any(name in job.get('name', '').lower()
                or f'hermes-toolset:{name}' in skills or name in skills
@@ -66,6 +70,13 @@ def owner_prompt(prompt, enabled):
         'Do not ask whether to implement already authorized offline work; ask only for a genuinely missing material decision or external-action authority. '
         'No external owner acknowledgement is required. Use default worker mode and supported native helpers where needed. '
         'Reconcile actual running workers and completed results first; preserve original cards, budgets and useful candidates. '
+        'Check actual cron occurrence and manual-continuation liveness as well as native cards before admission or canonical integration; an empty board is not an idle writer slot. '
+        'For an accepted ready task use one composed owner_cycle.py --apply with the selected code/docs/tests/dependency closure in explicit --source-path inputs. '
+        'Retain the exact named --plan/--tasks filter and source-derived checks; use --scope repository only for broad repository authority. '
+        'There is no separate mandatory validate-only, planning interview, broad docs audit, full suite or optional engineering tour before a ready dispatch. '
+        'The composed helper reconciles, validates, captures, dispatches once and records status; record in_progress only after a verified new handoff. '
+        'Missing checks or source closure is missing preparation, not a dispatched worker; repair that specific input without repinning old attempts. '
+        'Use manual preflight/handoff only for an observed recovery gap or explicit split-role request; queued/uncertain dispatch preserves the original card and cannot be retried as new work. '
         'New workers receive 100 turns by default: omit --goal-max-turns so start_goal.py supplies the default Goal budget rationale; retain an explicit --goal-max-turns 50 override when bounded work calls for it. '
         'Preserve existing-card limits, cumulative usage and worker sessions; use --max-retries 1 for new cards and never automatically retry or reset an exhausted or interrupted worker. '
         'Use reconcile.py --compact and its saved continuation; read full evidence only for the next required decision. '
@@ -77,12 +88,14 @@ def owner_prompt(prompt, enabled):
         'Group connected eligible consumers, runners and tests; split only for concrete dependency, writer, authority or budget boundaries. '
         'Reuse approved exact-source checks when inputs match and policy allows; run changed-input and required canonical checks. '
         'For partial deliveries, lead with delivered behavior and commit stage; explain why the parent task remains open separately. '
-        'Select a useful, dependency-ready TODO task. If unavailable, inspect independent bugs, documentation, UI/UX, tests, refactoring and reliability or performance work. '
+        'Within the exact authorized task filter/scope only, select a useful, dependency-ready TODO task. If unavailable, inspect independent bugs, documentation, UI/UX, tests, refactoring and reliability or performance work; never widen a named-only job to unrelated tasks. '
         'When the backlog lacks useful tasks, load references/repository-maintenance.md, inspect a bounded source/test seam, document a justified task and execute it in the same occurrence. '
         'Use owner_cycle.py in its default autonomous mode for recovery; pass --scope repository for repository work and --scope tasks only for explicit task-only requests. '
         'Preserve unrelated changes, inspect actual live writers and file conflicts, and avoid overlapping work. Historical claims alone are not approval gates. '
         'Respect repository branch policy, native admission and genuinely missing user decisions or external-action authority. '
-        'Verify changes, review them, integrate authorized owned changes locally and commit completed work using explicit paths. Do not push or deploy. '
+        'Verify changes, review them, integrate authorized owned changes locally and commit completed work using explicit paths. '
+        'Do not push or deploy without explicit scoped authority recorded above; carry that authority into the real worker contract and verify the exact remote ref. '
+        'Autowork attachment alone never grants publication, branch-protection bypass or live-operation authority; never transfer coordinator-only publication to task workers. '
         'Do not count planning, audits, task creation or queued workers as implementation completion. '
         'Never create another schedule, change cadence/model/delivery or resume this job yourself. '
         'While paused, do not trigger recovery or start a substitute writer; a separately authorized native resume enables future occurrences under this workflow. '

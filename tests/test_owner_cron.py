@@ -15,6 +15,26 @@ def load():
 
 
 class OwnerCronTests(unittest.TestCase):
+    def test_owner_prompt_uses_composed_ready_dispatch_not_duplicate_prepasses(self):
+        prompt = load().owner_prompt('Offline development only; retain named task filter.', True)
+        for rule in ('one composed owner_cycle.py --apply', '--source-path',
+                     'selected code/docs/tests/dependency closure',
+                     'no separate mandatory validate-only',
+                     'actual cron occurrence and manual-continuation liveness',
+                     'record in_progress only after a verified new handoff',
+                     'missing preparation, not a dispatched worker'):
+            self.assertIn(rule, prompt)
+        self.assertIn('retain named task filter', prompt)
+        self.assertEqual(load().owner_prompt(prompt, True), prompt)
+
+    def test_owner_prompt_retains_explicit_publication_authority_and_default_limits(self):
+        scope = 'Explicit scoped push authority: verified task branch only. No deployment.'
+        prompt = load().owner_prompt(scope, True)
+        self.assertIn(scope, prompt)
+        self.assertIn('Do not push or deploy without explicit scoped authority', prompt)
+        self.assertIn('carry that authority into the real worker contract', prompt)
+        self.assertIn('verify the exact remote ref', prompt)
+
     def test_autonomous_prompt_has_no_external_owner_or_proposal_gate(self):
         module = load()
         scope = 'Repository: /fixture/repo. Scope: offline collector tests only.'
@@ -118,6 +138,16 @@ class OwnerCronTests(unittest.TestCase):
             rows = load().inventory(root)
             self.assertEqual([row['profile'] for row in rows], ['default', 'alpha', 'beta'])
             self.assertTrue(all(row['jobs'] == [] for row in rows))
+
+    def test_restricted_roles_are_not_reclassified_by_autowork_attachment(self):
+        module = load()
+        for role in ('research-design', 'delivery-sync'):
+            job = {'name': 'autowork compatibility', 'skills': ['hermes-toolset:autowork'],
+                   'prompt': module.ROLE_MARKER + role + '\nRestricted original purpose.'}
+            self.assertFalse(module.is_owner_job(job))
+        prompt = module.owner_prompt('Named slice only; coordinator-only publication.', True)
+        self.assertIn('Within the exact authorized task filter/scope only', prompt)
+        self.assertIn('never transfer coordinator-only publication to task workers', prompt)
 
     def test_only_development_jobs_are_owner_targets(self):
         module = load()
