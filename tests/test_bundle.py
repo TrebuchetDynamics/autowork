@@ -64,6 +64,26 @@ class BundleTests(unittest.TestCase):
             self.assertIn(str(ROOT/'update_bundle.py'),run.call_args.args[0])
             self.assertIn('--check',run.call_args.args[0])
 
+    def test_chat_update_receipt_keeps_paths_as_literal_json_not_attachments(self):
+        home = Path(self.tmp.name)
+        folder = home / 'maintenance/toolset-update'
+        folder.mkdir(parents=True)
+        receipt = {
+            'status': 'incomplete',
+            'error': f'Local skill conflict: {self.path}; reconcile this file',
+            'detail': 'A customization contains ``` and `quoted` text',
+        }
+        saved = json.dumps(receipt)
+        (folder / 'latest.json').write_text(saved)
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            rendered = self.bundle.handle_chat('update status')
+        self.assertTrue(rendered.startswith('```json\n'), rendered)
+        self.assertTrue(rendered.endswith('\n```'), rendered)
+        payload = rendered[len('```json\n'):-len('\n```')]
+        self.assertNotIn('`', payload)  # Embedded delimiters cannot expose paths.
+        self.assertEqual(json.loads(payload), receipt)
+        self.assertEqual((folder / 'latest.json').read_text(), saved)
+
     def test_new_cli_receipt_is_not_hidden_by_older_chat_request(self):
         home=Path(self.tmp.name);folder=home/'maintenance/toolset-update';folder.mkdir(parents=True)
         (folder/'request.json').write_text(json.dumps({'pid':111,'started_ns':1}))

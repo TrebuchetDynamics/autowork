@@ -181,7 +181,10 @@ def update_status():
                 os.kill(int(result['pid']), 0)
             except (ProcessLookupError, ValueError, KeyError):
                 return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /toolset update.'
-        return json.dumps(result, indent=2)
+        # Gateway attachment extraction removes bare existing file paths from prose.
+        # Keep the receipt literal; escape embedded fences without changing JSON values.
+        payload = json.dumps(result, indent=2).replace('`', r'\u0060')
+        return f'```json\n{payload}\n```'
     except (OSError, ValueError) as error:
         return f'Cannot read update receipt: {type(error).__name__}; inspect maintenance/toolset-update/run.log.'
 
