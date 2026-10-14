@@ -42,6 +42,13 @@ Reuse accepted plans and source-bound review results; no fresh docs audit merely
 because a cron fired. Read only changed inputs and outstanding acceptance gaps.
 Run discriminating checks while implementing. Before review run the union of the
 batch's affected checks once, deduplicated. Required independent review remains.
+Read the whole mandatory gate (self-tests, fixture stages) before the first full
+run and group evidenced fixture repairs into one batch, not one defect per run.
+Compare executed commands with every required check before claiming offline
+acceptance; a green nearest suite does not cover omitted targets. Match evidence
+to the named public control: a direct internal call does not prove the UI path,
+including cancel/dismissal callbacks. A conflict-free merge assessment is
+preparation, not integrated or tested behavior.
 
 After approval, verify commit identity, owned blobs, ancestry and the integration
 diff. Reuse approved exact-source checks only when source, tests, dependency and

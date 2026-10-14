@@ -1,7 +1,7 @@
 ---
 name: autoresearch
 description: "Run the pinned Autoresearch protocols for repository research and bounded experiments; not required for a ready implementation task."
-version: 0.1.0
+version: 0.2.0
 license: MIT
 ---
 
@@ -54,6 +54,9 @@ Supported commands: `plan`, `debug`, `fix`, `security`, `ship`, `probe`, `scenar
    accept `/autoresearch NAME ...` when the first token is a listed command.
    Preserve the remaining arguments, including `Goal:`, `Scope:`, `Metric:`,
    `Direction:`, `Verify:`, `Guard:`, `Iterations:`, and upstream flags.
+   A repeated `plan` with no new arguments resumes the last unambiguous accepted
+   goal from its saved handoff; do not restart setup, the interview, or add another
+   status block, evidence entry or render merely because planning was invoked again.
 2. Explicit bare `/autoresearch` loads [upstream router](upstream/ROUTER.md): explicit metric or
    verify uses [classic loop](upstream/autoresearch.md); a natural-language goal
    uses its orchestrator; no goal uses setup. Honor `--classic` and `--auto`.
@@ -94,6 +97,28 @@ Record the decision/artifact/check each selected skill changed. `plan-with-me`
 or `grill-me` handles genuinely missing owner intent; routine reversible choices
 are autonomous. Existing accepted scope is enough: do not repeat upstream's generic
 “confirm”/“run now?” questions when the user already authorized that action.
+Before asking whether to implement, check standing execution authority and whether
+an authorized coordinator or worker already advances the outcome; reuse that path.
+Planning-only limits still forbid launching product work. Bound discovery to one
+batched source closure, expand only for an uncertainty that changes the approach,
+and stop once the plan has actionable outcomes, owners, dependency order and
+discriminating checks; repeated audits and receipt-only cycles add nothing.
+
+For a roadmap, present the ordered milestones in chat (user-visible outcome, exit
+evidence, existing task IDs), not merely that a draft exists. Task/goal counts are
+queue signals, never completion percentages. Separate planning, implementation,
+review, delivery and live qualification. When asked for more candidates, extend the
+existing proposal owner, keep IDs and ordering, group variants under their existing
+candidate, leave unselected ones Needs decision and recommend one gated prototype.
+
+For a requested 1:1 port, the named reference product is the feature-admission
+boundary: pin the inspected revision and map each candidate to reference source,
+navigation and observable behavior. An available API, existing screen or third-party
+list does not prove membership. Answer "does the reference include X?" with a
+source-backed verdict first, distinguishing inspected checkout, latest upstream and
+exercised parity. A scope restriction to reference features propagates through the
+decision, roadmap and queue in one pass, turning non-reference work into retirement
+tasks (reusing matching follow-ups) rather than fictitious parity.
 
 When invoked by autowork for backlog recovery, follow its
 [bounded planning fallback](../autowork/references/backlog-planning.md): accepted
@@ -119,7 +144,11 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
    Guard commands with actual results, recommendation, residual gap and dependencies.
    Failed/unrun checks stay failed/unverified; a prediction is not an observed bug.
 2. Update existing spec/ADR/test-plan/runbook owners with supported findings. Reuse
-   matching goals and tasks before creating anything. Preserve active leases,
+   matching goals and tasks before creating anything. Compare the existing next
+   action with current HEAD and original runs first: an integrated candidate needs its
+   successor, a reviewed one needs integration, a running worker needs preservation.
+   Replace obsolete current-tense advice instead of appending a contradictory frontier;
+   keep receipts as history. Preserve active leases,
    ownership, focus, completed history and unrelated edits. An in-progress cache
    benchmark remains that same task, not a second “research cache” task.
 3. For accepted unmet work, have docs-sync reconcile canonical `goals.json` and
@@ -150,6 +179,23 @@ TODO; return proposed updates inline. `--dry-run` performs no mutations or dispa
 and must not run a mutating Verify command. “Do not implement” remains binding
 despite `--chain fix`, upstream “execute immediately”, or an accepted backlog.
 
+## Measured planning configs
+
+Use observable acceptance, not a numeric config, for qualitative contract or
+workflow planning; mark not-yet-written tests as planned work. When a metric is
+meaningful, split independent failure boundaries into separate configs, dry-run each
+claimed Verify and Guard against pinned source, and mark unmeasured siblings
+unvalidated. Parse the gate's structured receipt, accept only documented exit
+states, and report process exit separately from the metric (exit zero can carry a
+nonzero failure count); a trailing successful command must not mask a failure. Fix
+case identity and cardinality so removing a check cannot improve the score. Guards
+need valid-path controls beside refusal tests, or disabling the capability yields a
+false zero; an injected-effect sentinel exception is an attempted effect. Consumer
+diagnostics, worker states and pending-decision counts measure handoff validity, not
+product completion; keep owner-gated tasks intact while driving them down. Persist
+self-contained harnesses/configs (hash, inputs, baseline, target, units, sanitized
+command with its variables) under the durable research owner, never expiring scratch.
+
 ## Execution, experiments and completion
 
 Use upstream bounded iteration/cycle limits and stop on plateau/ceiling/blockers;
@@ -174,9 +220,13 @@ research success or command chaining alone provides none. Carry prior authorizat
 without reasking. Do not close canonical tasks just because an upstream handoff
 says COMPLETE: use docs-sync evidence and autowork's normal closure gates.
 
-Finish with: result/stop reason; metric/check evidence; changed document owners;
-TODO/goals task IDs and Now/Next; consumer readiness or blocker; committed SHA when
-applicable; and whether execution/timed scheduling actually occurred.
+Finish with the user outcome first (what is fixed, what is only planned, the exact
+next implementation action), then: result/stop reason; metric/check evidence; changed
+document owners; TODO/goals task IDs and Now/Next; consumer readiness or blocker for
+the exact scheduled IDs; committed SHA when applicable; and whether execution/timed
+scheduling actually occurred. Attribute other workers' code and checks to them; a
+saved plan or zero pending decisions is not product completion. When challenged on
+stalled progress, give the verified worker/candidate state and concrete blocker.
 
 ## Vendoring
 

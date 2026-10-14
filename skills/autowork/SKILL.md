@@ -1,7 +1,7 @@
 ---
 name: autowork
 description: "Execute authorized repository tasks directly: select, implement, verify and close out using TODO.md."
-version: 0.26.0
+version: 0.26.1
 author: Hermes Agent
 platforms: [linux, macos]
 metadata:
@@ -85,7 +85,12 @@ Use local repository locks and isolated worktrees where concurrent writers need
 isolation; one writer per workspace. Before adopting idle work, inspect actual
 process liveness, workspace changes, source/candidate provenance and check receipts.
 Advisory locks cannot exclude manual writers who ignore them or coordinate different
-hosts. Preserve useful candidates; do not kill workers or delete worktrees to migrate.
+hosts; an enabled same-repository cron run may also be writing. Preserve useful
+candidates; do not kill workers or delete worktrees to migrate. A live writer does
+not freeze priority: apply an owner's reorder to the next selection through Docs
+Sync, without interrupting current work or faking a dependency, and report it only
+after `goals.py next` agrees. Shared-tooling fixes follow
+[cross-profile recovery](references/owner-cycle.md#cross-profile-recovery-and-deployment).
 
 Caller scope and saved stop/batch limits control continuation. Default: one useful
 slice including recovery and closeout. Explicit stops win. Apply

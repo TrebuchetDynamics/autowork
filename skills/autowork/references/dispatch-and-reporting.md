@@ -74,6 +74,15 @@ in this order. TODO task IDs and titles are user-facing identifiers, not hidden
 implementation details. Keep internal Kanban/card/run IDs and routine boilerplate
 in durable receipts unless needed for diagnosis.
 
+A short conversational question (“are you working or idle?”) is not a formal
+report: check the exact current run and recent activity, then answer in the first
+sentence (working, queued, waiting for review, blocked or idle), followed by what
+works, what is in progress and what remains. A saved continuation, eligible
+successor or planned step is not background progress. Attribute asynchronous
+results to their exact run and candidate; a late notice for an already-accounted
+run is not new work. Do not repeat unchanged status; report a new failure, verdict,
+dependency transition or verified completion.
+
 ```text
 <PROJECT / profile> — <OUTCOME>; <delivered behavior or current execution state>
 Action needed from you: <only for a genuine user-dependent blocker; exact action, target, reason and what resumes>.

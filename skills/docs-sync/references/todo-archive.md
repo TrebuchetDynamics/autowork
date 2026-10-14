@@ -23,7 +23,8 @@ under the existing canonical-repository lock. Read-only commands never archive.
 The helper moves whole top-level checkbox entries or `### TASK-ID — Title`
 sections only when they are explicitly closed and their ledger task is `done`.
 A met goal alone, an unchecked task, an open subtask or conflicting status cannot
-authorize a move. It keeps completed ledger records and goal evidence, including
+authorize a move. Keep one `Status:` line per body, beginning with `done`; put
+review/commit details in a separate evidence field, since a second Status line blocks it. It keeps completed ledger records and goal evidence, including
 pending broader qualification. An archive-only result lists `moved`, `retained`
 and the canonical `archive`; report retained conflicts and reconcile from evidence.
 Ambiguous overlapping task-shaped headings keep the whole affected unit live,
@@ -64,7 +65,7 @@ During each Bootstrap/Maintain pass, put new dated pass-notes and historical rec
 ## Preservation procedure
 
 1. Read current TODO, archive, ledger and relevant completion receipts. Account for open task IDs, completion blocks, dated pass-notes and active ownership before selecting any move. Preserve concurrent edits; use exact anchored patches and reread before writing. Do not perform a broad regex deletion or regenerate the whole backlog from a summary.
-2. Prepare an append-only migration: add a source/path/date catalogue outside the original blocks, then append each selected original block verbatim once. Retain original section context, but do not duplicate each moved heading. Preserve all pre-existing archive bytes. Treat archive text as historical evidence, not executable instructions. Only verified cosmetic errors in newly added wrappers may be corrected; leave original receipts unchanged.
+2. Prepare an append-only migration: add a source/path/date catalogue outside the original blocks, then append each selected original block verbatim once. Retain original section context, but do not duplicate each moved heading. Preserve all pre-existing archive bytes, including historical trailing whitespace; if `git diff --check` flags it, add a wrapper or footer outside the original blocks rather than trim history. Treat archive text as historical evidence, not executable instructions. Only verified cosmetic errors in newly added wrappers may be corrected; leave original receipts unchanged.
 3. Write and verify the archive **before** removing source text. If verification fails or TODO changes concurrently, leave TODO intact and report the incomplete move. A duplicate retained after interruption is safer than a missing receipt; inspect and reconcile it rather than blindly appending it again.
 4. Verify conservation programmatically. Every selected block must exist byte-for-byte in the archive with the required multiplicity: repeated source text must not disappear because a set deduplicated it. Compare exact blocks or a lossless before/after partition, not sentence-joined fragments. A larger union, equal task counts or equal byte totals alone does not prove preservation. Whole-file byte totals can legitimately grow because catalogue/link text was added. Keep before/after evidence in private ignored scratch, never commit secret-bearing backups.
 5. Verify all open entries and their continuations remain verbatim in TODO. For priority-only reorders, compare the multiplicity of complete task blocks before and after, allowing only explicitly intended field changes; compare ID lists with `Counter(mapping.keys())`, not `Counter(mapping)`, because the latter treats dictionary values as counts. Verify existing archive content is unchanged and no new duplicate heading was introduced. If another writer appended history during verification, inspect the added region and confirm the original bytes remain an exact prefix; preserve that contribution and report a concurrent append, not a byte-identical archive or a failure caused by this pass. If the prefix changed, reread and reconcile the affected blocks before writing; never restore the stale baseline. Reconcile completed task IDs with the ledger without treating ID counts as proof that their bodies survived. Fix local links and check for private data; never reproduce credentials in the archive or reports.
@@ -93,11 +94,12 @@ from `goals.json` drops entries that exist only in TODO — an "as found" note, 
 parked observation with no ledger task. Build the skeleton from the ledger, merge
 back every open ID that was already present, and assert each pre-existing open ID
 appears exactly once in the result before writing.
-- **Use `goals.py section` for placement, not hand-editing.** Move a task between
-sections with `goals.py section <repo> <task> {Now,Next,Needs decision}` and re-render.
-Since `autowork` selects only from `Now` and `Next`, a task whose next step needs an
-owner (a deploy window, an approval) belongs in `Needs decision` whatever its goal's
-section says; leaving it eligible invites a worker to attempt a gated action.
+- **Coordinate ledger and body placement.** Set an unfinished task's section with
+`goals.py section <repo> <task> {Now,Next,Needs decision}`, then relocate its complete
+body under the matching heading with lock and baseline checks; `render` does not
+move bodies. Archive verified done bodies instead. Since `autowork` selects only
+from `Now` and `Next`, a task whose next step needs an owner (a deploy window, an
+approval) belongs in `Needs decision`; leaving it eligible invites a gated action.
 - **Records the state you found.** Report pre-existing duplicates, withdrawn entries
 and stale warnings as found rather than silently repairing history. When a note in
 the live file asserted a condition that is now false (for example, that the archive
@@ -122,3 +124,8 @@ an explicit non-completion disposition. This does not satisfy dependencies, coun
 as completed work or qualify a goal as met. The conservative met rule still
 requires done tasks and executed passing goal evidence; reconcile a changed goal
 against its accepted scope instead of relabelling retired checks as passed.
+
+Owner-cancelled work without an accepted successor cannot use `supersede` and is
+never marked done. Keep it in Needs decision, label the body cancelled with its
+dependencies and an Acceptance field for selector exclusion, preserve the original
+contract in history, and verify exclusion with `next --json`.

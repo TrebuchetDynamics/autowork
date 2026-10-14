@@ -8,7 +8,8 @@ task ownership, acceptance, the existing review lane and delivery authority.
 For a material choice about new logic, dependencies, abstraction or reuse, load
 the active `ponytail:ponytail` skill from the current host/profile catalog, or its
 verified SKILL.md path. Inspect the content: a retired compatibility shim is not
-Ponytail. Respect an explicitly requested level; otherwise use full's method
+Ponytail. Respect an explicitly requested level and carry it into any delegated
+contract and the review step; otherwise use full's method
 within this task. Do not enable persistent modes, install plugins or change
 profiles. Reuse instructions already read for the same task and version.
 

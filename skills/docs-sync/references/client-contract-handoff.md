@@ -37,6 +37,8 @@ Map consumer-required fields to producer and wire evidence. For market books, ch
 
 Keep consumer receipt and state-ready times separate. Historical replay cannot retroactively qualify a decision. Missing producer evidence needs an implementation-plus-regression backlog slice, not merely stronger prose.
 
+Before declaring a cross-stage adapter usable, trace every required field to the stage that creates it; separate source-owned clocks from storage-generated metadata, and do not borrow, synthesize or delete storage-only fields across that boundary. A fixture containing all fields can hide an impossible real inbound contract, so specify a discriminating source-backed case. A hash matched against an independently trusted digest proves file bytes, not upstream identity, capture time or continuity; saving a response cannot supply omitted fields.
+
 ## 5. Verify and deliver
 
 Check JSON syntax, internal references and unique operation IDs. Validate the full OpenAPI document separately when available; component-schema checks do not equal full OpenAPI validation. Verify guide links and reconcile examples with parser/builders. Run existing safe source-bound contract tests when useful, labeling static source checks separately from socket/runtime tests.

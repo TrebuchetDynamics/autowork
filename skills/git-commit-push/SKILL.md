@@ -1,7 +1,7 @@
 ---
 name: git-commit-push
 description: "Use when committing and pushing scoped Git changes."
-version: 1.3.3
+version: 1.4.0
 license: MIT
 metadata:
   hermes:
@@ -45,6 +45,9 @@ conflict; do not create a PR or weaken protection under generic shipping authori
 When the owner explicitly authorizes removal of the PR requirement, remove only that
 rule, preserve every other protection and verify the ruleset plus effective branch
 rules. Follow [GitHub protection changes](references/github-protection.md).
+On GitHub read both `branches/<branch>/protection` and `rules/branches/<branch>`: a
+legacy "Branch not protected" does not exclude rulesets, and an auth/access error is
+not absence of protection.
 A successful protection change resolves only the delivery-route question: retain the
 original commit/push/main-delivery obligation and continue candidate verification.
 
@@ -52,10 +55,16 @@ original commit/push/main-delivery obligation and continue candidate verificatio
 |---|---|---|
 | User explicitly asked to commit only | the checked-out branch, subject to repository branch policy | **no** |
 | User explicitly asked to push, commit and push, or ship | the checked-out branch, then its upstream | yes |
-| Autonomous goal slice / kanban card, no explicit ship request | `agent/<profile>/<card-id>` via autowork's helper | **never** |
+| Autonomous goal slice / kanban card, no explicit or standing publication authority | `agent/<profile>/<card-id>` via autowork's helper | **never** |
 | Audit request | nothing | no |
 
-Interpret delivery verbs separately: a request to implement and commit authorizes a local commit, not publication. Do not infer push permission from the skill name, an upstream being configured, or a broad request to finish all plans. After a local-only commit, verify `git show --stat HEAD` and repository status; omit remote fetch/push verification because no remote write occurred.
+Interpret delivery verbs separately: a request to implement and commit authorizes a local commit, not publication. Do not infer push permission from the skill name, an upstream being configured, or a broad request to finish all plans. After a local-only commit, verify `git show --stat HEAD` and repository status; omit remote-write readback because no remote write occurred (a read-only fetch to detect stale copies is still fine).
+
+A repeated commit-only request after you disclosed failing checks authorizes a local
+checkpoint, not a repair project: record known failures and unrun checks in the message
+and report, claim no readiness, and still apply scope, live-writer, secret, preservation
+and hook rules (repository-mandated commit gates stay binding). A later ship request must
+reconcile fresh upstream and pass the candidate-bound gates.
 
 **Scope is authorization, not authorship.** An explicit repo-wide ship request covers
 all eligible changes in requested scope, including completed work from other agents
@@ -66,7 +75,9 @@ implementer is someone else or no card exists. A path/topic allowlist stays narr
 an autonomous worker/card without explicit repo-wide authorization remains limited
 to its owned slice. Local-only requests never authorize push; audit never authorizes
 Git writes. Repo-wide authorization does not override a live writer/lease, unfinished
-work, unapproved product scope, secrets, or missing verification.
+work, unapproved product scope, secrets, or missing verification. A generic "commit
+all" does not revoke a specific earlier KEEP/preservation decision; resolve it before
+staging bulk deletions.
 
 Card branch helper (temporary index, so HEAD, the real index, and other agents' dirty work
 are untouched). Resolve `<skills-root>` as the parent of this loaded skill directory:
@@ -93,6 +104,17 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      and index pointer (`git ls-files -s -- <path>`). Do not use `git rev-parse <path>` as the
      submodule revision: a filesystem path is not a Git ref. Stage the gitlink explicitly and
      verify the staged SHA equals the intended nested `HEAD` before committing.
+   - Bind every Git probe to its intended checkout (explicit `cwd`/`-C`) and assert
+     `git rev-parse --show-toplevel` before recording HEAD/index/status baselines; record
+     index bytes (`git rev-parse --git-path index`) before any mutation. Equal status does
+     not prove equal bytes; a misrouted baseline makes that preservation claim unverified.
+   - For large dirty sets capture NUL-delimited inventory and diffs privately and summarize
+     programmatically; see step 1 of [shared-worktree-safety.md](references/shared-worktree-safety.md).
+   - Inventory completed agent/task branches and their unpublished commits in the same first
+     pass, so an unsafe checkpoint or live writer cannot hide independent reviewed work.
+   - Apply an owner restoration decision only to the named subtree
+     (`git restore --source=HEAD --staged --worktree -- <subtree>`, then verify its status);
+     never extend it to siblings or untracked files, and re-baseline HEAD/index afterward.
    - Classify every path: **ship now**, **leave local** (with a concrete reason), **needs one
      owner decision**, or **red line**. What this conversation or card produced counts as evidence of ownership.
    - **A shared checkout that is behind its upstream is not automatically the delivery queue.**
@@ -195,7 +217,12 @@ Report the branch and sha it prints. Never point it at main/master or the checke
    - Bind the gate to the curated index: record `git write-tree`, check the complete
      exported snapshot, and retain its commands, results and relevant dependency/environment
      inputs. Reuse those results only while those inputs match; unchanged source bytes alone
-     do not prove unchanged tools or dependencies. Run `git diff --cached --check`.
+     do not prove unchanged tools or dependencies. Capture the fingerprint *before* launch in
+     the same receipt as the exact command (tree, component trees, lockfile hashes, executable
+     paths/versions, fixture config), then tree identity, exit, duration and log path on exit;
+     a command-plus-duration receipt cannot show which candidate it exercised. Read the actual
+     compiler/SDK version against the repository pin; on mismatch use an isolated matching
+     toolchain, never another session's shared install. Run `git diff --cached --check`.
    - Scope `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` to individual Git/index-aware
      probes, not the entire gate environment. Never persist snapshot routing with
      `git config core.worktree`: it redirects other sessions' status, staging and
@@ -207,6 +234,8 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      passed to Flutter, npm and other build commands. For a Git-backed guard in a
      filesystem export, pass the candidate overrides only to that guard so its
      `git ls-files` sees the curated index rather than an empty parent-repo pathspec.
+     Authority validators that discard `GIT_*` are different: never fabricate `.git`
+     metadata for them; follow [canonical-authority validation](references/shared-worktree-safety.md#canonical-authority-validation-for-filesystem-exports).
    - **Satisfy the snapshot's dependency inputs before gating it.** A snapshot made with
      `git worktree add` or `checkout-index` contains tracked files only: no installed module tree,
      no untracked runtime config. The gate then dies on its first check with a missing tool
@@ -239,7 +268,16 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      exit results. Do not start another suite merely because a foreground wait expires;
      distinguish a wait-window timeout from an actual process timeout. Inspect once if needed,
      then use the completion notification rather than repeated waits or pending-status messages.
+     Start the final publication gate in the integration owner's session; a short-lived child's
+     cleanup can kill it before its receipt is written. On an interrupted handoff verify process
+     and receipt, keep partial logs as incomplete, and restart only the missing gate on unchanged
+     inputs. A staged tree hash is not a commit SHA.
      A running gate is not a pass. Never push while its required checks are still running.
+   - After an interrupted side-effecting command, inspect `HEAD`, `MERGE_HEAD`, the staged diff,
+     relevant refs and process/log/exit receipts before retrying; an interruption does not say
+     whether later merge/commit steps ran. Mark missing evidence unverified rather than inferring
+     success, and recheck canonical HEAD and owned blobs before landing. A switch to standalone
+     planning preserves the delivery checkpoint but does not silently resume the push request.
    - Preserve the complete requested delivery obligation across asynchronous handoffs:
      local commit → passing candidate gate → verified remote push → verified PR merge when
      authorized. Record the next action with the existing delivery receipt and resume from
@@ -264,9 +302,15 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 
 5. **Commit.**
    - Stage explicit paths only (`git add -- <paths>`); never `git add -A` / `git add .` on a
-     shared tree. Verify with `git diff --cached --name-status` that the staged set is exactly
+     shared tree. Use `git --literal-pathspecs add` for collected filenames. Build the add list
+     from paths present in the worktree or `git ls-files -z`: an already-staged deletion (common
+     after `git apply --3way`) exists in neither and aborts the whole `git add`; keep it in the
+     expected staged set. Deduplicate so a staged deletion plus untracked replacement stages the
+     replacement. Verify with `git diff --cached --name-status` that the staged set is exactly
      what you meant, and that the files you held back are still unstaged.
-   - Scan staged content for secrets: `git diff --cached | grep -nEi '(api[_-]?key|secret|token|passw|BEGIN [A-Z ]*PRIVATE KEY)'`.
+   - Scan staged content for secrets with the repository scanner or an in-process matcher over
+     `git diff --cached` (signals: `api[_-]?key|secret|token|passw|BEGIN [A-Z ]*PRIVATE KEY`).
+     Output only file, line and category; printing matched literals can itself leak a credential.
      Classify every hit before acting on it. A real value blocks the commit, but these patterns also
      catch **names and prose**: a variable assignment whose right-hand side is another variable
      (`TEST_PASSWORD="$ADMIN_PASSWORD"`) and a sentence that says "rotate any secrets" are not
@@ -283,16 +327,29 @@ Report the branch and sha it prints. Never point it at main/master or the checke
  a shared tree: it records exactly those paths whatever else the index holds, so a file left
  staged by an earlier step cannot ride along even when the re-read misses it. Then compare `git write-tree` with the recorded gated tree
      and verify HEAD has not moved; concurrent staging can otherwise change what ships.
-     After committing, require `git rev-parse HEAD^{tree}` to match the gated tree. If hooks
-     or another writer changed it, inspect the difference and rerun affected checks before
+     A pathspec commit reads the selected *worktree* contents, so first verify each selected
+     blob still equals its gated index blob. After committing, require `git rev-parse HEAD^{tree}`
+     to match the gated tree; for several topic commits qualified together, pin the combined tree
+     and path partition, check each commit's paths/blobs against its partition, and match only
+     the final tree to the combined one. If hooks or another writer changed it, inspect the difference and rerun affected checks before
      claiming verification; do not replay a successful gate merely for reassurance.
 
 6. **Push (explicit ship target only).**
    - Push the configured upstream; with one `origin` and no upstream, `git push -u origin HEAD`.
+     A new delivery branch cut from remote main can inherit main as upstream: push an explicit
+     refspec (`git push --set-upstream <remote> HEAD:refs/heads/<branch>`) and verify that exact
+     ref. A delivery-branch push is not a main merge.
+   - Publish an already-qualified immutable commit by explicit refspec rather than cherry-picking
+     or rebuilding it only to advance its base, when the receipt's commit, owned-file allowlist and
+     hashes verify and affected base subtrees (`git rev-parse <candidate>^:<component>` vs
+     `origin/<target>:<component>`) match fresh upstream; changed inputs need reconciliation and
+     affected checks. Read back the remote ref, PR head and file list.
    - Do not `git pull` / `--autostash` first. Push; on rejection, `git fetch` and inspect (the
      `git-pull-merge` skill covers integrating remote changes safely).
      Fast-forward only when the incoming commits don't overlap yours and it is clearly safe. Merge or rebase needs
-     explicit approval. Never force-push. Measure the overlap against the merge base, not against
+     explicit approval. On a fast-forward-only or no-merge route, do not fall back to a
+     reference's merge recipe after rejection: rebuild and requalify from fresh upstream, or report
+     the conflict. Never force-push. Measure the overlap against the merge base, not against
      HEAD: `git diff --name-only $(git merge-base HEAD origin/main)..origin/main` lists what they
      changed, while `HEAD..origin/main` also lists your own unpushed files and reads as an overlap
      that is not there.
@@ -336,7 +393,9 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 ## Outcomes
 
 - **COMMITTED**: the requested local commit exists and was read back; no push was requested or performed. Unrelated paths may remain.
-- **SHIPPED**: safe commits pushed (or written to the agent branch). Unrelated paths may remain.
+- **SHIPPED**: checked commits reached the authorized remote target and were read back. An
+  agent-branch write is COMMITTED; a task-branch push is not main delivery when main was requested.
+  Unrelated paths may remain.
 - **NO-OP**: no actual unshipped delta in requested scope after checking all eligible
   completed changes against the requested target, regardless of author. Already-published
   bytes and stale-only ledgers are not new work. Report behind/diverged status separately;
@@ -354,7 +413,7 @@ ASKED and HELD describe this delivery only. The surrounding goal or card keeps g
 At most three lines. Leave out empty fields and don't repeat a hash or path.
 
 ```text
-COMMITTED|SHIPPED|NO-OP|ASKED|HELD — <local sha, not pushed | hashes + push result | agent branch + sha | exact reason>
+COMMITTED|SHIPPED|NO-OP|ASKED|HELD — <local or agent-branch sha, not pushed | hashes + push result | exact reason>
 Checks: <gate(s) and result>; inspected all modified and untracked paths
 Left local: <path — reason, …> | Need: <one action>
 ```

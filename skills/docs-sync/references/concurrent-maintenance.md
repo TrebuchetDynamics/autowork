@@ -15,6 +15,38 @@ Apply accepted operations through `scripts/goals.py`. Do not copy a worker's
 current ledger under owner control. An occupied ID requires reconciliation,
 not overwrite or automatic reinterpretation of the proposal.
 
+## Reconcile a stale or occupied target
+
+Use after a `stale revision`/`stale write` refusal, a baseline mismatch, or when
+an actual concurrent writer holds the target. A process name, historical card or
+claim alone does not establish a conflicting write; check actual activity.
+
+1. Preserve the rejected proposal and its evidence. Reread sanitized Git HEAD/status,
+   canonical ledger/TODO, target task/goal, affected blocks, focus and ownership.
+   Compare by stable IDs; a whole-file revision change does not say what changed.
+2. If the target was completed, claimed, re-scoped or reprioritized, or landed work
+   satisfies the proposal, reconcile that outcome and withdraw obsolete edits. Keep
+   another writer's equivalent repair; never reopen done work, widen an active
+   worker's contract or change its admission pins. Re-pin to the new base and rerun
+   the discriminating source check before allocating; IDs and meanings can shift.
+3. If the target is unchanged, keep only the scoped old/new replacements and intended
+   operations. Under the lock, build from the latest bytes so unrelated tasks,
+   transitions, evidence and order survive. Apply ledger changes through supported
+   operations with a fresh `revision` per mutation; normal stale refusal still holds.
+4. If the user keeps another session as integration owner, leave TODO, ledger,
+   blockers and archive untouched, including `fmt`/`render`/`archive`. Save the
+   targeted patch (relative to captured baselines, with its repository-root working
+   directory), complete proposed bodies, intended operations, base, provisional IDs
+   and consumer-gate reasons in an authorized durable location; mark partial
+   proposals partial. Report absent proposed tasks as pending integration, not ready.
+5. After integration run `fmt`, `validate`, `render` and the same consumer gate once
+   on the final batch. Rerun only checks whose code/test/dependency/environment
+   inputs changed, not checks invalidated only by unrelated ledger additions.
+
+The canonical owner already has this clerical authority within scope; do not turn
+safe reconciliation into a permission question. If a safe integration route exists,
+complete it rather than stopping at a proposal.
+
 ## Executable coordination
 
 Every CLI command takes an exclusive advisory lock before reading the ledger.
@@ -23,6 +55,8 @@ for that invocation. In Git repositories, the lock lives at
 `<git-common-dir>/.docs-sync-goals.lock`. Primary and linked worktrees share it.
 Without Git metadata, local fixtures use `<resolved-repo>/.docs-sync-goals.lock`.
 Do not remove an active lock file: replacing its inode can create two lock owners.
+A non-CLI read/compare/write must acquire the exact lock path of the helper actually
+invoked; a legacy alias lock name does not serialize the same writes.
 
 Before Git repository-identity subprocesses, construct an environment that removes
 all inherited `GIT_*` overrides while retaining unrelated process settings.
@@ -109,12 +143,21 @@ comparison. Never publish a worker's stale full-file rewrite.
 
 For a scoped dirty-worktree documentation proposal:
 1. Capture exact baseline bytes for each writable document and author against a
-   private pinned candidate containing those bytes, not HEAD alone.
+   private pinned candidate containing those bytes, not HEAD alone. With `GIT_*`
+   overrides removed, discover context via `git diff HEAD --name-only -z` plus
+   `git ls-files --others --exclude-standard -z`; `git ls-files -m` misses
+   staged-only changes. Copy only inspected required inputs, never credentials or
+   runtime state, and keep foreign overlays separate from authored replacements.
 2. Return targeted old/new replacements and a baseline-to-candidate patch; a
-   repository-wide Git diff includes unrelated pre-existing work.
-3. Under the shared lock, compare all targeted canonical baselines before applying
-   replacements. On any mismatch, reread and reconcile instead of replaying the
-   candidate. Verify that integrated authored bytes equal the candidate.
+   repository-wide Git diff includes unrelated pre-existing work. For a scoped
+   whitespace check, `git diff --no-index --check -- <baseline> <candidate>` exits 1
+   for any difference: accept 0 or 1 only with empty stdout and stderr.
+3. Under the shared lock, compare all targeted canonical baselines, and the source/
+   test/dependency bytes candidate checks used, before applying replacements. If
+   only the valid marked coverage block changed, require all other bytes to match
+   and keep the fresh block. If other changes are disjoint, apply only the attributed
+   baseline-to-candidate patch and verify both survive; otherwise reconcile from the
+   new baseline. Verify that integrated authored bytes equal the reconciled candidate.
 4. Release the manually held lock before invoking `goals.py`, because the CLI
    acquires that lock itself. Apply evidence/status operations only through the CLI.
 5. Run `fmt`, `validate` and `render` against the canonical target. Confirm every
@@ -134,7 +177,9 @@ For a scoped dirty-worktree documentation proposal:
 3. After integration and `fmt`/`validate`/`render`, compare every pre-existing task
    object with its baseline. Require unchanged statuses, dependencies, sections and
    focus, unless the pass explicitly authorizes those changes. For each affected
-   goal, allow only the intended additions to its task list.
+   goal, allow only the intended additions to its task list. For an evidence-only
+   addition, remove the exact authored record once and require prior evidence
+   unchanged; `fmt` sorts evidence, so the new record need not be last.
 4. For an insertion-only TODO change, normalize only the marked generated coverage
    block in both snapshots, remove the exact authored insertion once, and require
    the remaining bytes to equal the baseline. Check insertion multiplicity so this
@@ -151,6 +196,28 @@ For a scoped dirty-worktree documentation proposal:
 Preserve completed task statuses, priorities and historical plan bodies during
 source-study adoption. Record research as inspection evidence for the owning goals,
 not as executed proof that the requested product outcome works.
+
+## Reconcile divergent task contracts
+
+1. Snapshot canonical TODO, ledger, affected plans and archive; run `validate`.
+   Inventory live bodies with the maintained `goals.py` parser, not numeric-only ID
+   patterns, excluding generated coverage. Archived bodies, including unchecked
+   historical copies, are history rather than open work or status drift.
+2. Compare each body's checkbox/section, goal and `Dependencies:` with the ledger
+   in both directions. Move receipt-only or coordination mentions out of the field;
+   a goal prerequisite and a same-named task are distinct. Repair edges only from
+   accepted intent; never delete one to clear a cycle or create eligibility.
+3. Preserve local/remote ID collisions as unresolved mappings; do not renumber or
+   import statuses. Index historical tasks under existing IDs only when source and
+   receipts support completion; for local-only completion keep the integration gap.
+4. Check Sources against actual files/anchors and nested scope, and reconcile
+   acceptance against the current deliverable, not its title. Repairing a link does
+   not supply missing approval; keep proposed subdecisions proposed.
+5. Apply under the lock with baseline comparison, preserving statuses, priorities,
+   evidence, focus, order and archive prefix. Run `fmt`, `validate`, `render`, then
+   `backlog-check` per affected accepted plan and its exact IDs; exit 2 is a
+   reconciled hold, not a clerical failure. Repeat for byte stability, take the next
+   task from `next --json`, and keep routine receipts out of product plans.
 
 ## Evidence and acceptance contracts
 

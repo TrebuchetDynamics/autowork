@@ -62,6 +62,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Reconciled guidance that profiles had edited into installed skill copies back
+  into Autowork, Cron Autowork, Docs Sync, Git Commit Push, Git Pull Merge, Plan
+  With Me, Plan For Me and Autoresearch. Generic rules were condensed upstream;
+  Kanban-card, profile-specific and pinned-vendor edits were not ported. Installed
+  copies still need a successful update before profiles use the new text.
+
 - Plan For Me now has its own matching skill directory and identity; Autoresearch
   remains independently registered. Plan With Me and Docs Sync no longer register
   the old repo-interview/repo-docs aliases. Autoresearch compatibility commands

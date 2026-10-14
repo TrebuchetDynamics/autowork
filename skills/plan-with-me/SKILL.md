@@ -3,7 +3,7 @@ name: plan-with-me
 description: "Use when the user wants collaborative planning: research the repository, clarify their initial request and important decisions through questions, then save docs and tasks."
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   hermes:
     tags: [interview, requirements, documentation, planning]
 ---
@@ -51,6 +51,15 @@ Distinguish implemented behavior from intended behavior. Do not ask the user for
 facts you can establish from the repository, or reopen settled answers without
 new contradictory evidence.
 
+For a broad "blockers" request, separate owner-input blockers from everything
+preventing delivery; an empty BLOCKERS.md does not prove execution is unblocked.
+If scope is unclear, ask whether it means the current task, repository-wide
+delivery or only owner decisions. Inspect the full task body, implementation and
+execution evidence first; do not ask the user to decide facts or routine repairs.
+For recovery planning, refresh the original task, review, target and delivery
+state before decomposing: observed delivery can supersede a reported pending
+integration, leaving only the remaining receipt or qualification gap.
+
 State a brief understanding of the outcome and the most consequential missing
 information. Ask the first useful question in the first response after this
 bounded inspection; do not return only an interview plan.
@@ -82,7 +91,9 @@ Choose the next question by its effect on the plan, not a fixed questionnaire:
 - Scope and non-goals, constraints, compatibility and meaningful tradeoffs.
 - Priority between conflicting outcomes, migration or operational expectations.
 
-Only explore dimensions that remain unresolved and relevant. Decide internal
+For landing pages, READMEs and onboarding, settle audience, primary action and
+first useful outcome before visual references; screenshots prove appearance, not
+availability or conversion. Only explore dimensions that remain unresolved and relevant. Decide internal
 naming, test seams and equivalent engineering options autonomously. For vague
 answers such as "fast" or "easy", ask for a concrete user situation or acceptable
 outcome. When an answer contradicts accepted intent, explain the conflict and ask
@@ -98,6 +109,21 @@ answered progress with unresolved matters left open. Silence is neither
 an answer nor acceptance. In scheduled/noninteractive runs, report the single
 highest-value question and leave it pending; do not fabricate replies or poll.
 
+## Planning while teaching
+
+When the user wants to learn a domain while planning (for example to present a
+roadmap), confirm that audience and decision purpose. Teach one short concept the
+next decision needs, its practical consequence, then ask the highest-impact open
+question; neither an interview alone nor a full course up front. Shape roadmaps as
+stages with deliverables, dependencies, roles, evidence gates and cost categories;
+keep a stakeholder roadmap separate from deep lessons. Learning objectives are not
+product acceptance. Revalidate inherited legal/regulatory or vendor claims against
+primary sources with retrieval dates, labeling partial reads; API access is not a
+usage right. A no-code instruction also covers docs-site scaffolding, config,
+dependencies and UI; a suggested framework stays a candidate. Ask about public vs
+private audience before choosing a publication layout; hidden URLs or robots rules
+do not protect confidential content.
+
 ## Save answers and finish the plan
 
 During an ongoing interview, save material explicit answers in the existing owner
@@ -111,14 +137,26 @@ readback: outcome, users, success, scope/non-goals, constraints, decisions and a
 remaining open questions. Ask for confirmation only if the synthesis introduces
 a material inference or unresolved conflict. Clear contextual approval counts;
 do not demand a magic word or re-approve answers already given. If a draft needs
-acceptance, present the concrete draft and bind the reply to that scope.
+acceptance, present the concrete draft and bind the reply to that scope. Record
+approval at that granularity: accepting a pitch or sequence does not approve an
+unseen mockup or added requirements. When an answer settles broad scope, mark it
+settled in its decision owner and reconcile affected conditional tasks and summary
+wording; leave only unresolved subchoices Open. Put the current scope and an
+explicit supersession notice before preserved obsolete guidance.
 
 In writable mode, run a narrow docs-sync Maintain pass for the affected owners, applying its
 canonical ledger and concurrency rules. Default invocation already requests
 this persistence, so do not ask again whether to save. Accepted intent becomes
 bounded Now/Next tasks with dependencies, acceptance and verification. Unanswered
 product choices remain outside executable work. Validate changed docs and ledger,
-then run the actual consumer backlog-check when handing off accepted tasks.
+then run the actual consumer backlog-check when handing off accepted tasks. Put the
+accepted-plan anchor in each affected task's Sources, not only its Next action;
+repair supported missing bindings and rerun the same gate. Report the ready first
+task separately from a dependent successor: `backlog_reconciled_not_eligible` for a
+combined slice can be normal dependency ordering, not a blocker. When the user
+splits offline implementation from live qualification, keep the implementation
+task's ID, ownership and evidence, reuse or add the live follow-up with the original
+operational acceptance, and keep the parent goal unverified; a split is not a waiver.
 
 Finish with changed document paths, decisions captured, open questions and the
 actual readiness result when a consumer check was applicable and executed; otherwise
@@ -126,7 +164,13 @@ state that readiness was not assessed. Questions-only/read-only mode finishes wi
 a conversational summary, no Maintain pass and no writes. Docs-only scope leaves
 ready tasks undispatched. Existing
 implementation authority permits the established autowork handoff without another
-permission question; preserve review and owned-commit requirements. No new
+permission question; preserve review and owned-commit requirements. If an answer
+authorizes a bounded continuation after another worker exits, record scope and wait
+condition, then recheck that worker's terminal state: execute the continuation now
+if satisfied, otherwise keep one pending request for the existing coordinator. A
+scope expansion to a shared runtime or upgrade stays conditional on a supported
+candidate proving the required operations; planning acceptance permits neither the
+upgrade nor job resumption, and preserves existing pauses and allocations. No new
 scheduler, parallel backlog, automatic deployment or invented acceptance.
 
 Example: for "interview me about onboarding", inspect the current setup docs and

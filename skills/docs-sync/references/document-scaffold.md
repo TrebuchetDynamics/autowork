@@ -34,6 +34,14 @@ Architecture and spec may share a file with explicit Current and Planned section
 Link source paths/symbols for structural claims and task IDs for proposed changes.
 Do not rewrite accepted requirements merely to match incomplete implementation.
 
+Recorded branch evidence, an accepted design or an approved isolated artifact proves
+neither canonical inclusion nor deployment. Check current source, manifests, schema
+inputs, generators and drift-check entrypoints; add a missing inclusion prerequisite
+to the existing owning task rather than fabricating files or a parallel plan. Keep
+Proposed designs Proposed with a source-inspection notice. Withdraw unsupported
+recovery recipes in place with a dated notice linking the correction or gap. Derive
+guard commands from current manifests, not guessed script names.
+
 ## Work queue and coordination
 
 | Role | Content |

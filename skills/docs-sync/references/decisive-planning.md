@@ -61,6 +61,34 @@ Read imported skills as supporting instructions; do not rewrite their SKILL.md
 files or self-improvement metadata during a docs-sync pass. Such instruction edits
 require a separate authorized task.
 
+## Compact an existing queue
+
+1. Derive the pending-ID set from the canonical ledger; read every full body,
+   accepted plan, section and live owner. Classify active, unclaimed, held and
+   withdrawn entries. Pin exact dirty baselines and keep original bodies privately
+   for comparison; never regenerate bodies from ledger summaries.
+2. Keep one bounded remaining outcome per existing body: action, acceptance, exact
+   checks, stop/next step, with Goal, Sources, Dependencies and Ownership intact.
+   For active work the action is observing the original continuation; for held work,
+   the precise missing input. Link accepted depth instead of duplicating it; similar
+   titles do not prove redundant acceptance. Prefer reconciling a reviewed candidate
+   over a new coding task, and keep convenience wrappers from becoming prerequisites.
+   Do not split work to raise counts or infer cancellation from a speed request.
+3. Do not edit a live worker's pinned launch context while admission may depend on
+   it; return the proposal to its coordinator. Check the launcher's admission contract
+   before promising fewer runs: shared artifacts do not remove dependencies.
+4. Keep general workflow links in an Execution field or navigation, not `Sources:`:
+   another accepted source there can make automatic plan resolution ambiguous even
+   when an explicitly named `backlog-check` passes. Verify both after link changes.
+5. Move full previous bodies verbatim to the archive before replacing live prose.
+   Verify one body per pending ID, unchanged headings/anchors, section/order, ledger
+   objects, acceptance and command literals. Missing environment or owner inputs
+   remain gates.
+6. Integrate under the shared lock after baseline comparison; run fmt, validate,
+   render, links and the consumer check per governing plan once on the final batch,
+   then check the next unclaimed slice. Count words from final live bodies only,
+   excluding headings, coverage and fences, as context reduction, not speedup.
+
 ## Repair clerical handoff failures before stopping
 
 Inspect every consumer `backlog-check` reason and its own exit code. Distinguish

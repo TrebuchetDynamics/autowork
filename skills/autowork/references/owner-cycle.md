@@ -80,6 +80,43 @@ leave the original live task in Needs decision when its actual external input is
 and record the actual source/test seam inspected for independent work. Never claim
 live acceptance from local fixtures or a selected contract.
 
+Track a hold by its exact failed operation and bound inputs. A newly reached gate
+is not another occurrence of the previous one, and an unrelated shared repair does
+not clear an unchanged hold. Before retrying an old failure, compare its slice with
+current integrated source: it may already be delivered by another verified path.
+Keep the old failure unproved; never relabel it passed. Treat a nonzero or
+interrupted mutation as possibly partially applied: read back each target before a
+retry. Never probe with a knowingly invalid live mutation to learn whether it fails.
+
+An enabled recurring job for the same repository can be mid-closeout without any
+claim visible here. Before canonical integration, inspect its latest run through
+the scheduler's supported run/status interface and reconcile it as a possible
+writer. Do not pause or resume a schedule merely to obtain a slot.
+
+## Cross-profile recovery and deployment
+
+When a fix spans shared Toolset source and consumer profiles:
+
+1. Read each original consumer's current workspace, saved continuation, remaining
+   allocation and latest run. Maintenance reports are leads, not readback. Classify
+   active work, pending review, approved integration, failure, pause and dependency
+   hold separately.
+2. Before deployment, inspect the supported updater's source selection, target
+   selection and treatment of existing copies. Creating missing skills does not
+   prove refresh of existing ones; remote/fleet defaults do not satisfy a
+   pinned-source, named-profile scope. Without a supported route, record the exact
+   capability gap; no manual overwrite presented as recovery.
+3. Verify source integration, installed bytes and the consumer's next transition
+   separately. Callers of shared-source absolute paths can see a source change even
+   when installed copies are unchanged. Offline regressions do not prove consumer execution.
+4. Under execution authority, resume the original task with its pins, evidence and
+   consumed budget. A planning-only pass records steps and acceptance through Docs
+   Sync instead of deploying or resuming jobs. Keep private runtime IDs and profile
+   paths out of Git.
+5. Report shared fix, deployment, consumer transition and product acceptance as
+   separate outcomes; a reviewed shared fix is not recovery of the original task.
+   Preserve paused consumers and held dependents.
+
 ## Composed ready preflight
 
 Historical native composition and its original evidence are retained in

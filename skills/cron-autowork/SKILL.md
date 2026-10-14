@@ -33,8 +33,12 @@ profile and repository. If multiple matches or the target is unclear, ask one
 focused question. Do not guess another profile, cwd or chat destination.
 
 Extract cadence, task filter versus broad repository development, delivery target,
-and existing commit/push/live-operation limits. Reuse existing settings unless the
-user changes them. For a new job with no cadence, propose every 30 minutes and
+and existing commit/push/live-operation limits from the full saved job, not a list
+preview. Compare them with the latest explicit owner decisions and replace superseded
+clauses rather than appending a contradictory grant. Bind selection to current
+TODO/ledger order; a hardcoded milestone must not override a later reprioritization,
+and a reorder alone changes neither cadence nor active work. Reuse existing settings
+unless the user changes them. For a new job with no cadence, propose every 30 minutes and
 ask for the cadence before creating it. For wall-clock schedules, establish the
 timezone and report the scheduler's normalized next occurrence. Never confuse a
 one-shot delay with a recurring interval. A bare invocation helps complete missing
@@ -75,9 +79,16 @@ report the setup limitation instead of silently falling back to local output.
 ## Prepare one compact instruction
 
 Read [Autowork scheduled policy](../autowork/references/scheduled-policy.md).
-Reuse its behavior rather than copying the entire skill into a cron prompt. Attach
+When installed separately, load it through the installed Autowork skill (for
+example `skill_view`) and resolve helper paths from that skill's directory, not an
+assumed sibling. Reuse its behavior rather than copying the entire skill into a
+cron prompt. Attach
 the verified Autowork skill using the installed scheduler's supported skill field;
 also name it in the prompt. Set the real absolute workdir, not merely a prose path.
+Keep the prompt operational, not a status diary: beyond the saved scope filter, no
+current task IDs, card/run pointers, failure counts or remaining turns as policy. Those belong in
+continuation receipts resolved each occurrence; stale snapshots can reopen delivered
+work or override newer authority. Keep reusable recovery behavior in skills.
 Use this template with resolved values; never save placeholders:
 
 ```text
@@ -136,6 +147,9 @@ a match immediately before creation and disclose that concurrent setup requests
 cannot be guaranteed unique; do not invent a supported idempotency flag.
 Update a single matching job instead of creating a duplicate. Preserve its ID,
 history, unrelated settings and paused/enabled state; resume only when requested.
+Prepare one final payload, compare it with captured scope, limits and settings,
+write once and read back the exact saved prompt. Avoid cosmetic rewrites of a
+healthy job; configuration churn completes no repository work.
 Do not run the job immediately unless requested. After a timeout or unclear write
 result, list/read back before retrying creation. If outcome remains uncertain,
 report it instead of creating another job. Required fields unsupported by this

@@ -5,6 +5,13 @@ These operating priorities apply to every Autowork run.
 3. **Fix your own environment.** Install missing non-privileged tooling in user
    space/project; record installs, PATH changes and fixtures. Only sudo/system
    packages, credentials and paid resources become owner questions (priority 9).
+   For offline fixtures, populate an omitted, already-qualified dependency from
+   genuine local source at a verified revision (source-only; copied binaries can
+   defeat negative tests), and unset only a demonstrated contaminating selector for
+   the test process (`env -u NAME …`). Never fabricate markers, spoof identity
+   variables or relax containment. A wrapper refusal before execution is an unrun
+   gate, not a product failure. Prefer existing supported gates over new bespoke
+   prerequisites.
 4. **Workers iterate.** In the current session, a failing check means fix → rerun until
    acceptance, or until 5 consecutive attempts produce no new evidence. Never block
    on a first failure, and never write "one execution/one rerun/no source edit"
@@ -52,7 +59,11 @@ These operating priorities apply to every Autowork run.
    when required. Bind approval to the actual candidate and checks. Review-requested
    changes run in the current authorized session, followed by affected checks and
    fresh review for changed bytes. No Kanban reassignment or card becoming done is
-   required. Review approval alone does not prove all task acceptance.
+   required. Review approval alone does not prove all task acceptance. When explicit
+   authority requires review before commit, state that ordering consistently in the
+   contract and keep the post-approval commit step; review entry never requires the
+   deferred commit. Scoped commit helpers may leave HEAD unchanged: use the commit
+   they return, not worktree HEAD, for review and integration.
 9. **Ask, don't block independent work.** Decide routine engineering choices
    (approach, internal design, tests, ordering within focus) under existing authority
    without a questionnaire. Ask only for material missing USER_INPUT, SUDO or
@@ -80,6 +91,10 @@ permits further eligible batches only within its accepted bounds.
 Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
 Reconcile consumed history first; unknown usage is not zero, and
 exhaustion requires explicit additional allocation, never a new occurrence or session.
+Count usage in the controller's actual unit (API calls, tool calls and tool-calling
+iterations differ) and record spent and unspent amounts; early stop does not consume
+the whole grant. Reopening a closed remainder reuses its actual remaining amount
+and scope, not a fresh default.
 
 ## Archive verified completion
 

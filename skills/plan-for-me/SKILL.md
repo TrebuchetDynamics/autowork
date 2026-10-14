@@ -3,7 +3,7 @@ name: plan-for-me
 description: "Use when the user wants you to investigate a repository, choose a supported approach, and save a plan and actionable tasks without an interview."
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   hermes:
     tags: [research, requirements, documentation, planning]
 ---
@@ -25,9 +25,24 @@ Other research protocols remain in the [Autoresearch skill](../autoresearch/SKIL
 Inspect project instructions, relevant implementation and tests, existing docs,
 accepted decisions, TODO.md/goals.json and active task ownership. Reuse existing
 answers and task IDs. Compare practical approaches and record the evidence for
-the selected one. Resolve routine engineering choices autonomously; ask only for
-consequential missing product intent or authority, and continue independent work.
-Never invent acceptance or reopen settled choices without new evidence.
+the selected one. Own the complex part: resolve design, decomposition, interfaces
+and acceptance within delegated scope, and choose reversible engineering details and
+supported recovery routes yourself rather than leaving them as worker permission
+questions. Hand off the smallest clear outcome, decided approach, exact checks and
+stop conditions. Record a delegated planner decision as such, never as a user
+selection. Ask only for genuinely missing product intent or external authority,
+and continue independent work. Delegation does not erase approval controls or
+explicit scope, spending, ownership and stop limits. Never invent acceptance or
+reopen settled choices without new evidence.
+
+For blocker or unblock requests, read the current task body, latest runs and
+receipts first and report the observed phase; an older summary may predate review
+or recovery. Separate missing intent or excluded repair scope from transport, gate
+or accounting failures, comparing the fix with the original worker contract.
+Reuse the original task, candidate and cumulative accounting; never infer budget
+from displayed turn counts. Save findings in the existing task body; a conditional
+recovery recommendation is not an executable next task, and consumer eligibility
+does not prove a free lease or authorize redispatch.
 
 For a concrete method gap or explicit protocol request, select one technique through
 [engineering](../engineering/SKILL.md); consult

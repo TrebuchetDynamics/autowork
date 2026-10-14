@@ -1,7 +1,7 @@
 ---
 name: git-pull-merge
 description: "Use when pulling or merging Git changes safely."
-version: 1.0.0
+version: 1.1.0
 license: MIT
 metadata:
   hermes:
@@ -59,7 +59,13 @@ leaves its partial private destination retained, never deletes owner files.
 1. **Inspect once.**
    - Read repo instructions, then run `git status --short --branch`, `git fetch --prune origin`,
      `git rev-list --left-right --count HEAD...<source>` and `git log --oneline HEAD..<source>`.
-   - Already up to date (`0` incoming) → report NO-OP and stop.
+   - Already up to date (`0` incoming) → NO-OP for an inbound sync. For an explicit remote merge,
+     inspect outbound commits and continue authorized delivery: zero incoming does not prove the
+     remote contains the requested result.
+   - Resolve local-only ancestry before choosing the landing branch. A scoped topic carrying
+     unrelated ancestors transplants only its attributable commits onto fresh upstream; when the
+     owner explicitly includes local main history, merge that history into the upstream-based
+     candidate instead of selecting only the latest topic.
 2. **Check the worktree before touching it (fleet worktrees are shared).**
    - List the files the source changes: `git diff --name-only HEAD...<source>`.
    - Intersect them with the dirty set from `git status --porcelain`. No overlap → git can update
@@ -99,7 +105,9 @@ leaves its partial private destination retained, never deletes owner files.
        `scripts/behind-only-realign.sh` implements this whole procedure with the guards and the
        before/after hash proof built in; run it instead of hand-typing the sequence, and keep its
        report tail non-fatal (a comparison command exits non-zero by design and must not abort the
-       script before it prints the proof).
+       script before it prints the proof). If you modify it, run `tests/test_behind_only_realign.py`
+       or a disposable real-Git fixture first, keeping its ancestry/index guards, safety ref and
+       zero-changed-byte proof.
    - Never bare `git stash`/`stash pop` in a shared worktree. If a stash is unavoidable, use
      `git stash push -m "<unique-tag>" -- <paths>`, record its SHA, and restore with `stash apply <sha>`.
 3. **Integrate.**
@@ -129,8 +137,16 @@ leaves its partial private destination retained, never deletes owner files.
 6. **Close the loop.**
    - Report the before and after HEAD, what came in (commit count and highlights), conflicts and how
      they were resolved, and the checks run.
-   - Push only if the user asked ("pull and push", "merge and push") or the accepted checkpoint
-     said so; use `git-commit-push` rules (no force; PR when the branch is protected).
+   - Push only if the user asked ("pull and push", "merge and push", "merge into origin/main") or
+     the accepted checkpoint said so; use `git-commit-push` rules (no force; PR when the branch is
+     protected). A remote-main merge request is complete only on verified remote inclusion.
+   - A dirty or staged shared checkout constrains local synchronization, not authorized remote
+     delivery: land an isolated candidate without touching shared files/index, read back the PR's
+     merged state, fetch the destination and prove candidate (and requested history) ancestry.
+     Local pointer realignment is a separate step.
+   - After a surgical integration fix, reuse component-bound passing checks only when
+     `git rev-parse <tested>:<component>` equals `git rev-parse <final>:<component>` and
+     dependency/tool inputs are identical; rerun the changed component's gates, not every suite.
    - A merged agent card branch is reported by card ID, so the board and goals.json can be reconciled.
 
 ## Red lines
