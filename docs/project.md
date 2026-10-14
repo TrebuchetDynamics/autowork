@@ -213,6 +213,26 @@ provenance and upstream protocol bytes are preserved. TOOLSET-012's composed
 preflight and overall acceptance remain pending. These checks do not establish
 live worker or scheduled execution.
 
+### Task context simplification
+
+The user requested simpler tasks for faster Autowork execution. The five pending
+IDs stay unchanged: TOOLSET-003, TOOLSET-011, TOOLSET-012, TOOLSET-013 and TOOLSET-008.
+[TODO.md](../TODO.md) now states the remaining action, acceptance, checks, exclusions,
+dependencies, ownership and next step directly; this is an editorial simplification,
+not reduced product scope or weaker completion criteria.
+
+Research baseline: those five task bodies contained 1,524 words; the compact bodies
+contain 1,082 words (29.0% fewer), measured by whitespace-separated words excluding
+headings, navigation and generated coverage. This measures task-context reduction,
+not a proven runtime speedup. No model/native timing experiment was run here.
+
+Decision: remove repeated rationale/lifecycle prose, point to existing accepted
+contracts for detail, and avoid redoing TOOLSET-012's reviewed engineering-guidance
+slice. Keep user ordering, ledger state/dependencies and completed history intact.
+TOOLSET-012's original worker/contract remains assigned; TOOLSET-013 still waits for
+it. Live environments and the TOOLSET-008 policy question remain real gates, not
+simplification targets. Planning changes no code, dispatch, schedule or budget.
+
 ### Acceptance and measurement
 
 TOOLSET-012 owns the offline implementation: one public coordinator entry point

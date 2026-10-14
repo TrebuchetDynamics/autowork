@@ -11,192 +11,95 @@ owners. Ledger eligibility is not worker admission or live qualification.
 TOOLSET-002's reviewed first-index initialization is integrated locally;
 TOOLSET-003 remains the isolated live-recovery qualification. TOOLSET-001 and
 TOOLSET-002 completion evidence is in [the archive](TODO.archive.md).
-Fast-startup plan: TOOLSET-012 implements the composed default preflight; TOOLSET-013
-qualifies measured startup after it. Existing queue priorities and ownership are
-preserved. TOOLSET-008 remains an owner policy question.
+Fast-startup plan: TOOLSET-012's original worker is active; TOOLSET-013 verifies
+startup after it. TOOLSET-003/011 need their named environments; TOOLSET-008 needs
+the existing policy answer. Preserve this queue's order and ownership.
+
+Execution notes: Each task states the remaining action, acceptance, checks and stop
+conditions. Read linked detail only for a concrete gap; do not re-plan settled work
+or redo verified partial delivery. Reuse check evidence only while source, tests,
+dependencies and environment match. Required tests, review, ownership protections,
+integrity checks and live qualification remain mandatory. Editing this queue does
+not change a running worker's assigned contract or authorize dispatch/scheduling.
 
 ## Next
 
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
 - [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
-- Status: open
-- Goal: RECOVERY — Prove that recovery reaches execution instead of stopping at a planning receipt.
-- Sources: [accepted scope](docs/project.md#accepted-requirements), [recovery contract](skills/autowork/references/backlog-planning.md),
-  [planning tests](skills/autowork/scripts/test_backlog_plan.py), [verification limits](docs/testing.md).
-- Evidence: Offline tests cover preparation routing and receipt reuse; they do not
-  prove a model calls Plan For Me, updates tasks and starts the supported worker.
-- Scope: Use a disposable repository and an isolated configured test environment.
-  Reproduce missing prerequisites and candidate drift; capture the actual planning,
-  TODO update and handoff sequence, or record the specific failing transition.
-- Exclusions: No production messaging, deployment, real user repositories, forbidden
-  prerequisite commits, concurrent-writer takeover or manufactured completion.
-- Acceptance: The workflow invokes planning without another user command, preserves
-  no-commit exclusions, retries an eligible in-scope slice, and reports execution
-  separately from planning. Unchanged inputs reuse the saved recovery decision.
-- Checks: Offline regression suite plus an explicitly recorded model/native smoke
-  run; exact task, checks, commit or none, and remaining blocker in its receipt.
+- Status: open; live qualification not run.
+- Goal: RECOVERY — Prove recovery reaches execution, not just a planning receipt.
+- Sources: [accepted scope](docs/project.md#accepted-requirements), [recovery contract](skills/autowork/references/backlog-planning.md), [existing regressions](skills/autowork/scripts/test_backlog_plan.py), [verification limits](docs/testing.md).
+- Scope: In a disposable repository, reproduce missing prerequisites and candidate drift. Observe automatic planning, TODO update and retry of the eligible original slice; repeat unchanged inputs once to verify decision reuse.
+- Acceptance: No extra user planner command; original exclusions and ownership survive; execution is reported separately from planning.
+- Checks: Run focused recovery regressions and one bounded isolated model/native smoke journey covering both cases. Retain exact source, task, commands/results, commit or none, and remaining blocker. Offline tests alone cannot close this task.
+- Exclusions: No production messages/deployment, real user repositories, forbidden prerequisite commits, writer takeover or fabricated completion.
 - Dependencies: None.
-- Environment prerequisite: Requires a configured isolated model/native environment.
-- Ownership: Next authorized Autowork coordinator; no active claim recorded here.
+- Environment prerequisite: Configured isolated model/native environment.
+- Ownership: Next authorized coordinator; no active claim recorded.
+- Next action: Establish that environment, then execute the bounded recovery journey.
 
 - [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
-  - Status: open; target environment unavailable in this checkout.
-  - Goal: CRON-REPORTING — Verify setup confirmation and scheduled delivery separately.
-  - Sources: [reporting contract](skills/cron-autowork/SKILL.md),
-    [verification boundaries](docs/workflows.md), TOOLSET-010 archived source delivery.
-  - Evidence: The user-referenced profile/job was absent from this machine's local
-    profile job stores during source diagnosis; no live confirmation or cron run was verified.
-  - Scope: On the original configured host, install the updated bundle through its
-    supported path, identify the existing job and inspect execution/output/delivery evidence.
-    Reconcile the requested Telegram route and capture setup and next scheduled-report receipts.
-  - Exclusions: No duplicate job, implicit resume, immediate development run, budget reset,
-    push, deployment, USB formatting or changes to real PCs. Preserve existing task scope.
-  - Acceptance: A setup request from another surface confirms once in the intended
-    profile's Telegram chat/topic; a scheduled occurrence has separately attributable
-    execution and Telegram delivery evidence. Failed/queued delivery is reported honestly.
-  - Checks: Installed skill/source readback, saved job route/state comparison and actual
-    message receipt; scheduled result/readback. These live checks have not been executed.
-  - Dependencies: TOOLSET-010.
-  - Environment prerequisite: Access to the original host with the affected profile/job
-    and its authorized Telegram transport; do not substitute another profile.
-  - Ownership: Next coordinator with access to that environment; no active claim.
+- Status: open; original target environment unavailable.
+- Goal: CRON-REPORTING — Verify setup confirmation and scheduled Telegram delivery separately.
+- Sources: [reporting contract](skills/cron-autowork/SKILL.md), [verification boundaries](docs/workflows.md), archived TOOLSET-010 source delivery.
+- Scope: On the original host/profile, install the updated bundle through its supported path. Identify the existing job, preserve its state/scope, verify its requested Telegram route, then inspect the next scheduled result.
+- Acceptance: A setup request from another surface confirms once in the intended chat/topic; a scheduled occurrence has attributable execution and Telegram message receipts. Report failed, queued or unverified delivery honestly.
+- Checks: Read back installed source and saved route/state; verify the actual setup message and scheduled result/delivery. These live checks are not run.
+- Exclusions: No duplicate job, implicit resume, immediate development run, budget reset, push/deployment, USB formatting or real-PC changes. Never substitute another profile.
+- Dependencies: TOOLSET-010.
+- Environment prerequisite: Original host, affected profile/job and authorized Telegram transport.
+- Ownership: Coordinator with that access; no active claim.
+- Next action: Obtain the original environment; do not create a replacement job.
 
 ### TOOLSET-012 — Start ready tasks through one composed default preflight
 
 - [ ] TOOLSET-012 — Start ready tasks through one composed default preflight
-- Status: open; engineering-guidance portion implemented and reviewed; composed preflight pending.
-- Goal: STARTUP — Reach useful implementation sooner with less preparation and chat.
-- Sources: [accepted startup plan](docs/project.md#faster-ready-task-startup),
-  [coordinator](skills/autowork/scripts/owner_cycle.py),
-  [real admission](skills/autowork/scripts/start_goal.py),
-  [source capture](skills/autowork/scripts/source_freshness.py),
-  [existing ready-path policy](skills/autowork/SKILL.md),
-  [engineering adapter](skills/engineering/SKILL.md),
-  [protocol router](skills/engineering/scripts/route.py).
-- Evidence: Current manual handoff requires source capture, contract composition,
-  separate validate-only and real dispatch; real dispatch validates the same
-  contract and freshness. At capture (`f617808`) the engineering router required a
-  phase and prepended its bundle. Exact single-protocol selection and optional
-  routing are now implemented, with independent review approval and passing vendor,
-  workflow-cycle and offline-suite checks. The composed preflight remains pending;
-  this partial delivery does not complete TOOLSET-012.
-- Scope: Compose a supported default ready-task entry point; reconcile prior work,
-  select/read the accepted body, capture bounded authoritative sources, generate
-  the complete contract, invoke real native admission and persist bookkeeping
-  within one normal-path command. Update affected native/portable guidance and tests.
-  Generate a short task-specific worker execution contract; load the routing
-  reference only for a concrete need. Extend engineering selection to exactly one
-  named protocol without an automatic bundle; retain phase bundles as optional
-  compatible requests. Keep workflow authority in Autowork and engineering
-  protocols as technique-specific guidance. Routine status is compact; details
-  go to private receipts. Reuse the engineering router, adapter, shared cycle and
-  existing routing/workflow tests; preserve the upstream protocol snapshot.
-- Exclusions: No speculative source-cache acceptance, skipped ownership/freshness
-  checks, weaker review, arbitrary worker takeover, new scheduler/parallelism,
-  upstream Hermes edits, model/provider changes, push/deployment or live job edits.
-- Acceptance: A complete, dependency-ready fixture follows one composed preflight
-  and one real handoff without invoking separate validate-only, planning, docs audit,
-  a full suite or optional skill loader before dispatch. Required contract fields,
-  source/authority/immutable-base/ownership guards remain. Stale, held, incomplete,
-  interrupted and already-owned cases preserve refusal, original card and budgets;
-  failures are visible and fallback performs only the missing preparation.
-  Worker contracts preserve objective/scope, acceptance/checks, original admission,
-  ownership/source identity, budgets and stop conditions without unconditional
-  injection of routing references. Single-protocol selection returns exactly the
-  requested protocol; unknown names or changed vendored protocols/references fail
-  integrity checks. Optional phase calls remain compatible. Engineering guidance
-  cannot dispatch, commit, widen permission or replace Autowork's mandatory tests,
-  independent review, active-writer protections or integrity checks.
-- Checks: Add focused composition and command-count regressions to existing owner
-  cycle/goal-handoff/response-tail suites; run from skills/autowork/scripts
-  `python3 -m unittest test_owner_cycle test_goal_handoff test_source_freshness test_response_tail`;
-  at repository root extend and run
-  `python3 -m unittest discover -s tests -p test_engineering_vendor.py` and
-  `python3 -m unittest discover -s tests -p test_workflow_cycle.py` for exact-one
-  selection, optional phase compatibility, tamper refusal and authority boundaries;
-  run `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`
-  on the finished candidate, plus affected links and `git diff --check`.
-  Composed-preflight checks remain planned. Engineering routing/workflow checks
-  and the offline suite passed for the partial delivery above.
+- Status: in_progress; original worker active; assigned contract unchanged.
+- Goal: STARTUP — Reach useful implementation sooner with less preparation/chat.
+- Sources: [accepted full contract](docs/project.md#faster-ready-task-startup), [coordinator](skills/autowork/scripts/owner_cycle.py), [admission](skills/autowork/scripts/start_goal.py), [source capture](skills/autowork/scripts/source_freshness.py), [Autowork](skills/autowork/SKILL.md), [engineering adapter](skills/engineering/SKILL.md), [router](skills/engineering/scripts/route.py).
+- Evidence: Engineering guidance/single-protocol selection is already implemented and independently reviewed; do not redo it. Composed preflight remains the unmet outcome.
+- Scope: Finish one default ready-task command: reconcile → select/read body → capture sources → generate short complete contract → real native handoff → bookkeeping. Keep routing references optional, phase bundles optional, and workflow authority in Autowork. Use existing helpers/tests; preserve upstream protocol bytes.
+- Acceptance: No separate validate-only call, planner, docs audit, full suite or optional skill load before normal dispatch. Preserve required contract fields, immutable base, canonical authority, freshness, ownership, budgets and original startup guard. Stale, held, incomplete, interrupted and already-owned cases fail/recover safely without replacement cards. Compact reports expose failures. Exact-one protocol selection and phase compatibility retain unknown-name/tamper refusal, mandatory tests and independent review; protocols never expand authority.
+- Checks: From skills/autowork/scripts run `python3 -m unittest test_owner_cycle test_goal_handoff test_source_freshness test_response_tail`. At root run `python3 -m unittest discover -s tests -p test_engineering_vendor.py`, `python3 -m unittest discover -s tests -p test_workflow_cycle.py`, and `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`; check affected links and `git diff --check`. Reuse partial-delivery checks only when their inputs still match.
+- Exclusions: No speculative cache acceptance, weaker guards/review, writer takeover, new scheduler/parallelism, upstream Agent/model/provider changes, push/deployment or live job edits.
 - Dependencies: None.
-- Ownership: Next authorized Autowork coordinator; no new claim or dispatch.
-- Decision: Default fast ready path, not opt-in; preserve real admission validation
-  while removing the duplicate coordinator invocation. Native timing belongs to TOOLSET-013.
+- Ownership: Existing native worker and original coordinator; preserve its card, pinned inputs, scope and consumed budget. This wording change grants no new authority.
+- Next action: Let the original worker finish remaining preflight implementation and same-card review; do not redispatch. Native timing remains TOOLSET-013.
 
 ### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
 
 - [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
-- Status: open; accepted successor, not started.
-- Goal: STARTUP — Verify lower preparation overhead without weakening startup safety.
-- Sources: [accepted startup plan](docs/project.md#faster-ready-task-startup),
-  TOOLSET-012, [native admission](skills/autowork/scripts/start_goal.py),
-  [reporting boundaries](skills/autowork/references/dispatch-and-reporting.md).
-- Scope: Compare manual and composed startup using the same bounded disposable
-  accepted task, source/model/environment and cold/warm conditions. Record request,
-  handoff, queue, admission and first useful action times, tool/model round trips,
-  routine user-visible messages and refusal outcomes in private source-bound receipts.
-  Keep native runtime observations distinct from offline composition tests.
-- Exclusions: No production repositories/messaging, invented benchmark values,
-  arbitrary absolute latency promise, minimum-version claim, budget reset,
-  protection bypass, push/deployment or live schedule/profile changes.
-- Acceptance: Offline comparison demonstrates fewer coordinator preparation round
-  trips and routine messages. Actual isolated native observations identify the
-  first scoped test/reproduction or implementation action after the original guard,
-  not a heartbeat or queued card; comparable timings show no startup regression.
-  Stale/ownership/dependency refusals remain. Report contradictory timings and
-  unqualified environments honestly; a fixture-only pass cannot close live qualification.
-- Checks: Execute TOOLSET-012's composed entry point and its preserved manual
-  baseline in disposable consumers; retain exact argv, source/test/dependency hashes,
-  interpreter/model, enforced limits, timestamps and native run/admission history.
-  The measurement harness/commands must be bound to the implementation at execution;
-  they do not exist as executed evidence in this planning pass.
+- Status: open; waits for TOOLSET-012.
+- Goal: STARTUP — Verify lower preparation overhead without weaker startup safety.
+- Sources: [accepted measurement contract](docs/project.md#faster-ready-task-startup), TOOLSET-012, [admission](skills/autowork/scripts/start_goal.py), [reporting boundaries](skills/autowork/references/dispatch-and-reporting.md).
+- Scope: Compare manual and composed startup on the same disposable accepted task, source, model/environment and cold/warm conditions. Separate request-to-handoff, queue wait, admission and first useful test/reproduction/edit after the guard. Count coordinator tool/model round trips and routine messages.
+- Acceptance: Fewer preparation round trips/messages with no observed comparable startup regression; preserve stale/ownership/dependency refusals. A heartbeat/queued card is not useful action; offline fixtures cannot close native qualification. Investigate contradictory timing.
+- Checks: Run both routes with source-bound implementation commands; retain exact argv, dependency/interpreter/model identity, enforced limits, timestamps, native admission/run evidence and failures. Harness/baseline runs are not yet executed.
+- Exclusions: No production repositories/messages, fabricated measurements, absolute latency/minimum-version promises, budget reset, protection bypass, push/deployment or live schedule/profile edits.
 - Dependencies: TOOLSET-012.
-- Environment prerequisite: Configured isolated native/model environment with
-  externally enforced spending and descendant limits; unknown usage is not zero.
-- Ownership: Next authorized coordinator with that environment; no active claim.
+- Environment prerequisite: Isolated configured native/model environment with external spending/descendant limits; unknown usage is not zero.
+- Ownership: Authorized coordinator with that environment; no active claim.
+- Next action: After TOOLSET-012, execute the paired bounded comparison and report actual results.
 
 ## Needs decision
 
 ### TOOLSET-008 — Make Autowork continuation authority consistent
 
 - [ ] TOOLSET-008 — Make Autowork continuation authority consistent
-- Status: needs decision; planned, not implemented.
-- Priority: High.
-- Goal: CONTINUATION — Closing an authorized batch cannot silently authorize starting another.
-- Sources: [engineering cycle](skills/shared/ENGINEERING-CYCLE.md),
-  [Autowork contract](skills/autowork/SKILL.md),
-  [scheduled policy](skills/autowork/references/scheduled-policy.md),
-  [portable Autowork](adapters/skills/autowork/SKILL.md),
-  [workflow checks](tests/test_workflow_cycle.py).
-- Evidence: The cycle's introduction limits default Autowork to one slice, while
-  its final step tells an active invocation/job to hand off the next batch. The
-  user's planning request adopts the correction: separate closeout from new work
-  and require standing continuation authority for another batch.
-- Scope: Align the cycle's introduction and final step with the accepted stopping
-  rule; reconcile directly affected native/portable and scheduled instructions.
-  Keep closeout of the current batch distinct from admission of a new batch.
-- Decision pending: Does recurrence itself authorize multiple batches within an
-  occurrence, or must the saved job prompt explicitly grant that authority?
-  Recommendation: one batch unless the prompt explicitly authorizes continuation.
-  No answer or acceptance of that recommendation has been recorded.
-- Exclusions: No live job edits, scheduler changes, worker dispatch, new runtime
-  gates, permission expansion, budget reset, or implementation during planning.
-- Acceptance: A default interactive invocation stops after its one batch; required
-  closeout can finish without admitting another. An explicit one-task restriction
-  always wins. An explicit multi-batch/whole-spec mandate can continue within its
-  existing scope, budget, ownership and review gates. Scheduled runs follow the
-  user's resolved policy consistently across the affected instructions.
-- Checks: Review a scenario table covering default interactive, explicit one-task,
-  explicit continuation, recurring default, and exhausted budget/pending review.
-  Extend the relevant contract checks where useful; run
-  `python3 -m unittest discover -s tests -p test_workflow_cycle.py`, check affected
-  links and `git diff --check`. New scenarios and checks have not yet been executed;
-  offline policy checks do not prove agent behavior.
+- Status: needs decision; preserve the existing policy gate.
+- Priority: High; ordering unchanged.
+- Goal: CONTINUATION — Closeout must not silently authorize another batch.
+- Sources: [cycle](skills/shared/ENGINEERING-CYCLE.md), [Autowork](skills/autowork/SKILL.md), [scheduled policy](skills/autowork/references/scheduled-policy.md), [portable contract](adapters/skills/autowork/SKILL.md), [regressions](tests/test_workflow_cycle.py).
+- Scope: After the policy answer, align interactive/native/portable/scheduled wording and existing tests. Keep current-batch closeout separate from new-batch admission.
+- Decision pending: Does recurrence itself allow multiple batches, or must the saved prompt explicitly permit continuation? Recommendation: one batch unless explicitly permitted. No universal policy answer is recorded.
+- Acceptance: Default interactive stops after one batch; explicit one-task wins; explicit multi-batch/whole-spec stays within scope/budget/ownership/review. Scheduled behavior follows the resolved answer. Pending review or exhausted budget cannot create new authority.
+- Checks: Cover default interactive, explicit one-task, explicit continuation, recurring default, and exhausted budget/pending review. Run `python3 -m unittest discover -s tests -p test_workflow_cycle.py`, affected links and `git diff --check`. New policy checks are not executed; fixtures do not prove agent behavior.
+- Exclusions: No live job/scheduler edits, dispatch, new runtime gates, permission expansion, budget reset or implementation in this planning pass.
 - Dependencies: None.
-- Decision gate: Resolve the scheduled-run question; no dependency on TOOLSET-009.
-- Ownership: User for the open policy choice; next authorized implementer for the fix.
-- Next action: Record the answer and finalize this task's scheduled acceptance case.
+- Coordination: Independent of TOOLSET-009.
+- Ownership: User for the unresolved policy; next authorized implementer afterward.
+- Next action: Record that answer before implementing the scheduled case.
 
 ## Completed local changes
 

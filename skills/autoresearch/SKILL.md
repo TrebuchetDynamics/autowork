@@ -76,7 +76,7 @@ agents actually ran. Record unavailable tools/checks honestly.
 
 ## First: bind research to the repository
 
-Load [engineering cycle](../shared/ENGINEERING-CYCLE.md). Inspect project rules,
+Inspect project rules,
 accepted intent, current docs, canonical goals/TODO, active task ownership, dirty
 changes and existing research receipts. Resolve canonical authority with docs-sync;
 an experiment worktree's copied backlog is not canonical. Reuse the current task
@@ -84,8 +84,11 @@ and requirement IDs. Research logs, TSV and upstream `handoff.json` remain evide
 not a second backlog or proof of completion. Use a unique per-run output directory
 under the existing research owner (avoid minute-timestamp collisions).
 
-The selected Autoresearch protocol is normally sufficient. Consult an Addy
-protocol only for a concrete method gap or explicit request; do not add a phase
+The selected Autoresearch protocol is normally sufficient. For a concrete method
+gap or explicit protocol request, select one technique through
+[engineering](../engineering/SKILL.md); consult
+[engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
+Do not add a phase
 sequence or separate review/versioning workflow to an analysis-only command.
 Record the decision/artifact/check each selected skill changed. `plan-with-me`
 or `grill-me` handles genuinely missing owner intent; routine reversible choices

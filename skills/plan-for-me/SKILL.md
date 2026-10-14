@@ -29,8 +29,10 @@ the selected one. Resolve routine engineering choices autonomously; ask only for
 consequential missing product intent or authority, and continue independent work.
 Never invent acceptance or reopen settled choices without new evidence.
 
-Use the [engineering cycle](../shared/ENGINEERING-CYCLE.md) to select additional
-methods only for a concrete gap. Routine planning needs no experiment loop.
+For a concrete method gap or explicit protocol request, select one technique through
+[engineering](../engineering/SKILL.md); consult
+[the engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
+Routine planning needs no experiment loop.
 When called by Autowork, investigate its named uncertainty and return to the
 current task. For backlog recovery, follow the
 [bounded planning fallback](../autowork/references/backlog-planning.md).

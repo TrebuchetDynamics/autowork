@@ -826,8 +826,10 @@ to invoke it. The generated worker definition of done requires its receipt.
 
 ## Execute and verify (goal worker)
 
-Read [the engineering cycle](../../shared/ENGINEERING-CYCLE.md) for installed skill
-identity, targeted addyosmani guidance and transparent missing-support fallbacks.
+Execute the selected contract directly. For a concrete method gap or explicit
+protocol request, select one verified technique through
+[engineering](../../engineering/SKILL.md); consult
+[the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
 Whole-spec workers default to worker ledger mode; proposal mode requires an explicit
 split-role request with a named integration owner. Workers
 update scoped docs and return evidence; the owner waits for required review acceptance

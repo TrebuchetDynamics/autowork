@@ -8,8 +8,10 @@ disable-model-invocation: true
 
 Use `/autowork` with an explicit whole-spec request and accepted spec/tracker pointers. This mode, not the default one-slice picker, owns the dependency frontier through completion within the user's bounded mandate. Do not create a second scheduler, goals ledger or review chain: keep one executor and existing live ownership. A default invocation or accepted design cannot select this mode.
 
-Follow [the engineering cycle](../../shared/ENGINEERING-CYCLE.md) for verified
-addyosmani skill routing, canonical backlog ownership and review-gated continuation.
+Execute accepted tasks under the ownership and review rules below. For a concrete
+method gap or explicit protocol request, select one verified technique through
+[engineering](../../engineering/SKILL.md); consult
+[the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
 Use default `worker` ledger mode; this agent handles canonical integration and
 closure after checks and required review. Proposal/external-owner roles are opt-in.
 

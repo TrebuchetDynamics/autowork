@@ -55,10 +55,11 @@ State a brief understanding of the outcome and the most consequential missing
 information. Ask the first useful question in the first response after this
 bounded inspection; do not return only an interview plan.
 
-Use the [engineering cycle](../shared/ENGINEERING-CYCLE.md) to resolve verified
-installed Addy skills. Consult `interview-me` only if its questioning method adds value;
-use planning or documentation protocols only for a concrete gap when recording
-answers. Questions-only interviews need no planning, graph or documentation pass.
+For a concrete method gap or explicit protocol request, select one technique through
+[engineering](../engineering/SKILL.md); consult
+[the engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
+`interview-me`, planning and documentation protocols are optional techniques for
+those gaps. Questions-only interviews need no planning, graph or documentation pass.
 Do not load a sequence of methods merely because answers mention an API or UI. If a supporting skill is missing, continue this workflow and
 report the fallback briefly at handoff, without delaying the first question; do not install or modify imported skills during the interview.
 

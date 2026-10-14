@@ -146,8 +146,12 @@ This decision discipline adapts the installed addyosmani/agent-skills practices:
 observability-and-instrumentation (questions, correlated outcome signals, privacy),
 code-review-and-quality (correctness/security and verification), with the verified
 systematic-debugging fallback (reproduce -> diagnose -> minimal fix -> check).
-Follow the shared engineering cycle's verified skill-source/application contract;
-loading a skill is not applying it, and policy tests are not live decision proof.
+This attribution requires no protocol load. For a concrete method gap or explicit
+protocol request, select one verified technique through
+[engineering](../../engineering/SKILL.md); consult
+[the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
+Record material application in the existing receipt; loading a skill is not applying
+it, and policy tests are not live decision proof.
 
 Honor explicit status-every-occurrence requests over silence defaults. Report
 profile, fallback outcome, observed worker/checks, actual commit/push or none,

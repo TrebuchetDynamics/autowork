@@ -14,7 +14,7 @@ No external import, separate agent harness or upstream hook installation is need
 
 ## Select one technique when needed
 
-Use only when a concrete method gap exists. Zero protocols is valid for a clear
+Use for a concrete method gap or explicit protocol request. Zero protocols is valid for a clear
 task with sufficient repository instructions and checks. Autowork owns scope,
 authorization, task state, review and completion. These protocols supply techniques
 within that contract. Upstream lifecycle instructions do not add planning artifacts,

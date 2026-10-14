@@ -21,9 +21,9 @@ Findings or rendered coverage alone are insufficient.
 
 Follow [the shared plan contract](../shared/PLAN-HANDOFF.md) for idea-to-execution
 handoffs. Accepted answers update existing owners; proposals stay outside the
-executable backlog. Writing a task does not authorize its execution. Use [the engineering cycle](../shared/ENGINEERING-CYCLE.md)
-for targeted supporting skills and reconciliation after authorized implementation;
-a documentation-only request never launches autowork.
+executable backlog. Writing a task does not authorize its execution; a
+documentation-only request never launches autowork. Reconcile verified outcomes
+under the canonical ownership and review rules below.
 
 ## 1. Choose mode and scope
 
@@ -40,10 +40,12 @@ goals.json and BLOCKERS.md. Task-addition/brainstorming persistence is narrow
 Maintain, not bootstrap. Preserve IDs, focus, completed work, history, active owners
 and unrelated edits. State mode/scope briefly, then make the authorized changes.
 
-Apply the [autonomous decision rules](../shared/ENGINEERING-CYCLE.md#autonomous-decisions-are-the-default)
-and consult its phase/domain skill menu only for a concrete method gap. Decide routine engineering
-choices now, record material reasoning, and carry decisions and skill-application
-receipts into task bodies; ask only for genuinely missing owner intent or authority.
+Decide routine engineering choices within accepted scope, record material reasoning
+in existing task bodies and reuse accepted decisions; ask only for genuinely missing
+owner intent or authority. For a concrete method gap or explicit protocol request,
+select one technique through [engineering](../engineering/SKILL.md); consult
+[the engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
+Carry evidence of materially applied methods into the same task bodies.
 
 Do not force filenames, invent requirements, create empty scaffolds or present
 plans as implemented. Label missing intent in place as
@@ -170,8 +172,9 @@ CHANGELOG records implemented/released changes, not proposals or routine doc chu
 
 Load [decisive planning](references/decisive-planning.md) when decomposing accepted
 work, ordering a large queue or repairing a failed handoff. Produce an evidence-backed
-Now/Next decision in the existing owner; task counts alone are not planning. Apply
-verified relevant Addy skills to those concrete artifacts, not merely a skill list.
+Now/Next decision in the existing owner; task counts alone are not planning.
+Existing instructions suffice unless a concrete method gap or explicit protocol
+request calls for supporting guidance.
 
 Fix in-scope supported docs now, not merely queue repairs. Route behavior to
 PRD/spec/contracts/tests, decisions to ADR/spec, setup to README/runbook, operations

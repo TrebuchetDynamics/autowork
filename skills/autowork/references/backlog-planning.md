@@ -65,8 +65,10 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
 2. Bind Goal to the accepted milestone or an evidence-backed maintenance outcome
    under broad repository authorization; Scope to its unfinished code,
    callers and tests; Verify to concrete acceptance checks. Inspect existing
-   tasks, worktrees and receipts before proposing work. Use available planning,
-   diagnosis and documentation skills through the shared engineering-cycle matrix.
+   tasks, worktrees and receipts before proposing work. Existing planning instructions
+   normally suffice. For a concrete method gap or explicit protocol request, select
+   one technique through [engineering](../../engineering/SKILL.md); consult
+   [the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
    Resolve ordinary implementation choices autonomously. Missing product intent
    remains one precise question, not invented acceptance.
 3. Produce at most three useful slices. Each has an existing or proposed task ID,

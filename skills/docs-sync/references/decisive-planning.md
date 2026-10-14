@@ -23,8 +23,10 @@ update the matching TODO body, then rerun `next`; a narrative ranking alone does
 not change selector state. Preserve live leases and dependencies. Changes to owner
 priorities, focus or product scope need authority not supplied by routine ordering.
 
-Apply verified skills from [the engineering cycle](../../shared/ENGINEERING-CYCLE.md)
-to concrete outputs, loading only those needed:
+Produce the outputs below using existing repository instructions. The named
+protocols are optional techniques for an unresolved method gap or explicit request;
+select through [engineering](../../engineering/SKILL.md) and consult
+[the engineering cycle](../../shared/ENGINEERING-CYCLE.md) only if routing is unclear:
 
 - `planning-and-task-breakdown`: Now/Next IDs, dependency order, likely files,
   observable acceptance, exact verification and a review checkpoint in existing
@@ -38,12 +40,13 @@ to concrete outputs, loading only those needed:
   Apply its bounded review procedure when available; label degraded self-checks
   honestly, never as fresh-context review. Mechanical metadata repair needs no cycle.
 
-Also apply the engineering cycle's domain matrix: API work needs caller/error and
+Preserve relevant domain acceptance: API work needs caller/error and
 compatibility criteria; migrations need transition/rollback; services need operational
 signals; CI changes need actual pipeline checks; UI needs interaction/accessibility
-criteria. Use `constraint-driven-development` to preserve the existing quality bar
-and `context-engineering` to make the worker contract self-contained. Consult those skills only if current task instructions leave a concrete method gap;
-the domain criteria above do not mandate loading another skill. Keep outputs in
+criteria. Preserve the existing quality bar and make the worker contract
+self-contained. `constraint-driven-development` and `context-engineering` are
+available for gaps in those techniques; domain criteria do not mandate loading
+another skill. Keep outputs in
 existing task bodies.
 
 Decide routine choices with evidence now; do not create `Needs decision` tasks for
@@ -51,7 +54,7 @@ internal naming, test selection, document organization or equivalent implementat
 options. Distinguish a missing product requirement from an engineering choice
 inside an accepted requirement. Carry the chosen option, tradeoff and check forward.
 
-Record selected skill → changed owner/decision/check. A catalog listing is not
+Record materially applied skill → changed owner/decision/check. A catalog listing is not
 application evidence. Missing capabilities never authorize installation, scanner
 bypass, fabricated review or expanded scope.
 Read imported skills as supporting instructions; do not rewrite their SKILL.md

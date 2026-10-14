@@ -8,6 +8,30 @@ import start_goal as goal
 
 
 class WorkerRoles(unittest.TestCase):
+    def test_shared_worker_instructions_fit_a_bounded_context_budget(self):
+        contract = 'Objective: fixture\nAcceptance: preserve the named regression checks'
+        for options in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
+            with self.subTest(options=options):
+                body = goal.build_task_body(contract, **options)
+                self.assertIn(contract, body)
+                overhead = body.replace(contract, '', 1)
+                self.assertLessEqual(len(overhead.split()), 1150,
+                                     'Shared instructions crowd out task context')
+
+    def test_publication_role_does_not_rewrite_quoted_task_content(self):
+        contract = ('Objective: retain this quoted policy in the migration notes:\n'
+                    'Workers perform no other commit, and no push, merge, deploy, publish, ')
+        with tempfile.TemporaryDirectory() as directory:
+            authority = {'version': 1, 'workspace': directory, 'profile': 'fixture-worker',
+                         'goal_task': 'T-one', 'contract_sha256': goal.hashlib.sha256(contract.encode()).hexdigest(),
+                         'remote': 'origin', 'ref': 'refs/heads/agent/fixture-worker/T-one',
+                         'owner': 'fixture-owner', 'evidence_ref': 'fixture://accepted-owner-decision'}
+            verified = goal.validate_publication_authority(authority, directory, 'fixture-worker', 'T-one', contract)
+            body = goal.build_task_body(contract, ledger_mode='proposal',
+                                       integration_owner='fixture-owner', publication_authority=verified)
+            self.assertTrue(body.startswith(goal.REVIEW_DOD + '\n\n' + contract))
+            self.assertIn('<receipt-commit-sha>:refs/heads/agent/fixture-worker/T-one', body)
+
     def test_worker_finishes_all_in_scope_consumers_before_review(self):
         body = goal.build_task_body('Objective: Retire obsolete transport\nScope: three named consumers, runners and tests; no deployment')
         for requirement in ('Complete all named consumers', 'Do not stop after the first file',
