@@ -504,3 +504,9 @@ These source changes do not complete original-card recovery. The installed runti
 still lacks the required prerequisite migration and cumulative-cap continuation
 operations/accounting. Selected-profile installation remains subject to fresh
 ownership and native security admission; pauses and original budgets remain intact.
+
+Final selected-profile preflight against clean `51d99d6` deferred three targets for
+nonterminal/pinned native ownership and one for a customized Autoresearch skill.
+The customization adds candidate-selection guidance and was preserved. No profile
+installation, scanner override, schedule change or original-worker restart occurred.
+Installation and product recovery therefore remain open in TOOLSET-017/018/019.

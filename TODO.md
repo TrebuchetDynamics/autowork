@@ -81,7 +81,8 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Ownership: Shared maintainer for implementation; authorized coordinator for selected-profile deployment.
 - Exclusions: No implicit remote publication, dependency overrides, native scanner bypass, global configuration changes or active-runtime rebinding.
-- Next action: Recheck selected-profile preflight after local bookkeeping closeout, then install eligible targets through the supported native scanner. Preserve original pinned/nonterminal consumers; the first preflight deferred three selected profiles for native ownership and one for dirty shared-source bookkeeping. No profile files or jobs were changed.
+- Deployment result: Fresh native preflight against clean 51d99d6 deferred three selected profiles for their nonterminal/pinned native ownership. The fourth has a customized `skills/autoresearch/SKILL.md` with additional candidate-selection guidance; its bytes were preserved. No profile installation, scanner override or job change occurred.
+- Next action: Reconcile original ownership through supported controls and preserve/reconcile the customized skill before scoped installation. Reuse the reviewed updater; do not repeat its completed implementation or label preflight as deployment.
 
 - [ ] TOOLSET-011 — Qualify the updated reporting workflow on the affected profile
 - Status: open; original target environment unavailable.
