@@ -101,8 +101,10 @@ def register(ctx):
     messages = []
     if install(SKILLS_DIR, [('current', get_hermes_home())], skills=native_skills, report=messages.append):
         raise RuntimeError('Bundled native skill provisioning failed:\n' + '\n'.join(messages))
-    from .runtime_defaults import apply_runtime_defaults
+    from .runtime_defaults import apply_runtime_defaults, provision_cron_scripts
     apply_runtime_defaults(ctx)
+    for name in provision_cron_scripts(SKILLS_DIR, get_hermes_home()):
+        logger.warning("Not replacing user-owned cron script scripts/%s.", name)
     existing = get_plugin_commands()
     for name, command, path in skills:
         # Canonical folders own the current skill identities.

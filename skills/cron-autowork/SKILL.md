@@ -86,6 +86,20 @@ supported schema, unless the user separately requested that override. Read back
 both routes. If the installed scheduler cannot represent the required route,
 report the setup limitation instead of silently falling back to local output.
 
+## Report start and finish in Telegram
+
+A job with a Telegram route announces both ends of every run. Hermes delivers the
+final report itself; the start message comes from the bundle's pre-run script,
+which the plugin copies into each profile's `scripts/` folder. Attach it with the
+scheduler's script field (`hermes -p PROFILE cron edit JOB_ID --script
+autowork-start-notice.py`) on create and on update of a matched job that lacks it.
+Keep an existing different script and report that the start notice is not attached.
+The script reads only that profile's job list and bot token, sends one message to
+the job's `deliver` chat/topic before the agent starts and never fails the run.
+Its stdout reaches the prompt; the agent must not send a second start message.
+Read back the saved `script` field. A missing script file means the profile's
+plugin has not loaded the current bundle; finalize that profile, do not copy it by hand.
+
 ## Prepare one compact instruction
 
 Read [Autowork scheduled policy](../autowork/references/scheduled-policy.md).

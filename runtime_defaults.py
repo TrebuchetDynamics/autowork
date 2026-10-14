@@ -1,4 +1,5 @@
 """Apply bundle policy and command visibility in Hermes' bound profile."""
+from pathlib import Path
 
 
 def expected_settings(raw):
@@ -71,3 +72,38 @@ def verify_runtime_defaults():
     from hermes_cli.config import read_raw_config
     raw = read_raw_config() or {}
     return [] if _opted_out(raw) else settings_drift(raw, expected_settings(raw))
+
+
+CRON_SCRIPTS = ('cron-autowork/scripts/autowork-start-notice.py',)
+MANAGED = b'# hermes-toolset: '
+
+
+def provision_cron_scripts(skills_dir, home):
+    """Copy bundle cron scripts into HERMES_HOME/scripts, where Hermes requires them.
+
+    Hermes refuses cron scripts that resolve outside the profile's scripts folder,
+    so a symlink to the bundle cannot work. A same-named file without the bundle
+    marker belongs to the user and is left alone. Returns the names it could not
+    provision.
+    """
+    target_dir = Path(home) / 'scripts'
+    if target_dir.is_symlink():
+        return [Path(rel).name for rel in CRON_SCRIPTS]
+    skipped = []
+    for rel in CRON_SCRIPTS:
+        source = Path(skills_dir) / rel
+        target = target_dir / source.name
+        if not source.is_file():
+            continue
+        data = source.read_bytes()
+        if target.is_symlink() or (target.exists() and MANAGED not in target.read_bytes()[:200]):
+            skipped.append(source.name)
+            continue
+        if target.exists() and target.read_bytes() == data:
+            continue
+        target_dir.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f'.{target.name}.tmp')
+        temporary.write_bytes(data)
+        temporary.chmod(0o755)
+        temporary.replace(target)
+    return skipped

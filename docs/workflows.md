@@ -249,3 +249,12 @@ remain authoritative. After saving, setup confirms in that Telegram destination;
 recurring jobs report every occurrence by default, including unchanged blockers.
 Setup confirmation, job execution and scheduled message delivery have separate
 receipts. Scheduling alone does not trigger an immediate development run.
+
+Each run of a Telegram-routed Autowork job sends a start message before the agent
+begins, and the run's report when it finishes. The start message comes from the
+bundle's `autowork-start-notice.py` pre-run script, which the plugin copies into
+every profile's `scripts/` folder (Hermes runs cron scripts only from there) and
+`/cron_autowork` attaches to the job. A same-named script without the bundle
+marker is treated as the user's and never replaced. The script never fails a run;
+a missing token, ambiguous job match or unreachable Bot API is reported in the
+run's own prompt instead.
