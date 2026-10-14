@@ -299,6 +299,17 @@ def _execute(root, paths, command, timeout, *, execution_env=None):
 def reusable(receipt, root, command, *, candidate=None, paths=None, external_paths=None, qualification_scope=None):
     if not command or Path(command[0]).name in ('sh', 'bash', 'zsh', 'dash', 'ksh', 'fish'):
         return False
+    # Saved JSON is untrusted; reject malformed evidence before reading nested fields.
+    if not isinstance(receipt, dict):
+        return False
+    for key in ('before', 'after', 'external_before', 'external_after'):
+        snapshot = receipt.get(key)
+        if snapshot is None and key.startswith('external_'):
+            continue
+        if (not isinstance(snapshot, dict) or not isinstance(snapshot.get('files'), list)
+                or any(not isinstance(row, dict) or set(row) != {'path', 'sha256'}
+                       or not isinstance(row['path'], str) for row in snapshot['files'])):
+            return False
     if receipt.get('qualification_scope') != validate_scope(qualification_scope):
         return False
     if paths is not None and list(paths) != [row['path'] for row in receipt['before']['files']]:
