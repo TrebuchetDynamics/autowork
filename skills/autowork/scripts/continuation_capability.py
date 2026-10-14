@@ -4,7 +4,7 @@
 No installed Hermes CLI binding is provided: unblock/edit cannot enforce a
 cumulative remainder. A trusted host integration (not card metadata or a JSON
 file) must supply capabilities(), read_accounting(identity), and
-continue_atomic(request). See references/continuation-capability.md.
+continue_atomic(request). See references/owner-cycle.md#original-card-continuation-capability.
 """
 import copy
 import hashlib
