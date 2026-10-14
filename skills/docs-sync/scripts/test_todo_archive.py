@@ -129,6 +129,68 @@ class TodoArchiveTests(unittest.TestCase):
         self.assertNotIn(coverage, self.archive.read_text())
         self.assertIn(self.done, self.archive.read_text())
 
+    def test_matching_heading_and_checkbox_move_as_one_complete_unit(self):
+        for newline in ('\n', '\r\n'):
+            with self.subTest(newline=newline):
+                done = ('### T1 — Completed slice\n\n' + self.done +
+                        '#### Evidence\n\n```md\n- [ ] EXAMPLE\n```\n\n').replace('\n', newline).encode()
+                self.todo.write_bytes(b'# TODO\n\n## Done\n' + done + b'## Now\n' + self.open.encode())
+                ledger = self.ledger.read_bytes()
+                result = json.loads(self.cli('archive').stdout)
+                self.assertEqual(result['moved'], ['T1'])
+                self.assertEqual(result['retained'], [])
+                self.assertNotIn(b'### T1', self.todo.read_bytes())
+                self.assertEqual(self.archive.read_bytes().count(done), 1)
+                self.assertIn(self.open.encode(), self.todo.read_bytes())
+                self.assertEqual(self.ledger.read_bytes(), ledger)
+                self.cli('render')
+                stable = (self.todo.read_bytes(), self.archive.read_bytes())
+                self.cli('archive')
+                self.cli('render')
+                self.assertEqual((self.todo.read_bytes(), self.archive.read_bytes()), stable)
+                self.archive.unlink()
+
+    def test_heading_checkbox_conflicts_remain_whole_and_live(self):
+        for heading, body in (
+                ('T1', self.done.replace('[x]', '[ ]')),
+                ('T1', self.done + '- Status: open\n'),
+                ('T1', self.done + '#### Acceptance\n\n  - [ ] pending\n'),
+                ('T2', self.done),
+                ('UNKNOWN', self.done)):
+            with self.subTest(heading=heading, body=body):
+                text = '# TODO\n\n## Done\n### ' + heading + ' — Task\n\n' + body
+                self.todo.write_text(text)
+                result = json.loads(self.cli('archive').stdout)
+                self.assertEqual(self.todo.read_text(), text)
+                self.assertFalse(self.archive.exists())
+                self.assertEqual(result['moved'], [])
+
+    def test_matching_unit_retry_and_verified_legacy_archive(self):
+        self.ledger.unlink()
+        done = '### T1 — Completed slice\n\n' + self.done
+        self.todo.write_text('# TODO\n\n## Done\n' + done + '## Now\n' + self.open)
+        # Simulate an archive-first interruption with the entire unit present.
+        self.archive.write_text('# History\n\n' + done)
+        history = self.archive.read_bytes()
+        self.cli('archive', '--verified-tasks', 'T1')
+        self.assertEqual(self.archive.read_bytes(), history)
+        self.assertNotIn('### T1', self.todo.read_text())
+        stable = self.todo.read_bytes()
+        self.cli('archive', '--verified-tasks', 'T1')
+        self.assertEqual(self.todo.read_bytes(), stable)
+        self.assertEqual(self.archive.read_bytes(), history)
+
+    def test_multiple_checkboxes_and_intervening_metadata_are_ambiguous(self):
+        for body in (self.done + self.done,
+                     '- Status: open\n\n' + self.done,
+                     '<!-- owner note stays live -->\n\n' + self.done):
+            with self.subTest(body=body):
+                text = '# TODO\n\n## Done\n### T1 — Completed slice\n\n' + body
+                self.todo.write_text(text)
+                self.cli('archive')
+                self.assertEqual(self.todo.read_text(), text)
+                self.assertFalse(self.archive.exists())
+
     def test_heading_task_preserves_nested_sections_and_fenced_receipts(self):
         done = ('### T1 — Completed slice\n\n- Status: done (offline scope).\n'
                 '- Checks: fixture passed.\n\n#### Evidence\n\n```md\n'
