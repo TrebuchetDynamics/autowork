@@ -600,12 +600,15 @@ def task_blocks(text):
     prose = task_prose(text)
     marks = list(re.finditer(TASK_MARK, prose, re.M))
     own = {block_start(prose, mark) for mark in marks}
-    sections, section = [], ''
+    sections, section, level = [], '', 2
     for m in re.finditer(r'^(#{2,6})[ \t]+(.+)$', prose, re.M):
         if len(m[1]) == 2:
-            section = m[2].strip()
+            section, level = m[2].strip(), 2
             sections.append((m.start(), section))
-        elif m.start() not in own:
+        elif m.start() not in own and len(m[1]) <= max(3, level):
+            # A sibling or parent group. A deeper heading (#### Evidence) is the
+            # preceding task's own subsection and moves with it.
+            level = len(m[1])
             sections.append((m.start(), f'{section} / {m[2].strip()}'))
     blocks = []
     for mark in marks:
@@ -622,7 +625,8 @@ def task_blocks(text):
         core = chunk.rstrip()
         block['core'], block['sep'] = core, chunk[len(core):]
         inner = task_prose(chunk).split('\n')[1:]
-        block['foreign_heading'] = any(re.match(r'#{1,6}[ \t]', line) for line in inner)
+        # Deeper subsections belong to the task; a group-level heading here is ambiguous.
+        block['foreign_heading'] = any(re.match(r'#{1,3}[ \t]', line) for line in inner)
     return blocks
 
 

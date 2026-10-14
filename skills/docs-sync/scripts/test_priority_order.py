@@ -281,6 +281,13 @@ class GroupedLayoutTests(Fixture):
         self.assertEqual(self.todo.read_text(), self.grouped([body('T1', 'a'), body('T3', 'c')], [body('T2', 'b')]))
         self.assertEqual(self.next_ids(), ['T1', 'T3', 'T2'])
 
+    def test_task_evidence_subsection_moves_with_its_task(self):
+        t3 = body('T3', 'c').rstrip('\n') + '\n\n#### Evidence\n\nT3 receipt.\n\n'
+        self.write(self.grouped([t3, body('T1', 'a')], [body('T2', 'b')]), self.tasks())
+        plan, _ = self.bootstrap()
+        self.assertEqual(plan['regions'][0]['after'], ['T1', 'T3'])
+        self.assertEqual(self.todo.read_text(), self.grouped([body('T1', 'a'), t3], [body('T2', 'b')]))
+
     def test_group_layout_that_would_change_the_first_pick_is_refused(self):
         self.write(self.grouped([body('T3', 'c')], [body('T1', 'a'), body('T2', 'b')]), self.tasks())
         before = (self.todo.read_bytes(), self.goals.read_bytes())
