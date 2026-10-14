@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.10.1
+version: 0.11.0
 license: MIT
 metadata:
   hermes:
@@ -303,11 +303,15 @@ questions/defaults. Proposals stay outside executable Now/Next. Accepted tasks b
 there even when this docs pass does not execute them; execution needs its own authority.
 Saving never launches autowork, claims cards, resumes cron or changes schedules.
 
-Priority reorders preserve bodies/leases and need supported selector controls;
-P labels alone do not affect `goals.py next <repo> --json`, which ranks focus, then
-section, then goal priority. Validate the complete reorder map before writing, stop
-a batch on the first rejected step, and confirm `next --json` returns the intended
-leading picks. Derive pick summaries from the selector, not hand-kept lists. Report actual eligible
+TODO.md order is the human priority. `goals.py next <repo> --json` ranks focus, then
+section, then the recorded `priority_order`, with goal priority only as a fallback;
+P labels alone change nothing. To reprioritize, move whole task blocks in TODO.md,
+then run `goals.py reorder <repo>`: it records the new order in goals.json only and
+refuses missing or duplicated bodies. Insert a new body where it should rank. An
+unrecorded ledger reports `UNMIGRATED`; migrate it once with
+`goals.py bootstrap-order <repo> --dry-run`, review every proposed move, then apply
+with `--expected-revision` from that report. Bootstrap never reruns; drift is fixed
+with `reorder`. Confirm `next --json` returns the intended leading picks. Derive pick summaries from the selector, not hand-kept lists. Report actual eligible
 picks, not claimed work. Needs decision/focus is not eligibility or live availability.
 "No eligible follow-ups" requires all goals met with executed evidence and `next`
 printing `none`; otherwise report the actual gap.

@@ -22,6 +22,13 @@ import time
 import uuid
 
 
+class PriorityDriftError(ValueError):
+    """Default selection would run a stale order; reconcile before selecting."""
+    def __init__(self, status):
+        self.status = status
+        super().__init__(status['action'])
+
+
 def goals_module():
     path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py'
     spec = importlib.util.spec_from_file_location('todo_goals', path)
@@ -250,11 +257,18 @@ def select(repo, requested, plan):
         if problems:
             raise ValueError('invalid goals.json: ' + '; '.join(problems))
         ledger = goals.normalize(ledger)
-        ordered = [task['id'] for task, _ in goals.eligible(ledger)]
+        # Named tasks and an owner's active claim are explicit; only default selection
+        # would execute a stale priority, so only it stops on drift.
+        try:
+            picks, priority = goals.queue(ledger, todo.read_text(), allow_drift=bool(wanted))
+        except goals.PriorityDrift as drift:
+            raise PriorityDriftError(drift.status) from None
+        ordered = [task['id'] for task, _ in picks]
         indexed = {task['id']: task for task in ledger['tasks']}
     else:
         ordered = sorted(bodies, key=lambda key: {'Now': 0, 'Next': 1}.get(bodies[key][0][2], 2))
         indexed = {}
+        priority = {'state': 'todo_only'}
     reasons = []
     for tid in (wanted or ordered):
         if tid not in bodies:
@@ -307,7 +321,7 @@ def select(repo, requested, plan):
                                         for heading in re.findall(r'^#+\s+(.+)', source.read_text(), re.M)}:
                 raise ValueError('named plan heading does not exist')
         return {'id': tid, 'title': body.splitlines()[0].strip(' —:-'),
-                'section': section, 'contract': body.strip(), 'fields': fields}
+                'section': section, 'contract': body.strip(), 'fields': fields, 'priority': priority}
     raise ValueError('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')
 
 
@@ -428,7 +442,8 @@ def execute(args):
         task = select(repo, requested, args.plan)
         if selected_inputs != {path: digest(local_path(repo, path)) for path in selection_paths}:
             raise ValueError('repository task inputs changed during selection; reread current files')
-        result = {'outcome': 'READY', 'task': task, 'completed_tasks': [], 'workspace': str(repo)}
+        result = {'outcome': 'READY', 'task': task, 'completed_tasks': [], 'workspace': str(repo),
+                  'priority': task.pop('priority')}
         if not args.apply:
             return result
         if not args.run and not owner:
@@ -480,6 +495,8 @@ def main(argv=None):
         result = execute(args)
     except BlockingIOError:
         result = {'outcome': 'BUSY', 'reason': 'Repository or helper publication lock is held by a live operation.'}
+    except PriorityDriftError as exc:
+        result = dict(exc.status, outcome='PRIORITY_DRIFT', reason=str(exc))
     except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
         result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
     print(json.dumps(result, indent=2))

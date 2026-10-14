@@ -62,7 +62,7 @@ def backlog_readiness(root, gaps):
         if problems:
             gaps.append('backlog validation failed')
             return {'state': 'invalid', 'errors': [safe(p) for p in problems]}
-        picks = goals.eligible(goals.normalize(data))
+        picks, priority = goals.queue(goals.normalize(data), goals.todo_text(root), allow_drift=True)
         tasks = []
         todo = goals.checked_bytes(root / 'TODO.md')
         bodies = goals.task_bodies(todo.decode('utf-8')) if todo else {}
@@ -89,6 +89,7 @@ def backlog_readiness(root, gaps):
                 any(t['state'] == 'ready_for_autowork' for t in tasks) else
                 'ledger_eligible_only' if picks else 'no_ledger_eligible_task',
                 'primary_milestone': data.get('primary_milestone'),
+                'priority_state': priority['state'],
                 'eligible_task_ids': [safe(t['id']) for t, _ in picks], 'tasks': tasks,
                 'canonical_readiness': canonical, 'live_ownership': 'unknown',
                 'boundary': 'local consumer qualification only; ownership, admission, candidate and dispatch not verified'}

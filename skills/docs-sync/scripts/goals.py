@@ -8,7 +8,11 @@ Agents change goals.json only through these commands, never by hand-editing JSON
                                                 initialize from accepted intent and full task bodies; never overwrite
   goals.py validate <repo>                       structural + evidence-rule check (exit 1 on errors)
   goals.py fmt <repo>                            canonical byte-stable rewrite (applies the "met" rule)
-  goals.py next <repo> [--json]                  next eligible open task (dependencies satisfied)
+  goals.py next <repo> [--json]                  next eligible open task (dependencies satisfied);
+                                                exit 3 with a PRIORITY_DRIFT report when TODO.md order changed
+  goals.py reorder <repo>                        record TODO.md task order as the human priority (goals.json only)
+  goals.py bootstrap-order <repo> [--dry-run]    one-time move of legacy priority into TODO.md order;
+                                                apply requires --expected-revision from the dry run
   goals.py focus <repo> <GOAL>                   set the primary milestone without changing priorities
   goals.py focus <repo> --json                   read primary milestone without writing
   goals.py focus <repo> --clear                  remove focus and restore legacy selection order
@@ -70,6 +74,7 @@ RESULTS = ('pass', 'fail')
 # tie-break: unverified/partial (prove or finish what exists) before unmet (new work).
 STATUS_RANK = {'unverified': 0, 'partial': 1, 'unmet': 2, 'met': 3}
 SECTION_RANK = {'Now': 0, 'Next': 1}
+PRIORITY_SCHEMA = 1
 BEGIN, END = '<!-- goals:coverage:begin -->', '<!-- goals:coverage:end -->'
 TRANSACTION: ContextVar[tuple[Path, str] | None] = ContextVar('goals_transaction', default=None)
 UNSPECIFIED = object()
@@ -148,6 +153,13 @@ def shape_errors(data):
                         elif any(field in entry and not isinstance(entry[field], str)
                                  for field in ('kind', 'result', 'ref')):
                             problems.append(f'{location}.evidence[{number}] fields must be strings')
+    if 'priority_order' in data:
+        record = data['priority_order']
+        tasks = record.get('tasks') if isinstance(record, dict) else None
+        if (not isinstance(record, dict) or type(record.get('schema')) is not int
+                or record['schema'] != PRIORITY_SCHEMA or not isinstance(tasks, list)
+                or any(not isinstance(tid, str) or not tid for tid in tasks) or len(set(tasks)) != len(tasks)):
+            problems.append(f'priority_order must be {{"schema": {PRIORITY_SCHEMA}, "tasks": [unique task IDs]}}')
     return problems
 
 
@@ -271,6 +283,9 @@ def errors(data, *, allow_pending_evidence=False):
         for d in t.get('depends_on', []):
             if d not in tids:
                 errs.append(f'{tid}: depends_on unknown task {d}')
+    for tid in data.get('priority_order', {}).get('tasks', []):
+        if tid not in tids:
+            errs.append(f'priority_order names unknown task {tid}')
     for t in tasks:
         if t.get('status') == 'superseded':
             successors = t.get('superseded_by', [])
@@ -472,9 +487,16 @@ def redact(repo, data, replacements_file, archive_dir):
     print(f'ok redacted historical metadata; originals archived at {destination}')
 
 
+def todo_text(repo):
+    blob = checked_bytes(Path(repo) / 'TODO.md')
+    return blob.decode('utf-8') if blob is not None else ''
+
+
 def eligible(data):
     goals = {g['id']: g for g in data['goals']}
     tasks = {t['id']: t for t in data['tasks']}
+    record = data.get('priority_order')
+    order = {tid: index for index, tid in enumerate(record['tasks'])} if record else {}
     out = []
     for t in data['tasks']:
         g = goals.get(t['goal'])
@@ -485,9 +507,165 @@ def eligible(data):
         if any(goals.get(d, {}).get('status') != 'met' for d in g['depends_on']):
             continue
         focus_rank = 0 if g['id'] == data.get('primary_milestone') else 1
-        out.append((focus_rank, SECTION_RANK[t['section']], g['priority'], STATUS_RANK[g['status']], t['id'], t, g))
-    return [(t, g) for *_, t, g in sorted(out, key=lambda r: r[:5])]
+        # Recorded human order outranks goal priority; unrecorded tasks fall back to it.
+        human_rank = order.get(t['id'], len(order))
+        out.append((focus_rank, SECTION_RANK[t['section']], human_rank, g['priority'],
+                    STATUS_RANK[g['status']], t['id'], t, g))
+    return [(t, g) for *_, t, g in sorted(out, key=lambda r: r[:6])]
 
+
+UNMIGRATED_ACTION = ('UNMIGRATED: TODO.md order is not recorded; legacy goal-priority selection applies. '
+                     'Run `goals.py bootstrap-order <repo> --dry-run`, then apply with its revision.')
+DRIFT_ACTION = ('Reconcile the human order with `goals.py reorder <repo> --expected-revision <revision>`, '
+                'then select again. Do not execute the stale order.')
+
+
+def active_task_ids(data):
+    return {t['id'] for t in data['tasks'] if t.get('status') in ('open', 'in_progress')}
+
+
+def priority_status(data, text):
+    """Compare TODO.md's unfinished-task sequence with the last reconciled record."""
+    record = data.get('priority_order')
+    if not record:
+        return {'state': 'unmigrated', 'action': UNMIGRATED_ACTION}
+    active = active_task_ids(data)
+    bodies = task_bodies(text)
+    current = [tid for tid in bodies if tid in active]
+    recorded = [tid for tid in record['tasks'] if tid in active]
+    duplicates = sorted(tid for tid in current if len(bodies[tid]) > 1)
+    if current == recorded and not duplicates:
+        return {'state': 'synced'}
+    shared = [tid for tid in current if tid in recorded]
+    moved = sorted(tid for tid in shared if shared.index(tid) != [r for r in recorded if r in shared].index(tid))
+    return {'state': 'drift', 'todo_order': current, 'recorded_order': recorded, 'moved': moved,
+            'added': [tid for tid in current if tid not in recorded],
+            'missing': [tid for tid in recorded if tid not in current],
+            'duplicates': duplicates, 'action': DRIFT_ACTION}
+
+
+class PriorityDrift(ValueError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__('PRIORITY_DRIFT: TODO.md order differs from the recorded priority order '
+                         f"(todo {status['todo_order']}, recorded {status['recorded_order']}). " + status['action'])
+
+
+def queue(data, text, *, allow_drift=False):
+    """The shared selection guard: eligible work plus the priority state it was ranked under."""
+    status = priority_status(data, text)
+    if status['state'] == 'drift' and not allow_drift:
+        raise PriorityDrift(status)
+    return eligible(data), status
+
+
+def selection_notes(data, order):
+    """Explain why the human's first pick does not run first; never change the order."""
+    picks = eligible(data)
+    tasks = {t['id']: t for t in data['tasks']}
+    top = next((tid for tid in order if tasks.get(tid, {}).get('status') == 'open'), None)
+    if top is None or (picks and picks[0][0]['id'] == top):
+        return []
+    first = picks[0][0]['id'] if picks else None
+    focus = data.get('primary_milestone')
+    if top not in {t['id'] for t, _ in picks}:
+        reason = f"{top} is first in TODO.md but not eligible (section {tasks[top]['section']} or an unmet dependency)"
+    elif focus and tasks[first]['goal'] == focus and tasks[top]['goal'] != focus:
+        reason = f'{top} is first in TODO.md but focus {focus} selects {first} first'
+    else:
+        reason = f'{top} is first in TODO.md but section order selects {first} first'
+    return [reason + '; recorded order kept as written.']
+
+
+def reconcile_order(data, text):
+    """Return the record for TODO.md's current order, or raise on unsafe input."""
+    if not data.get('priority_order'):
+        sys.exit(json.dumps({'outcome': 'UNMIGRATED', 'action': UNMIGRATED_ACTION}))
+    status = priority_status(data, text)
+    if status['state'] == 'drift' and (status['missing'] or status['duplicates']):
+        sys.exit(json.dumps({'outcome': 'PRIORITY_CONFLICT', 'missing': status['missing'],
+                             'duplicates': status['duplicates'],
+                             'action': 'Restore exactly one TODO.md body per unfinished task before reconciling.'}))
+    active = active_task_ids(data)
+    order = [tid for tid in task_bodies(text) if tid in active]
+    return {'schema': PRIORITY_SCHEMA, 'tasks': order}, status
+
+
+def task_blocks(text):
+    """Movable task blocks: an ID heading or checkbox up to the next block in its section."""
+    prose = task_prose(text)
+    marks = list(re.finditer(TASK_MARK, prose, re.M))
+    sections = [(m.start(), m[1].strip()) for m in re.finditer(r'^##[ \t]+(.+)$', prose, re.M)]
+    blocks = []
+    for mark in marks:
+        region = max((s for s in sections if s[0] < mark.start()), default=(0, ''))
+        start = block_start(prose, mark, region[0])
+        blocks.append({'id': mark[2], 'mark': mark[1], 'start': start, 'region': region})
+    for index, block in enumerate(blocks):
+        following = blocks[index + 1] if index + 1 < len(blocks) else None
+        ends = [s for s, _ in sections if s > block['start']]
+        region_end = ends[0] if ends else len(text)
+        block['end'] = following['start'] if following and following['region'] == block['region'] \
+            and following['start'] < region_end else region_end
+        chunk = text[block['start']:block['end']]
+        core = chunk.rstrip()
+        block['core'], block['sep'] = core, chunk[len(core):]
+        inner = task_prose(chunk).split('\n')[1:]
+        block['foreign_heading'] = any(re.match(r'#{1,6}[ \t]', line) for line in inner)
+    return blocks
+
+
+def legacy_rank(data):
+    """Pre-migration ranking of every unfinished task, excluding focus and dependencies."""
+    goals = {g['id']: g for g in data['goals']}
+    def key(task):
+        g = goals[task['goal']]
+        return (SECTIONS.index(task['section']), g['priority'], STATUS_RANK[g['status']], task['id'])
+    return sorted((t for t in data['tasks'] if t['status'] in ('open', 'in_progress')), key=key)
+
+
+def bootstrap_plan(data, text):
+    tasks = {t['id']: t for t in data['tasks']}
+    active = active_task_ids(data)
+    bodies = task_bodies(text)
+    reasons = []
+    for tid in sorted(active):
+        found = bodies.get(tid, [])
+        if len(found) != 1:
+            reasons.append(f'{tid}: needs exactly one TODO.md body (found {len(found)})')
+        elif found[0][2] != tasks[tid]['section']:
+            reasons.append(f"{tid}: TODO.md section {found[0][2] or 'none'} differs from ledger section {tasks[tid]['section']}")
+    blocks = task_blocks(text)
+    rank = {t['id']: index for index, t in enumerate(legacy_rank(data))}
+    regions, output, cursor = [], [], 0
+    by_region = {}
+    for block in blocks:
+        by_region.setdefault(block['region'], []).append(block)
+    for region, members in sorted(by_region.items()):
+        slots = [b for b in members if b['id'] in active and b['mark'] == ' ']
+        target = sorted(slots, key=lambda b: rank[b['id']])
+        if [b['id'] for b in slots] != [b['id'] for b in target]:
+            regions.append({'heading': region[1], 'before': [b['id'] for b in slots],
+                            'after': [b['id'] for b in target]})
+            reasons.extend(f"{b['id']}: block contains another heading; reorder this section manually"
+                           for b in slots if b['foreign_heading'])
+        replacement = dict(zip((id(b) for b in slots), target))
+        for block in members:
+            moved = replacement.get(id(block), block)
+            output.append(text[cursor:block['start']] + moved['core'] + block['sep'])
+            cursor = block['end']
+    new_text = ''.join(output) + text[cursor:]
+    if sorted(b['core'] for b in blocks) != sorted(b['core'] for b in task_blocks(new_text)):
+        reasons.append('task block bytes would change; refusing reorder')
+    order = [tid for tid in task_bodies(new_text) if tid in active]
+    migrated = dict(data, priority_order={'schema': PRIORITY_SCHEMA, 'tasks': order})
+    before_picks = [t['id'] for t, _ in eligible(data)]
+    after_picks = [t['id'] for t, _ in eligible(migrated)]
+    if not reasons and before_picks != after_picks:
+        reasons.append(f'eligible order would change ({before_picks} -> {after_picks}); '
+                       'legacy order is not representable in TODO.md sections')
+    return {'reasons': reasons, 'regions': regions, 'text': new_text, 'record': migrated['priority_order'],
+            'next_before': before_picks[:1], 'next_after': after_picks[:1]}
 
 def render_text(repo, data, text=None):
     def cell(value):
@@ -669,13 +847,27 @@ def task_fields(body):
     return {label: values[0] for label, values in fields.items() if len(values) == 1}
 
 
+TASK_MARK = r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?([A-Za-z0-9][A-Za-z0-9_-]*)`?(?:\*\*)?(?=\s|:)'
+
+
+def block_start(prose, mark, floor=0):
+    """A task block begins at its own ID heading when one directly precedes the checkbox."""
+    before = prose[floor:mark.start()].rstrip()
+    last_line = before.rsplit('\n', 1)[-1]
+    if re.match(r'#{3,6}[ \t]', last_line) and re.search(
+            r'(?<![\w-])' + re.escape(mark[2]) + r'(?![\w-])', last_line):
+        return floor + len(before) - len(last_line)
+    return mark.start()
+
+
 def task_bodies(text):
     """Only checkbox entries outside generated coverage are task contracts."""
     prose = task_prose(text)
-    matches = list(re.finditer(r'^[-*] \[([ xX])\]\s+(?:\*\*)?`?([A-Za-z0-9][A-Za-z0-9_-]*)`?(?:\*\*)?(?=\s|:)', prose, re.M))
+    matches = list(re.finditer(TASK_MARK, prose, re.M))
     bodies = {}
     for i, match in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        # The next task's own ID heading belongs to that task, not this body's last field.
+        end = block_start(prose, matches[i + 1], match.end()) if i + 1 < len(matches) else len(text)
         section_end = re.search(r'^##\s', prose[match.end():end], re.M)
         if section_end:
             end = match.end() + section_end.start()
@@ -726,6 +918,7 @@ def backlog_receipt(a, *, candidate=None):
                 local_reference(repo, resolved + (separator + heading if separator else ''), blobs, reasons)
     picks = []
     data = None
+    priority = {'state': 'unknown'}
     if blobs['goals.json'] is not None:
         try:
             ledger_blob = blobs['goals.json']
@@ -738,7 +931,8 @@ def backlog_receipt(a, *, candidate=None):
             else:
                 data = normalize(data)
                 if not reasons:
-                    picks = [t['id'] for t, _ in eligible(data)]
+                    ranked, priority = queue(data, (blobs['TODO.md'] or b'').decode('utf-8'), allow_drift=True)
+                    picks = [t['id'] for t, _ in ranked]
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             reasons.append(f'invalid backlog: {exc}')
             data = None
@@ -835,6 +1029,8 @@ def backlog_receipt(a, *, candidate=None):
                       and tasks[tid]['goal'] in requested_goals]
         if open_picks and open_picks[0] not in ids:
             ineligible.append(f'current frontier {open_picks[0]} precedes requested plan')
+        if priority['state'] == 'drift':
+            ineligible.append('priority drift: TODO.md order differs from the recorded order; run goals.py reorder')
     if git_identity(repo) != identity:
         reasons.append('Git repository identity changed during check')
     binding = {'git_common_dir': str(identity[0]) if identity else None,
@@ -851,6 +1047,7 @@ def backlog_receipt(a, *, candidate=None):
                     and any(t['id'] in ids and t['goal'] != data['primary_milestone']
                             for t in data['tasks'])),
                'eligible_task_ids': picks, 'live_ownership': 'unknown',
+               'priority_state': priority['state'],
                'sha256': {name: hashlib.sha256(blob).hexdigest() if blob is not None else None
                           for name, blob in blobs.items()}, 'reasons': reasons + ineligible}
     if a.receipt:
@@ -985,6 +1182,9 @@ def main():
     ar = sub.add_parser('archive'); ar.add_argument('repo')
     ar.add_argument('--verified-tasks', default='', help='explicitly verified closed IDs in a TODO-only repository')
     n = sub.add_parser('next'); n.add_argument('repo'); n.add_argument('--json', action='store_true')
+    sub.add_parser('reorder', help='record TODO.md task order as the human priority (writes goals.json only)').add_argument('repo')
+    bo = sub.add_parser('bootstrap-order', help='one-time migration of legacy priority into TODO.md order')
+    bo.add_argument('repo'); bo.add_argument('--dry-run', action='store_true', help='report every proposed move; write nothing')
     f = sub.add_parser('focus'); f.add_argument('repo'); f.add_argument('goal', nargs='?')
     f.add_argument('--clear', action='store_true', help='remove primary milestone focus')
     f.add_argument('--json', action='store_true', help='read primary milestone without writing')
@@ -1064,15 +1264,70 @@ def execute(a):
         problems = errors(data, allow_pending_evidence=True)
         if problems:
             sys.exit('\n'.join(problems))
-        picks = eligible(data)
+        try:
+            picks, status = queue(data, todo_text(a.repo))
+        except PriorityDrift as drift:
+            print(json.dumps(dict(drift.status, outcome='PRIORITY_DRIFT', revision=revision(a.repo)), indent=2))
+            sys.exit(3)
+        if status['state'] == 'unmigrated':
+            print(status['action'], file=sys.stderr)
         if a.json:
-            print(json.dumps([{'task': t, 'goal': g['id'], 'goal_status': g['status']} for t, g in picks], indent=2))
+            print(json.dumps([{'task': t, 'goal': g['id'], 'goal_status': g['status'],
+                               'priority_state': status['state']} for t, g in picks], indent=2))
         elif picks:
             t, g = picks[0]
             print(f"{t['id']} ({t['section']}) → {g['id']} [{g['status']}]: {t['title']}")
         else:
             print('none')
         return
+    if a.cmd == 'reorder':
+        data = normalize(data)
+        problems = errors(data, allow_pending_evidence=True)
+        if problems:
+            sys.exit('\n'.join(problems))
+        record, status = reconcile_order(data, todo_text(a.repo))
+        previous = data['priority_order']['tasks']
+        report = {'priority_order': record['tasks'], 'previous': previous,
+                  'notes': selection_notes(dict(data, priority_order=record), record['tasks'])}
+        if status['state'] == 'synced':
+            print(json.dumps(dict(report, outcome='UNCHANGED'), indent=2)); return
+        data['priority_order'] = record
+        dump(a.repo, data)
+        print(json.dumps(dict(report, outcome='RECONCILED'), indent=2)); return
+    if a.cmd == 'bootstrap-order':
+        data = normalize(data)
+        if data.get('priority_order'):
+            print(json.dumps({'outcome': 'ALREADY_BOOTSTRAPPED', 'schema': data['priority_order']['schema'],
+                              'action': 'Bootstrap never reruns; use `goals.py reorder` for later TODO.md edits.'}, indent=2))
+            return
+        problems = errors(data, allow_pending_evidence=True)
+        if problems:
+            sys.exit('\n'.join(problems))
+        todo = Path(a.repo) / 'TODO.md'
+        before = checked_bytes(todo)
+        if before is None:
+            sys.exit('TODO.md not found; no write')
+        plan = bootstrap_plan(data, before.decode('utf-8'))
+        rewrite = plan['text'].encode('utf-8') != before
+        report = {'regions': plan['regions'], 'rewrite_todo': rewrite, 'priority_order': plan['record']['tasks'],
+                  'next_before': plan['next_before'], 'next_after': plan['next_after'], 'revision': revision(a.repo)}
+        if plan['reasons']:
+            print(json.dumps(dict(report, outcome='BOOTSTRAP_CONFLICT', reasons=plan['reasons']), indent=2))
+            sys.exit(1)
+        if a.dry_run:
+            print(json.dumps(dict(report, outcome='BOOTSTRAP_PLAN'), indent=2)); return
+        if a.expected_revision is None:
+            sys.exit('bootstrap-order apply requires --expected-revision from a --dry-run report; no write')
+        ledger_before = checked_bytes(path_of(a.repo))
+        if rewrite:
+            atomic_write(todo, plan['text'], expected_bytes=before)
+            if checked_bytes(todo) != plan['text'].encode('utf-8') or checked_bytes(path_of(a.repo)) != ledger_before:
+                sys.exit('bootstrap verification failed after TODO.md write; ledger unchanged; rerun --dry-run')
+            # The TODO.md write is this transaction's own; guard the ledger against anything else.
+            TRANSACTION.set((Path(a.repo), revision(a.repo)))
+        data['priority_order'] = plan['record']
+        dump(a.repo, data)
+        print(json.dumps(dict(report, outcome='BOOTSTRAPPED', revision=revision(a.repo)), indent=2)); return
     if a.cmd == 'supersede':
         task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
         if task['status'] == 'done':

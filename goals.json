@@ -195,14 +195,6 @@
   "tasks": [
     {
       "depends_on": [],
-      "goal": "PRIORITY",
-      "id": "TOOLSET-028",
-      "section": "Now",
-      "status": "open",
-      "title": "Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -396,6 +388,14 @@
       "section": "Done",
       "status": "done",
       "title": "Align cron and contributor workflows with the TODO-first execution path"
+    },
+    {
+      "depends_on": [],
+      "goal": "PRIORITY",
+      "id": "TOOLSET-028",
+      "section": "Done",
+      "status": "done",
+      "title": "Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap"
     },
     {
       "depends_on": [],

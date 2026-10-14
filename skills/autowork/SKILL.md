@@ -1,7 +1,7 @@
 ---
 name: autowork
 description: "Execute authorized repository tasks directly: select, implement, verify and close out using TODO.md."
-version: 0.26.1
+version: 0.27.0
 author: Hermes Agent
 platforms: [linux, macos]
 metadata:
@@ -61,7 +61,11 @@ review step. Keep Hermes Agent unchanged.
    Resolve ACTUAL_SESSION_PID from the real persistent current coordinator process;
    never use a guessed PID or a transient shell that exits before work starts.
    `EXECUTE` returns a contract for this session to implement; it is not proof of
-   implementation or a background launch. See [the exact interface](references/owner-cycle.md)
+   implementation or a background launch. `PRIORITY_DRIFT` means a human changed
+   TODO.md order since it was recorded: run `goals.py reorder <repo> --expected-revision
+   <revision>` (scheduled runs do this automatically), then select again; never
+   execute the stale order. If reorder refuses, report its conflict. An `UNMIGRATED`
+   priority flag is reported as-is; selection does not migrate the repository. See [the exact interface](references/owner-cycle.md)
    for claims, bounded argv execution, release and source-bound receipts.
 4. **Implement and verify.** Repair routine non-privileged environment failures,
    iterate on failing tests, and retain failure evidence. Required acceptance tests,

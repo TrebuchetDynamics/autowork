@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- TODO.md order is the enforced human priority. goals.json records a versioned
+  `priority_order`; selection ranks focus, section, recorded order, then goal
+  priority. `goals.py next`, direct selection, backlog checks and retry selection
+  share one guard that returns `PRIORITY_DRIFT` instead of the stale pick.
+  `goals.py reorder` reconciles; `goals.py bootstrap-order` is the one-time,
+  dry-run-first migration. Unrecorded ledgers keep legacy order with a visible
+  `UNMIGRATED` flag. Fleet migration is a separate pending task.
+
 - Automatic completed-task archival during `goals.py render`, plus an archive-only
   command. Whole closed bodies move to the established archive under the canonical
   lock; open bodies and ledger history remain (`08701bd`).
@@ -26,6 +34,9 @@ claim of a tagged release, completed installation or live workflow qualification
 - Verification of explicitly declared writer-registration prerequisites (`d422ea4`).
 
 ### Fixed
+
+- A task body no longer absorbs the next task's own `### ID` heading into its last
+  field, which made a following heading read as an unresolved dependency.
 
 - Partial worktree-claim updates preserve their unique historical workspace and
   existing ownership metadata. Conflicting aliases, duplicate JSON fields,

@@ -35,6 +35,14 @@ paths are rejected. Generic command receipts are not reusable acceptance proofs.
 broad repository work; `--scope tasks` retains task-only scope. Check selected
 scope, dependencies, acceptance and sources before implementation.
 
+Default selection stops with `PRIORITY_DRIFT` (and claims nothing) when TODO.md's
+order of unfinished tasks differs from goals.json's recorded `priority_order`; the
+result lists the TODO and recorded orders and the moved, added, missing and
+duplicated IDs. A named `--tasks` filter or the owner's active claim continues and
+reports `priority.state: drift`. Every result carries `priority.state`: `synced`,
+`drift`, `unmigrated` (legacy goal-priority order, with the bootstrap action) or
+`todo_only`. `goals.py next`, backlog checks and retry selection use the same guard.
+
 ## Bounded command
 
 ```sh

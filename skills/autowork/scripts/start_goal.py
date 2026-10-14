@@ -90,7 +90,8 @@ def require_milestone_admission(workspace, goal_task=None, snapshot_file=None, f
     errors = goals.errors(data)
     if errors:
         raise ValueError('Invalid goal ledger: ' + '; '.join(errors))
-    eligible = goals.eligible(goals.normalize(data))
+    # A named goal task is an explicit request, so priority drift does not block it.
+    eligible, _ = goals.queue(goals.normalize(data), goals.todo_text(workspace), allow_drift=True)
     selected = next((t for t, g in eligible if t['id'] == goal_task), None)
     if selected is None:
         raise ValueError('Goal task is not dependency-ready eligible: ' + goal_task)

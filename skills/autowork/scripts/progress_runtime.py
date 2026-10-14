@@ -96,7 +96,7 @@ def ready_queue(consumer, limit=3, *, require_owner=False):
         data = goals.normalize(goals.load(repo))
         chosen = first['selected_task']
         held_ids = {row['task'] for row in first.get('held_claims', [])}
-        candidates = [t for t, _ in goals.eligible(data)
+        candidates = [t for t, _ in goals.queue(data, goals.todo_text(repo))[0]
                       if t['status'] == 'open' and t['goal'] == chosen['goal']
                       and t['id'] not in held_ids][:limit]
     checked = retry_selection.select(repo, plan=first['plan'], task_ids=[t['id'] for t in candidates], require_owner=require_owner)

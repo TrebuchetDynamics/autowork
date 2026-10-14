@@ -121,8 +121,14 @@ def select(consumer, *, canonical_repo=None, plan=None, task_ids=None, require_o
         held_ids = {row['task'] for row in claims} if require_owner else set()
         result['recorded_claims'] = claims
         result['held_claims'] = claims if require_owner else []
-        picks = [(task, goal) for task, goal in goals.eligible(goals.normalize(data))
-                 if task['id'] not in held_ids]
+        try:
+            ranked, priority = goals.queue(goals.normalize(data), goals.todo_text(repo), allow_drift=plan is not None)
+        except goals.PriorityDrift as drift:
+            result.update(state='backlog_reconciled_not_eligible', outcome='PRIORITY_DRIFT',
+                          priority=drift.status, reasons=[str(drift)])
+            return result
+        result['priority'] = priority
+        picks = [(task, goal) for task, goal in ranked if task['id'] not in held_ids]
         result['reconciliation_task_ids'] = [t['id'] for t in data['tasks']
                                               if t['status'] == 'in_progress']
         # Existing work belongs to reconciliation, not another new dispatch.
@@ -185,7 +191,8 @@ def repository_frontier(consumer, limit=3, *, require_owner=False):
         claims, registry_blob = registered_claims(repo)
     held_ids = {r['task'] for r in claims} if require_owner else set()
     candidates, rejected = [], []
-    for task, goal in goals.eligible(goals.normalize(data)):
+    ranked, _ = goals.queue(goals.normalize(data), goals.todo_text(repo))
+    for task, goal in ranked:
         if task['status'] != 'open' or task['id'] in held_ids:
             continue
         try:
