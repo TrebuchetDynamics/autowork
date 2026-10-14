@@ -109,8 +109,11 @@ def original_evidence(name, root):
             deadline = time.monotonic() + 2
             db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
             # shortcut: only original user-facing roots; new transports fail closed until added.
-            row = db.execute('''SELECT id, source, substr(title,1,240),
-                    substr(cwd,1,240), substr(git_repo_root,1,240)
+            # Redact whole bounded metadata before display limits can split secrets.
+            row = db.execute('''SELECT id, source,
+                    CASE WHEN length(CAST(title AS BLOB)) <= 65536 THEN title ELSE '' END,
+                    CASE WHEN length(CAST(cwd AS BLOB)) <= 65536 THEN cwd ELSE '' END,
+                    CASE WHEN length(CAST(git_repo_root AS BLOB)) <= 65536 THEN git_repo_root ELSE '' END
                 FROM sessions WHERE source IN ('cli','telegram','discord','slack','web','tui')
                     AND length(id) BETWEEN 1 AND 240
                     AND parent_session_id IS NULL AND (profile_name IS NULL OR profile_name = ?)
@@ -137,7 +140,7 @@ def original_evidence(name, root):
             'around_message_id': anchor[0],
             'anchor_excerpt': excerpt[:2000],
             'anchor_truncated': bool(anchor[2] or len(anchor[1]) > 2000 or len(excerpt) > 2000),
-            **{key: redact(value) if value is not None and key != 'session_id' else value
+            **{key: redact(value)[:240] if value is not None and key != 'session_id' else value
                for key, value in zip(('session_id', 'source', 'title', 'cwd', 'git_repo_root'), row)}}
 
 
