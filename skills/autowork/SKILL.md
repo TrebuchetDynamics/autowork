@@ -165,9 +165,9 @@ calls real `start_goal.py` admission once and records `in_progress` only after a
 verified new handoff. No separate validate-only, planning, broad docs audit, full
 suite or optional skill loader belongs before that ready dispatch. Compact output
 points to full private receipts; `--verbose` exposes the full receipt when needed.
-Missing Checks/source closure/non-normalized ledger returns only missing preparation.
-Stale inputs/uncertain dispatches retain inputs/card/budget; never replace
-cards. [Proven pre-create refusal](references/owner-cycle.md#composed-ready-preflight)
+Missing Checks/source closure or non-normalized ledger needs preparation.
+Stale inputs/uncertain dispatch retain inputs/card/consumed budget; never
+replace cards. [Proven pre-create refusal](references/owner-cycle.md#composed-ready-preflight)
 permits archived re-preparation.
 Manual explicit handoff requests remain supported for attributed prerequisite or
 split-role recovery; see [the composed contract](references/owner-cycle.md#composed-ready-preflight).
