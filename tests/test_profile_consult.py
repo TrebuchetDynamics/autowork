@@ -25,7 +25,10 @@ class ConsultationTests(unittest.TestCase):
                     patch.object(m, 'consult', side_effect=lambda name, *a: {'profile': name, 'status': 'replied'}) as call:
                 rows = m.run_all(root, root / 'maintenance/scoped', 'self', 'hermes', 10, profiles=['two', 'one'])
             self.assertEqual({c.args[0] for c in call.call_args_list}, {'one', 'two'})
-            self.assertEqual({r['profile'] for r in rows}, {'default', 'one', 'two'})
+            self.assertEqual([r['profile'] for r in rows], ['default', 'two', 'one'])
+            import json
+            saved = json.loads((root / 'maintenance/scoped/index.json').read_text())
+            self.assertEqual(saved['targets'], ['default', 'two', 'one'])
 
     def test_invalid_scope_refuses_before_provider_calls(self):
         from unittest.mock import patch

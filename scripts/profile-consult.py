@@ -177,7 +177,7 @@ def _run_all(root, output, self_assessment, hermes, seconds, profiles=None):
         if (not profiles or len(profiles) != len(set(profiles))
                 or not set(profiles).issubset(set(targets) - {'default'})):
             raise ValueError('profiles must be unique existing named profiles')
-        targets = ['default'] + [name for name in targets if name in profiles]
+        targets = ['default'] + list(profiles)
     results = {'default': {'profile': 'default', 'status': 'replied', 'mode': 'local-self-assessment', 'reply': redact(self_assessment)}}
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = {pool.submit(consult, name, root, hermes, seconds): name for name in targets if name != 'default'}
