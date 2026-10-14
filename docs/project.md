@@ -28,6 +28,11 @@ linked in [workflows](workflows.md). Planning does not itself grant implementati
 publication or deployment authority. Prompt instructions are not a guarantee of
 unattended completion; verification must distinguish dispatch, execution and delivery.
 
+The accepted [TODO-first execution plan](#todo-first-execution-without-kanban)
+is implemented: Autowork executes from repository tasks without Kanban prerequisites,
+including historical-card gates. Legacy orchestration is retained only as a test
+fixture and historical reference, outside the distributed execution path.
+
 ## Current components
 
 | Component | Source | Responsibility |
@@ -35,8 +40,8 @@ unattended completion; verification must distinguish dispatch, execution and del
 | Hermes registration | [entry point](../__init__.py), [workflow aliases](../workflow_commands.py), [research aliases](../autoresearch_commands.py) | Discover skill folders, publish current skill IDs, register commands and route conversation arguments |
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
-| Autowork recovery | [planning decision](../skills/autowork/scripts/backlog_plan.py), [cycle](../skills/autowork/scripts/owner_cycle.py) | Return bounded recovery actions; the agent executes them and reports actual results |
-| Task index and history | [goals helper](../skills/docs-sync/scripts/goals.py), [archive helper](../skills/docs-sync/scripts/todo_archive.py) | Validate and update goals.json, render TODO coverage and archive explicitly closed, ledger-done bodies under the canonical lock; open bodies and ledger history remain |
+| Autowork execution | [cycle](../skills/autowork/scripts/owner_cycle.py), [task execution](../skills/autowork/scripts/task_execution.py) | Select repository tasks and coordinate direct execution with live-writer protection; the agent implements and reports actual results |
+| Task index and history | [goals helper](../skills/docs-sync/scripts/goals.py), [archive helper](../skills/docs-sync/scripts/todo_archive.py) | Validate and update goals.json, render TODO coverage and archive explicitly closed, ledger-done bodies and separately labelled superseded history under the shared Git lock; supersession does not claim completion |
 | Codex package | [manifest](../.codex-plugin/plugin.json), [marketplace](../.agents/plugins/marketplace.json) | Install portable skills into Codex; no Hermes gateway or configuration dependency |
 | Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands and pass literal arguments to portable workflows |
 | Portable behavior | [host contract](../adapters/skills/COMMON.md) | Use the current host's tools; preserve permissions, memory and credentials |
@@ -81,8 +86,9 @@ readiness separately. See the
 [executable initialization path](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization).
 
 Ledger operations share a Git-common-directory advisory lock and support revision
-checks. A linked worktree needs explicit canonical targeting unless a registered
-backlog authority is already bound. Stale revisions and unsafe paths are refused;
+checks. Commands target the requested checkout, including linked worktrees;
+explicit canonical targeting selects another checkout of the same repository.
+Historical native backlog bindings are ignored. Stale revisions and unsafe paths are refused;
 cooperating locks do not prevent an uncoordinated direct writer. See
 [concurrent maintenance](../skills/docs-sync/references/concurrent-maintenance.md).
 
@@ -516,3 +522,157 @@ nonterminal/pinned native ownership and one for a customized Autoresearch skill.
 The customization adds candidate-selection guidance and was preserved. No profile
 installation, scanner override, schedule change or original-worker restart occurred.
 Installation and product recovery therefore remain open in TOOLSET-017/018/019.
+
+
+## TODO-first execution without Kanban
+
+Status: Accepted
+
+Decision: The user wants TODO.md and its repository documents to be the work board
+so any developer can join through ordinary Git/project tools. On 2026-10-14 the
+user explicitly authorized disregarding Kanban, including old cards. This selects
+card-free Autowork for new work and recovery, not an optional Kanban backend.
+Implemented in the TODO-first delivery: direct execution, live process coordination,
+card-independent recovery, scoped installation guards and contributor/cron guidance.
+Offline checks and isolated native script execution are qualified; model-driven
+production runs and external message delivery are separate outcomes.
+
+### Authority and scope
+
+- TODO.md owns task identity, intent, scope, acceptance, dependencies and visible
+  progress; goals.json remains its synchronized machine index, not another board.
+  Verified completed bodies move to TODO.archive.md with evidence retained.
+- Cron determines when the existing authorized agent runs. The current session
+  executes a bounded useful slice directly, using host-native delegation only
+  when useful and authorized. Audits, maintenance and substantial implementation
+  do not require a Kanban card, board, assignee or native task-state transition.
+- Old cards may be ignored for task selection, recovery, review and integration.
+  No mandatory board lookup, card import, card release, native continuation API or
+  same-card registration is a prerequisite. Unavailable Kanban is not a blocker.
+- Preserve actual work, checks and explicit user constraints. Inspect real process
+  and workspace activity rather than treating a historical card as a lease. Do not
+  kill workers, delete worktrees, archive native cards or reset budgets to migrate.
+- These requirements supersede the native-card-specific remaining direction in
+  the earlier end-to-end original-task recovery plan and TOOLSET-017/018. Preserve
+  their shipped results and failed/unchecked evidence; do not claim their old
+  native acceptance passed. Reconcile obsolete queue entries during implementation
+  with an explicit supersession disposition, never fake completion or keep an
+  obsolete native prerequisite as the next action. TOOLSET-019's safe deployment
+  intent remains, but card status alone must cease being a deployment veto.
+
+### Evidence and diagnosis
+
+At planning time, `skills/autowork/scripts/owner_cycle.py::run_locked` reconciled a retained
+native handoff before selection and could return `BLOCKED` without selecting a TODO
+task. `skills/autowork/scripts/reconcile.py` calls
+`continuation_capability.assess(None)`, while
+`skills/autowork/references/historical-owner-cycle.md#original-card-continuation-capability`
+explicitly documents the missing binding. These are concrete native-integration
+holds; they do not establish that every historical failure came from Kanban.
+
+The portable `adapters/skills/autowork/SKILL.md` already coordinates execution in
+the current host session without requiring cards. Use that simpler model across
+hosts. [Hermes cron documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/cron)
+separately supports agent sessions and script-only jobs; cards are not required by
+the scheduler. Documentation inspected on 2026-10-14 is external reference, not
+qualification of this installation or the planned execution path.
+
+### Minimal execution contract
+
+Use the existing TODO task ID everywhere. The implementation should retain only
+necessary private execution data: canonical repository/workspace identity, actual
+worker/session identity and liveness where available, source/candidate revision,
+explicit runtime limits and known usage, last verified check/review receipts, and
+next action. Reuse existing suitable receipts; no mandatory second task registry,
+card-shaped state machine, mirrored product statuses or board synchronization.
+Private state is coordination/evidence, never the product requirement authority.
+
+Coordinate automated writers across profiles and Git worktrees for the same
+canonical repository. Use actual process identity plus workspace/source inspection
+before adopting idle work; elapsed time or a stale PID alone cannot prove release.
+Use supported local locks and isolated worktrees where needed. Document that manual
+writers ignoring an advisory lock and different hosts require separate coordination;
+do not pretend local filesystem locks provide distributed exclusion.
+
+Preserve explicit task/caller budgets and the host's real execution limits. Repeated
+cron ticks do not replenish a user's exhausted task allocation. Unknown usage is
+not zero, and a receipt or prompt cannot enforce spending. Use the current host's
+bounded invocation/delegation controls; do not create a new universal lifetime-task
+budget requirement just to emulate cards. An unavailable enforcement capability
+holds only the operation requiring that explicit cap. Read-only inspection and
+already-authorized local verification/integration are separate from worker launch.
+
+Required acceptance tests, independent review where required, source-bound receipt
+reuse, serialized integration and publication authority remain. Neither a completed
+session nor a checkbox alone proves acceptance. Future execution cannot depend on
+native Kanban review reassignment or a card becoming `done`.
+
+### Delivery sequence and acceptance
+
+1. TOOLSET-025 implements the direct execution path and its bounded ownership/check
+   contract. Fail the test if any default-path Kanban API/CLI/board access occurs.
+   A TODO-only repository must work without Hermes/Kanban setup; an existing index
+   stays supported. No extra required public file or tracking tool for contributors.
+2. TOOLSET-026 removes legacy-card recovery and deployment vetoes. Test absent,
+   malformed, blocked, done and mismatched historical cards without querying or
+   changing them. Preserve dirty candidates and detect actual overlapping writers.
+   Adopt an idle candidate only from attributable filesystem/Git/check evidence;
+   reuse matching checks and rerun invalidated/required ones. Explicit allocation
+   exhaustion remains a real limit, unrelated to card status.
+3. TOOLSET-027 aligns skills, docs, task-index supersession, cron prompts and scoped
+   rollout with that same path. Preserve paused jobs, exact task filters, delivery,
+   existing publication limits and the newly activated cron self-repair bindings.
+   Do not force every invocation into planning, audits or delegation. A contributor
+   follows README/AGENTS/TODO, makes a scoped change, tests and submits normal review.
+
+Required regression journeys: ready TODO to first useful action with zero Kanban
+calls; concurrent manual/cron writers; interrupted check reuse and stale-check
+invalidation; crash before versus after a write; repeat tick without duplicate
+work; review-requested changes and integration without native card transitions;
+old-card-unavailable recovery; explicit cap/exhaustion; paused-job preservation;
+TODO/archive/index agreement and unchanged second pass. Retain failure evidence.
+
+Run focused offline checks, the safe `python scripts/check.py` inventory and
+independent review for the exact candidate. The delivery passed these offline
+checks and independent review, including repairs found during review.
+Qualify a bounded disposable cron journey separately with an available configured
+host and real runtime limits; no product/production test target or duplicate schedule
+is implied. Report source delivery, configured rollout, actual execution and
+Telegram delivery separately. Rollback preserves candidate/receipt bytes and pauses;
+never silently reactivate Kanban prerequisites or recreate old cards.
+
+### Non-goals and remaining uncertainty
+
+Do not edit upstream Hermes Agent, repair consumer product code, discard cards or
+candidates, weaken tests/review, expand publication/live authority, reset allocations,
+or build another Kanban implementation. No optional Kanban backend is planned.
+No further product-choice question remains. Exact host limit/liveness interfaces
+and migration race behavior require implementation research and qualification;
+they are not reasons to repeat the product interview or wait for a Kanban API.
+
+### TODO-first delivery qualification
+
+The direct entrypoint selects repository contracts without loading native dispatch
+or reconciliation. Tests cover missing/malformed old handoffs, TODO-only and indexed
+repositories, worktree/profile contention, actual process identity, preserved dirty
+candidates, command failure/timeout, explicit allowance exhaustion, detached child
+cleanup, named-plan/dependency binding and source/executable freshness. Generic
+command receipts record execution, not reusable acceptance or task completion.
+The Linux runner uses process birth identity and advisory Git-common-dir locks;
+manual writers and other hosts still require explicit coordination.
+
+The scoped installer observes all current direct repository leases for a profile
+and actual helper consumers; it never queries historical boards. Docs Sync permits
+normal branch-local worktree edits under the shared lock and ignores old native
+backlog bindings. Superseded TOOLSET-017/018 requirements retain their exact unchecked
+bodies and failed/unchecked history in the archive, with explicit successor links.
+No superseded requirement is counted as done or used to satisfy dependencies.
+
+An isolated native no-agent cron journey implemented a fixture, ran its acceptance
+check, reused matching check evidence, rejected changed-input evidence and archived
+the completed TODO body. A repeat run did not implement it again. Native scheduler
+qualification uses the real job store, due-job selection, claim, script execution
+and local result recording; unrelated upstream worktree garbage collection is
+disabled in that isolated harness. No production job, product repository, provider
+call or Telegram delivery is part of this qualification. Profile installation and
+future model-driven scheduled behavior must be reported separately.

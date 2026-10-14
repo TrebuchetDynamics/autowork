@@ -83,7 +83,10 @@
         "TOOLSET-019",
         "TOOLSET-020",
         "TOOLSET-021",
-        "TOOLSET-022"
+        "TOOLSET-022",
+        "TOOLSET-025",
+        "TOOLSET-026",
+        "TOOLSET-027"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -207,22 +210,6 @@
     {
       "depends_on": [],
       "goal": "RECOVERY",
-      "id": "TOOLSET-017",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Prepare and recover exact-card writer registration"
-    },
-    {
-      "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-018",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Bind original-card continuation to supported budget enforcement"
-    },
-    {
-      "depends_on": [],
-      "goal": "RECOVERY",
       "id": "TOOLSET-019",
       "section": "Next",
       "status": "in_progress",
@@ -341,6 +328,58 @@
       "section": "Done",
       "status": "done",
       "title": "Align current project status with reviewed offline delivery"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-025",
+      "section": "Done",
+      "status": "done",
+      "title": "Execute Autowork directly from repository tasks without Kanban"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-025"
+      ],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-026",
+      "section": "Done",
+      "status": "done",
+      "title": "Recover existing work without historical card gates"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-026"
+      ],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-027",
+      "section": "Done",
+      "status": "done",
+      "title": "Align cron and contributor workflows with the TODO-first execution path"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-017",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-026"
+      ],
+      "supersession_reason": "Accepted TODO-first execution decision retires native-card-only recovery; shipped fixes and unpassed historical acceptance remain preserved.",
+      "title": "Prepare and recover exact-card writer registration"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-018",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-026"
+      ],
+      "supersession_reason": "Accepted TODO-first execution decision retires native-card-only recovery; shipped fixes and unpassed historical acceptance remain preserved.",
+      "title": "Bind original-card continuation to supported budget enforcement"
     }
   ],
   "version": 1
