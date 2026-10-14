@@ -169,7 +169,8 @@
       "status": "unmet",
       "tasks": [
         "TOOLSET-012",
-        "TOOLSET-013"
+        "TOOLSET-013",
+        "TOOLSET-023"
       ],
       "title": "Start useful implementation sooner with less preparation"
     }
@@ -332,6 +333,14 @@
       "section": "Done",
       "status": "done",
       "title": "Reconcile independently reviewed changed-base local delivery"
+    },
+    {
+      "depends_on": [],
+      "goal": "STARTUP",
+      "id": "TOOLSET-023",
+      "section": "Done",
+      "status": "done",
+      "title": "Align current project status with reviewed offline delivery"
     }
   ],
   "version": 1
