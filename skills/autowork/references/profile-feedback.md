@@ -76,7 +76,9 @@ any discovery or provider call, so refusal cannot cause another consultation wav
 Retain compact sanitized replies, transport outcome, target profile, observation
 time and exact evidence pointers in default-owned maintenance storage. Redact
 JSON credential values after decoding escaped strings, including nested text in
-each stream-JSON envelope; plain-text regex masking alone can retain value tails.
+each stream-JSON envelope. Consume complete quoted assignment values before
+whitespace-delimited masking; otherwise multiword credential tails can survive.
+Plain-text regex masking alone can retain value tails.
 This is bounded redaction, not a guarantee that arbitrary secret formats are found.
 Deduplicate
 suggestions by helper/seam plus failure signature; distinguish owner-reported
