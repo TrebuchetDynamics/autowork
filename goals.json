@@ -99,7 +99,13 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013",
+          "result": "pass"
+        }
+      ],
       "id": "STARTUP",
       "priority": 70,
       "source": "docs/project.md#faster-ready-task-startup",
@@ -129,14 +135,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the updated reporting workflow on the affected profile"
-    },
-    {
-      "depends_on": [],
-      "goal": "STARTUP",
-      "id": "TOOLSET-012",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Start ready tasks through one composed default preflight"
     },
     {
       "depends_on": [
@@ -187,6 +185,14 @@
       "section": "Done",
       "status": "done",
       "title": "Bind Telegram reports and setup confirmation independently of invocation"
+    },
+    {
+      "depends_on": [],
+      "goal": "STARTUP",
+      "id": "TOOLSET-012",
+      "section": "Done",
+      "status": "done",
+      "title": "Start ready tasks through one composed default preflight"
     }
   ],
   "version": 1

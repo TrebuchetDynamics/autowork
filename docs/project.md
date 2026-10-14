@@ -134,9 +134,9 @@ Status: Accepted
 The user selected earlier useful implementation with less preparation/tool chatter,
 then explicitly selected the faster ready-task path as the default. This acceptance
 covers that startup outcome, not parallel execution, weaker verification, or a
-changed continuation policy. The TOOLSET-012 composed implementation candidate
-awaits independent review/integration; measured native qualification remains
-pending in [TOOLSET-013](../TODO.md).
+changed continuation policy. TOOLSET-012 is independently reviewed and integrated
+locally; its completion evidence is in [the archive](../TODO.archive.md).
+Measured native qualification remains pending in [TOOLSET-013](../TODO.md).
 
 ### Outcome and scope
 

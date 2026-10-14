@@ -11,8 +11,8 @@ owners. Ledger eligibility is not worker admission or live qualification.
 TOOLSET-002's reviewed first-index initialization is integrated locally;
 TOOLSET-003 remains the isolated live-recovery qualification. TOOLSET-001 and
 TOOLSET-002 completion evidence is in [the archive](TODO.archive.md).
-Fast-startup plan: TOOLSET-012's original worker is active; TOOLSET-013 verifies
-startup after it. TOOLSET-003/011 need their named environments; TOOLSET-008 needs
+Fast-startup plan: TOOLSET-012 is reviewed and integrated locally; TOOLSET-013
+retains the measured native startup qualification. TOOLSET-003/011 need their named environments; TOOLSET-008 needs
 the existing policy answer. Preserve this queue's order and ownership.
 
 Execution notes: Each task states the remaining action, acceptance, checks and stop
@@ -54,23 +54,10 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ### TOOLSET-012 — Start ready tasks through one composed default preflight
 
-- [ ] TOOLSET-012 — Start ready tasks through one composed default preflight
-- Status: in_progress; original worker active; assigned contract unchanged.
-- Goal: STARTUP — Reach useful implementation sooner with less preparation/chat.
-- Sources: [accepted full contract](docs/project.md#faster-ready-task-startup), [coordinator](skills/autowork/scripts/owner_cycle.py), [admission](skills/autowork/scripts/start_goal.py), [source capture](skills/autowork/scripts/source_freshness.py), [Autowork](skills/autowork/SKILL.md), [engineering adapter](skills/engineering/SKILL.md), [router](skills/engineering/scripts/route.py).
-- Evidence: Engineering guidance/single-protocol selection is already implemented and independently reviewed; do not redo it. Composed preflight remains the unmet outcome.
-- Scope: Finish one default ready-task command: reconcile → select/read body → capture sources → generate short complete contract → real native handoff → bookkeeping. Keep routing references optional, phase bundles optional, and workflow authority in Autowork. Use existing helpers/tests; preserve upstream protocol bytes.
-- Acceptance: No separate validate-only call, planner, docs audit, full suite or optional skill load before normal dispatch. Preserve required contract fields, immutable base, canonical authority, freshness, ownership, budgets and original startup guard. Stale, held, incomplete, interrupted and already-owned cases fail/recover safely without replacement cards. Compact reports expose failures. Exact-one protocol selection and phase compatibility retain unknown-name/tamper refusal, mandatory tests and independent review; protocols never expand authority.
-- Checks: From skills/autowork/scripts run `python3 -m unittest test_owner_cycle test_goal_handoff test_source_freshness test_response_tail`. At root run `python3 -m unittest discover -s tests -p test_engineering_vendor.py`, `python3 -m unittest discover -s tests -p test_workflow_cycle.py`, and `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`; check affected links and `git diff --check`. Reuse partial-delivery checks only when their inputs still match.
-- Exclusions: No speculative cache acceptance, weaker guards/review, writer takeover, new scheduler/parallelism, upstream Agent/model/provider changes, push/deployment or live job edits.
-- Dependencies: None.
-- Ownership: Existing native worker and original coordinator; preserve its card, pinned inputs, scope and consumed budget. This wording change grants no new authority.
-- Next action: Let the original worker finish remaining preflight implementation and same-card review; do not redispatch. Native timing remains TOOLSET-013.
-
 ### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
 
 - [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
-- Status: open; waits for TOOLSET-012.
+- Status: open; TOOLSET-012 is integrated; isolated bounded environment still required.
 - Goal: STARTUP — Verify lower preparation overhead without weaker startup safety.
 - Sources: [accepted measurement contract](docs/project.md#faster-ready-task-startup), TOOLSET-012, [admission](skills/autowork/scripts/start_goal.py), [reporting boundaries](skills/autowork/references/dispatch-and-reporting.md).
 - Scope: Compare manual and composed startup on the same disposable accepted task, source, model/environment and cold/warm conditions. Separate request-to-handoff, queue wait, admission and first useful test/reproduction/edit after the guard. Count coordinator tool/model round trips and routine messages.
@@ -130,6 +117,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass | — |
 | CONTINUATION: Resolve and align continuation authority | unmet | — | TOOLSET-008 |
 | CRON-REPORTING: Make Telegram scheduling reports reliable across invocation surfaces | partial | executed <code>Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)</code> → pass | TOOLSET-011 |
-| STARTUP: Start useful implementation sooner with less preparation | unmet | — | TOOLSET-012, TOOLSET-013 |
+| STARTUP: Start useful implementation sooner with less preparation | unmet | executed <code>Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013</code> → pass | TOOLSET-013 |
 
 <!-- goals:coverage:end -->
