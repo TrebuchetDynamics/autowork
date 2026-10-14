@@ -121,8 +121,8 @@ def original_evidence(name, root):
                 ORDER BY started_at DESC, id DESC LIMIT 1''',
                 (name, str(root.resolve() / 'maintenance') + '%')).fetchone()
             anchor = db.execute('''SELECT id,
-                    CASE WHEN length(content) <= 65536 THEN content ELSE '' END,
-                    length(content) > 2000 FROM messages
+                    CASE WHEN length(CAST(content AS BLOB)) <= 65536 THEN content ELSE '' END,
+                    length(CAST(content AS BLOB)) > 65536 FROM messages
                 WHERE session_id = ? AND role = 'assistant' AND trim(coalesce(content,'')) != ''
                 ORDER BY id DESC LIMIT 1''', (row[0],)).fetchone() if row else None
         finally:
@@ -135,7 +135,8 @@ def original_evidence(name, root):
     excerpt = redact(anchor[1])
     return {'status': 'available', 'profile': name, 'database': str(path),
             'around_message_id': anchor[0],
-            'anchor_excerpt': excerpt[:2000], 'anchor_truncated': bool(anchor[2] or len(excerpt) > 2000),
+            'anchor_excerpt': excerpt[:2000],
+            'anchor_truncated': bool(anchor[2] or len(anchor[1]) > 2000 or len(excerpt) > 2000),
             **{key: redact(value) if value is not None and key != 'session_id' else value
                for key, value in zip(('session_id', 'source', 'title', 'cwd', 'git_repo_root'), row)}}
 

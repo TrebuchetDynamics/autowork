@@ -115,7 +115,9 @@ class ConsultationTests(unittest.TestCase):
             for content, omitted in [
                     (json.dumps({'password': 'prefix ' + 'LEAK_MARKER ' * 300}), False),
                     ('x' * 1975 + ' token=a END_MARKER', True),
-                    ('x' * 65537, True)]:
+                    ('x' * 65537, True),
+                    ('prefix\x00' + 'x' * 65537, True),
+                    ('é' * 40000, True)]:
                 with sqlite3.connect(db) as connection:
                     connection.execute('UPDATE messages SET content=? WHERE id=3', (content,))
                 actual = m.original_evidence('one', root)
@@ -123,7 +125,7 @@ class ConsultationTests(unittest.TestCase):
                 self.assertLessEqual(len(actual['anchor_excerpt']), 2000)
                 if omitted:
                     self.assertTrue(actual['anchor_truncated'])
-                if len(content) > 65536:
+                if len(content.encode()) > 65536:
                     self.assertEqual(actual['anchor_excerpt'], '')
             with sqlite3.connect(db) as connection:
                 connection.execute('UPDATE messages SET content=? WHERE id=3', ('owner-private-content',))

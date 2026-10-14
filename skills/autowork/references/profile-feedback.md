@@ -40,7 +40,7 @@ History exclusions in natural language are not reliable: discard matches from
 the active consultation rather than treating its own prompt as failure evidence.
 The shared helper supplies the latest nonempty assistant-message anchor from the
 selected original session plus a redacted excerpt capped at 2,000 characters.
-Messages above 65,536 characters are not read or injected; smaller messages are
+Messages above 65,536 UTF-8 bytes are not read or injected; smaller messages are
 redacted in full before the output cap, so partial JSON cannot expose value tails.
 `anchor_truncated` marks any unread or capped tail, including redaction expansion.
 Prefer that injected excerpt
