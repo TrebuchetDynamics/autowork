@@ -65,21 +65,33 @@ preserved. TOOLSET-008 remains an owner policy question.
 ### TOOLSET-012 — Start ready tasks through one composed default preflight
 
 - [ ] TOOLSET-012 — Start ready tasks through one composed default preflight
-- Status: open; accepted implementation, not started.
+- Status: open; engineering-guidance portion implemented and reviewed; composed preflight pending.
 - Goal: STARTUP — Reach useful implementation sooner with less preparation and chat.
 - Sources: [accepted startup plan](docs/project.md#faster-ready-task-startup),
   [coordinator](skills/autowork/scripts/owner_cycle.py),
   [real admission](skills/autowork/scripts/start_goal.py),
   [source capture](skills/autowork/scripts/source_freshness.py),
-  [existing ready-path policy](skills/autowork/SKILL.md).
+  [existing ready-path policy](skills/autowork/SKILL.md),
+  [engineering adapter](skills/engineering/SKILL.md),
+  [protocol router](skills/engineering/scripts/route.py).
 - Evidence: Current manual handoff requires source capture, contract composition,
   separate validate-only and real dispatch; real dispatch validates the same
-  contract and freshness. Reuse existing controls rather than another dispatcher.
+  contract and freshness. At capture (`f617808`) the engineering router required a
+  phase and prepended its bundle. Exact single-protocol selection and optional
+  routing are now implemented, with independent review approval and passing vendor,
+  workflow-cycle and offline-suite checks. The composed preflight remains pending;
+  this partial delivery does not complete TOOLSET-012.
 - Scope: Compose a supported default ready-task entry point; reconcile prior work,
   select/read the accepted body, capture bounded authoritative sources, generate
   the complete contract, invoke real native admission and persist bookkeeping
   within one normal-path command. Update affected native/portable guidance and tests.
-  Routine status is compact; detailed evidence goes to private receipts.
+  Generate a short task-specific worker execution contract; load the routing
+  reference only for a concrete need. Extend engineering selection to exactly one
+  named protocol without an automatic bundle; retain phase bundles as optional
+  compatible requests. Keep workflow authority in Autowork and engineering
+  protocols as technique-specific guidance. Routine status is compact; details
+  go to private receipts. Reuse the engineering router, adapter, shared cycle and
+  existing routing/workflow tests; preserve the upstream protocol snapshot.
 - Exclusions: No speculative source-cache acceptance, skipped ownership/freshness
   checks, weaker review, arbitrary worker takeover, new scheduler/parallelism,
   upstream Hermes edits, model/provider changes, push/deployment or live job edits.
@@ -89,12 +101,24 @@ preserved. TOOLSET-008 remains an owner policy question.
   source/authority/immutable-base/ownership guards remain. Stale, held, incomplete,
   interrupted and already-owned cases preserve refusal, original card and budgets;
   failures are visible and fallback performs only the missing preparation.
+  Worker contracts preserve objective/scope, acceptance/checks, original admission,
+  ownership/source identity, budgets and stop conditions without unconditional
+  injection of routing references. Single-protocol selection returns exactly the
+  requested protocol; unknown names or changed vendored protocols/references fail
+  integrity checks. Optional phase calls remain compatible. Engineering guidance
+  cannot dispatch, commit, widen permission or replace Autowork's mandatory tests,
+  independent review, active-writer protections or integrity checks.
 - Checks: Add focused composition and command-count regressions to existing owner
   cycle/goal-handoff/response-tail suites; run from skills/autowork/scripts
   `python3 -m unittest test_owner_cycle test_goal_handoff test_source_freshness test_response_tail`;
+  at repository root extend and run
+  `python3 -m unittest discover -s tests -p test_engineering_vendor.py` and
+  `python3 -m unittest discover -s tests -p test_workflow_cycle.py` for exact-one
+  selection, optional phase compatibility, tamper refusal and authority boundaries;
   run `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`
   on the finished candidate, plus affected links and `git diff --check`.
-  These feature checks are planned, not executed by the planning pass.
+  Composed-preflight checks remain planned. Engineering routing/workflow checks
+  and the offline suite passed for the partial delivery above.
 - Dependencies: None.
 - Ownership: Next authorized Autowork coordinator; no new claim or dispatch.
 - Decision: Default fast ready path, not opt-in; preserve real admission validation

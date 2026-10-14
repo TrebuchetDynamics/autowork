@@ -177,6 +177,42 @@ before implementation while retaining the current refusal and review boundaries.
 No opt-in fast mode, new schedule, extra parallel worker, relaxed budget, skipped
 review, speculative caching or model/provider change is included.
 
+### Worker contracts and engineering protocols
+
+These additional user requirements belong to TOOLSET-012's accepted implementation:
+
+- Give workers a short task-specific execution contract. Include objective,
+  scope/exclusions, current evidence, acceptance/checks, ownership, immutable source
+  and budget/stop conditions; reference supporting detail rather than injecting the
+  whole routing/lifecycle reference. Load routing guidance only for a concrete
+  technique-selection need. Shortness must not remove an executable admission guard
+  or require the worker to guess a missing constraint.
+- Support exact selection of one engineering protocol without a mandatory phase
+  bundle or automatically appended protocols. Phase bundles remain optional and
+  supported for existing explicit callers. No protocol is required for a task whose
+  instructions/checks are already sufficient. Selected protocols and applicable
+  support files remain bound to the vendored hashes; omission of unrelated guidance
+  is not permission to skip an integrity check.
+- Keep selection, dispatch, recovery, ownership, budgets, review, completion and
+  publication authority in Autowork. Engineering protocols provide guidance for
+  specific techniques; upstream automatic planning/commit/ship language cannot
+  create a competing coordinator, approval ceremony or broader authority.
+- Preserve all required tests, independent review, active-writer protections,
+  canonical authority, source freshness, vendored integrity and task/commit identity
+  checks. A smaller prompt or router response is not evidence those gates passed.
+
+At requirement capture (`f617808`),
+[the engineering adapter](../skills/engineering/SKILL.md) already called itself
+guidance rather than a coordinator, but
+[its router](../skills/engineering/scripts/route.py) required a phase and prepended
+that phase's protocol list. Exact single-protocol selection and conditional routing
+guidance are now implemented and independently reviewed.
+[Vendor/routing tests](../tests/test_engineering_vendor.py),
+[workflow-cycle tests](../tests/test_workflow_cycle.py) and the offline suite passed;
+provenance and upstream protocol bytes are preserved. TOOLSET-012's composed
+preflight and overall acceptance remain pending. These checks do not establish
+live worker or scheduled execution.
+
 ### Acceptance and measurement
 
 TOOLSET-012 owns the offline implementation: one public coordinator entry point

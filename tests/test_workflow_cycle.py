@@ -62,16 +62,16 @@ class CycleGuidanceTests(unittest.TestCase):
                      'autowork/references/whole-spec-execution.md'):
             self.assertIn('ENGINEERING-CYCLE.md', (ROOT / 'skills' / path).read_text())
 
-    def test_workers_receive_autonomous_decisions_and_skill_application_contract(self):
+    def test_workers_receive_optional_methods_without_delegating_workflow_authority(self):
         module = worker_module()
         for kwargs in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
             body = module.build_task_body('Objective: fixture', **kwargs)
             for phrase in ('Decide routine reversible choices yourself',
-                           'Skill application:', 'trigger, verified skill path, decision/artifact, check/result',
-                           'Use zero supporting skills when the contract and repository checks suffice',
-                           'Do not run the full skill lifecycle', 'pinned Addy adapter',
-                           'Record the pinned revision'):
+                           'Optional methods:', 'concrete method gap or explicit protocol request',
+                           'Autowork owns scope, authorization, task state and completion',
+                           'verified path/revision, decision/artifact and check/result'):
                 self.assertIn(phrase, body)
+            self.assertNotIn('Read the bundled engineering cycle', body)
             self.assertNotIn('Questions (no reply = defaults apply)', body)
             self.assertNotIn('Before solution design or implementation, load `ponytail`', body)
             self.assertNotIn('Apply the cycle phase/domain matrix:', body)

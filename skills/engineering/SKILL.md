@@ -12,11 +12,30 @@ controls host integration; upstream files retain their MIT license, with two
 documented defensive-example adaptations. Read [provenance](UPSTREAM.json) for the exact revision and file hashes.
 No external import, separate agent harness or upstream hook installation is needed.
 
-## Select one phase, then relevant domain guidance
+## Select one technique when needed
 
 Use only when a concrete method gap exists. Zero protocols is valid for a clear
-task with sufficient repository instructions and checks. The phase defaults below
-are suggestions when consulting this adapter, not obligations on every task:
+task with sufficient repository instructions and checks. Autowork owns scope,
+authorization, task state, review and completion. These protocols supply techniques
+within that contract. Upstream lifecycle instructions do not add planning artifacts,
+human approval checkpoints, review lanes or publication authority. Preserve explicit
+user methods, repository requirements and all required acceptance checks.
+
+Select exactly one protocol and verify its pinned hash and shared reference hashes:
+
+```sh
+python3 "<engineering-skill-dir>/scripts/route.py" --protocol performance-optimization
+```
+
+Read the returned protocol and relevant supporting references. If the method is
+unclear, consult the menu in [engineering cycle](../shared/ENGINEERING-CYCLE.md).
+Stop when the gap is resolved; do not load every protocol or invent a skill quota.
+
+### Optional phase bundles
+
+Request a phase bundle only when several methods are needed. Existing phase
+commands remain supported; `--domain` adds to that bundle. `--protocol` cannot be
+combined with a phase or `--domain`.
 
 | Phase | Protocols |
 | --- | --- |
@@ -27,19 +46,12 @@ are suggestions when consulting this adapter, not obligations on every task:
 | document | documentation-and-adrs |
 | deliver | git-workflow-and-versioning |
 
-Resolve exact paths and verify the selected protocol hashes with:
-
 ```sh
 python3 "<engineering-skill-dir>/scripts/route.py" plan
 python3 "<engineering-skill-dir>/scripts/route.py" implement --domain frontend-ui-engineering
 ```
 
-Read the returned adapter and relevant protocol files. The router proposes a small
-set; omit an inapplicable technique (for example TDD for a prose-only correction)
-and state why when material. Domain protocols include API design, security,
-performance, browser testing, accessibility/UI, constraints and source verification;
-see the phase/domain matrix in [engineering cycle](../shared/ENGINEERING-CYCLE.md).
-Do not load every protocol or invent a quota of skills to apply.
+Omit an inapplicable technique (for example TDD for a prose-only correction).
 
 This vendored pack is the default source for Addy methods, including when a profile
 has no external imports. Existing native imports are preserved but do not take
@@ -86,7 +98,8 @@ Keep repository-specific tests, active-writer protection and genuine review gate
 
 ## Record application, not just selection
 
-In the existing TODO task, supporting receipt or worker handoff, record:
+For a technique that materially changes a decision or artifact, record in the
+existing TODO task, supporting receipt or worker handoff:
 
 `Skill application: <trigger>; <protocol path>@<pinned revision>; <decision or changed artifact>; <executed check/result or NOT_CHECKED>.`
 

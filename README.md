@@ -14,7 +14,7 @@ repository workflows, automatic slash-command registration, shared installation
 across profiles, and verification that gateway commands were registered. It includes
 the complete [Impeccable design skill](skills/impeccable/SKILL.md) and
 25 pinned [Addy engineering protocols](skills/engineering/SKILL.md), with shared
-checklists, loaded by task phase rather than all at once.
+checklists, loaded one technique at a time when needed. Phase bundles are optional.
 
 **Autowork coordinates repository development.** Supporting skills are available
 on demand; installation does not load them all or require a full workflow per task.

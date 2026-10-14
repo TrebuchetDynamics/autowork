@@ -74,16 +74,16 @@ an already-running gateway's command registry: use supported plugin reload and
 verify activation before claiming the new names work in messaging.
 
 Docs Sync and autowork decide routine engineering choices autonomously within the
-accepted scope. They carry decisions into worker contracts and apply relevant
-[Addy agent-skills](https://github.com/addyosmani/agent-skills) throughout planning,
-implementation and verification, including API, UI, migration, CI and operational
-work. Handoffs identify the skill used, the artifact or decision it informed, and
-its check result. Missing owner intent or authority remains an explicit question;
+accepted scope. Workers receive the selected task, accepted decisions, scope, checks
+and completion rules. For a concrete method gap or explicit request, they select one
+[Addy protocol](../skills/engineering/SKILL.md). Autowork retains workflow authority;
+protocols supply techniques within its contract. Handoffs record methods that
+materially changed a decision or artifact, with their check results.
+Missing owner intent or authority remains an explicit question;
 loading a skill alone is not proof of applying it.
 
-The [engineering cycle](../skills/shared/ENGINEERING-CYCLE.md) connects accepted
-specs and existing `goals.json`/`TODO.md` tasks to targeted installed engineering
-skills, implementation, checks, native review and owner-ledger reconciliation.
+The [engineering cycle](../skills/shared/ENGINEERING-CYCLE.md) is an optional routing
+reference when method selection is unclear. A ready task needs no routing prepass.
 A documentation-only `/docs_sync` request does not launch workers. To continue
 through a spec, explicitly ask `/autowork` to implement that accepted spec within
 its stated scope. Default `/autowork` hands off one slice. Review acceptance and
@@ -139,17 +139,19 @@ state live under `autowork/`; upgrades preserve existing work through migration.
 
 ## Pinned engineering protocols
 
-`/engineering` (the same spelling in Telegram) selects Addy engineering methods for
-the current phase. Autowork, Docs Sync and Autoresearch load this adapter through the
-shared engineering cycle; no separate command is normally needed. Examples:
+`/engineering` (the same spelling in Telegram) selects a technique for a specific
+method gap. Autowork, Docs Sync and Autoresearch can consult this adapter on demand;
+ready tasks need no separate command. Examples:
 
 ```text
-/engineering plan the accepted cache change into TODO.md; do not implement
-/engineering review the current cache task against its acceptance checks
+/engineering use performance-optimization to diagnose this cache bottleneck
+/engineering use code-review-and-quality for the current task's existing review
 ```
 
-The [adapter](../skills/engineering/SKILL.md) loads a small relevant selection from
-25 pinned protocols and their shared references. It translates upstream plan/task
+The [adapter](../skills/engineering/SKILL.md) provides 25 pinned protocols and their
+shared references. Its router's `--protocol NAME` selects exactly one method;
+explicit phase commands remain available as optional bundles. Both modes verify
+selected protocol and shared reference hashes. It translates upstream plan/task
 paths into existing TODO.md/goals.json entries and preserves prior authorization,
 explicit restrictions and actual review requirements. Its protocols are not extra
 workers or independently registered slash commands. See [provenance and updates](dependencies.md#refresh-the-pinned-engineering-pack).

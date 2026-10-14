@@ -1,5 +1,9 @@
 # Repository engineering cycle
 
+Optional routing reference: consult when a method is needed and its selection is
+unclear. Ready tasks use Autowork's execution contract directly. Autowork owns
+workflow authority; engineering protocols contribute techniques within that contract.
+
 Use the existing docs-sync backlog and autowork executor. This is workflow guidance,
 not a scheduler, new database or `/cycle` command. Documentation work alone never
 launches autowork. Only an explicit whole-spec implementation request authorizes
@@ -90,7 +94,8 @@ never relabel it Accepted merely because the engineering choice is reversible.
 Resolve bundled skills through `hermes-toolset:docs-sync`, `hermes-toolset:autowork`
 and [hermes-toolset:engineering](../engineering/SKILL.md), or their actual loaded
 SKILL.md paths. The engineering adapter's pinned Addy snapshot is the default;
-consult its phase router only when a method is needed; load selected support only. This works without
+select one technique with `scripts/route.py --protocol NAME` when a method is needed.
+Phase bundles are optional; load selected support only. This works without
 external imports and avoids ambiguous bare names. Preserve recorded vendored
 adaptations and apply the adapter's TODO, authorization and host-tool translations.
 

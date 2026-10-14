@@ -1,4 +1,4 @@
-"""Resolve a small phase-specific selection from the pinned engineering pack."""
+"""Verify one pinned engineering protocol or an explicitly requested phase bundle."""
 import argparse
 import hashlib
 import json
@@ -15,9 +15,16 @@ PHASES={
 }
 
 
-def route(phase, domains=(), pack=PACK):
+def route(phase=None, domains=(), pack=PACK, *, protocol=None):
+    if protocol is not None:
+        if phase is not None or domains:
+            raise ValueError('--protocol selects one method; do not combine it with a phase or --domain')
+        names = [protocol]
+    else:
+        if phase not in PHASES:
+            raise ValueError('Select --protocol NAME or an explicit phase bundle')
+        names = list(dict.fromkeys(PHASES[phase] + list(domains)))
     manifest=json.loads((pack/'UPSTREAM.json').read_text())
-    names=list(dict.fromkeys(PHASES[phase]+list(domains)))
     rows=[]
     for name in names:
         if name not in manifest['skills']:raise ValueError('Unknown engineering skill: '+name)
@@ -35,8 +42,10 @@ def route(phase, domains=(), pack=PACK):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('phase',choices=PHASES)
-    p.add_argument('--domain',action='append',default=[])
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('phase', nargs='?', choices=PHASES, help='opt into a phase bundle')
+    p.add_argument('--protocol', help='select exactly one protocol without phase defaults')
+    p.add_argument('--domain', action='append', default=[], help='add a protocol to a phase bundle')
     a=p.parse_args()
-    try:print(json.dumps(route(a.phase,a.domain),indent=2))
+    try:print(json.dumps(route(a.phase,a.domain,protocol=a.protocol),indent=2))
     except (ValueError,OSError,KeyError) as e:p.exit(1,str(e)+'\n')

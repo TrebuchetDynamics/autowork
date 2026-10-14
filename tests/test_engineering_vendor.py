@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -11,6 +12,44 @@ ROOT=Path(__file__).resolve().parents[1]
 PACK=ROOT/'skills/engineering'
 
 class EngineeringVendorTests(unittest.TestCase):
+    def test_exact_protocol_selection_has_no_implicit_phase_bundle(self):
+        result = subprocess.run(['python3', str(PACK/'scripts/route.py'),
+                                 '--protocol', 'performance-optimization'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        selection = json.loads(result.stdout)
+        self.assertIsNone(selection['phase'])
+        self.assertEqual([row['name'] for row in selection['skills']],
+                         ['performance-optimization'])
+        self.assertEqual(Path(selection['skills'][0]['path']),
+                         PACK/'upstream/skills/performance-optimization/PROTOCOL.md')
+
+    def test_exact_selection_rejects_unknown_or_mixed_requests(self):
+        for args in ([], ['--domain', 'performance-optimization'],
+                     ['--protocol', '../../bad'],
+                     ['implement', '--protocol', 'performance-optimization'],
+                     ['--protocol', 'performance-optimization', '--domain', 'context-engineering']):
+            with self.subTest(args=args):
+                result = subprocess.run(['python3', str(PACK/'scripts/route.py'), *args],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, '')
+
+    def test_exact_and_phase_routes_reject_tampered_protocols_and_references(self):
+        for relative in ('upstream/skills/test-driven-development/PROTOCOL.md',
+                         'upstream/references/definition-of-done.md'):
+            with self.subTest(path=relative), tempfile.TemporaryDirectory() as td:
+                pack = Path(td)/'engineering'
+                shutil.copytree(PACK, pack)
+                with (pack/relative).open('a') as changed:
+                    changed.write('\nTampered fixture\n')
+                for args in (['implement'], ['--protocol', 'test-driven-development']):
+                    result = subprocess.run(['python3', str(pack/'scripts/route.py'), *args],
+                                            capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('changed:', result.stderr)
+                    self.assertEqual(result.stdout, '')
+
     def test_integrity_and_no_nested_skill_discovery(self):
         manifest=json.loads((PACK/'UPSTREAM.json').read_text())
         self.assertEqual(len(manifest['skills']),25)
