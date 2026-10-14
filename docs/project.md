@@ -116,11 +116,11 @@ is the authoritative boundary description.
 
 [TODO.md](../TODO.md) owns implementation priorities. Its open entries describe planned
 changes; completed entries record bounded local results and qualification limits.
-The [goals.json](../goals.json) index now mirrors the open queue, including the
-Needs decision policy gate. TOOLSET-002 owns independent review and integration of
-the first-time initialization interface described above; offline helper execution
-does not close its canonical task before review. Historical completion
-notes remain in TODO and its established archive; they are not new executed proof.
+The [goals.json](../goals.json) index mirrors the current queue and retains completed
+task history. TOOLSET-002's first-time initialization interface is independently
+reviewed and integrated locally; its bounded completion evidence is in
+[the archive](../TODO.archive.md). TOOLSET-003 retains live recovery qualification.
+Historical completion notes are not new executed proof.
 Ledger eligibility does not establish native admission, ownership or execution.
 
 [Testing](testing.md) owns executable checks and their limits. Clean installation,
@@ -220,28 +220,34 @@ guidance are now implemented and independently reviewed.
 [Vendor/routing tests](../tests/test_engineering_vendor.py),
 [workflow-cycle tests](../tests/test_workflow_cycle.py) and the offline suite passed;
 provenance and upstream protocol bytes are preserved. TOOLSET-012's composed
-candidate still requires independent review and integration. These checks do not establish
-live worker or scheduled execution.
+candidate is independently reviewed and integrated locally; see
+[its archived completion evidence](../TODO.archive.md). These offline checks do not
+establish live worker or scheduled execution.
 
 ### Task context simplification
 
-The user requested simpler tasks for faster Autowork execution. The five pending
-IDs stay unchanged: TOOLSET-003, TOOLSET-011, TOOLSET-012, TOOLSET-013 and TOOLSET-008.
-[TODO.md](../TODO.md) now states the remaining action, acceptance, checks, exclusions,
-dependencies, ownership and next step directly; this is an editorial simplification,
-not reduced product scope or weaker completion criteria.
+At task-context simplification, the user requested simpler tasks for faster
+Autowork execution. The five then-pending IDs stayed unchanged: TOOLSET-003,
+TOOLSET-011, TOOLSET-012, TOOLSET-013 and TOOLSET-008.
+The compact [TODO.md](../TODO.md) bodies stated the remaining action, acceptance,
+checks, exclusions, dependencies, ownership and next step directly. This was an
+editorial simplification, not reduced scope or weaker completion criteria; the
+completed TOOLSET-008/012 bodies now reside in [the archive](../TODO.archive.md).
 
 Research baseline: those five task bodies contained 1,524 words; the compact bodies
 contain 1,082 words (29.0% fewer), measured by whitespace-separated words excluding
 headings, navigation and generated coverage. This measures task-context reduction,
 not a proven runtime speedup. No model/native timing experiment was run here.
 
-Decision: remove repeated rationale/lifecycle prose, point to existing accepted
-contracts for detail, and avoid redoing TOOLSET-012's reviewed engineering-guidance
-slice. Keep user ordering, ledger state/dependencies and completed history intact.
-TOOLSET-012's original worker/contract remains assigned; TOOLSET-013 still waits for
-it. Live environments and the TOOLSET-008 policy question remain real gates, not
-simplification targets. Planning changes no code, dispatch, schedule or budget.
+Decision at simplification: remove repeated rationale/lifecycle prose, point to
+accepted contracts for detail, and avoid redoing TOOLSET-012's reviewed
+engineering-guidance slice. Keep user ordering, ledger state/dependencies and
+completed history intact. At that point, TOOLSET-012's original worker/contract
+remained assigned and TOOLSET-013 waited for it. TOOLSET-012 is now reviewed and
+integrated; TOOLSET-013 waits for its isolated native/model environment, not another
+implementation. TOOLSET-008's policy correction is reviewed, integrated and
+archived. The remaining live gates are not simplification targets. Planning alone
+changes no code, dispatch, schedule or budget.
 
 ### Acceptance and measurement
 
