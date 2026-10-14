@@ -304,8 +304,54 @@ def check_tree(path, tree):
             raise ValueError(f'Installed/staged bytes changed: {path / relative}')
 
 
-def active_consumers(home):
+def direct_consumer(home, profile):
+    """Read the direct coordinator's pointer and verify its actual process identity."""
+    receipt = home / 'autowork/task-execution-latest.json'
+    try:
+        safe_path(receipt)
+        if not receipt.exists():
+            return None
+        pointer = json.loads(receipt.read_text())
+        if (not isinstance(pointer, dict) or not isinstance(pointer.get('task_id'), str)
+                or not pointer['task_id'].strip() or not isinstance(pointer.get('claim_path'), str)):
+            raise ValueError('invalid pointer')
+        claim_path = Path(pointer['claim_path'])
+        if not claim_path.is_absolute():
+            raise ValueError('claim path is not absolute')
+        safe_path(claim_path)
+        try:
+            claim = json.loads(claim_path.read_text())
+        except FileNotFoundError:
+            return None  # Release removes the shared claim; the latest pointer may remain.
+        if (not isinstance(claim, dict) or any(not isinstance(claim.get(key), str)
+                or not claim[key].strip() for key in ('task_id', 'workspace', 'profile'))
+                or not Path(claim['workspace']).is_absolute()):
+            raise ValueError('invalid active claim')
+        owner = claim.get('owner')
+        if (not isinstance(owner, dict) or type(owner.get('pid')) is not int or owner['pid'] <= 0
+                or not isinstance(owner.get('boot_id'), str) or not owner['boot_id'].strip()
+                or not str(owner.get('start_ticks', '')).isdigit()):
+            raise ValueError('incomplete process identity')
+        if claim['profile'] != profile:
+            return None
+        if Path('/proc/sys/kernel/random/boot_id').read_text().strip() != owner['boot_id']:
+            return None
+        try:
+            stat = Path(f"/proc/{owner['pid']}/stat").read_text().rsplit(')', 1)[1].split()
+        except FileNotFoundError:
+            return None
+        if stat[0] not in ('Z', 'X') and stat[19] == str(owner['start_ticks']):
+            return f"Active direct coordinator owns {claim['task_id']} (pid {owner['pid']})"
+        return None
+    except (OSError, ValueError, TypeError, IndexError) as error:
+        raise ValueError(f'Repair direct execution receipt/claim referenced by {receipt}: {error}') from error
+
+
+def active_consumers(home, profile):
     """Protect selected helper files referenced by actual same-user processes."""
+    reason = direct_consumer(home, profile)
+    if reason:
+        return reason
     proc = Path('/proc')
     if not proc.is_dir():
         return 'Native helper process inventory is unavailable on this host'
@@ -395,7 +441,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
         for name, home in profiles:
             row = run['profiles'].setdefault(name, {'status': 'pending'})
             try:
-                reason = active_consumers(home) if row.get('phase') != 'ready' else None
+                reason = active_consumers(home, name) if row.get('phase') != 'ready' else None
                 if reason:
                     raise ValueError(reason)
                 plugin = home / 'plugins/hermes-toolset'
@@ -478,7 +524,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                     source_tree(source, revision)
                     source_tree(stage, revision)
                     check_tree(stage, tree)
-                    reason = active_consumers(home)
+                    reason = active_consumers(home, name)
                     if reason:
                         raise ValueError(reason)
                     for item in files:

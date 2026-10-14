@@ -518,6 +518,87 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
         self.assertNotIn('install', [action for action, _ in self.calls])
 
+    def direct_claim(self, **changes):
+        import os
+        state = self.repo/'.git/autowork-execution'; state.mkdir()
+        claim_path = state/'active.json'
+        claim = {'task_id': 'TASK-1', 'workspace': str(self.repo), 'profile': 'default',
+                 'owner': {'pid': os.getpid(),
+                           'start_ticks': Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()[19],
+                           'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip()}}
+        claim.update(changes)
+        claim_path.write_text(json.dumps(claim))
+        journal = self.home/'autowork'; journal.mkdir(exist_ok=True)
+        (journal/'task-execution-latest.json').write_text(json.dumps(
+            {'claim_path': str(claim_path), 'task_id': 'TASK-1'}))
+        return claim_path, claim
+
+    def test_live_direct_coordinator_blocks_install_without_helper_argv(self):
+        claim_path, _ = self.direct_claim()
+        before = claim_path.read_bytes()
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Active direct coordinator', result['profiles']['default']['error'])
+        self.assertEqual(claim_path.read_bytes(), before)
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual(self.calls, [])
+
+    def test_released_direct_claim_does_not_veto_install(self):
+        claim_path, _ = self.direct_claim(); claim_path.unlink()
+        self.assertEqual(self.deploy()['status'], 'updated')
+
+    def test_reused_pid_does_not_veto_install(self):
+        claim_path, claim = self.direct_claim()
+        claim['owner']['start_ticks'] = str(int(claim['owner']['start_ticks']) + 1)
+        claim_path.write_text(json.dumps(claim))
+        self.assertEqual(self.deploy()['status'], 'updated')
+
+    def test_exited_direct_coordinator_does_not_veto_install(self):
+        process = subprocess.Popen([sys.executable, '-c', 'pass'])
+        process.wait()
+        claim_path, claim = self.direct_claim()
+        claim['owner']['pid'] = process.pid
+        claim_path.write_text(json.dumps(claim))
+        self.assertEqual(self.deploy()['status'], 'updated')
+
+    def test_direct_coordinator_claim_started_during_scan_blocks_publication(self):
+        def race(action, *args):
+            if action == 'scan': self.direct_claim()
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', race):
+            result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertIn('Active direct coordinator', result['profiles']['default']['error'])
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.assertNotIn('install', [action for action, _ in self.calls])
+
+    def test_claim_from_prior_boot_does_not_veto_install(self):
+        claim_path, claim = self.direct_claim()
+        claim['owner']['boot_id'] = 'prior-boot'
+        claim_path.write_text(json.dumps(claim))
+        self.assertEqual(self.deploy()['status'], 'updated')
+
+    def test_other_profiles_live_direct_claim_does_not_veto_install(self):
+        self.direct_claim(profile='work')
+        self.assertEqual(self.deploy()['status'], 'updated')
+
+    def test_malformed_direct_claim_requires_explicit_repair(self):
+        claim_path, _ = self.direct_claim(owner={})
+        before = claim_path.read_bytes()
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Repair direct execution', result['profiles']['default']['error'])
+        self.assertEqual(claim_path.read_bytes(), before)
+
+    def test_malformed_direct_pointer_requires_explicit_repair(self):
+        self.direct_claim()
+        receipt = self.home/'autowork/task-execution-latest.json'; receipt.write_text('[]')
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Repair direct execution', result['profiles']['default']['error'])
+        self.assertEqual(receipt.read_text(), '[]')
+
     def test_git_export_attributes_do_not_change_deployed_blob_hashes(self):
         (self.remote/'.gitattributes').write_text('skills/demo/SKILL.md export-ignore\n')
         self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'archive attributes')
