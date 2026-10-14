@@ -280,6 +280,58 @@ class ConsultationTests(unittest.TestCase):
                 self.assertNotIn('retained-tail', saved.read_text())
                 self.assertEqual(json.loads(result['receipt']['stderr'])['password'], '[REDACTED]')
 
+    def test_bare_github_tokens_are_redacted_through_saved_consult_receipts(self):
+        import json
+        import sqlite3
+        from unittest.mock import patch
+        m = self.load()
+        tokens = [prefix + 'SYNTHETIC_MARKER' for prefix in
+                  ('ghp_', 'gho_', 'ghu_', 'ghs_', 'ghr_', 'github_pat_')]
+        tokens.append('ghs_SYNTHETIC_HEADER.SYNTHETIC_PAYLOAD.SYNTHETIC_SIGNATURE')
+        for token in tokens:
+            with self.subTest(token=token), tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+                text = 'before (' + token + ') after'
+                expected = 'before ([REDACTED]) after'
+                nested = {'items': [text, {'message': token}], 'keep': True}
+                sanitized = {'items': [expected, {'message': '[REDACTED]'}], 'keep': True}
+                self.assertEqual(m.redact(text), expected)
+                self.assertEqual(json.loads(m.redact(json.dumps(nested))), sanitized)
+                self.assertEqual(m.redact(m.redact(text)), expected)
+                root = Path(d)
+                db = self.history(root, 'one', [('original', 'cli', text, text, text,
+                                                'one', None, 1)])
+                with sqlite3.connect(db) as connection:
+                    connection.execute('UPDATE messages SET content=?', (json.dumps(nested),))
+                connection.close()
+                before = db.read_bytes()
+                evidence = m.original_evidence('one', root)
+                self.assertEqual(json.loads(evidence['anchor_excerpt']), sanitized)
+                for field in ('title', 'cwd', 'git_repo_root'):
+                    self.assertEqual(evidence[field], expected)
+                self.assertEqual(db.read_bytes(), before)
+                event = json.dumps({'type': 'result', 'exit_code': 0, 'text': text,
+                                    'details': nested})
+                with patch.object(m, 'execute', return_value={'stdout': event, 'stderr': text,
+                        'returncode': 0, 'timed_out': False}) as run:
+                    result = m.consult('one', root, 'offline-fixture', 10)
+                run.assert_called_once()
+                self.assertNotIn(token, run.call_args.args[0][-1])
+                self.assertEqual(result['status'], 'replied')
+                self.assertEqual(result['original_evidence'], evidence)
+                self.assertEqual(result['reply'], expected)
+                self.assertEqual(result['receipt']['stderr'], expected)
+                self.assertEqual(json.loads(result['receipt']['stdout'])['details'], sanitized)
+                saved = root / 'receipt.json'
+                m.private_json(saved, result)
+                self.assertEqual(json.loads(saved.read_text()), result)
+                self.assertNotIn('SYNTHETIC_', saved.read_text())
+                self.assertEqual(saved.stat().st_mode & 0o777, 0o600)
+        for prefix in ('sk-', 'ghp-', 'gho-', 'xoxb-', 'xoxp-'):
+            with self.subTest(legacy=prefix):
+                self.assertEqual(m.redact(prefix + 'SYNTHETIC_MARKER'), '[REDACTED]')
+        self.assertEqual(m.redact('ghp_ ghs_ github_pat_ ordinary_text'),
+                         'ghp_ ghs_ github_pat_ ordinary_text')
+
     def test_redaction_preserves_json_structure_for_plain_text_secrets(self):
         import json
         m = self.load()
