@@ -257,10 +257,17 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      `git worktree add` or `checkout-index` contains tracked files only: no installed module tree,
      no untracked runtime config. The gate then dies on its first check with a missing tool
      (`local <x> not found`) or the app cannot start, which reads as clean bytes failing for no
-     visible reason. Link the already-installed module set into the candidate when the manifest and
-     lockfile are identical between what ships and what is installed, copy untracked runtime env in
-     (copy it, never stage or commit it), and re-run the check that failed to confirm the cause was
-     the prerequisite and not the payload. For Flutter, treat `pubspec.lock` as part of the gated
+     visible reason. Reuse the already-installed module set only when the manifest and
+     lockfile match. Before linking it, check whether the dev server restricts resolved
+     dependency paths: an external symlink can let SSR succeed while client-entry
+     requests return 403 and hydration never starts. For that demonstrated boundary,
+     make a physical private dependency copy, omit generated dev-server caches,
+     preserve internal symlinks and verify none escape the candidate. Keep the
+     filesystem security policy unchanged; rerun the original failing browser spec
+     before changing application code. Copy required untracked runtime env privately
+     (never stage or commit it), and confirm the failure was a prerequisite rather
+     than the payload. Record the dependency layout with the gate receipt, because
+     matching lockfiles alone do not qualify different filesystem layouts. For Flutter, treat `pubspec.lock` as part of the gated
      candidate: if `flutter pub get` changes it, either include that exact lockfile delta or restore
      the lock first and rerun analysis/tests against the restored dependency graph; never ship a
      lockfile different from the one those checks exercised.

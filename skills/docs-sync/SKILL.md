@@ -142,7 +142,21 @@ records show delivery. Investigate mismatches rather than changing intent to mat
 code. Distinguish Proposed, Planned and Implemented. Ground claims in paths/symbols/
 checks; never invent approval, owners, metrics, history or validation. Bind
 historical receipts to their tested revision: old untested wording does not prove
-current absence. Record an owner-permitted acceptance waiver with its exact
+current absence. Before retaining a “local-only” or “not on main” claim, check
+`git merge-base --is-ancestor <reviewed-commit> <target>` and the relevant current
+source blobs; integration can advance independently of an old receipt. Correct
+CHANGELOG and test-plan together while keeping packaging, deployment and live
+qualification separate.
+
+Reconcile retained checks by reading the receipt, result inventory and actual
+runner liveness together. If the runner is gone but its receipt lacks a terminal
+exit or full aggregate, record the attempt as incomplete/unqualified, not running
+or passed; failed batches do not establish an invented whole-suite total. Record
+a completed focused check with its source/tools, selected-versus-recorded inventory,
+setup-versus-product cases, skip reasons and cleanup evidence. Keep its duration
+out of full-gate speedup claims. Put the detailed result in one existing evidence
+owner and link from the live task and plan; update the next action without resetting
+ownership, budgets or acceptance. Record an owner-permitted acceptance waiver with its exact
 criterion, authority, residual risk and remaining checks; it is never an executed
 pass and does not extend to other criteria or tasks. When scope changes, reconcile
 the authority owner, active bodies and operational guidance together.

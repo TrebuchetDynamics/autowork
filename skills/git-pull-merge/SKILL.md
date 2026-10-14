@@ -45,9 +45,12 @@ python3 <git-pull-merge>/scripts/isolated-origin-clone.py ORIGIN NEW_PRIVATE_PAT
   --expected-main EXACT_OBSERVED_ORIGIN_MAIN_SHA
 ```
 
-Resolve the existing origin and observe its exact main SHA first. Use a new
-private destination; retain earlier clones, frozen candidates and check/PR
-receipts. The helper refuses an existing destination, a changed main pin, shallow
+Resolve the existing origin and observe its exact main SHA first. Carry that
+immutable source SHA into every candidate diff, merge and preservation check.
+A local clone names the source checkout `origin`; its `origin/main` can therefore
+be the local branch, not the fetched remote tip. Verify ref identity instead of
+reusing the original checkout's remote labels. Use a new private destination;
+retain earlier clones, frozen candidates and check/PR receipts. The helper refuses an existing destination, a changed main pin, shallow
 history or borrowed objects. It clears inherited repository selectors and disables
 hooks/fsmonitor. A prepared clone is not integration, acceptance or push; retain
 all provenance, ownership, policy and required verification gates. When the origin
@@ -75,6 +78,17 @@ leaves its partial private destination retained, never deletes owner files.
      already verified on upstream, prefer the rehearsed
      [published-reconciliation fast-forward](../git-commit-push/references/shared-worktree-safety.md#fast-forward-already-published-reconciliations);
      it never permits staging unrelated work.
+     For divergent history with owned overlapping edits, rehearse the owned checkpoint
+     and upstream merge in a private candidate, resolve conflicts there, and qualify
+     the resulting tree before canonical writes. Under the repository's coordination
+     lock, recheck HEAD, upstream SHA, real index bytes and every owned file baseline;
+     then make the ordinary scoped checkpoint and run
+     `git merge --no-commit --no-ff <pinned-source-sha>`. Apply only the verified
+     conflict resolutions, stage explicit paths and require `git write-tree` to equal
+     the tested candidate tree before committing. Abort an unexpected merge; keep the
+     owned checkpoint and backups. Do not use the published staged-equal fast-forward
+     recipe for an unpublished candidate, because its remote-readback precondition
+     has not been satisfied.
    - **Overlap with someone else's live work** (recent mtime, a running card on that area, see
      `git-commit-push` and its shared-worktree safety reference): do not stash, revert or overwrite it. Integrate into an
      isolated worktree instead (`git worktree add <scratch> <target-branch>`, merge there, verify),
@@ -130,6 +144,14 @@ leaves its partial private destination retained, never deletes owner files.
      whole-file snapshot. Prefer the later reconciled snapshot only after confirming it contains the
      completed work from both sides; merge missing evidence with the repository's supported ledger
      CLI (and regenerate derived summaries), not by hand-editing JSON.
+     Check the entire merged queue by stable ID, not just conflict hunks: a clean
+     textual merge can remove or duplicate a moved task body. Require every unfinished
+     indexed task to have exactly one live body; preserve newer deferrals, completed
+     statuses, goal evidence and local accepted work. Retain both independent archive
+     additions verbatim. Reconcile order from the final live bodies with the supported
+     ledger helper, regenerate summaries, and repeat rendering to prove byte stability.
+     Compare upstream task/goal objects programmatically, allowing only the explicitly
+     owned changes; counts alone can hide a lost body or reverted completion.
    - A conflict that is a real product decision becomes an owner question (ask, don't block):
      apply the recommended side, keep it reversible, and ask in the report.
    - Check nothing is left behind: `git diff --name-only --diff-filter=U` must be empty, and no
