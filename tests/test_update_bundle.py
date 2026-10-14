@@ -285,17 +285,7 @@ class ScopedUpdateTests(unittest.TestCase):
 
     def fake_native(self, action, home, stage, revision, python):
         if action == 'inventory':
-            spec = importlib.util.spec_from_file_location('native_update_fixture', ROOT/'update_bundle_native.py')
-            adapter = importlib.util.module_from_spec(spec); spec.loader.exec_module(adapter)
-            native = ModuleType('hermes_cli.kanban_db')
-            native.list_boards = lambda **kwargs: [
-                {'slug': 'default', 'db_path': str(self.root/'canonical-boards/kanban.db')},
-                {'slug': 'named', 'db_path': str(self.root/'canonical-boards/kanban/boards/named/kanban.db')}]
-            profiles = ModuleType('hermes_cli.profiles')
-            profiles.normalize_profile_name = lambda name: name.strip().lower()
-            with patch.dict('sys.modules', {'hermes_cli': ModuleType('hermes_cli'),
-                                           'hermes_cli.kanban_db': native, 'hermes_cli.profiles': profiles}):
-                return adapter.board_inventory()
+            raise ValueError('Kanban lookup is forbidden during deployment')
         self.calls.append((action, str(home)))
         if action == 'install':
             self.git(home, 'clone', str(stage), str(home/'plugins/hermes-toolset'))
@@ -366,44 +356,55 @@ class ScopedUpdateTests(unittest.TestCase):
         (self.profiles[1][1]/'config.yaml').write_text('{}\n')
         return path
 
-    def test_shared_board_selected_owner_defers_only_affected_profile(self):
-        self.board(assignee='work')
-        result = self.deploy(('default', 'work'))
-        self.assertEqual(result['profiles']['work']['status'], 'deferred')
-        self.assertEqual(result['profiles']['default']['status'], 'ready')
-        self.assertTrue((self.profiles[1][1]/'plugins/hermes-toolset').is_symlink())
+    def assert_historical_state_ignored(self, path=None):
+        before = path.read_bytes() if path else None
+        with patch('sqlite3.connect', side_effect=AssertionError('native database access is forbidden')):
+            result = self.deploy(('default', 'work'))
+        self.assertEqual(result['status'], 'updated', result['profiles'])
+        for _, home in self.profiles:
+            self.assertFalse((home/'plugins/hermes-toolset').is_symlink())
+            self.assertEqual((home/'skills/demo/SKILL.md').read_text(), 'new\n')
+        if path:
+            self.assertEqual(path.read_bytes(), before)
 
-    def test_named_shared_board_run_owner_checked_separately_from_assignee(self):
-        self.board(named=True, assignee='reviewer', run_profile='work')
-        result = self.deploy(('work',))
-        self.assertEqual(result['profiles']['work']['status'], 'deferred')
-        self.assertEqual(self.calls, [])
+    def test_absent_board_and_historical_handoff_do_not_veto_deployment(self):
+        (self.profiles[1][1]/'config.yaml').write_text('{}\n')
+        journal = self.home/'autowork'; journal.mkdir()
+        handoff = journal/'goal-handoff.json'; handoff.write_text('malformed old receipt')
+        self.assert_historical_state_ignored(handoff)
+        self.assertFalse((self.root/'canonical-boards').exists())
 
-    def test_paused_shared_card_keeps_selected_profile_pins(self):
-        self.board(assignee='work', status='paused')
-        result = self.deploy(('work',))
-        self.assertEqual(result['profiles']['work']['status'], 'deferred')
-        self.assertEqual(self.calls, [])
+    def test_blocked_historical_card_does_not_veto_deployment(self):
+        self.assert_historical_state_ignored(self.board(status='blocked'))
 
-    def test_unknown_shared_card_owner_fails_closed(self):
-        self.board(assignee=None)
-        result = self.deploy(('default',))
-        self.assertEqual(result['profiles']['default']['status'], 'deferred')
-        self.assertIn('ownership', result['profiles']['default']['error'])
+    def test_done_historical_card_does_not_veto_deployment(self):
+        self.assert_historical_state_ignored(self.board(status='done'))
 
-    def test_orphan_unfinished_run_keeps_its_profile_protected(self):
+    def test_paused_historical_card_does_not_veto_deployment(self):
+        self.assert_historical_state_ignored(self.board(status='paused'))
+
+    def test_unknown_historical_owner_does_not_veto_deployment(self):
+        self.assert_historical_state_ignored(self.board(assignee=None))
+
+    def test_mismatched_historical_run_does_not_veto_deployment(self):
+        import sqlite3
+        path = self.board(named=True, assignee='reviewer', run_profile='work')
+        with sqlite3.connect(path) as db:
+            db.execute("update task_runs set task_id = 'different-card'")
+        self.assert_historical_state_ignored(path)
+
+    def test_orphan_historical_run_does_not_veto_deployment(self):
         import sqlite3
         path = self.board(assignee='reviewer', status='done', run_profile='work')
         with sqlite3.connect(path) as db:
             db.execute('update tasks set current_run_id = null')
-        result = self.deploy(('work',))
-        self.assertEqual(result['profiles']['work']['status'], 'deferred')
+        self.assert_historical_state_ignored(path)
 
-    def test_malformed_shared_database_is_not_treated_as_idle(self):
+    def test_malformed_historical_database_does_not_veto_deployment(self):
+        (self.profiles[1][1]/'config.yaml').write_text('{}\n')
         path = self.root/'canonical-boards/kanban.db'; path.parent.mkdir()
         path.write_text('not sqlite')
-        result = self.deploy()
-        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assert_historical_state_ignored(path)
 
     def test_interruption_after_native_install_resumes_same_backup(self):
         def interrupt(action, *args):
@@ -487,6 +488,36 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual(result['profiles']['default']['status'], 'deferred')
         self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
 
+    def test_helper_launch_lock_defers_install_without_changing_profile(self):
+        import fcntl
+        journal = self.home/'autowork'; journal.mkdir()
+        with (journal/'goal-handoff.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertIn('handoff is active', result['profiles']['default']['error'])
+        self.assertEqual(self.calls, [])
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
+
+    def test_helper_started_during_scan_is_preserved_and_blocks_publication(self):
+        processes = []
+        def race(action, *args):
+            if action == 'scan':
+                process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)',
+                                           str(self.home/'plugins/hermes-toolset/update_bundle.py')])
+                processes.append(process)
+                self.addCleanup(lambda: (process.terminate(), process.wait()))
+            return self.fake_native(action, *args)
+        with patch.object(self.mod, 'native_call', race):
+            result = self.deploy()
+        self.assertEqual(result['status'], 'incomplete')
+        self.assertIn('Active helper process', result['profiles']['default']['error'])
+        self.assertIsNone(processes[0].poll())
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.assertNotIn('install', [action for action, _ in self.calls])
+
     def test_git_export_attributes_do_not_change_deployed_blob_hashes(self):
         (self.remote/'.gitattributes').write_text('skills/demo/SKILL.md export-ignore\n')
         self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'archive attributes')
@@ -558,43 +589,20 @@ def cmd_install(source, *, force, ref, enable):
                               env=dict(os.environ, PYTHONPATH=str(self.root), FAKE_SCAN=scan),
                               capture_output=True, text=True)
 
-    def test_inventory_uses_native_shared_resolution_and_keeps_extra_board_pin(self):
-        import os, sqlite3, sys
-        package = self.root/'hermes_cli'
-        (package/'kanban_db.py').write_text('''import os
-from pathlib import Path
-def list_boards(*, include_archived):
-    assert include_archived is True
-    assert 'HERMES_KANBAN_DB' not in os.environ
-    root = Path(os.environ['HERMES_KANBAN_HOME'])
-    return [{'slug': 'default', 'db_path': str(root/'kanban.db')},
-            {'slug': 'named', 'db_path': str(root/'named.db')}]
-''')
-        (package/'profiles.py').write_text('def normalize_profile_name(name): return name.strip().lower()\n')
-        shared = self.root/'native-shared'; shared.mkdir()
-        extra = self.root/'extra.db'
-        for path, owner in ((shared/'kanban.db', 'Work'), (shared/'named.db', 'Other'), (extra, 'Pinned')):
-            with sqlite3.connect(path) as db:
-                db.execute('create table tasks (id text, status text, assignee text, current_run_id integer, worker_pid integer)')
-                db.execute('create table task_runs (id integer, task_id text, profile text, status text, ended_at integer, worker_pid integer)')
-                db.execute('insert into tasks values (?, ?, ?, ?, ?)', ('card', 'paused', owner, None, None))
-        before = {p: p.read_bytes() for p in (shared/'kanban.db', shared/'named.db', extra)}
-        result = subprocess.run([sys.executable, str(ROOT/'update_bundle_native.py'), 'inventory',
-                                 str(self.home), str(self.stage), ''], capture_output=True, text=True,
-                                env=dict(os.environ, PYTHONPATH=str(self.root), HERMES_KANBAN_HOME=str(shared),
-                                         HERMES_KANBAN_DB=str(extra)))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        inventory = json.loads(result.stdout)
-        self.assertEqual({t['assignee'] for t in inventory['tasks']}, {'work', 'other', 'pinned'})
-        self.assertEqual({p: p.read_bytes() for p in before}, before)
-        self.assertFalse((self.home/'kanban.db').exists())
+    def test_removed_inventory_action_cannot_access_native_boards(self):
+        (self.root/'hermes_cli/kanban_db.py').write_text(
+            "raise AssertionError('native board import is forbidden')\n")
+        result = self.run_helper('inventory')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Unknown native admission action', result.stderr)
+        self.assertEqual(list(self.home.iterdir()), [])
 
     def test_native_call_resolves_launcher_source_without_pythonpath(self):
         import os, shlex
         package = self.root/'hermes_cli'
         (package/'plugins.py').write_text('')
-        (package/'kanban_db.py').write_text('def list_boards(*, include_archived): return []\n')
-        (package/'profiles.py').write_text('def normalize_profile_name(name): return name\n')
+        (package/'kanban_db.py').write_text(
+            "raise AssertionError('native board import is forbidden')\n")
         launcher = self.root/'hermes'
         bootstrap = f'import sys; sys.path.insert(0, {str(self.root)!r})'
         launcher.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -I -c {shlex.quote(bootstrap)} "$@"\n')
@@ -603,8 +611,8 @@ def list_boards(*, include_archived):
         updater = importlib.util.module_from_spec(spec); spec.loader.exec_module(updater)
         with patch.dict(os.environ, PATH=str(self.root), PYTHONPATH=''), \
              patch.object(sys, 'path', [str(ROOT), *sys.path]):
-            inventory = updater.native_call('inventory', self.home, self.stage, '', sys.executable)
-        self.assertEqual(inventory, {'boards': [], 'tasks': [], 'runs': []})
+            admission = updater.native_call('scan', self.home, self.stage, 'a'*40, sys.executable)
+        self.assertEqual(admission, {'admitted': True})
         self.assertEqual(list(self.home.iterdir()), [])
 
     def test_native_adapter_exists(self):

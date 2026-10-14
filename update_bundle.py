@@ -240,7 +240,7 @@ def native_call(action, home, stage, revision, python):
                action, str(home), str(stage), revision]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONDONTWRITEBYTECODE='1')
     # A caller's alternate board/profile must not redirect admission.
-    for key in (('HERMES_PROFILE',) if action == 'inventory' else ('HERMES_PROFILE', 'HERMES_KANBAN_DB')):
+    for key in ('HERMES_PROFILE', 'HERMES_KANBAN_DB'):
         env.pop(key, None)
     result = subprocess.run(command, env=env, stdin=subprocess.DEVNULL,
                             capture_output=True, text=True, timeout=180)
@@ -304,8 +304,8 @@ def check_tree(path, tree):
             raise ValueError(f'Installed/staged bytes changed: {path / relative}')
 
 
-def active_consumers(home, profile, python):
-    """Fail closed on nonterminal native cards, including paused pinned consumers."""
+def active_consumers(home):
+    """Protect selected helper files referenced by actual same-user processes."""
     proc = Path('/proc')
     if not proc.is_dir():
         return 'Native helper process inventory is unavailable on this host'
@@ -323,34 +323,6 @@ def active_consumers(home, profile, python):
             return 'Cannot establish ownership of a same-user helper process'
         if any(argument.startswith(prefix) for argument in arguments for prefix in prefixes):
             return f'Active helper process references selected profile files (pid {process.name})'
-    inventory = native_call('inventory', home, home, '', python)
-    runs = {(run['board'], run['id']): run for run in inventory['runs']}
-    terminal = {'done', 'cancelled', 'canceled', 'archived', 'completed', 'failed'}
-    for task in inventory['tasks']:
-        current = runs.get((task['board'], task['current_run_id']))
-        if task['status'] in terminal and not task['worker_pid'] and current is None:
-            continue
-        if task['current_run_id'] is not None and current is None:
-            return 'Cannot establish native ownership: current run is missing'
-        if current is not None and current['task_id'] != task['id']:
-            return 'Cannot establish native ownership: current run belongs to a different card'
-        active = task['status'] not in terminal or task['worker_pid'] or (current and current['ended_at'] is None)
-        if not active:
-            continue
-        owners = [task['assignee']] + ([current['profile']] if current else [])
-        if any(not isinstance(owner, str) or not owner for owner in owners):
-            return 'Cannot establish native ownership of an active or pinned card'
-        if profile in owners:
-            return 'Nonterminal/pinned native card or unresolved worker record; reconcile the original card before deployment'
-    # Include orphan/in-flight runs even when another assignee now owns the card.
-    for run in inventory['runs']:
-        if run['ended_at'] is None:
-            if not isinstance(run['profile'], str) or not run['profile']:
-                return 'Cannot establish native ownership of an unfinished run'
-            if run['profile'] == profile:
-                return 'Unfinished native run recorded for selected profile; reconcile ownership before deployment'
-    if not any(board['exists'] for board in inventory['boards']) and (home / 'autowork/goal-handoff.json').exists():
-        return 'Handoff exists but native worker ownership is unavailable'
     return None
 
 
@@ -423,7 +395,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
         for name, home in profiles:
             row = run['profiles'].setdefault(name, {'status': 'pending'})
             try:
-                reason = active_consumers(home, name, python) if row.get('phase') != 'ready' else None
+                reason = active_consumers(home) if row.get('phase') != 'ready' else None
                 if reason:
                     raise ValueError(reason)
                 plugin = home / 'plugins/hermes-toolset'
@@ -489,7 +461,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
             row = run['profiles'][name]
             stage = backup / name / 'stage'
             try:
-                # The helper launch uses the same lock; native ownership is checked again below.
+                # The helper launch uses the same lock; live processes are checked again below.
                 journal = home / 'autowork'
                 if journal.is_symlink():
                     raise ValueError('Symlinked worker journal')
@@ -506,7 +478,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                     source_tree(source, revision)
                     source_tree(stage, revision)
                     check_tree(stage, tree)
-                    reason = active_consumers(home, name, python)
+                    reason = active_consumers(home)
                     if reason:
                         raise ValueError(reason)
                     for item in files:
