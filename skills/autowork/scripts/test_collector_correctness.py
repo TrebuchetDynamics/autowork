@@ -46,15 +46,18 @@ class CorrectnessTests(unittest.TestCase):
         self.assertIn('T1: missing Scope', held['tasks'][0]['reasons'])
         self.assertEqual(held['tasks'][0]['state'], 'draft_saved')
 
-    def test_unbound_linked_worktree_is_held_not_canonical_ready(self):
+    def test_linked_worktree_readiness_observes_local_contract_without_writes(self):
         root = self.repo()
         child = self.root / 'child'
         self.git(root, 'worktree', 'add', '-b', 'fixture-child', str(child))
-        held = backlog_readiness(child, [])
-        self.assertIn('canonical_readiness', held, 'canonical authority must be qualified')
-        self.assertEqual(held['canonical_readiness']['state'], 'unknown')
-        self.assertIn('canonical authority unbound linked worktree', held['canonical_readiness']['gate'])
-        self.assertNotEqual(held['state'], 'ready_for_autowork')
+        before = {p: p.read_bytes() for checkout in (root, child)
+                  for p in checkout.rglob('*') if p.is_file()}
+        ready = backlog_readiness(child, [])
+        self.assertEqual(ready['canonical_readiness'], {'state': 'observed', 'repo': str(child)})
+        self.assertEqual(ready['state'], 'consumer_ready')
+        self.assertEqual(ready['live_ownership'], 'unknown')
+        self.assertEqual(before, {p: p.read_bytes() for checkout in (root, child)
+                                  for p in checkout.rglob('*') if p.is_file()})
         self.assertFalse((root / '.git/.docs-sync-goals.lock').exists())
 
     def test_current_handoff_matches_reconcile_top_level_precedence(self):
