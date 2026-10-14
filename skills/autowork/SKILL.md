@@ -38,20 +38,21 @@ Does not create recurring jobs; existing authorized cron jobs may invoke it.
 
 ## Mode precedence
 
-Only explicit whole-spec requests use `references/whole-spec-execution.md` instead of picker selection/stop rules; retain all safety, ownership, admission, budgets and review gates below.
+Caller scope and saved stop/batch limits control continuation. Default: one slice
+including recovery/closeout. Explicit stops win; recurrence never expands budgets.
+Apply [mode details](references/iteration-and-decisions.md#mode-precedence).
+
+Explicit whole-spec requests use `references/whole-spec-execution.md`; preserve safety, ownership, admission, budgets and review.
 
 For scheduled runs load [scheduled policy](references/scheduled-policy.md).
 Owner consultations: `references/profile-feedback.md`.
 
 Apply [TODO-first planning](../shared/TODO-WORKCENTER.md).
 
-At verified closeout and reconciliation of completed bodies, align TODO and ledger
-status, then run `python3 "<skills-root>/docs-sync/scripts/goals.py" archive <repo>`.
-This automatically moves closed bodies to `TODO.archive.md` or the existing archive;
-do not wait for a Docs Sync job. Keep ledger evidence. Without goals.json, inspect
-checks and pass verified closed IDs with `archive <repo> --verified-tasks ID1,ID2`.
-Report retained conflicts; read-only runs skip this write. Follow the
-[archive contract](../docs-sync/references/todo-archive.md).
+At verified closeout, align TODO/ledger and run
+`python3 "<skills-root>/docs-sync/scripts/goals.py" archive <repo>` for
+`TODO.archive.md`. Without a ledger supply `--verified-tasks ID1,ID2`. Read-only
+runs skip writes. Follow the [archive contract](../docs-sync/references/todo-archive.md).
 
 ## Operating priorities
 
@@ -63,7 +64,8 @@ Report retained conflicts; read-only runs skip this write. Follow the
    while this profile's own card is running or ready and nothing finished.
    Preserve schedule, model, delivery and enabled state.
    Reconcile new terminal results, then CONTINUE selection in the same occurrence.
-   A completed card is not a stop condition. A genuinely live worker wins: reconcile
+   A completed card is not itself a stop condition under continuation authority;
+   default and explicit caller stops still apply. A genuinely live worker wins: reconcile
    its exact run; never enqueue overlapping work or steal its lease.
    Resume the saved continuation before discovery. Finish pending integration,
    review rework or supported recovery first. Inspect a new seam only when no

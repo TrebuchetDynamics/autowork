@@ -6,8 +6,14 @@ workflow authority; engineering protocols contribute techniques within that cont
 
 Use the existing docs-sync backlog and autowork executor. This is workflow guidance,
 not a scheduler, new database or `/cycle` command. Documentation work alone never
-launches autowork. Only an explicit whole-spec implementation request authorizes
-continuation through that accepted scope; default autowork still hands off one slice.
+launches autowork. Caller scope and saved stop/batch limits control continuation.
+Default interactive execution hands off one slice, including authorized recovery
+and closeout. An explicit one-task limit stops new selection after that task;
+standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
+permits further eligible batches only within its accepted bounds.
+Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
+Reconcile consumed history first; unknown usage is not zero, and
+exhaustion requires explicit additional allocation, never a new card or session.
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
@@ -215,10 +221,10 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    and any authorized commit together. These checks do not prove model adherence or
    live task completion.
 6. Re-read `next` and ownership after reconciliation. Under an active Autowork
-   invocation/job, finish authorized closeout and hand off the next eligible batch
-   within its accepted scope and remaining occurrence budget. An explicit whole-spec
-   mandate also continues within its named scope. A planning-only or one-task request
-   without standing continuation authority reports the next slice and stops.
+   invocation/job, finish authorized closeout. Select another batch only when caller
+   scope permits it and saved stop/batch limits and remaining allocation allow it.
+   Default interactive, planning-only and explicit one-task requests report the next
+   slice and stop; explicit continuation/whole-spec mandates use their named scope.
    Exhausted budget, unresolved review/capability or ownership is recorded honestly;
    it never grants broader scope. Report implementation, checks, review, integration
    and delivery separately. Offline fixtures are not native/model execution proof.

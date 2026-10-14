@@ -20,6 +20,52 @@ def worker_module():
 
 
 class CycleGuidanceTests(unittest.TestCase):
+    def test_caller_controlled_continuation_matrix_across_hosts(self):
+        # Instruction contracts only: these fixtures do not execute a model or cron.
+        paths = ('skills/shared/ENGINEERING-CYCLE.md', 'skills/autowork/SKILL.md',
+                 'adapters/skills/autowork/SKILL.md')
+        cases = {
+            'default interactive': 'Default interactive execution hands off one slice',
+            'explicit one-task': 'An explicit one-task limit stops new selection',
+            'explicit continuation': 'Explicit continuation or whole-spec scope',
+            'recurring occurrence': 'Recurrence authorizes the saved occurrence',
+            'saved batch limit': 'saved stop/batch limits',
+            'exhausted allocation': 'exhaustion requires explicit additional allocation',
+        }
+        for path in paths:
+            text = (ROOT / path).read_text()
+            if path == 'skills/autowork/SKILL.md':
+                self.assertIn('references/iteration-and-decisions.md#mode-precedence', text)
+                text += (ROOT / 'skills/autowork/references/iteration-and-decisions.md').read_text()
+            for case, requirement in cases.items():
+                with self.subTest(path=path, case=case):
+                    self.assertIn(requirement, text)
+            self.assertNotIn('Only an explicit whole-spec implementation request authorizes', text)
+
+    def test_same_task_recovery_and_independent_fallback_keep_real_holds(self):
+        iteration = (ROOT / 'skills/autowork/references/iteration-and-decisions.md').read_text()
+        for requirement in ('Never block\n   on a first failure', 'non-privileged tooling',
+                            'same task', 'consequential choices', 'no automatic failure retry',
+                            'never reset an exhausted allocation'):
+            self.assertIn(requirement, iteration)
+        recovery = (ROOT / 'skills/autowork/references/blocker-recovery.md').read_text()
+        for requirement in ('original pin', 'consumed budget', 'pending_approval',
+                            'resume step', 'another channel', 'live resource ownership',
+                            'inside its contract'):
+            self.assertIn(requirement, recovery)
+        scheduled = (ROOT / 'skills/autowork/references/scheduled-policy.md').read_text()
+        for requirement in ('saved stop/batch limits', 'at-most-one-new-batch',
+                            'provenance', 'current ownership', 'checks and required review',
+                            'non-overlapping', 'unknown usage is not zero'):
+            self.assertIn(requirement, scheduled)
+        for options in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
+            with self.subTest(options=options):
+                body = worker_module().build_task_body('Objective: fixture', **options)
+                for requirement in ('no new tasks', 'first check failure', 'user-space tooling',
+                                    'pending_approval', 'within this card', 'required review acceptance',
+                                    'unknown usage is not zero', 'exhaustion requires explicit additional allocation'):
+                    self.assertIn(requirement, body)
+
     def test_ready_native_and_portable_guidance_use_composition_not_duplicate_validation(self):
         native = (ROOT / 'skills/autowork/SKILL.md').read_text()
         portable = (ROOT / 'adapters/skills/autowork/SKILL.md').read_text()

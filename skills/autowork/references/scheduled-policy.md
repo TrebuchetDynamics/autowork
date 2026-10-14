@@ -5,6 +5,16 @@ Profiles carry only workspace, accepted scope, owner authorization, delivery tar
 and genuine repository exceptions; do not duplicate this workflow in each job.
 Existing authorized cron jobs may invoke autowork; the skill never creates schedules.
 
+Caller scope and saved stop/batch limits govern each occurrence. Preserve a saved
+at-most-one-new-batch limit: fixes, recovery and authorized closeout inside that
+batch need no new permission, but they grant no second batch. An explicit
+multi-batch/whole-spec mandate continues only within its existing bounds. Recurrence
+does not widen scope, unpause a job or reset budgets; unknown usage is not zero.
+Reuse concurrent implementation only after provenance, current ownership,
+checks and required review are verified. A pending review or approval holds its
+operation and dependent work, not independently authorized non-overlapping work;
+fallback still consumes the saved batch allowance and never expands worker scope.
+
 Start with `hermes-toolset:autowork` for repository-stage preparation, then use the
 existing worker engine and state. Missing task files alone are bootstrap work; an
 unintegrated owner proposal still requires reconciliation.

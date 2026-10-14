@@ -67,6 +67,15 @@ explicit read-only runs write nothing.
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
 
+Caller scope and saved stop/batch limits control continuation.
+Default interactive execution hands off one slice, including authorized recovery
+and closeout. An explicit one-task limit stops new selection after that task;
+standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
+permits further eligible batches only within its accepted bounds.
+Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
+Reconcile consumed history first; unknown usage is not zero, and
+exhaustion requires explicit additional allocation, never a new card or session.
+
 When preparation stalls, execute an existing in-scope recovery step first: rebuild
 recoverable patches/inputs, verify the actual consumer requirements, then retry.
 For scope/attribution, inspect accepted specs and integration receipts as well as

@@ -8,6 +8,23 @@ import start_goal as goal
 
 
 class WorkerRoles(unittest.TestCase):
+    def test_caller_limits_survive_worker_and_proposal_payloads(self):
+        for scope in ('one-task; stop after this task',
+                      'explicit continuation; coordinator selects later tasks',
+                      'recurring occurrence; at most one new batch'):
+            contract = f'Objective: fixture\nStop conditions: {scope}\n'
+            for turns in (50, 100):
+                for role in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
+                    with self.subTest(scope=scope, turns=turns, role=role):
+                        body = goal.build_task_body(contract, turns, **role)
+                        self.assertTrue(body.startswith(goal.REVIEW_DOD + '\n\n' + contract))
+                        for requirement in ('no new tasks', f'{turns}-turn budget',
+                                            'unknown usage is not zero',
+                                            'exhaustion requires explicit additional allocation',
+                                            'first check failure', 'user-space tooling',
+                                            'within this card', 'Pending review keeps canonical tasks in_progress'):
+                            self.assertIn(requirement, body)
+
     def test_shared_worker_instructions_fit_a_bounded_context_budget(self):
         contract = 'Objective: fixture\nAcceptance: preserve the named regression checks'
         for options in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):

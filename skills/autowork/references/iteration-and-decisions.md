@@ -82,3 +82,24 @@ These operating priorities apply to every Autowork run.
    dependency-ready, non-overlapping work; workers stay within their assigned scope.
    Read owner replies (chat / `session_search`) at each run and apply them; do not
    repeatedly return `[SILENT]` for an unanswered material question.
+
+## Mode precedence
+
+Caller scope and saved stop/batch limits control continuation.
+Default interactive execution hands off one slice, including authorized recovery
+and closeout. An explicit one-task limit stops new selection after that task;
+standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
+permits further eligible batches only within its accepted bounds.
+Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
+Reconcile consumed history first; unknown usage is not zero, and
+exhaustion requires explicit additional allocation, never a new card or session.
+
+## Archive verified completion
+
+At verified closeout and reconciliation of completed bodies, align TODO and ledger
+status, then run `python3 "<skills-root>/docs-sync/scripts/goals.py" archive <repo>`.
+This automatically moves closed bodies to `TODO.archive.md` or the existing archive;
+do not wait for a Docs Sync job. Keep ledger evidence. Without goals.json, inspect
+checks and pass verified closed IDs with `archive <repo> --verified-tasks ID1,ID2`.
+Report retained conflicts; read-only runs skip this write. Follow the
+[archive contract](../../docs-sync/references/todo-archive.md).

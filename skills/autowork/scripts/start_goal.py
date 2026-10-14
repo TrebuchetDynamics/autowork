@@ -205,6 +205,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'Adapt failed approaches on this card without replanning; preserve acceptance, exclusions, repository instructions, '
             'SOUL boundaries, dirty-file ownership and upstream/vendor code. '
             'Own debugging, fixes, focused tests and review handoff on this card. '
+            'Repair first check failure, user-space tooling and recoverable inputs without reconfirmation. '
             'Complete all named consumers, callers, tests, fixtures and config; update scoped documentation. '
             'Do not stop after the first file; no silent scope expansion. Return outside-scope dependencies to the coordinator '
             'without discarding the candidate. Add minimal test seams within scope; dirty-file edits must be additive, '
