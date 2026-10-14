@@ -65,7 +65,7 @@ preserved. TOOLSET-008 remains an owner policy question.
 ### TOOLSET-012 — Start ready tasks through one composed default preflight
 
 - [ ] TOOLSET-012 — Start ready tasks through one composed default preflight
-- Status: open; engineering-guidance portion implemented and reviewed; composed preflight pending.
+- Status: open; composed preflight candidate implemented; independent review/integration pending.
 - Goal: STARTUP — Reach useful implementation sooner with less preparation and chat.
 - Sources: [accepted startup plan](docs/project.md#faster-ready-task-startup),
   [coordinator](skills/autowork/scripts/owner_cycle.py),
@@ -79,8 +79,9 @@ preserved. TOOLSET-008 remains an owner policy question.
   contract and freshness. At capture (`f617808`) the engineering router required a
   phase and prepended its bundle. Exact single-protocol selection and optional
   routing are now implemented, with independent review approval and passing vendor,
-  workflow-cycle and offline-suite checks. The composed preflight remains pending;
-  this partial delivery does not complete TOOLSET-012.
+  workflow-cycle and offline-suite checks. The composed candidate now derives
+  source/contract/base and invokes one real admission from owner_cycle.py;
+  independent exact-candidate review and integration still gate TOOLSET-012 closure.
 - Scope: Compose a supported default ready-task entry point; reconcile prior work,
   select/read the accepted body, capture bounded authoritative sources, generate
   the complete contract, invoke real native admission and persist bookkeeping
@@ -117,8 +118,9 @@ preserved. TOOLSET-008 remains an owner policy question.
   selection, optional phase compatibility, tamper refusal and authority boundaries;
   run `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py`
   on the finished candidate, plus affected links and `git diff --check`.
-  Composed-preflight checks remain planned. Engineering routing/workflow checks
-  and the offline suite passed for the partial delivery above.
+  Composed-preflight regressions now cover dispatch count, real isolated Git
+  admission with native calls mocked, refusal/reuse and compact status. Retain
+  the exact executed candidate/check receipts at review; fixtures do not close TOOLSET-013.
 - Dependencies: None.
 - Ownership: Next authorized Autowork coordinator; no new claim or dispatch.
 - Decision: Default fast ready path, not opt-in; preserve real admission validation

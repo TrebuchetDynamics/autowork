@@ -20,6 +20,17 @@ def worker_module():
 
 
 class CycleGuidanceTests(unittest.TestCase):
+    def test_ready_native_and_portable_guidance_use_composition_not_duplicate_validation(self):
+        native = (ROOT / 'skills/autowork/SKILL.md').read_text()
+        portable = (ROOT / 'adapters/skills/autowork/SKILL.md').read_text()
+        self.assertIn('default is one composed command', native)
+        self.assertIn('--source-path', native)
+        self.assertNotIn('run `scripts/start_goal.py … --validate-only`', native)
+        self.assertIn('one host-native', portable)
+        self.assertIn('retain native admission', portable)
+        self.assertIn('consumed budget', native)
+        self.assertIn('consumed budget', portable)
+
     def test_cross_profile_audit_verifies_publication_without_takeover(self):
         text = (ROOT / 'skills/autowork/references/state-and-recovery.md').read_text()
         self.assertIn('## Cross-profile audit and publication evidence', text)
@@ -66,7 +77,7 @@ class CycleGuidanceTests(unittest.TestCase):
         module = worker_module()
         for kwargs in ({}, {'ledger_mode': 'proposal', 'integration_owner': 'fixture-owner'}):
             body = module.build_task_body('Objective: fixture', **kwargs)
-            for phrase in ('Decide routine reversible choices yourself',
+            for phrase in ('Decide routine reversible choices',
                            'Optional methods:', 'concrete method gap or explicit protocol request',
                            'Autowork owns scope, authorization, task state and completion',
                            'verified path/revision, decision/artifact and check/result'):
@@ -104,10 +115,11 @@ class CycleGuidanceTests(unittest.TestCase):
                       'frontend-ui-engineering', 'context-engineering', 'code-simplification'):
             self.assertIn(skill, cycle)
 
-    def test_worker_body_links_cycle_and_gates_direct_closure_on_review(self):
+    def test_short_worker_body_omits_routing_and_gates_direct_closure_on_review(self):
         module = worker_module()
         body = module.build_task_body('Objective: fixture')
-        self.assertIn(str(ROOT / 'skills/shared/ENGINEERING-CYCLE.md'), body)
+        self.assertNotIn('ENGINEERING-CYCLE.md', body)
+        self.assertLess(len(body.split()), 1450)
         self.assertLess(body.index('Ledger closure precondition:'),
                         body.index('task <repo> <TASK> done'))
         self.assertIn('required review acceptance', body)

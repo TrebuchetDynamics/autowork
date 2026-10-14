@@ -448,4 +448,164 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(result['result']['outcome'],'unverified')
 
 
+class ComposedReadyTests(unittest.TestCase):
+    """Only these additional tests opt into native composition; dispatch is mocked."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.repo = self.root / 'repo'
+        self.repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        self.state = self.root / 'state'
+
+    def ready_backlog(self):
+        (self.repo / 'SPEC.md').write_text('# Slice\nStatus: Accepted\n')
+        (self.repo / 'goals.json').write_text(json.dumps({'version': 1,
+            'goals': [{'id': 'G1', 'title': 'Slice', 'source': 'SPEC.md#slice', 'status': 'unmet', 'priority': 1, 'tasks': ['T1']}],
+            'tasks': [{'id': 'T1', 'title': 'Implement fixture', 'goal': 'G1', 'status': 'open', 'section': 'Now'}]}))
+        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] T1: Implement fixture\n'
+            '  Goal: G1\n  Scope: fixture\n  Acceptance: test passes\n  Dependencies: None\n'
+            '  Ownership: fixture\n  Sources: [Accepted](SPEC.md#slice)\n')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text() + '  Checks: python3 -m unittest\n')
+        (self.repo / 'code.py').write_text('pass\n')
+        import retry_selection
+        retry_selection.goals.dump(self.repo, retry_selection.goals.load(self.repo))
+        for argv in (['add', '.'], ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@local', 'commit', '-qm', 'base']):
+            subprocess.run(['git', '-C', str(self.repo), *argv], check=True, capture_output=True)
+
+    def composed(self, native=None, prior=None, *extra):
+        import owner_cycle
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
+                patch.object(owner_cycle.reconcile, 'reconcile', return_value=prior or {'outcome': 'no_handoff'}), \
+                patch.object(owner_cycle, 'handoff', **({'side_effect': native} if isinstance(native, Exception) else
+                    {'return_value': native or {'exit_code': 0, 'result': {'outcome': 'handed_off', 'task_id': 'original', 'goal_mode': True}}})) as dispatch, \
+                patch.dict(owner_cycle.os.environ, {}, clear=True), \
+                patch.object(owner_cycle.backlog_plan, 'decide', side_effect=AssertionError('no planning on ready path')), \
+                redirect_stdout(io.StringIO()):
+            code = owner_cycle.main([str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                '--state-dir', str(self.state), '--profile', 'fixture', '--apply', '--source-path', 'code.py', *extra])
+        return code, json.loads((self.state / 'unblock-latest.json').read_text()), dispatch
+
+    def test_complete_ready_composes_once_and_persists_bookkeeping(self):
+        import start_goal
+        self.ready_backlog()
+        code, receipt, dispatch = self.composed()
+        self.assertEqual(code, 0, receipt)
+        dispatch.assert_called_once()
+        preparation = receipt['preparation']
+        self.assertEqual(preparation['budget'], 100)
+        self.assertEqual(preparation['max_retries'], 1)
+        self.assertEqual(preparation['usage'], 'unknown')
+        fields = start_goal.validate_contract(Path(preparation['contract']).read_text())
+        self.assertEqual(set(start_goal.CONTRACT_FIELDS) - set(fields), set())
+        self.assertIn('fixture', fields['Source'])
+        self.assertIn('python3 -m unittest', fields['Verification'])
+        self.assertIn('immutable base', fields['Source'])
+        self.assertEqual(json.loads((self.repo / 'goals.json').read_text())['tasks'][0]['status'], 'in_progress')
+        self.assertEqual(receipt['completed_tasks'], [])
+        self.assertFalse((self.state / 'planning').exists())
+        self.assertTrue(preparation['dispatch_attempted'])
+
+    def test_incomplete_ready_repairs_only_checks_without_planning(self):
+        self.ready_backlog()
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('  Checks: python3 -m unittest\n', ''))
+        code, receipt, dispatch = self.composed()
+        self.assertEqual(code, 1)
+        dispatch.assert_not_called()
+        self.assertIn('missing task Checks', receipt['next_action'])
+        self.assertFalse((self.state / 'ready-preflights').exists())
+
+    def test_attempted_dispatch_never_recreates_or_resets_budget(self):
+        self.ready_backlog()
+        for native in (subprocess.TimeoutExpired('native', 120),
+                       {'exit_code': 0, 'result': {'outcome': 'already_owned', 'task_id': 'original'}},
+                       {'exit_code': 1, 'result': {'outcome': 'unverified'}}):
+            with self.subTest(native=str(native)):
+                import shutil
+                if self.state.exists():
+                    shutil.rmtree(self.state)
+                _, first, dispatch = self.composed(native)
+                dispatch.assert_called_once()
+                preparation = self.state / 'ready-preflights/T1/preparation.json'
+                before = preparation.read_bytes()
+                code, second, retry = self.composed()
+                self.assertEqual(code, 1)
+                retry.assert_not_called()
+                self.assertIn('prior dispatch attempted', second['next_action'])
+                self.assertEqual(preparation.read_bytes(), before)
+                self.assertIn('original', str(first))
+
+    def test_prior_interrupted_or_review_card_precedes_selection(self):
+        self.ready_backlog()
+        before = (self.repo / 'goals.json').read_bytes()
+        for action in ('reconcile_run_state', 'observe_current_run', 'verify_and_integrate', 'recover_original_card'):
+            code, receipt, dispatch = self.composed(prior={'task_id': 'original', 'next_action': action})
+            self.assertEqual(code, 1)
+            dispatch.assert_not_called()
+            self.assertEqual(receipt['reconciliation']['task_id'], 'original')
+            self.assertEqual((self.repo / 'goals.json').read_bytes(), before)
+
+    def test_stale_saved_preparation_never_refreshes(self):
+        import owner_cycle, ready_preflight
+        from types import SimpleNamespace
+        self.ready_backlog()
+        args = SimpleNamespace(profile='fixture', plan='SPEC.md#slice', source_path=['code.py'],
+                               base=None, fallback_file=None, pass_root=None, ledger_mode='worker')
+        receipt = ready_preflight.compose(args, {'id': 'T1', 'goal': 'G1', 'title': 'Implement fixture'},
+                                          str(self.repo), self.state, owner_cycle.save)
+        snapshot = Path(receipt['snapshot']).read_bytes()
+        (self.repo / 'code.py').write_text('changed\n')
+        code, refused, dispatch = self.composed()
+        self.assertEqual(code, 1)
+        dispatch.assert_not_called()
+        self.assertIn('stale', refused['next_action'])
+        self.assertEqual(Path(receipt['snapshot']).read_bytes(), snapshot)
+
+    def test_unchanged_pre_dispatch_preparation_is_reused_and_tamper_refused(self):
+        import owner_cycle, ready_preflight
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        self.ready_backlog()
+        args = SimpleNamespace(profile='fixture', plan='SPEC.md#slice', source_path=['code.py'],
+                               base=None, fallback_file=None, pass_root=None, ledger_mode='worker')
+        task = {'id': 'T1', 'goal': 'G1', 'title': 'Implement fixture'}
+        first = ready_preflight.compose(args, task, str(self.repo), self.state, owner_cycle.save)
+        # check() internally fingerprints again; only contract preparation is reused.
+        with patch.object(ready_preflight.start_goal, 'validate_contract', side_effect=AssertionError('no repeated contract preparation')):
+            second = ready_preflight.compose(args, task, str(self.repo), self.state, owner_cycle.save)
+        self.assertEqual(first, second)
+        Path(first['contract']).write_text('Changed contract\n')
+        with self.assertRaisesRegex(ValueError, 'artifact changed'):
+            ready_preflight.compose(args, task, str(self.repo), self.state, owner_cycle.save)
+        self.assertFalse(json.loads((self.state / 'ready-preflights/T1/preparation.json').read_text())['dispatch_attempted'])
+
+    def test_default_held_selection_preserves_ledger_without_dispatch(self):
+        import owner_cycle
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        self.ready_backlog()
+        path = self.repo / 'goals.json'
+        data = json.loads(path.read_text())
+        data['tasks'][0]['status'] = 'in_progress'
+        path.write_text(json.dumps(data))
+        before = path.read_bytes()
+        with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
+                patch.object(owner_cycle.reconcile, 'reconcile', return_value={'outcome': 'no_handoff'}), \
+                patch.object(owner_cycle, 'handoff') as dispatch, \
+                patch.dict(owner_cycle.os.environ, {}, clear=True), redirect_stdout(io.StringIO()):
+            code = owner_cycle.main([str(self.repo), '--profile', 'fixture', '--state-dir', str(self.state),
+                                    '--apply', '--source-path', 'code.py'])
+        self.assertEqual(code, 1)
+        dispatch.assert_not_called()
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.state / 'ready-preflights').exists())
+
+
 if __name__ == '__main__': unittest.main()

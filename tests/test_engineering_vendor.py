@@ -12,6 +12,24 @@ ROOT=Path(__file__).resolve().parents[1]
 PACK=ROOT/'skills/engineering'
 
 class EngineeringVendorTests(unittest.TestCase):
+    def test_native_ready_helper_delivery_retains_local_dependency_closure(self):
+        spec = importlib.util.spec_from_file_location('ready_install_fixture', ROOT / 'install_skills.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            selected = [ROOT / 'skills' / name for name in ('autowork', 'docs-sync', 'engineering')]
+            self.assertEqual(module.install(ROOT / 'skills', [('fixture', home)], skills=selected, report=lambda _: None), 0)
+            for path in ('autowork/scripts/ready_preflight.py', 'autowork/scripts/owner_cycle.py',
+                         'autowork/scripts/start_goal.py', 'autowork/scripts/source_freshness.py',
+                         'autowork/scripts/retry_selection.py', 'docs-sync/scripts/goals.py'):
+                self.assertEqual((home / 'skills' / path).read_bytes(), (ROOT / 'skills' / path).read_bytes())
+            result = subprocess.run(['python3', str(home / 'skills/autowork/scripts/owner_cycle.py'), '--help'],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('--source-path', result.stdout)
+            self.assertIn('--profile', result.stdout)
+
     def test_exact_protocol_selection_has_no_implicit_phase_bundle(self):
         result = subprocess.run(['python3', str(PACK/'scripts/route.py'),
                                  '--protocol', 'performance-optimization'],

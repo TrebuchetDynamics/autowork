@@ -28,6 +28,15 @@ explicit read-only runs write nothing.
    [Plan For Me](../plan-for-me/SKILL.md) only when planning/research is needed;
    an obvious repair needs no extra ceremony. Record a complete TODO task via
    [Docs Sync](../docs-sync/SKILL.md), then execute within the user's scope.
+   For a ready task, compose reconciliation, accepted body, explicit bounded
+   code/docs/tests/dependency sources and a short execution contract in one host-native
+   preparation step. Retain objective/scope, acceptance/checks, source/base,
+   ownership, authority, budget and stop conditions. Do not run a duplicate
+   validate-only, planning/docs audit, full suite or optional skill loader first.
+   Keep detailed inputs in the existing task receipt and routine status compact.
+   Preserve stale/held/incomplete/interrupted/owned refusals and consumed budget;
+   prepare only the missing input, never replace a card/session or refresh pins.
+   The Hermes composed helper is not this host's dispatcher; retain native admission.
 3. Batch connected consumers, runners and tests into one useful outcome; split
    only for concrete dependency, concurrency, authority or budget boundaries.
    Implement the smallest complete outcome, run discriminating checks, fix failures and
