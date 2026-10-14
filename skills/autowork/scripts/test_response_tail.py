@@ -42,6 +42,30 @@ class ResponseTailTests(unittest.TestCase):
                 self.assertIn('exact execution association not proved', row['boundary'])
             self.assertEqual(before, {path: path.read_bytes() for path in paths})
 
+    def test_symlinked_output_directory_cannot_supply_foreign_responses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / 'profile'
+            output = home / 'cron/output'
+            output.mkdir(parents=True)
+            foreign = root / 'foreign'
+            foreign.mkdir()
+            (foreign / '2026-10-11.md').write_text('foreign owner response\n')
+            (output / 'j1').symlink_to(foreign, target_is_directory=True)
+            gaps = []
+            self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
+            self.assertIn('cron response directory outside profile: j1', gaps)
+
+    def test_looping_output_directory_does_not_abort_collection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output'
+            output.mkdir(parents=True)
+            (output / 'j1').symlink_to('j1', target_is_directory=True)
+            gaps = []
+            self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
+            self.assertIn('cron response directory unresolvable: j1', gaps)
+
     def test_one_output_and_missing_job_keep_compatibility(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
