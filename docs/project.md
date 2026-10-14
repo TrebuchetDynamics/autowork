@@ -334,3 +334,173 @@ stop limits, pending review/approval and exhausted allocation. Reuse existing
 controls; add no permission framework or extra review lane. Keep native/model
 qualification distinct from offline policy tests. This planning pass saves the
 accepted policy and task only; it launches no implementation or new timer.
+
+## End-to-end original-task recovery
+
+Status: Accepted
+
+The user selected planning end-to-end recovery of the affected original tasks,
+including shared fixes and supported scoped deployment, while preserving pauses
+and budgets. Success means attributable implementation, required checks and review,
+permitted integration and truthful task closure on those original tasks. A shared
+helper commit, installed file, refreshed cron prompt or passing unrelated fixture
+is an intermediate result. This planning selection does not itself run workers,
+resume paused jobs, authorize publication or authorize upstream Agent edits.
+
+Keep profile names, original card/run IDs, paths and private evidence in the existing
+profile recovery receipts. The following shared work extends the existing tasks;
+it creates no replacement product card or parallel product backlog. Refresh actual
+card/run/process and candidate state before any execution or deployment.
+
+### 1. Finish the held continuation candidate
+
+TOOLSET-008 already has an independently reviewed candidate, but its integration
+gate failed. The retained candidate has a 16,654-byte core skill against a strict
+16,000-byte limit and an obsolete unconditional-continuation assertion. Focused
+review approval remains historical evidence, not approval of an eventual correction.
+
+- Preserve the original candidate and card. Inspect current writers and prepare
+  attributable coordinator corrections in an isolated checkout of that candidate.
+  Keep native worker restart, local correction, review and integration distinct.
+  Do not require a done-to-running transition merely to prepare local corrections;
+  this does not authorize restarting a worker or resetting its allocation.
+- Move detailed mode guidance into existing references and retain a compact core
+  rule. Keep the size limit and each reference reachable. Update the stale picker
+  assertion to exercise caller-limited continuation; retain default-one-slice,
+  explicit-stop, explicit-continuation and scheduled-limit coverage.
+- Touch `skills/autowork/SKILL.md`, its existing mode/iteration references,
+  `skills/autowork/scripts/test_picker_policy.py` and affected existing workflow
+  tests only as needed. Reconcile the seven original candidate paths against main;
+  preserve later shared repairs and dirty canonical bookkeeping.
+- Run `python3 -m unittest discover -s tests -p 'test_workflow_*.py'` and, from
+  `skills/autowork/scripts`, `python3 -m unittest test_picker_policy
+  test_worker_role_contract test_owner_cycle test_retry_selection` on the corrected
+  candidate. Then run the repository's offline integration gate once. Obtain fresh
+  independent review for the corrected bytes before permitted local integration.
+  If the required review/lifecycle route is unavailable, retain the verified
+  correction and name that operation; never reuse approval for changed bytes.
+
+### 2. Repair registration preparation, not the verifier's refusal
+
+TOOLSET-017 owns the Toolset change. Current `start_goal.py` creates the native card
+after freezing candidate/source inputs; the required registration needs that card's
+identity, while the registry itself may already be in the immutable snapshot.
+Appending the required row then invalidates the original guard. A clearer error or
+more permissive prompt cannot supply the missing transition.
+
+Plan the lifecycle as reserve without dispatch, register exact identity/scope,
+freeze final startup prerequisites, verify, then release. Treat an explicitly
+declared coordination registry separately from executable product inputs; never
+automatically exempt arbitrary source files from fingerprinting. Use supported
+native lifecycle controls and the repository's registration operation. No direct
+board database writes, fabricated worker identity or unrestricted shell callback.
+
+For an existing original card, preserve old manifests, requirement bytes, refusals
+and consumed usage. A supported recovery must record the before/after prerequisite
+identities and allow only the attributed registration change; it must reject
+unrelated source, scope, base, ownership or runtime drift. Existing frozen runtimes
+require an explicit supported migration, not replacement of helper files in place.
+If the host cannot record/release that transition, report the capability unavailable
+and keep native execution held. Implement and test the Toolset-side preparation
+separately; do not label it end-to-end recovery.
+
+### 3. Establish real continuation and review-rework capability
+
+TOOLSET-018 owns the accounting/capability contract. The inspected native CLI exposes
+an initial goal limit, but its `unblock` operation supplies no remaining-turn cap or
+original-session selector. Its edit operation does not provide that cap either.
+No verified cumulative-accounting operation is currently established for the held
+tasks. Assistant-message counts and outer goal-loop counts are different units.
+
+Before resumption, read authoritative attempt/session accounting, explicit original
+allocation, retry history and unknown charges. Compute a remainder only when the
+units and complete history agree. Require the runtime to enforce that remainder
+on the original card and retain it across retries and review rework. A prompt,
+new max-turns value, replacement session or helper-only counter is not enforcement.
+
+Use a Toolset compatibility adapter only when the installed native runtime exposes
+the needed operations. The adapter must explicitly report missing capabilities;
+do not invent CLI flags or patch upstream. If unavailable, the concrete external
+prerequisite is a supported runtime operation for original-card continuation with
+atomic accounting/cap enforcement and, where needed, completed-card rework.
+Offline adapter refusals can be tested now; native recovery remains held until
+that operation and the original accounting are established. No extra allocation
+is inferred from this plan or a later cron tick.
+
+### 4. Deploy only the reviewed change to eligible selected profiles
+
+TOOLSET-019 owns supported scoped deployment. Extend `update_bundle.py` and its
+existing tests with explicit profile selection and a reviewed immutable local
+source, without an implicit fetch or all-profile expansion. Retain native security
+admission for installation/update; prior scanner approvals apply only to their
+recorded scope. Planning source changes is not approval of a new scan override.
+
+Preflight the complete selected change before writes: source identity and closure,
+installed bytes/customizations, active helper references, affected frozen runtimes
+and ownership. Stage and back up attributable changes, install through the supported
+path, verify installed hashes and command registration, and record actual results
+per profile. Preserve paused jobs, settings, models, delivery and budgets. Defer
+active pinned consumers; a newer installation never silently migrates their cards.
+Continue independent eligible profiles without touching unselected/shared active
+consumers. Repeated unchanged deployment is a no-op; interruption resumes from the
+original source/backup record rather than fetching a different revision.
+
+### 5. Close the affected original work in independent lanes
+
+The existing private recovery receipts map these lanes to the original product
+tasks. Add outcomes there and in their existing task ledgers, not new product IDs.
+
+- Registration-held work: after the original-card prerequisite transition and
+  accounting are verified, resume its accepted implementation and exact acceptance,
+  review and integration. Record successful initial admission and useful execution;
+  a verified registration alone does not close the product task.
+- Continuation-held work: use the enforced original-card remainder and corrected
+  existing scope. Complete its implementation, visual/affected backend checks,
+  review and integration; retain separate live qualification.
+- Approved integration: refresh exact candidate/review and current target state,
+  then perform authorized closeout without waiting for unrelated registration or
+  continuation repairs. Source changes require affected checks and new review.
+- Paused ownership: preserve the pause and original claim; recover attributable
+  preview prerequisites and disposition as preparation only. No worker/schedule
+  resume is implied. Report this lane as intentionally paused, not recovered.
+
+TOOLSET-003 remains the separate disposable native recovery qualification;
+TOOLSET-011 and TOOLSET-013 retain their delivery and startup-measurement scopes.
+Do not make their unavailable environments prerequisites for an independent local
+source correction or already-authorized integration.
+
+Verification must cover registry changes before/after freeze, duplicate/mismatched
+identity, changed product inputs, incomplete accounting, exhausted remainder,
+interrupted continuation, already-running claims, completed-card review rework,
+paused/unselected profiles and source changes during deployment. Use offline real
+Git and native doubles for deterministic contracts, then the bounded actual native
+journey when its capabilities are available. Offline success never substitutes
+for original-task recovery. Report implemented, reviewed, integrated, installed,
+running, qualified and intentionally paused separately.
+
+### Execution evidence
+
+TOOLSET-008 is complete: correction `9d1c7dc` passed the full offline inventory
+(288/451/139/8 tests, two skips and eight excluded native/model modules), received
+fresh independent review, and was integrated locally. Its native core is 15,960
+bytes, under the unchanged 16,000-byte limit. The original native worker/card was
+not restarted. Verified completed bodies are retained in TODO.archive.md.
+
+The original reporting target is absent from this host; TOOLSET-011 remains open.
+TOOLSET-003 and TOOLSET-013 still need an isolated model environment with externally
+enforced spend and descendant limits. The existing containment/controller fixtures
+explicitly exclude provider execution and cannot qualify those tasks.
+
+TOOLSET-017/018/019 shared implementation is integrated in `eb72be6`: blocked
+registration reservation and attributable preparation, an explicit native
+continuation/accounting contract, and selected-profile local updates with native
+security admission. Independent review found three defects (partial evidence
+writes, shared-board ownership discovery and interrupted staging); failing
+regressions reproduced each, repairs passed, and the final offline inventory
+passed 318/470/139/8 tests (two skips, eight native/model modules excluded).
+Concurrent consultation repairs already on main were preserved.
+
+These source changes do not complete original-card recovery. The installed runtime
+still lacks the required prerequisite migration and cumulative-cap continuation
+operations/accounting. Selected-profile installation remains subject to fresh
+ownership and native security admission; pauses and original budgets remain intact.

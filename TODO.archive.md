@@ -320,3 +320,50 @@ Source section: Next
 - Decision: Extend the existing helper with the smallest complete preservation-safe correction; do not create another dispatcher or relax the behind-only preconditions.
 - Completion evidence: Original same-card independent review approved 9b894fd; fresh b470c68 integration candidate passed Python 3.12 scripts/check.py (283/448/139/8 tests; 2 skipped, 8 excluded), Bash syntax and whitespace. TOOLSET-003 remains the separate environment-held native successor; no push.
 
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-008 — Make Autowork continuation authority consistent
+
+- [x] TOOLSET-008 — Make Autowork continuation authority consistent
+- Status: done; corrected candidate 9d1c7dc independently reviewed and integrated locally.
+- Priority: High; existing goal priority preserved.
+- Goal: CONTINUATION — Execute authorized work without repeated permission rounds.
+- Sources: [accepted autonomy policy](docs/project.md#autonomous-execution-authority), [original-task recovery plan](docs/project.md#end-to-end-original-task-recovery), [cycle](skills/shared/ENGINEERING-CYCLE.md), [Autowork](skills/autowork/SKILL.md), [scheduled policy](skills/autowork/references/scheduled-policy.md), [portable contract](adapters/skills/autowork/SKILL.md), [worker payload](skills/autowork/scripts/start_goal.py).
+- Decision: Caller scope and saved stop/batch limits control continuation. Recurrence does not widen them or reset budgets. Within authorized work, local engineering/fixes/recovery/closeout proceed without another permission question. The saved one-new-batch job limit is unchanged; explicit multi-batch/whole-spec mandates remain supported. This replaces the former routine policy question, not a claim that the user separately selected a new batch count.
+- Scope: Align native/portable/cycle instructions and generated worker contracts. Planning owns consequential choices and ready acceptance; workers execute, adapt failing approaches, fix tests/fixtures/user-space tooling and restore attributable inputs on the original task. Reuse concurrent implementation only after provenance, current ownership, checks and review are verified.
+- Acceptance: No reconfirmation for ready local work, first check failure, routine tooling or known recovery. No invented inspect-only, one-rerun, extra-review or planning barriers. Preserve default/caller stop limits, one-task overrides, explicit continuation, saved schedules, review, active writers, pins and consumed budgets. A genuine pending approval holds its operation only; independent authorized work continues. Unknown product outcomes go to bounded planning; external authority and exhausted allocations are not fabricated.
+- Checks: Extend/run `python3 -m unittest discover -s tests -p test_workflow_cycle.py`; from skills/autowork/scripts run `python3 -m unittest test_worker_role_contract test_owner_cycle test_retry_selection`. Cover local fix/recovery, default interactive, explicit one-task/continuation, recurring limits, pending review/approval, exhausted budget and non-overlapping fallback. Run the required source-bound final gate, links and `git diff --check`; these new acceptance checks are not executed here and fixtures do not prove live model behavior.
+- Exclusions: No live job edits, scheduler/dispatch in this planning pass, new permission framework, guard/protection bypass, takeover, budget reset, upstream Agent edits or broader money/deployment/destructive authority.
+- Dependencies: None.
+- Coordination: Independent of TOOLSET-009; preserve other task order and leases.
+- Ownership: Original card and candidate retained; coordinator owns integration correction. Recheck actual writers before execution; this plan creates no claim.
+- Completion: Core reduced from 16,654 to 15,960 bytes; detailed mode and archive guidance remain reachable. Updated the stale unconditional-continuation assertion while preserving caller stops. Full Python 3.12 offline gate passed: 288/451/139/8 tests, two skips and eight excluded native/model modules. Independent review reran 26 focused checks and approved the exact correction. Original worker/card history and unknown usage preserved; no native restart, push or live behavior qualification claimed.
+
+
+
+<!-- archived from TODO.md -->
+
+Source section: Completed local changes
+
+### TOOLSET-007 — Resume execution and reuse checks across calls
+
+- Status: done; existing source verified by the current full offline gate.
+- Scope: Saved reconciliation projection produces continuation/change fields;
+  pending closeout precedes discovery. Run-or-reuse preserves stale receipts and
+  reuses passing checks under their original input contract. Terminal display
+  IDs are removed from execution and fingerprints; task/security inputs stay bound.
+- Checks: Regression coverage for continuation, actual filtered subprocess
+  environment, relevant environment changes, first execution, reuse and stale refusal.
+- Evidence: Existing fingerprint repair e1d18d0 and continuation/check-receipt
+  regressions passed in the 9d1c7dc full gate (288/451/139/8 offline tests,
+  two skips and eight excluded native/model modules). This archives delivered
+  history; no new implementation or native recovery is claimed for this task.
+- Limits: No automated Git integration or model throughput claim; arbitrary
+  source files and live ownership still require fresh checks before action.
+
+
+<!-- end of verified closeout archive -->

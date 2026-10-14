@@ -41,6 +41,11 @@
       "evidence": [
         {
           "kind": "executed",
+          "ref": "Shared TOOLSET-017/018/019 implementation integrated eb72be6; independent review findings repaired with failing-then-passing regressions; final Python 3.12 scripts/check.py passed 318/470/139/8 tests, two skips/eight excluded. Native recovery, deployment and model qualification remain incomplete.",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED",
           "result": "pass"
         },
@@ -57,7 +62,10 @@
       "tasks": [
         "TOOLSET-003",
         "TOOLSET-015",
-        "TOOLSET-016"
+        "TOOLSET-016",
+        "TOOLSET-017",
+        "TOOLSET-018",
+        "TOOLSET-019"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -87,12 +95,24 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-007 historical check-reuse implementation verified in 9d1c7dc offline gate: check_receipt/retry_selection/reconcile regression modules passed; full 288/451/139/8, two skips and eight excluded native/model modules. Historical task archived; TOOLSET-008 independently reviewed and integrated.",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-008: independently reviewed and integrated 9d1c7dc; Python 3.12 scripts/check.py passed 288/451/139/8 tests, 2 skipped and 8 native/model modules excluded; exact correction review reran 26 checks. Native behavior not qualified.",
+          "result": "pass"
+        }
+      ],
       "id": "CONTINUATION",
       "priority": 50,
       "source": "docs/project.md#autonomous-execution-authority",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
+        "TOOLSET-007",
         "TOOLSET-008"
       ],
       "title": "Resolve and align continuation authority"
@@ -146,14 +166,6 @@
       "title": "Qualify automatic planning recovery with a real bounded workflow"
     },
     {
-      "depends_on": [],
-      "goal": "CONTINUATION",
-      "id": "TOOLSET-008",
-      "section": "Next",
-      "status": "open",
-      "title": "Make Autowork continuation authority consistent"
-    },
-    {
       "depends_on": [
         "TOOLSET-010"
       ],
@@ -175,6 +187,30 @@
     },
     {
       "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-017",
+      "section": "Next",
+      "status": "in_progress",
+      "title": "Prepare and recover exact-card writer registration"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-018",
+      "section": "Next",
+      "status": "in_progress",
+      "title": "Bind original-card continuation to supported budget enforcement"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-019",
+      "section": "Next",
+      "status": "in_progress",
+      "title": "Deploy reviewed local fixes to selected eligible profiles"
+    },
+    {
+      "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-001",
       "section": "Done",
@@ -188,6 +224,22 @@
       "section": "Done",
       "status": "done",
       "title": "Provide a supported first-time task-index initialization path"
+    },
+    {
+      "depends_on": [],
+      "goal": "CONTINUATION",
+      "id": "TOOLSET-007",
+      "section": "Done",
+      "status": "done",
+      "title": "Resume execution and reuse checks across calls"
+    },
+    {
+      "depends_on": [],
+      "goal": "CONTINUATION",
+      "id": "TOOLSET-008",
+      "section": "Done",
+      "status": "done",
+      "title": "Make Autowork continuation authority consistent"
     },
     {
       "depends_on": [],
