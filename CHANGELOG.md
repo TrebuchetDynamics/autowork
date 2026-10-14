@@ -36,6 +36,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `/toolset update` clears leftover chat-scoped Telegram menus that still list
+  retired commands such as `/autogoal`; Telegram preferred them over the lists
+  Hermes refreshes, so restarts never removed them (`chat_menus_healed`).
+
 - Completed-task archival keeps sibling priority-group headings in the live TODO
   while retaining deeper evidence subsections with their owning task (`586337f`).
 

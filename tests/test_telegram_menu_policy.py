@@ -25,6 +25,28 @@ class MenuPolicyTests(unittest.TestCase):
         self.assertEqual(priority(raw), menu)
         self.assertEqual(raw['platforms']['telegram']['extra']['command_menu']['priority_mode'],'append')
 
+class ChatMenuTests(unittest.TestCase):
+    def fake(self, menus):
+        calls=[]
+        def call(method, scope):
+            calls.append((method, scope['chat_id']))
+            if method=='deleteMyCommands':
+                menus.pop(scope['chat_id'], None); return True
+            return [{'command': c} for c in menus.get(scope['chat_id'], [])]
+        return call, calls
+    def test_only_chat_menus_with_retired_commands_are_cleared(self):
+        menus={11:['autowork','autogoal'], 22:['custom'], -33:['autoresearch_fix']}
+        call, calls=self.fake(menus)
+        env={'TELEGRAM_ALLOWED_USERS':'11, 22,bad,11','TELEGRAM_HOME_CHANNEL':'-33'}
+        self.assertEqual(policy.stale_chat_menus(env, call), [11, -33])
+        self.assertEqual(menus, {22:['custom']})
+        self.assertEqual(policy.stale_chat_menus(env, call), [])
+        self.assertNotIn(('deleteMyCommands', 22), calls)
+    def test_no_owner_chats_means_no_api_calls(self):
+        call, calls=self.fake({})
+        self.assertEqual(policy.stale_chat_menus({}, call), [])
+        self.assertEqual(calls, [])
+
 class SelfHealTests(unittest.TestCase):
     def test_old_profile_menu_is_detected_and_expected_settings_heal_it(self):
         import sys, types

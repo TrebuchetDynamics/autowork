@@ -175,7 +175,25 @@ class UpdateTests(unittest.TestCase):
                 receipt = json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
                 self.assertEqual(receipt['settings_healed'], [self.profiles[0][0]])
                 self.assertEqual(receipt['gateway_restart'], expected)
+                self.assertEqual(receipt['chat_menus_healed'], [])
                 self.assertEqual(restart.call_count, int(running))
+
+    def test_chat_menu_heal_is_per_bot_masked_and_never_fatal(self):
+        sys.path.insert(0, str(ROOT)); self.addCleanup(sys.path.remove, str(ROOT))
+        work = self.profiles[1][1]
+        (self.home / '.env').write_text('TELEGRAM_BOT_TOKEN="t1"\nTELEGRAM_ALLOWED_USERS=123456789\n')
+        (work / '.env').write_text('export TELEGRAM_BOT_TOKEN=t1\nTELEGRAM_ALLOWED_USERS=123456789\n')
+        menus = {('t1', 123456789): ['autogoal']}
+        def call(token, method, scope):
+            if method == 'deleteMyCommands':
+                return menus.pop((token, scope['chat_id'])) is not None
+            return [{'command': c} for c in menus.get((token, scope['chat_id']), [])]
+        self.assertEqual(self.mod.heal_chat_menus(self.profiles, call),
+                         [{'profile': 'default', 'status': 'cleared', 'chats': ['...6789']}])
+        self.assertEqual(self.mod.heal_chat_menus(self.profiles, call), [])
+        def offline(*_, **__): raise OSError('offline')
+        self.assertEqual(self.mod.heal_chat_menus(self.profiles, offline),
+                         [{'profile': 'default', 'status': 'unreachable', 'error': 'OSError'}])
 
     def test_noop_update_does_not_restart_the_gateway(self):
         self.advance()

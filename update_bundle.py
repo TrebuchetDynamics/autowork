@@ -228,6 +228,52 @@ def config_snapshot(profiles):
     return snapshot
 
 
+def read_env(path):
+    values = {}
+    try:
+        lines = path.read_text().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return values
+    for line in lines:
+        line = line.strip()
+        if '=' in line and not line.startswith('#'):
+            key, value = line.split('=', 1)
+            values[key.removeprefix('export ').strip()] = value.strip().strip('"\'')
+    return values
+
+
+def telegram_call(token, method, **params):
+    import urllib.parse
+    import urllib.request
+    data = urllib.parse.urlencode({k: json.dumps(v) for k, v in params.items()}).encode()
+    with urllib.request.urlopen(f'https://api.telegram.org/bot{token}/{method}', data, timeout=20) as reply:
+        body = json.load(reply)
+    if not body.get('ok'):
+        raise OSError(body.get('description', 'Telegram API error'))
+    return body['result']
+
+
+def heal_chat_menus(profiles, call=telegram_call):
+    """Drop leftover chat-scoped Telegram menus that still list retired commands."""
+    results, seen = [], set()
+    for name, home in profiles:
+        env = read_env(home / '.env')
+        token = env.get('TELEGRAM_BOT_TOKEN')
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        from telegram_menu_policy import stale_chat_menus
+        try:
+            cleared = stale_chat_menus(env, lambda method, **kw: call(token, method, **kw))
+        except (OSError, ValueError) as error:
+            results.append({'profile': name, 'status': 'unreachable', 'error': type(error).__name__})
+            continue
+        if cleared:
+            # Chat IDs stay out of the receipt beyond their last digits.
+            results.append({'profile': name, 'status': 'cleared', 'chats': [f'...{str(c)[-4:]}' for c in cleared]})
+    return results
+
+
 def gateway_running(root):
     try:
         pid = json.loads((root / 'gateway.pid').read_text())['pid']
@@ -730,6 +776,8 @@ def main(argv=None):
                 result['activation'] = finalize_profiles(source, root, profiles)
                 healed = [name for name, value in config_snapshot(profiles).items() if value != before[name]]
                 result['settings_healed'] = healed
+                # Best effort: an offline bot API never fails the update.
+                result['chat_menus_healed'] = heal_chat_menus(profiles)
                 ready = all(r['status'] == 'ready' for r in result['activation'])
                 result['status'] = ('updated' if changed or missing or healed else 'up_to_date') if ready else 'incomplete'
                 # A plugin reload rewires handlers, but Telegram menus refresh only on reconnect.

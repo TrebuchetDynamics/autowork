@@ -194,6 +194,15 @@ changed code, skills or settings requests one graceful `hermes gateway restart`
 (`gateway_restart: requested`): in-flight turns drain first, and workers and
 schedules keep running. A no-op update does not restart the gateway.
 
+Telegram shows a chat's own command list ahead of the default, private and group
+lists that Hermes refreshes, so a leftover chat-scoped list never updates. For each
+profile bot token, the update checks the chats in `TELEGRAM_ALLOWED_USERS` and
+`TELEGRAM_HOME_CHANNEL` and deletes a chat-scoped list only when it still contains
+a retired bundle command; that chat then uses the refreshed private or group list.
+Chat lists without retired names are left alone. `chat_menus_healed` reports
+cleared chats by their last four digits; an unreachable Bot API is reported and
+never fails the update.
+
 `status` is the chat form handled by the plugin; it is not a positional argument
 to the terminal command `hermes toolset update`. Terminal update forms below wait
 for completion. The durable result is stored at the Hermes installation root in

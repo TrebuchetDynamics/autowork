@@ -270,7 +270,8 @@ profiles**, preserves local conflicts and uses fast-forward updates only. It als
 self-heals each profile's command menu, approval and injection settings
 (`settings_healed` in the result) and, when anything changed, requests one graceful
 gateway restart so Telegram menus refresh; in-flight turns finish first and
-workers and schedules keep running. It refuses while a plugin checkout has
+workers and schedules keep running. It also clears leftover per-chat Telegram menus
+that still list retired commands (`chat_menus_healed`). It refuses while a plugin checkout has
 uncommitted changes. See
 [update behavior and recovery](docs/installation.md#update-all-profiles).
 

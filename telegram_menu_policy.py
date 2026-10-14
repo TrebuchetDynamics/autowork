@@ -22,3 +22,30 @@ def menu_patch(raw):
     merged = list(dict.fromkeys(kept + WORKFLOWS))
     # Preserve the user's cap, prepend/append/replace preference and their own entries.
     return {'platforms': {'telegram': {'extra': {'command_menu': {'priority': merged}}}}}
+
+
+def chat_ids(env):
+    """Owner chats whose chat-scoped menu would outrank the lists Hermes refreshes."""
+    ids = []
+    for key in ('TELEGRAM_ALLOWED_USERS', 'TELEGRAM_HOME_CHANNEL'):
+        for value in str(env.get(key, '')).split(','):
+            value = value.strip()
+            if value.lstrip('-').isdigit() and int(value) not in ids:
+                ids.append(int(value))
+    return ids
+
+
+def stale_chat_menus(env, call):
+    """Clear chat-scoped menus that still advertise retired bundle commands.
+
+    Telegram prefers a chat's own command list over the default/private/group
+    lists Hermes re-pushes on reconnect, so a leftover list never refreshes.
+    Lists without retired names may be deliberate and are left alone.
+    """
+    cleared = []
+    for chat in chat_ids(env):
+        scope = {'type': 'chat', 'chat_id': chat}
+        names = [c.get('command', '') for c in call('getMyCommands', scope=scope)]
+        if any(_bundle_owned(n) for n in names) and call('deleteMyCommands', scope=scope):
+            cleared.append(chat)
+    return cleared
