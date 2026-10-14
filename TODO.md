@@ -46,7 +46,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
-- Status: open; partial (2026-10-14): hermes-toolset (22bd2cb) and sierra (65ac287f4) are migrated and committed locally with unchanged eligible order. The other 7 are not migrated: golf, landing-golf, india, bravo, juliet and charlie have uncommitted TODO.md/goals.json edits from other writers, and kilo has no commits. All matching jobs were already paused before migration and stay paused.
+- Status: open; partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: hermes-toolset, sierra, landing-golf, india, juliet and golf (the last four after a separate checkpoint commit of their pending queue edits). Not migrated: charlie (a staged 9-file docs batch includes the queue files), bravo (live in-progress claim and active session) and kilo (no commits). All matching jobs were already paused and stay paused.
 - Goal: PRIORITY — Make TODO.md order the enforced human priority.
 - Sources: [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
 - Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), pause only jobs this work pauses, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, commit locally per repository and resume only passing repositories.
@@ -55,7 +55,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: TOOLSET-028.
 - Ownership: Toolset coordinator under separate live authorization.
 - Exclusions: No push, no unrelated job changes, no resuming jobs that were already paused.
-- Next action: Once each remaining repository's pending TODO.md/goals.json edits are committed (or its owner says how to handle them), re-run its dry-run and apply with the new revision.
+- Next action: After charlie's staged docs batch is committed, bravo's active work closes and kilo has an initial commit, re-run each dry-run and apply with its revision.
 
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
