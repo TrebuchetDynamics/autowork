@@ -15,6 +15,29 @@ else:
     m = None
 
 class ReconcileTests(unittest.TestCase):
+    def test_independent_closeout_requires_original_native_review_status(self):
+        import copy
+        with EvidenceFixture() as f:
+            policy, snapshot = f.changed_base_closeout(implementer='fixture')
+            (f.repo / 'autowork').mkdir()
+            (f.repo / 'autowork/goal-handoff.json').write_text(json.dumps(
+                {'task_id': 't_fixture', 'profile': 'fixture'}))
+            for status in ('review', 'failed', 'running', 'cancelled', 'ready',
+                           'done', 'completed', 'blocked', 'unknown', '', None):
+                bad = copy.deepcopy(snapshot)
+                bad['runs'][0]['status'] = status
+                with self.subTest(status=status), patch.object(m, 'run', return_value=json.dumps(bad)):
+                    result = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=policy)
+                    self.assertEqual(result['delivery']['delivered'], status == 'review')
+                    self.assertEqual(result['next_action'], 'reconcile_task_and_select'
+                                     if status == 'review' else 'verify_and_integrate')
+            missing = copy.deepcopy(snapshot)
+            del missing['runs'][0]['status']
+            with patch.object(m, 'run', return_value=json.dumps(missing)):
+                result = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=policy)
+            self.assertFalse(result['delivery']['delivered'])
+            self.assertEqual(result['next_action'], 'verify_and_integrate')
+
     def test_independent_changed_base_closeout_uses_original_run_without_rewriting(self):
         import copy
         with EvidenceFixture() as f:

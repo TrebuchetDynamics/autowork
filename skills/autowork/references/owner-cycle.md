@@ -189,7 +189,8 @@ executed check receipts; missing reusable evidence keeps closeout unverified.
 The integration provenance's independent approved `review` additionally binds
 `task_id`, integer `implementation_run_id` (outer `run_id`) and integer `run_id`
 (`closeout.review_run_id`). Reconciliation reads the original native card and runs:
-the original implementer run must have ended with `review_requested`, immutable
+the original implementer run must have ended with `review_requested` and explicit
+native `status: review` (missing, unknown or contradictory status refuses closeout), immutable
 `metadata.commit` and `metadata.base_commit` matching the candidate, with no newer
 implementer run. The latest run must be the named independent reviewer assigned to
 the done/reviewed card, ended with `completed` and done/completed status, with

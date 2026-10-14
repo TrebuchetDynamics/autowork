@@ -54,6 +54,7 @@ def coordinator_closeout(policy, task, runs, latest, profile):
         return None
     metadata, review_metadata = run_metadata(original), run_metadata(latest)
     if (original.get('profile') != profile or original.get('outcome') != 'review_requested'
+            or original.get('status') != 'review'
             or original.get('ended_at') is None or original['id'] >= latest['id']
             or any(r['id'] > original['id'] and r.get('profile') == profile for r in runs)
             or latest.get('profile') != task['assignee'] or latest.get('profile') == profile
