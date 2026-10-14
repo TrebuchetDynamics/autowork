@@ -77,7 +77,8 @@
         "TOOLSET-018",
         "TOOLSET-019",
         "TOOLSET-020",
-        "TOOLSET-021"
+        "TOOLSET-021",
+        "TOOLSET-022"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -220,6 +221,14 @@
       "section": "Next",
       "status": "in_progress",
       "title": "Deploy reviewed local fixes to selected eligible profiles"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-022",
+      "section": "Next",
+      "status": "open",
+      "title": "Reconcile independently reviewed changed-base local delivery"
     },
     {
       "depends_on": [],
