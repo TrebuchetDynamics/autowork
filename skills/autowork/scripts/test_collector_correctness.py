@@ -124,6 +124,40 @@ class CorrectnessTests(unittest.TestCase):
         result, _ = progress(row, saved)
         self.assertEqual(result['consecutive'], 1)
 
+    def test_finished_failed_occurrences_share_completed_run_deduplication(self):
+        row = {'continuity': {'state.json': {'task_id': 't1'}}, 'repo': {'state': 'observed'},
+               'executions': [{'id': 'r1', 'status': 'completed', 'finished_at': '1'}], 'gaps': []}
+        _, saved = progress(row, {})
+        saved['completed_runs'].append('historical')
+        for run_id, status, expected in [('r2', 'failed', 1), ('r2', 'failed', 1),
+                                         ('r3', 'failed', 2), ('r2', 'failed', 2),
+                                         ('r1', 'completed', 2), ('r4', 'completed', 3)]:
+            with self.subTest(run_id=run_id, status=status):
+                row['executions'] = [{'id': run_id, 'status': status, 'finished_at': '2'}]
+                result, saved = progress(row, saved)
+                self.assertEqual(result['consecutive'], expected)
+                self.assertIn('historical', saved['completed_runs'])
+                self.assertIn(run_id, saved['completed_runs'])
+                self.assertIn('task-to-cron-run attribution unknown', result['boundary'])
+                self.assertIn('observation is not auto-pause authorization', result['boundary'])
+        self.assertEqual(result['state'], 'repeated_no_progress')
+        self.assertEqual(saved['completed_runs'], ['historical', 'r1', 'r2', 'r3', 'r4'])
+        for finished_at in (None, ''):
+            with self.subTest(finished_at=finished_at):
+                row['executions'].insert(0, {'id': 'unfinished', 'status': 'failed',
+                                            'finished_at': finished_at})
+                result, saved = progress(row, saved)
+                self.assertEqual(result['consecutive'], 3)
+                self.assertNotIn('unfinished', saved['completed_runs'])
+
+    def test_failed_occurrence_without_task_evidence_stays_unknown(self):
+        row = {'continuity': {}, 'repo': {'state': 'observed'},
+               'executions': [{'id': 'r1', 'status': 'failed', 'finished_at': '1'}], 'gaps': []}
+        result, saved = progress(row, {})
+        self.assertEqual(result['state'], 'unknown')
+        self.assertEqual(result['consecutive'], 0)
+        self.assertEqual(saved['completed_runs'], ['r1'])
+
     def test_unknown_execution_gap_does_not_recount_same_run(self):
         row = {'continuity': {'state.json': {'task_id': 't1'}}, 'repo': {'state': 'observed'},
                'executions': [{'id': 'r1', 'status': 'completed', 'finished_at': '1'}], 'gaps': []}
