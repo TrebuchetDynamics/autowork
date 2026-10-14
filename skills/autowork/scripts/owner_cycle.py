@@ -135,6 +135,11 @@ def run_locked(args, state):
                 if distinct['original_card'] != prior.get('task_id'):
                     raise ValueError('Fallback original card differs from current reconciliation')
                 result['disjoint_fallback'] = distinct
+            # Historical closeout may bind different implementation/review runs;
+            # ownership still describes the latest run, not an adopted worker.
+            if (prior.get('next_action') == 'reconcile_task_and_select'
+                    and not prior.get('delivery', {}).get('delivered')):
+                raise ValueError('Historical closeout lacks verified delivery')
             # Historical verified delivery releases selection only. Fresh target,
             # ownership and admission checks still belong to the next handoff;
             # never repeat the old merge or infer publication from this readback.
@@ -444,7 +449,7 @@ def main(argv=None):
     parser.add_argument('--tasks', help='Named task IDs; requires --plan')
     parser.add_argument('--state-dir', required=True, help='Private owning-profile autowork directory')
     parser.add_argument('--profile', help='Normal ready path: compose inputs and invoke native admission once with --apply; omit only for recovery-only inspection')
-    parser.add_argument('--local-policy', help='Trusted coordinator policy JSON for prior exact task/run local integration')
+    parser.add_argument('--local-policy', help='Trusted coordinator policy JSON for original implementation/review and local integration closeout')
     parser.add_argument('--source-path', action='append', default=[], help='Explicit executable/test/dependency-closure file to bind; repeat as needed')
     parser.add_argument('--base', help='Full immutable base; default captures current HEAD once')
     parser.add_argument('--fallback-file', help='Existing structured focused-milestone fallback evidence; never synthesized')

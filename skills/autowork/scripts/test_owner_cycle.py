@@ -451,6 +451,12 @@ class OwnerCycleTests(unittest.TestCase):
 class ComposedReadyTests(unittest.TestCase):
     """Only these additional tests opt into native composition; dispatch is mocked."""
     def test_historical_delivery_allows_eligible_selection_without_old_merge(self):
+        self.assert_historical_selection(changed_base=False)
+
+    def test_independent_changed_base_delivery_selects_in_same_cycle(self):
+        self.assert_historical_selection(changed_base=True)
+
+    def assert_historical_selection(self, changed_base):
         import copy
         import io
         import owner_cycle
@@ -471,9 +477,15 @@ class ComposedReadyTests(unittest.TestCase):
                         'runs': [{'id': 9, 'profile': 'fixture', 'status': 'completed',
                                   'metadata': {'delivery_evidence': f.evidence}}]}
             original = copy.deepcopy(snapshot)
+            if changed_base:
+                policy, snapshot = f.changed_base_closeout(task_id='original', implementer='fixture')
+                f.git('reset', '--hard', 'main')
+                self.ready_backlog()
+                policy_path.write_text(json.dumps(policy))
+                original = copy.deepcopy(snapshot)
             (self.root / 'autowork').mkdir()
             saved = self.root / 'autowork/goal-handoff.json'
-            saved.write_text(json.dumps({'task_id': 'original'}))
+            saved.write_text(json.dumps({'task_id': 'original', 'profile': 'fixture'}))
             saved_bytes = saved.read_bytes()
             refs = f.git('show-ref')
             with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
@@ -493,6 +505,10 @@ class ComposedReadyTests(unittest.TestCase):
                              'historically locally integrated')
             self.assertEqual(receipt['selected_task']['id'], 'T1')
             self.assertEqual(receipt['completed_tasks'], [])
+            if changed_base:
+                self.assertEqual(receipt['reconciliation']['delivery_run_id'], 9)
+                self.assertEqual(receipt['reconciliation']['review_run_id'], 10)
+                self.assertFalse(receipt['reconciliation']['worker_observed'])
             dispatch.assert_called_once()
             self.assertEqual(snapshot, original)
             self.assertEqual(saved.read_bytes(), saved_bytes)

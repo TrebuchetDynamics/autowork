@@ -15,6 +15,73 @@ else:
     m = None
 
 class ReconcileTests(unittest.TestCase):
+    def test_independent_changed_base_closeout_uses_original_run_without_rewriting(self):
+        import copy
+        with EvidenceFixture() as f:
+            policy, snapshot = f.changed_base_closeout(implementer='fixture')
+            home = f.repo
+            (home / 'autowork').mkdir()
+            saved = home / 'autowork/goal-handoff.json'
+            saved.write_text(json.dumps({'task_id': 't_fixture', 'profile': 'fixture'}))
+            original = copy.deepcopy(snapshot)
+            refs = f.git('show-ref')
+            with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                result = m.reconcile([], home, 'fixture', 't_fixture', f.repo, local_policy=policy)
+            self.assertEqual(result['next_action'], 'reconcile_task_and_select')
+            self.assertEqual(result['run_id'], 10)
+            self.assertEqual(result['delivery_run_id'], 9)
+            self.assertEqual(result['review_run_id'], 10)
+            self.assertEqual(result['run_ownership'], 'other_profile')
+            self.assertFalse(result['worker_observed'])
+            self.assertEqual(snapshot, original)
+            self.assertEqual(f.git('show-ref'), refs)
+
+    def test_independent_closeout_refuses_stale_foreign_and_worker_authority(self):
+        import copy
+        with EvidenceFixture() as f:
+            policy, snapshot = f.changed_base_closeout(implementer='fixture')
+            (f.repo / 'autowork').mkdir()
+            (f.repo / 'autowork/goal-handoff.json').write_text(json.dumps(
+                {'task_id': 't_fixture', 'profile': 'fixture'}))
+            cases = []
+            for index, key, value in [(0, 'commit', f.base), (0, 'base_commit', f.commit_id),
+                                       (1, 'commit', f.base), (1, 'review_outcome', 'pending')]:
+                bad = copy.deepcopy(snapshot)
+                bad['runs'][index]['metadata'][key] = value
+                cases.append(bad)
+            for key, value in [('status', 'running'), ('outcome', 'failed'), ('ended_at', None)]:
+                bad = copy.deepcopy(snapshot)
+                bad['runs'][1][key] = value
+                cases.append(bad)
+            bad = copy.deepcopy(snapshot)
+            bad['runs'].append(dict(bad['runs'][1], id=11))
+            cases.append(bad)
+            bad = copy.deepcopy(snapshot)
+            bad['runs'][0]['metadata']['delivery_evidence'] = {'candidate': {}}
+            cases.append(bad)
+            for bad in cases:
+                with patch.object(m, 'run', return_value=json.dumps(bad)):
+                    result = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=policy)
+                self.assertFalse(result['delivery']['delivered'])
+            for key, value in [('run_id', 8), ('run_id', True), ('task_id', 'other'),
+                               ('implementer', 'other'), ('closeout', {})]:
+                with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                    result = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo,
+                        local_policy=dict(policy, **{key: value}))
+                self.assertEqual(result['next_action'], 'verify_and_integrate')
+            # Self-asserted policy/evidence in either run cannot authorize closeout.
+            bad = copy.deepcopy(snapshot)
+            for record in bad['runs']:
+                record['metadata'].update(local_policy=policy, delivery_evidence=f.evidence)
+            with patch.object(m, 'run', return_value=json.dumps(bad)):
+                self.assertFalse(m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo)['delivery']['delivered'])
+            # Native JSON-string metadata is accepted only with the trusted policy.
+            for record in snapshot['runs']:
+                record['metadata'] = json.dumps(record['metadata'])
+            with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                self.assertTrue(m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo,
+                                           local_policy=policy)['delivery']['delivered'])
+
     def test_historical_closeout_selects_only_with_source_bound_delivery(self):
         import copy
         with EvidenceFixture() as f:

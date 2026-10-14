@@ -60,6 +60,57 @@ class EvidenceFixture:
                 'required_checks': 'passed', 'head': self.commit_id, 'merge_commit': self.commit_id}}
         return self.evidence
 
+    def changed_base_closeout(self, task_id='t_fixture', implementer='worker', same_file=False):
+        base_text = candidate_text = result_text = ''
+        if same_file:
+            base_text = ''.join(f'line {n}\n' for n in range(20))
+            candidate_text = base_text.replace('line 0\n', 'reviewed first\n')
+            self.base = self.commit(base_text)
+            self.commit_id = self.commit(candidate_text, self.base)
+            self.git('update-ref', 'refs/heads/candidate', self.commit_id)
+            self.identity = candidate_identity.capture(self.repo, self.base, 'refs/heads/candidate')
+            self.command = [sys.executable, '-c',
+                f'from pathlib import Path; assert Path("a.py").read_text() == {candidate_text!r}']
+            self.receipt = self.execute()
+            self.evidence = {'candidate': self.identity, 'implementation': {'artifacts': ['a.py']},
+                'qualification': {'candidate': self.identity, 'required_checks': ['unit'], 'checks': [self.check()]}}
+        policy = self.local_integration()
+        policy.update(task_id=task_id, run_id=9, implementer=implementer)
+        # Disjoint newer-main content must survive alongside the reviewed delta.
+        blob = self.git('hash-object', '-w', '--stdin', text='independent\n')
+        base_blob = self.git('rev-parse', self.base + ':a.py')
+        candidate_blob = self.git('rev-parse', self.commit_id + ':a.py')
+        if same_file:
+            result_text = candidate_text.replace('line 19\n', 'newer main last\n')
+            base_blob = self.git('hash-object', '-w', '--stdin',
+                text=base_text.replace('line 19\n', 'newer main last\n'))
+            candidate_blob = self.git('hash-object', '-w', '--stdin', text=result_text)
+        def tree(a):
+            return self.git('mktree', text=f'100644 blob {a}\ta.py\n100644 blob {blob}\tb.txt\n')
+        before = self.git('commit-tree', tree(base_blob), '-p', self.base, text='new main\n')
+        after = self.git('commit-tree', tree(candidate_blob), '-p', before,
+                         '-p', self.commit_id, text='changed-base merge\n')
+        self.git('update-ref', 'refs/heads/main', after)
+        result = candidate_identity.capture(self.repo, before, after)
+        command = self.command if not same_file else [sys.executable, '-c',
+            f'from pathlib import Path; assert Path("a.py").read_text() == {result_text!r}']
+        receipt = check_receipt.execute(self.repo, ['a.py', 'b.txt'], command, 10,
+            candidate=result, qualification_scope=self.scope, external_paths=[])
+        review = self.evidence['integration']['provenance']['review']
+        review.update(implementer=implementer, task_id=task_id, run_id=10, implementation_run_id=9)
+        self.evidence['integration'].update(before=before, after=after, result_candidate=result,
+            qualification={'candidate': result, 'required_checks': ['unit'],
+                           'checks': [dict(self.check(), command=command, paths=['a.py', 'b.txt'], receipt=receipt)]})
+        policy['closeout'] = {'review_run_id': 10, 'delivery_evidence': copy.deepcopy(self.evidence)}
+        snapshot = {'task': {'id': task_id, 'assignee': 'reviewer', 'status': 'done'},
+                    'runs': [{'id': 9, 'profile': implementer, 'status': 'review',
+                              'outcome': 'review_requested', 'ended_at': 1,
+                              'metadata': {'commit': self.commit_id, 'base_commit': self.base}},
+                             {'id': 10, 'profile': 'reviewer', 'status': 'done',
+                              'outcome': 'completed', 'ended_at': 2,
+                              'metadata': {'commit': self.commit_id, 'review_outcome': 'approved'}}]}
+        return policy, snapshot
+
     def __exit__(self, *args):
         self.temp.cleanup()
 
@@ -79,7 +130,47 @@ class EvidenceFixture:
 
 
 class DeliveryStateTests(unittest.TestCase):
+    def test_changed_base_preserves_disjoint_same_file_changes_without_git_writes(self):
+        with EvidenceFixture() as f:
+            policy, _ = f.changed_base_closeout(same_file=True)
+            self.assertTrue(m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)['delivered'])
+            integration = f.evidence['integration']
+            object_dir = f.repo / '.git/objects'
+            objects = {p.relative_to(object_dir): p.read_bytes() for p in object_dir.rglob('*') if p.is_file()}
+            refs = f.git('show-ref')
+            index = f.repo / '.git/index'
+            index_bytes = index.read_bytes() if index.exists() else None
+            self.assertTrue(m.preserved_delta(f.repo, f.base, f.commit_id, integration['before'],
+                                              integration['result_candidate']['candidate_tree']))
+            self.assertEqual({p.relative_to(object_dir): p.read_bytes() for p in object_dir.rglob('*')
+                              if p.is_file()}, objects)
+            self.assertEqual(f.git('show-ref'), refs)
+            self.assertEqual(index.read_bytes() if index.exists() else None, index_bytes)
+
+    def test_conflicts_and_custom_merge_drivers_cannot_authorize_closeout(self):
+        with EvidenceFixture() as f:
+            before = f.commit('conflicting main\n', f.base)
+            self.assertFalse(m.preserved_delta(f.repo, f.base, f.commit_id, before,
+                                               f.identity['candidate_tree']))
+            marker = f.repo / 'driver-ran'
+            f.git('config', 'merge.fixture.driver', f'touch {marker}; cp %B %A')
+            attributes = f.repo / '.git/info/attributes'
+            attributes.parent.mkdir(exist_ok=True)
+            attributes.write_text('a.py merge=fixture\n')
+            self.assertFalse(m.preserved_delta(f.repo, f.base, f.commit_id, before,
+                                               f.identity['candidate_tree']))
+            self.assertFalse(marker.exists())
+
+    def test_changed_base_closeout_requires_result_checks_and_preserved_delta(self):
+        with EvidenceFixture() as f:
+            policy, _ = f.changed_base_closeout()
+            self.assertTrue(m.evaluate(f.evidence, f.repo, local_policy=policy)['delivered'])
+            self.assertTrue(m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)['delivered'])
+            self.assertFalse(m.evaluate(f.evidence, f.repo,
+                local_policy={k: v for k, v in policy.items() if k != 'closeout'})['delivered'])
+
     def test_historical_local_delivery_survives_main_descendants_only(self):
+        # Historical readback is independent from changed-base closeout.
         for merged in (False, True):
             for changed_tree in (False, True):
                 with self.subTest(merged=merged, changed_tree=changed_tree), EvidenceFixture() as f:
@@ -108,6 +199,104 @@ class DeliveryStateTests(unittest.TestCase):
                         f.git('update-ref', 'refs/heads/main', main)
                         self.assertFalse(m.evaluate(f.evidence, f.repo, local_policy=policy,
                                                     historical=True)['delivered'])
+
+    def test_changed_base_closeout_refuses_missing_or_contradictory_inputs(self):
+        with EvidenceFixture() as f:
+            policy, _ = f.changed_base_closeout()
+            original = copy.deepcopy(f.evidence)
+            refs = f.git('show-ref')
+            for path, value in [
+                    (('integration', 'result_candidate'), None),
+                    (('integration', 'qualification'), None),
+                    (('integration', 'qualification', 'required_checks'), []),
+                    (('integration', 'qualification', 'checks'), []),
+                    (('integration', 'qualification', 'checks', 0, 'receipt', 'outcome'), 'failed'),
+                    (('integration', 'qualification', 'checks', 0, 'paths'), ['a.py']),
+                    (('integration', 'result_candidate', 'base_commit'), f.base),
+                    (('integration', 'result_candidate', 'candidate_tree'), f.identity['candidate_tree']),
+                    (('integration', 'provenance', 'review', 'outcome'), 'pending'),
+                    (('integration', 'provenance', 'review', 'task_id'), 'foreign'),
+                    (('integration', 'provenance', 'review', 'run_id'), 11),
+                    (('integration', 'provenance', 'review', 'implementation_run_id'), 8),
+                    (('integration', 'provenance', 'review', 'reviewer'), 'worker'),
+                    (('integration', 'provenance', 'source'), 'protected_pr'),
+                    (('qualification', 'checks'), [])]:
+                bad = copy.deepcopy(original)
+                target = bad
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = value
+                bound = copy.deepcopy(policy)
+                bound['closeout']['delivery_evidence'] = bad
+                with self.subTest(path=path):
+                    self.assertFalse(m.evaluate(bad, f.repo, local_policy=bound, historical=True)['delivered'])
+            for key, value in [('closeout', None), ('run_id', True), ('task_id', 'foreign'),
+                               ('candidate', {}), ('authority', 'foreign')]:
+                self.assertFalse(m.evaluate(original, f.repo,
+                    local_policy=dict(policy, **{key: value}), historical=True)['delivered'], key)
+            self.assertEqual(f.evidence, original)
+            self.assertEqual(f.git('show-ref'), refs)
+
+    def test_changed_base_closeout_refuses_altered_delta_and_invalid_parents(self):
+        with EvidenceFixture() as f:
+            policy, _ = f.changed_base_closeout()
+            original = copy.deepcopy(f.evidence)
+            before = original['integration']['before']
+            after = original['integration']['after']
+            result_tree = f.git('rev-parse', after + '^{tree}')
+            wrong_trees = [f.git('rev-parse', f.commit('altered\n', before) + '^{tree}'),
+                           f.identity['candidate_tree']]
+            candidate_blob = f.git('rev-parse', f.commit_id + ':a.py')
+            extra_blob = f.git('hash-object', '-w', '--stdin', text='unreviewed\n')
+            extra_tree = f.git('mktree', text=f'100644 blob {candidate_blob}\ta.py\n'
+                f'100644 blob {extra_blob}\tb.txt\n')
+            cases = [(tree, [before, f.commit_id]) for tree in wrong_trees + [extra_tree]]
+            cases += [(result_tree, parents) for parents in
+                      ([f.commit_id, before], [f.commit_id], [before, f.commit_id, f.base])]
+            for tree, parents in cases:
+                bad_after = f.git('commit-tree', tree,
+                    *[arg for parent in parents for arg in ('-p', parent)], text='invalid integration\n')
+                f.git('update-ref', 'refs/heads/main', bad_after)
+                bad = copy.deepcopy(original)
+                result_base = before if before in parents else f.base
+                result = candidate_identity.capture(f.repo, result_base, bad_after)
+                integration = bad['integration']
+                integration.update(after=bad_after, result_candidate=result)
+                # Fresh successful result checks cannot bless an unreviewed delta.
+                command = [sys.executable, '-c', 'pass']
+                receipt = check_receipt.execute(f.repo, ['a.py'], command, 10,
+                    candidate=result, qualification_scope=f.scope, external_paths=[])
+                integration['qualification'] = {'candidate': result, 'required_checks': ['unit'],
+                    'checks': [dict(f.check(), command=command, receipt=receipt)]}
+                bound = copy.deepcopy(policy)
+                bound['closeout']['delivery_evidence'] = bad
+                evaluated = m.evaluate(bad, f.repo, local_policy=bound, historical=True)
+                self.assertEqual(evaluated['integration'], 'unknown')
+                self.assertFalse(evaluated['delivered'])
+            f.git('update-ref', 'refs/heads/main', f.commit('descendant\n', after))
+            self.assertTrue(m.evaluate(original, f.repo, local_policy=policy, historical=True)['delivered'])
+            self.assertFalse(m.evaluate(original, f.repo, local_policy=policy)['delivered'])
+            for main in (f.base, f.commit('diverged\n', f.base)):
+                f.git('update-ref', 'refs/heads/main', main)
+                self.assertFalse(m.evaluate(original, f.repo, local_policy=policy, historical=True)['delivered'])
+
+    def test_changed_base_result_external_source_drift_and_moved_refs_refuse(self):
+        with EvidenceFixture() as f:
+            policy, _ = f.changed_base_closeout()
+            integration = f.evidence['integration']
+            dependency = f.repo / 'dep.txt'
+            dependency.write_text('before\n')
+            receipt = check_receipt.execute(f.repo, ['a.py', 'b.txt'], f.command, 10,
+                candidate=integration['result_candidate'], qualification_scope=f.scope,
+                external_paths=['dep.txt'])
+            integration['qualification']['checks'][0].update(receipt=receipt, external_paths=['dep.txt'])
+            policy['closeout']['delivery_evidence'] = copy.deepcopy(f.evidence)
+            self.assertTrue(m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)['delivered'])
+            dependency.write_text('after\n')
+            self.assertFalse(m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)['delivered'])
+            dependency.write_text('before\n')
+            f.git('update-ref', 'refs/heads/candidate', f.base)
+            self.assertFalse(m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)['delivered'])
 
     def test_historical_local_delivery_keeps_all_evidence_gates(self):
         with EvidenceFixture() as f:
