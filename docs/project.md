@@ -333,7 +333,7 @@ mode optional. The current queue had one policy-gated task and separately scoped
 live-environment qualification tasks. Actual runtime blocking frequency was not
 measured. Concurrent instruction edits are evidence inputs, not proof of delivery.
 
-Execution slice: [TOOLSET-008](../TODO.md#toolset-008--make-autowork-continuation-authority-consistent)
+Execution slice: [TOOLSET-008](../TODO.archive.md#toolset-008--make-autowork-continuation-authority-consistent)
 now aligns these semantics across native/portable instructions and generated worker
 contracts, with regression cases for autonomous fixes, known recovery, explicit
 stop limits, pending review/approval and exhausted allocation. Reuse existing
