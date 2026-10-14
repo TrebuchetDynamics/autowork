@@ -34,6 +34,26 @@ is a git problem.
 
 Never rebase or rewrite history, never `--force`, never `git pull --rebase`, and never `reset --hard`.
 
+## Isolated delivery clones
+
+Do not use `git clone --reference` against a shallow local/reference repository;
+Git rejects it, and object alternates can couple a delivery candidate to mutable
+local storage. Prepare an independent full-history origin clone instead:
+
+```sh
+python3 <git-pull-merge>/scripts/isolated-origin-clone.py ORIGIN NEW_PRIVATE_PATH \
+  --expected-main EXACT_OBSERVED_ORIGIN_MAIN_SHA
+```
+
+Resolve the existing origin and observe its exact main SHA first. Use a new
+private destination; retain earlier clones, frozen candidates and check/PR
+receipts. The helper refuses an existing destination, a changed main pin, shallow
+history or borrowed objects. It clears inherited repository selectors and disables
+hooks/fsmonitor. A prepared clone is not integration, acceptance or push; retain
+all provenance, ownership, policy and required verification gates. When the origin
+moves, reconcile rather than refreshing an old task's source pins. Clone failure
+leaves its partial private destination retained, never deletes owner files.
+
 ## Fast path
 
 1. **Inspect once.**

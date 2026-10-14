@@ -15,6 +15,21 @@ def load():
 
 
 class OwnerCronTests(unittest.TestCase):
+    def test_delivery_clone_repair_preserves_sync_authority_and_is_idempotent(self):
+        module = load()
+        scope = module.ROLE_MARKER + 'delivery-sync\nExisting hourly job. No development; no deployment.'
+        prompt = module.delivery_sync_prompt(scope, Path('/fixture/isolated-origin-clone.py'))
+        self.assertTrue(prompt.startswith(scope))
+        for rule in ('isolated-origin-clone.py', '--expected-main', 'Never use --reference',
+                     'retain original candidate', 'does not clear provenance', 'No new worker'):
+            self.assertIn(rule, prompt)
+        self.assertFalse(module.is_owner_job({'prompt': prompt, 'skills': ['hermes-toolset:autowork']}))
+        self.assertEqual(module.delivery_sync_prompt(prompt, Path('/fixture/isolated-origin-clone.py')), prompt)
+        with self.assertRaises(ValueError):
+            module.delivery_sync_prompt('Generic development', Path('/fixture/helper.py'))
+        with self.assertRaises(ValueError):
+            module.delivery_sync_prompt(scope, Path('relative.py'))
+
     def test_owner_prompt_uses_composed_ready_dispatch_not_duplicate_prepasses(self):
         prompt = load().owner_prompt('Offline development only; retain named task filter.', True)
         for rule in ('one composed owner_cycle.py --apply', '--source-path',
@@ -164,6 +179,22 @@ class OwnerCronTests(unittest.TestCase):
         self.assertEqual(module.autowork_skills({'skill': 'autogoal'}), ['hermes-toolset:autowork'])
         ready = {'skills': ['hermes-toolset:autowork', 'hermes-toolset:git-commit-push']}
         self.assertEqual(module.autowork_skills(ready), ready['skills'])
+
+    def test_audit_job_repair_is_opt_in_sticky_and_preserves_scope(self):
+        module = load()
+        scope = 'Discover ALL profiles dynamically. Preserve pauses and all job roles.'
+        plain = module.audit_prompt(scope, repair=True, pause_stalled=True)
+        self.assertNotIn('CRON JOB REPAIR', plain)
+        prompt = module.audit_prompt(scope, repair=True, pause_stalled=True, repair_jobs=True)
+        for rule in ('ALL existing cron jobs', 'newest TWO completed outputs for each job',
+                     'research-design and delivery-sync', 'supported profile-scoped cron edit',
+                     'Preserve job IDs, cadence, delivery, model, continuity and paused/enabled state',
+                     'same failed consumer', 'never resume', 'No product writes'):
+            self.assertIn(rule, prompt)
+        self.assertTrue(prompt.startswith(scope))
+        self.assertNotIn('only sibling-job write exception', prompt)
+        self.assertNotIn('sibling config/job/memory changes', prompt)
+        self.assertEqual(module.audit_prompt(prompt), prompt)
 
     def test_audit_auto_pause_is_opt_in_and_sticky(self):
         module = load()

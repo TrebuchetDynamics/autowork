@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shlex
 
 ROLE_MARKER = '\n\nSCHEDULED JOB ROLE: '
 MARKER = '\n\nSHARED OWNER RECOVERY CYCLE — required execution\n'
@@ -105,9 +106,28 @@ def owner_prompt(prompt, enabled):
         'End with skipped checks and risks.\n')
 
 
-def audit_prompt(prompt, *, repair=False, pause_stalled=False):
+def audit_prompt(prompt, *, repair=False, pause_stalled=False, repair_jobs=False):
+    job_marker = '\n\nCRON JOB REPAIR — authorized existing jobs only\n'
+    repair_jobs = repair_jobs or job_marker in prompt
     pause_stalled = pause_stalled or PAUSE_MARKER in prompt
-    result = _audit_prompt(prompt.split(PAUSE_MARKER, 1)[0], repair=repair)
+    result = _audit_prompt(prompt.split(job_marker, 1)[0].split(PAUSE_MARKER, 1)[0], repair=repair)
+    if repair_jobs:
+        result = result.replace('sibling config/job/memory changes', 'sibling config/memory changes')
+        result = result.replace('change jobs, or replace workers', 'replace workers')
+        result += job_marker + (
+            'Within the explicitly authorized subject scope, discover ALL existing cron jobs each occurrence, '
+            'including paused jobs, research-design and delivery-sync; inspect the newest TWO completed outputs for each job, '
+            'current scheduler/delivery errors, actual original cards/runs and manual liveness. '
+            'Include profiles with no jobs as coverage; never create a replacement schedule. '
+            'Repair the earliest evidenced shared-toolset cause in source first, qualify it and deploy the reviewed delta. '
+            'When faulty job wiring is itself the cause, use supported profile-scoped cron edit on the exact existing job. '
+            'Preserve job IDs, cadence, delivery, model, continuity and paused/enabled state, original scope and authority. '
+            'Keep research, sync and development roles distinct. Recheck current owner instructions before writing. '
+            'Read back every exact edit and retry the same failed consumer when safe; report configured, attempted recovery, '
+            'admitted worker and verified task completion separately. Never count a prompt edit or fixture as an unblock. '
+            'Continue a supported repair in this occurrence rather than another unchanged audit. '
+            'Respect original cards, pins, budgets, live writers and no-Agent-edit boundaries; never resume, trigger, '
+            'cancel or replace workers, bypass guards or borrow product/live credentials. No product writes.\n')
     if not pause_stalled:
         return result
     result = result.replace('owner jobs/config/memories', 'owner config/memories')
@@ -134,7 +154,8 @@ def audit_prompt(prompt, *, repair=False, pause_stalled=False):
         'on that exact job and unchanged cadence/model/delivery, and save before/after plus reason '
         'and supporting run IDs in default-owned maintenance evidence. Report every pause via existing Telegram delivery. '
         'Keep auditing paused subjects; never resume automatically. A resume requires explicit user instruction. '
-        'This is the only sibling-job write exception; product/config/memory/live-service writes remain forbidden.\n')
+        + ('This pause grant and the explicit cron-job repair grant do not authorize product/config/memory/live-service writes.\n'
+           if repair_jobs else 'This is the only sibling-job write exception; product/config/memory/live-service writes remain forbidden.\n'))
 
 
 def _audit_prompt(prompt, *, repair=False):
@@ -189,6 +210,24 @@ def _audit_prompt(prompt, *, repair=False):
         'Do not perform product --apply, write sibling state, change jobs, or replace workers. '
         'Identify shared helper defects from the actual failed transition; owner consultations '
         'and successful cron delivery are not recovered tasks. Keep all paused jobs paused.\n')
+
+
+def delivery_sync_prompt(prompt, clone_helper):
+    """Add a bounded clone preparation repair without changing delivery authority."""
+    marker = '\n\nISOLATED DELIVERY CLONE — verified preparation\n'
+    if ROLE_MARKER + 'delivery-sync\n' not in prompt or not Path(clone_helper).is_absolute():
+        raise ValueError('requires delivery-sync scope and an absolute clone helper')
+    return prompt.split(marker, 1)[0] + marker + (
+        'Never use --reference or borrowed object alternates for the isolated origin clone, '
+        'especially when a local/reference repository is shallow. '
+        f'Use python3 {shlex.quote(str(clone_helper))} with the existing explicit origin, a new private destination '
+        'and --expected-main bound to the exact freshly observed origin/main SHA. '
+        'The helper clones full independent history and refuses changed pins, shallow history '
+        'or existing destinations. Preserve old clones and retain original candidate/check/PR receipts; '
+        'a changed origin pin is a reconciliation hold, never permission to refresh old task pins. '
+        'Clone preparation does not clear provenance, acceptance, ownership or publication gates. '
+        'Continue the saved eligible delivery only after its existing required checks pass. '
+        'No new worker, schedule, resume, budget reset, force push or deployment is authorized.\n')
 
 
 def verify_edit(before, after, prompt):

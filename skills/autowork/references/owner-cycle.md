@@ -112,6 +112,44 @@ license Hermes Agent edits, tunneling commands through unrelated tools, or anoth
 core-edit-or-stop ultimatum. Report the unavailable route separately from actual
 implementation and remaining acceptance.
 
+## Reviewed local delivery evidence
+
+Protected-PR provenance remains the delivery evaluator's default. For a repository
+that explicitly permits reviewed local integration, the coordinator may pass a
+separate trusted JSON file via `reconcile.py --repo REPO --local-policy FILE`, or
+`owner_cycle.py --local-policy FILE` on its composed ready path. Never load this
+authority from worker metadata or infer it from a green check, ancestry or a card
+marked done. This selects an explicit policy; invalid policy cannot fall back to
+protected-PR claims. The evaluator reads Git only and grants no mutation authority.
+
+The policy object requires `version: 1`, `mode: reviewed_local`, the complete
+exact `candidate` identity (including base, tree and prerequisites),
+`target: refs/heads/main`, a nonempty `authority` evidence reference,
+`implementer` and a nonempty unique `reviewers` list excluding the implementer.
+Reconciliation additionally requires the original `task_id` and integer `run_id`
+of the latest owning-profile run; `implementer` must match that profile.
+
+The existing integration object binds the same candidate/target, `action: merge`,
+`before` equal to the candidate base and an observed `after`. Its provenance has
+exactly `source: reviewed_local`, the same `authority`, `observed: true` and
+`review`. That review binds the complete candidate, matching `implementer`, an
+allowed independent `reviewer`, a nonempty review `id`, `observed: true` and
+`outcome: approved`. Retain independently observed exact-candidate review before
+integration. These are caller attestations, not issuer authentication: the trusted
+coordinator must verify authority and review through their original evidence.
+Fabricating matching strings is not verification, and fixtures remain fixtures.
+
+Local Git must show the candidate introduced by fast-forward or a two-parent merge
+whose parents are exactly before/candidate and whose tree is exactly the reviewed
+candidate tree. Current local main must still equal after; moved targets require
+fresh reconciliation, not silently repinned history. Missing, foreign, stale,
+contradictory or PR-shaped local provenance remains unknown. Required exact-candidate
+check receipts still gate delivery. This closes only the scoped local delivery lane;
+`publication` remains unknown, milestone completion remains false, and native,
+model, live acceptance, sessions, retry limits and unknown usage remain separate.
+The coordinator, not this read-only evaluator or worker, owns integration and
+canonical task closure.
+
 ## Continuation and accounting failures
 
 An existing card with partial work and a session/budget failure needs execution
