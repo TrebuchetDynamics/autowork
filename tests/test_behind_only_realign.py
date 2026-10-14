@@ -28,6 +28,8 @@ class BehindOnlyRealignTests(unittest.TestCase):
         self.git('config', 'user.email', 'test@example.invalid')
         for name in ('clean.txt', 'dirty.txt', 'deleted.txt'):
             (self.repo / name).write_bytes(b'base\n')
+        (self.repo / 'tracked-directory').mkdir()
+        (self.repo / 'tracked-directory/base.txt').write_bytes(b'base\n')
         self.git('add', '.')
         self.git('commit', '-m', 'base')
         self.old = self.git('rev-parse', 'HEAD').stdout.strip()
@@ -66,6 +68,7 @@ class BehindOnlyRealignTests(unittest.TestCase):
         self.assertEqual((self.repo / 'clean.txt').read_bytes(), b'incoming\n')
         self.assertIn('PROOF=ZERO_CHANGED', result.stdout)
         self.assertIn('NEW=' + self.new, result.stdout)
+        self.assert_index_matches_source()
 
     def test_explicit_full_commit_preserves_writer_bytes(self):
         self.assert_success(self.new)
@@ -79,20 +82,191 @@ class BehindOnlyRealignTests(unittest.TestCase):
     def test_empty_source_uses_configured_upstream(self):
         self.assert_success('')
 
+    def extend_source(self, change):
+        # A separate checkout keeps every local writer byte in the test repo.
+        source = self.root / 'source'
+        self.git('worktree', 'add', str(source), 'source')
+        change(source)
+        subprocess.run(['git', 'add', '-A'], cwd=source, env=self.env, check=True,
+                       capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'extra incoming'], cwd=source,
+                       env=self.env, check=True, capture_output=True)
+        self.new = self.git('rev-parse', 'source').stdout.strip()
+
+    def assert_index_matches_source(self):
+        self.assertEqual(self.git('write-tree').stdout.strip(),
+                         self.git('rev-parse', self.new + '^{tree}').stdout.strip())
+
+    def test_clean_addition_materializes(self):
+        def change(source):
+            (source / 'nested').mkdir()
+            (source / 'nested/new.txt').write_bytes(b'new file\n')
+        self.extend_source(change)
+        self.assert_success(self.new)
+        self.assertEqual((self.repo / 'nested/new.txt').read_bytes(), b'new file\n')
+        self.assert_index_matches_source()
+
+    def test_clean_deletion_disappears(self):
+        self.extend_source(lambda source: (source / 'clean.txt').unlink())
+        result = self.run_helper(self.new)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.repo / 'clean.txt').exists())
+        self.assertEqual(self.snapshot(), self.dirty)
+        self.assert_index_matches_source()
+
+    def test_dirty_incoming_deletions_preserve_bytes_and_absence(self):
+        def change(source):
+            (source / 'dirty.txt').unlink()
+            (source / 'deleted.txt').unlink()
+        self.extend_source(change)
+        self.assert_success(self.new)
+        self.assert_index_matches_source()
+
+    def test_ignored_addition_collision_preserves_local_bytes(self):
+        self.extend_source(lambda source: (source / 'ignored.txt').write_bytes(b'incoming'))
+        (self.repo / '.git/info/exclude').write_text('ignored.txt\n')
+        (self.repo / 'ignored.txt').write_bytes(b'local ignored')
+        self.assert_success(self.new)
+        self.assertEqual((self.repo / 'ignored.txt').read_bytes(), b'local ignored')
+        self.assert_index_matches_source()
+
+    def test_incoming_file_over_local_directory_refuses(self):
+        self.extend_source(lambda source: (source / 'directory').write_bytes(b'incoming'))
+        (self.repo / 'directory').mkdir()
+        (self.repo / 'directory/local.txt').write_bytes(b'local')
+        self.assert_refused('ABORT: unsupported collision')
+        self.assertEqual((self.repo / 'directory/local.txt').read_bytes(), b'local')
+
+    def test_incoming_directory_under_untracked_file_refuses(self):
+        def change(source):
+            (source / 'parent').mkdir()
+            (source / 'parent/new.txt').write_bytes(b'incoming')
+        self.extend_source(change)
+        (self.repo / 'parent').write_bytes(b'local')
+        self.assert_refused('ABORT: unsupported collision')
+
+    def test_incoming_directory_under_symlink_refuses(self):
+        def change(source):
+            (source / 'parent').mkdir()
+            (source / 'parent/new.txt').write_bytes(b'incoming')
+        self.extend_source(change)
+        target = self.root / 'outside'
+        target.mkdir()
+        (self.repo / 'parent').symlink_to(target, target_is_directory=True)
+        self.assert_refused('ABORT: unsupported collision')
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_tracked_file_to_directory_refuses_before_mutation(self):
+        def change(source):
+            (source / 'clean.txt').unlink()
+            (source / 'clean.txt').mkdir()
+            (source / 'clean.txt/new.txt').write_bytes(b'incoming')
+        self.extend_source(change)
+        self.assert_refused('ABORT: unsupported collision')
+
+    def test_unusual_added_path_is_literal(self):
+        name = 'new\n[glob]*.txt'
+        self.extend_source(lambda source: (source / name).write_bytes(b'incoming'))
+        self.assert_success(self.new)
+        self.assertEqual((self.repo / name).read_bytes(), b'incoming')
+        self.assert_index_matches_source()
+
+    def test_unusual_dirty_path_preserves_bytes(self):
+        name = 'new\n[glob]*.txt'
+        self.extend_source(lambda source: (source / name).write_bytes(b'incoming'))
+        (self.repo / name).write_bytes(b'writer')
+        self.assert_success(self.new)
+        self.assertEqual((self.repo / name).read_bytes(), b'writer')
+        self.assert_index_matches_source()
+
+    def test_dangling_untracked_symlink_preserves_target(self):
+        (self.repo / 'collision.txt').unlink()
+        (self.repo / 'collision.txt').symlink_to('missing-target')
+        self.dirty = self.snapshot()
+        self.assert_success(self.new)
+        self.assertEqual(os.readlink(self.repo / 'collision.txt'), 'missing-target')
+        self.assert_index_matches_source()
+
+    def test_clean_rename_materializes_destination_and_removes_source(self):
+        self.extend_source(lambda source: (source / 'clean.txt').rename(source / 'renamed.txt'))
+        result = self.run_helper(self.new)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.repo / 'clean.txt').exists())
+        self.assertEqual((self.repo / 'renamed.txt').read_bytes(), b'incoming\n')
+        self.assertEqual(self.snapshot(), self.dirty)
+        self.assert_index_matches_source()
+
+    def test_hidden_assume_unchanged_refuses(self):
+        self.git('update-index', '--assume-unchanged', 'dirty.txt')
+        self.assert_refused('ABORT: hidden index flags')
+
+    def test_hidden_skip_worktree_refuses(self):
+        self.git('update-index', '--skip-worktree', 'dirty.txt')
+        self.assert_refused('ABORT: hidden index flags')
+
+    def test_tracked_directory_to_file_refuses_even_when_locally_absent(self):
+        def change(source):
+            (source / 'tracked-directory/base.txt').unlink()
+            (source / 'tracked-directory').rmdir()
+            (source / 'tracked-directory').write_bytes(b'incoming')
+        self.extend_source(change)
+        (self.repo / 'tracked-directory/base.txt').unlink()
+        (self.repo / 'tracked-directory').rmdir()
+        self.assert_refused('ABORT: unsupported collision')
+
+    def test_ignored_parent_file_refuses(self):
+        def change(source):
+            (source / 'parent').mkdir()
+            (source / 'parent/new.txt').write_bytes(b'incoming')
+        self.extend_source(change)
+        (self.repo / '.git/info/exclude').write_text('parent\n')
+        (self.repo / 'parent').write_bytes(b'ignored writer')
+        self.assert_refused('ABORT: unsupported collision')
+
+    def test_clean_added_symlink_materializes(self):
+        self.extend_source(lambda source: (source / 'link').symlink_to('clean.txt'))
+        self.assert_success(self.new)
+        self.assertEqual(os.readlink(self.repo / 'link'), 'clean.txt')
+        self.assert_index_matches_source()
+
+    def test_preexisting_matching_safety_ref_is_retained(self):
+        self.git('branch', 'safety/test-realign', self.old)
+        self.assert_success(self.new)
+
+    def test_preexisting_wrong_safety_ref_refuses(self):
+        self.git('branch', 'safety/test-realign', self.new)
+        self.assert_refused('ABORT: safety ref does not preserve OLD')
+
+    def worktree_snapshot(self):
+        result = {}
+        for base, directories, files in os.walk(self.repo, followlinks=False):
+            if Path(base) == self.repo:
+                directories.remove('.git')
+            for name in directories + files:
+                path = Path(base) / name
+                relative = str(path.relative_to(self.repo))
+                if path.is_symlink():
+                    result[relative] = ('symlink', os.readlink(path))
+                elif path.is_dir():
+                    result[relative] = ('directory',)
+                else:
+                    result[relative] = ('file', path.read_bytes(), path.stat().st_mode)
+        return result
+
     def assert_refused(self, diagnostic):
         head = self.git('rev-parse', 'HEAD').stdout
         index = (self.repo / '.git/index').read_bytes()
-        files = {path.name: path.read_bytes() for path in self.repo.iterdir() if path.is_file()}
+        refs = self.git('for-each-ref', '--format=%(refname) %(objectname)').stdout
+        files = self.worktree_snapshot()
         result = self.run_helper('refs/heads/source')
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(diagnostic, result.stdout + result.stderr)
         self.assertEqual(self.git('rev-parse', 'HEAD').stdout, head)
         self.assertEqual((self.repo / '.git/index').read_bytes(), index)
-        self.assertEqual({path.name: path.read_bytes() for path in self.repo.iterdir()
-                          if path.is_file()}, files)
+        self.assertEqual(self.worktree_snapshot(), files)
         self.assertEqual(self.snapshot(), self.dirty)
-        self.assertNotIn('refs/heads/safety/test-realign',
-                         self.git('for-each-ref', '--format=%(refname)').stdout)
+        self.assertEqual(self.git('for-each-ref', '--format=%(refname) %(objectname)').stdout,
+                         refs)
 
     def test_staged_changes_refuse_without_mutation(self):
         self.git('add', 'dirty.txt')
