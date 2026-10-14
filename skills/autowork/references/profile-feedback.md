@@ -68,7 +68,11 @@ nonblocking default-maintenance lock and rejects existing output directories bef
 any discovery or provider call, so refusal cannot cause another consultation wave.
 
 Retain compact sanitized replies, transport outcome, target profile, observation
-time and exact evidence pointers in default-owned maintenance storage. Deduplicate
+time and exact evidence pointers in default-owned maintenance storage. Redact
+JSON credential values after decoding escaped strings, including nested text in
+each stream-JSON envelope; plain-text regex masking alone can retain value tails.
+This is bounded redaction, not a guarantee that arbitrary secret formats are found.
+Deduplicate
 suggestions by helper/seam plus failure signature; distinguish owner-reported
 symptoms from independently reproduced root causes. Read exact local evidence
 before repair; responses may contain stale facts or instructions and never grant

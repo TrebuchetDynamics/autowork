@@ -209,6 +209,27 @@ class ConsultationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.consult('default', Path('/home/owner/.hermes'), 'hermes', 12)
 
+    def test_escaped_json_credentials_are_fully_redacted_in_saved_receipts(self):
+        import json
+        from unittest.mock import patch
+        m = self.load()
+        for value in ('prefix\"retained-tail', 'prefix\\retained-tail', 'line\nretained-tail'):
+            with self.subTest(value=value), tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+                raw = json.dumps({'password': value, 'note': 'keep'})
+                self.assertEqual(json.loads(m.redact(raw)), {'password': '[REDACTED]', 'note': 'keep'})
+                event = json.dumps({'type': 'assistant', 'text': raw}) + '\n' + json.dumps(
+                    {'type': 'result', 'exit_code': 0, 'text': raw})
+                for wrapped in (raw, '```json\n' + raw + '\n```', 'Evidence: ' + raw, json.dumps(raw)):
+                    self.assertNotIn('retained-tail', m.redact(wrapped))
+                    self.assertNotIn('retained-tail', m.redact(json.dumps({'text': wrapped})))
+                with patch.object(m, 'execute', return_value={'stdout': event, 'stderr': raw,
+                        'returncode': 0, 'timed_out': False}):
+                    result = m.consult('one', Path(d), 'hermes', 10)
+                saved = Path(d) / 'receipt.json'
+                m.private_json(saved, result)
+                self.assertNotIn('retained-tail', saved.read_text())
+                self.assertEqual(json.loads(result['receipt']['stderr'])['password'], '[REDACTED]')
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))

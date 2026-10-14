@@ -25,10 +25,26 @@ QUESTION = '''Shared hermes-toolset feedback only for profile {name}. Do not imp
 
 
 def redact(text):
+    # Decode stream envelopes before redacting their JSON-escaped text payloads.
+    def scrub(value):
+        if isinstance(value, dict):
+            return {key: '[REDACTED]' if re.fullmatch(
+                        r'(?i)api[_-]?key|token|password|secret|authorization', key)
+                    else scrub(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [scrub(item) for item in value]
+        return redact(value) if isinstance(value, str) else value
+
+    try:
+        parsed = json.loads(text)
+    except (ValueError, RecursionError):
+        parsed = None
+    if isinstance(parsed, (dict, list, str)):
+        text = json.dumps(scrub(parsed), ensure_ascii=False)
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'\b(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+', '[REDACTED]', text)
-    text = re.sub(r'(?i)([\"\x27](?:api[_-]?key|token|password|secret|authorization)[\"\x27]\s*:\s*)[\"\x27][^\"\x27]*[\"\x27]', r'\1"[REDACTED]"', text)
+    text = re.sub(r'''(?i)(["'](?:api[_-]?key|token|password|secret|authorization)["']\s*:\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''', r'\1"[REDACTED]"', text)
     text = re.sub(r'(?i)bearer\s+[^\s]+', 'Bearer [REDACTED]', text)
     text = re.sub(r'(https?://)[^\s/@]+:[^\s/@]+@', r'\1[REDACTED]@', text)
     return text
@@ -143,7 +159,8 @@ def consult(name, root, hermes, seconds):
                 'reply': redact(final.get('text', '')), 'started_at': started,
                 'duration_seconds': round(time.time() - started, 2),
                 'tool_calls': tools, 'read_only_call_limit_observed': len(tools) <= 2 and set(tools) <= {'session_search', 'tool_describe'},
-                'receipt': {**raw, 'stdout': redact(raw['stdout']), 'stderr': redact(raw['stderr'])}}
+                'receipt': {**raw, 'stdout': '\n'.join(redact(line) for line in raw['stdout'].splitlines()),
+                            'stderr': redact(raw['stderr'])}}
     except Exception as exc:
         return {'profile': name, 'status': 'failed', 'error': redact(str(exc)), 'started_at': started}
 
