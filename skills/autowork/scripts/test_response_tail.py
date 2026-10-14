@@ -42,6 +42,34 @@ class ResponseTailTests(unittest.TestCase):
                 self.assertIn('exact execution association not proved', row['boundary'])
             self.assertEqual(before, {path: path.read_bytes() for path in paths})
 
+    def test_unreadable_output_does_not_hide_healthy_selected_output(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            paths = [output / f'2026-10-{day}.md' for day in (10, 11, 12)]
+            for path in paths:
+                path.write_text(path.name + '\n')
+            before = {path: path.read_bytes() for path in paths}
+            original_open = Path.open
+            for failed, healthy, rank in ((paths[1], paths[2], 1), (paths[2], paths[1], 2)):
+                with self.subTest(failed=failed.name):
+                    def open_output(path, *args, **kwargs):
+                        if path == failed:
+                            raise OSError('deterministic unreadable output')
+                        return original_open(path, *args, **kwargs)
+                    gaps = []
+                    with patch.object(Path, 'open', open_output):
+                        rows = cron_responses(home, [{'id': 'j1'}], gaps)
+                    self.assertEqual([row['path'] for row in rows], [str(healthy)])
+                    self.assertEqual(rows[0]['output_rank'], rank)
+                    self.assertEqual(rows[0]['latest'], rank == 1)
+                    self.assertEqual(rows[0]['payload'], healthy.name + '\n')
+                    self.assertIn('exact execution association not proved', rows[0]['boundary'])
+                    self.assertEqual(gaps, ['cron response unreadable: j1: ' + failed.name])
+            self.assertEqual(before, {path: path.read_bytes() for path in paths})
+
     def test_symlinked_output_directory_cannot_supply_foreign_responses(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
