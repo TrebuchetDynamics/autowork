@@ -100,8 +100,12 @@ def cron_responses(home, jobs, gaps):
             gaps.append('cron response: invalid job identity'); continue
         directory = home / 'cron/output' / identifier
         try:
-            if not directory.resolve().is_relative_to(home.resolve()):
-                gaps.append('cron response directory outside profile: ' + identifier); continue
+            contained = directory.resolve().is_relative_to(home.resolve())
+        except (OSError, RuntimeError):
+            gaps.append('cron response directory unresolvable: ' + identifier); continue
+        if not contained:
+            gaps.append('cron response directory outside profile: ' + identifier); continue
+        try:
             paths = sorted(p for p in directory.glob('*.md') if p.is_file() and not p.is_symlink())
             if not paths:
                 gaps.append('cron response missing: ' + identifier); continue

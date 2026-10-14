@@ -56,6 +56,16 @@ class ResponseTailTests(unittest.TestCase):
             self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
             self.assertIn('cron response directory outside profile: j1', gaps)
 
+    def test_looping_output_directory_does_not_abort_collection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output'
+            output.mkdir(parents=True)
+            (output / 'j1').symlink_to('j1', target_is_directory=True)
+            gaps = []
+            self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
+            self.assertIn('cron response directory unresolvable: j1', gaps)
+
     def test_one_output_and_missing_job_keep_compatibility(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
