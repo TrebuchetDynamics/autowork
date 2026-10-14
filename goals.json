@@ -44,7 +44,8 @@
       "source": "docs/project.md#accepted-requirements",
       "status": "unverified",
       "tasks": [
-        "TOOLSET-003"
+        "TOOLSET-003",
+        "TOOLSET-015"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -151,6 +152,14 @@
       "section": "Next",
       "status": "open",
       "title": "Measure time to useful worker action and qualify the faster startup"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-015",
+      "section": "Next",
+      "status": "open",
+      "title": "Preserve explicit source refs in behind-only realignment"
     },
     {
       "depends_on": [],
