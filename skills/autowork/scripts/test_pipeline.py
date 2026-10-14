@@ -116,6 +116,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(self.tasks[0]['id'], 't_fixture')
         self.assertEqual(self.tasks[0]['max_retries'], 3)
 
+    def test_failure_after_native_create_never_reports_no_create(self):
+        self.readback_retries = 3
+        with contextlib.redirect_stdout(io.StringIO()) as output, \
+                self.assertRaisesRegex(ValueError, 'retry limit differs'):
+            self.dispatch('--admission-attempt', 'a' * 32,
+                          '--admission-request-sha256', 'b' * 64)
+        self.assertEqual(self.created, 1)
+        self.assertNotIn('refused_before_create', output.getvalue())
+
+    def test_pre_create_transport_timeout_is_unknown(self):
+        with patch.object(start_goal, 'run', side_effect=subprocess.TimeoutExpired('hermes', 30)), \
+                patch.object(sys, 'argv', ['start_goal.py', '--profile', 'fixture',
+                    '--workspace', str(self.repo), '--title', 'fixture', '--contract-file', str(self.contract),
+                    '--admission-attempt', 'a' * 32, '--admission-request-sha256', 'b' * 64]), \
+                contextlib.redirect_stdout(io.StringIO()) as output, \
+                self.assertRaises(subprocess.TimeoutExpired):
+            start_goal.main()
+        self.assertEqual(output.getvalue(), '')
+        self.assertEqual(self.created, 0)
+
     def test_selected_task_executes_and_fixture_review_acknowledges_exact_candidate(self):
         first = self.dispatch()
         self.assertEqual(first['outcome'], 'handed_off')

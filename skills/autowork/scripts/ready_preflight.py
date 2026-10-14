@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import uuid
 
 import retry_selection
 import source_freshness
@@ -32,7 +33,32 @@ def compose(args, task, consumer, state, save, selection=None):
                 or receipt.get('profile') != args.profile):
             raise ValueError('saved preparation belongs to another consumer/task/profile')
         if receipt.get('dispatch_attempted'):
-            raise ValueError('prior dispatch attempted; reconcile original native card and consumed budget, never retry preparation')
+            refusal = receipt.get('no_create_refusal')
+            if not proven_no_create(receipt, refusal):
+                raise ValueError('prior dispatch attempted; reconcile original native card and consumed budget, never retry preparation')
+            archive = directory / 'attempts' / receipt['attempt_id']
+            # Retain exact original evidence before replacing any prepared input.
+            # Interrupted archival is idempotent; changed evidence stays held.
+            for key in ('snapshot', 'contract', 'handoff_request'):
+                path = progress_runtime.private_path(receipt[key])
+                data = path.read_bytes()
+                if not path.is_relative_to(state) or hashlib.sha256(data).hexdigest() != receipt['sha256'][key]:
+                    raise ValueError('refused preparation artifact changed; preserve original inputs')
+                target = progress_runtime.private_path(archive / key)
+                if target.exists():
+                    if target.read_bytes() != data:
+                        raise ValueError('refused attempt archive changed; preserve original evidence')
+                else:
+                    save(target, data.decode('utf-8'))
+            target = progress_runtime.private_path(archive / 'preparation.json')
+            original = receipt_path.read_bytes()
+            if target.exists():
+                if target.read_bytes() != original:
+                    raise ValueError('refused attempt archive changed; preserve original receipt')
+            else:
+                save(target, original.decode('utf-8'))
+            receipt_path.unlink()
+            return compose(args, task, consumer, state, save, selection)
         if receipt.get('inputs') != inputs:
             raise ValueError('preparation options changed; retain original inputs and reconcile')
         for key in ('snapshot', 'contract', 'handoff_request'):
@@ -139,6 +165,31 @@ def compose(args, task, consumer, state, save, selection=None):
 
 
 def mark_attempt(state, receipt, save):
-    receipt = dict(receipt, dispatch_attempted=True)
+    receipt = dict(receipt, dispatch_attempted=True, attempt_id=uuid.uuid4().hex,
+        launcher_sha256=hashlib.sha256(Path(start_goal.__file__).read_bytes()).hexdigest())
+    save(state / 'ready-preflights' / receipt['task_id'] / 'preparation.json', receipt)
+    return receipt
+
+
+def proven_no_create(receipt, refusal):
+    """Accept only the launcher's exact response for this recorded invocation."""
+    return (isinstance(refusal, dict)
+        and set(refusal) == {'outcome', 'attempt_id', 'request_sha256', 'launcher_sha256', 'native_create_attempted', 'reason'}
+        and refusal['outcome'] == 'refused_before_create'
+        and isinstance(receipt.get('attempt_id'), str)
+        and re.fullmatch(r'[0-9a-f]{32}', receipt['attempt_id']) is not None
+        and refusal['attempt_id'] == receipt['attempt_id']
+        and refusal['request_sha256'] == receipt['sha256']['handoff_request']
+        and isinstance(receipt.get('launcher_sha256'), str)
+        and re.fullmatch(r'[0-9a-f]{64}', receipt['launcher_sha256']) is not None
+        and refusal['launcher_sha256'] == receipt['launcher_sha256']
+        and refusal['native_create_attempted'] is False
+        and isinstance(refusal['reason'], str) and bool(refusal['reason']))
+
+
+def record_refusal(state, receipt, refusal, save):
+    if not proven_no_create(receipt, refusal):
+        raise ValueError('unbound no-create refusal; reconcile original dispatch')
+    receipt = dict(receipt, no_create_refusal=refusal)
     save(state / 'ready-preflights' / receipt['task_id'] / 'preparation.json', receipt)
     return receipt

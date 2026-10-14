@@ -72,9 +72,22 @@ prerequisite/candidate recovery retains the manual request interface below.
 
 The owner-cycle lock and private `ready-preflights/TASK/preparation.json` preserve
 base, artifact hashes, original options and unknown usage. A dispatch marker is
-saved before the call: timeout/interruption/refusal never licenses another call,
+saved before the call: timeout/interruption/uncertain refusal never licenses another call,
 new card, refreshed evidence or budget reset. If interrupted before dispatch,
 unchanged hashed preparation is reused; changed sources/options/artifacts refuse.
+One narrow exception permits corrected preparation on a later occurrence: the
+trusted launcher explicitly reports that this exact attempt stopped before native
+creation. The response binds the random attempt ID, immutable request hash and
+launcher source hash; generic errors, worker statements, old receipts and native
+transport errors supply no such proof. The launcher stops issuing this response
+before either creation API, and after observing an existing owned card.
+The original marked preparation, inputs and refusal are archived under
+`ready-preflights/TASK/attempts/ATTEMPT/` before any inputs are replaced. Interrupted
+archival retains the original proof and can finish on a later occurrence; changed
+archive/input bytes refuse. The original usage remains unknown and existing card
+allocations are never replenished. This is local admission recovery, not native
+worker continuation or authentication against a writer controlling the helper and
+private state. Historical unknown attempts without this evidence remain held.
 Missing inputs return only the named preparation, not a planning detour. Repair
 post-dispatch bookkeeping or notification on the original card, not by repeating
 admission. Full evidence stays in history and `unblock-latest.json`; routine output

@@ -486,7 +486,31 @@ def main():
                    help='Governor-only attestation of resource-disjoint work; verify terminal claim under lock, preserve original card')
     p.add_argument('--validate-only', action='store_true',
                    help='Check contract structure without CLI calls, journal writes or dispatch')
+    p.add_argument('--admission-attempt', help=argparse.SUPPRESS)
+    p.add_argument('--admission-request-sha256', help=argparse.SUPPRESS)
     args = p.parse_args()
+    if args.admission_attempt is not None:
+        if (not re.fullmatch(r'[0-9a-f]{32}', args.admission_attempt)
+                or not re.fullmatch(r'[0-9a-f]{64}', args.admission_request_sha256 or '')):
+            p.error('invalid owner admission attempt binding')
+    boundary = {'native_create_attempted': False}
+    launcher_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    try:
+        return admit(args, boundary)
+    except (SystemExit, ValueError, OSError, TypeError, KeyError) as error:
+        # Only this trusted launcher knows whether creation was entered. Transport
+        # failures, process death and failures after the boundary remain unknown.
+        if args.admission_attempt and not boundary['native_create_attempted']:
+            print(json.dumps({'outcome': 'refused_before_create',
+                'attempt_id': args.admission_attempt,
+                'request_sha256': args.admission_request_sha256,
+                'launcher_sha256': launcher_sha256,
+                'native_create_attempted': False, 'reason': str(error)}))
+            raise SystemExit(1) from error
+        raise
+
+
+def admit(args, boundary):
     if os.environ.get('HERMES_KANBAN_TASK'):
         raise SystemExit('Already a goal worker: execute the assigned card, never launch a nested goal.')
     if args.registration_native_python and not args.registration_declaration:
@@ -558,6 +582,9 @@ def main():
                               'assignee': task.get('assignee'), 'status': task['status']}))
             return  # Do not attach this profile's notifier to another owner's card.
         if task is not None:
+            # Existing ownership must never authorize a fresh preparation, even
+            # when its notification/readback fails before our own create call.
+            boundary['native_create_attempted'] = True
             notification = ensure_notification(prefix, task['id'], home, args.profile)
             print(json.dumps({'outcome': 'already_owned', 'task_id': task['id'], 'status': task['status'], 'notification': notification, **goal_fields(prefix, task['id'])}))
             return
@@ -721,8 +748,10 @@ def main():
                     idempotency_key='autowork:' + digest))
             with request_path.open('x') as stream:
                 json.dump(request, stream, indent=2)
+            boundary['native_create_attempted'] = True
             created = create_registered(args.registration_native_python, request_path)
         else:
+            boundary['native_create_attempted'] = True
             created = json.loads(run(prefix, *board, 'create', args.title, '--body', body,
                                      '--assignee', args.profile, '--workspace', 'dir:' + str(pass_path),
                                      '--goal', '--goal-max-turns', str(args.goal_max_turns), '--max-retries', str(MAX_RETRIES),

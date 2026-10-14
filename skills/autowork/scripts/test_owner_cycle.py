@@ -584,7 +584,7 @@ class ComposedReadyTests(unittest.TestCase):
         import io
         with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
                 patch.object(owner_cycle.reconcile, 'reconcile', return_value=prior or {'outcome': 'no_handoff'}), \
-                patch.object(owner_cycle, 'handoff', **({'side_effect': native} if isinstance(native, Exception) else
+                patch.object(owner_cycle, 'handoff', **({'side_effect': native} if isinstance(native, Exception) or callable(native) else
                     {'return_value': native or {'exit_code': 0, 'result': {'outcome': 'handed_off', 'task_id': 'original', 'goal_mode': True}}})) as dispatch, \
                 patch.dict(owner_cycle.os.environ, {}, clear=True), \
                 patch.object(owner_cycle.backlog_plan, 'decide', side_effect=AssertionError('no planning on ready path')), \
@@ -642,6 +642,86 @@ class ComposedReadyTests(unittest.TestCase):
                 self.assertIn('prior dispatch attempted', second['next_action'])
                 self.assertEqual(preparation.read_bytes(), before)
                 self.assertIn('original', str(first))
+
+    def test_real_pre_create_refusal_allows_corrected_preparation(self):
+        import owner_cycle
+        import os
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        self.ready_backlog()
+        other = self.root / 'wrong-cwd'; other.mkdir()
+        binary = self.root / 'bin'; binary.mkdir()
+        cli = binary / 'hermes'
+        cli.write_text('#!' + sys.executable + '\nimport sys\n'
+            'assert sys.argv[3:] == ["config", "get", "terminal.cwd"], sys.argv\n'
+            'print(' + repr(str(other)) + ')\n')
+        cli.chmod(0o700)
+        original_save = owner_cycle.save
+        def save_crlf(path, value):
+            original_save(path, value)
+            path.write_bytes(path.read_bytes().replace(b'\n', b'\r\n'))
+        with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
+                patch.object(owner_cycle.reconcile, 'reconcile', return_value={'outcome': 'no_handoff'}), \
+                patch.object(owner_cycle, 'save', side_effect=save_crlf), \
+                patch.dict(os.environ, {'PATH': str(binary) + ':' + os.environ['PATH']}), \
+                redirect_stdout(io.StringIO()):
+            code = owner_cycle.main([str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                '--state-dir', str(self.state), '--profile', 'fixture', '--apply', '--source-path', 'code.py'])
+        first = json.loads((self.state / 'unblock-latest.json').read_text())
+        self.assertEqual(code, 1)
+        self.assertEqual(first['outcome'], 'PREPARATION_REQUIRED', first)
+        preparation = self.state / 'ready-preflights/T1/preparation.json'
+        original = preparation.read_bytes()
+        original_snapshot = Path(first['preparation']['snapshot']).read_bytes()
+        self.assertTrue(json.loads(original)['dispatch_attempted'])
+        self.assertIn('Workspace differs', first['next_action'])
+        (self.repo / 'code.py').write_text('corrected = True\n')
+        def interrupted_archive(path, value):
+            if path.name == 'contract' and 'attempts' in path.parts:
+                raise OSError('archive interrupted')
+            return original_save(path, value)
+        with patch.object(owner_cycle, 'save', side_effect=interrupted_archive):
+            code, interrupted, dispatch = self.composed()
+        self.assertEqual(code, 1)
+        self.assertIn('archive interrupted', interrupted['next_action'])
+        dispatch.assert_not_called()
+        self.assertEqual(preparation.read_bytes(), original)
+        code, second, _ = self.composed()
+        self.assertEqual(code, 0, second)
+        self.assertEqual(second['outcome'], 'QUEUED')
+        archive = next((self.state / 'ready-preflights/T1/attempts').iterdir())
+        self.assertEqual((archive / 'preparation.json').read_bytes(), original)
+        self.assertEqual((archive / 'snapshot').read_bytes(), original_snapshot)
+        self.assertEqual(second['preparation']['budget'], 100)
+        self.assertEqual(second['preparation']['max_retries'], 1)
+        self.assertEqual(second['preparation']['usage'], 'unknown')
+        self.assertNotEqual(second['preparation']['attempt_id'], first['preparation']['attempt_id'])
+
+    def test_unbound_or_malformed_no_create_claim_never_reopens_dispatch(self):
+        import shutil
+        self.ready_backlog()
+        for mismatch in ('attempt_id', 'request_sha256', 'launcher_sha256', 'native_create_attempted', 'task_id', 'exit_code'):
+            with self.subTest(mismatch=mismatch):
+                if self.state.exists(): shutil.rmtree(self.state)
+                def forged(args, task, consumer):
+                    preparation = json.loads((self.state / 'ready-preflights/T1/preparation.json').read_text())
+                    native = {'outcome': 'refused_before_create',
+                        'attempt_id': preparation['attempt_id'],
+                        'request_sha256': preparation['sha256']['handoff_request'],
+                        'launcher_sha256': preparation['launcher_sha256'],
+                        'native_create_attempted': False, 'reason': 'untrusted claim'}
+                    if mismatch != 'exit_code':
+                        native[mismatch] = 'incorrect'
+                    return {'exit_code': 0 if mismatch == 'exit_code' else 1, 'result': native}
+                self.composed(forged)
+                preparation = self.state / 'ready-preflights/T1/preparation.json'
+                before = preparation.read_bytes()
+                code, second, retry = self.composed()
+                self.assertEqual(code, 1)
+                retry.assert_not_called()
+                self.assertIn('prior dispatch attempted', second['next_action'])
+                self.assertEqual(preparation.read_bytes(), before)
 
     def test_missing_native_cap_is_reported_without_dispatch_or_replenishment(self):
         self.ready_backlog()

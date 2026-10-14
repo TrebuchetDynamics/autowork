@@ -67,6 +67,12 @@ def handoff(args, task, consumer=None):
         raise ValueError('unsupported native handoff options')
     argv = [sys.executable, str(Path(__file__).with_name('start_goal.py')),
             '--workspace', request['consumer'], '--goal-task', task['id']]
+    if getattr(args, '_admission_attempt', None):
+        if (hashlib.sha256(Path(args.handoff_request).read_bytes()).hexdigest() != args._admission_request_sha256
+                or hashlib.sha256(Path(argv[1]).read_bytes()).hexdigest() != args._admission_launcher_sha256):
+            raise ValueError('admission request or trusted launcher changed before launch')
+        argv += ['--admission-attempt', args._admission_attempt,
+                 '--admission-request-sha256', args._admission_request_sha256]
     for key, value in options.items():
         for item in value if isinstance(value, list) else [value]:
             if not isinstance(item, (str, int)) or isinstance(item, bool):
@@ -75,6 +81,9 @@ def handoff(args, task, consumer=None):
     # The existing helper owns live ownership, admission, snapshot and duplicate
     # card checks. A timeout is not permission to retry an uncertain dispatch.
     result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+    if (getattr(args, '_admission_attempt', None)
+            and hashlib.sha256(Path(argv[1]).read_bytes()).hexdigest() != args._admission_launcher_sha256):
+        raise ValueError('trusted launcher changed during admission; reconcile original attempt')
     try:
         payload = json.loads(result.stdout)
         if not isinstance(payload, dict):
@@ -252,9 +261,18 @@ def run_locked(args, state):
             try:
                 if composed:
                     result['preparation'] = ready_preflight.mark_attempt(state, result['preparation'], save)
+                    args._admission_attempt = result['preparation']['attempt_id']
+                    args._admission_request_sha256 = result['preparation']['sha256']['handoff_request']
+                    args._admission_launcher_sha256 = result['preparation']['launcher_sha256']
                 result['handoff'] = handoff(args, result['selected_task'], consumer)
                 native = result['handoff']['result']
-                if result['handoff']['exit_code'] != 0:
+                if (composed and result['handoff']['exit_code'] == 1
+                        and ready_preflight.proven_no_create(result['preparation'], native)):
+                    result['preparation'] = ready_preflight.record_refusal(
+                        state, result['preparation'], native, save)
+                    result.update(outcome='PREPARATION_REQUIRED',
+                        next_action='Correct the local prerequisite, then prepare again: ' + native['reason'])
+                elif result['handoff']['exit_code'] != 0:
                     result.update(outcome='FAILED', next_action='Reconcile native state on the original card before retry; dispatch outcome may be unknown')
                 elif ((native.get('outcome') == 'handed_off' and
                        (not composed or (isinstance(native.get('task_id'), str) and native['task_id'].strip()
