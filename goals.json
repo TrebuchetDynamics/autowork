@@ -60,9 +60,10 @@
       "id": "ARCHIVAL",
       "priority": 40,
       "source": "TODO.archive.md#toolset-009--account-for-archival-in-the-shared-rendering-contract",
-      "status": "met",
+      "status": "partial",
       "tasks": [
-        "TOOLSET-009"
+        "TOOLSET-009",
+        "TOOLSET-014"
       ],
       "title": "Integrate archival and reconcile the rendering contract"
     },
@@ -145,6 +146,14 @@
       "section": "Next",
       "status": "open",
       "title": "Measure time to useful worker action and qualify the faster startup"
+    },
+    {
+      "depends_on": [],
+      "goal": "ARCHIVAL",
+      "id": "TOOLSET-014",
+      "section": "Next",
+      "status": "open",
+      "title": "Archive completed task headings with their checkbox bodies"
     },
     {
       "depends_on": [],
