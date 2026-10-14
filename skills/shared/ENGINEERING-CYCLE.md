@@ -7,13 +7,13 @@ workflow authority; engineering protocols contribute techniques within that cont
 Use the existing docs-sync backlog and autowork executor. This is workflow guidance,
 not a scheduler, new database or `/cycle` command. Documentation work alone never
 launches autowork. Caller scope and saved stop/batch limits control continuation.
-Default interactive execution hands off one slice, including authorized recovery
+Default interactive execution completes one slice, including authorized recovery
 and closeout. An explicit one-task limit stops new selection after that task;
 standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
 permits further eligible batches only within its accepted bounds.
 Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
 Reconcile consumed history first; unknown usage is not zero, and
-exhaustion requires explicit additional allocation, never a new card or session.
+exhaustion requires explicit additional allocation, never a new occurrence or session.
 Design approval alone does not authorize execution. Preserve no-commit, no-push,
 no-deploy and other user boundaries throughout; skill defaults cannot expand them.
 
@@ -119,7 +119,7 @@ namespace or assume another profile's home. Existing imports are left intact.
 | A consequential planning assumption needs scrutiny | `doubt-driven-development` | Test the artifact/contract; record corrections and unresolved risks. |
 | Implement an eligible slice | `incremental-implementation` | Keep one observable result, owned files and task ID. |
 | Changed logic or a bug | `test-driven-development` | Run the repository's discriminating red/green checks. |
-| Review an implemented slice | `code-review-and-quality` | Use its review criteria within the required native review lane. |
+| Review an implemented slice | `code-review-and-quality` | Use its review criteria within the required project review workflow. |
 | Ambiguous new product direction | `idea-refine` | Refine the existing outcome and alternatives; do not reopen accepted scope. |
 | Missing or overloaded task context | `context-engineering` | Give the worker only relevant constraints, source, decisions and checks. |
 | Quality requirements or a weakened check | `constraint-driven-development` | Bind existing quality requirements to observable checks; no invented owner-approved thresholds. |
@@ -129,7 +129,7 @@ namespace or assume another profile's home. Existing imports are left intact.
 | Build, test automation or packaging boundaries | `ci-cd-and-automation` | Bind the changed boundary to runnable pipeline/build checks. |
 | Services, jobs, retries or integration operations | `observability-and-instrumentation` | Define operational questions, useful signals and a verification path; preserve sensitive data. |
 | Proven unnecessary complexity | `code-simplification` | Simplify owned code while preserving observable behavior; avoid unrelated cleanup. |
-| Owned changes ready to commit | `git-workflow-and-versioning` | Group validated changes; autowork's finish_task.py/agent_commit.sh remains the commit mechanism. |
+| Owned changes ready to commit | `git-workflow-and-versioning` | Group validated changes; use ordinary Git and the repository's scoped commit conventions. |
 | Release or rollout planning in accepted scope | `shipping-and-launch` | Capture readiness and rollback criteria; planning does not itself authorize deployment. |
 | Reproduction or failing checks | `debugging-and-error-recovery` | Diagnose before changing code; use the verified fallback below when unavailable. |
 | Measured performance requirement | `performance-optimization` | Establish a baseline, target the measured cause and compare the same workload. |
@@ -184,26 +184,25 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    TODO bodies. Use [plan handoff](PLAN-HANDOFF.md) and its consumer backlog-check;
    drafts, missing acceptance and unresolved dependencies do not become ready work.
    A usable backlog skips another bootstrap or broad audit.
-2. For explicitly authorized whole-spec execution, the integration owner reads
-   `goals.py next <repo> --json`, restricts selection to accepted IDs, checks live
-   ownership and fresh sources, and hands off a dependency-ready slice through
-   existing start_goal admission. Use default `worker` ledger mode with the existing
-   base, source snapshot, task ID and complete contract. Use
-   `--ledger-mode proposal --integration-owner <owner>` only for an explicitly
-   requested split-role workflow; whole-spec scope alone does not select proposal mode.
-   Mark in_progress only after actual handoff. No new scheduler or substitute run.
-3. The worker loads the relevant verified skills, implements, runs checks and
-   updates scoped documentation. It returns task/goal IDs, changed paths, source
-   fingerprints, exact checks/results, documentation changes and remaining gaps.
-   Proposal workers never mutate canonical goals.json, goal coverage or closure;
-   they send receipts to the named integration owner and request required review.
-4. The owner verifies implementation evidence and required review acceptance at
-   the tested source before closure. Pending/rejected review keeps the task
-   in_progress and dependent tasks ineligible; do not encode review as an executed
-   test pass. Native review handoff can finish the worker card while canonical
-   task closure remains pending. Reconcile that same card, do not redispatch it.
-   Check exact integration evidence when the accepted task requires integration.
-5. After those gates, the owner uses the bundled `goals.py task <repo> <TASK> done`
+2. For explicitly authorized whole-spec execution, restrict selection to accepted
+   IDs and dependency-ready tasks. Read TODO and any existing goals index, inspect
+   actual process/workspace ownership and source freshness, then execute in the
+   current session using Autowork's direct contract. No native card admission,
+   board lookup or mandatory worker is required. Optional delegation uses the
+   current host's tools only when useful and authorized.
+3. Implement, run discriminating checks and update scoped documentation. Retain
+   task IDs, source/candidate identity, changed paths, actual commands/results and
+   remaining gaps. Honor explicit task/caller limits and real host controls; a
+   receipt cannot enforce spending and a new occurrence cannot reset allocations.
+   Delegated workers stay within their assigned scope and return evidence to the
+   integration owner rather than modifying unrelated canonical task state.
+4. Verify implementation evidence and required independent review acceptance at
+   the tested source before closure. Pending/rejected review holds completion and
+   dependent work; it is not a test pass. Address review changes in the current
+   authorized session, with affected checks and fresh review. No native card
+   reassignment, continuation API or done transition is required. Inspect exact
+   integration evidence whenever the accepted task requires integration.
+5. After those gates, when goals.json exists, the owner uses the bundled `goals.py task <repo> <TASK> done`
    and `goals.py evidence <repo> <GOAL> --kind executed --ref "<actual command>"
    --result pass|fail` for actual check receipts. The helper requires all goal tasks
    done and an executed pass to promote an unmet goal; it does not independently
@@ -220,7 +219,9 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    both files byte-identical. Include attributable TODO/archive changes in the handoff
    and any authorized commit together. These checks do not prove model adherence or
    live task completion.
-6. Re-read `next` and ownership after reconciliation. Under an active Autowork
+   With TODO-only tasks, reconcile their verified acceptance and evidence directly;
+   no index or extra public task registry is required.
+6. Re-read the eligible TODO/index queue and actual ownership after reconciliation. Under an active Autowork
    invocation/job, finish authorized closeout. Select another batch only when caller
    scope permits it and saved stop/batch limits and remaining allocation allow it.
    Default interactive, planning-only and explicit one-task requests report the next

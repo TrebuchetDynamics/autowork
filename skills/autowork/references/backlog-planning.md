@@ -89,7 +89,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    `integration_pending`; continue independent authorized work.
    Never call a detached draft an executable backlog.
 5. Validate and retry the canonical consumer in this same occurrence. If ready,
-   continue ordinary native handoff under the original implementation authority.
+   continue current-session implementation under the original implementation authority.
    Otherwise name the exact missing input and its owner. Report planning as
    planning, not a completed TODO task or product implementation.
 6. When an actual cycle snapshot exists, record the completed pass against it:

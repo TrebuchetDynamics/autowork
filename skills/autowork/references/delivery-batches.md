@@ -1,9 +1,9 @@
 # Complete outcomes with fewer handoffs
 
-Before preparing a worker, choose a coherent delivery batch under the current
+Before implementation, choose a coherent delivery batch under the current
 TODO task. The coordinator decides implementation order, reversible design choices,
 test selection and batch boundaries without asking for approval already granted.
-The default one-card limit is a concurrency limit, not a one-file work limit.
+The default one-slice limit is an outcome limit, not a one-file work limit.
 
 ## Choose the batch once
 
@@ -12,17 +12,16 @@ remaining consumers, callers, runners, tests and packaging inputs needed for one
 observable outcome. Include connected authorized changes together when they share
 prerequisites and can be checked/reviewed as a unit. For retirement work, prefer
 “remove the obsolete dependency from retained Linux journeys and runners” over
-separate cards for each scenario, runner and exclusive test file. Keep required
+separate tasks for each scenario, runner and exclusive test file. Keep required
 retained behavior and its coverage explicit.
 
 A batch is neither a file-count quota nor an unlimited rewrite. Split for a real
 boundary: unresolved prerequisite, live writer conflict, different authority/live
 environment, independent failure domain, or demonstrated worker-budget limit.
 Record the concrete reason in the existing contract's Scope/Stop conditions; no
-new approval form or mandatory planning artifact. Use the supported 100-turn default
-or an explicit 50-turn override for bounded work. Do not
-reset budgets, bypass exact-file admission, or widen an active worker's contract
-silently. Reconcile an active original card before changing its supported scope.
+new approval form or mandatory planning artifact. Honor explicit task/caller allocations and real host limits. Do not
+reset budgets, bypass actual writer exclusion, or widen an active worker's contract
+silently. Inspect actual process/workspace activity before changing delegated scope.
 
 Within the admitted batch, the worker completes all named consumers, associated
 fixes, focused tests and docs before the one required review handoff. A first
@@ -57,7 +56,7 @@ Reconcile newly approved work and finish authorized local integration before
 starting another audit. Recompute remaining parent acceptance and prepare the next
 coherent batch in the same occurrence when the slot is free and budget permits.
 Do not wait for the next cron tick merely to make a routine decision.
-When reporting queued/running/review work, use one `reconcile.py --compact` readback
+When reporting active work or pending review, inspect actual process/workspace and review evidence
 immediately before returning the waiting report. Reuse it if already taken at this
 final boundary; elapsed drafting time alone can make the initial readback stale. A newly terminal result returns to closeout now:
 verify exact review approval, reuse still-valid check receipts, integrate and publish
@@ -88,13 +87,10 @@ queued, running, reviewed, integrated and pushed remain different facts.
 
 ## Resume across calls
 
-`reconcile.py` maintains the existing `autowork/reconcile-report.json` projection
-and returns `continuation` plus `changed_fields`. Resume its task/run and next
-action; use current metadata for evidence links. No second task database is needed.
-The projection notices run/outcome, delivery, error and event/metadata changes; it
-does not monitor arbitrary source files or authenticate live ownership. Check
-those before execution. Unchanged blocked evidence calls for a different supported
-repair or independent work, not an identical retry or repeated broad audit.
+Keep the actual task/session, source/candidate and next action in existing private
+receipts. Resume from current process/workspace and review evidence. These receipts
+are not a task database or proof of liveness. Unchanged blocked evidence calls for
+a different supported repair or independent work, not an identical retry or broad audit.
 
 Use `check_receipt.py run-or-reuse` with the original declared inputs, candidate,
 command and qualification scope. It executes if the receipt path is new and reuses
@@ -105,20 +101,11 @@ Only TERM_SESSION_ID and WINDOWID are removed from both check execution and its
 fingerprint. Unknown variables, task identity, credentials and toolchain remain
 bound. Old receipts may require one fresh execution; never rewrite their hashes.
 
-Use `reconcile.py --compact` for routine calls. It omits raw metadata/events and
-bounds the summary to 1,200 characters with an explicit truncation flag; omit the
-flag when a decision requires the full evidence. Consecutive unchanged blocked
-observations are saved in the existing projection. At two, change the supported
-repair approach or pursue independent authorized work; no blind retry, new worker
-overlap, claim fabrication or upstream Hermes Agent edits. These counts describe
-observations, not failed execution attempts, and never reset worker retry budgets.
+At two unchanged observations, change the supported repair approach or pursue
+independent authorized work; no blind retry, overlapping writer, claim fabrication
+or upstream Hermes Agent edits. Never reset explicit allocations to continue.
 
-Pending `verify_and_integrate` stays visible even with `report_changed: false`.
-`attention_required` is a coordination hint, never approval or integration authority.
-Two identical closeout observations return `resolve_closeout_gap`: perform the missing
-verification/integration step, or record the exact failed command or missing input
-and its retry condition. No new guard/planning card just to postpone closeout. Counts
-reset when the candidate/run/evidence changes; they are observations, not elapsed
-minutes or proof of a stalled process. A terminal review run on a still-review card
-requires state reconciliation; a normal `review_requested` worker handoff may still
-be awaiting the reviewer. Neither condition permits assuming approval.
+A pending integration remains actionable even when report evidence is unchanged.
+Perform the missing verification/integration step, or record the exact failed
+command or missing input and retry condition. No new guard/planning task just to
+postpone closeout. A pending independent review cannot be treated as approval.

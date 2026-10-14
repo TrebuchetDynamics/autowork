@@ -21,7 +21,7 @@ purpose and a useful bounded outcome are already clear.
 | Observed state | Work to do now |
 | --- | --- |
 | Empty/scaffold repo with known purpose | Inspect tooling, define the smallest working vertical slice and its acceptance, scaffold and implement it. |
-| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Reconcile canonical TODO.md/goals.json through scoped docs-sync. |
+| Code exists, no useful task list | Inspect actual gaps and record a bounded task directly; use Autoresearch only for unresolved planning questions. Reconcile canonical TODO.md and any existing goals.json through scoped docs-sync. |
 | Ready tasks exist | Read their complete bodies and select accepted, dependency-ready work; skip replanning. |
 | Tests/build fail | Reproduce the failure, diagnose and fix with regression coverage; ordinary engineering failures are work. |
 | Task combines offline work and live qualification | Separate their acceptance; finish useful offline implementation/tests while preserving the live gate. |
@@ -45,20 +45,20 @@ Record bounded canonical tasks and execute one in the same scheduled occurrence.
 
 ## Execute and finish a useful slice
 
-Use the [execution engine](../SKILL.md) for native worker admission,
+Use the [execution engine](../SKILL.md) for direct current-session implementation,
 source-bound recovery, review, checks and commits. Read it as the execution stage
 of Autowork, not a second command or an excuse to skip this preparation. Resolve
-its relative helper/reference paths under `../`. Preserve native ownership,
-budgets, leases and repository exceptions. Apply
+its relative helper/reference paths under `../`. Preserve actual process/workspace ownership,
+explicit budgets, live writers and repository exceptions. Apply
 [unattended continuation](owner-cycle.md) and process owner
 inbox replies before repeating an unchanged blockage.
 
 Default: prepare and execute one bounded useful slice (or hand it to the existing
-native worker), then identify the next task. An explicitly authorized whole-spec
+optional delegated worker), then identify the next task. An explicitly authorized whole-spec
 request uses the engine's whole-spec execution mode. Existing scheduled occurrences
 continue this loop; invoking Autowork never creates a recurring job by itself.
 Planning, queue creation or a readiness receipt alone is not a completed development
-slice. Continue from planning through canonical admission to supported execution
+slice. Continue from necessary preparation to current-session execution
 in the same occurrence when the required inputs are available.
 
 Commit completed owned work after relevant checks and required review. Push only

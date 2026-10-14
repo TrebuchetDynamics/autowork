@@ -115,7 +115,7 @@ paths disable reuse; they do not prevent fresh reporting.
 
 Read current boards, jobs and actual worker state every occurrence, including for
 subjects whose feedback was reused. Reuse cannot skip actionable work, recovery,
-acceptance checks or original-card reconciliation; it only avoids an unchanged
+acceptance checks or actual process/workspace reconciliation; it only avoids an unchanged
 advisory model request.
 
 Never launch a duplicate while the prior request is pending. The helper holds a

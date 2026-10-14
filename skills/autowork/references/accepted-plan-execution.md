@@ -24,7 +24,7 @@ an accepted plan or named task. A plan review or design approval alone is not ex
 
 ## Procedure
 
-1. Read the named accepted plan, repository instructions, current goals.json and
+1. Read the named accepted plan, repository instructions, any existing goals.json and
    complete TODO task bodies (or their established tracker equivalents). Reuse IDs,
    dependency edges, exclusions, acceptance and owners. Skip new brainstorming or
    docs-sync bootstrap when that backlog is usable. For a real missing decision,
@@ -34,20 +34,16 @@ an accepted plan or named task. A plan review or design approval alone is not ex
    Select one dependency-ready, unclaimed slice **inside the requested scope**,
    not an unrelated global next goal. Retain exact-source acceptance and live
    qualification gaps rather than lowering the bar to a fixture pass.
-3. Load `autowork` and its handoff reference. Use its native `start_goal.py` with
-   `--goal-task <existing-ID>`, source snapshot, pinned candidate and full contract.
-   Reuse its validation, ownership, budget and reconciliation path; follow the
-   shared contract for focus mismatches instead of bypassing admission. No new
-   helper or scheduler is needed. `--validate-only` does not launch a worker or
-   establish factual acceptance. Do not start work without execution authorization.
-4. Preserve an existing live card and reconcile stale/done work under its original
-   ID. Refusal is not permission to redispatch, invent a task or run unrelated work.
-   Only actual handoff readback permits marking the task in_progress. For an
-   explicitly requested whole-spec execution, use autowork's whole-spec mode
-   while retaining existing live ownership; never duplicate its tickets.
-5. Report observed slice implementation, exact checks, native review and delivery
-   separately. Use one native review lane, not redundant per-task review agents.
-   End at the authorized boundary; do not launch the rest of the plan implicitly.
+3. Load `autowork` and its [direct execution contract](owner-cycle.md). Inspect
+   actual process/workspace ownership, preserve source and check receipts, and
+   execute the selected bounded contract in the current session. A returned
+   contract is selection evidence, not implementation completion.
+4. Preserve active writers and useful idle candidates. Reconcile actual liveness
+   and source changes before adoption; historical cards are not leases. No native
+   handoff or continuation/review transition is required. For whole-spec execution,
+   retain existing task IDs and follow whole-spec scope and explicit limits.
+5. Report implementation, executed checks, required independent review and delivery
+   separately. Stop at the authorized boundary; do not expand a named plan filter.
 
 ## Pitfalls
 
@@ -58,15 +54,14 @@ satisfy a review/delivery step. Workers do not merge; the coordinator may perfor
 authorized local integration after required checks/review under repository policy.
 Do not push without publication authority, change profiles or cron, install upstream
 hooks, or turn design acceptance into implementation authorization. The existing executor
-uses POSIX helpers, hence Linux/macOS. A returned contract or card is not a completed
+uses POSIX helpers, hence Linux/macOS. A returned contract is not a completed
 worker, accepted review, merge or delivered milestone.
 
 ## Verification
 
 Confirm the same task/goal IDs, full body, dependencies and current owner at the
 handoff; bind results to the tested candidate. The shared offline fixtures prove
-admission and refusal behavior, not a provider-backed worker journey. Report an
-unavailable executor as such instead of silently switching engines.
+admission and refusal behavior, not a provider-backed worker journey. Report unavailable required capabilities precisely; continue independent authorized work.
 
 Source: https://github.com/obra/superpowers/tree/8ca22dba9a94f28898bbce59f2537ff4d87c747d/skills/executing-plans
 License: MIT; see source-level LICENSE. `accepted-plan-support/references/upstream-skill.md` retains

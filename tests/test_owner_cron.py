@@ -30,14 +30,12 @@ class OwnerCronTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.delivery_sync_prompt(scope, Path('relative.py'))
 
-    def test_owner_prompt_uses_composed_ready_dispatch_not_duplicate_prepasses(self):
+    def test_owner_prompt_uses_direct_session_execution_without_card_prepasses(self):
         prompt = load().owner_prompt('Offline development only; retain named task filter.', True)
-        for rule in ('one composed owner_cycle.py --apply', '--source-path',
-                     'selected code/docs/tests/dependency closure',
-                     'no separate mandatory validate-only',
+        for rule in ('current agent session', 'TODO.md', 'goals.json',
+                     'no separate mandatory validate-only', '--owner-pid',
                      'actual cron occurrence and manual-continuation liveness',
-                     'record in_progress only after a verified new handoff',
-                     'missing preparation, not a dispatched worker'):
+                     'no Kanban lookup', 'explicit task/caller limits'):
             self.assertIn(rule, prompt)
         self.assertIn('retain named task filter', prompt)
         self.assertEqual(load().owner_prompt(prompt, True), prompt)
@@ -68,24 +66,51 @@ class OwnerCronTests(unittest.TestCase):
 
     def test_delivery_batches_and_reports_are_in_generated_cron_prompt(self):
         prompt = load().owner_prompt('Offline removal only; no deployment.', True)
-        for rule in ('one coherent delivery batch', 'not one card per file',
+        for rule in ('one coherent delivery batch', 'not one task per file',
                      'approved exact-source checks', 'lead with delivered behavior',
-                     'parent task remains open', 'reconcile.py --compact',
+                     'parent task remains open', 'source-bound receipts',
                      'two unchanged blocked observations', 'Keep Hermes Agent unchanged'):
             self.assertIn(rule, prompt)
         self.assertIn('Offline removal only; no deployment.', prompt)
         self.assertIn('Do not push or deploy', prompt)
 
-    def test_generated_prompt_defaults_new_workers_to_100_without_reset_or_retry(self):
+    def test_generated_prompt_preserves_caps_without_mandatory_native_allocation(self):
         module = load()
+        scope = ('Only TASK-1. No push. Pause remains. Continue original card only; '
+                 'wait for native continuation before implementation.')
         for enabled in (False, True):
-            with self.subTest(enabled=enabled):
-                prompt = module.owner_prompt('Offline work only.', enabled)
-                for rule in ('100 turns by default', 'omit --goal-max-turns',
-                             'explicit --goal-max-turns 50', 'cumulative usage',
-                             '--max-retries 1', 'never automatically retry or reset'):
-                    self.assertIn(rule, prompt)
-                self.assertEqual(module.owner_prompt(prompt, enabled), prompt)
+            prompt = module.owner_prompt(scope, enabled)
+            self.assertTrue(prompt.startswith(scope))
+            for rule in ('supersedes earlier card-only', 'unknown usage is not zero',
+                         'never reset an exhausted allocation', 'actual process identity',
+                         'explicit task/caller limits', 'no Kanban lookup'):
+                self.assertIn(rule, prompt)
+            for obsolete in ('100 turns by default', '--goal-max-turns', '--max-retries',
+                             'as well as native cards', 'same-card registration'):
+                self.assertNotIn(obsolete, prompt)
+            self.assertEqual(module.owner_prompt(prompt, enabled), prompt)
+
+    def test_direct_policy_migration_keeps_scope_and_exact_self_heal_binding(self):
+        module = load()
+        scope = ('Only TASK-1,TASK-2 from docs/plan.md#accepted. No push or deploy. '
+                 'Preserve a 12-turn limit and existing delivery. Old blocked card '
+                 'must resume before any task can execute.')
+        prior = scope + module.MARKER + 'Obsolete native card continuation instructions.'
+        prompt = module.owner_prompt(prior, False)
+        self.assertEqual(prompt.split(module.MARKER)[0], scope)
+        managed = prompt.split(module.MARKER)[1]
+        self.assertNotIn('Obsolete native card continuation instructions', managed)
+        self.assertIn('supersedes earlier card-only', managed)
+        self.assertIn('--root DEFAULT_HERMES_HOME --profile CURRENT_PROFILE '
+                      '--job-id CURRENT_JOB_ID --repo CANONICAL_REPOSITORY --apply', managed)
+        for requirement in ('never guessed values', 'read back the saved result',
+                            'never widen a named-only job', 'do not trigger recovery',
+                            'resume this job yourself', 'automatic cron delivery'):
+            self.assertIn(requirement, managed)
+        for forbidden in ('hermes kanban', 'reconcile.py', 'start_goal.py',
+                          '--goal-max-turns', 'original blocked card'):
+            self.assertNotIn(forbidden, managed)
+        self.assertEqual(module.owner_prompt(prompt, False), prompt)
 
     def test_scheduled_execution_consumes_plans_and_approved_results(self):
         module = load()
@@ -211,7 +236,7 @@ class OwnerCronTests(unittest.TestCase):
                 self.assertIn('otherwise omit --profiles and discover all current profiles dynamically', prompt)
                 self.assertIn('default self-assessment without recursion', prompt)
                 self.assertIn('--reuse-within-seconds 3600', prompt)
-                self.assertIn('Read current boards/jobs on every tick', prompt)
+                self.assertIn('Read current jobs and actual workspace/process activity on every tick', prompt)
                 self.assertIn('historical reused replies with original reply time and age', prompt)
                 self.assertNotIn('Ask each configured subject once', prompt)
                 self.assertEqual(module.audit_prompt(prompt), prompt)
@@ -253,7 +278,7 @@ class OwnerCronTests(unittest.TestCase):
         prompt = module.audit_prompt(scope, repair=True)
         for rule in ('shared-source repair', 'earliest failed transition',
                      'regression RED', 'same read-only consumer',
-                     'native admission remains separate', 'Do not reset budgets',
+                     'actual execution remains separate', 'Do not reset budgets',
                      'No product writes', 'Preserve paused jobs'):
             self.assertIn(rule, prompt)
         self.assertNotIn(module.AUDIT_MARKER, prompt)

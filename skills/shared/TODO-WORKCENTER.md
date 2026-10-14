@@ -1,9 +1,17 @@
 # TODO.md: the repository work center
 
 TODO.md is the user-facing place to plan, order and track repository work.
-`goals.json` is the synchronized machine-readable execution index, not a competing
-source of product intent. Plans, research receipts and task cards support this
+An existing `goals.json` is the synchronized machine-readable execution index, not a competing
+source of product intent. Plans and research receipts support this
 queue; they must not become separate invisible backlogs.
+
+TODO-only repositories need no index, Kanban card, profile or extra public registry
+to implement an accepted task. An existing index stays supported and synchronized.
+Autowork executes in the current agent session with optional authorized host-native
+delegation. Old cards are not leases: inspect real process/workspace activity,
+preserve useful candidates and source-bound checks, and keep required independent
+review, explicit allocations and publication limits. Native task-state transitions
+are not prerequisites for selection, recovery, review or integration.
 
 ## Read orders before selecting or rendering
 

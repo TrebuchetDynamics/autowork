@@ -20,7 +20,7 @@ do not change recurring cadence or replace existing live workers.
    recorded interpreter and environment for rechecks; a bare interpreter can exercise
    different dependencies than the worker's tested environment.
    Report running work as running, not delivered, and preserve named native gaps.
-   Use the integration recipe in references/handoff.md for completion reconciliation.
+   Use the integration recipe in references/owner-cycle.md for completion reconciliation.
 
 ## Output contract
 
@@ -142,4 +142,8 @@ dispatch, not failure unless dispatcher/run evidence establishes a blocker.
 Questions: use the action-first request above for the one decision needed now. Offer alternatives only when they materially change the outcome; state the recommendation and the exact step waiting for the answer. Silence is not approval. Continue independent authorized work; missing preferred filenames alone do not prove that no tasks are eligible.
 Nothing eligible: `Checked scope exhausted` plus inspected sources/components and evidence that considered candidates are complete, claimed, blocked, or unsupported; do not claim repository-wide completeness from a scoped search.
 
-No skill invocation or queued card alone proves a running goal loop, Telegram delivery, scheduler activation, or completed downstream task. Record the native task ID, selected 50/100-turn budget, and observed queued/running/completed/blocked state in the durable receipt. Human-facing summaries always include verified TODO IDs and titles; native execution IDs are optional diagnostic detail. This goal worker has its own durable session; it does not set a /goal in the originating Telegram or CLI conversation.
+No skill invocation, selected contract or completed session alone proves task
+acceptance, Telegram delivery or scheduler activation. Record the TODO task ID,
+actual session/process identity, source/candidate, explicit limits, known usage and
+executed checks in private evidence. Human-facing summaries include verified TODO
+IDs and titles. Current-session work does not require a native goal or card.

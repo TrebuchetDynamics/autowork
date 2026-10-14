@@ -1,3 +1,7 @@
+> Historical native-card reference. Card-specific prerequisites and commands below
+> are retained for evidence only and are superseded by [current execution](owner-cycle.md).
+> They do not govern current Autowork selection, recovery, review or integration.
+
 # Autowork — Handoff, review and worker execution
 
 Default local coordination belongs to the current agent: plan, implement, review

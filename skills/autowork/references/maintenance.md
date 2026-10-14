@@ -1,3 +1,7 @@
+> Historical native-card reference. Card-specific prerequisites and commands below
+> are retained for evidence only and are superseded by [current execution](owner-cycle.md).
+> They do not govern current Autowork selection, recovery, review or integration.
+
 # Autowork — Skill maintenance and verification
 
 Load only when editing this skill or its scripts (interactive, owner-authorized sessions). The Operating priorities in SKILL.md override anything here.

@@ -35,8 +35,10 @@ explicit read-only runs write nothing.
    validate-only, planning/docs audit, full suite or optional skill loader first.
    Keep detailed inputs in the existing task receipt and routine status compact.
    Preserve stale/held/incomplete/interrupted/owned refusals and consumed budget;
-   prepare only the missing input, never replace a card/session or refresh pins.
-   The Hermes composed helper is not this host's dispatcher; retain native admission.
+   prepare only the missing input; preserve existing evidence and explicit allocations.
+   No Kanban lookup, historical card, native continuation or review transition is required.
+   Inspect actual process identity and workspace activity before adopting idle work.
+   Advisory local locks do not coordinate other hosts or manual writers ignoring them.
    Planning owns consequential decisions and executable acceptance; follow the
    [handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
    Once ready, execute without reconfirmation. Choose reversible details yourself;
@@ -68,13 +70,13 @@ explicit read-only runs write nothing.
    across tasks when the user's mandate explicitly requests it.
 
 Caller scope and saved stop/batch limits control continuation.
-Default interactive execution hands off one slice, including authorized recovery
+Default interactive execution completes one slice, including authorized recovery
 and closeout. An explicit one-task limit stops new selection after that task;
 standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
 permits further eligible batches only within its accepted bounds.
 Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
 Reconcile consumed history first; unknown usage is not zero, and
-exhaustion requires explicit additional allocation, never a new card or session.
+exhaustion requires explicit additional allocation, never a new occurrence or session.
 
 When preparation stalls, execute an existing in-scope recovery step first: rebuild
 recoverable patches/inputs, verify the actual consumer requirements, then retry.
@@ -102,3 +104,7 @@ open parent and remaining acceptance separately. Reuse unchanged, source-bound
 checks only when policy allows; changed inputs and mandatory gates need checks.
 Finish authorized closeout and continue the requested scope without a new approval
 round. Do not manufacture parent completion or silently widen an active task.
+
+Do not invent a universal lifetime-task cap. An unavailable enforcement capability
+holds only the operation requiring an explicit cap, not independent inspection or
+already-authorized local verification/integration. A prompt cannot enforce spending.

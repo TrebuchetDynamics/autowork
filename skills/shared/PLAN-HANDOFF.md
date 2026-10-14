@@ -3,8 +3,8 @@
 Keep ideas and unanswered decisions in their existing documentation owner until
 accepted. An accepted plan section names its status (`Status: Accepted`), scope,
 acceptance and sources. Preserve existing task/goal IDs and completed history.
-Docs Sync reconciles accepted work into `goals.json` and complete `TODO.md` task
-bodies; rendered goal coverage alone is not an executable task.
+Docs Sync reconciles accepted work into complete `TODO.md` task bodies and an existing
+`goals.json` index; rendered goal coverage alone is not an executable task.
 
 ## One planning pass, one handoff
 
@@ -68,9 +68,8 @@ rewrite dates, duplicate tasks or create an empty planning commit.
 After actual doc/task changes, run the applicable formatter, validator, renderer,
 links and consumer check once on the final batch. Carry their exact results into
 the next stage. Repeat only checks invalidated by changed inputs, failed evidence
-or repository-required fresh checks. A cached readiness result is never native
-admission: Autowork still checks current source, ownership and candidate before
-dispatch. Report stale receipts honestly rather than repinning them.
+or repository-required fresh checks. A cached readiness result is not execution evidence: Autowork still checks current
+source, actual process/workspace ownership and candidate before implementation. Report stale receipts honestly rather than repinning them.
 
 Standalone planning remains planning-only. When Autowork invoked planning under
 existing implementation authority, return the resolved decision and ready task to
@@ -98,20 +97,20 @@ For an explicit plan slice, select only its named IDs. Reconcile existing worker
 dependencies, current source and primary milestone before handoff. A usable
 backlog does not require a fresh documentation prepass. The consumer checks the
 ordered frontier within the named tasks' goals, never an unrelated global goal.
-Its `focus_fallback_required` field is a warning, not execution authority: a named
-slice outside the primary milestone still needs the unchanged source-bound native
-fallback gate. If the named slice differs
-from the primary milestone, retain the focus unless the owner reprioritizes it;
-use start_goal's existing `--goal-task` and structured `--fallback-file` admission
-with fresh source evidence and attributed reasons, as specified in
-[autowork handoff](../autowork/references/handoff.md). There is no new override
-flag and no permission to select an unrelated global task or bypass a refusal.
+Its `focus_fallback_required` field is a warning, not execution authority. Preserve
+primary focus unless the user reprioritizes it, but an explicitly authorized named
+slice may execute within that scope after current dependency, source and ownership
+checks. No start_goal admission, fallback file or Kanban card is required.
 
-The worker contract carries the IDs, scope, sources, expected change, acceptance,
-verification and stop conditions. Mark in_progress only after confirmed handoff.
-Workers implement and check their authorized slice and submit review evidence;
-a queued card or review request does not prove execution, approval or delivery.
-Apply task/evidence transitions only through the authorized ledger owner and
-supported helper. Proposal-mode workers return receipts to the integration owner.
-Reconcile affected docs and task bodies against verified outcomes, preserving
+The current session executes the selected contract, retaining task IDs, scope,
+sources, expected change, acceptance, verification and stop conditions. Mark
+in_progress when actual authorized implementation begins, not from mere selection.
+Optional delegated workers return source-bound results to the integration owner;
+required review and canonical closure stay with that owner under existing authority.
+No historical card lookup, release, native continuation or review transition is a
+prerequisite. Reconcile affected docs/tasks against verified outcomes and preserve
 remaining milestone gaps. Do not mark unverified work complete.
+
+A TODO-only repository can execute its complete accepted task without generating
+an index or passing an index-only consumer. When goals.json exists, preserve its
+validated synchronization, dependencies and concurrency/revision guards.

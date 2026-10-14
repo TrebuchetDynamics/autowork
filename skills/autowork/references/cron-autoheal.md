@@ -3,7 +3,7 @@
 A scheduled Autowork occurrence repairs attributable Toolset and managed job-wiring
 faults within its existing authority. A cron failure is work to diagnose and repair,
 not a reason to ask again whether to do already-authorized local work. Preserve the
-original task, candidate, admission history and consumed budget. This policy grants
+original task, candidate, execution history and consumed budget. This policy grants
 neither product changes to a shared maintainer nor external publication authority.
 
 ## Repair the exact saved job
@@ -25,7 +25,8 @@ repository work when safe. Explicit no-write instructions prohibit this repair.
 
 The helper uses the native profile-scoped cron edit interface and changes only the
 Toolset-managed prompt section and Autowork skill attachment. It preserves the
-original scope prefix, unrelated skills, ID, cadence, model, delivery, workdir,
+original scope prefix verbatim; the managed policy supersedes only obsolete
+card-only execution/recovery/review prerequisites. It preserves unrelated skills, ID, cadence, model, delivery, workdir,
 script/interpreter, limits and other configuration. Research/design, delivery-sync,
 audit, script-only and unmanaged jobs require their own policies. It never creates,
 runs, resumes or deletes a schedule. Paused jobs are untouched.
@@ -55,10 +56,10 @@ After a failure, identify the earliest failed consumer and its exact inputs:
   run proportional checks and review, then use the supported scoped updater where
   authorized. Verify installed bytes and retry the same safe consumer. A source
   commit alone does not update a private installation.
-- Preparation refused with authenticated no-create evidence: repair the stated
-  prerequisite and rerun the composed owner cycle. It archives that attempt before
-  fresh preparation. Unknown launches and existing cards retain their original
-  accounting; never reset them to get a passing run.
+- Selection or ownership refused: repair the exact task input or reconcile the
+  actual process/workspace conflict, then rerun the direct owner cycle. Preserve
+  source/check evidence and consumed budgets. No original-card lookup, release or
+  native continuation API is required.
 - Missing executable/dependency, invalid workdir, failing script, model credentials
   or delivery transport: verify the actual failing boundary. Repair only from an
   attributable known installation/configuration under existing authority. Never

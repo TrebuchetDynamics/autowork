@@ -2,6 +2,27 @@
 
 Source: [command discovery](../__init__.py) and [native provisioning](../install_skills.py).
 
+## Work on a repository task
+
+Read README.md, AGENTS.md and TODO.md. TODO owns scope, acceptance, dependencies
+and progress; an existing goals.json is its synchronized index, not another board.
+Select a ready task within the accepted scope, inspect actual workspace/process
+activity and preserve unrelated changes. Use an isolated branch/worktree when
+concurrent work needs isolation. No Hermes profile, Kanban card, native worker or
+additional public tracking file is required, including recovery of older work.
+
+Make a scoped change, run the task's acceptance checks and affected offline tests,
+and submit normal repository review. Required independent review remains required;
+review-requested changes and integration use ordinary Git/project tools. Commit only
+attributable verified work under existing authority, then reconcile task evidence and
+any existing index. Archive a completed body only when its acceptance is verified.
+Do not equate a local commit or successful check with live qualification or publication.
+
+Autowork automates that same current-session path. Its private coordination receipts
+are not product requirements. Honor explicit task/caller limits and real runtime
+controls; recurring jobs cannot replenish exhausted allocations. Local advisory
+locks do not exclude manual writers ignoring them or provide cross-host exclusion.
+
 ## Add or update a skill
 
 ```text

@@ -10,8 +10,8 @@ class ScheduledProgressTests(unittest.TestCase):
         policy = (ROOT / 'skills/autowork/references/scheduled-policy.md').read_text()
         for phrase in ('## Progress and decision loop', 'accepted_goal', 'eligible_task',
                        'implementation', 'passing_checks', 'authorized_publication',
-                       'retry_selection.py', 'prepare_prerequisites.py', 'publication.py',
-                       'same card', 'Decision:', '5 consecutive attempts',
+                       'actual process identity', 'No Kanban lookup',
+                       'required review', 'Decision:', '5 consecutive attempts',
                        'documentation churn', 'not user approval'):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, policy)

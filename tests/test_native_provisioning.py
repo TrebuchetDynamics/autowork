@@ -37,7 +37,7 @@ class ProvisioningTests(unittest.TestCase):
                     '--validate-only'], capture_output=True, text=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout)['goal_max_turns'], 100)
-                self.assertIn('100 turns by default', (home / 'skills/autowork/SKILL.md').read_text())
+                self.assertIn('current agent session', (home / 'skills/autowork/SKILL.md').read_text())
             owner = profiles[0][1] / 'skills/autowork/scripts/start_goal.py'
             owner.write_text(owner.read_text().replace('BUDGET = 100', 'BUDGET = 50') + '\n# Owner customization\n')
             original = owner.read_bytes()

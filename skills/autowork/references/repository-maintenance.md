@@ -11,18 +11,18 @@ prohibition; equally, do not silently override a genuine repository-wide hold.
 ## Make ordinary decisions; do not delegate them back to the user
 
 When reconciling an existing bound task in a broad development job, invoke
-owner_cycle.py with `--scope repository`. An empty repository with no bound task
-enters the bounded planner directly; do not invent helper inputs.
+owner_cycle.py with `--scope repository`. An empty repository with no bound task gets a bounded source inspection first;
+use planning only for a consequential unresolved choice. Do not invent helper inputs.
 Explicit task-only work uses `--scope tasks` (the helper's conservative default).
 `discover_repository_work` is an instruction to act, not a finished occurrence:
-load the bounded planner, choose the most valuable evidenced slice, reconcile its
+choose the most valuable evidenced slice, use planning only when needed, reconcile its
 canonical task and continue execution. A missing route for the held task does not
 invalidate independent authority. Do not rename a blocked report to ACTION_REQUIRED
 and stop; the helper cannot do the model's investigation or implementation for it.
 
 Choose routine implementation approach, task decomposition, local check commands,
 documentation corrections and reversible refactoring under standing repository
-scope. Prepare your own contract/base/snapshot. If the current profile already is
+scope. Retain the task contract and actual source/candidate identity. If the current profile already is
 the verified integration owner, use its existing authority; no request to a second
 owner is needed. Discover an unknown route from current ownership records, never
 invent the owner or assert that sending a request granted permission.
@@ -35,7 +35,7 @@ that documentation, UX or another authorized component has no useful work. Do no
 manufacture a candidate to meet a quota: record the evidence when none is found.
 
 A true repository-wide policy conflict remains a blocker. Do not rewrite project
-instructions, waive native admission, take another owner's files or perform live
+instructions, ignore actual writer exclusion, take another owner's files or perform live
 operations to evade it. State the exact rule and missing decision once; keep that
 hold separate from ordinary engineering choices that can already be made.
 
@@ -72,16 +72,15 @@ hold separate from ordinary engineering choices that can already be made.
    never run the same planner again on identical scope/evidence. Do not bypass a
    global canonical-ledger or integration-owner conflict by creating a second one.
 5. Reuse existing tasks before adding at most three evidence-backed tasks to
-   canonical TODO.md and its goals.json ledger. Each needs source evidence, user
+   canonical TODO.md and any existing goals.json index. Each needs source evidence, user
    benefit, bounded files, dependencies, ownership, acceptance and checks. Record
    new decisions as agent decisions under the current repository-development
    request, not as historical user approvals. Missing supporting tools get bounded
    setup under existing authority; disclose a genuine unavailable prerequisite.
 6. Retry selection and execute one eligible slice in this same occurrence through
-   the normal native handoff. Preserve the primary milestone and record why its
-   runnable slices cannot proceed before choosing independent maintenance. Supply
-   the engine's source-bound fallback evidence when required; discovery does not
-   waive admission. Finish checks, owned commit and already-authorized delivery.
+   direct current-session execution. Preserve the primary milestone and record why its
+   runnable slices cannot proceed before choosing independent maintenance. Retain
+   the source evidence and actual ownership checks; discovery does not waive them. Finish checks, owned commit and already-authorized delivery.
    Up to three ready tasks is a replenishment target, never a quota for busywork.
 
 ## Keep discovery moving

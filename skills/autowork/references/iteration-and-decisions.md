@@ -5,7 +5,7 @@ These operating priorities apply to every Autowork run.
 3. **Fix your own environment.** Install missing non-privileged tooling in user
    space/project; record installs, PATH changes and fixtures. Only sudo/system
    packages, credentials and paid resources become owner questions (priority 9).
-4. **Workers iterate.** Inside a goal worker, a failing check means fix → rerun until
+4. **Workers iterate.** In the current session, a failing check means fix → rerun until
    acceptance, or until 5 consecutive attempts produce no new evidence. Never block
    on a first failure, and never write "one execution/one rerun/no source edit"
    limits into contracts for work inside their scope. Give workers the scope
@@ -13,36 +13,27 @@ These operating priorities apply to every Autowork run.
    scope by default, subject to explicit exclusions and live ownership. Routine
    isolated patch reconstruction and local input recovery use existing authority:
    execute the saved next step, verify it and continue on the same task. Use
-   [blocker recovery](blocker-recovery.md#recover-locally-before-declaring-a-blocker)
+   [direct recovery](owner-cycle.md#limits-and-recovery)
    when evidence lookup or reconstruction is being mistaken for missing authority.
-   If an approach fails, choose another reversible implementation on this card
+   If an approach fails, choose another reversible implementation on this task
    while preserving accepted behavior, exclusions and checks; record material
    deviations in existing evidence. Neither debugging nor a hard implementation
    is a reason to ask permission or repeat planning. Resolve only newly exposed
    consequential choices through the coordinator's bounded planning pass.
-5. **Retry and backoff across runs.** New cards use `--max-retries 1`: no automatic failure retry.
-   Supported same-card recovery must preserve cumulative usage; never reset an exhausted allocation.
-   A card that blocks twice with no new evidence is parked
-   (`hermes kanban schedule <id> "retry_exhausted: …"`) and is not reselected until
-   its source, prerequisite or contract fingerprint changes. Pick disjoint work
-   instead. A parked or triage card blocks only its own slice.
-   Reconcile `retry_selection.py`'s `reconciliation_task_ids` before dispatch:
-   observe an active worker, resume an idle candidate, or finish verified review,
-   commit and integration under existing authority. A review-approved candidate
-   awaiting closeout needs a closeout action, not another inspection of its tests.
-   The selector keeps in-progress work out of the new-task frontier, so an
-   independent open task can be considered without changing the original task's
-   status. Dependency and native admission checks still apply. If closeout cannot
-   proceed, check overlap and execute an independent candidate in the same run.
-   Preserve paused jobs; do not call a paused schedule stalled. Report the concrete
-   action and remaining step, not merely the same task ID and unchanged evidence.
+5. **Retry and backoff across runs.** Use no automatic failure retry after an
+   unknown launch; reconcile actual process/workspace evidence first. Preserve
+   consumed usage and never reset an exhausted allocation. Two unchanged holds
+   require a different supported repair, independent authorized work or one exact
+   external input. A failed task holds only its actual dependencies and resources.
+   Finish pending required review, commit and local integration before selecting
+   new work. Preserve paused jobs and useful candidates. No card transitions or
+   native continuation API are required for current-session recovery.
 6. **Vague acceptance.** If criteria are vague, the worker rewrites them in its
    first turn as 1–3 observable checks under `Interpreted acceptance:` and proceeds.
    Ask an owner question (priority 9) only when the possible readings lead to
    materially different product outcomes; continue only independent authorized work
-   until that input arrives. Use 100 turns by default, or an explicit 50-turn override;
-   explicit 100 still requires `Goal budget rationale:` for one coherent outcome. Stop at acceptance, not budget exhaustion; never spend turns
-   merely because available. If acceptance cannot fit, narrow it before dispatch.
+   until that input arrives. Honor explicit task/caller limits and real host
+   enforcement. Stop at acceptance; unused allocation is not work to spend.
 7. **Done means scoped done.** Finish after checks pass and owned changes are committed; never rerun an unchanged
    passing gate merely to refresh status metadata. NOT_CHECKED is not qualification.
    For checks likely to exceed the terminal window, use the host's tracked
@@ -52,20 +43,16 @@ These operating priorities apply to every Autowork run.
    identity and log/exit receipt; observe that same run through completion.
    A transport timeout is not a test verdict: reconcile the original process
    before retrying, never launch a duplicate live check. Missing final exit/results
-   remains unchecked. Use the required completion helper as the final gate so
-   finishing the commit does not introduce an avoidable second full test run.
+   remains unchecked. Reuse source-bound passing receipts when policy allows; required checks still run.
    Separate implemented, exact-source/platform qualification and verified main delivery.
    Explain progress in user outcomes: overall goal, current slice, what is still unproved.
    Keep unrelated recovery work separate; IDs and test counts must not obscure that map.
-   Follow the vertical-slice standard in references/handoff.md.
-8. **One review.** When the card goes through the native review lane, that lane is
-   the independent review. Every card body starts with a *Definition of done* that makes
-   the review handoff the card's last step, NOT milestone completion. If a worker reports "review entry rejected
-   because review is pending" (circular gate), do not route it to the governor and do not
-   block. Have the review requested again with a summary that cites the Definition of
-   done and lists only deliverables and executed checks (see SOUL "Review handoff"). Do not also launch pre-write or final reviewer subagents
-   unless the contract explicitly names them. Do not load `requesting-code-review`
-   in workers.
+   Follow the complete outcome standard in references/delivery-batches.md.
+8. **Required review.** Use the project's ordinary independent review mechanism
+   when required. Bind approval to the actual candidate and checks. Review-requested
+   changes run in the current authorized session, followed by affected checks and
+   fresh review for changed bytes. No Kanban reassignment or card becoming done is
+   required. Review approval alone does not prove all task acceptance.
 9. **Ask, don't block independent work.** Decide routine engineering choices
    (approach, internal design, tests, ordering within focus) under existing authority
    without a questionnaire. Ask only for material missing USER_INPUT, SUDO or
@@ -86,13 +73,13 @@ These operating priorities apply to every Autowork run.
 ## Mode precedence
 
 Caller scope and saved stop/batch limits control continuation.
-Default interactive execution hands off one slice, including authorized recovery
+Default interactive execution completes one slice, including authorized recovery
 and closeout. An explicit one-task limit stops new selection after that task;
 standing authority cannot override the caller's narrower stop. Explicit continuation or whole-spec scope
 permits further eligible batches only within its accepted bounds.
 Recurrence authorizes the saved occurrence, not wider scope or extra budgets.
 Reconcile consumed history first; unknown usage is not zero, and
-exhaustion requires explicit additional allocation, never a new card or session.
+exhaustion requires explicit additional allocation, never a new occurrence or session.
 
 ## Archive verified completion
 

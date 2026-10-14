@@ -25,7 +25,7 @@ class CycleGuidanceTests(unittest.TestCase):
         paths = ('skills/shared/ENGINEERING-CYCLE.md', 'skills/autowork/SKILL.md',
                  'adapters/skills/autowork/SKILL.md')
         cases = {
-            'default interactive': 'Default interactive execution hands off one slice',
+            'default interactive': 'Default interactive execution',
             'explicit one-task': 'An explicit one-task limit stops new selection',
             'explicit continuation': 'Explicit continuation or whole-spec scope',
             'recurring occurrence': 'Recurrence authorizes the saved occurrence',
@@ -70,12 +70,30 @@ class CycleGuidanceTests(unittest.TestCase):
         native = (ROOT / 'skills/autowork/SKILL.md').read_text()
         portable = (ROOT / 'adapters/skills/autowork/SKILL.md').read_text()
         self.assertIn('default is one composed command', native)
-        self.assertIn('--source-path', native)
+        self.assertIn('--owner-pid', native)
         self.assertNotIn('run `scripts/start_goal.py … --validate-only`', native)
         self.assertIn('one host-native', portable)
-        self.assertIn('retain native admission', portable)
+        self.assertIn('No Kanban lookup', portable)
         self.assertIn('consumed budget', native)
         self.assertIn('consumed budget', portable)
+
+    def test_default_guidance_does_not_route_through_native_card_tools(self):
+        paths = ('skills/autowork/SKILL.md',
+                 'skills/autowork/references/scheduled-policy.md',
+                 'skills/autowork/references/iteration-and-decisions.md',
+                 'skills/autowork/references/delivery-batches.md',
+                 'skills/shared/ENGINEERING-CYCLE.md')
+        for path in paths:
+            with self.subTest(path=path):
+                text = (ROOT / path).read_text()
+                for obsolete in ('hermes kanban', 'start_goal.py', 'reconcile.py',
+                                 '--goal-max-turns', '--max-retries', '100-turn default'):
+                    self.assertNotIn(obsolete, text)
+        direct = (ROOT / 'skills/autowork/references/owner-cycle.md').read_text()
+        for requirement in ('TODO.md owns product requirements', 'goals.json is optional',
+                            'actual process plus workspace/Git', 'explicit finite timeout',
+                            'not provider spend, tokens', 'never closes the TODO task'):
+            self.assertIn(requirement, direct)
 
     def test_cross_profile_audit_verifies_publication_without_takeover(self):
         text = (ROOT / 'skills/autowork/references/state-and-recovery.md').read_text()
@@ -97,7 +115,7 @@ class CycleGuidanceTests(unittest.TestCase):
         self.assertIn('rerun selection in the same occurrence', text)
         self.assertIn('load `hermes-toolset:git-commit-push`', text)
         self.assertIn('exact remote ref and SHA', text)
-        self.assertIn('--publication-authority', text)
+        self.assertIn('publication authority', text)
         self.assertIn('source before changing profile prompts', text)
         self.assertIn('never implies push permission', text)
         self.assertNotIn('at most once per day', text)
@@ -111,7 +129,7 @@ class CycleGuidanceTests(unittest.TestCase):
                             'planning-and-task-breakdown', 'incremental-implementation',
                             'test-driven-development', 'code-review-and-quality',
                             'skills/.hub/lock.json', 'systematic-debugging',
-                            '--ledger-mode proposal --integration-owner',
+                            'No native card admission',
                             'tasks/todo.md', 'review acceptance', 'NOT_CHECKED'):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, text)

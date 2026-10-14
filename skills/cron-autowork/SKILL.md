@@ -84,15 +84,17 @@ Use this template with resolved values; never save placeholders:
 Use hermes-toolset:autowork in REPOSITORY under PROFILE.
 Scope: REPOSITORY_DEVELOPMENT_OR_EXACT_TASK_FILTER.
 Delivery authority and exclusions: EXPLICIT_LIMITS.
-Resume saved continuation and read current original-card/run state first.
+Resume saved continuation and inspect actual process/workspace activity first.
+TODO.md and existing goals.json own the queue; execute in the current agent session.
+No Kanban lookup, historical card or native continuation/review transition is required.
 Integrate approved work before new discovery. Reuse checks only while inputs match.
-Continue an existing worker/card; do not launch overlapping or replacement work.
+Preserve useful candidates and live writers; delegate only when useful and authorized.
 Repair attributable task/docs metadata and retry selection in this occurrence.
 Use Plan For Me only for unresolved planning; save findings through Docs Sync.
 For broad repository scope, replenish justified tasks when none is ready; for a
 task filter, stay within that scope and its authorized prerequisites.
 Preserve consumed budgets, partial work, retry history and paused jobs. A cron tick
-does not grant a fresh allocation to an exhausted card. Do not edit Hermes Agent.
+does not grant a fresh allocation to an exhausted task. Do not edit Hermes Agent.
 Follow references/cron-autoheal.md: repair this exact job managed wiring with the
 installed scripts/heal-owner-cron.py and verified occurrence identity; read back.
 Fix attributable Toolset faults within existing authority before the next occurrence.

@@ -87,6 +87,14 @@ scope, that can include evidenced documentation, UI/accessibility, test or refac
 work. It preserves dependencies, active workers and live-operation limits; it does
 not invent tasks to inflate completion counts. See [the TODO work-center contract](skills/shared/TODO-WORKCENTER.md).
 
+Contributors can start with README.md, AGENTS.md and TODO.md, select an accepted
+ready task, make a scoped change in ordinary Git, run its checks and submit normal
+project review. No Hermes profile, Kanban card or extra task registry is required.
+Autowork follows the same path in the current session; host-native delegation is
+optional. Old cards do not veto recovery or integration. Actual process/workspace
+activity, required tests/review, explicit budgets and publication limits still apply.
+See [contributing](docs/contributing.md#work-on-a-repository-task).
+
 Illustrative result after an authorized task completes—not a test receipt:
 
 ```text

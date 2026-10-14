@@ -273,19 +273,14 @@ Python interpreter from the installed Hermes environment, where `hermes_cli` and
 its dependencies are importable. Missing native APIs fail closed.
 
 Preflight checks tracked source closure, installed checkout and skill drift,
-nonterminal native cards (including paused/pinned consumers), the helper-launch
-lock and same-user Linux process references to the selected profile's helpers.
-Native board discovery uses Hermes' shared `list_boards` contract, including
-archived boards, under `HERMES_KANBAN_HOME` or its native default root; it does not
-guess a database beneath the selected profile's `HERMES_HOME`. An explicit
-`HERMES_KANBAN_DB` is inventoried in addition to those shared boards. Read-only SQL
-binds cards to their assignee and current run's profile, and also checks unfinished
-runs. Unreadable or unknown ownership defers deployment; a nonterminal selected
-card preserves its pins even if no live process is observed. An unfinished database
-record is not proof that a worker is currently running. Known foreign owners do
-not block independent selected profiles. Independent eligible selections continue. Source symlinks and submodules are refused; selected installation links
-are supported. The updater replaces only the selected plugin slot with an isolated
-checkout, preserving the shared source, other profiles' links and frozen runtimes.
+repository/helper locks and actual process references to the selected installation.
+Historical Kanban cards, including missing, malformed, blocked or done records, are
+not ownership leases or deployment vetoes and are not queried to establish safety.
+Preserve actual active consumers and candidates; uncertain process/workspace ownership
+still defers the affected deployment. Independent eligible selections continue.
+Source symlinks and submodules are refused; selected installation links are supported.
+The updater replaces only the selected plugin slot with an isolated checkout,
+preserving shared source, other profiles' links and active runtimes.
 Customized or ambiguous native skill copies defer deployment instead of merging
 unreviewed content. Native registration is checked in a disposable home; this
 proves the installed bundle registers there, not live gateway wiring or product

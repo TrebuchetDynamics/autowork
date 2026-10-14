@@ -171,11 +171,24 @@ ordinary candidate changes and debugging stay in execution. Named task-family
 scope, no-commit restrictions and live ownership remain. A planning receipt is not
 proof that a worker ran or a task completed.
 
+### Direct repository execution
+
+TODO.md is the work board; goals.json, when present, is its synchronized index.
+`owner_cycle.py` selects and coordinates a bounded task for the current session.
+Its `EXECUTE` result is a contract to implement, not completed implementation or a
+worker launch. Use its [current interface](../skills/autowork/references/owner-cycle.md)
+for actual owner identity, source-bound receipts and bounded command execution.
+
+No Kanban lookup, historical card, native continuation API or card review transition
+is required for selection, recovery or local integration. Preserve actual writers,
+useful candidates, explicit allocations, required checks/review and publication limits.
+Host-native delegation remains optional and needs existing authorization.
+
 ### Delivery batches and partial completion
 
-Autowork prepares one coherent outcome per admitted worker: connected consumers,
+Autowork executes one coherent outcome in the current session: connected consumers,
 runners and tests share a batch when their dependencies and authority permit it.
-One-card concurrency is not a one-file limit. The coordinator chooses routine batch
+One useful slice is not a one-file limit. The coordinator chooses routine batch
 boundaries and reuses valid exact-source evidence where repository policy allows;
 required review and changed-input checks still run. See
 [delivery batching](../skills/autowork/references/delivery-batches.md).
@@ -191,7 +204,7 @@ Plan With Me asks only unresolved user choices; Plan For Me resolves the specifi
 engineering uncertainty; Docs Sync persists the affected batch. They share the
 [single-pass handoff](../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff).
 Autowork consumes the saved decisions and check results, then verifies current
-source and ownership before dispatch. No changes means no repeat documentation
+source and actual process/workspace ownership before implementation. No changes means no repeat documentation
 pass. An optional unanswered question holds its dependent tasks only. Standalone
 planning still does not authorize implementation.
 

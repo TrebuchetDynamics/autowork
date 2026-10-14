@@ -1,3 +1,7 @@
+> Historical native-card reference. Card-specific prerequisites and commands below
+> are retained for evidence only and are superseded by [current execution](owner-cycle.md).
+> They do not govern current Autowork selection, recovery, review or integration.
+
 # State inspection and recovery
 
 Use when reconciling journals, inspecting prior sessions, or recovering a failed handoff. These checks repair orchestration mistakes, not project acceptance evidence.
