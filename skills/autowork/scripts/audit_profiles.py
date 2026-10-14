@@ -110,11 +110,15 @@ def cron_responses(home, jobs, gaps):
             if not paths:
                 gaps.append('cron response missing: ' + identifier); continue
             for path in paths[-2:]:
-                with path.open('rb') as handle:
-                    size = os.fstat(handle.fileno()).st_size
-                    start = max(0, size - 32768)
-                    handle.seek(start)
-                    data = handle.read(32768)
+                try:
+                    with path.open('rb') as handle:
+                        size = os.fstat(handle.fileno()).st_size
+                        start = max(0, size - 32768)
+                        handle.seek(start)
+                        data = handle.read(32768)
+                except OSError:
+                    gaps.append('cron response unreadable: ' + identifier + ': ' + safe(path.name))
+                    continue
                 truncated = start > 0
                 text = data.decode('utf-8', errors='replace')
                 if truncated:
