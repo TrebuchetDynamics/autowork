@@ -51,7 +51,8 @@
       "status": "unverified",
       "tasks": [
         "TOOLSET-003",
-        "TOOLSET-015"
+        "TOOLSET-015",
+        "TOOLSET-016"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -158,6 +159,16 @@
       "section": "Next",
       "status": "open",
       "title": "Measure time to useful worker action and qualify the faster startup"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-015"
+      ],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-016",
+      "section": "Next",
+      "status": "open",
+      "title": "Apply clean incoming additions and deletions during behind-only realignment"
     },
     {
       "depends_on": [],
