@@ -43,6 +43,11 @@
           "kind": "executed",
           "ref": "TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-016: exact 9b894fd same-card review approved; integration b470c68 Python 3.12 scripts/check.py passed 283/448/139/8 offline tests (2 skipped, 8 excluded), bash -n and git diff --check passed; native recovery NOT_CHECKED",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -169,16 +174,6 @@
       "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
-      "depends_on": [
-        "TOOLSET-015"
-      ],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-016",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Apply clean incoming additions and deletions during behind-only realignment"
-    },
-    {
       "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-001",
@@ -233,6 +228,16 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve explicit source refs in behind-only realignment"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-015"
+      ],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-016",
+      "section": "Done",
+      "status": "done",
+      "title": "Apply clean incoming additions and deletions during behind-only realignment"
     }
   ],
   "version": 1
