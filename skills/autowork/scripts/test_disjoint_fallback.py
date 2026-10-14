@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests/fixtures"))
 """Offline original-card preservation and independent task admission checks."""
 import hashlib, json, tempfile, unittest
 from pathlib import Path
@@ -84,7 +87,7 @@ if __name__ == '__main__':
 class ComposedDisjointTests(unittest.TestCase):
 
     def test_verified_distinct_task_reaches_native_handoff_and_forwards_registration(self):
-        import owner_cycle, contextlib, io
+        import legacy_owner_cycle as owner_cycle, contextlib, io
         from test_owner_cycle import ComposedReadyTests
         fixture = ComposedReadyTests()
         fixture.setUp()

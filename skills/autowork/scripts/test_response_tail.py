@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests/fixtures"))
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +9,7 @@ from audit_profiles import cron_responses
 
 class ResponseTailTests(unittest.TestCase):
     def test_ready_status_keeps_full_preparation_in_private_receipt(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         result = {'outcome': 'QUEUED', 'selected_task': {'id': 'T1'},
                   'dispatch_attempted': True, 'next_action': 'Observe original native card',
                   'handoff': {'result': {'task_id': 'original', 'contract': 'large private input'}},

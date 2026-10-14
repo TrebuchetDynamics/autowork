@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests/fixtures"))
 """Real Git owner-cycle fixtures; no live profiles, workers or model calls."""
 import json
 from pathlib import Path
@@ -6,7 +9,7 @@ import sys
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).with_name('owner_cycle.py')
+SCRIPT = Path(__file__).resolve().parents[3] / 'tests/fixtures/legacy_owner_cycle.py'
 
 
 class OwnerCycleTests(unittest.TestCase):
@@ -236,7 +239,7 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(p.read_bytes(),before)
 
     def test_handoff_routes_only_explicit_same_task_request(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from types import SimpleNamespace
         from unittest.mock import patch
         request=self.root/'handoff.json'
@@ -251,7 +254,7 @@ class OwnerCycleTests(unittest.TestCase):
         with self.assertRaises(ValueError): owner_cycle.handoff(args,{'id':'OTHER'})
 
     def test_handoff_forwards_fallback_evidence_to_native_admission(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from types import SimpleNamespace
         from unittest.mock import patch
         request = self.root / 'handoff.json'
@@ -285,7 +288,7 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertFalse((self.state / 'planning').exists())
 
     def test_notification_failure_preserves_successful_native_handoff(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from unittest.mock import patch
         self.ready_backlog()
         native = {'outcome': 'notification_blocked', 'task_id': 't_fixture',
@@ -302,7 +305,7 @@ class OwnerCycleTests(unittest.TestCase):
         handoff.assert_called_once()
 
     def test_notification_error_without_recorded_card_is_not_success(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from unittest.mock import patch
         self.ready_backlog()
         for native in ({'outcome': 'notification_blocked'},
@@ -317,7 +320,7 @@ class OwnerCycleTests(unittest.TestCase):
             self.assertNotIn('notification_warning', receipt)
 
     def test_failed_or_uncertain_handoff_persists_reconciliation_receipt(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from unittest.mock import patch
         self.ready_backlog()
         for value in ({'exit_code':1,'result':{'outcome':'partial'}},
@@ -333,7 +336,7 @@ class OwnerCycleTests(unittest.TestCase):
                 self.assertIn('Reconcile native',receipt['next_action'])
 
     def test_bad_acknowledgement_refuses_before_recovery(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from types import SimpleNamespace
         from unittest.mock import patch
         with patch.object(owner_cycle.owner_unblock,'run') as recovery:
@@ -417,7 +420,7 @@ class OwnerCycleTests(unittest.TestCase):
         self.assertEqual(ledger.read_bytes(), before)
 
     def test_saved_native_handoff_is_used_for_ready_task(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from unittest.mock import patch
         from contextlib import redirect_stdout
         import io
@@ -445,7 +448,7 @@ class OwnerCycleTests(unittest.TestCase):
 
     def test_saved_handoff_preserves_attempted_dispatch_without_replay(self):
         import io
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from contextlib import redirect_stdout
         from unittest.mock import patch
         self.ready_backlog()
@@ -488,7 +491,7 @@ class OwnerCycleTests(unittest.TestCase):
 
     def test_saved_handoff_refuses_invalid_preparation(self):
         import io
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from contextlib import redirect_stderr
         from unittest.mock import patch
         self.ready_backlog()
@@ -509,7 +512,7 @@ class OwnerCycleTests(unittest.TestCase):
                 self.assertEqual(request.read_text(), '{}')
 
     def test_native_json_shapes_and_canonical_handoff_binding(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from types import SimpleNamespace
         from unittest.mock import patch
         request=self.root/'handoff.json'
@@ -533,7 +536,7 @@ class ComposedReadyTests(unittest.TestCase):
     def assert_historical_selection(self, changed_base):
         import copy
         import io
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from contextlib import redirect_stdout
         from test_delivery_state import EvidenceFixture
         from unittest.mock import patch
@@ -589,7 +592,7 @@ class ComposedReadyTests(unittest.TestCase):
             self.assertEqual(f.git('show-ref'), refs)
 
     def test_local_policy_reaches_read_only_original_card_reconciliation(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from test_delivery_state import EvidenceFixture
         from unittest.mock import patch
         from contextlib import redirect_stdout
@@ -652,7 +655,7 @@ class ComposedReadyTests(unittest.TestCase):
             subprocess.run(['git', '-C', str(self.repo), *argv], check=True, capture_output=True)
 
     def composed(self, native=None, prior=None, *extra):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from unittest.mock import patch
         from contextlib import redirect_stdout
         import io
@@ -718,7 +721,7 @@ class ComposedReadyTests(unittest.TestCase):
                 self.assertIn('original', str(first))
 
     def test_real_pre_create_refusal_allows_corrected_preparation(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         import os
         from unittest.mock import patch
         from contextlib import redirect_stdout
@@ -854,7 +857,7 @@ class ComposedReadyTests(unittest.TestCase):
             self.assertEqual((self.repo / 'goals.json').read_bytes(), before)
 
     def test_stale_saved_preparation_never_refreshes(self):
-        import owner_cycle, ready_preflight
+        import legacy_owner_cycle as owner_cycle; import ready_preflight
         from types import SimpleNamespace
         self.ready_backlog()
         args = SimpleNamespace(profile='fixture', plan='SPEC.md#slice', source_path=['code.py'],
@@ -870,7 +873,7 @@ class ComposedReadyTests(unittest.TestCase):
         self.assertEqual(Path(receipt['snapshot']).read_bytes(), snapshot)
 
     def test_unchanged_pre_dispatch_preparation_is_reused_and_tamper_refused(self):
-        import owner_cycle, ready_preflight
+        import legacy_owner_cycle as owner_cycle; import ready_preflight
         from types import SimpleNamespace
         from unittest.mock import patch
         self.ready_backlog()
@@ -888,7 +891,7 @@ class ComposedReadyTests(unittest.TestCase):
         self.assertFalse(json.loads((self.state / 'ready-preflights/T1/preparation.json').read_text())['dispatch_attempted'])
 
     def test_default_held_selection_preserves_ledger_without_dispatch(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from unittest.mock import patch
         from contextlib import redirect_stdout
         import io

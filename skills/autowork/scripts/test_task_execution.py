@@ -1,0 +1,266 @@
+"""Card-free TODO execution with real Git/process fixtures, no model calls."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+SCRIPT=Path(__file__).with_name('owner_cycle.py')
+
+class DirectExecutionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.repo=Path(self.tmp.name)/'repo';self.repo.mkdir()
+        subprocess.run(['git','init','-q',str(self.repo)],check=True)
+        self.state=Path(self.tmp.name)/'state';self.state.mkdir()
+        self.todo=self.repo/'TODO.md'
+        self.todo.write_text('''# Work
+## Now
+- [ ] T1 — repair fixture
+  Status: open
+  Scope: fixture.py only
+  Acceptance: fixture records execution
+  Checks: run fixture
+  Dependencies: None.
+  Ownership: current coordinator
+## Next
+- [ ] T2 — successor
+  Status: open
+  Scope: fixture.py
+  Acceptance: successor works
+  Checks: run fixture
+  Dependencies: T1.
+''')
+        self.fixture=self.repo/'fixture.py'
+        self.fixture.write_text("from pathlib import Path\nPath('worked').write_text('yes')\n")
+        self.env=dict(os.environ,HERMES_KANBAN_TASK='old-card',HERMES_KANBAN_DB='/missing/board')
+    def call(self,*args):
+        p=subprocess.run([sys.executable,str(SCRIPT),str(self.repo),'--state-dir',str(self.state),*args],
+                         env=self.env,capture_output=True,text=True,timeout=15)
+        self.assertTrue(p.stdout,p.stderr)
+        return p,json.loads(p.stdout)
+    def test_todo_only_default_needs_no_profile_board_or_registration(self):
+        for value in ('broken JSON',json.dumps({'task_id':'old','status':'blocked'}),json.dumps({'status':'done'})):
+            (self.state/'goal-handoff.json').write_text(value)
+            p,r=self.call()
+            self.assertEqual(p.returncode,0,r)
+            self.assertEqual(r['task']['id'],'T1')
+            self.assertEqual(r['outcome'],'READY')
+            self.assertFalse((self.repo/'goals.json').exists())
+            self.assertEqual((self.state/'goal-handoff.json').read_text(),value)
+    def test_default_import_does_not_load_native_pipeline(self):
+        code="import owner_cycle,sys; assert not ({'reconcile','start_goal','ready_preflight','owner_unblock'} & set(sys.modules))"
+        p=subprocess.run([sys.executable,'-c',code],cwd=SCRIPT.parent,capture_output=True,text=True)
+        self.assertEqual(p.returncode,0,p.stderr)
+    def test_bounded_run_performs_useful_action_without_card_or_completion_claim(self):
+        before=self.todo.read_bytes()
+        p,r=self.call('--apply','--timeout','5','--source-path','fixture.py','--run',sys.executable,'fixture.py')
+        self.assertEqual(p.returncode,0,r)
+        self.assertEqual(r['outcome'],'EXECUTED')
+        self.assertEqual((self.repo/'worked').read_text(),'yes')
+        self.assertEqual(r['completed_tasks'],[])
+        self.assertEqual(self.todo.read_bytes(),before)
+        self.assertTrue(r['command_receipt']['inputs_match'])
+    def test_named_task_dependencies_and_decision_hold_are_respected(self):
+        p,r=self.call('--tasks','T2')
+        self.assertEqual(p.returncode,1)
+        self.assertIn('dependency',str(r).lower())
+        self.todo.write_text(self.todo.read_text().replace('## Now','## Needs decision'))
+        p,r=self.call('--tasks','T1')
+        self.assertEqual(p.returncode,1)
+    def test_live_ancestor_claim_persists_across_calls_and_releases(self):
+        p,r=self.call('--apply','--owner-pid',str(os.getpid()))
+        self.assertEqual(p.returncode,0,r)
+        self.assertEqual(r['outcome'],'EXECUTE')
+        self.assertEqual(self.call('--apply','--owner-pid',str(os.getpid()))[1]['outcome'],'EXECUTE')
+        self.assertEqual(self.call('--release','--owner-pid',str(os.getpid()))[1]['outcome'],'RELEASED')
+    def test_invalid_owner_never_claims(self):
+        p,r=self.call('--apply','--owner-pid','1')
+        self.assertEqual(p.returncode,1)
+        self.assertFalse((self.repo/'.git/autowork-execution/active.json').exists())
+    def test_running_direct_command_blocks_other_profile_and_worktree(self):
+        self.fixture.write_text("import time\nfrom pathlib import Path\nPath('entered').touch()\ntime.sleep(2)\n")
+        first=subprocess.Popen([sys.executable,str(SCRIPT),str(self.repo),'--apply','--profile','one',
+            '--timeout','5','--run',sys.executable,'fixture.py'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        self.addCleanup(lambda: first.poll() is None and first.kill())
+        import time
+        deadline=time.monotonic()+5
+        while not (self.repo/'entered').exists() and time.monotonic()<deadline: time.sleep(.02)
+        p,r=self.call('--apply','--profile','two','--timeout','5','--run',sys.executable,'fixture.py')
+        self.assertEqual(r['outcome'],'BUSY')
+        out,err=first.communicate(timeout=10)
+        self.assertEqual(first.returncode,0,err+out)
+    def test_changed_source_does_not_create_reusable_passing_receipt(self):
+        self.fixture.write_text("from pathlib import Path\nPath('fixture.py').write_text('# changed')\n")
+        p,r=self.call('--apply','--timeout','5','--source-path','fixture.py','--run',sys.executable,'fixture.py')
+        self.assertEqual(r['outcome'],'SOURCE_CHANGED')
+        self.assertFalse(r['command_receipt']['inputs_match'])
+    def test_timeout_budget_cannot_be_refilled_by_next_tick(self):
+        self.fixture.write_text('import time\ntime.sleep(1)\n')
+        p,r=self.call('--apply','--timeout','1','--budget-seconds','.05','--run',sys.executable,'fixture.py')
+        self.assertEqual(r['outcome'],'TIMED_OUT')
+        self.assertEqual(self.call('--apply','--timeout','1','--budget-seconds','10','--run',sys.executable,'fixture.py')[1]['outcome'],'LIMIT_REQUIRED')
+    def test_ordinary_apply_without_owner_does_not_fake_dispatch(self):
+        p,r=self.call('--apply')
+        self.assertEqual(r['outcome'],'OWNER_REQUIRED')
+        self.assertFalse((self.repo/'worked').exists())
+
+class RecoveryTests(DirectExecutionTests):
+    def ledger(self):
+        data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
+            'status': 'partial', 'tasks': ['T1', 'T2'], 'priority': 1, 'depends_on': []}],
+            'tasks': [{'id': 'T1', 'title': 'repair fixture', 'goal': 'G', 'status': 'open',
+                       'section': 'Now', 'depends_on': []},
+                      {'id': 'T2', 'title': 'successor', 'goal': 'G', 'status': 'open',
+                       'section': 'Next', 'depends_on': ['T1']}]}
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        return data
+
+    def test_existing_index_and_explanatory_status_stay_unchanged(self):
+        self.ledger()
+        self.todo.write_text(self.todo.read_text().replace('Status: open', 'Status: open; implementation pending.'))
+        before = (self.repo / 'goals.json').read_bytes()
+        p, result = self.call('--tasks', 'T1')
+        self.assertEqual(p.returncode, 0, result)
+        self.assertEqual((self.repo / 'goals.json').read_bytes(), before)
+        self.assertEqual(self.call('--tasks', 'T2')[0].returncode, 1)
+
+    def test_index_mismatch_and_duplicate_todo_do_not_dispatch(self):
+        data = self.ledger()
+        data['tasks'][0]['status'] = 'in_progress'
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        self.assertIn('disagree', str(self.call()[1]))
+        self.todo.write_text(self.todo.read_text() + '\n- [ ] T1 duplicate\n')
+        self.assertIn('duplicate', str(self.call()[1]))
+
+    def test_archive_satisfies_todo_only_dependency(self):
+        original = self.todo.read_text()
+        self.todo.write_text('# Work\n## Now\n' + original.split('## Next\n')[1])
+        (self.repo / 'TODO.archive.md').write_text(original.split('## Next')[0].replace('[ ] T1', '[x] T1'))
+        self.assertEqual(self.call('--tasks', 'T2')[1]['outcome'], 'READY')
+
+    def test_actual_git_worktrees_share_writer_lease(self):
+        subprocess.run(['git', '-C', str(self.repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '-qm', 'fixture'], check=True)
+        other = Path(self.tmp.name) / 'other'
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'add', '-qb', 'other', str(other)], check=True)
+        self.assertEqual(self.call('--apply', '--owner-pid', str(os.getpid()))[1]['outcome'], 'EXECUTE')
+        process = subprocess.run([sys.executable, str(SCRIPT), str(other), '--apply', '--owner-pid', str(os.getpid())],
+                                 capture_output=True, text=True)
+        self.assertEqual(json.loads(process.stdout)['outcome'], 'BUSY')
+
+    def test_dead_owner_recovery_preserves_dirty_candidate_and_bad_card(self):
+        from task_execution import identity
+        common = self.repo / '.git/autowork-execution'
+        common.mkdir()
+        stale = identity(os.getpid()); stale['start_ticks'] -= 1
+        (common / 'active.json').write_text(json.dumps({'owner': stale, 'task_id': 'T1', 'workspace': str(self.repo)}))
+        self.fixture.write_text('# preserved candidate\n')
+        (self.state / 'goal-handoff.json').write_text('not json')
+        self.assertEqual(self.call('--apply', '--owner-pid', str(os.getpid()))[1]['outcome'], 'EXECUTE')
+        self.assertEqual(self.fixture.read_text(), '# preserved candidate\n')
+        self.assertEqual((self.state / 'goal-handoff.json').read_text(), 'not json')
+
+    def test_live_legacy_agent_blocks_without_reading_board(self):
+        script = self.repo / 'run_agent.py'
+        script.write_text('import time; time.sleep(20)')
+        worker = subprocess.Popen([sys.executable, str(script)], cwd=self.repo)
+        self.addCleanup(lambda: worker.poll() is None and worker.kill())
+        try:
+            _, result = self.call('--apply', '--owner-pid', str(os.getpid()))
+            self.assertEqual(result['outcome'], 'BUSY', result)
+        finally:
+            worker.kill(); worker.wait()
+
+    def test_failed_command_is_not_task_completion(self):
+        before = self.todo.read_bytes()
+        p, result = self.call('--apply', '--timeout', '2', '--run', sys.executable, '-c', 'raise SystemExit(7)')
+        self.assertEqual(result['outcome'], 'CHECK_FAILED')
+        self.assertEqual(result['command_receipt']['exit_code'], 7)
+        self.assertEqual(result['completed_tasks'], [])
+        self.assertEqual(self.todo.read_bytes(), before)
+
+    def test_pending_command_accounting_cannot_be_reset(self):
+        common = self.repo / '.git/autowork-execution'
+        common.mkdir()
+        (common / 'budget-T1.json').write_text(json.dumps({'allocation': 5, 'remaining': 5, 'pending': 'interrupted'}))
+        _, result = self.call('--apply', '--timeout', '2', '--run', sys.executable, 'fixture.py')
+        self.assertEqual(result['outcome'], 'LIMIT_REQUIRED')
+        self.assertFalse((self.repo / 'worked').exists())
+
+    def test_relative_path_executable_is_fingerprinted_at_child_cwd(self):
+        executable = self.repo / 'bin' / 'fixture-command'
+        executable.parent.mkdir()
+        executable.write_text('#!/bin/sh\nprintf yes > worked\n')
+        executable.chmod(0o755)
+        self.env['PATH'] = 'bin:' + os.environ['PATH']
+        p, result = self.call('--apply', '--timeout', '2', '--run', 'fixture-command')
+        self.assertEqual(p.returncode, 0, result)
+        self.assertEqual(result['command_receipt']['executable'], str(executable))
+
+    def test_symlinked_state_is_not_overwritten(self):
+        target = self.repo / 'do-not-change'
+        target.write_text('original')
+        (self.state / 'task-execution-latest.json').symlink_to(target)
+        _, result = self.call('--apply', '--owner-pid', str(os.getpid()))
+        self.assertEqual(result['outcome'], 'ACTION_REQUIRED')
+        self.assertEqual(target.read_text(), 'original')
+
+    def test_duplicate_dependency_fields_are_not_treated_as_none(self):
+        self.todo.write_text(self.todo.read_text().replace('Dependencies: None.', 'Dependencies: MISSING\n  Dependencies: T2.'))
+        self.assertEqual(self.call('--tasks', 'T1')[0].returncode, 1)
+
+    def test_named_plan_selects_only_tasks_linked_to_it(self):
+        (self.repo / 'SPEC.md').write_text('# Slice\nOnly T2 is in this plan.\n')
+        self.todo.write_text(self.todo.read_text().replace('Dependencies: T1.', 'Dependencies: None.\n  Sources: [slice](SPEC.md#slice)'))
+        self.assertEqual(self.call('--plan', 'SPEC.md#slice')[1]['task']['id'], 'T2')
+        self.assertEqual(self.call('--tasks', 'T1', '--plan', 'SPEC.md#slice')[0].returncode, 1)
+
+    def test_malformed_retained_budget_never_becomes_new_allowance(self):
+        common = self.repo / '.git/autowork-execution'; common.mkdir()
+        for malformed in ({}, [], False, {'remaining': 1}, {'allocation': True, 'remaining': 1, 'pending': False}):
+            (common / 'budget-T1.json').write_text(json.dumps(malformed))
+            _, result = self.call('--apply', '--timeout', '1', '--budget-seconds', '1', '--run', sys.executable, 'fixture.py')
+            self.assertEqual(result['outcome'], 'LIMIT_REQUIRED', malformed)
+        self.assertFalse((self.repo / 'worked').exists())
+
+    def test_directory_or_missing_check_input_is_not_fresh_evidence(self):
+        (self.repo / 'src').mkdir()
+        for path in ('src', 'missing.py'):
+            p, result = self.call('--apply', '--timeout', '2', '--source-path', path, '--run', sys.executable, 'fixture.py')
+            self.assertEqual(p.returncode, 1, result)
+            self.assertFalse((self.repo / 'worked').exists())
+
+    def test_receipt_identifies_exact_command_and_is_not_acceptance(self):
+        argv = [sys.executable, '-c', 'pass']
+        _, result = self.call('--apply', '--timeout', '2', '--run', *argv)
+        self.assertEqual(result['command_receipt']['argv'], argv)
+        self.assertFalse(result['command_receipt']['reusable_acceptance'])
+
+    def test_legacy_writer_outside_repo_cwd_is_detected_by_workspace(self):
+        script = Path(self.tmp.name) / 'run_agent.py'
+        script.write_text('import time; time.sleep(20)')
+        worker = subprocess.Popen([sys.executable, str(script), '--workspace', str(self.repo)], cwd=self.tmp.name)
+        try:
+            self.assertEqual(self.call('--apply', '--owner-pid', str(os.getpid()))[1]['outcome'], 'BUSY')
+        finally:
+            worker.kill(); worker.wait()
+
+    def test_detached_descendant_cannot_escape_command_lifetime(self):
+        self.fixture.write_text("import subprocess,sys\nfrom pathlib import Path\np=subprocess.Popen([sys.executable,'-c','import time; time.sleep(20)'],start_new_session=True,close_fds=True)\nPath('descendant').write_text(str(p.pid))\n")
+        _, result = self.call('--apply', '--timeout', '2', '--run', sys.executable, 'fixture.py')
+        from task_execution import identity
+        pid = int((self.repo / 'descendant').read_text())
+        try:
+            self.assertIsNone(identity(pid), result)
+        finally:
+            if identity(pid): os.kill(pid, 9)
+        self.assertEqual(result['outcome'], 'CHILDREN_TERMINATED')
+
+if __name__ == '__main__':
+    unittest.main()

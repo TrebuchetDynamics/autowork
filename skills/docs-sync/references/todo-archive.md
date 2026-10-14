@@ -111,3 +111,14 @@ Use `search_files` on the archive to answer “which gate already ran?” or “
 ## Scope
 
 This contract changes future docs-sync work. It does not itself migrate every repository, rewrite live cron prompts, authorize source changes, or grant commit/push permission. If a configured cron prompt explicitly requires dated notes in TODO or excludes the history owner, a profile manager must make a scoped prompt correction and read it back while preserving schedule, model, delivery, continuity and enabled state. Do not let the cron reschedule itself.
+
+## Superseded requirements
+
+When an accepted decision retires a task, use
+`goals.py supersede <repo> OLD --by NEW --reason "accepted decision"`, then
+`goals.py render <repo>`. The successor must already exist. The index records
+`superseded` and a reason; the archive preserves the original unchecked body under
+an explicit non-completion disposition. This does not satisfy dependencies, count
+as completed work or qualify a goal as met. The conservative met rule still
+requires done tasks and executed passing goal evidence; reconcile a changed goal
+against its accepted scope instead of relabelling retired checks as passed.

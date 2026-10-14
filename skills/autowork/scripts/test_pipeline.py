@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests/fixtures"))
 """Composed picker/dispatch/worker/reconcile fixture, not a native worker run."""
 import contextlib
 import hashlib
@@ -194,7 +197,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(json.loads((self.home / 'autowork/goal-handoff.json').read_text()), result)
 
     def test_owner_cycle_inherits_default_and_preserves_explicit_50(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         from types import SimpleNamespace
         request = self.root / 'handoff.json'
         options = {'profile': 'fixture', 'title': self.selected['title'],

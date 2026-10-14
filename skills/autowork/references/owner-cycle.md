@@ -13,9 +13,9 @@ python3 <autowork>/scripts/owner_cycle.py /absolute/repo \
 ```
 
 Without `--apply`, inspect the proposed selection. With `--apply`, bind the actual
-persistent coordinator ancestor PID and process birth identity to this repository
+persistent, dedicated coordinator ancestor PID and process birth identity to this repository
 and workspace. Resolve it from current host process evidence; a transient shell PID
-or guessed identity is not a session owner. The `EXECUTE` result is a contract to
+or guessed identity is not a session owner. Do not use a shared gateway/server PID that hosts concurrent sessions. The `EXECUTE` result is a contract to
 execute now in the current session, not a task completion or implicit worker launch.
 Release with the same live owner and `--release` after retaining candidate/check
 receipts. An interrupted owner is reconciled from actual process plus workspace/Git
@@ -29,7 +29,9 @@ context. This binds the active coordinator to its installation so scoped helper
 updates preserve it. The runtime does not query native profile discovery or guess
 profile identity. `--tasks ID1,ID2` keeps an exact named task filter;
 `--plan path#heading` binds accepted context and may be used independently.
-`--source-path PATH` binds supplied check inputs. `--scope repository` expresses
+`--source-path PATH` binds existing regular check-input files; directories and missing
+paths are rejected. Generic command receipts are not reusable acceptance proofs. Use
+`check_receipt.py` for the separately supported source-bound acceptance reuse contract. `--scope repository` expresses
 broad repository work; `--scope tasks` retains task-only scope. Check selected
 scope, dependencies, acceptance and sources before implementation.
 
@@ -41,11 +43,17 @@ python3 <autowork>/scripts/owner_cycle.py /absolute/repo \
 ```
 
 `--run` accepts argv, not a shell string, and requires an explicit finite timeout.
-It runs that command under the shared repository lock and retains execution evidence;
+It runs that foreground command under the shared repository lock and retains its exact
+argv, executable and selected file hashes. Detached descendants are stopped at command
+exit; leftover children make the result unsuccessful. This is cooperative local
+process cleanup, not a hostile-code sandbox. The optional `--budget-seconds` caps
+cumulative command walltime for this TODO ID; an interrupted pending receipt requires
+usage reconciliation and a later tick cannot refill it.
+It retains execution evidence;
 it never closes the TODO task. A command-only invocation needs no persistent PID
-unless recovering that owner's existing claim. On platforms without supported
-process birth/liveness inspection, use inspected bounded-command mode rather than
-inventing durable ownership. Preserve command/session/log/final-exit evidence;
+unless recovering that owner's existing claim. This bundled runner currently requires Linux process inspection for durable ownership
+and bounded descendant cleanup. Other hosts execute directly through their own
+supported workspace coordination and command controls; do not invent process proof. Preserve command/session/log/final-exit evidence;
 a transport interruption is not a pass and requires inspecting the original run.
 
 ## Limits and recovery

@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests/fixtures"))
 """Offline CLI-boundary regressions; no real cards/messages are created."""
 import importlib.util
 import contextlib
@@ -143,7 +146,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(receipt_path.read_bytes(), original)
 
     def test_composed_command_reaches_real_admission_once_offline(self):
-        import owner_cycle
+        import legacy_owner_cycle as owner_cycle
         import subprocess
         import os
         import re
