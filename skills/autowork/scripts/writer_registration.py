@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import os
+import uuid
 from pathlib import Path
 import re
 import importlib.util
@@ -176,8 +178,20 @@ def prepare_handoff(handoff_path, digest, native, output):
     for name, content in artifacts.items():
         path = output / name
         if not path.exists():
-            with path.open('xb') as stream:
-                stream.write(content)
+            temporary = output / ('.' + name + '.' + uuid.uuid4().hex + '.tmp')
+            try:
+                with temporary.open('xb') as stream:
+                    stream.write(content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                # Publish without replacing another writer's immutable artifact.
+                try:
+                    os.link(temporary, path)
+                except FileExistsError:
+                    if path.is_symlink() or path.read_bytes() != content:
+                        raise ValueError('Retained preparation evidence differs: ' + name)
+            finally:
+                temporary.unlink(missing_ok=True)
     return report
 
 

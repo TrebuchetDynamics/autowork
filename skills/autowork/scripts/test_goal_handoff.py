@@ -83,6 +83,20 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Source changed before worker start: writers.jsonl'):
             pass_workspace.verify(frozen_manifest, card['workspace_path'])
         output = root / 'prepared'
+        original_open = Path.open
+        @contextlib.contextmanager
+        def interrupted_write(path, mode='r', *args, **kwargs):
+            with original_open(path, mode, *args, **kwargs) as stream:
+                if path.parent == output and mode in ('xb', 'wb'):
+                    stream.write(b'partial-write')
+                    stream.flush()
+                    raise OSError('fixture interrupted evidence write')
+                yield stream
+        with patch.object(Path, 'open', interrupted_write), self.assertRaisesRegex(OSError, 'interrupted'):
+            writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
+                {'task': card, 'runs': []}, output)
+        self.assertFalse((output / 'original-handoff.json').exists(),
+                         'An interrupted write must not publish a partial immutable artifact')
         prepared = writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
             {'task': card, 'runs': []}, output)
         self.assertEqual(prepared['outcome'], 'registration_prepared_native_transition_unavailable')

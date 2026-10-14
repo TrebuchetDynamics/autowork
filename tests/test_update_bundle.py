@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from types import ModuleType
 import unittest
@@ -275,6 +276,7 @@ class ScopedUpdateTests(unittest.TestCase):
 
     def setUp(self):
         UpdateTests.setUp(self)
+        self.enterContext(patch.object(sys, 'path', [str(ROOT), *sys.path]))
         self.advance()
         self.revision = self.git(self.remote, 'rev-parse', 'HEAD')
         self.calls = []
