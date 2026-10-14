@@ -589,6 +589,24 @@ def list_boards(*, include_archived):
         self.assertEqual({p: p.read_bytes() for p in before}, before)
         self.assertFalse((self.home/'kanban.db').exists())
 
+    def test_native_call_resolves_launcher_source_without_pythonpath(self):
+        import os, shlex
+        package = self.root/'hermes_cli'
+        (package/'plugins.py').write_text('')
+        (package/'kanban_db.py').write_text('def list_boards(*, include_archived): return []\n')
+        (package/'profiles.py').write_text('def normalize_profile_name(name): return name\n')
+        launcher = self.root/'hermes'
+        bootstrap = f'import sys; sys.path.insert(0, {str(self.root)!r})'
+        launcher.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -I -c {shlex.quote(bootstrap)} "$@"\n')
+        launcher.chmod(0o755)
+        spec = importlib.util.spec_from_file_location('update_launcher_test', ROOT/'update_bundle.py')
+        updater = importlib.util.module_from_spec(spec); spec.loader.exec_module(updater)
+        with patch.dict(os.environ, PATH=str(self.root), PYTHONPATH=''), \
+             patch.object(sys, 'path', [str(ROOT), *sys.path]):
+            inventory = updater.native_call('inventory', self.home, self.stage, '', sys.executable)
+        self.assertEqual(inventory, {'boards': [], 'tasks': [], 'runs': []})
+        self.assertEqual(list(self.home.iterdir()), [])
+
     def test_native_adapter_exists(self):
         self.assertTrue((ROOT/'update_bundle_native.py').is_file(), 'native admission adapter missing')
 

@@ -228,7 +228,15 @@ def root_home(home):
 
 def native_call(action, home, stage, revision, python):
     """Run native admission in a fresh process bound only to the selected home."""
-    command = [python, str(Path(__file__).with_name('update_bundle_native.py')),
+    from setup_preflight import selected_source
+    source = selected_source()
+    if source is None:
+        raise ValueError('Cannot resolve source for Hermes selected on PATH; native admission unverified')
+    # Managed launchers inject source into sys.path; the interpreter alone does not.
+    bootstrap = ('import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); '
+                 'sys.argv.pop(0); runpy.run_path(sys.argv[0], run_name="__main__")')
+    command = [python, '-B', '-c', bootstrap, str(source),
+               str(Path(__file__).with_name('update_bundle_native.py')),
                action, str(home), str(stage), revision]
     env = dict(os.environ, HERMES_HOME=str(home), PYTHONDONTWRITEBYTECODE='1')
     # A caller's alternate board/profile must not redirect admission.
