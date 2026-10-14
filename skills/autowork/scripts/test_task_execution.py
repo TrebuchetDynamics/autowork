@@ -223,7 +223,7 @@ class RecoveryTests(DirectExecutionTests):
 
     def test_malformed_retained_budget_never_becomes_new_allowance(self):
         common = self.repo / '.git/autowork-execution'; common.mkdir()
-        for malformed in ({}, [], False, {'remaining': 1}, {'allocation': True, 'remaining': 1, 'pending': False}):
+        for malformed in (None, {}, [], False, {'remaining': 1}, {'allocation': True, 'remaining': 1, 'pending': False}):
             (common / 'budget-T1.json').write_text(json.dumps(malformed))
             _, result = self.call('--apply', '--timeout', '1', '--budget-seconds', '1', '--run', sys.executable, 'fixture.py')
             self.assertEqual(result['outcome'], 'LIMIT_REQUIRED', malformed)

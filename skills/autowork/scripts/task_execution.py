@@ -318,6 +318,8 @@ def command(args, repo, state, common, task, lease, lock_fd):
         raise ValueError('--budget-seconds must be positive and finite')
     budget_path = common / ('budget-' + task['id'] + '.json')
     budget = read(budget_path)
+    if budget is None and budget_path.exists():
+        return {'outcome': 'LIMIT_REQUIRED', 'reason': 'Retained allowance is null; unknown usage is not a new allocation.'}
     timeout = args.timeout
     if budget is not None:
         if (not isinstance(budget, dict) or type(budget.get('allocation')) not in (int, float) or
@@ -405,6 +407,8 @@ def execute(args):
     with lock(state / 'goal-handoff.lock'), lock(common / 'writer.lock') as fd:
         claim_path = common / 'active.json'
         claim = read(claim_path)
+        if claim is None and claim_path.exists():
+            raise ValueError('null execution lease; inspect current process evidence before repairing it')
         if claim is not None:
             active_owner(claim)  # Validate even empty or otherwise false-valued evidence.
         owner = owner_identity(args.owner_pid) if args.owner_pid else None
@@ -437,7 +441,10 @@ def execute(args):
         lease = {'task_id': task['id'], 'workspace': str(repo), 'profile': args.profile,
                  'owner': owner or identity(os.getpid()), 'selected_inputs': selected_inputs}
         save(claim_path, lease)
-        save(state / 'task-execution-latest.json', {'claim_path': str(claim_path), 'task_id': task['id']})
+        pointer = {'claim_path': str(claim_path), 'task_id': task['id']}
+        key = hashlib.sha256(str(common).encode()).hexdigest()
+        save(state / 'task-execution-claims' / (key + '.json'), pointer)
+        save(state / 'task-execution-latest.json', pointer)
         if args.run:
             result.update(command(args, repo, state, common, task, lease, fd))
         else:
