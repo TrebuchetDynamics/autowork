@@ -111,6 +111,65 @@ class ResponseTailTests(unittest.TestCase):
             self.assertEqual(gaps, ['cron response missing: missing'])
             self.assertEqual(path.read_bytes(), b'one output\n')
 
+    def test_current_response_excludes_prompt_and_embedded_earlier_response(self):
+        import hashlib
+        from audit_profiles import safe
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-11.md'
+            response = 'HELD: current result\ntoken=private-value\nhttps://example.test/private\n'
+            for prefix in ('', 'large prompt filler\n' * 5000):
+                with self.subTest(truncated=bool(prefix)):
+                    path.write_text('# Cron Job\n\n## Prompt\n\n' + prefix +
+                                    'saved previous output\n## Response\n\nOLD RESULT\n' +
+                                    'repeated user instructions\n## Response\n\n' + response)
+                    before = path.read_bytes()
+                    gaps = []
+                    row = cron_responses(home, [{'id': 'j1'}], gaps)[0]
+                    self.assertEqual(row['payload'], safe(response))
+                    self.assertEqual(row['start'], max(0, len(before) - 32768))
+                    self.assertEqual(row['bytes_observed'], min(len(before), 32768))
+                    self.assertEqual(row['remaining_bytes'], row['start'])
+                    self.assertEqual(row['sha256'], hashlib.sha256(before[row['start']:]).hexdigest())
+                    self.assertIn('last exact Response delimiter in observed tail', row['boundary'])
+                    self.assertIn('full output coverage not proved', row['boundary'])
+                    self.assertEqual(row['output_rank'], 1)
+                    self.assertTrue(row['latest'])
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_missing_exact_response_delimiter_keeps_compatibility_tail(self):
+        from audit_profiles import safe
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-11.md'
+            cases = (
+                '# Cron Job\n\n## Prompt\n\ninline ## Response\n\nnot a header\n',
+                '## Response extra\n\nnot exact\ntoken=private-value\n',
+                '## Response\nmissing blank line\n',
+                '# Cron Job\n\n## Response\n\n' + 'long response\n' * 5000 + 'token=private-value\n',
+                # The tail starts mid-line on a lookalike delimiter; it is not a header.
+                'prefix## Response\n\n' + 'x\n' * 16377 + 'end\n',
+            )
+            for text in cases:
+                with self.subTest(prefix=text[:40]):
+                    path.write_text(text)
+                    before = path.read_bytes()
+                    tail = before[-32768:].decode()
+                    if len(before) > 32768:
+                        tail = '[EARLIER OUTPUT OMITTED; PARTIAL FIRST LINE REDACTED]\n' + tail.partition('\n')[2]
+                    gaps = []
+                    row = cron_responses(home, [{'id': 'j1'}], gaps)[0]
+                    self.assertEqual(row['payload'], safe(tail))
+                    self.assertIn('Response delimiter absent from observed tail; compatibility tail only', row['boundary'])
+                    self.assertIn('full output coverage not proved', row['boundary'])
+                    self.assertEqual(row['analysis'], 'not_analyzed')
+                    self.assertNotIn('private-value', row['payload'])
+                    self.assertEqual(path.read_bytes(), before)
+
     def test_large_prompt_does_not_hide_response_and_boundary_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

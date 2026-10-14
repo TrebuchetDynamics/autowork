@@ -124,11 +124,16 @@ def cron_responses(home, jobs, gaps):
                 if truncated:
                     text = '[EARLIER OUTPUT OMITTED; PARTIAL FIRST LINE REDACTED]\n' + text.partition('\n')[2]
                     gaps.append('cron response truncated: ' + identifier)
+                sections = re.split(r'^## Response\n\n', text, flags=re.M)
+                projection = 'Response delimiter absent from observed tail; compatibility tail only'
+                if len(sections) > 1:
+                    text = sections[-1]
+                    projection = 'text after last exact Response delimiter in observed tail'
                 rows.append({'job_id': identifier, 'path': str(path), 'start': start, 'bytes_observed': len(data),
                              'remaining_bytes': start + max(0, size - start - len(data)), 'sha256': digest(data),
                              'payload': safe(text), 'analysis': 'not_analyzed',
                              'output_rank': 1 if path == paths[-1] else 2, 'latest': path == paths[-1],
-                             'boundary': 'newest two output files by filename order; rank 1 is latest; exact execution association not proved'})
+                             'boundary': 'newest two output files by filename order; rank 1 is latest; exact execution association not proved; ' + projection + '; full output coverage not proved'})
         except OSError:
             gaps.append('cron response unreadable: ' + identifier)
     return rows
