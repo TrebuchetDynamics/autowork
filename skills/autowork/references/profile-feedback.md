@@ -5,9 +5,10 @@ would improve hermes-toolset; without a target scope, discover every named profi
 File/log inspection alone is not consultation. Use `--profiles NAME ...` for a
 bounded scope, preserve other profiles' pauses, and never contact excluded targets.
 Discover profiles read-only each occurrence; include default self-assessment and
-record every scoped named profile as replied, failed, or not reached. Never infer an
-answer from its old cron report. Native metadata and profile replies remain
-separate evidence.
+record every scoped named profile as replied, failed, or not reached, or as
+unavailable/not-consulted or explicitly reused with its original reply time and
+age. Never infer an answer from its old cron report. Native metadata and profile
+replies remain separate evidence.
 
 Use the shared executable `scripts/profile-consult.py`, independent of optional
 cron tool schemas and Bot Forge. Run it with the default root, a NEW private
@@ -19,7 +20,7 @@ queries default recursively. Example from shared-source root:
 python scripts/profile-consult.py --root "$HOME/.hermes" \
   --output "$HOME/.hermes/maintenance/profile-audit/RUN/direct" \
   --self-assessment-file "$HOME/.hermes/maintenance/profile-audit/RUN/self.txt" \
-  --seconds 65
+  --seconds 65 --reuse-within-seconds 3600
 ```
 
 Fresh named consultations use `hermes -p NAME chat -Q --format stream-json
@@ -67,8 +68,56 @@ Send each profile this bounded question, with its literal profile name:
 Batch independent consultations with at most three concurrent fresh sessions;
 a failed target must not prevent the remaining targets from being consulted.
 Use a new receipt directory for each attempt; retain failed attempts unchanged.
-The JSON index lists every discovered target as replied, failed or not-reached.
-No zero-cost claim: these are fresh provider calls with native session bookkeeping.
+The JSON index lists every scoped target as replied, failed, not-reached,
+unavailable or reused.
+Fresh calls consume provider resources and create native session bookkeeping.
+
+Reuse is opt-in: `--reuse-within-seconds` accepts 0–3600 seconds; the default 0
+always consults freshly. Routine audits use 3600. Each occurrence still discovers
+current profiles, enforces explicit scope and produces a current default
+self-assessment. A reuse receipt is historical feedback, labeled `reused` and
+`historical-reuse`, with `original_reply_at` and `reuse_age_seconds`; it is never a
+new reply or live ownership claim. Hits do not extend expiry, so periodic fresh
+consultations remain required.
+
+Reuse requires an unchanged bounded fingerprint of the original session metadata,
+raw owner-response window around the selected anchor and newest user/assistant
+messages, profile configuration, saved `autowork/goal-handoff.json`, cron jobs,
+terminal execution status/error and strictly framed response content for each job,
+consultation question/budget, and shared helper source dependencies. Routine job
+`last_run_at`, `next_run_at` and unbounded `repeat.completed` updates are excluded;
+finite repeat counts remain inputs. Job prompt, configuration, paused/enabled
+state and error fields remain included. A new
+finished occurrence with identical response/status/error can reuse advisory
+feedback. Current execution identity/timestamps and output filename/full-content
+hash are retained separately in `reuse_observation` instead of invalidating advice.
+The execution schema follows the existing audit collector's `executions` table;
+latest `completed` or `failed` executions require a finish time. Changed status or
+error forces fresh consultation; unfinished/unknown executions are ineligible.
+Only the native character-framed Markdown Prompt/Response envelope is accepted;
+unknown formats or incorrect character counts disable reuse. Output filename
+ordering is not proof that a particular execution produced that file. Neither
+input grants execution authority; unknown schemas fall back to fresh consultation.
+
+Unknown, missing, malformed, unreadable, symlinked or oversized required inputs,
+changed helper/context, failed replies, exceeded tool limits and expired entries
+force fresh consultation. In opt-in mode, unavailable original project evidence
+instead produces `unavailable` / `not-consulted` without a model call or fabricated
+reply: the consultation's authorized history search cannot proceed. Legacy
+`--reuse-within-seconds 0` behavior remains fresh. Files are capped at 256 KiB,
+each message at 64 KiB;
+there are at most 64 jobs and 4096 directory entries per job. Source hashes and
+unredacted evidence hashes remain private; raw secrets are never persisted as
+fingerprint inputs. The cache holds only bounded sanitized successful receipts,
+under the existing default-maintenance lock, in a 0600 file capped at 1 MiB and
+128 entries. Fresh failures discard earlier successes. Corruption or unsafe cache
+paths disable reuse; they do not prevent fresh reporting.
+
+Read current boards, jobs and actual worker state every occurrence, including for
+subjects whose feedback was reused. Reuse cannot skip actionable work, recovery,
+acceptance checks or original-card reconciliation; it only avoids an unchanged
+advisory model request.
+
 Never launch a duplicate while the prior request is pending. The helper holds a
 nonblocking default-maintenance lock and rejects existing output directories before
 any discovery or provider call, so refusal cannot cause another consultation wave.

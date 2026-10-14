@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Fresh bounded consultations; no optional plugin transport or inherited authority."""
+"""Bounded consultations with opt-in historical reuse; no inherited authority."""
 import argparse
 import concurrent.futures
 import fcntl
+import hashlib
+import math
 import json
 import os
 from pathlib import Path
@@ -10,6 +12,8 @@ import re
 import signal
 import sqlite3
 import subprocess
+import stat
+import tempfile
 import time
 
 
@@ -170,7 +174,8 @@ def consult(name, root, hermes, seconds):
                 'original_evidence': evidence,
                 'reply': redact(final.get('text', '')), 'started_at': started,
                 'duration_seconds': round(time.time() - started, 2),
-                'tool_calls': tools, 'read_only_call_limit_observed': len(tools) <= 2 and set(tools) <= {'session_search', 'tool_describe'},
+                'tool_calls': tools, 'read_only_call_limit_observed': len(tools) <= 2 and set(tools) <= {'session_search', 'tool_describe'}
+                and tools.count('session_search') <= 1 and tools.count('tool_describe') <= 1,
                 'receipt': {**raw, 'stdout': '\n'.join(redact(line) for line in raw['stdout'].splitlines()),
                             'stderr': redact(raw['stderr'])}}
     except Exception as exc:
@@ -184,8 +189,233 @@ def private_json(path, data):
         json.dump(data, stream, ensure_ascii=False, indent=2)
 
 
-def run_all(root, output, self_assessment, hermes, seconds, profiles=None):
+CACHE_LIMIT = 1024 * 1024
+INPUT_LIMIT = 256 * 1024
+
+
+def bounded_read(path, limit=INPUT_LIMIT):
+    # Reject symlinks in every component, including in-profile aliases.
+    if path.resolve() != path:
+        raise ValueError('untrusted input path')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+            raise ValueError('input exceeds regular-file bound')
+        data = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+    if len(data) > limit or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        raise ValueError('input changed while reading')
+    return data
+
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def read_database(path):
+    if path.resolve() != path or not path.is_file():
+        raise ValueError('untrusted database path')
+    db = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=2)
+    deadline = time.monotonic() + 2
+    db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+    return db
+
+
+def response_body(data, job_id):
+    """Accept the native character-framed document, never guess at log delimiters."""
+    text = data.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
+    header = re.match(r'\A# Cron Job: [^\n]+\n\n\*\*Job ID:\*\* ([A-Za-z0-9_-]+)\n'
+                      r'\*\*Run Time:\*\* [^\n]+\n\*\*Schedule:\*\* [^\n]+\n\n'
+                      r'\*\*Prompt Characters:\*\* ([0-9]{1,6})\n## Prompt\n\n', text)
+    if not header or header[1] != job_id:
+        raise ValueError('unknown output envelope')
+    tail = text[header.end() + int(header[2]):]
+    frame = re.match(r'\n\n\*\*Response Characters:\*\* ([0-9]{1,6})\n## Response\n\n', tail)
+    if not frame:
+        raise ValueError('unknown response frame')
+    response = tail[frame.end():]
+    if not response.endswith('\n') or len(response) != int(frame[1]) + 1 or not response[:-1].strip():
+        raise ValueError('incomplete response frame')
+    return response[:-1]
+
+
+def reuse_fingerprint(name, root, hermes, seconds):
+    """Conservative cache eligibility, never an execution or acceptance gate."""
+    try:
+        home = root / 'profiles' / name
+        if home.resolve() != home:
+            return None
+        evidence = original_evidence(name, root)
+        if evidence.get('status') != 'available':
+            return None
+        db = read_database(home / 'state.db')
+        try:
+            session = db.execute("""SELECT id, source, title, cwd, git_repo_root, profile_name,
+                parent_session_id, started_at FROM sessions WHERE id=?
+                AND length(CAST(coalesce(title,'') AS BLOB)) <= 65536
+                AND length(CAST(coalesce(cwd,'') AS BLOB)) <= 65536
+                AND length(CAST(coalesce(git_repo_root,'') AS BLOB)) <= 65536
+                AND length(CAST(coalesce(started_at,'') AS BLOB)) <= 128""",
+                (evidence['session_id'],)).fetchone()
+            window = db.execute("""SELECT id, role,
+                CASE WHEN length(CAST(content AS BLOB)) <= 65536 THEN content ELSE NULL END
+                FROM messages WHERE session_id=? AND role IN ('user','assistant')
+                ORDER BY id DESC LIMIT 41""", (evidence['session_id'],)).fetchall()
+            # Bind the consultation's supplied anchor window even if many new user
+            # messages put that anchor outside the newest-message window.
+            for comparison, order in (('<=', 'DESC'), ('>', 'ASC')):
+                window += db.execute(f"""SELECT id, role,
+                    CASE WHEN length(CAST(content AS BLOB)) <= 65536 THEN content ELSE NULL END
+                    FROM messages WHERE session_id=? AND role IN ('user','assistant')
+                    AND id {comparison} ? ORDER BY id {order} LIMIT 41""",
+                    (evidence['session_id'], evidence['around_message_id'])).fetchall()
+        finally:
+            db.close()
+        if not session or not window or any(not isinstance(row[0], int) or row[2] is None for row in window):
+            return None
+        inputs = {'evidence': evidence, 'session': session, 'window': window,
+                  'question': QUESTION, 'hermes': hermes, 'seconds': seconds}
+        for relative in ('config.yaml', 'autowork/goal-handoff.json'):
+            inputs[relative] = digest(bounded_read(home / relative))
+        handoff = json.loads(bounded_read(home / 'autowork/goal-handoff.json'))
+        if not isinstance(handoff, dict) or not handoff.get('task_id'):
+            return None
+        jobs = json.loads(bounded_read(home / 'cron/jobs.json'))
+        jobs = jobs.get('jobs') if isinstance(jobs, dict) else jobs
+        if not isinstance(jobs, list) or not 1 <= len(jobs) <= 64:
+            return None
+        stable_jobs = []
+        for job in jobs:
+            if not isinstance(job, dict):
+                return None
+            stable = {key: value for key, value in job.items() if key not in ('last_run_at', 'next_run_at')}
+            if isinstance(stable.get('repeat'), dict) and stable['repeat'].get('times') is None:
+                stable['repeat'] = {key: value for key, value in stable['repeat'].items() if key != 'completed'}
+            stable_jobs.append(stable)
+        inputs['jobs'] = stable_jobs
+        db = read_database(home / 'cron/executions.db')
+        outputs = []
+        observations = []
+        try:
+            for job in jobs:
+                name_id = job.get('id') if isinstance(job, dict) else None
+                if not isinstance(name_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', name_id):
+                    return None
+                execution = db.execute("""SELECT
+                    CASE WHEN length(CAST(id AS BLOB)) <= 256 THEN id END,
+                    CASE WHEN length(CAST(status AS BLOB)) <= 128 THEN status END,
+                    CASE WHEN length(CAST(started_at AS BLOB)) <= 128 THEN started_at END,
+                    CASE WHEN length(CAST(finished_at AS BLOB)) <= 128 THEN finished_at END,
+                    CASE WHEN error IS NULL THEN '' WHEN length(CAST(error AS BLOB)) <= 65536 THEN error END
+                    FROM executions WHERE job_id=? ORDER BY started_at DESC, id DESC LIMIT 1""",
+                    (name_id,)).fetchone()
+                if not execution or any(value is None for value in execution) or execution[1] not in ('completed', 'failed') or not execution[3]:
+                    return None
+                directory = home / 'cron/output' / name_id
+                if directory.resolve() != directory:
+                    return None
+                paths = []
+                with os.scandir(directory) as entries:
+                    for index, entry in enumerate(entries):
+                        if index >= 4096:
+                            return None
+                        if entry.name.endswith('.md'):
+                            if not entry.is_file(follow_symlinks=False):
+                                return None
+                            paths.append(directory / entry.name)
+                if not paths:
+                    return None
+                latest = max(paths)
+                # Content and identity are both required. Filename order is not proof
+                # of association with the execution row, and grants no live authority.
+                data = bounded_read(latest)
+                body = response_body(data, name_id)
+                outputs.append((name_id, execution[1], execution[4], digest(body.encode())))
+                observations.append({'job_id': name_id, 'execution_id': execution[0],
+                                     'started_at': execution[2], 'finished_at': execution[3],
+                                     'filename': latest.name, 'output_sha256': digest(data)})
+        finally:
+            db.close()
+        inputs['outputs'] = outputs
+        source = Path(__file__).resolve().parents[1]
+        paths = [source / 'scripts/profile-consult.py', source / 'scripts/wire-owner-cron.py',
+                 source / 'skills/autowork/references/profile-feedback.md']
+        # Include helper dependencies, not just the entry points named in a prompt.
+        with os.scandir(source / 'skills/autowork/scripts') as entries:
+            for index, entry in enumerate(entries):
+                if index >= 256:
+                    return None
+                if entry.name.endswith('.py') and not entry.name.startswith('test_'):
+                    paths.append(Path(entry.path))
+        for path in paths:
+            inputs[str(path.relative_to(source))] = digest(bounded_read(path))
+        return {'fingerprint': digest(json.dumps(inputs, sort_keys=True).encode()),
+                'observation': json.loads(redact(json.dumps({'outputs': observations})))}
+    except (OSError, ValueError, TypeError, sqlite3.Error, RuntimeError):
+        return None
+
+
+def load_cache(path):
+    try:
+        data = json.loads(bounded_read(path, CACHE_LIMIT))
+        if data.get('version') == 1 and isinstance(data.get('entries'), dict) and len(data['entries']) <= 128:
+            return data['entries']
+    except (OSError, ValueError, TypeError, AttributeError, RuntimeError, RecursionError):
+        pass
+    return {}
+
+
+def save_cache(path, entries):
+    try:
+        if path.resolve() != path:
+            return
+    except (OSError, RuntimeError):
+        return
+    bounded = {}
+    size = 32
+    for name, entry in entries.items():
+        cost = len(json.dumps({name: entry}, ensure_ascii=False).encode()) + 2
+        if len(bounded) < 128 and size + cost <= CACHE_LIMIT:
+            bounded[name] = entry
+            size += cost
+    data = json.dumps({'version': 1, 'entries': bounded}, ensure_ascii=False).encode()
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.consult-cache-', delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(data)
+        os.replace(temporary, path)
+    except OSError:
+        pass  # Cache availability must never prevent fresh consultation/reporting.
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def cached_reply(entry, fingerprint, ttl):
+    try:
+        result = entry['result']
+        started = result['started_at']
+        age = time.time() - started
+        if (fingerprint and entry['fingerprint'] == fingerprint
+                and result['status'] == 'replied' and result.get('reply') and not result.get('error')
+                and result.get('read_only_call_limit_observed') is True
+                and math.isfinite(age) and 0 <= age < ttl):
+            return {**result, 'status': 'reused', 'mode': 'historical-reuse',
+                    'original_reply_at': started, 'reuse_age_seconds': round(age, 2)}
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+    return None
+
+
+def run_all(root, output, self_assessment, hermes, seconds, profiles=None, reuse_within_seconds=0):
+    if not isinstance(reuse_within_seconds, int) or not 0 <= reuse_within_seconds <= 3600:
+        raise ValueError('reuse seconds must be between 0 and 3600')
     root = root.resolve()
+    if (root / 'maintenance').resolve() != root / 'maintenance':
+        raise ValueError('maintenance must not be a symlink')
     output = output.resolve()
     if root.parent.name == 'profiles':
         raise ValueError('named-profile roots cannot own fleet consultation results')
@@ -201,10 +431,10 @@ def run_all(root, output, self_assessment, hermes, seconds, profiles=None):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ValueError('another consultation is running; do not contact targets twice') from exc
-        return _run_all(root, output, self_assessment, hermes, seconds, profiles)
+        return _run_all(root, output, self_assessment, hermes, seconds, profiles, reuse_within_seconds)
 
 
-def _run_all(root, output, self_assessment, hermes, seconds, profiles=None):
+def _run_all(root, output, self_assessment, hermes, seconds, profiles=None, reuse_within_seconds=0):
     targets = discover(root, hermes)
     if profiles is not None:
         if (not profiles or len(profiles) != len(set(profiles))
@@ -212,20 +442,63 @@ def _run_all(root, output, self_assessment, hermes, seconds, profiles=None):
             raise ValueError('profiles must be unique existing named profiles')
         targets = ['default'] + list(profiles)
     results = {'default': {'profile': 'default', 'status': 'replied', 'mode': 'local-self-assessment', 'reply': redact(self_assessment)}}
+    cache_path = root / 'maintenance/.profile-consult-cache.json'
+    reuse_enabled = reuse_within_seconds > 0 and len(targets) <= 128
+    cache = load_cache(cache_path) if reuse_enabled else {}
+    fingerprints = {}
+    observations = {}
+    for name in targets:
+        if name == 'default':
+            continue
+        if reuse_enabled:
+            evidence = original_evidence(name, root)
+            if evidence.get('status') != 'available':
+                results[name] = {'profile': name, 'status': 'unavailable', 'mode': 'not-consulted',
+                                 'original_evidence': evidence,
+                                 'reason': 'Original project evidence unavailable; authorized search cannot proceed'}
+                fingerprints[name] = None
+                continue
+        snapshot = reuse_fingerprint(name, root, hermes, seconds) if reuse_enabled else None
+        fingerprint = snapshot['fingerprint'] if snapshot else None
+        fingerprints[name] = fingerprint
+        if snapshot:
+            observations[name] = snapshot['observation']
+        previous = cache.get(name)
+        reused = cached_reply(previous, fingerprint, reuse_within_seconds) if isinstance(previous, dict) else None
+        if (reused and reused.get('profile') == name
+                and reused.get('original_evidence') == original_evidence(name, root)):
+            results[name] = reused
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(consult, name, root, hermes, seconds): name for name in targets if name != 'default'}
+        futures = {pool.submit(consult, name, root, hermes, seconds): name for name in targets if name not in results}
         for future in concurrent.futures.as_completed(futures):
             name = futures[future]
             try:
                 results[name] = future.result()
             except Exception as exc:
                 results[name] = {'profile': name, 'status': 'failed', 'error': redact(str(exc))}
+    if reuse_enabled or cache_path.exists():
+        next_cache = {}
+        for name, fingerprint in fingerprints.items():
+            result = results[name]
+            if result['status'] == 'reused':
+                next_cache[name] = cache[name]  # Original age never slides forward.
+            elif (fingerprint and result['status'] == 'replied'
+                  and result.get('read_only_call_limit_observed') is True and not result.get('error')
+                  and result.get('profile') == name
+                  and result.get('original_evidence') == original_evidence(name, root)
+                  and len(json.dumps(result).encode()) <= 65536
+                  and (reuse_fingerprint(name, root, hermes, seconds) or {}).get('fingerprint') == fingerprint):
+                next_cache[name] = {'fingerprint': fingerprint, 'result': result}
+        save_cache(cache_path, next_cache)
     index = []
     for name in targets:
         result = results.get(name, {'profile': name, 'status': 'not-reached'})
+        if name in observations:
+            result = {**result, 'reuse_observation': observations[name]}
         receipt = output / (name + '.json')
         private_json(receipt, result)
-        index.append({'profile': name, 'status': result['status'], 'evidence': str(receipt)})
+        index.append({'profile': name, 'status': result['status'], 'evidence': str(receipt),
+                      **{key: result[key] for key in ('mode', 'original_reply_at', 'reuse_age_seconds') if key in result}})
     assert {r['profile'] for r in index} == set(targets)
     private_json(output / 'index.json', {'targets': targets, 'results': index, 'suggestions_not_authority': True})
     return index
@@ -239,10 +512,14 @@ def main():
     parser.add_argument('--hermes', default='hermes')
     parser.add_argument('--seconds', type=int, default=65)
     parser.add_argument('--profiles', nargs='+', help='Consult only these existing named profiles')
+    parser.add_argument('--reuse-within-seconds', type=int, default=0,
+                        help='Reuse unchanged successful replies for up to 3600 seconds; default 0 always consults')
     args = parser.parse_args()
     if not 5 <= args.seconds <= 180:
         parser.error('seconds must be between 5 and 180')
-    print(json.dumps(run_all(args.root, args.output, args.self_assessment_file.read_text(), args.hermes, args.seconds, args.profiles)))
+    if not 0 <= args.reuse_within_seconds <= 3600:
+        parser.error('reuse seconds must be between 0 and 3600')
+    print(json.dumps(run_all(args.root, args.output, args.self_assessment_file.read_text(), args.hermes, args.seconds, args.profiles, args.reuse_within_seconds)))
 
 
 if __name__ == '__main__':

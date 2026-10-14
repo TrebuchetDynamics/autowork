@@ -210,6 +210,10 @@ class OwnerCronTests(unittest.TestCase):
                 self.assertIn('Use --profiles only for an explicitly authorized subject subset', prompt)
                 self.assertIn('otherwise omit --profiles and discover all current profiles dynamically', prompt)
                 self.assertIn('default self-assessment without recursion', prompt)
+                self.assertIn('--reuse-within-seconds 3600', prompt)
+                self.assertIn('Read current boards/jobs on every tick', prompt)
+                self.assertIn('historical reused replies with original reply time and age', prompt)
+                self.assertNotIn('Ask each configured subject once', prompt)
                 self.assertEqual(module.audit_prompt(prompt), prompt)
 
     def test_audit_auto_pause_is_opt_in_and_sticky(self):
