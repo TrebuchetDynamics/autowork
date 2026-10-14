@@ -79,6 +79,97 @@ class EvidenceFixture:
 
 
 class DeliveryStateTests(unittest.TestCase):
+    def test_historical_local_delivery_survives_main_descendants_only(self):
+        for merged in (False, True):
+            for changed_tree in (False, True):
+                with self.subTest(merged=merged, changed_tree=changed_tree), EvidenceFixture() as f:
+                    policy = f.local_integration()
+                    after = f.commit_id
+                    if merged:
+                        after = f.git('commit-tree', f.identity['candidate_tree'],
+                                      '-p', f.base, '-p', f.commit_id, text='integration\n')
+                        f.evidence['integration']['after'] = after
+                    tree = (f.git('rev-parse', f.commit('later\n', after) + '^{tree}')
+                            if changed_tree else f.identity['candidate_tree'])
+                    descendant = f.git('commit-tree', tree, '-p', after, text='advance\n')
+                    f.git('update-ref', 'refs/heads/main', descendant)
+                    original = copy.deepcopy(f.evidence)
+                    refs = f.git('show-ref')
+                    self.assertFalse(m.evaluate(f.evidence, f.repo, local_policy=policy)['delivered'])
+                    result = m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)
+                    self.assertTrue(result['delivered'])
+                    self.assertEqual(result['integration'], 'historically locally integrated')
+                    self.assertEqual(result['integration_evaluation'], 'historical')
+                    self.assertEqual(result['publication'], 'unknown')
+                    self.assertFalse(result['milestone_complete'])
+                    self.assertEqual(f.evidence, original)
+                    self.assertEqual(f.git('show-ref'), refs)
+                    for main in (f.base, f.commit('divergent\n', f.base)):
+                        f.git('update-ref', 'refs/heads/main', main)
+                        self.assertFalse(m.evaluate(f.evidence, f.repo, local_policy=policy,
+                                                    historical=True)['delivered'])
+
+    def test_historical_local_delivery_keeps_all_evidence_gates(self):
+        with EvidenceFixture() as f:
+            policy = f.local_integration()
+            descendant = f.commit('later\n', f.commit_id)
+            f.git('update-ref', 'refs/heads/main', descendant)
+            self.assertTrue(m.evaluate(f.evidence, f.repo, local_policy=policy,
+                                       historical=True)['delivered'])
+            for field, value in [('authority', 'forged'), ('candidate', {}),
+                                 ('reviewers', ['worker'])]:
+                self.assertFalse(m.evaluate(f.evidence, f.repo,
+                    local_policy=dict(policy, **{field: value}), historical=True)['delivered'])
+            bad = copy.deepcopy(f.evidence)
+            bad['integration']['provenance']['review']['outcome'] = 'pending'
+            self.assertFalse(m.evaluate(bad, f.repo, local_policy=policy, historical=True)['delivered'])
+            bad = copy.deepcopy(f.evidence)
+            bad['qualification']['checks'] = []
+            result = m.evaluate(bad, f.repo, local_policy=policy, historical=True)
+            self.assertFalse(result['delivered'])
+            self.assertEqual(result['integration'], 'historically locally integrated')
+            for field, value in [('action', 'synchronize'), ('before', f.commit_id),
+                                 ('target', 'refs/heads/other'), ('after', 'main')]:
+                bad = copy.deepcopy(f.evidence)
+                bad['integration'][field] = value
+                self.assertFalse(m.evaluate(bad, f.repo, local_policy=policy,
+                                            historical=True)['delivered'])
+            for after in (descendant,
+                          f.git('commit-tree', f.identity['candidate_tree'], '-p', f.commit_id,
+                                text='not integration\n'),
+                          f.git('commit-tree', f.identity['candidate_tree'], '-p', f.commit_id,
+                                '-p', f.base, text='reversed parents\n'),
+                          f.git('commit-tree', f.identity['candidate_tree'], '-p', f.base,
+                                '-p', f.commit_id, '-p', descendant, text='octopus\n'),
+                          f.commit('foreign tree\n', f.commit_id)):
+                f.git('update-ref', 'refs/heads/main', after)
+                bad = copy.deepcopy(f.evidence)
+                bad['integration']['after'] = after
+                self.assertFalse(m.evaluate(bad, f.repo, local_policy=policy,
+                                            historical=True)['delivered'])
+            f.git('update-ref', 'refs/heads/main', descendant)
+            f.git('update-ref', 'refs/heads/candidate', f.base)
+            self.assertFalse(m.evaluate(f.evidence, f.repo, local_policy=policy,
+                                        historical=True)['delivered'])
+
+    def test_historical_delivery_refuses_moved_prerequisite_refs(self):
+        with EvidenceFixture() as f:
+            f.git('update-ref', 'refs/heads/prerequisite', f.base)
+            f.identity = candidate_identity.capture(f.repo, f.base, 'refs/heads/candidate',
+                                                    {'refs/heads/prerequisite': f.base})
+            f.receipt = f.execute()
+            f.evidence = {'candidate': f.identity, 'implementation': {'artifacts': ['a.py']},
+                          'qualification': {'candidate': f.identity, 'required_checks': ['unit'],
+                                            'checks': [f.check()]}}
+            policy = f.local_integration()
+            f.git('update-ref', 'refs/heads/main', f.commit('later\n', f.commit_id))
+            self.assertTrue(m.evaluate(f.evidence, f.repo, local_policy=policy,
+                                       historical=True)['delivered'])
+            f.git('update-ref', 'refs/heads/prerequisite', f.commit_id)
+            result = m.evaluate(f.evidence, f.repo, local_policy=policy, historical=True)
+            self.assertFalse(result['qualified'])
+            self.assertEqual(result['integration'], 'unknown')
+
     def test_local_integration_requires_separate_exact_policy_and_review(self):
         with EvidenceFixture() as f:
             policy = f.local_integration()
