@@ -39,6 +39,19 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "PRIORITY",
+      "priority": 25,
+      "source": "docs/project.md#todo-owned-task-priority",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-028",
+        "TOOLSET-029"
+      ],
+      "title": "Make TODO.md order the enforced human priority"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -182,6 +195,14 @@
   "tasks": [
     {
       "depends_on": [],
+      "goal": "PRIORITY",
+      "id": "TOOLSET-028",
+      "section": "Now",
+      "status": "open",
+      "title": "Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -223,6 +244,16 @@
       "section": "Next",
       "status": "open",
       "title": "Reject malformed goal source fields before task selection"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-028"
+      ],
+      "goal": "PRIORITY",
+      "id": "TOOLSET-029",
+      "section": "Next",
+      "status": "open",
+      "title": "Migrate fleet repositories to recorded TODO.md priority order"
     },
     {
       "depends_on": [],

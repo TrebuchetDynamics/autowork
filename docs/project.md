@@ -676,3 +676,54 @@ and local result recording; unrelated upstream worktree garbage collection is
 disabled in that isolated harness. No production job, product repository, provider
 call or Telegram delivery is part of this qualification. Profile installation and
 future model-driven scheduled behavior must be reported separately.
+
+## TODO-owned task priority
+
+Status: Accepted
+
+Decision: On 2026-10-14 the user accepted that TODO.md order is the human priority
+authority and goals.json is the execution index. Synchronization is explicit and a
+disagreement is never silently resolved in favor of stale ledger order. Before this
+change, `eligible()` ranked by focus, section, goal priority, goal status and task
+ID, so a human reorder in TODO.md did not change selection when goals.json existed.
+
+### Ordering contract
+
+- The ledger records `priority_order`: a schema version and the last-reconciled
+  TODO.md sequence of unfinished task IDs. It captures human intent, not the
+  scheduler's resulting order; focus and dependencies affect which task runs but
+  never rewrite it.
+- Selection precedence is focus, section, recorded human order, then goal priority
+  as a fallback for tasks absent from the record. Dependencies remain mandatory.
+- One shared guard serves every selection entry point. When the current TODO.md
+  sequence of unfinished IDs differs from the record (moved, added, missing or
+  duplicated IDs; prose and coverage edits are ignored), default selection returns
+  `PRIORITY_DRIFT` with the IDs involved, never a ready result for the old order.
+  Explicitly named tasks and an owner's active claim are not interrupted.
+- A ledger without `priority_order` keeps legacy selection and reports a visible
+  `UNMIGRATED` flag with the bootstrap command. Selection never rewrites files.
+
+### Reconciliation and bootstrap
+
+- `goals.py reorder` records the current TODO.md order under the shared lock and
+  revision guard. It writes only goals.json, refuses missing or duplicated bodies,
+  and reports focus or dependency constraints that keep the human's first pick from
+  running first. Scheduled Autowork invokes it on drift before selecting new work.
+- `goals.py bootstrap-order` is a one-time, versioned migration. It ranks every
+  unfinished task by the legacy order (section, goal priority, goal status, ID,
+  excluding focus and dependencies), moves whole task blocks within their sections
+  without changing their contents, verifies the eligible order is unchanged and
+  records the snapshot. A matching repository gets the snapshot without a TODO.md
+  rewrite. `--dry-run` reports every proposed move and the revision token that the
+  apply step requires. An existing record makes bootstrap a no-op; disagreement
+  never reruns it.
+- New task bodies are inserted where they are intended to rank.
+
+### Rollout
+
+Offline implementation and regressions come first and modify no consumer
+repository. The live fleet migration is separate: dry-run each repository, pause
+only the jobs it pauses, lock and verify unchanged inputs, migrate, validate,
+compare the next pick before and after, commit locally per repository and resume
+only passing repositories. A failed repository stays paused. It requires separate
+authorization and no push.

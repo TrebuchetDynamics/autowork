@@ -14,7 +14,8 @@ TOOLSET-002 completion evidence is in [the archive](TODO.archive.md).
 Fast-startup plan: TOOLSET-012 is reviewed and integrated locally; TOOLSET-013
 retains measured native startup qualification. TOOLSET-003/011 still need their
 named environments; TOOLSET-008's reviewed continuation correction is integrated
-and archived. Preserve caller limits, queue priorities and ownership.
+and archived. Priority plan: TOOLSET-028 enforces TODO.md order offline; TOOLSET-029 is the
+separately authorized fleet migration. Preserve caller limits, queue priorities and ownership.
 
 Execution notes: Each task states the remaining action, acceptance, checks and stop
 conditions. Read linked detail only for a concrete gap; do not re-plan settled work
@@ -24,6 +25,20 @@ integrity checks and live qualification remain mandatory. Editing this queue doe
 not change a running worker's assigned contract or authorize dispatch/scheduling.
 
 ## Now
+
+### TOOLSET-028 — Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap
+
+- [ ] TOOLSET-028 — Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap
+- Status: open; reproduced: with goals.json, a human TODO.md reorder is ignored and the stale ledger pick is reported READY.
+- Goal: PRIORITY — Make TODO.md order the enforced human priority.
+- Sources: [accepted decision](docs/project.md#todo-owned-task-priority), [ledger helper](skills/docs-sync/scripts/goals.py), [direct selection](skills/autowork/scripts/task_execution.py).
+- Scope: Add the versioned `priority_order` record, ordering precedence, one shared drift guard used by every selection entry point, `goals.py reorder`, idempotent `goals.py bootstrap-order` with `--dry-run`, Docs Sync/Autowork guidance and offline regressions. No consumer repository changes.
+- Acceptance: T1/T2 regression: bootstrap of TODO T2,T1 with ledger order T1,T2 moves blocks to T1,T2 and selection stays T1; a later human move to T2,T1 yields PRIORITY_DRIFT from `goals.py next` and direct selection; after `reorder`, both select T2. Unmigrated ledgers keep legacy order with a visible UNMIGRATED flag. Reconcile writes only goals.json under lock/revision guard and refuses missing or duplicated bodies. Bootstrap is a no-op when a record exists, preserves block bytes and the eligible order, and requires the dry-run revision. Tests also cover unchanged renders, cross-goal reorders, dependencies, later-eligible tasks, stale revisions, an active claim, missing index and idempotent sync.
+- Checks: `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current toolset coordinator.
+- Exclusions: No consumer repository edits, fleet job pauses, push or live migration; TOOLSET-003 stays recovery-only.
+- Next action: Add the failing T1/T2 regression, then implement the record, guard, reconcile and bootstrap operations.
 
 ## Next
 
@@ -104,6 +119,20 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Next action: Add a failing malformed-source regression, implement the smallest validator correction, run the named offline suites and return an owned local commit for independent review.
 
 
+### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+
+- [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
+- Status: open; pending TOOLSET-028 and separate authorization.
+- Goal: PRIORITY — Make TODO.md order the enforced human priority.
+- Sources: [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
+- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), pause only jobs this work pauses, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, commit locally per repository and resume only passing repositories.
+- Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
+- Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, job readback after resume.
+- Dependencies: TOOLSET-028.
+- Ownership: Toolset coordinator under separate live authorization.
+- Exclusions: No push, no unrelated job changes, no resuming jobs that were already paused.
+- Next action: Wait for TOOLSET-028 verification and explicit authorization.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -114,6 +143,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | --- | --- | --- | --- |
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | partial | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass | TOOLSET-024 |
+| PRIORITY: Make TODO.md order the enforced human priority | unmet | — | TOOLSET-028, TOOLSET-029 |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | executed <code>Shared TOOLSET-017/018/019 implementation integrated eb72be6; independent review findings repaired with failing-then-passing regressions; final Python 3.12 scripts/check.py passed 318/470/139/8 tests, two skips/eight excluded. Native recovery, deployment and model qualification remain incomplete.</code> → pass; executed <code>TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-016: exact 9b894fd same-card review approved; integration b470c68 Python 3.12 scripts/check.py passed 283/448/139/8 offline tests (2 skipped, 8 excluded), bash -n and git diff --check passed; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-020: exact 5e05e6b native independent review approved; integration-candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 319/475/139/8 offline tests, two skips/eight excluded; local main integration preservation ZERO_CHANGED; native/model/live qualification unrun</code> → pass; executed <code>TOOLSET-021 exact ab12f821 native independent review run398 approved; integration 49739eff: env -u HERMES_KANBAN_DB uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 332/495/139/8 offline tests, 3 skips, 8 excluded; git diff --check HEAD^1 passed; native/model/live/startup unqualified</code> → pass; executed <code>TOOLSET-022 exact 816678e3 native independent review run406 approved; integration 5f49a2e0: Python 3.12 scripts/check.py on frozen integration candidate passed 332/510/139/8 offline tests, three skips/eight native-model-integration modules excluded; whitespace passed; native/model/live/startup unqualified</code> → pass | TOOLSET-003, TOOLSET-019 |
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>Reviewed 218865c; coordinator exact-commit Python 3.12 scripts/check.py: 253/448/139/8 offline tests passed, 2 skipped, 8 excluded; native same-card review approved; local integration only</code> → pass; executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass | — |
 | CONTINUATION: Resolve and align continuation authority | met | executed <code>TOOLSET-007 historical check-reuse implementation verified in 9d1c7dc offline gate: check_receipt/retry_selection/reconcile regression modules passed; full 288/451/139/8, two skips and eight excluded native/model modules. Historical task archived; TOOLSET-008 independently reviewed and integrated.</code> → pass; executed <code>TOOLSET-008: independently reviewed and integrated 9d1c7dc; Python 3.12 scripts/check.py passed 288/451/139/8 tests, 2 skipped and 8 native/model modules excluded; exact correction review reran 26 checks. Native behavior not qualified.</code> → pass | — |
