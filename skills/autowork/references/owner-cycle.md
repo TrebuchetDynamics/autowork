@@ -33,6 +33,45 @@ external-owner workflow, pass `--require-owner` to the cycle or selector; the
 owner-request, inbox and registry-release instructions below apply to that opt-in.
 No new schedule, publication authority or live-operation permission is implied.
 
+## Composed ready preflight
+
+The normal ready command is `owner_cycle.py REPO --profile PROFILE --state-dir
+PRIVATE_STATE --apply --source-path FILE ...`. It selects the accepted ready
+body itself, or accepts `--plan path#heading --tasks TASK` for a named slice.
+No separate contract-writing, capture or validate-only invocation is required.
+Prior native work is reconciled first; pending review, interrupted/owned cards and
+unintegrated candidates keep their original lane. Missing handoff continuity is
+not proof of missing ownership: real admission still checks live cards under lock.
+
+`ready_preflight.py` reuses docs-sync's task parser and bounded source capture.
+The body must contain Scope, Acceptance, Checks, Sources and Ownership; the
+canonical ledger must already be normalized. Explicit `--source-path` files bind
+the task's code/docs/tests/dependency closure. Accepted local links, governing
+TODO/ledger/plan, instructions and registry are also captured, within the existing
+32-file/byte/path/credential boundaries. Source hashes must match the original
+accepted selection. HEAD is captured as a full immutable base unless `--base` is
+explicit. Contract fields retain source/base/ownership, checks, budget and stops;
+no optional routing loader, planning/docs audit or suite runs before handoff.
+
+Exactly one real `start_goal.py` call owns native profile/cwd, ownership,
+dependency/focus/authority, freshness, immutable assembly and readback checks.
+Only a verified new handoff updates the canonical task to `in_progress` through
+the goals helper; it never closes the task, changes focus or claims qualification.
+`--ledger-mode proposal --integration-owner OWNER`, `--fallback-file` and
+`--pass-root` are explicit native options, not inferred authority. Attributed
+prerequisite/candidate recovery retains the manual request interface below.
+
+The owner-cycle lock and private `ready-preflights/TASK/preparation.json` preserve
+base, artifact hashes, original options and unknown usage. A dispatch marker is
+saved before the call: timeout/interruption/refusal never licenses another call,
+new card, refreshed evidence or budget reset. If interrupted before dispatch,
+unchanged hashed preparation is reused; changed sources/options/artifacts refuse.
+Missing inputs return only the named preparation, not a planning detour. Repair
+post-dispatch bookkeeping or notification on the original card, not by repeating
+admission. Full evidence stays in history and `unblock-latest.json`; routine output
+is compact, with `--verbose` for private diagnostics. These are offline-composed
+paths, not provider/model/Telegram qualification or measured startup savings.
+
 ## Document admission is actionable work
 
 Before invoking recovery with `--apply`, read the saved continuation and any retained

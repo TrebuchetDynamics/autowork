@@ -144,6 +144,32 @@ Reconcile, finish authorized closeout, select and hand off. Delegate deep invest
 re-verification and checks to the worker. Over budget: hand off the best candidate,
 or reply `[SILENT]` and leave a journal note for the next run.
 
+For an accepted ready task, the default is one composed command:
+
+```sh
+python3 <autowork>/scripts/owner_cycle.py /absolute/repo \
+  --profile <profile> --state-dir /private/profile/autowork --apply \
+  --source-path src/affected.py --source-path tests/test_affected.py \
+  --source-path requirements-test.txt
+```
+
+Supply the selected task's explicit code/docs/tests/dependency closure; linked
+accepted sources, TODO, ledger, repository instructions and ownership registry
+are also bounded into the snapshot. For a named slice add `--plan path#heading
+--tasks TASK`. The helper reconciles prior work, selects/reads the accepted body,
+captures the immutable HEAD (or explicit `--base`), generates every contract field,
+calls real `start_goal.py` admission once and records `in_progress` only after a
+verified new handoff. No separate validate-only, planning, broad docs audit, full
+suite or optional skill loader belongs before that ready dispatch. Compact output
+points to full private receipts; `--verbose` exposes the full receipt when needed.
+Missing Checks/source closure/non-normalized ledger returns only missing preparation.
+Stale inputs or an attempted/uncertain dispatch preserve original inputs, card and
+consumed budget; reconcile, never refresh pins or dispatch a replacement.
+Manual explicit handoff requests remain supported for attributed prerequisite or
+split-role recovery; see [the composed contract](references/owner-cycle.md#composed-ready-preflight).
+
+For status-only/manual recovery, use these steps only when needed:
+
 1. **Reconcile first.** Use `scripts/reconcile.py --profile <profile> [--task-id <id>] --compact`
    once for the prior handoff; reuse its readback instead of repeating show/journal reads.
    Before a waiting report, apply the final readback in [delivery batching](references/delivery-batches.md#continue-delivery).
@@ -165,36 +191,20 @@ or reply `[SILENT]` and leave a journal note for the next run.
    Read run/heartbeat liveness per `references/handoff.md#picker-run-liveness`.
    Load `references/state-and-recovery.md` for schema/session/recovery details and
    `references/blockers-and-history.md` for failed/blocked cards. Retry limits still apply.
-2. **Select.** Read `goals.py focus <repo> --json`, then run `goals.py next <repo> --json`
-   through the docs-sync script path (pass `<repo>` as the absolute repo path — a bare
-   directory name fails to resolve); choose an eligible slice of that primary milestone (priority 2). If held, run [recovery](references/owner-cycle.md) and [planning](references/backlog-planning.md). Resolve routine engineering choices first. If it still needs a material
-   owner action or decision, run `goals.py section <repo> <TASK> "Needs decision"` and ask (hard-blockers).
-   If it bundles excluded scope, register the in-scope slice with `goals.py add-task` and park the rest.
-   Then pick again, within the picker budget. If the eligible slice's goal is not the ledger
-   focus, use the scoped override in [the plan contract](../shared/PLAN-HANDOFF.md)
-   for a one-slice request. Change `goals.py focus <repo> <GOAL>` only for an owner
-   priority change, then re-run `next`. Neither path licenses unrelated work.
-   Load `references/discovery.md` only if
-   no usable milestone task remains (including the TODO fallback); do not double-check
-   a usable task with a broad discovery or documentation pass.
-3. **Hand off.** Load `references/handoff.md`. Use backlog-check. Compare
-   executable inputs against the committed candidate. Use default worker mode;
-   proposal context is only for explicitly requested split-role work. Dirty code needs
-   attributable prerequisites per [recovery](references/blocker-recovery.md);
-   never copy or commit foreign edits. Treat `--validate-only` as structural
-   and ledger admission, not proof that isolated candidate assembly will pass.
-   Write the contract file with every field:
-   `Objective`, `Scope`, `Verification`, `Source`, `Project payoff`, `Current evidence`,
-   `Expected change`, `Acceptance`, `Stop conditions`, `Repo-docs pass`. Include the
-   vertical-slice contract in references/handoff.md within these fields. Build it from the
-   goals.json task (quote its task and goal IDs), run `scripts/start_goal.py … --validate-only`,
-   then the real handoff (same selected budget: default 100 or explicit 50/100, automatic failure retries disabled), and — only once the helper
-   has actually created or returned a card for it — mark the task with
-   `goals.py task <repo> <TASK> in_progress`. If the helper answers `already_owned`, no card was
-   created: preserve the live card, avoid duplicate dispatch and revert any premature
-   `in_progress`. Explicit parallel requests use bounded file-disjoint children under
-   **Explicit parallel backlog requests**; the parent retains ledger/commit ownership.
-   The picker never implements the slice itself.
+2. **Select only missing preparation.** Use the docs-sync `goals.py next <repo> --json`
+   and existing focus/dependency rules, without promoting priority or setting focus.
+   For held inputs use [recovery](references/owner-cycle.md); use
+   [planning](references/backlog-planning.md) only for a genuine planning gap.
+   Scoped overrides follow [the plan contract](../shared/PLAN-HANDOFF.md).
+   Load `references/discovery.md` only if no usable milestone task remains.
+3. **Manual handoff only when needed.** `references/handoff.md` owns complete
+   contracts, explicit roles and native admission. Dirty executable inputs need
+   attributable prerequisites per [recovery](references/blocker-recovery.md), not
+   copied foreign edits. Invoke real admission once; `--validate-only` is optional
+   structural diagnostics, not candidate assembly proof. Record `in_progress` only
+   for a verified new handoff; `already_owned` preserves the original card/budget.
+   Explicit parallel requests retain bounded file-disjoint children and parent
+   ledger/commit ownership. The picker never implements the slice itself.
 4. **Report** per the Output contract and the user's delivery policy. A request
    for status every occurrence requires a concise nonempty report even when unchanged.
    Otherwise reply exactly `[SILENT]` only after reconciliation and the idle fallback

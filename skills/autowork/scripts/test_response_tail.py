@@ -5,6 +5,19 @@ from audit_profiles import cron_responses
 
 
 class ResponseTailTests(unittest.TestCase):
+    def test_ready_status_keeps_full_preparation_in_private_receipt(self):
+        import owner_cycle
+        result = {'outcome': 'QUEUED', 'selected_task': {'id': 'T1'},
+                  'dispatch_attempted': True, 'next_action': 'Observe original native card',
+                  'handoff': {'result': {'task_id': 'original', 'contract': 'large private input'}},
+                  'recovery': {'stages': ['private source history']}}
+        status = owner_cycle.compact(result, '/private/state')
+        self.assertEqual(status['native_card'], 'original')
+        self.assertEqual(status['completed_tasks'], [])
+        self.assertNotIn('recovery', status)
+        self.assertNotIn('handoff', status)
+        self.assertEqual(status['receipt'], '/private/state/unblock-latest.json')
+
     def test_large_prompt_does_not_hide_response_and_boundary_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

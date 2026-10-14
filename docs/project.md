@@ -134,8 +134,9 @@ Status: Accepted
 The user selected earlier useful implementation with less preparation/tool chatter,
 then explicitly selected the faster ready-task path as the default. This acceptance
 covers that startup outcome, not parallel execution, weaker verification, or a
-changed continuation policy. Implementation and measured runtime qualification
-remain pending in [TOOLSET-012 and TOOLSET-013](../TODO.md).
+changed continuation policy. The TOOLSET-012 composed implementation candidate
+awaits independent review/integration; measured native qualification remains
+pending in [TOOLSET-013](../TODO.md).
 
 ### Outcome and scope
 
@@ -170,6 +171,15 @@ and existing isolation/ownership admission instead of creating a second dispatch
 removing validation or editing upstream Hermes. The
 [owner cycle](../skills/autowork/scripts/owner_cycle.py) is the existing composition
 point to evaluate before adding any new helper.
+
+The candidate's default `owner_cycle.py --profile PROFILE --apply` path now
+composes prior-work reconciliation, accepted selection/body parsing, bounded
+explicit source capture, a complete contract, one real native admission call and
+durable bookkeeping. See [the command contract](../skills/autowork/references/owner-cycle.md#composed-ready-preflight).
+It retains the manual recovery interface, original immutable pins and unknown
+usage; attempted dispatches cannot automatically restart preparation. Offline
+fixtures exercise actual Git assembly and the frozen startup guard with native
+calls mocked. They do not measure useful model action, savings or live delivery.
 
 Decision: Make the ready path default, compose reusable existing controls, and
 move detailed routine readback into receipts. Reason: fewer model/tool round trips
@@ -210,7 +220,7 @@ guidance are now implemented and independently reviewed.
 [Vendor/routing tests](../tests/test_engineering_vendor.py),
 [workflow-cycle tests](../tests/test_workflow_cycle.py) and the offline suite passed;
 provenance and upstream protocol bytes are preserved. TOOLSET-012's composed
-preflight and overall acceptance remain pending. These checks do not establish
+candidate still requires independent review and integration. These checks do not establish
 live worker or scheduled execution.
 
 ### Task context simplification

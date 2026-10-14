@@ -22,6 +22,8 @@ import owner_unblock
 import retry_selection
 import progress_runtime
 import backlog_plan
+import ready_preflight
+import reconcile
 
 
 def read_json(path, default=None):
@@ -31,8 +33,7 @@ def read_json(path, default=None):
 
 
 def save(path, value):
-    if path.is_symlink() or path.parent.is_symlink():
-        raise ValueError('refuse symlinked receipt destination')
+    path = progress_runtime.private_path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(prefix='.cycle-', dir=path.parent)
     try:
@@ -104,13 +105,49 @@ def run_locked(args, state):
     if args.apply and not args.authority and (state / 'recovery-authority.json').is_file():
         args.authority = str(progress_runtime.private_path(state / 'recovery-authority.json'))
     result = {'version': 1, 'timestamp': now, 'run_id': uuid.uuid4().hex,
-              'task_ids': args.tasks.split(','), 'plan': args.plan, 'completed_tasks': [],
+              'task_ids': args.tasks.split(',') if args.tasks else [], 'plan': args.plan, 'completed_tasks': [],
               'scope': getattr(args, 'scope', 'tasks'),
               'coordination_mode': 'owner' if getattr(args, 'require_owner', False) else 'autonomous',
-              'dispatch_attempted': False, 'implementation': 'not_executed',
+              'dispatch_attempted': False, 'implementation': 'not_executed', 'unchanged_runs': 0,
               'delivery': 'no product commit or push by this runner', 'outcome': 'BLOCKED',
               'work_search': {'state': 'not_evaluated'},
               'ownership': 'unverified; native handoff must reconcile current ownership'}
+    composed = bool(getattr(args, 'profile', None) and args.apply and not args.handoff_request)
+    if composed:
+        try:
+            prefix = ['hermes', '-p', args.profile]
+            prior = reconcile.reconcile(prefix, reconcile.profile_home(prefix), args.profile, repo=Path(args.consumer))
+            result['reconciliation'] = prior
+            if prior.get('outcome') != 'no_handoff' and prior.get('next_action') != 'reconcile_task_and_select':
+                result.update(outcome='BLOCKED', action='reconcile_original_card',
+                              next_action=prior['next_action'], selected_task=None,
+                              held_task_ids=[], recovery={'gate': 'native_continuity'}, repairs=[], blocker=[])
+                save(state / 'history' / (result['run_id'] + '.json'), result)
+                save(state / 'unblock-latest.json', result)
+                save(state / 'report-latest.txt', render(result))
+                return result
+            if args.plan is None:
+                selected = retry_selection.select(args.consumer, canonical_repo=args.canonical_repo,
+                                                  require_owner=args.require_owner)
+                if selected['state'] != 'ready_for_autowork' or not selected.get('selected_task'):
+                    result.update(outcome='PREPARATION_REQUIRED', action='prepare_missing_inputs',
+                                  next_action='; '.join(selected['reasons']) or selected['state'],
+                                  selected_task=selected.get('selected_task'), held_task_ids=[],
+                                  recovery={'gate': 'selection', 'selection': selected}, repairs=[], blocker=selected['reasons'])
+                    save(state / 'history' / (result['run_id'] + '.json'), result)
+                    save(state / 'unblock-latest.json', result)
+                    save(state / 'report-latest.txt', render(result))
+                    return result
+                args.plan = selected['plan']
+                args.tasks = selected['selected_task']['id']
+                result.update(plan=args.plan, task_ids=[args.tasks])
+        except (ValueError, OSError, RuntimeError, KeyError, subprocess.SubprocessError) as exc:
+            result.update(outcome='FAILED', action='reconcile_original_card', next_action=str(exc),
+                          selected_task=None, held_task_ids=[], recovery={'gate': 'native_continuity'}, repairs=[], blocker=[str(exc)])
+            save(state / 'history' / (result['run_id'] + '.json'), result)
+            save(state / 'unblock-latest.json', result)
+            save(state / 'report-latest.txt', render(result))
+            return result
     try:
         with redirect_stdout(io.StringIO()):
             recovery = owner_unblock.run(args)
@@ -153,13 +190,20 @@ def run_locked(args, state):
         result['queue_gap'] = str(exc)
     result['backlog_ready'] = ready
     result['resolved_requests'] = []
-    if ready and args.apply and not args.handoff_request and result['selected_task']:
+    if ready and composed and result['selected_task']:
+        try:
+            result['preparation'] = ready_preflight.compose(args, result['selected_task'], consumer, state, save,
+                                                          result.get('fallback_selection', selection))
+            args.handoff_request = result['preparation']['handoff_request']
+        except (ValueError, OSError, TypeError, KeyError, subprocess.SubprocessError) as exc:
+            result['preparation_error'] = str(exc)
+    if ready and args.apply and not args.handoff_request and result['selected_task'] and not composed:
         saved = state / 'handoff-requests' / (result['selected_task']['id'] + '.json')
         if saved.is_file(): args.handoff_request = str(progress_runtime.private_path(saved))
     preparation = ready and not args.handoff_request
     required_inputs = list(recovery.get('required_inputs', []))
     if preparation:
-        required_inputs.append('handoff_request: same consumer/task, explicit contract, immutable base and source snapshot')
+        required_inputs.append(result.get('preparation_error') or 'handoff_request: same consumer/task, explicit contract, immutable base and source snapshot')
         result.update(outcome='PREPARATION_REQUIRED', admission='handoff_preparation')
         ready = False
     if ready:
@@ -170,16 +214,28 @@ def run_locked(args, state):
         if args.handoff_request and args.apply and result['selected_task']:
             result['dispatch_attempted'] = True
             try:
+                if composed:
+                    result['preparation'] = ready_preflight.mark_attempt(state, result['preparation'], save)
                 result['handoff'] = handoff(args, result['selected_task'], consumer)
                 native = result['handoff']['result']
                 if result['handoff']['exit_code'] != 0:
-                    result.update(outcome='FAILED', next_action='Reconcile native state before retry; dispatch outcome may be unknown')
-                elif (native.get('outcome') == 'handed_off' or
+                    result.update(outcome='FAILED', next_action='Reconcile native state on the original card before retry; dispatch outcome may be unknown')
+                elif ((native.get('outcome') == 'handed_off' and
+                       (not composed or (isinstance(native.get('task_id'), str) and native['task_id'].strip()
+                                         and native.get('goal_mode') is True))) or
                       (native.get('outcome') == 'notification_blocked'
                        and isinstance(native.get('task_id'), str) and native['task_id'].strip()
                        and native.get('goal_mode') is True)):
                     result['outcome'] = 'QUEUED'  # card status alone is not worker liveness
                     result['next_action'] = 'Observe original native card/run; do not dispatch a replacement'
+                    if composed:
+                        goals = retry_selection.goals
+                        with goals.coordination(consumer, None) as repo, redirect_stdout(io.StringIO()):
+                            snapshot = json.loads(Path(result['preparation']['snapshot']).read_text())
+                            if not ready_preflight.source_freshness.check(snapshot, repo)['fresh']:
+                                raise ValueError('source changed after native handoff; preserve original card, repair bookkeeping only')
+                            goals.execute(argparse.Namespace(cmd='task', repo=str(repo), task=result['selected_task']['id'], status='in_progress'))
+                        result['bookkeeping'] = 'in_progress; not acceptance or closure'
                     if native.get('outcome') == 'notification_blocked':
                         result['notification_warning'] = native.get('notification_error') or 'Notification setup failed'
                         result['next_action'] += '; repair its notification separately without repeating admission'
@@ -187,9 +243,10 @@ def run_locked(args, state):
                     result.update(outcome='BLOCKED', next_action='Reconcile the original native owner/card')
                 else:
                     result.update(outcome='BLOCKED', next_action='Native admission not established; inspect handoff receipt')
-            except (ValueError, OSError, TypeError, KeyError, subprocess.SubprocessError) as exc:
-                result.update(outcome='FAILED', handoff={'error': str(exc)},
-                              next_action='Reconcile native state before retry; dispatch outcome may be unknown')
+            except (ValueError, OSError, TypeError, KeyError, SystemExit, subprocess.SubprocessError) as exc:
+                result.setdefault('handoff', {})['error'] = str(exc)
+                result.update(outcome='FAILED',
+                              next_action='Reconcile native state on the original card before retry; dispatch outcome may be unknown')
     elif getattr(args, 'require_owner', False):
         result['action'] = 'owner_followup_required' if result['unchanged_runs'] >= 2 else 'owner_input_required'
         request_tasks = [result['selected_task']['id']] if preparation and result['selected_task'] else result['task_ids']
@@ -300,7 +357,8 @@ def run_locked(args, state):
     if result.get('routing_gap') and result['unchanged_runs'] >= 2:
         result['action'] = 'escalate_missing_owner_route'
         result['next_action'] = result['routing_gap']
-    result['planning'] = backlog_plan.decide(result, state)
+    result['planning'] = ({'action': 'prepare_execution_handoff', 'reason': 'Ready composed path; repair only the named missing input'}
+                          if composed and result['backlog_ready'] else backlog_plan.decide(result, state))
     if result['planning']['action'] == 'discover_repository_work' and not result['dispatch_attempted']:
         result.update(action='discover_repository_work', outcome='ACTION_REQUIRED',
                       next_action=result['planning']['handoff'])
@@ -317,7 +375,7 @@ def run_locked(args, state):
                       next_action=result['planning'].get('handoff', result['planning']['reason']))
     elif preparation:
         result.update(action='prepare_execution_handoff', outcome='PREPARATION_REQUIRED',
-                      next_action='Prepare the contract, base and snapshot under existing authority; a missing owner route does not delegate ordinary preparation to the user')
+                      next_action=result.get('preparation_error') or 'Prepare the contract, base and snapshot under existing authority; a missing owner route does not delegate ordinary preparation to the user')
     save(state / 'history' / (result['run_id'] + '.json'), result)
     save(state / 'unblock-latest.json', result)
     save(state / 'report-latest.txt', render(result))
@@ -337,12 +395,29 @@ def render(result):
             f"Delivery: {result['delivery']}\n")
 
 
+def compact(result, state_dir):
+    """Routine ready-path status; full inputs and recovery history stay private."""
+    task = result.get('selected_task') or {}
+    return {'outcome': result['outcome'], 'task': task.get('id'),
+            'native_card': result.get('handoff', {}).get('result', {}).get('task_id') or result.get('reconciliation', {}).get('task_id'),
+            'dispatch_attempted': result['dispatch_attempted'], 'completed_tasks': [],
+            'next_action': result['next_action'],
+            'receipt': str(Path(state_dir) / 'unblock-latest.json')}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('consumer')
-    parser.add_argument('--plan', required=True)
-    parser.add_argument('--tasks', required=True)
+    parser.add_argument('--plan', help='Accepted named plan; omit with --tasks for default ready selection')
+    parser.add_argument('--tasks', help='Named task IDs; requires --plan')
     parser.add_argument('--state-dir', required=True, help='Private owning-profile autowork directory')
+    parser.add_argument('--profile', help='Normal ready path: compose inputs and invoke native admission once with --apply; omit only for recovery-only inspection')
+    parser.add_argument('--source-path', action='append', default=[], help='Explicit executable/test/dependency-closure file to bind; repeat as needed')
+    parser.add_argument('--base', help='Full immutable base; default captures current HEAD once')
+    parser.add_argument('--fallback-file', help='Existing structured focused-milestone fallback evidence; never synthesized')
+    parser.add_argument('--pass-root', help='Private isolated worktree root forwarded to native admission')
+    parser.add_argument('--ledger-mode', choices=('worker', 'proposal'), default='worker')
+    parser.add_argument('--verbose', action='store_true', help='Print full private receipt instead of compact ready-path status')
     for name in ('canonical-repo', 'authority', 'prerequisite-request', 'candidate-request',
                  'handoff-request', 'integration-owner', 'proposal', 'owner-evidence'):
         parser.add_argument('--' + name)
@@ -354,11 +429,17 @@ def main(argv=None):
     parser.add_argument('--allow-ready-fallback', action='store_true', help='Allow an accepted same-milestone task when the preferred slice is held')
     parser.add_argument('--acknowledge', action='store_true', help='Record supplied owner acknowledgement, not inferred consent')
     args = parser.parse_args(argv)
+    if args.profile and args.apply and os.environ.get('HERMES_KANBAN_TASK'):
+        parser.error('Already a goal worker: execute the assigned card, never launch a nested goal')
+    if (args.plan is None) != (args.tasks is None):
+        parser.error('provide both --plan and --tasks, or neither for default ready selection')
+    if args.plan is None and (not args.profile or not args.apply or args.handoff_request):
+        parser.error('default ready selection requires --profile --apply without a manual handoff request')
     try:
         result = cycle(args)
     except (ValueError, OSError) as exc:
         parser.exit(1, str(exc) + '\n')
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result if args.verbose or not args.profile else compact(result, args.state_dir), indent=2))
     return 0 if result['outcome'] in ('READY', 'PROGRESS', 'QUEUED') else 1
 
 

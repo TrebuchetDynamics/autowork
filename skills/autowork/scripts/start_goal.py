@@ -199,7 +199,6 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
                      shlex.join([sys.executable, str(helper_root / 'docs-sync/scripts/goals.py')]))
     finish_command = (runtime_bundle.command(helper_runtime, 'autowork/scripts/finish_task.py') if helper_runtime else
                       shlex.join([sys.executable, str(helper_root / 'autowork/scripts/finish_task.py')]))
-    cycle_path = helper_root / 'shared/ENGINEERING-CYCLE.md'
     engineering_path = helper_root / 'engineering/SKILL.md'
     body = (REVIEW_DOD + '\n\n' + contract + '\n\nExecution: Implement only this selected slice; no new tasks. '
             'Decide routine reversible choices yourself; preserve accepted decisions, repository instructions, '
@@ -226,7 +225,7 @@ def build_task_body(contract, goal_max_turns=BUDGET, *, ledger_mode='worker',
             'reuse unchanged source-bound decisions. Apply ponytail:ponytail-review or integrated criteria in the existing review lane. '
             'For trivial edits apply directly; preserve relevant regression coverage; never waive safety, acceptance criteria or required checks.\n\n'
             'Optional methods: only for a concrete method gap or explicit protocol request, use '
-            f'`{engineering_path}`; consult `{cycle_path}` only if routing is unclear. '
+            f'`{engineering_path}` to select one verified technique. No routing-reference injection on the ready path. '
             'Autowork owns scope, authorization, task state and completion; protocols add no planning/approval/review loop. '
             'Preserve user-required methods; record material use (verified path/revision, decision/artifact and check/result) '
             'in the existing receipt. Missing optional guidance does not block work.\n\n'

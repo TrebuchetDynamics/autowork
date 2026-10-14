@@ -13,6 +13,81 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class HandoffTests(unittest.TestCase):
+    def test_composed_command_reaches_real_admission_once_offline(self):
+        import owner_cycle
+        import subprocess
+        import os
+        import re
+        import shlex
+        from test_owner_cycle import ComposedReadyTests
+        fixture = ComposedReadyTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.ready_backlog()
+        home = fixture.root / 'profile'
+        home.mkdir()
+        created = []
+        card = {}
+        calls = []
+        def cli(prefix, *args):
+            if args == ('config', 'get', 'terminal.cwd'):
+                return str(fixture.repo)
+            if args[:2] == ('profile', 'show'):
+                return 'Path: ' + str(home)
+            if args[:3] == ('kanban', 'boards', 'list'):
+                return json.dumps([{'slug': 'default', 'db_path': str(home / 'board.db')}])
+            if 'list' in args:
+                return '[]'
+            if 'create' in args:
+                created.append(args)
+                card.update(id='original', title=args[4], assignee='fixture', status='ready',
+                            workspace_kind='dir', workspace_path=args[args.index('--workspace') + 1][4:],
+                            completion_contract='local-only', max_retries=1)
+                return json.dumps(card)
+            if 'show' in args:
+                return json.dumps({'task': card, 'runs': []})
+            raise AssertionError(args)
+        real_run = subprocess.run
+        def boundary(argv, **kwargs):
+            if len(argv) > 1 and Path(argv[1]).name == 'start_goal.py':
+                calls.append(argv)
+                with patch.object(sys, 'argv', argv[1:]), contextlib.redirect_stdout(io.StringIO()) as output:
+                    m.main()
+                return subprocess.CompletedProcess(argv, 0, output.getvalue(), '')
+            return real_run(argv, **kwargs)
+        import sys
+        with patch.object(owner_cycle.reconcile, 'profile_home', return_value=home), \
+                patch.object(owner_cycle.reconcile, 'reconcile', return_value={'outcome': 'no_handoff'}), \
+                patch.object(owner_cycle.subprocess, 'run', side_effect=boundary), \
+                patch.object(m, 'run', side_effect=cli), \
+                patch.object(m, 'goal_fields', return_value={'goal_mode': True, 'goal_max_turns': 100}), \
+                patch.object(m, 'ensure_notification', return_value={'fixture': True}), \
+                patch.dict(os.environ, {}, clear=True), \
+                patch.object(owner_cycle.backlog_plan, 'decide', side_effect=AssertionError('no planning')), \
+                contextlib.redirect_stdout(io.StringIO()):
+            code = owner_cycle.main([str(fixture.repo),
+                '--profile', 'fixture', '--state-dir', str(fixture.state), '--source-path', 'code.py',
+                '--pass-root', str(fixture.root / 'passes'), '--apply'])
+        receipt = json.loads((fixture.state / 'unblock-latest.json').read_text())
+        self.assertEqual(code, 0, receipt)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn('--validate-only', calls[0])
+        self.assertEqual(len(created), 1)
+        self.assertEqual(receipt['handoff']['result']['task_id'], 'original')
+        self.assertEqual(json.loads((fixture.repo / 'goals.json').read_text())['tasks'][0]['status'], 'in_progress')
+        self.assertNotIn('primary_milestone', json.loads((fixture.repo / 'goals.json').read_text()))
+        body = created[0][created[0].index('--body') + 1]
+        self.assertNotIn('ENGINEERING-CYCLE.md', body)
+        guard = re.search(r'Before initial design, tests or any production edit, run `([^`]+)`', body).group(1)
+        result = real_run(shlex.split(guard), capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['outcome'], 'worker_start_admitted')
+        manifest = receipt['handoff']['result']['pass_manifest']
+        import runtime_bundle
+        files = runtime_bundle.verify(manifest['helper_runtime'])['files']
+        self.assertIn('autowork/scripts/ready_preflight.py', files)
+        self.assertIn('autowork/scripts/retry_selection.py', files)
+
     def test_proposal_handoff_reaches_native_create_with_uncommitted_planning_only(self):
         import subprocess
         with tempfile.TemporaryDirectory() as directory:
