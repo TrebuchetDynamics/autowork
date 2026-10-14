@@ -60,16 +60,20 @@ Never rebase or rewrite history, never `--force`, never `git pull --rebase`, and
        `git diff --cached --name-only` is empty (nothing staged, so an index refresh cannot unstage
        a live writer's bytes), move the pointer instead of the tree: branch a safety ref at the old
        HEAD and **keep** it, `git reset --mixed <source-sha>` (writes no worktree file), then apply the fast-forward effect
-       only to paths that were **clean by both definitions**: take `git diff --name-only <old>
-       <new>`, subtract everything in `git diff --name-only` (tracked-modified) **and** everything
-       in `git ls-files --others --exclude-standard` (untracked), and
-       `git checkout <source-sha> -- <that remainder>`.
+       only to paths that were **clean by both definitions**: take the incoming paths,
+       subtract tracked modifications/deletions and all untracked paths (including ignored
+       files), then refresh clean additions/modifications and remove clean incoming deletions.
+       The helper uses NUL records and literal pathspecs; a checkout alone cannot remove paths
+       missing from the incoming tree. Before moving HEAD/index it refuses file/directory
+       transitions, directory collisions, symlink/file ancestors, unsupported Git modes and
+       hidden index flags (skip-worktree/assume-unchanged). Exact dirty/untracked/ignored file
+       collisions stay untouched. A preexisting safety ref must point at the old HEAD.
        A path that is *untracked locally* while tracked in the source counts as dirty, not clean:
        `git checkout <sha> -- <path>` writes unconditionally, so including it replaces a local file
        (a generated artifact someone simply had not committed) with upstream's, and git keeps no
        copy of untracked bytes to restore — the loss is permanent and regenerable only by its
        author. Subtracting only tracked-modified paths is the shape that makes this look safe. Prove it in the report: hash every dirty and
-       untracked path before and after (`git hash-object`) and require zero changed, and confirm the
+       untracked path before and after (raw byte hashes; symlink targets, not referents) and require zero changed, and confirm the
        dirty list shrank only by paths that became identical to the new HEAD. Re-gate the areas the
        incoming commits touched, and never run it while a writer is staged or mid-write.
        `scripts/behind-only-realign.sh` implements this whole procedure with the guards and the
