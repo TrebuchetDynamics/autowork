@@ -30,7 +30,7 @@ EXCLUSIONS = {
         ('integration', 'requires an existing isolated Hermes installation'),
 }
 LIVE_FLAGS = ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX',
-              'HERMES_NATIVE_HANDOFF_TEST')
+              'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST')
 
 
 def discover_tests(root):

@@ -64,13 +64,13 @@ class OfflineCheckTests(unittest.TestCase):
         self.write('tests/test_environment.py', '''import os, unittest
 class Check(unittest.TestCase):
     def test_environment(self):
-        for name in ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX', 'HERMES_NATIVE_HANDOFF_TEST'):
-            self.assertNotIn(name, os.environ)
+        for name in ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX', 'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST'):
+            self.assertFalse(name in os.environ, name + ' leaked into offline tests')
 ''')
         self.write('skills/docs-sync/scripts/test_goal_gap_regression.py',
                    "raise RuntimeError('live model imported')\n")
         env = dict(os.environ, CONTAINMENT_LINUX_TESTS='1', RUN_CONTROLLER_BRIDGE_LINUX='1',
-                   HERMES_NATIVE_HANDOFF_TEST='1')
+                   HERMES_NATIVE_HANDOFF_TEST='1', HERMES_NATIVE_REGISTRATION_TEST='1')
         result = self.run_check(env=env)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Ran 1 test', result.stdout + result.stderr)
