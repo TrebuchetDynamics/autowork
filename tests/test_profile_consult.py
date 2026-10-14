@@ -292,6 +292,22 @@ class ConsultationTests(unittest.TestCase):
                 self.assertNotIn('synthetic-token', sanitized['message'])
                 self.assertEqual(m.redact(m.redact(raw)), m.redact(raw))
 
+    def test_quoted_assignment_credentials_are_redacted_in_full(self):
+        import json
+        m = self.load()
+        for text in ('password="prefix LEAK_MARKER tail" keep',
+                     "secret='prefix LEAK_MARKER tail' keep",
+                     'authorization="prefix \\" LEAK_MARKER tail" keep',
+                     'token="prefix\nLEAK_MARKER tail" keep',
+                     'password="prefix\\\nLEAK_MARKER tail" keep',
+                     "secret='prefix\\\nLEAK_MARKER tail' keep"):
+            for wrapped in (text, json.dumps({'text': text, 'keep': True})):
+                with self.subTest(wrapped=wrapped):
+                    sanitized = m.redact(wrapped)
+                    self.assertNotIn('LEAK_MARKER', sanitized)
+                    self.assertIn('keep', sanitized)
+                    self.assertEqual(m.redact(sanitized), sanitized)
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))
