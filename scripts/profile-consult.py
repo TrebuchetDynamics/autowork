@@ -111,9 +111,9 @@ def original_evidence(name, root):
             # shortcut: only original user-facing roots; new transports fail closed until added.
             # Redact whole bounded metadata before display limits can split secrets.
             row = db.execute('''SELECT id, source,
-                    CASE WHEN length(CAST(title AS BLOB)) <= 65536 THEN title ELSE '' END,
-                    CASE WHEN length(CAST(cwd AS BLOB)) <= 65536 THEN cwd ELSE '' END,
-                    CASE WHEN length(CAST(git_repo_root AS BLOB)) <= 65536 THEN git_repo_root ELSE '' END
+                    CASE WHEN title IS NULL OR length(CAST(title AS BLOB)) <= 65536 THEN title ELSE '' END,
+                    CASE WHEN cwd IS NULL OR length(CAST(cwd AS BLOB)) <= 65536 THEN cwd ELSE '' END,
+                    CASE WHEN git_repo_root IS NULL OR length(CAST(git_repo_root AS BLOB)) <= 65536 THEN git_repo_root ELSE '' END
                 FROM sessions WHERE source IN ('cli','telegram','discord','slack','web','tui')
                     AND length(id) BETWEEN 1 AND 240
                     AND parent_session_id IS NULL AND (profile_name IS NULL OR profile_name = ?)
