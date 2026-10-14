@@ -599,6 +599,78 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertIn('Repair direct execution', result['profiles']['default']['error'])
         self.assertEqual(receipt.read_text(), '[]')
 
+    def test_releasing_latest_repository_preserves_other_live_coordinator(self):
+        import hashlib
+        claim_a, original = self.direct_claim()
+        journal = self.home/'autowork'
+        pointers = journal/'task-execution-claims'; pointers.mkdir()
+        latest = journal/'task-execution-latest.json'
+        key_a = hashlib.sha256(str(self.repo/'.git').encode()).hexdigest()
+        (pointers/f'{key_a}.json').write_bytes(latest.read_bytes())
+        repo_b = self.root/'second-repository'; repo_b.mkdir()
+        self.git(repo_b, 'init', '-b', 'main')
+        state_b = repo_b/'.git/autowork-execution'; state_b.mkdir()
+        claim_b = state_b/'active.json'
+        claim_b.write_text(json.dumps({**original, 'task_id': 'TASK-2', 'workspace': str(repo_b)}))
+        pointer_b = json.dumps({'claim_path': str(claim_b), 'task_id': 'TASK-2'})
+        key_b = hashlib.sha256(str(repo_b/'.git').encode()).hexdigest()
+        (pointers/f'{key_b}.json').write_text(pointer_b)
+        latest.write_text(pointer_b)
+        claim_b.unlink()  # B releases, while A's exact coordinator remains alive.
+        before = claim_a.read_bytes()
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Active direct coordinator owns TASK-1', result['profiles']['default']['error'])
+        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertEqual(claim_a.read_bytes(), before)
+        self.assertEqual(self.calls, [])
+        claim_a.unlink()
+        self.assertEqual(self.deploy()['status'], 'updated')
+
+    def test_repository_pointer_protects_claim_without_latest_pointer(self):
+        self.direct_claim()
+        journal = self.home/'autowork'
+        pointers = journal/'task-execution-claims'; pointers.mkdir()
+        (journal/'task-execution-latest.json').rename(pointers/'repo.json')
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Active direct coordinator', result['profiles']['default']['error'])
+
+    def test_duplicate_latest_and_repository_pointers_inspect_claim_once(self):
+        claim_path, claim = self.direct_claim()
+        claim['owner']['boot_id'] = 'prior-boot'
+        claim_path.write_text(json.dumps(claim))
+        journal = self.home/'autowork'
+        pointers = journal/'task-execution-claims'; pointers.mkdir()
+        (pointers/'repo.json').write_bytes((journal/'task-execution-latest.json').read_bytes())
+        read_text = Path.read_text
+        claim_reads = []
+        def once(path, *args, **kwargs):
+            if path == claim_path:
+                claim_reads.append(path)
+                if len(claim_reads) > 1:
+                    raise OSError('duplicate claim inspection')
+            return read_text(path, *args, **kwargs)
+        with patch.object(Path, 'read_text', once):
+            self.assertIsNone(self.mod.active_consumers(self.home, 'default'))
+        self.assertEqual(len(claim_reads), 1)
+
+    def test_malformed_repository_pointer_requires_repair(self):
+        pointers = self.home/'autowork/task-execution-claims'; pointers.mkdir(parents=True)
+        (pointers/'repo.json').write_text('not json')
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Repair direct execution', result['profiles']['default']['error'])
+        self.assertEqual((pointers/'repo.json').read_text(), 'not json')
+
+    def test_symlinked_repository_pointer_directory_is_refused(self):
+        journal = self.home/'autowork'; journal.mkdir()
+        outside = self.root/'foreign-pointers'; outside.mkdir()
+        (journal/'task-execution-claims').symlink_to(outside, target_is_directory=True)
+        result = self.deploy()
+        self.assertEqual(result['profiles']['default']['status'], 'deferred')
+        self.assertIn('Repair direct execution', result['profiles']['default']['error'])
+
     def test_git_export_attributes_do_not_change_deployed_blob_hashes(self):
         (self.remote/'.gitattributes').write_text('skills/demo/SKILL.md export-ignore\n')
         self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'archive attributes')

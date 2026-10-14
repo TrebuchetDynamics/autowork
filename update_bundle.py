@@ -304,44 +304,67 @@ def check_tree(path, tree):
             raise ValueError(f'Installed/staged bytes changed: {path / relative}')
 
 
-def direct_consumer(home, profile):
-    """Read the direct coordinator's pointer and verify its actual process identity."""
-    receipt = home / 'autowork/task-execution-latest.json'
+def direct_claim_consumer(claim_path, profile):
+    """Verify one shared repository claim against its actual process identity."""
+    safe_path(claim_path)
     try:
-        safe_path(receipt)
-        if not receipt.exists():
-            return None
-        pointer = json.loads(receipt.read_text())
-        if (not isinstance(pointer, dict) or not isinstance(pointer.get('task_id'), str)
-                or not pointer['task_id'].strip() or not isinstance(pointer.get('claim_path'), str)):
-            raise ValueError('invalid pointer')
-        claim_path = Path(pointer['claim_path'])
-        if not claim_path.is_absolute():
-            raise ValueError('claim path is not absolute')
-        safe_path(claim_path)
-        try:
-            claim = json.loads(claim_path.read_text())
-        except FileNotFoundError:
-            return None  # Release removes the shared claim; the latest pointer may remain.
-        if (not isinstance(claim, dict) or any(not isinstance(claim.get(key), str)
-                or not claim[key].strip() for key in ('task_id', 'workspace', 'profile'))
-                or not Path(claim['workspace']).is_absolute()):
-            raise ValueError('invalid active claim')
-        owner = claim.get('owner')
-        if (not isinstance(owner, dict) or type(owner.get('pid')) is not int or owner['pid'] <= 0
-                or not isinstance(owner.get('boot_id'), str) or not owner['boot_id'].strip()
-                or not str(owner.get('start_ticks', '')).isdigit()):
-            raise ValueError('incomplete process identity')
-        if claim['profile'] != profile:
-            return None
-        if Path('/proc/sys/kernel/random/boot_id').read_text().strip() != owner['boot_id']:
-            return None
-        try:
-            stat = Path(f"/proc/{owner['pid']}/stat").read_text().rsplit(')', 1)[1].split()
-        except FileNotFoundError:
-            return None
-        if stat[0] not in ('Z', 'X') and stat[19] == str(owner['start_ticks']):
-            return f"Active direct coordinator owns {claim['task_id']} (pid {owner['pid']})"
+        claim = json.loads(claim_path.read_text())
+    except FileNotFoundError:
+        return None  # Release removes the shared claim; pointers may remain.
+    if (not isinstance(claim, dict) or any(not isinstance(claim.get(key), str)
+            or not claim[key].strip() for key in ('task_id', 'workspace', 'profile'))
+            or not Path(claim['workspace']).is_absolute()):
+        raise ValueError('invalid active claim')
+    owner = claim.get('owner')
+    if (not isinstance(owner, dict) or type(owner.get('pid')) is not int or owner['pid'] <= 0
+            or not isinstance(owner.get('boot_id'), str) or not owner['boot_id'].strip()
+            or not str(owner.get('start_ticks', '')).isdigit()):
+        raise ValueError('incomplete process identity')
+    if claim['profile'] != profile:
+        return None
+    if Path('/proc/sys/kernel/random/boot_id').read_text().strip() != owner['boot_id']:
+        return None
+    try:
+        stat = Path(f"/proc/{owner['pid']}/stat").read_text().rsplit(')', 1)[1].split()
+    except FileNotFoundError:
+        return None
+    if stat[0] not in ('Z', 'X') and stat[19] == str(owner['start_ticks']):
+        return f"Active direct coordinator owns {claim['task_id']} (pid {owner['pid']})"
+    return None
+
+
+def direct_consumer(home, profile):
+    """Inspect every repository pointer; a newer claim must not hide an older live one."""
+    directory = home / 'autowork/task-execution-claims'
+    receipt = directory
+    try:
+        if any(path.is_symlink() for path in (directory, *directory.parents)):
+            raise ValueError('symlinked direct execution pointer directory')
+        if directory.exists() and not directory.is_dir():
+            raise ValueError('direct execution pointer path is not a directory')
+        receipts = sorted(path for path in directory.iterdir() if path.suffix == '.json') if directory.exists() else []
+        receipts.append(home / 'autowork/task-execution-latest.json')
+        seen = set()
+        for receipt in receipts:
+            safe_path(receipt)
+            try:
+                pointer = json.loads(receipt.read_text())
+            except FileNotFoundError:
+                continue
+            if (not isinstance(pointer, dict) or not isinstance(pointer.get('task_id'), str)
+                    or not pointer['task_id'].strip() or not isinstance(pointer.get('claim_path'), str)):
+                raise ValueError('invalid pointer')
+            claim_path = Path(pointer['claim_path'])
+            if not claim_path.is_absolute():
+                raise ValueError('claim path is not absolute')
+            safe_path(claim_path)
+            identity = claim_path.resolve()
+            if identity in seen:
+                continue
+            seen.add(identity)
+            reason = direct_claim_consumer(claim_path, profile)
+            if reason:
+                return reason
         return None
     except (OSError, ValueError, TypeError, IndexError) as error:
         raise ValueError(f'Repair direct execution receipt/claim referenced by {receipt}: {error}') from error
