@@ -121,7 +121,7 @@ def explicitly_closed(body, mark):
 
 
 def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundaries=()):
-    """Select explicitly closed, ledger-done bodies; never infer task completion."""
+    """Select closed/done or explicitly superseded bodies; never infer task completion."""
     repo = Path(repo)
     prose = re.sub(r'<!--.*?-->', lambda m: re.sub(r'[^\r\n]', ' ', m[0]), mask(text), flags=re.S)
     verified = set(verified_tasks)
@@ -147,13 +147,21 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
     for index, (start, end, tid, mark) in enumerate(records):
         body = prose[start:end]
         closed = explicitly_closed(body, mark)
-        eligible = tasks.get(tid, {}).get('status') == 'done' if data is not None else tid in verified
-        if not closed or not eligible or index in overlapping:
+        task = tasks.get(tid, {})
+        superseded = bool(task.get('status') == 'superseded' and task.get('superseded_by')
+                          and task.get('supersession_reason', '').strip())
+        eligible = (task.get('status') == 'done' or superseded) if data is not None else tid in verified
+        if (not closed and not superseded) or not eligible or index in overlapping:
             if eligible or closed:
                 retained.append(tid)
             continue
         section = next((h[2] for h in reversed(headings) if h.start() < start and len(h[1]) <= 2), 'Tasks')
-        selected.append((start, end, tid, section, text[start:end]))
+        block = text[start:end]
+        if superseded:
+            block = ('Disposition: Superseded; not completed\nSuccessors: ' +
+                     ', '.join(task['superseded_by']) + '\nReason: ' + task['supersession_reason'] +
+                     '\nOriginal task and unchecked acceptance retained below.\n\n' + block)
+        selected.append((start, end, tid, section, block))
     unselected = verified - {row[2] for row in selected}
     if unselected:
         if unselected & {row[2] for row in records}:
@@ -182,7 +190,8 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
             additions += ('\n\n<!-- archived from TODO.md -->\n\nSource section: ' + section + '\n\n' +
                           rebased_references(repo, owner, block) + block)
             missing[block] -= 1
-    after = (history or '# Completed tasks\n') + additions
+    has_superseded = any(tasks.get(row[2], {}).get('status') == 'superseded' for row in selected)
+    after = (history or ('# Task history\n' if has_superseded else '# Completed tasks\n')) + additions
     if any(after.count(block) < count for block, count in needed.items()):
         sys.exit('archive conservation check failed; no write')
     live, cursor = [], 0
@@ -192,7 +201,8 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
     live.append(text[cursor:])
     result = ''.join(live)
     if not re.search(r'\]\(<?' + re.escape(quote(owner.as_posix(), safe='/.-_')) + r'(?:>|#|\))', result):
-        link = '[Completed tasks](' + quote(owner.as_posix(), safe='/.-_') + ')\n\n'
+        label = 'Task history' if has_superseded else 'Completed tasks'
+        link = '[' + label + '](' + quote(owner.as_posix(), safe='/.-_') + ')\n\n'
         title = re.search(r'^#[ \t]+[^\r\n]*(?:\r?\n|$)', result, re.M)
         at = title.end() if title else 0
         result = result[:at] + '\n' + link + result[at:]

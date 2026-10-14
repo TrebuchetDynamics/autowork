@@ -25,12 +25,17 @@ Agents change goals.json only through these commands, never by hand-editing JSON
   Unbound linked worktrees require explicit canonical targeting; workers return proposals.
   CLI operations lock the common Git directory (or a local no-Git fixture) before load.
   goals.py task <repo> <TASK> <open|in_progress|done>
+  goals.py supersede <repo> <TASK> --by T1,T2 --reason TEXT
+                                                retire without acceptance; render archives unchecked original history
   goals.py section <repo> <TASK> <Now|Next|Needs decision>
   goals.py add-task <repo> <TASK> --goal <GOAL> --title <text> [--section Now|Next|Needs decision] [--depends-on T1,T2]
   goals.py evidence <repo> <GOAL> --kind executed|inspection --ref <cmd/path> --result pass|fail [--ran-at ISO]
 
 Rule (the met rule): a goal is `met` only with executed+pass evidence and all tasks done.
 Fmt downgrades missing evidence to `unverified`, or reopens unfinished work as `partial`.
+Superseded tasks never satisfy dependencies or the all-done met rule, even when
+their successors finish. Explicit goal/dependency reconciliation remains required;
+supersession is a disposition, not completion evidence.
 Only version 1 ledgers are supported. Incompatible field shapes and duplicate JSON
 keys are rejected before writing; formatting preserves additional metadata.
 Next applies the same normalization in memory, then rejects invalid ledger state;
@@ -56,9 +61,9 @@ import sys
 from pathlib import Path
 
 GOAL_STATUS = ('unmet', 'partial', 'unverified', 'met')
-TASK_STATUS = ('open', 'in_progress', 'done')
+TASK_STATUS = ('open', 'in_progress', 'done', 'superseded')
 TASK_ID = r'[A-Za-z0-9][A-Za-z0-9_-]*'
-SECTIONS = ('Now', 'Next', 'Needs decision', 'Done')
+SECTIONS = ('Now', 'Next', 'Needs decision', 'Done', 'Superseded')
 KINDS = ('executed', 'inspection')
 RESULTS = ('pass', 'fail')
 # Order: primary milestone first, then section (Now before Next), goal priority, then status as a
@@ -121,10 +126,10 @@ def shape_errors(data):
                 continue
             if not isinstance(row.get('id'), str) or not row['id']:
                 problems.append(f'{location}.id must be a nonempty string')
-            for field in ('title', 'status', 'goal', 'section'):
+            for field in ('title', 'status', 'goal', 'section', 'supersession_reason'):
                 if field in row and not isinstance(row[field], str):
                     problems.append(f'{location}.{field} must be a string')
-            fields = ('depends_on', 'tasks') if collection == 'goals' else ('depends_on',)
+            fields = ('depends_on', 'tasks') if collection == 'goals' else ('depends_on', 'superseded_by')
             for field in fields:
                 value = row.get(field, [])
                 if not isinstance(value, list) or any(not isinstance(v, str) or not v for v in value):
@@ -169,8 +174,8 @@ def normalize(data):
     for t in tasks:
         t.setdefault('depends_on', []); t.setdefault('section', 'Next'); t.setdefault('status', 'open')
         t['depends_on'] = sorted(set(t['depends_on']))
-        if t['status'] == 'done':
-            t['section'] = 'Done'
+        if t['status'] in ('done', 'superseded'):
+            t['section'] = 'Done' if t['status'] == 'done' else 'Superseded'
     # Goals keep authoring order (priority, then id); tasks follow section then id.
     goals.sort(key=lambda g: (g['priority'], g['id']))
     tasks.sort(key=lambda t: (SECTIONS.index(t['section']) if t['section'] in SECTIONS else 9, t['id']))
@@ -192,7 +197,7 @@ def dependency_cycles(data):
     # prerequisites. These edges can deadlock even when both ledgers are DAGs.
     goals = {g['id']: g for g in data['goals']}
     tasks = {t['id']: t for t in data['tasks']}
-    active_tasks = {tid for tid, t in tasks.items() if t.get('status') != 'done'}
+    active_tasks = {tid for tid, t in tasks.items() if t.get('status') not in ('done', 'superseded')}
     active_goals = {gid for gid, g in goals.items() if g.get('status') != 'met'
                     or not proven(g) or any(tasks[tid].get('goal') == gid for tid in active_tasks)}
     graph = {}
@@ -266,6 +271,20 @@ def errors(data, *, allow_pending_evidence=False):
         for d in t.get('depends_on', []):
             if d not in tids:
                 errs.append(f'{tid}: depends_on unknown task {d}')
+    for t in tasks:
+        if t.get('status') == 'superseded':
+            successors = t.get('superseded_by', [])
+            if not successors or any(tid not in tids or tid == t['id'] for tid in successors):
+                errs.append(f"{t['id']}: superseded_by must name other existing tasks")
+            if not t.get('supersession_reason', '').strip():
+                errs.append(f"{t['id']}: supersession_reason is required")
+    if not errs and any(t['status'] == 'superseded' for t in tasks):
+        try:
+            TopologicalSorter({t['id']: t.get('depends_on', []) +
+                               (t.get('superseded_by', []) if t['status'] == 'superseded' else [])
+                               for t in tasks}).prepare()
+        except CycleError:
+            errs.append('task dependency/supersession cycle; reconcile successors and dependencies')
     if not errs:
         errs.extend(dependency_cycles(data))
     return errs
@@ -490,7 +509,7 @@ def eligible(data):
     out = []
     for t in data['tasks']:
         g = goals.get(t['goal'])
-        if t['status'] == 'done' or t.get('section') not in SECTION_RANK or not g or g['status'] == 'met':
+        if t['status'] in ('done', 'superseded') or t.get('section') not in SECTION_RANK or not g or g['status'] == 'met':
             continue
         if any(tasks.get(d, {}).get('status') != 'done' for d in t['depends_on']):
             continue
@@ -511,7 +530,7 @@ def render_text(repo, data, text=None):
     for g in data['goals']:
         ev = '; '.join(cell(e['kind']) + (' (redacted historical evidence)' if e.get('redacted') else '')
                        + f" <code>{cell(e['ref'])}</code> → {cell(e['result'])}" for e in g['evidence']) or '—'
-        open_t = [t for t in g['tasks'] if tasks.get(t, {}).get('status') != 'done']
+        open_t = [t for t in g['tasks'] if tasks.get(t, {}).get('status') not in ('done', 'superseded')]
         rows.append(f"| {cell(g['id'])}: {cell(g['title'])} | {cell(g['status'])} | {ev} | {cell(', '.join(open_t)) or '—'} |")
     block = '\n'.join([BEGIN, '', 'Generated from `goals.json` by `goals.py render`. `met` requires an executed, passing check.', '', *rows, '', END])
     todo = Path(repo) / 'TODO.md'
@@ -774,6 +793,8 @@ def backlog_receipt(a, *, candidate=None):
         for t in data['tasks']:
             tid = t['id']
             entries = bodies.get(tid, [])
+            if t['status'] == 'superseded':
+                continue  # Explicitly retired bodies can retain unchecked history in the archive.
             if t['status'] == 'done':
                 if any(mark == ' ' for _, mark, _ in entries):
                     reasons.append(f'{tid}: checkbox/section does not match done ledger task')
@@ -914,8 +935,8 @@ def initialize(a):
         render_text(repo, normalized, text)
         bodies = task_bodies(text)
         for task in normalized['tasks']:
-            if task['status'] == 'done':
-                continue  # Closed history may live in the established archive.
+            if task['status'] in ('done', 'superseded'):
+                continue  # Closed or superseded history may live in the established archive.
             entries = bodies.get(task['id'], [])
             if len(entries) == 1:
                 fields = task_fields(entries[0][0])
@@ -999,12 +1020,15 @@ def main():
     f = sub.add_parser('focus'); f.add_argument('repo'); f.add_argument('goal', nargs='?')
     f.add_argument('--clear', action='store_true', help='remove primary milestone focus')
     f.add_argument('--json', action='store_true', help='read primary milestone without writing')
-    t = sub.add_parser('task'); t.add_argument('repo'); t.add_argument('task'); t.add_argument('status', choices=TASK_STATUS)
+    t = sub.add_parser('task'); t.add_argument('repo'); t.add_argument('task'); t.add_argument('status', choices=[s for s in TASK_STATUS if s != 'superseded'])
+    sup = sub.add_parser('supersede'); sup.add_argument('repo'); sup.add_argument('task')
+    sup.add_argument('--by', required=True, help='comma-separated existing successor task IDs')
+    sup.add_argument('--reason', required=True, help='accepted disposition, never passing evidence')
     s2 = sub.add_parser('section'); s2.add_argument('repo'); s2.add_argument('task')
-    s2.add_argument('section', choices=[s for s in SECTIONS if s != 'Done'])
+    s2.add_argument('section', choices=[s for s in SECTIONS if s not in ('Done', 'Superseded')])
     n2 = sub.add_parser('add-task'); n2.add_argument('repo'); n2.add_argument('task')
     n2.add_argument('--goal', required=True); n2.add_argument('--title', required=True)
-    n2.add_argument('--section', default='Next', choices=[s for s in SECTIONS if s != 'Done'])
+    n2.add_argument('--section', default='Next', choices=[s for s in SECTIONS if s not in ('Done', 'Superseded')])
     n2.add_argument('--depends-on', default='')
     r = sub.add_parser('redact'); r.add_argument('repo')
     r.add_argument('--replacements-file', required=True, help='JSON absolute literal prefix to portable placeholder map')
@@ -1081,8 +1105,27 @@ def execute(a):
         else:
             print('none')
         return
+    if a.cmd == 'supersede':
+        task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
+        if task['status'] == 'done':
+            sys.exit('completed task history cannot be relabelled superseded; no write')
+        successors = sorted(set(tid.strip() for tid in a.by.split(',') if tid.strip()))
+        reason = a.reason.strip()
+        if task['status'] == 'superseded' and (task.get('superseded_by') != successors
+                or task.get('supersession_reason') != reason):
+            sys.exit('supersession already recorded with a different disposition; no write')
+        task.update(status='superseded', section='Superseded', superseded_by=successors,
+                    supersession_reason=reason)
+        problems = errors(normalize(data), allow_pending_evidence=True)
+        if problems:
+            sys.exit('\n'.join(problems) + '; no write')
+        dump(a.repo, data)
+        print('ok superseded; acceptance remains unpassed; run render to retain original history in archive')
+        return
     if a.cmd == 'task':
         task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
+        if task['status'] == 'superseded':
+            sys.exit('superseded history cannot be reopened or completed; use its successor tasks; no write')
         task['status'] = a.status
         goal = next((g for g in data['goals'] if g['id'] == task['goal']), None)
         if a.status != 'done':
@@ -1098,8 +1141,8 @@ def execute(a):
         print('ok'); return
     if a.cmd == 'section':
         task = next((x for x in data['tasks'] if x['id'] == a.task), None) or sys.exit(f'unknown task {a.task}')
-        if task.get('status') == 'done':
-            sys.exit(f'task {a.task} is done')
+        if task.get('status') in ('done', 'superseded'):
+            sys.exit(f'task {a.task} is {task["status"]}')
         task['section'] = a.section
         dump(a.repo, data); print(f'ok {a.task} -> {a.section}'); return
     if a.cmd == 'add-task':
