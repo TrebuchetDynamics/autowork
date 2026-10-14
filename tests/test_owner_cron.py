@@ -15,6 +15,21 @@ def load():
 
 
 class OwnerCronTests(unittest.TestCase):
+    def test_delivery_clone_repair_preserves_sync_authority_and_is_idempotent(self):
+        module = load()
+        scope = module.ROLE_MARKER + 'delivery-sync\nExisting hourly job. No development; no deployment.'
+        prompt = module.delivery_sync_prompt(scope, Path('/fixture/isolated-origin-clone.py'))
+        self.assertTrue(prompt.startswith(scope))
+        for rule in ('isolated-origin-clone.py', '--expected-main', 'Never use --reference',
+                     'retain original candidate', 'does not clear provenance', 'No new worker'):
+            self.assertIn(rule, prompt)
+        self.assertFalse(module.is_owner_job({'prompt': prompt, 'skills': ['hermes-toolset:autowork']}))
+        self.assertEqual(module.delivery_sync_prompt(prompt, Path('/fixture/isolated-origin-clone.py')), prompt)
+        with self.assertRaises(ValueError):
+            module.delivery_sync_prompt('Generic development', Path('/fixture/helper.py'))
+        with self.assertRaises(ValueError):
+            module.delivery_sync_prompt(scope, Path('relative.py'))
+
     def test_owner_prompt_uses_composed_ready_dispatch_not_duplicate_prepasses(self):
         prompt = load().owner_prompt('Offline development only; retain named task filter.', True)
         for rule in ('one composed owner_cycle.py --apply', '--source-path',

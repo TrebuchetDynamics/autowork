@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shlex
 
 ROLE_MARKER = '\n\nSCHEDULED JOB ROLE: '
 MARKER = '\n\nSHARED OWNER RECOVERY CYCLE — required execution\n'
@@ -189,6 +190,24 @@ def _audit_prompt(prompt, *, repair=False):
         'Do not perform product --apply, write sibling state, change jobs, or replace workers. '
         'Identify shared helper defects from the actual failed transition; owner consultations '
         'and successful cron delivery are not recovered tasks. Keep all paused jobs paused.\n')
+
+
+def delivery_sync_prompt(prompt, clone_helper):
+    """Add a bounded clone preparation repair without changing delivery authority."""
+    marker = '\n\nISOLATED DELIVERY CLONE — verified preparation\n'
+    if ROLE_MARKER + 'delivery-sync\n' not in prompt or not Path(clone_helper).is_absolute():
+        raise ValueError('requires delivery-sync scope and an absolute clone helper')
+    return prompt.split(marker, 1)[0] + marker + (
+        'Never use --reference or borrowed object alternates for the isolated origin clone, '
+        'especially when a local/reference repository is shallow. '
+        f'Use python3 {shlex.quote(str(clone_helper))} with the existing explicit origin, a new private destination '
+        'and --expected-main bound to the exact freshly observed origin/main SHA. '
+        'The helper clones full independent history and refuses changed pins, shallow history '
+        'or existing destinations. Preserve old clones and retain original candidate/check/PR receipts; '
+        'a changed origin pin is a reconciliation hold, never permission to refresh old task pins. '
+        'Clone preparation does not clear provenance, acceptance, ownership or publication gates. '
+        'Continue the saved eligible delivery only after its existing required checks pass. '
+        'No new worker, schedule, resume, budget reset, force push or deployment is authorized.\n')
 
 
 def verify_edit(before, after, prompt):
