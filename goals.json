@@ -30,9 +30,10 @@
       "id": "BACKLOG",
       "priority": 20,
       "source": "docs/project.md#accepted-requirements",
-      "status": "met",
+      "status": "partial",
       "tasks": [
-        "TOOLSET-002"
+        "TOOLSET-002",
+        "TOOLSET-024"
       ],
       "title": "Provide repeatable first-time backlog initialization"
     },
@@ -214,6 +215,14 @@
       "section": "Next",
       "status": "in_progress",
       "title": "Deploy reviewed local fixes to selected eligible profiles"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-024",
+      "section": "Next",
+      "status": "open",
+      "title": "Reject malformed goal source fields before task selection"
     },
     {
       "depends_on": [],
