@@ -457,6 +457,7 @@ def main():
     p.add_argument('--goal-task', help='Exact dependency-ready ledger task identity')
     p.add_argument('--fallback-file', help='Structured JSON fallback attestations bound to selection evidence')
     p.add_argument('--source-snapshot', help='Scoped evidence snapshot captured before candidate selection')
+    p.add_argument('--registration-declaration', help='Explicit JSONL coordination registry, field mappings and owned scope; reserve blocked without dispatch')
     p.add_argument('--base', help='Immutable full base commit; required for new Git write passes')
     p.add_argument('--candidate', help='Explicit committed candidate to assemble; defaults to the pinned base')
     p.add_argument('--prerequisite', action='append', default=[], metavar='REF=FULL_COMMIT')
@@ -574,6 +575,20 @@ def main():
             if Path(args.source_snapshot).read_bytes() != snapshot_bytes:
                 raise ValueError('Source snapshot changed since selection; re-evaluate work')
             expected = json.loads(snapshot_bytes)
+            registration = None
+            if args.registration_declaration:
+                if not args.goal_task:
+                    raise ValueError('Required registration needs an exact goal task')
+                registration_spec = importlib.util.spec_from_file_location('handoff_registration',
+                    Path(__file__).with_name('writer_registration.py'))
+                registration_module = importlib.util.module_from_spec(registration_spec)
+                registration_spec.loader.exec_module(registration_module)
+                declaration_raw = Path(args.registration_declaration).read_bytes()
+                registration = registration_module.capture_declaration(
+                    json.loads(declaration_raw, object_pairs_hook=registration_module.unique_object),
+                    workspace, expected['files'], args.required_path)
+                registration['declaration'] = declaration_raw.decode()
+                registration['declaration_sha256'] = hashlib.sha256(declaration_raw).hexdigest()
             planning_context = (passes.capture_planning_context(workspace, expected, admission, args.integration_owner)
                                 if args.ledger_mode == 'proposal' and admission.get('goal_task') else None)
             context_paths = set(planning_context['files']) if planning_context else set()
@@ -596,6 +611,8 @@ def main():
                         'goal_task': args.goal_task, 'helper_runtime': helper_runtime}
             if planning_context:
                 manifest.update(ledger_mode='proposal', planning_context=planning_context)
+            if registration:
+                manifest['registration_preparation'] = registration
             manifest_path = journal_dir / ('pass-' + pass_path.name + '.json')
             with manifest_path.open('x') as stream:
                 json.dump(manifest, stream, indent=2)
@@ -628,7 +645,15 @@ def main():
             if final_admission != admission:
                 raise ValueError('Goal admission changed during assembly')
             require_fresh_sources(args.source_snapshot, workspace)
-            passes.verify(manifest, pass_path)
+            if registration:
+                passes.verify_registration_preparation(manifest, pass_path)
+                body += ('\n\nREQUIRED REGISTRATION: This card is reserved blocked without dispatch. '
+                         'Owned scope: ' + json.dumps(registration['scope']) + '. '
+                         'Use the repository supported operation for this exact native identity, then '
+                         'prepare retained prerequisites with writer_registration.py. Preparation does '
+                         'not release the card or migrate its frozen runtime; those require supported native controls.')
+            else:
+                passes.verify(manifest, pass_path)
             runtime_bundle.verify(helper_runtime)
             dispatch_ready = True
         except (ValueError, OSError, TypeError, KeyError) as error:
@@ -642,8 +667,19 @@ def main():
                                  '--assignee', args.profile, '--workspace', 'dir:' + str(pass_path),
                                  '--goal', '--goal-max-turns', str(args.goal_max_turns), '--max-retries', str(MAX_RETRIES),
                                  '--completion-contract', 'local-only', '--created-by', 'autowork',
+                                 *(['--initial-status', 'blocked'] if registration else []),
                                  '--idempotency-key', 'autowork:' + digest, '--json'))
         task_id = created['id']
+        if registration:
+            # Retain the returned identity before any fallible native readback.
+            reservation = journal_dir / ('reservation-' + pass_path.name + '.json')
+            with reservation.open('x') as stream:
+                json.dump(dict(native_create=created, profile=args.profile, board_id=board_id,
+                               task_id=task_id, goal_task=args.goal_task, workspace=str(pass_path),
+                               source_workspace=str(workspace), helper_runtime=helper_runtime,
+                               goal_mode=True, goal_max_turns=args.goal_max_turns, max_retries=MAX_RETRIES,
+                               pass_manifest_path=str(manifest_path), pass_manifest_sha256=manifest_sha256,
+                               pass_manifest=manifest, source_snapshot=snapshot_bytes.decode()), stream, indent=2)
         saved = json.loads(run(prefix, *board, 'show', task_id, '--json'))
         task = saved.get('task', saved)
         task.update(goal_fields(prefix, task_id))
@@ -664,6 +700,9 @@ def main():
         assert task['assignee'] == args.profile, task
         assert task['workspace_kind'] == 'dir' and Path(task['workspace_path']).resolve() == pass_path, task
         assert task['completion_contract'] == 'local-only', task
+        if registration and (task['status'] != 'blocked' or saved.get('runs') != []
+                             or task.get('current_run_id') or task.get('worker_pid')):
+            raise ValueError('Required registration reservation is not an unused blocked card; preserve original evidence')
         created_at = task.get('created_at')
         if isinstance(created_at, (int, float)):
             created_at = datetime.fromtimestamp(created_at, timezone.utc)
@@ -673,7 +712,7 @@ def main():
                 raise ValueError('Native created_at lacks timezone; preserve original card for reconciliation')
         else:
             created_at = datetime.now(timezone.utc)
-        receipt = {'outcome': 'handed_off', 'task_id': task_id, 'profile': args.profile,
+        receipt = {'outcome': 'registration_pending' if registration else 'handed_off', 'task_id': task_id, 'profile': args.profile,
                    'workspace': str(pass_path), 'source_workspace': str(workspace),
                    'pass_manifest': manifest, 'pass_manifest_path': str(manifest_path),
                    'pass_manifest_sha256': manifest_sha256,

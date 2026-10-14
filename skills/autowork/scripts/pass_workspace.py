@@ -106,6 +106,38 @@ def context_paths(manifest):
 
 
 def verify(manifest, workspace, *, admitted_task=None):
+    if manifest.get('registration_preparation') is not None:
+        raise ValueError('Required registration preparation is held pending supported native prerequisite transition')
+    return _verify_sources(manifest, workspace, admitted_task=admitted_task)
+
+
+def verify_registration_preparation(manifest, workspace, requirement=None):
+    """Verify preparation only; this never admits a worker or executes a command."""
+    pending = manifest['registration_preparation']
+    spec = importlib.util.spec_from_file_location('preparation_registration',
+        Path(__file__).with_name('writer_registration.py'))
+    registration = importlib.util.module_from_spec(spec); spec.loader.exec_module(registration)
+    coordination = {}
+    if requirement is None:
+        data = registration.registry_path(pending['registry']).read_bytes()
+        if hashlib.sha256(data).hexdigest() != pending['baseline_sha256']:
+            raise ValueError('Registration baseline changed before reservation')
+    else:
+        expected = requirement['expected']
+        if (expected['task'] != manifest['goal_task'] or expected['workspace'] != str(Path(workspace).resolve())
+                or expected['base'] != manifest['candidate_identity']['base_commit']):
+            raise ValueError('Registration prerequisite differs from original task/workspace/base')
+        if registration.prepare_requirement(pending, requirement['expected']) != requirement:
+            raise ValueError('Registration prerequisite changed during preparation')
+        path = pending['source_path']
+        if path:
+            if str(Path(manifest['source_workspace']) / path) != pending['registry']:
+                raise ValueError('Coordination registry source binding changed')
+            coordination[path] = requirement['digest']
+    return _verify_sources(manifest, workspace, coordination=coordination)
+
+
+def _verify_sources(manifest, workspace, *, admitted_task=None, coordination=None):
     workspace = Path(workspace).resolve(strict=True)
     identity = manifest['candidate_identity']
     if (str(workspace) != identity['workspace']
@@ -157,7 +189,8 @@ def verify(manifest, workspace, *, admitted_task=None):
             if not file.is_relative_to(root):
                 raise ValueError('Source path escapes workspace')
             actual = hashlib.sha256(file.read_bytes()).hexdigest() if file.exists() else None
-            if (actual != row['sha256'] and not
+            expected_digest = (coordination or {}).get(row['path'], row['sha256']) if root == source else row['sha256']
+            if (actual != expected_digest and not
                     (root == source and row['path'] == 'goals.json' and actual in source_ledger_hashes)):
                 raise ValueError('Source changed before worker start: ' + row['path'])
         if root == workspace and 'goals.json' in planning:

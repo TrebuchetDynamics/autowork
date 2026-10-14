@@ -13,6 +13,118 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 
 class HandoffTests(unittest.TestCase):
+    def test_required_registration_reserves_blocked_and_retains_original_evidence(self):
+        import subprocess, re, shlex, hashlib
+        from test_owner_cycle import ComposedReadyTests
+        fixture = ComposedReadyTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.ready_backlog()
+        repo, root = fixture.repo, fixture.root
+        registry = repo / 'writers.jsonl'
+        registry.write_text('')
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-qm', 'registration baseline'], check=True)
+        base = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+        import source_freshness
+        snapshot = root / 'sources.json'
+        snapshot.write_text(json.dumps(source_freshness.capture(repo, ['code.py', 'goals.json', 'writers.jsonl'])))
+        contract = root / 'contract'
+        contract.write_text(''.join(f'{key}: concrete {key}\n' for key in m.CONTRACT_FIELDS))
+        declaration = root / 'registration.json'
+        declaration.write_text(json.dumps({'registry': str(registry), 'scope': ['code.py'],
+            'fields': {key: key for key in ('card', 'task', 'workspace', 'base', 'scope')}}))
+        home = root / 'profile'; home.mkdir()
+        card, created = {}, []
+        def cli(prefix, *args):
+            if args == ('config', 'get', 'terminal.cwd'): return str(repo)
+            if args[:2] == ('profile', 'show'): return 'Path: ' + str(home)
+            if args[:3] == ('kanban', 'boards', 'list'):
+                return json.dumps([{'slug': 'default', 'id': 'board-1', 'db_path': str(home / 'board.db')}])
+            if 'list' in args: return json.dumps([card] if created else [])
+            if 'create' in args:
+                created.append(args)
+                status = args[args.index('--initial-status') + 1] if '--initial-status' in args else 'running'
+                card.update(id='original', title='Fixture', board_id='board-1', assignee='fixture', status=status,
+                    workspace_kind='dir', workspace_path=args[args.index('--workspace') + 1][4:],
+                    completion_contract='local-only', max_retries=1, current_run_id=None, worker_pid=None,
+                    goal_mode=True, goal_max_turns=100)
+                return json.dumps(card)
+            if 'show' in args: return json.dumps({'task': card, 'runs': []})
+            raise AssertionError('Unexpected mutation: ' + repr(args))
+        argv = ['start_goal.py', '--profile', 'fixture', '--workspace', str(repo), '--title', 'Fixture',
+                '--contract-file', str(contract), '--source-snapshot', str(snapshot), '--base', base,
+                '--goal-task', 'T1', '--pass-root', str(root / 'passes'),
+                '--registration-declaration', str(declaration)]
+        with patch('sys.argv', argv), patch.dict(m.os.environ, {}, clear=True), \
+                patch.object(m, 'run', side_effect=cli), \
+                patch.object(m, 'goal_fields', return_value={'goal_mode': True, 'goal_max_turns': 100}), \
+                patch.object(m, 'ensure_notification', return_value=None), contextlib.redirect_stdout(io.StringIO()):
+            try:
+                m.main()
+            except SystemExit as error:
+                self.fail('Required registration cannot reserve a blocked native card: ' + str(error))
+        self.assertEqual(card['status'], 'blocked')
+        receipt_path = home / 'autowork/goal-handoff.json'
+        original = receipt_path.read_bytes()
+        receipt = json.loads(original)
+        self.assertEqual(receipt['outcome'], 'registration_pending')
+        body = created[0][created[0].index('--body') + 1]
+        guard = re.search(r'Before initial design, tests or any production edit, run `([^`]+)`', body).group(1)
+        result = subprocess.run(shlex.split(guard), capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('registration preparation', result.stderr)
+        expected = dict(card='original', task='T1', workspace=card['workspace_path'], base=base, scope=['code.py'])
+        registry.write_text(json.dumps(expected) + '\n')
+        import writer_registration
+        import pass_workspace
+        frozen_manifest = dict(receipt['pass_manifest'])
+        frozen_manifest.pop('registration_preparation')
+        with self.assertRaisesRegex(ValueError, 'Source changed before worker start: writers.jsonl'):
+            pass_workspace.verify(frozen_manifest, card['workspace_path'])
+        output = root / 'prepared'
+        prepared = writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
+            {'task': card, 'runs': []}, output)
+        self.assertEqual(prepared['outcome'], 'registration_prepared_native_transition_unavailable')
+        self.assertEqual(receipt_path.read_bytes(), original)
+        self.assertEqual(prepared['expected'], expected)
+        self.assertTrue((output / 'original-handoff.json').exists())
+        self.assertTrue((output / 'requirement.json').exists())
+        (output / 'requirement.json').unlink()  # Retry an interrupted evidence write.
+        self.assertEqual(writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
+            {'task': card, 'runs': []}, output), prepared)
+        reservation = next((home / 'autowork').glob('reservation-*.json'))
+        reserved = writer_registration.prepare_handoff(reservation,
+            hashlib.sha256(reservation.read_bytes()).hexdigest(), {'task': card, 'runs': []}, root / 'reserved-preparation')
+        self.assertEqual(reserved['expected'], expected)
+        # The reservation remains usable if native readback/notification was interrupted.
+        argv_prepare = ['writer_registration.py', '--prepare-handoff', str(receipt_path),
+                        '--handoff-sha256', hashlib.sha256(original).hexdigest(), '--output', str(output)]
+        with patch('sys.argv', argv_prepare), patch.object(writer_registration, 'native_observation',
+                return_value={'task': card, 'runs': []}), contextlib.redirect_stdout(io.StringIO()) as stdout:
+            writer_registration.main()
+        self.assertEqual(json.loads(stdout.getvalue()), prepared)
+        for changed in ({'runs': [{'id': 'started'}]}, {'task': dict(card, worker_pid=42)},
+                        {'task': dict(card, status='running')}, {'task': dict(card, board_id='foreign')},
+                        {'task': dict(card, goal_max_turns=50)}, {'task': dict(card, max_retries=2)}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
+                    dict(task=card, runs=[], **{}) | changed, root / 'refused')
+        (repo / 'code.py').write_text('unrelated source drift\n')
+        with self.assertRaisesRegex(ValueError, 'Source changed'):
+            writer_registration.prepare_handoff(receipt_path, hashlib.sha256(original).hexdigest(),
+                {'task': card, 'runs': []}, root / 'refused')
+        self.assertFalse((root / 'refused').exists())
+        # Retry the launcher after an interrupted reservation: do not create a replacement.
+        with patch('sys.argv', argv), patch.dict(m.os.environ, {}, clear=True), \
+                patch.object(m, 'run', side_effect=cli), \
+                patch.object(m, 'goal_fields', return_value={'goal_mode': True, 'goal_max_turns': 100}), \
+                patch.object(m, 'ensure_notification', return_value=None), contextlib.redirect_stdout(io.StringIO()) as stdout:
+            m.main()
+        self.assertEqual(json.loads(stdout.getvalue())['outcome'], 'already_owned')
+        self.assertEqual(len(created), 1)
+        self.assertEqual(receipt_path.read_bytes(), original)
+
     def test_composed_command_reaches_real_admission_once_offline(self):
         import owner_cycle
         import subprocess

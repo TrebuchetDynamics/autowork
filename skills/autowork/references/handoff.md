@@ -42,8 +42,52 @@ or replace runtime lease/ownership checks. It does not prove historical admissio
 It does not auto-discover prose requirements, create registrations or fence later
 registry changes. Repositories with other registry formats need their own verifier.
 
-If native creation precedes registration, the worker waits on the same card without
-editing until the coordinator completes preparation. Preserve the original manifest.
+For a new card with an explicit JSONL requirement, pass
+`--registration-declaration /private/registration.json` to `start_goal.py`. The JSON
+contains `registry` (absolute canonical `.jsonl` path), `fields` (the mapping above),
+`scope` (exact owned paths), and optional `expected` for additional fields such as
+status. Do not supply card/task/base/workspace in `expected`: the launcher obtains
+the real native card ID after reservation. The declared registry cannot also be a
+required executable input or an owned file. No declaration retains the normal
+startup path; this option does not automatically discover prose requirements.
+
+The launcher uses native `create --initial-status blocked`, retaining the baseline
+registry bytes, original source pins and frozen runtime. It saves
+`reservation-<pass>.json` immediately after creation, before fallible readback, and
+returns `registration_pending` after successful readback. Its original guard refuses
+initial implementation while preparation is pending, including when verifier flags
+are omitted. A retry finds the original blocked card; it does not create a replacement.
+
+Use the repository's supported registration operation to append the exact native
+card/task/workspace/base/scope row. Then prepare private evidence with:
+
+```sh
+python3 <autowork>/scripts/writer_registration.py \
+  --prepare-handoff /private/autowork/goal-handoff.json \
+  --handoff-sha256 <original-receipt-sha256> --output /private/registration-preparation
+```
+
+If creation readback was interrupted, the retained `reservation-<pass>.json` and
+its exact hash can serve as that input. Preparation reads the original native card
+and CLI-resolved board read-only, including claim and allocation fields omitted by
+the CLI JSON. It requires a blocked card with no runs or live claim, the original
+allocation, and unchanged pinned helpers. It accepts only one exact registration
+append, preserving every prior registry byte. The coordination source digest may
+change only in this preparation check; executable inputs and the worker checkout
+remain immutable. This is no general source-fingerprint exemption.
+
+The output retains the old handoff/manifest, both registry versions, native
+observation and new requirement. Interrupted artifact writes resume only with
+identical evidence. **Preparation does not dispatch, edit or unblock the card.**
+The result `registration_prepared_native_transition_unavailable` means the
+prerequisites are ready for a supported atomic same-card prerequisite record/release;
+that operation and frozen-runtime migration are not implemented by the inspected
+native CLI. A body edit followed by `unblock` is not treated as that capability.
+Old cards without deferred preparation and changed frozen helper versions remain
+held for an explicit supported migration. Never overwrite their helper files.
+
+If an older native creation preceded registration, keep that original card held
+without editing until supported recovery is available. Preserve the original manifest.
 A changed registry hash requires fresh readback and an explicit prerequisite update,
 not silently accepting stale evidence. A missed historical registration needs truthful
 same-card reconciliation; never backdate it or rerun initial admission after edits.

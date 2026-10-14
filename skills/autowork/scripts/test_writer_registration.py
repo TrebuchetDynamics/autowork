@@ -9,6 +9,55 @@ import sys
 import unittest
 
 class RegistrationTests(unittest.TestCase):
+    def test_native_observation_reads_omitted_claim_and_budget_fields_without_writes(self):
+        import sqlite3
+        from unittest.mock import patch
+        import writer_registration as module
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / 'board.db'
+            with sqlite3.connect(db) as conn:
+                conn.execute('CREATE TABLE tasks (id TEXT, status TEXT, current_run_id TEXT, worker_pid INT, goal_mode INT, goal_max_turns INT)')
+                conn.execute('INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?)', ('original', 'blocked', None, 42, 1, 100))
+            before = db.read_bytes()
+            def native(argv, **kwargs):
+                if argv[3:] == ['kanban', 'boards', 'list', '--json']:
+                    return json.dumps([dict(slug='default', id='board-1', db_path=str(db))])
+                if argv[3:] == ['kanban', '--board', 'default', 'show', 'original', '--json']:
+                    return json.dumps(dict(task=dict(id='original', status='blocked'), runs=[]))
+                raise AssertionError(argv)
+            observe = getattr(module, 'native_observation', None)
+            self.assertTrue(callable(observe), 'Native JSON omits claims and budget; preparation must read authoritative fields')
+            with patch.object(module.subprocess, 'check_output', side_effect=native):
+                observed = observe('fixture', 'original')
+            self.assertEqual(observed['task']['worker_pid'], 42)
+            self.assertEqual(observed['task']['goal_max_turns'], 100)
+            self.assertEqual(observed['task']['board_id'], 'board-1')
+            self.assertEqual(db.read_bytes(), before)
+
+    def test_preparation_accepts_only_one_exact_append_and_retains_baseline(self):
+        import writer_registration as module
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'writers.jsonl'
+            original = (json.dumps({'card': 'older'}) + '\n').encode()
+            path.write_bytes(original)
+            declaration = dict(registry=str(path), scope=['src/a.py'],
+                fields={key:key for key in ('card','task','workspace','base','scope')})
+            capture = getattr(module, 'capture_declaration', None)
+            self.assertTrue(callable(capture), 'Preparation must capture the pre-card registry without a fabricated identity')
+            pending = capture(declaration, Path(tmp), [], [])
+            expected = dict(card='original', task='T1', workspace=tmp, base='a'*40, scope=['src/a.py'])
+            row = (json.dumps(expected) + '\n').encode()
+            path.write_bytes(original + row)
+            requirement = module.prepare_requirement(pending, expected)
+            self.assertTrue(module.verify(**requirement))
+            self.assertEqual(pending['baseline'], original.decode())
+            for data in (row, original + row + row, original + row + b'{}\n',
+                         original + (json.dumps(dict(expected, scope=['foreign.py'])) + '\n').encode()):
+                path.write_bytes(data)
+                with self.subTest(data=data), self.assertRaises(ValueError):
+                    module.prepare_requirement(pending, expected)
+                self.assertEqual(path.read_bytes(), data)
+
     def test_bound_registration_and_rejections(self):
         spec = importlib.util.spec_from_file_location('registration', Path(__file__).with_name('writer_registration.py'))
         module = importlib.util.module_from_spec(spec)

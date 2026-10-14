@@ -140,6 +140,13 @@ class PassWorkspaceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(marker.exists())
 
+    def test_pending_registration_cannot_be_bypassed_by_omitting_cli_requirement(self):
+        module, manifest, target = self.worker_transition_fixture()
+        manifest['registration_preparation'] = {'registry': str(self.root / 'writers.jsonl')}
+        with self.assertRaisesRegex(ValueError, 'registration preparation'):
+            module.run_checked(manifest, target, ['python3', '-c', "open('must-not-run','w').close()"])
+        self.assertFalse((target / 'must-not-run').exists())
+
     def test_registration_recovers_only_exact_original_handoff_without_environment(self):
         import hashlib, json, os, sys
         _, manifest, target = self.worker_transition_fixture()
