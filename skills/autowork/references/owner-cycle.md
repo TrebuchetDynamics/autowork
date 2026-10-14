@@ -135,10 +135,12 @@ The policy object requires `version: 1`, `mode: reviewed_local`, the complete
 exact `candidate` identity (including base, tree and prerequisites),
 `target: refs/heads/main`, a nonempty `authority` evidence reference,
 `implementer` and a nonempty unique `reviewers` list excluding the implementer.
-Reconciliation additionally requires the original `task_id` and integer `run_id`
-of the latest owning-profile run; `implementer` must match that profile.
+Legacy reconciliation additionally requires the original `task_id` and integer
+`run_id` of the latest owning-profile run; `implementer` must match that profile.
+Independent-review closeout uses the explicit extension below instead; latest-run
+ownership is never changed to pretend the implementer owns the review run.
 
-The existing integration object binds the same candidate/target, `action: merge`,
+The legacy integration object binds the same candidate/target, `action: merge`,
 `before` equal to the candidate base and an observed `after`. Its provenance has
 exactly `source: reviewed_local`, the same `authority`, `observed: true` and
 `review`. That review binds the complete candidate, matching `implementer`, an
@@ -170,6 +172,66 @@ check receipts still gate delivery. This closes only the scoped local delivery l
 model, live acceptance, sessions, retry limits and unknown usage remain separate.
 The coordinator, not this read-only evaluator or worker, owns integration and
 canonical task closure.
+
+### Independently reviewed changed-base closeout
+
+The same separately trusted coordinator policy may add `closeout`, an object with
+integer `review_run_id` and `delivery_evidence`. The outer `task_id`/`run_id` bind
+the original implementation, not the latest reviewer. `delivery_evidence` uses the
+existing candidate/implementation/qualification/integration schema and retains the
+entire original candidate identity, base, tree, refs and prerequisite pins. It may
+backfill absent structured delivery evidence from verified original artifacts and
+exact-candidate check receipts; it must not contradict existing original candidate,
+implementation, qualification or required-mode evidence. Never modify historical
+board/run metadata to make it fit. Green prose or old check command strings are not
+executed check receipts; missing reusable evidence keeps closeout unverified.
+
+The integration provenance's independent approved `review` additionally binds
+`task_id`, integer `implementation_run_id` (outer `run_id`) and integer `run_id`
+(`closeout.review_run_id`). Reconciliation reads the original native card and runs:
+the original implementer run must have ended with `review_requested` and explicit
+native `status: review` (missing, unknown or contradictory status refuses closeout), immutable
+`metadata.commit` and `metadata.base_commit` matching the candidate, with no newer
+implementer run. The latest run must be the named independent reviewer assigned to
+the done/reviewed card, ended with `completed` and done/completed status, with
+`metadata.review_outcome: approved` and `metadata.commit` matching the original
+candidate. Dictionary and JSON-string metadata are both supported. Missing,
+duplicate, foreign, stale or contradictory run evidence refuses; an existing saved
+original-profile handoff remains necessary to observe reviewer reassignment.
+Neither worker metadata nor a policy-looking field inside it selects this path.
+
+For changed-base integration, `before` must descend from the original base without
+already containing the candidate. `after` must be an actual two-parent merge with
+parents exactly `[before, original_candidate_commit]`. The integration adds
+`result_candidate`, a separately captured candidate_identity v1 object with base
+`before`, commit `after`, observed result tree and unchanged prerequisite pins,
+plus its own `qualification` object (candidate, required_checks and exact executed
+checks). Result checks must include every original required check name and satisfy
+the original required mode when supplied. Their refs, source/dependency snapshots,
+commands, runtime and receipts must be reusable under the existing checker.
+
+Git recomputes a clean merge of before/candidate using the unchanged original base
+and requires its entire tree to equal the observed result tree. A disposable
+private object directory/index reads repository objects as alternates; supplied
+objects, refs and index remain unchanged. This supports disjoint same-file updates
+as well as unrelated files while preserving reviewed content and newer-main work.
+Custom merge drivers are disabled (fail closed), and no checkout or caller-supplied
+conflict resolution is used. Git lacking `merge-tree --write-tree --merge-base`
+fails closed. Conflicts, altered reviewed delta, added unreviewed changes, dropped
+newer-main content or malformed parents refuse even if fresh result checks pass.
+Supporting resolved conflicts requires a new explicit review contract; this
+extension cannot bless them. Default current-target equality and
+explicit historical-descendant readback remain distinct, and legacy exact-base
+and protected-PR evaluation remain unchanged.
+
+Reconciliation reports separate `delivery_run_id` and `review_run_id`, keeping
+`run_id`, `run_ownership` and `worker_observed` about the actual latest run. Verified
+closeout permits owner-cycle's fresh selection in the same occurrence without
+another merge. It never closes the canonical ledger, releases live prerequisites,
+resets usage/budgets or grants publication/model/native/startup qualification. The
+coordinator still owns canonical closure and integration. These schemas validate
+caller attestations, not authenticated issuers; original authority/review sources
+must be verified by the trusted coordinator before supplying the policy.
 
 ## Continuation and accounting failures
 

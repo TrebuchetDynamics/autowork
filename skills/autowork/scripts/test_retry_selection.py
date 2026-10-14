@@ -39,6 +39,29 @@ class RetrySelectionTests(unittest.TestCase):
         self.assertEqual(result['held_claims'], [])
         self.assertEqual(result['recorded_claims'][0]['owner'], 'writer')
 
+    def test_closed_offline_slice_keeps_live_prerequisite_ineligible(self):
+        import retry_selection
+        ledger = self.consumer / 'goals.json'
+        data = json.loads(ledger.read_text())
+        data['goals'][0]['tasks'].extend(['OFFLINE', 'LIVE'])
+        data['tasks'].extend([
+            dict(id='OFFLINE', title='Reviewed offline slice', goal='G1', status='done', section='Done'),
+            dict(id='LIVE', title='Live qualification', goal='G1', status='open', section='Needs decision')])
+        data['tasks'][0]['depends_on'] = ['LIVE']
+        ledger.write_text(json.dumps(data))
+        todo = self.consumer / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Dependencies: None', 'Dependencies: LIVE') +
+            '\n## Needs decision\n\n- [ ] LIVE: Live qualification\n  Goal: G1\n'
+            '  Scope: live provider\n  Acceptance: live journey passes\n  Dependencies: None\n'
+            '  Ownership: fixture\n  Sources: [Plan](SPEC.md#accepted)\n')
+        before = {p: p.read_bytes() for p in (ledger, todo)}
+        result = retry_selection.select(self.consumer, plan='SPEC.md#accepted', task_ids=['T1'])
+        self.assertNotEqual(result['state'], 'ready_for_autowork')
+        self.assertIn('T1: unmet task dependency LIVE', result['reasons'])
+        self.assertEqual(retry_selection.goals.load(self.consumer)['goals'][0]['status'], 'unmet')
+        for path, contents in before.items():
+            self.assertEqual(path.read_bytes(), contents)
+
     def test_todo_only_dependency_prevents_selection(self):
         ledger = self.consumer / 'goals.json'
         data = json.loads(ledger.read_text())

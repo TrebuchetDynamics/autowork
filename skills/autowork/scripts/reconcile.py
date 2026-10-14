@@ -4,16 +4,74 @@
 The CLI writes only a separate report projection cache. It always reads the board
 again; resume the recorded phase before considering new work. The caller checks
 backlog eligibility; this readback neither dispatches nor proves worker liveness.
-Structured evidence belongs in latest-run metadata.delivery_evidence. Only an
-explicit --repo enables independent local main/ancestry verification.
+Legacy evidence belongs in latest-run metadata.delivery_evidence; independently
+reviewed closeout requires separate trusted coordinator evidence. Only an explicit
+--repo enables independent local main/ancestry verification.
 """
 import argparse
 import json
 import hashlib
 from pathlib import Path
 from start_goal import run, profile_home
-from delivery_state import evaluate
+from delivery_state import evaluate, local_review, valid_candidate
 import continuation_capability
+
+
+def run_metadata(record):
+    """Native readbacks may store structured metadata as a JSON string."""
+    value = record.get('metadata')
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
+def coordinator_closeout(policy, task, runs, latest, profile):
+    """Bind separate trusted closeout to immutable native implementation/review.
+
+    No worker metadata opts into this path. Original metadata supplies provenance
+    pins, not policy authority; no historical run or candidate is rewritten.
+    """
+    if (not isinstance(policy, dict) or not isinstance(policy.get('closeout'), dict)
+            or task['status'] not in {'done', 'reviewed'}
+            or policy.get('task_id') != task['id'] or policy.get('implementer') != profile
+            or type(policy.get('run_id')) is not int
+            or type(policy['closeout'].get('review_run_id')) is not int):
+        return None
+    closeout = policy['closeout']
+    originals = [r for r in runs if r['id'] == policy['run_id']]
+    if len(originals) != 1 or closeout['review_run_id'] != latest.get('id'):
+        return None
+    original = originals[0]
+    evidence = closeout.get('delivery_evidence')
+    if not isinstance(evidence, dict) or not valid_candidate(evidence.get('candidate')):
+        return None
+    candidate = evidence['candidate']
+    integration = evidence.get('integration')
+    if not isinstance(candidate, dict) or not isinstance(integration, dict):
+        return None
+    metadata, review_metadata = run_metadata(original), run_metadata(latest)
+    if (original.get('profile') != profile or original.get('outcome') != 'review_requested'
+            or original.get('status') != 'review'
+            or original.get('ended_at') is None or original['id'] >= latest['id']
+            or any(r['id'] > original['id'] and r.get('profile') == profile for r in runs)
+            or latest.get('profile') != task['assignee'] or latest.get('profile') == profile
+            or latest.get('outcome') != 'completed' or latest.get('status') not in {'done', 'completed'}
+            or latest.get('ended_at') is None
+            or metadata.get('commit') != candidate.get('candidate_commit')
+            or metadata.get('base_commit') != candidate.get('base_commit')
+            or review_metadata.get('commit') != candidate.get('candidate_commit')
+            or review_metadata.get('review_outcome') != 'approved'
+            or not local_review(candidate, integration, policy)
+            or integration['provenance']['review']['reviewer'] != latest.get('profile')):
+        return None
+    prior = metadata.get('delivery_evidence')
+    if prior is not None and (not isinstance(prior, dict) or any(
+            prior.get(k) != evidence.get(k) for k in ('candidate', 'implementation', 'qualification', 'required_mode'))):
+        return None
+    return evidence
 
 
 def reconcile(prefix, home, profile, task_id=None, repo=None, local_policy=None):
@@ -45,6 +103,8 @@ def reconcile(prefix, home, profile, task_id=None, repo=None, local_policy=None)
         raise ValueError('Unknown runs schema: expected objects with integer IDs')
     if any('task_id' in r and r['task_id'] != task_id for r in runs):
         raise ValueError('Readback run task ID does not match the requested handoff')
+    if len({r['id'] for r in runs}) != len(runs):
+        raise ValueError('Unknown runs schema: duplicate run IDs')
     if not isinstance(events, list) or any(not isinstance(e, dict) for e in events):
         raise ValueError('Unknown events schema: expected an object list')
     latest = max(runs, key=lambda r: r['id']) if runs else {}
@@ -65,12 +125,20 @@ def reconcile(prefix, home, profile, task_id=None, repo=None, local_policy=None)
     owner = latest.get('profile')
     owner = owner if isinstance(owner, str) and owner else None
     ownership = 'current_profile' if owner == profile else 'other_profile' if owner else 'unknown'
-    metadata = latest.get('metadata') or {}
+    metadata = run_metadata(latest)
     current_evidence = (metadata.get('delivery_evidence')
                         if ownership == 'current_profile' and isinstance(metadata, dict) else None)
     # A coordinator-supplied policy cannot leak across cards, runs or profiles.
     # Invalid explicit policy stays invalid, never falls back to PR assertions.
-    if local_policy is not None and (not isinstance(local_policy, dict)
+    closeout = coordinator_closeout(local_policy, task, runs, latest, profile)
+    delivery_run_id = latest.get('id') if current_evidence is not None else None
+    review_run_id = None
+    if closeout is not None and isinstance(local_policy, dict):
+        current_evidence = closeout
+        delivery_run_id = local_policy['run_id']
+        review_run_id = local_policy['closeout']['review_run_id']
+    elif local_policy is not None and (not isinstance(local_policy, dict)
+            or 'closeout' in local_policy
             or local_policy.get('task_id') != task_id
             or type(local_policy.get('run_id')) is not int
             or local_policy['run_id'] != latest.get('id')
@@ -101,6 +169,7 @@ def reconcile(prefix, home, profile, task_id=None, repo=None, local_policy=None)
             'delivery': delivery, 'human_report': delivery['progress'], 'selection_required': True,
             'run_profile': owner, 'run_ownership': ownership, 'card_run_observed': bool(runs),
             'title': task.get('title'), 'run_id': latest.get('id'),
+            'delivery_run_id': delivery_run_id, 'review_run_id': review_run_id,
             'worker_outcome': latest.get('outcome'),
             'run_status': latest.get('status'), 'run_ended_at': latest.get('ended_at'),
             'worker_pid': latest.get('worker_pid'),
@@ -117,7 +186,7 @@ def main():
     parser.add_argument('--compact', action='store_true', help='Omit raw metadata/event and bound summary; omit flag for full readback')
     parser.add_argument('--task-id')
     parser.add_argument('--repo', type=Path, help='Local Git repository for main ancestry verification')
-    parser.add_argument('--local-policy', type=Path, help='Trusted coordinator policy JSON, never worker metadata; binds task_id/run_id')
+    parser.add_argument('--local-policy', type=Path, help='Trusted coordinator policy JSON, never worker metadata; binds original task/run and optional independent-review closeout')
     parser.add_argument('--report-state', type=Path, help='Report-only cache; never skips reconciliation')
     args = parser.parse_args()
     prefix = ['hermes', '-p', args.profile]
@@ -130,6 +199,7 @@ def main():
     # Store only the previous validated report projection, not raw worker prose.
     projection = {k: result.get(k) for k in
                   ('profile', 'board_id', 'task_id', 'status', 'run_ownership', 'run_id',
+                   'delivery_run_id', 'review_run_id',
                    'worker_outcome', 'run_status', 'run_ended_at', 'worker_pid', 'next_action', 'delivery',
                    'continuation_capability')}
     projection['evidence_digest'] = hashlib.sha256(json.dumps(

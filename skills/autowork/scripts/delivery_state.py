@@ -5,6 +5,9 @@ Git integration is independently read from the supplied local repository.
 """
 import re
 import subprocess
+import os
+import tempfile
+from pathlib import Path
 import check_receipt
 import candidate_identity
 
@@ -58,10 +61,55 @@ def local_review(candidate, integration, policy):
             or provenance.get('authority') != authority or provenance.get('observed') is not True):
         return False
     review = provenance.get('review')
-    return (isinstance(review, dict) and review.get('candidate') == candidate
+    approved = (isinstance(review, dict) and review.get('candidate') == candidate
             and review.get('implementer') == implementer and review.get('reviewer') in reviewers
             and review.get('observed') is True and review.get('outcome') == 'approved'
             and isinstance(review.get('id'), str) and bool(review['id'].strip()))
+    if 'closeout' not in policy:
+        return approved
+    if not approved or not isinstance(review, dict):
+        return False
+    closeout = policy['closeout']
+    return (approved and isinstance(closeout, dict)
+            and type(policy.get('run_id')) is int
+            and type(closeout.get('review_run_id')) is int
+            and closeout['review_run_id'] > policy['run_id']
+            and isinstance(policy.get('task_id'), str) and bool(policy['task_id'])
+            and review.get('task_id') == policy['task_id']
+            and type(review.get('run_id')) is int
+            and review['run_id'] == closeout['review_run_id']
+            and type(review.get('implementation_run_id')) is int
+            and review['implementation_run_id'] == policy['run_id']
+            and isinstance(closeout.get('delivery_evidence'), dict)
+            and closeout['delivery_evidence'].get('candidate') == candidate
+            and closeout['delivery_evidence'].get('integration') == integration)
+
+
+def changed_base_checks(original, integration, policy, repo):
+    """The newer-main result needs its own identity and exact executed checks."""
+    result = integration.get('result_candidate')
+    qualification = integration.get('qualification')
+    if (not isinstance(result, dict) or not candidate_identity.check(result, repo)
+            or result.get('base_commit') != integration.get('before')
+            or result.get('candidate_commit') != integration.get('after')
+            or result.get('prerequisites') != original.get('prerequisites')):
+        return False
+    evidence = policy['closeout']['delivery_evidence']
+    original_qualification = evidence.get('qualification')
+    if not isinstance(original_qualification, dict) or not isinstance(qualification, dict):
+        return False
+    required = original_qualification.get('required_checks')
+    result_required = qualification.get('required_checks')
+    if (not isinstance(required, list) or not required
+            or not isinstance(result_required, list)
+            or any(not isinstance(name, str) for name in required + result_required)
+            or not set(required).issubset(result_required)):
+        return False
+    # Reuse the exact-candidate checker, not worker result strings. This nested
+    # evaluation has no integration/policy and cannot confer delivery recursively.
+    checked = evaluate({'candidate': result, 'implementation': evidence.get('implementation'),
+                        'qualification': qualification, 'required_mode': evidence.get('required_mode')}, repo)
+    return checked['qualified']
 
 
 def integration_state(candidate, integration, repo, local_policy=None, *, historical=False):
@@ -114,16 +162,29 @@ def integration_state(candidate, integration, repo, local_policy=None, *, histor
             if (not local_review(original, integration, local_policy)
                     or not candidate_identity.check(original, repo)
                     or integration.get('action') != 'merge'
-                    or before != candidate['base'] or before == after
+                    or before == after
                     or ancestor(candidate['commit'], before)
                     or (not historical and main.stdout.strip() != after)):
                 return 'unknown'
             after_tree = git('rev-parse', str(after) + '^{tree}')
             parents = git('show', '-s', '--format=%P', after)
-            if (after_tree.returncode or after_tree.stdout.strip() != candidate['tree']
-                    or parents.returncode or (after != candidate['commit']
-                        and parents.stdout.split() != [before, candidate['commit']])):
+            if (after_tree.returncode or parents.returncode or (after != candidate['commit']
+                    and parents.stdout.split() != [before, candidate['commit']])):
                 return 'unknown'
+            if before == candidate['base']:
+                if after_tree.stdout.strip() != candidate['tree']:
+                    return 'unknown'
+            else:
+                # Recompute a conflict-free merge in a private object store.
+                # Matching the entire tree preserves both reviewed and newer-main
+                # changes. Never accept a caller's conflict resolution.
+                if ('closeout' not in local_policy or after == candidate['commit']
+                        or not ancestor(candidate['base'], before)
+                        or not changed_base_checks(original, integration, local_policy, repo)):
+                    return 'unknown'
+                if not preserved_delta(repo, candidate['base'], candidate['commit'], before,
+                                       after_tree.stdout.strip()):
+                    return 'unknown'
             return 'historically locally integrated' if historical else 'locally integrated'
         if integration.get('action') == 'synchronize' and before == after:
             return 'already synchronized'
@@ -138,8 +199,39 @@ def integration_state(candidate, integration, repo, local_policy=None, *, histor
                 or provenance.get('merge_commit') != after):
             return 'unknown'
         return 'merged'
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
         return 'unknown'
+
+
+def preserved_delta(repo, base, commit, before, expected_tree):
+    """Recompute the clean merge without writing repository objects/refs/index.
+
+    Disable custom merge drivers: reading evidence must never execute repository
+    commands. Conflicts refuse; caller-supplied resolutions cannot pass by checks.
+    Git without the required merge-tree capability fails closed.
+    """
+    environment = candidate_identity.git_environment()
+    def execute(*args, env=environment):
+        return subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(repo), *args],
+                              capture_output=True, timeout=10, env=env)
+    drivers = execute('config', '--name-only', '--get-regexp', r'^merge\..*\.driver$')
+    objects = execute('rev-parse', '--git-path', 'objects')
+    if drivers.returncode not in (0, 1) or objects.returncode:
+        return False
+    object_path = (Path(repo) / os.fsdecode(objects.stdout.strip())).resolve()
+    with tempfile.TemporaryDirectory(prefix='closeout-delta-') as directory:
+        private = Path(directory)
+        (private / 'objects').mkdir()
+        env = dict(environment, GIT_INDEX_FILE=str(private / 'index'),
+                   GIT_OBJECT_DIRECTORY=str(private / 'objects'),
+                   GIT_ALTERNATE_OBJECT_DIRECTORIES=str(object_path))
+        options = ['-c', 'merge.default=text', '-c', 'merge.renormalize=false',
+                   '-c', 'merge.renames=true']
+        for driver in drivers.stdout.decode().splitlines():
+            options.extend(['-c', driver + '=false'])
+        tree = execute(*options, 'merge-tree', '--write-tree', '--no-messages',
+                       '--merge-base=' + base, before, commit, env=env)
+        return tree.returncode == 0 and tree.stdout.decode().strip() == expected_tree
 
 
 def candidate_fields(value):
@@ -200,6 +292,10 @@ def evaluate(evidence, repo=None, local_policy=None, *, historical=False):
     progress = ('Qualified: ' + ', '.join(scope) + '; delivery unknown' if qualified else
                 'Implemented; qualification unknown; delivery unknown' if implemented else
                 'Implementation unknown; qualification unknown; delivery unknown')
+    if (isinstance(local_policy, dict) and 'closeout' in local_policy
+            and (not isinstance(local_policy['closeout'], dict)
+                 or local_policy['closeout'].get('delivery_evidence') != evidence)):
+        local_policy = {}  # Explicit contradictory closeout never falls back.
     integration = integration_state(candidate, evidence.get('integration'), repo, local_policy,
                                     historical=historical)
     delivered = qualified and integration in {'merged', 'locally integrated', 'historically locally integrated'}
