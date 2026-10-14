@@ -42,11 +42,11 @@ class ReceiptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root/'input').write_text('same')
-            command = [sys.executable, '-c', "import os; assert 'TERM_SESSION_ID' not in os.environ"]
-            with patch.dict(os.environ, TERM_SESSION_ID='first', PWD=str(root)):
+            command = [sys.executable, '-c', "import os; assert not {'TERM_SESSION_ID', '_'} & os.environ.keys()"]
+            with patch.dict(os.environ, TERM_SESSION_ID='first', _='/first/command', PWD=str(root)):
                 receipt = module.execute(root, ['input'], command, 5)
             self.assertEqual(receipt['outcome'], 'passed')
-            with patch.dict(os.environ, TERM_SESSION_ID='second', PWD=str(root)):
+            with patch.dict(os.environ, TERM_SESSION_ID='second', _='/second/command', PWD=str(root)):
                 self.assertTrue(module.reusable(receipt, root, command))
             with patch.dict(os.environ, HERMES_KANBAN_TASK='different', PWD=str(root)):
                 self.assertFalse(module.reusable(receipt, root, command))
@@ -487,6 +487,30 @@ class CandidateReceiptTests(unittest.TestCase):
         self.assertEqual(report['execution'], 'reused')
         self.assertEqual(report['attempts'], 0)
         self.assertGreaterEqual(report['elapsed_seconds'], 0)
+
+    def test_exact_cli_reuse_ignores_shell_last_command_metadata(self):
+        import json, os, subprocess
+        module = self.load()
+        candidate = self.identity()
+        receipt = self.root / 'receipt.json'
+        command = [sys.executable, '-c', 'pass']
+        argv = [sys.executable, module.__file__, 'run', '--workspace', str(self.root),
+                '--receipt', str(receipt), '--path', 'input', '--base', self.base,
+                '--candidate', 'candidate', '--tree', candidate['candidate_tree'],
+                '--', *command]
+        environment = dict(os.environ, _='/previous/shell-command')
+        result = subprocess.run(argv, env=environment, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        saved = receipt.read_bytes()
+        argv[2] = 'reuse'
+        environment['_'] = '/next/shell-command'
+        result = subprocess.run(argv, env=environment, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)['execution'], 'reused')
+        environment['HERMES_KANBAN_TASK'] = 'different-authority'
+        result = subprocess.run(argv, env=environment, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(receipt.read_bytes(), saved)
 
     def test_isolated_head_change_cannot_qualify_even_with_same_tree(self):
         module = self.load()

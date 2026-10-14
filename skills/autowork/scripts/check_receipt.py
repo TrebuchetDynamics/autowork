@@ -190,9 +190,9 @@ def _execute_candidate(root, paths, command, timeout, *, candidate=None, generat
 
 
 def check_environment(environment=None):
-    """Remove display-instance metadata from execution as well as cache identity."""
+    """Remove shell/display metadata from execution as well as cache identity."""
     values = dict(os.environ if environment is None else environment)
-    for key in ('TERM_SESSION_ID', 'WINDOWID'):
+    for key in ('TERM_SESSION_ID', 'WINDOWID', '_'):
         values.pop(key, None)
     return values
 
