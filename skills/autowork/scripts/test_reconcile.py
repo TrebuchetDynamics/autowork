@@ -15,6 +15,32 @@ else:
     m = None
 
 class ReconcileTests(unittest.TestCase):
+    def test_local_delivery_policy_binds_original_card_run_and_profile(self):
+        import copy
+        with EvidenceFixture() as f:
+            policy = f.local_integration()
+            policy.update(task_id='t_fixture', run_id=9, implementer='fixture')
+            f.evidence['integration']['provenance']['review']['implementer'] = 'fixture'
+            snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'done'},
+                        'runs': [{'id': 9, 'profile': 'fixture', 'status': 'completed',
+                                  'metadata': {'delivery_evidence': f.evidence}}]}
+            original = copy.deepcopy(snapshot)
+            with patch.object(m, 'run', return_value=json.dumps(snapshot)) as native:
+                result = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=policy)
+                self.assertEqual(result['next_action'], 'reconcile_task_and_select')
+                self.assertTrue(result['delivery']['delivered'])
+                self.assertEqual(result['delivery']['publication'], 'unknown')
+                self.assertIsNone(result['continuation_capability']['remaining'])
+                for field, value in [('task_id', 't_other'), ('run_id', 8),
+                                     ('implementer', 'foreign'), ('candidate', {})]:
+                    bad = dict(policy, **{field: value})
+                    refused = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=bad)
+                    self.assertEqual(refused['next_action'], 'verify_and_integrate')
+                refused = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo)
+                self.assertFalse(refused['delivery']['delivered'])
+            self.assertEqual(snapshot, original)
+            self.assertTrue(all(c.args[1:3] == ('kanban', '--board') for c in native.call_args_list))
+
     def test_recovery_reports_missing_native_cap_without_treating_metadata_as_capability(self):
         snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'blocked'},
                     'runs': [{'id': 1, 'profile': 'fixture', 'status': 'blocked',

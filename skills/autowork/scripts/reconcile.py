@@ -16,7 +16,7 @@ from delivery_state import evaluate
 import continuation_capability
 
 
-def reconcile(prefix, home, profile, task_id=None, repo=None):
+def reconcile(prefix, home, profile, task_id=None, repo=None, local_policy=None):
     if task_id is None:
         receipt = home / 'autowork' / 'goal-handoff.json'
         if not receipt.exists():
@@ -68,7 +68,15 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
     metadata = latest.get('metadata') or {}
     current_evidence = (metadata.get('delivery_evidence')
                         if ownership == 'current_profile' and isinstance(metadata, dict) else None)
-    delivery = evaluate(current_evidence, repo)
+    # A coordinator-supplied policy cannot leak across cards, runs or profiles.
+    # Invalid explicit policy stays invalid, never falls back to PR assertions.
+    if local_policy is not None and (not isinstance(local_policy, dict)
+            or local_policy.get('task_id') != task_id
+            or type(local_policy.get('run_id')) is not int
+            or local_policy['run_id'] != latest.get('id')
+            or local_policy.get('implementer') != profile):
+        local_policy = {}
+    delivery = evaluate(current_evidence, repo, local_policy=local_policy)
     # A next action is a coordinator instruction, not proof of process liveness,
     # review approval, integration authority, or completed acceptance.
     terminal_run = latest.get('status') in {'blocked', 'failed', 'crashed', 'completed', 'cancelled', 'interrupted'} or latest.get('ended_at') is not None
@@ -107,11 +115,15 @@ def main():
     parser.add_argument('--compact', action='store_true', help='Omit raw metadata/event and bound summary; omit flag for full readback')
     parser.add_argument('--task-id')
     parser.add_argument('--repo', type=Path, help='Local Git repository for main ancestry verification')
+    parser.add_argument('--local-policy', type=Path, help='Trusted coordinator policy JSON, never worker metadata; binds task_id/run_id')
     parser.add_argument('--report-state', type=Path, help='Report-only cache; never skips reconciliation')
     args = parser.parse_args()
     prefix = ['hermes', '-p', args.profile]
     home = profile_home(prefix)
-    result = reconcile(prefix, home, args.profile, args.task_id, args.repo)
+    policy = json.loads(args.local_policy.read_text()) if args.local_policy else None
+    if args.local_policy and not isinstance(policy, dict):
+        parser.error('local policy must be an object')
+    result = reconcile(prefix, home, args.profile, args.task_id, args.repo, local_policy=policy)
     cache = args.report_state or home / 'autowork' / 'reconcile-report.json'
     # Store only the previous validated report projection, not raw worker prose.
     projection = {k: result.get(k) for k in

@@ -116,7 +116,12 @@ def run_locked(args, state):
     if composed:
         try:
             prefix = ['hermes', '-p', args.profile]
-            prior = reconcile.reconcile(prefix, reconcile.profile_home(prefix), args.profile, repo=Path(args.consumer))
+            policy_path = getattr(args, 'local_policy', None)
+            policy = json.loads(Path(policy_path).read_text()) if policy_path else None
+            if policy_path and not isinstance(policy, dict):
+                raise ValueError('local policy must be an object')
+            prior = reconcile.reconcile(prefix, reconcile.profile_home(prefix), args.profile,
+                                        repo=Path(args.consumer), local_policy=policy)
             result['reconciliation'] = prior
             if prior.get('outcome') != 'no_handoff' and prior.get('next_action') != 'reconcile_task_and_select':
                 result.update(outcome='BLOCKED', action='reconcile_original_card',
@@ -417,6 +422,7 @@ def main(argv=None):
     parser.add_argument('--tasks', help='Named task IDs; requires --plan')
     parser.add_argument('--state-dir', required=True, help='Private owning-profile autowork directory')
     parser.add_argument('--profile', help='Normal ready path: compose inputs and invoke native admission once with --apply; omit only for recovery-only inspection')
+    parser.add_argument('--local-policy', help='Trusted coordinator policy JSON for prior exact task/run local integration')
     parser.add_argument('--source-path', action='append', default=[], help='Explicit executable/test/dependency-closure file to bind; repeat as needed')
     parser.add_argument('--base', help='Full immutable base; default captures current HEAD once')
     parser.add_argument('--fallback-file', help='Existing structured focused-milestone fallback evidence; never synthesized')

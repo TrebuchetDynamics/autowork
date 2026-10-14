@@ -36,8 +36,36 @@ def qualification_check(check, candidate, repo):
         return None
 
 
-def integration_state(candidate, integration, repo):
-    """Check local ancestry and explicit protected-PR provenance, never mutate Git."""
+def local_review(candidate, integration, policy):
+    """Caller-owned policy is separate from worker assertions, not authentication."""
+    if not isinstance(policy, dict):
+        return False
+    reviewers = policy.get('reviewers')
+    implementer = policy.get('implementer')
+    authority = policy.get('authority')
+    provenance = integration.get('provenance')
+    if (type(policy.get('version')) is not int or policy['version'] != 1
+            or policy.get('mode') != 'reviewed_local' or policy.get('candidate') != candidate
+            or policy.get('target') != integration.get('target')
+            or not isinstance(authority, str) or not authority.strip()
+            or not isinstance(implementer, str) or not implementer.strip()
+            or not isinstance(reviewers, list) or not reviewers
+            or any(not isinstance(r, str) or not r.strip() or r == implementer for r in reviewers)
+            or len(set(reviewers)) != len(reviewers)
+            or not isinstance(provenance, dict)
+            or set(provenance) != {'source', 'authority', 'observed', 'review'}
+            or provenance.get('source') != 'reviewed_local'
+            or provenance.get('authority') != authority or provenance.get('observed') is not True):
+        return False
+    review = provenance.get('review')
+    return (isinstance(review, dict) and review.get('candidate') == candidate
+            and review.get('implementer') == implementer and review.get('reviewer') in reviewers
+            and review.get('observed') is True and review.get('outcome') == 'approved'
+            and isinstance(review.get('id'), str) and bool(review['id'].strip()))
+
+
+def integration_state(candidate, integration, repo, local_policy=None):
+    """Read Git and explicit provenance; protected PR is the default policy."""
     if repo is None or not isinstance(integration, dict) or not valid_candidate(candidate):
         return 'unknown'
     if integration.get('candidate') != candidate or integration.get('target') != 'refs/heads/main':
@@ -73,6 +101,24 @@ def integration_state(candidate, integration, repo):
             return 'unknown'
         if not ancestor(candidate['commit'], after) or not ancestor(before, after):
             return 'unknown'
+        if local_policy is not None:
+            # Pin the current target, not historical ancestry. Only the reviewed
+            # candidate tree may be introduced, by fast-forward or two-parent merge.
+            original = integration['candidate']
+            if (not local_review(original, integration, local_policy)
+                    or not candidate_identity.check(original, repo)
+                    or integration.get('action') != 'merge'
+                    or before != candidate['base'] or before == after
+                    or ancestor(candidate['commit'], before)
+                    or main.stdout.strip() != after):
+                return 'unknown'
+            after_tree = git('rev-parse', str(after) + '^{tree}')
+            parents = git('show', '-s', '--format=%P', after)
+            if (after_tree.returncode or after_tree.stdout.strip() != candidate['tree']
+                    or parents.returncode or (after != candidate['commit']
+                        and parents.stdout.split() != [before, candidate['commit']])):
+                return 'unknown'
+            return 'locally integrated'
         if integration.get('action') == 'synchronize' and before == after:
             return 'already synchronized'
         provenance = integration.get('provenance', {})
@@ -120,7 +166,7 @@ def valid_candidate(value):
                     for k, v in value['prerequisites'].items()))
 
 
-def evaluate(evidence, repo=None):
+def evaluate(evidence, repo=None, local_policy=None):
     evidence = evidence if isinstance(evidence, dict) else {}
     candidate = evidence.get('candidate')
     implementation = evidence.get('implementation', {})
@@ -148,14 +194,15 @@ def evaluate(evidence, repo=None):
     progress = ('Qualified: ' + ', '.join(scope) + '; delivery unknown' if qualified else
                 'Implemented; qualification unknown; delivery unknown' if implemented else
                 'Implementation unknown; qualification unknown; delivery unknown')
-    integration = integration_state(candidate, evidence.get('integration'), repo)
-    delivered = qualified and integration == 'merged'
+    integration = integration_state(candidate, evidence.get('integration'), repo, local_policy)
+    delivered = qualified and integration in {'merged', 'locally integrated'}
     if delivered:
-        progress = 'Delivered: merged main; qualified ' + ', '.join(scope)
+        lane = 'reviewed local main integration' if integration == 'locally integrated' else 'merged main'
+        progress = 'Delivered: ' + lane + '; qualified ' + ', '.join(scope)
     elif integration == 'already synchronized':
         progress = progress.replace('delivery unknown', 'already synchronized; delivery unknown')
     return {'state': 'delivered' if delivered else 'qualified' if qualified else 'implemented' if implemented else 'unknown',
             'candidate': candidate if valid_candidate(candidate) else None,
             'implemented': implemented, 'qualified': qualified, 'delivered': delivered,
-            'milestone_complete': False, 'qualification_scope': scope,
+            'milestone_complete': False, 'publication': 'unknown', 'qualification_scope': scope,
             'integration': integration, 'progress': progress}

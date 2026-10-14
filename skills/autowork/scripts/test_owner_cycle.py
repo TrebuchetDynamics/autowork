@@ -450,6 +450,44 @@ class OwnerCycleTests(unittest.TestCase):
 
 class ComposedReadyTests(unittest.TestCase):
     """Only these additional tests opt into native composition; dispatch is mocked."""
+    def test_local_policy_reaches_read_only_original_card_reconciliation(self):
+        import owner_cycle
+        from test_delivery_state import EvidenceFixture
+        from unittest.mock import patch
+        from contextlib import redirect_stdout
+        import io
+        with EvidenceFixture() as f:
+            policy = f.local_integration()
+            policy.update(task_id='original', run_id=9, implementer='fixture')
+            f.evidence['integration']['provenance']['review']['implementer'] = 'fixture'
+            policy_path = self.root / 'policy.json'
+            policy_path.write_text(json.dumps(policy))
+            snapshot = {'task': {'id': 'original', 'assignee': 'fixture', 'status': 'done'},
+                        'runs': [{'id': 9, 'profile': 'fixture', 'status': 'completed',
+                                  'metadata': {'delivery_evidence': f.evidence}}]}
+            (self.root / 'autowork').mkdir()
+            saved = self.root / 'autowork/goal-handoff.json'
+            saved.write_text(json.dumps({'task_id': 'original'}))
+            original = saved.read_bytes()
+            with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
+                    patch.object(owner_cycle.reconcile, 'run', return_value=json.dumps(snapshot)), \
+                    patch.object(owner_cycle, 'handoff') as dispatch, \
+                    patch.dict(owner_cycle.os.environ,
+                        {k: v for k, v in owner_cycle.os.environ.items() if k != 'HERMES_KANBAN_TASK'},
+                        clear=True), redirect_stdout(io.StringIO()):
+                for options, delivered in [([], False), (['--local-policy', str(policy_path)], True)]:
+                    owner_cycle.main([str(f.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1',
+                        '--state-dir', str(self.state), '--profile', 'fixture', '--apply', *options])
+                    receipt = json.loads((self.state / 'unblock-latest.json').read_text())
+                    prior = receipt['reconciliation']
+                    self.assertEqual(prior['delivery']['delivered'], delivered)
+                    self.assertEqual(prior['task_id'], 'original')
+                    self.assertEqual(prior['run_id'], 9)
+                    self.assertEqual(receipt['completed_tasks'], [])
+                    self.assertIsNone(prior['continuation_capability']['remaining'])
+                dispatch.assert_not_called()
+            self.assertEqual(saved.read_bytes(), original)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
