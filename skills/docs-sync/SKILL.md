@@ -84,11 +84,12 @@ TODO over newer entries. Revision checks are cooperative stale-write guards, not
 atomic CAS against direct writers. Gate-budget/normative-contract/hypothesis checks
 in that reference do not prove production API or RF acceptance.
 
-Native Git common config `repoDocs.backlogAuthority` binds an authoritative registered
-same-repo worktree. Existing `goals.py next` and coordination honor the binding;
-explicit `--canonical-repo` must match it. Without a binding, linked worktrees need
-explicit canonical targeting; copied ledgers are not writable canonical state.
-Inspect authority; do not set this key in actual repositories for this workflow.
+Commands target the requested checkout, including a linked worktree, under the
+shared Git coordination lock. Use `--canonical-repo` only to explicitly select
+another checkout of the same repository within existing integration authority.
+Legacy `repoDocs.backlogAuthority` configuration does not redirect or veto work.
+Keep branch-local changes reviewable; reconcile them against current canonical
+files instead of replacing another writer's ledger snapshot.
 Resolve the actual consumer, not just a docs-only scratch checkout. Scratch
 `validate` passing does not give the consumer a backlog: no consumer backlog means
 `draft_saved`.

@@ -3,7 +3,8 @@
 ## One canonical owner
 
 Use one integration owner for repository-root `goals.json`, `TODO.md`, and their task bodies.
-Workers in linked worktrees return scoped proposals, not replacement ledger snapshots.
+Workers may edit and validate branch-local task files in linked worktrees, then
+return scoped changes for normal review and integration, not replacement ledger snapshots.
 A proposal names the goal/task IDs, base revision, intended CLI operations, evidence,
 source identity, and complete task-body changes. It does not authorize a new goal,
 change acceptance, or close the parent milestone.
@@ -34,34 +35,28 @@ Verify this boundary with real temporary Git repositories and CLI processes:
 1. Hold the intended repository's lock; inject another repository's Git overrides
    into a mutation and require it to remain excluded until the correct lock releases.
 2. Invoke a linked worktree without `--canonical-repo` under primary-checkout
-   overrides and require refusal with both ledgers unchanged.
+   overrides and require the requested worktree to remain the target, with the
+   primary ledger unchanged.
 3. Exercise config-based overrides as well as directory/index/object overrides;
    retain ordinary aliases, no-Git fixtures and explicit canonical-target tests.
 Run `python -m unittest test_goal_concurrency -v` from the scripts directory after
 changing identity discovery. Passing ordinary concurrent-update tests alone does
 not exercise redirected lock identity.
 
-A linked-worktree invocation must explicitly select the primary checkout:
+Commands read and write the requested checkout by default, including a linked
+worktree. The shared lock serializes cooperating commands across those checkouts;
+it does not merge their task files or grant integration authority. An explicit
+`--canonical-repo` selects another verified checkout of the same Git repository:
 
 ```sh
-python <skill>/scripts/goals.py revision <worker> --canonical-repo <primary>
-python <skill>/scripts/goals.py evidence <worker> GOAL-1 --canonical-repo <primary> --expected-revision <revision> --kind executed --ref '<exact check>' --result pass
+python <skill>/scripts/goals.py revision <worker>
+python <skill>/scripts/goals.py evidence <worker> GOAL-1 --expected-revision <revision> --kind executed --ref '<exact check>' --result pass
 ```
 
-The default target must be the primary checkout of the same Git common directory.
-An existing native common-config `repoDocs.backlogAuthority` binding can instead
-name an absolute, registered worktree of that same repository. `goals.py` verifies
-registration/common-directory identity, resolves all commands (including `next`)
-to that owner, and requires explicit `--canonical-repo` to match it. Global,
-worktree-local and inherited Git configuration overrides do not establish this
-binding. A worktree registration alone is not backlog authority. Do not set this
-key during plan persistence or to force a passing gate; an actual integration
-owner must already have designated the consumer's backlog owner.
-The CLI refuses implicit writes and reads against an unbound linked worktree's stale
-ledger. It does not silently infer or merge another snapshot. The explicit flag
-selects the canonical target; it does not grant a worker integration authority.
-The designated integration owner applies proposals. Workers do not use the flag
-to bypass that ownership contract.
+Legacy `repoDocs.backlogAuthority` configuration is ignored. It cannot redirect
+reads/writes or turn a historical native binding into an execution gate. Apply
+reviewed changes to the canonical checkout under existing ownership and publication
+policy; preserve newer task entries and concurrent changes.
 
 Use `revision <repo>` to get a SHA-256 token over the exact ledger and TODO bytes,
 including a missing-file distinction. Pass `--expected-revision <token>` to a
@@ -81,7 +76,8 @@ block. Complete task bodies and their continuation bytes outside an existing
 marked block remain unchanged, including CRLF and trailing blank lines.
 When no coverage section exists, rendering appends it without trimming existing
 bytes. An existing unmarked `## Goal coverage` section retains its legacy
-migration behavior. Rendering does not create task bodies or archive entries.
+migration behavior. Rendering does not invent task bodies. It archives explicitly completed or
+superseded bodies under the separate archive contract.
 Fenced examples are not replacement targets. Unmatched, reversed or duplicate
 coverage markers are rejected before writing; reconcile their intended boundaries
 without deleting task bodies. Generated table values are escaped so multiline

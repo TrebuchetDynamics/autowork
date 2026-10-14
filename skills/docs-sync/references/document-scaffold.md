@@ -141,8 +141,9 @@ unsafe references or stale revisions are refused, never overwritten or merged.
 Reconcile existing projects through the canonical maintenance owner instead.
 
 The command shares the existing lock, path/authority policy and optional
-`--expected-revision`/`--canonical-repo` controls. Linked workers return proposals;
-they do not target canonical writes to bypass ownership. All inputs and referenced
+`--expected-revision`/`--canonical-repo` controls. Linked workers can maintain
+branch-local task files and return scoped changes for normal integration; explicit
+canonical targeting does not bypass ownership. All inputs and referenced
 sources are checked before content writes. A failed ledger replacement rolls back
 only an exact newly created TODO; pre-existing TODO is never removed. This is local
 cooperative coordination, not a crash-atomic multi-file transaction or protection
