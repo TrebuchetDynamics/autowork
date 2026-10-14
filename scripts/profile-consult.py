@@ -40,7 +40,8 @@ def redact(text):
     except (ValueError, RecursionError):
         parsed = None
     if isinstance(parsed, (dict, list, str)):
-        text = json.dumps(scrub(parsed), ensure_ascii=False)
+        # Mask decoded values, never serialized delimiters around a credential.
+        return json.dumps(scrub(parsed), ensure_ascii=False)
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'\b(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+', '[REDACTED]', text)

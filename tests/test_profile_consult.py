@@ -230,6 +230,18 @@ class ConsultationTests(unittest.TestCase):
                 self.assertNotIn('retained-tail', saved.read_text())
                 self.assertEqual(json.loads(result['receipt']['stderr'])['password'], '[REDACTED]')
 
+    def test_redaction_preserves_json_structure_for_plain_text_secrets(self):
+        import json
+        m = self.load()
+        for text in ('Bearer synthetic-token', 'token=synthetic-token',
+                     'https://owner:synthetic-token@example.test/path'):
+            with self.subTest(text=text):
+                raw = json.dumps({'message': text, 'keep': True})
+                sanitized = json.loads(m.redact(raw))
+                self.assertTrue(sanitized['keep'])
+                self.assertNotIn('synthetic-token', sanitized['message'])
+                self.assertEqual(m.redact(m.redact(raw)), m.redact(raw))
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))
