@@ -43,11 +43,11 @@ def redact(text):
         # Mask decoded values, never serialized delimiters around a credential.
         return json.dumps(scrub(parsed), ensure_ascii=False)
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
-    # Consume complete quoted assignments before the whitespace-delimited fallback.
-    text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''', r'\1[REDACTED]', text)
+    # Missing closing quotes must mask through EOF, not expose whitespace tails.
+    text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'\b(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+', '[REDACTED]', text)
-    text = re.sub(r'''(?i)(["'](?:api[_-]?key|token|password|secret|authorization)["']\s*:\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''', r'\1"[REDACTED]"', text)
+    text = re.sub(r'''(?is)(["'](?:api[_-]?key|token|password|secret|authorization)["']\s*:\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1"[REDACTED]"', text)
     text = re.sub(r'(?i)bearer\s+[^\s]+', 'Bearer [REDACTED]', text)
     text = re.sub(r'(https?://)[^\s/@]+:[^\s/@]+@', r'\1[REDACTED]@', text)
     return text

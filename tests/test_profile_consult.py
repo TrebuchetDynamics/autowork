@@ -308,6 +308,24 @@ class ConsultationTests(unittest.TestCase):
                     self.assertIn('keep', sanitized)
                     self.assertEqual(m.redact(sanitized), sanitized)
 
+    def test_unterminated_quoted_credentials_fail_closed(self):
+        import json
+        m = self.load()
+        for text in ('password="prefix LEAK_MARKER tail',
+                     "secret='prefix LEAK_MARKER tail",
+                     'token="prefix\\\nLEAK_MARKER tail',
+                     'authorization="prefix LEAK_MARKER tail\\',
+                     '{"password": "prefix LEAK_MARKER tail',
+                     "{'secret': 'prefix LEAK_MARKER tail",
+                     '{"token": "prefix LEAK_MARKER tail\\'):
+            for wrapped in (text, json.dumps({'text': text, 'keep': True})):
+                with self.subTest(wrapped=wrapped):
+                    sanitized = m.redact(wrapped)
+                    self.assertNotIn('LEAK_MARKER', sanitized)
+                    self.assertEqual(m.redact(sanitized), sanitized)
+                    if wrapped != text:
+                        self.assertTrue(json.loads(sanitized)['keep'])
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))
