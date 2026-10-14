@@ -28,8 +28,9 @@ or owner labels never require a native worker or external acknowledgement. Earli
 for authorized local work; scope, pauses and explicit external-action limits remain.
 
 Before a blocked or idle report, execute [the owner recovery cycle](owner-cycle.md).
-Use `owner_cycle.py --apply --owner-pid ACTUAL_SESSION_PID` for a durable current
-session claim, with verified process identity; use --scope repository for broad
+Use `owner_cycle.py --apply --owner-pid ACTUAL_SESSION_PID --profile CURRENT_PROFILE
+--state-dir VERIFIED_PROFILE_HOME/autowork` for a durable current session claim.
+Resolve profile/home from verified occurrence context and retain actual process identity; use --scope repository for broad
 repository development and --scope tasks for exact named tasks. No Kanban lookup,
 old-card import/release or native continuation API is required. Preserve the exact
 --plan/--tasks filter. Execute the returned contract in this session and retain

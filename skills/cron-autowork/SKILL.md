@@ -87,6 +87,9 @@ Delivery authority and exclusions: EXPLICIT_LIMITS.
 Resume saved continuation and inspect actual process/workspace activity first.
 TODO.md and existing goals.json own the queue; execute in the current agent session.
 No Kanban lookup, historical card or native continuation/review transition is required.
+For managed profile coordination, supply --profile CURRENT_PROFILE and
+--state-dir VERIFIED_PROFILE_HOME/autowork to owner_cycle.py with the actual owner PID.
+Resolve profile/home from verified occurrence context; never guess those values.
 Integrate approved work before new discovery. Reuse checks only while inputs match.
 Preserve useful candidates and live writers; delegate only when useful and authorized.
 Repair attributable task/docs metadata and retry selection in this occurrence.

@@ -22,7 +22,12 @@ receipts. An interrupted owner is reconciled from actual process plus workspace/
 evidence before adoption; a stale PID or elapsed time alone proves no release.
 
 `--profile` and `--state-dir` are optional attribution/private-storage settings;
-neither requires Hermes setup. `--tasks ID1,ID2` keeps an exact named task filter;
+neither requires Hermes setup for ordinary contributors. Managed profile/cron
+invocations must supply both `--profile CURRENT_PROFILE` and
+`--state-dir VERIFIED_PROFILE_HOME/autowork`, resolved from verified occurrence
+context. This binds the active coordinator to its installation so scoped helper
+updates preserve it. The runtime does not query native profile discovery or guess
+profile identity. `--tasks ID1,ID2` keeps an exact named task filter;
 `--plan path#heading` binds accepted context and may be used independently.
 `--source-path PATH` binds supplied check inputs. `--scope repository` expresses
 broad repository work; `--scope tasks` retains task-only scope. Check selected

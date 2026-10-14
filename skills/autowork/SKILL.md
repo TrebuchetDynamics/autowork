@@ -114,7 +114,11 @@ This policy is not a runtime guarantee of progress. No fabricated busywork.
 Autowork does not create schedules. Existing jobs use [scheduled policy](references/scheduled-policy.md)
 and [exact-job self-repair](references/cron-autoheal.md). Preserve pauses, IDs, cadence,
 model, delivery, task filters and publication limits. A paused job cannot resume
-itself. Scope retained in an old prompt survives migration; obsolete card-only
+itself. Managed profile invocations must pass `--profile CURRENT_PROFILE` and
+`--state-dir VERIFIED_PROFILE_HOME/autowork` to owner_cycle.py alongside the actual
+owner identity. Resolve both from verified occurrence context so scoped helper
+updates can detect and preserve the active coordinator. Do not guess a profile home.
+Scope retained in an old prompt survives migration; obsolete card-only
 prerequisites do not.
 
 Report per [dispatch and reporting](references/dispatch-and-reporting.md): task ID

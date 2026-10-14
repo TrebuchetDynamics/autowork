@@ -103,6 +103,8 @@ class OwnerCronTests(unittest.TestCase):
         self.assertIn('supersedes earlier card-only', managed)
         self.assertIn('--root DEFAULT_HERMES_HOME --profile CURRENT_PROFILE '
                       '--job-id CURRENT_JOB_ID --repo CANONICAL_REPOSITORY --apply', managed)
+        self.assertIn('--profile CURRENT_PROFILE --state-dir VERIFIED_PROFILE_HOME/autowork', managed)
+        self.assertIn('resolve the profile home from verified occurrence context', managed)
         for requirement in ('never guessed values', 'read back the saved result',
                             'never widen a named-only job', 'do not trigger recovery',
                             'resume this job yourself', 'automatic cron delivery'):

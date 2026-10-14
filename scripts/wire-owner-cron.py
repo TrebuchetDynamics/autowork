@@ -81,7 +81,7 @@ def owner_prompt(prompt, enabled):
         'No external owner acknowledgement is required. Execute in the current agent session; delegate only when useful and authorized through host-native tools. '
         'Reconcile actual running workers and completed results first; preserve useful candidates and consumed budgets. '
         'Check actual cron occurrence and manual-continuation liveness before admission or canonical integration, using actual process identity plus workspace/source evidence. '
-        'Use owner_cycle.py --apply --owner-pid ACTUAL_SESSION_PID for repository coordination; never guess identity or claim that metadata alone executes work. '
+        'Use owner_cycle.py --apply --owner-pid ACTUAL_SESSION_PID --profile CURRENT_PROFILE --state-dir VERIFIED_PROFILE_HOME/autowork for managed profile repository coordination; resolve the profile home from verified occurrence context, never guess identity or claim that metadata alone executes work. '
         'Retain the exact named --plan/--tasks filter and source-derived checks; use --scope repository only for broad repository authority. '
         'There is no separate mandatory validate-only, planning interview, broad docs audit, full suite or optional engineering tour before ready implementation. '
         'Apply explicit task/caller limits and real host execution controls; unknown usage is not zero and never reset an exhausted allocation. '
