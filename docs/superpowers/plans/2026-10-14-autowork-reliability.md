@@ -28,7 +28,11 @@ Existing authorization covers these bounded source repairs and local integration
    fresh behavior. Discover subjects each run; respect explicit subsets. Require
    matching bounded owner evidence, cron/continuity context and helper context,
    successful compliant response, and age at most one hour. Missing or uncertain
-   input, changes, expiry or failures require fresh consultation. Label reused
+   cache context, changes, expiry or failures require fresh consultation when
+   original owner evidence is available. In opt-in reuse mode, unavailable owner
+   evidence returns an explicit unavailable/not-consulted receipt without a model
+   call: the existing question forbids searching in that case. Default fresh mode
+   remains unchanged. Label reused
    replies and their age explicitly; never count them as new replies, live state,
    recovery, authority or task completion. Default self-assessment stays fresh.
    Update generated maintenance guidance to use reuse and changed-only reporting
