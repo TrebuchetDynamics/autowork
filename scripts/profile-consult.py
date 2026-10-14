@@ -46,7 +46,7 @@ def redact(text):
     # Missing closing quotes must mask through EOF, not expose whitespace tails.
     text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
-    text = re.sub(r'\b(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+', '[REDACTED]', text)
+    text = re.sub(r'\b(?:(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+|(?:gh[pour]|github_pat)_[A-Za-z0-9_-]+|ghs_[A-Za-z0-9_.-]+)', '[REDACTED]', text)
     text = re.sub(r'''(?is)(["'](?:api[_-]?key|token|password|secret|authorization)["']\s*:\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1"[REDACTED]"', text)
     text = re.sub(r'(?i)bearer\s+[^\s]+', 'Bearer [REDACTED]', text)
     text = re.sub(r'(https?://)[^\s/@]+:[^\s/@]+@', r'\1[REDACTED]@', text)
