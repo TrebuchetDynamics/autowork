@@ -63,6 +63,11 @@
           "kind": "executed",
           "ref": "TOOLSET-021 exact ab12f821 native independent review run398 approved; integration 49739eff: env -u HERMES_KANBAN_DB uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 332/495/139/8 offline tests, 3 skips, 8 excluded; git diff --check HEAD^1 passed; native/model/live/startup unqualified",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-022 exact 816678e3 native independent review run406 approved; integration 5f49a2e0: Python 3.12 scripts/check.py on frozen integration candidate passed 332/510/139/8 offline tests, three skips/eight native-model-integration modules excluded; whitespace passed; native/model/live/startup unqualified",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -224,14 +229,6 @@
     },
     {
       "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-022",
-      "section": "Next",
-      "status": "open",
-      "title": "Reconcile independently reviewed changed-base local delivery"
-    },
-    {
-      "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-001",
       "section": "Done",
@@ -327,6 +324,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve verified historical local integration after main advances"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-022",
+      "section": "Done",
+      "status": "done",
+      "title": "Reconcile independently reviewed changed-base local delivery"
     }
   ],
   "version": 1
