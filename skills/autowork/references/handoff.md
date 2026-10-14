@@ -871,6 +871,16 @@ both source and environment before and after. A fixture review sink must echo th
 exact candidate and receipt, and must stay labeled fixture evidence. Read native
 review acknowledgement separately before claiming a verified review handoff.
 
+## Historical local delivery readback
+
+Historical delivery readback is separate from current-target admission. See
+[reviewed local delivery evidence](owner-cycle.md#reviewed-local-delivery-evidence):
+reconciliation explicitly evaluates the original integration in current main
+ancestry, retaining candidate/ref, topology, review, policy and qualification
+checks even after main advances. A verified historical result allows eligible
+selection, never another merge or publication; default evaluation still requires
+the exact current integration tip. Preserve the original receipts unchanged.
+
 ## Local agent commits (Operating priority 14)
 
 Before review handoff or completion, run the required acceptance commands through

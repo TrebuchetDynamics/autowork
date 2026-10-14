@@ -135,6 +135,9 @@ def run_locked(args, state):
                 if distinct['original_card'] != prior.get('task_id'):
                     raise ValueError('Fallback original card differs from current reconciliation')
                 result['disjoint_fallback'] = distinct
+            # Historical verified delivery releases selection only. Fresh target,
+            # ownership and admission checks still belong to the next handoff;
+            # never repeat the old merge or infer publication from this readback.
             if not distinct and prior.get('outcome') != 'no_handoff' and prior.get('next_action') != 'reconcile_task_and_select':
                 result.update(outcome='BLOCKED', action='reconcile_original_card',
                               next_action=prior['next_action'], selected_task=None,

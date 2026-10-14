@@ -76,7 +76,9 @@ def reconcile(prefix, home, profile, task_id=None, repo=None, local_policy=None)
             or local_policy['run_id'] != latest.get('id')
             or local_policy.get('implementer') != profile):
         local_policy = {}
-    delivery = evaluate(current_evidence, repo, local_policy=local_policy)
+    # Read-only closeout recognizes the original integration in main ancestry;
+    # it must not re-admit that old candidate against today's target tip.
+    delivery = evaluate(current_evidence, repo, local_policy=local_policy, historical=True)
     # A next action is a coordinator instruction, not proof of process liveness,
     # review approval, integration authority, or completed acceptance.
     terminal_run = latest.get('status') in {'blocked', 'failed', 'crashed', 'completed', 'cancelled', 'interrupted'} or latest.get('ended_at') is not None

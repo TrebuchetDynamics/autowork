@@ -141,9 +141,21 @@ Fabricating matching strings is not verification, and fixtures remain fixtures.
 
 Local Git must show the candidate introduced by fast-forward or a two-parent merge
 whose parents are exactly before/candidate and whose tree is exactly the reviewed
-candidate tree. Current local main must still equal after; moved targets require
-fresh reconciliation, not silently repinned history. Missing, foreign, stale,
-contradictory or PR-shaped local provenance remains unknown. Required exact-candidate
+candidate tree. The default evaluator (`historical=False`) requires current local
+main to equal after: this strict current-target check remains separate from
+historical readback. Read-only reconciliation explicitly uses `historical=True`;
+its `integration_evaluation: historical` and `historically locally integrated`
+result verify the original event while allowing main to advance with either an
+unchanged or changed tree, provided after remains in main ancestry. Reset/divergent
+main, moved candidate/prerequisite refs, malformed original topology and forged
+provenance still refuse. No original candidate, policy, review or check is repinned.
+
+Owner-cycle retains that source-bound reconciliation result and may continue fresh
+eligible selection after verified historical closeout, without repeating the old
+merge. The result grants no new integration, admission or publication authority;
+the next handoff still checks current source, ownership and target independently.
+Missing, foreign, stale, contradictory or PR-shaped local provenance remains
+unknown. Required exact-candidate
 check receipts still gate delivery. This closes only the scoped local delivery lane;
 `publication` remains unknown, milestone completion remains false, and native,
 model, live acceptance, sessions, retry limits and unknown usage remain separate.

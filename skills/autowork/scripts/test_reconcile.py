@@ -15,6 +15,32 @@ else:
     m = None
 
 class ReconcileTests(unittest.TestCase):
+    def test_historical_closeout_selects_only_with_source_bound_delivery(self):
+        import copy
+        with EvidenceFixture() as f:
+            policy = f.local_integration()
+            policy.update(task_id='t_fixture', run_id=9, implementer='fixture')
+            f.evidence['integration']['provenance']['review']['implementer'] = 'fixture'
+            snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'done'},
+                        'runs': [{'id': 9, 'profile': 'fixture', 'status': 'completed',
+                                  'metadata': {'delivery_evidence': f.evidence}}]}
+            original = copy.deepcopy(snapshot)
+            f.git('update-ref', 'refs/heads/main', f.commit('advance\n', f.commit_id))
+            with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                result = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=policy)
+                self.assertEqual(result['next_action'], 'reconcile_task_and_select')
+                self.assertEqual(result['delivery']['integration'], 'historically locally integrated')
+                self.assertEqual(result['delivery']['candidate'], f.identity)
+                self.assertEqual(result['delivery']['publication'], 'unknown')
+                for field, value in [('task_id', 'other'), ('run_id', 8), ('implementer', 'other')]:
+                    refused = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo,
+                                          local_policy=dict(policy, **{field: value}))
+                    self.assertEqual(refused['next_action'], 'verify_and_integrate')
+                f.git('update-ref', 'refs/heads/main', f.base)
+                refused = m.reconcile([], f.repo, 'fixture', 't_fixture', f.repo, local_policy=policy)
+                self.assertEqual(refused['next_action'], 'verify_and_integrate')
+            self.assertEqual(snapshot, original)
+
     def test_local_delivery_policy_binds_original_card_run_and_profile(self):
         import copy
         with EvidenceFixture() as f:

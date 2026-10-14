@@ -450,6 +450,54 @@ class OwnerCycleTests(unittest.TestCase):
 
 class ComposedReadyTests(unittest.TestCase):
     """Only these additional tests opt into native composition; dispatch is mocked."""
+    def test_historical_delivery_allows_eligible_selection_without_old_merge(self):
+        import copy
+        import io
+        import owner_cycle
+        from contextlib import redirect_stdout
+        from test_delivery_state import EvidenceFixture
+        from unittest.mock import patch
+        with EvidenceFixture() as f:
+            policy = f.local_integration()
+            policy.update(task_id='original', run_id=9, implementer='fixture')
+            f.evidence['integration']['provenance']['review']['implementer'] = 'fixture'
+            # A real changed-tree descendant adds an independent ready backlog.
+            f.git('reset', '--hard', 'main')
+            self.repo = f.repo
+            self.ready_backlog()
+            policy_path = self.root / 'policy.json'
+            policy_path.write_text(json.dumps(policy))
+            snapshot = {'task': {'id': 'original', 'assignee': 'fixture', 'status': 'done'},
+                        'runs': [{'id': 9, 'profile': 'fixture', 'status': 'completed',
+                                  'metadata': {'delivery_evidence': f.evidence}}]}
+            original = copy.deepcopy(snapshot)
+            (self.root / 'autowork').mkdir()
+            saved = self.root / 'autowork/goal-handoff.json'
+            saved.write_text(json.dumps({'task_id': 'original'}))
+            saved_bytes = saved.read_bytes()
+            refs = f.git('show-ref')
+            with patch.object(owner_cycle.reconcile, 'profile_home', return_value=self.root), \
+                    patch.object(owner_cycle.reconcile, 'run', return_value=json.dumps(snapshot)), \
+                    patch.object(owner_cycle, 'handoff', return_value={'exit_code': 0, 'result': {
+                        'outcome': 'handed_off', 'task_id': 'new', 'goal_mode': True}}) as dispatch, \
+                    patch.dict(owner_cycle.os.environ,
+                        {k: v for k, v in owner_cycle.os.environ.items() if k != 'HERMES_KANBAN_TASK'},
+                        clear=True), redirect_stdout(io.StringIO()):
+                code = owner_cycle.main([str(f.repo), '--state-dir', str(self.state),
+                    '--profile', 'fixture', '--apply', '--source-path', 'code.py',
+                    '--local-policy', str(policy_path)])
+            receipt = json.loads((self.state / 'unblock-latest.json').read_text())
+            self.assertEqual(code, 0, receipt)
+            self.assertEqual(receipt['reconciliation']['next_action'], 'reconcile_task_and_select')
+            self.assertEqual(receipt['reconciliation']['delivery']['integration'],
+                             'historically locally integrated')
+            self.assertEqual(receipt['selected_task']['id'], 'T1')
+            self.assertEqual(receipt['completed_tasks'], [])
+            dispatch.assert_called_once()
+            self.assertEqual(snapshot, original)
+            self.assertEqual(saved.read_bytes(), saved_bytes)
+            self.assertEqual(f.git('show-ref'), refs)
+
     def test_local_policy_reaches_read_only_original_card_reconciliation(self):
         import owner_cycle
         from test_delivery_state import EvidenceFixture
