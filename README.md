@@ -40,15 +40,18 @@ command for planning.
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
 | Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. | Profile setup tools + selected integrations |
-| Update the bundle | `/toolset update` | Checks upstream and updates plugin copies and bundled skills across all existing profiles. Use `/toolset update status` for the result. | Git, upstream access and clean plugin checkouts |
+| Update the bundle | `/toolset update` | Checks upstream, updates plugin copies and bundled skills across all existing profiles, re-applies each profile's command menu and settings, and requests one graceful gateway restart when anything changed. Use `/toolset update status` for the result. | Git, upstream access and clean plugin checkouts |
 | Inspect capabilities | `/toolset list` | Lists registered commands and their owners; `hermes toolset doctor --json` reports missing imports. | Core; inventory does not prove workflow readiness |
 
 **Core** means bundled commands with a configured model; `doctor --core` checks
 registration, not the workflow prerequisites above.
 
-Telegram uses underscores: `/plan_with_me`, `/docs_sync`, `/git_commit_push`,
-`/plan_for_me`. Autoresearch retains all 13 subcommands plus `/autoresearch`.
-See [commands and workflows](docs/workflows.md) for the full research command set.
+Telegram uses underscores. Its picker advertises the workflow commands
+`/plan_with_me`, `/plan_for_me`, `/docs_sync`, `/autowork` and `/cron_autowork`;
+other bundled commands such as `/git_commit_push` still work when typed. Older
+compatibility spellings (`/autoresearch`, `/autoresearch_plan`,
+`/autoresearch_<protocol>`) still run but are not advertised. See
+[commands and workflows](docs/workflows.md) for the full research command set.
 
 `/autowork` is the repository-development command. Upgrade existing installations
 with the migration procedure in [installation](docs/installation.md).
@@ -62,9 +65,28 @@ with the migration procedure in [installation](docs/installation.md).
 
 The interview asks questions and uses docs_sync to save accepted decisions and
 tasks automatically; a separate docs command is unnecessary. **TODO.md is the
-central work queue** for plans, user orders and progress. Its task details and
-Now/Next ordering stay synchronized with the goals.json execution index; explicit
-user priority changes are reconciled before task selection.
+central work queue** for plans, user orders and progress, and its order is the
+human priority. A runnable task needs an ID, a place under `## Now` or `## Next`,
+and unique Scope, Acceptance and Checks fields; an arbitrary checklist line is not
+a task:
+
+```markdown
+## Now
+
+- [ ] CACHE-01 — Add bounded cache storage
+  Status: open
+  Scope: src/cache only; no new dependencies.
+  Acceptance: entries beyond the limit are evicted oldest-first.
+  Checks: `pytest tests/test_cache.py`
+  Dependencies: None.
+```
+
+When goals.json is present it records that order. To reprioritize, move whole task
+blocks in TODO.md and run `goals.py reorder <repo>`; until then Autowork stops with
+`PRIORITY_DRIFT` instead of running the old order. A ledger without a recorded
+order reports `UNMIGRATED` and keeps legacy selection until a one-time
+`goals.py bootstrap-order` (dry-run first). Focus and dependencies still decide
+which eligible task runs; they never rewrite your order.
 
 Already have an idea? Plan it first, then authorize execution:
 
@@ -106,7 +128,7 @@ Next: CACHE-02 — Verify eviction behavior [eligible, not started].
 Delivery: local commit <SHA>; not pushed, as requested.
 ```
 
-A resumed worker is **RUNNING**, not completed. **COMPLETED** requires verified
+An observed active run with verified admission is **RUNNING**, not completed. **COMPLETED** requires verified
 task acceptance and closure; a passing build or successful dispatch is insufficient.
 For a genuine user-dependent blocker, the report leads with **Action needed from
 you:** the exact action and target, why it is needed, and what will resume afterward.
@@ -244,7 +266,12 @@ Later failures can still leave partial setup; read the outcome.
 For subsequent bundle updates, use `/toolset update` in CLI chat or Telegram;
 `/toolset update --check` previews availability and `/toolset update status` shows
 the result. Terminal equivalent: `hermes toolset update`. This targets **all live
-profiles**, preserves local conflicts and uses fast-forward updates only. See
+profiles**, preserves local conflicts and uses fast-forward updates only. It also
+self-heals each profile's command menu, approval and injection settings
+(`settings_healed` in the result) and, when anything changed, requests one graceful
+gateway restart so Telegram menus refresh; in-flight turns finish first and
+workers and schedules keep running. It refuses while a plugin checkout has
+uncommitted changes. See
 [update behavior and recovery](docs/installation.md#update-all-profiles).
 
 See [onboarding](docs/onboarding.md) for Telegram checks, project binding and updates.
