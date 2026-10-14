@@ -444,8 +444,12 @@ def record_handoff(prefix, journal_dir, home, profile, receipt):
 
 def create_registered(native_python, request_path):
     """Native API owns transactional creation; retain uncertain requests without retry."""
+    request = json.loads(Path(request_path).read_text())
+    env = dict(os.environ, HERMES_HOME=request['profile_home'], HERMES_KANBAN_BOARD='default',
+               HERMES_KANBAN_DB=request['db_path'], HERMES_KANBAN_HOME=str(Path(request['db_path']).parent))
+    # Preserve worker identity so coordinator-only admission still refuses workers.
     result = subprocess.run([native_python, str(Path(__file__).with_name('registration_admission.py')),
-        '--request', str(request_path)], capture_output=True, text=True, timeout=120)
+        '--request', str(request_path)], capture_output=True, text=True, timeout=120, env=env)
     if result.returncode:
         raise ValueError('Registered native admission failed; preserve request/registry and reconcile: ' + result.stderr[-2000:])
     created = json.loads(result.stdout)
@@ -709,7 +713,7 @@ def main():
         if args.registration_native_python:
             request_path = journal_dir / ('registration-request-' + pass_path.name + '.json')
             request = dict(db_path=str(Path(canonical_board['db_path']).resolve()),
-                profile=args.profile, manifest_path=str(manifest_path), manifest_sha256=manifest_sha256,
+                profile=args.profile, profile_home=str(home), manifest_path=str(manifest_path), manifest_sha256=manifest_sha256,
                 receipt_path=str(reservation), handoff_template=reservation_template,
                 task=dict(title=args.title, body=body, assignee=args.profile, workspace_kind='dir',
                     workspace_path=str(pass_path), goal_mode=True, goal_max_turns=args.goal_max_turns,

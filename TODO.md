@@ -44,7 +44,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-017 — Prepare and recover exact-card writer registration
 
 - [ ] TOOLSET-017 — Prepare and recover exact-card writer registration
-- Status: in_progress; shared reservation and prerequisite preparation are implemented and integrated in eb72be6; original-card native migration remains unavailable.
+- Status: in_progress; shared reservation and prerequisite preparation are implemented and integrated in eb72be6; new-card transactional registration and verified disjoint fallback are now implemented; original-card native migration remains unavailable.
 - Goal: RECOVERY — Make required registration compatible with immutable startup admission.
 - Sources: [accepted recovery plan](docs/project.md#end-to-end-original-task-recovery), [launcher](skills/autowork/scripts/start_goal.py), [startup guard](skills/autowork/scripts/pass_workspace.py), [registration verifier](skills/autowork/scripts/writer_registration.py), [handoff](skills/autowork/references/handoff.md).
 - Scope: Implement deferred initial dispatch for explicitly required registration and an attributed original-card prerequisite transition through supported controls. Preserve original evidence; keep declared coordination state separate from executable source. Include executable helper/runtime migration compatibility and exact identity/scope verification.
@@ -53,7 +53,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Ownership: Authorized shared maintainer; original product owners/cards remain unchanged.
 - Exclusions: No upstream edits, silent repinning, new product cards, budget reset, live profile writes or pause changes in the offline implementation slice.
-- Next action: Use a supported native original-card prerequisite release/runtime-migration operation when available. The new reservation/preparation path deliberately retains the original guard and old evidence; it does not recover an already frozen native card. Do not recreate the card or repeat the completed offline implementation.
+- Next action: Use transactional new-card admission for genuinely independent accepted work; retain original stopped cards and allocations. Existing cards still need a supported original-card prerequisite/runtime migration and cumulative continuation cap. The new reservation/preparation path deliberately retains the original guard and old evidence; it does not recover an already frozen native card. Do not recreate the card or repeat the completed offline implementation.
 
 ### TOOLSET-018 — Bind original-card continuation to supported budget enforcement
 

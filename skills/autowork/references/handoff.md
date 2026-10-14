@@ -51,12 +51,44 @@ the real native card ID after reservation. The declared registry cannot also be 
 required executable input or an owned file. No declaration retains the normal
 startup path; this option does not automatically discover prose requirements.
 
-The launcher uses native `create --initial-status blocked`, retaining the baseline
+For executable new-card admission, also supply
+`--registration-native-python /path/to/installed-hermes-python`. This must run a
+Python script with the selected Hermes installation's dependencies available.
+The launcher binds the target profile home and canonical board. The native
+`create_task` API supports an outer transaction: create the new card, retain its
+identity, append exactly its declared JSONL registration, verify the original
+startup guard and record the prerequisite comment, then commit. No dispatcher
+can see the card before that commit. The guard independently rechecks the exact
+append at startup. Original source, runtime and manifest pins stay unchanged.
+This route writes the declared canonical registry; declare its extra required
+fields explicitly. It does not migrate or resume existing cards.
+
+An interrupted or rejected admission can leave an attributed registry append even
+though SQLite rolled back. A durable attempt record keyed by profile, source
+workspace and accepted task prevents a new workspace/name from silently retrying.
+Preserve that record, receipt and registry for explicit reconciliation. A prepared
+receipt alone never proves native commit, worker execution or product completion.
+
+A distinct accepted task can proceed while an older card remains blocked using
+`--disjoint-blocked-handoff /private/disjoint.json`, together with both registration
+options. The evidence binds the original handoff/requirement hashes, card, task,
+workspace, base and terminal run, plus the new task and its exact declared scope,
+resource-independence reason and source reference. The original native contract
+must pin the requirement. Overlapping paths, the same task, live/unknown claims
+and changed original state refuse. Broken old registration is retained, not
+revalidated as a prerequisite for independent work. File disjointness does not
+prove independence of databases, devices or other shared resources: the
+coordinator must establish that from task contracts. The transaction rechecks the
+original claim/run/body before creating the distinct card. Owner-cycle accepts
+these options; existing focused-milestone fallback evidence is still required.
+
+Without the native runtime option, the launcher uses native
+`create --initial-status blocked`, retaining the baseline
 registry bytes, original source pins and frozen runtime. It saves
 `reservation-<pass>.json` immediately after creation, before fallible readback, and
 returns `registration_pending` after successful readback. Its original guard refuses
-initial implementation while preparation is pending, including when verifier flags
-are omitted. A retry finds the original blocked card; it does not create a replacement.
+initial implementation until the exact declared registration append is present,
+including when optional verifier flags are omitted. A retry finds the original blocked card; it does not create a replacement.
 
 Use the repository's supported registration operation to append the exact native
 card/task/workspace/base/scope row. Then prepare private evidence with:
@@ -73,7 +105,7 @@ and CLI-resolved board read-only, including claim and allocation fields omitted 
 the CLI JSON. It requires a blocked card with no runs or live claim, the original
 allocation, and unchanged pinned helpers. It accepts only one exact registration
 append, preserving every prior registry byte. The coordination source digest may
-change only in this preparation check; executable inputs and the worker checkout
+change only for this exact predeclared append; executable inputs and the worker checkout
 remain immutable. This is no general source-fingerprint exemption.
 
 The output retains the old handoff/manifest, both registry versions, native

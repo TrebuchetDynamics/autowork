@@ -5,6 +5,23 @@ from unittest.mock import patch
 import start_goal as m
 
 class RegisteredCreateTests(unittest.TestCase):
+    def test_native_launcher_binds_selected_profile_and_board(self):
+        import tempfile
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'request.json'
+            path.write_text(json.dumps(dict(profile_home='/selected/profile', db_path='/selected/board.db')))
+            with patch.dict(m.os.environ, {'HERMES_HOME':'/foreign', 'HERMES_KANBAN_DB':'/foreign.db',
+                    'HERMES_KANBAN_TASK':'worker-must-still-refuse'}), \
+                    patch.object(m.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='{"id":"t_fixture"}')) as run:
+                m.create_registered('/selected/python', path)
+            env = run.call_args.kwargs['env']
+            self.assertEqual(env['HERMES_HOME'], '/selected/profile')
+            self.assertEqual(env['HERMES_KANBAN_DB'], '/selected/board.db')
+            self.assertEqual(env['HERMES_KANBAN_BOARD'], 'default')
+            self.assertEqual(env['HERMES_KANBAN_HOME'], '/selected')
+            self.assertEqual(env['HERMES_KANBAN_TASK'], 'worker-must-still-refuse')
+
     def test_registered_creation_uses_native_transaction_request(self):
         import subprocess, re, shlex, hashlib
         from test_owner_cycle import ComposedReadyTests
