@@ -37,8 +37,6 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
         raise ValueError('Unknown task schema: expected id, assignee and status strings')
     if task.get('id') != task_id:
         raise ValueError('Readback task ID does not match the requested handoff')
-    if task.get('assignee') != profile:
-        raise RuntimeError('Prior handoff belongs to a different profile; do not reconcile as owned')
     runs = snapshot.get('runs', [])
     events = snapshot.get('events', [])
     if (not isinstance(runs, list) or any(not isinstance(r, dict) or
@@ -49,6 +47,20 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
     if not isinstance(events, list) or any(not isinstance(e, dict) for e in events):
         raise ValueError('Unknown events schema: expected an object list')
     latest = max(runs, key=lambda r: r['id']) if runs else {}
+    if task['assignee'] != profile:
+        receipt = home / 'autowork' / 'goal-handoff.json'
+        saved = json.loads(receipt.read_text()) if receipt.exists() else {}
+        if (isinstance(saved, dict) and saved.get('task_id') is None
+                and isinstance(saved.get('current_handoff'), dict)):
+            saved = saved['current_handoff']
+        # Review reassignment permits observation, not ownership or delivery claims.
+        if (not isinstance(saved, dict) or saved.get('task_id') != task_id
+                or saved.get('profile') != profile
+                or task['status'] not in {'review', 'reviewed', 'done'}
+                or latest.get('profile') != task['assignee']
+                or not any(r.get('profile') == profile and r.get('outcome') == 'review_requested'
+                           and r['id'] < latest['id'] for r in runs)):
+            raise RuntimeError('Prior handoff belongs to a different profile; do not reconcile as owned')
     owner = latest.get('profile')
     owner = owner if isinstance(owner, str) and owner else None
     ownership = 'current_profile' if owner == profile else 'other_profile' if owner else 'unknown'
