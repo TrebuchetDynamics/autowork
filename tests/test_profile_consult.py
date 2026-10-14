@@ -165,6 +165,30 @@ class ConsultationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     m.original_evidence(name, root)
 
+    def test_metadata_is_redacted_before_truncation(self):
+        import json
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            secret = 'prefix ' + 'LEAK_MARKER ' * 40
+            metadata = json.dumps({'password': secret, 'keep': True})
+            self.history(root, 'one', [('a', 'cli', metadata, metadata, metadata,
+                                       'one', None, 1)])
+            result = m.original_evidence('one', root)
+            self.assertNotIn('LEAK_MARKER', str(result))
+            for field in ('title', 'cwd', 'git_repo_root'):
+                self.assertEqual(json.loads(result[field]),
+                                 {'password': '[REDACTED]', 'keep': True})
+            import sqlite3
+            with sqlite3.connect(root / 'profiles/one/state.db') as db:
+                db.execute('UPDATE sessions SET title=?', ('prefix\x00' + 'x' * 65537,))
+            self.assertEqual(m.original_evidence('one', root)['title'], '')
+            with sqlite3.connect(root / 'profiles/one/state.db') as db:
+                db.execute('UPDATE sessions SET title=NULL, cwd=NULL, git_repo_root=NULL')
+            result = m.original_evidence('one', root)
+            for field in ('title', 'cwd', 'git_repo_root'):
+                self.assertIsNone(result[field])
+
     def test_unusable_history_fails_closed(self):
         import sqlite3
         m = self.load()
