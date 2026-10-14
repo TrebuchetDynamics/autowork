@@ -53,6 +53,11 @@
       "evidence": [
         {
           "kind": "executed",
+          "ref": "Reviewed 218865c; coordinator exact-commit Python 3.12 scripts/check.py: 253/448/139/8 offline tests passed, 2 skipped, 8 excluded; native same-card review approved; local integration only",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "cd skills/docs-sync/scripts && python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)",
           "result": "pass"
         }
@@ -60,7 +65,7 @@
       "id": "ARCHIVAL",
       "priority": 40,
       "source": "TODO.archive.md#toolset-009--account-for-archival-in-the-shared-rendering-contract",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "TOOLSET-009",
         "TOOLSET-014"
@@ -149,14 +154,6 @@
     },
     {
       "depends_on": [],
-      "goal": "ARCHIVAL",
-      "id": "TOOLSET-014",
-      "section": "Next",
-      "status": "open",
-      "title": "Archive completed task headings with their checkbox bodies"
-    },
-    {
-      "depends_on": [],
       "goal": "CONTINUATION",
       "id": "TOOLSET-008",
       "section": "Needs decision",
@@ -202,6 +199,14 @@
       "section": "Done",
       "status": "done",
       "title": "Start ready tasks through one composed default preflight"
+    },
+    {
+      "depends_on": [],
+      "goal": "ARCHIVAL",
+      "id": "TOOLSET-014",
+      "section": "Done",
+      "status": "done",
+      "title": "Archive completed task headings with their checkbox bodies"
     }
   ],
   "version": 1
