@@ -15,6 +15,32 @@ class ReceiptTests(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
+    def test_malformed_receipts_are_rejected_without_execution(self):
+        import json, subprocess
+        from unittest.mock import patch
+        module = self.load()
+        malformed = [None, [], {}, {'before': None},
+                     {'before': {'files': [None]}},
+                     {'before': {'files': [{'path': 'input'}]}, 'external_before': []}]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            receipt = root / 'receipt.json'
+            command = [sys.executable, '-c', 'from pathlib import Path; Path("ran").touch()']
+            for value in malformed:
+                with self.subTest(receipt=value), patch.object(module, 'runtime') as runtime:
+                    self.assertFalse(module.reusable(value, root, command, paths=['input']))
+                    runtime.assert_not_called()
+                saved = json.dumps(value)
+                receipt.write_text(saved)
+                for action in ('reuse', 'run-or-reuse'):
+                    result = subprocess.run([sys.executable, module.__file__, action,
+                        '--workspace', str(root), '--receipt', str(receipt), '--path', 'input',
+                        '--', *command], capture_output=True, text=True, timeout=15)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertEqual(receipt.read_text(), saved)
+                    self.assertFalse((root / 'ran').exists())
+
     def test_new_receipt_directory_is_prepared_before_check(self):
         import json, subprocess
         module = self.load()
