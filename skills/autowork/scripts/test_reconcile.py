@@ -62,6 +62,50 @@ class ReconcileTests(unittest.TestCase):
             self.assertEqual(cli.call_args.args[1:], ('kanban','--board','default','show','t_fixture','--json'))
             self.assertEqual(json.loads((home/'autowork/goal-handoff.json').read_text())['status'], 'ready')
 
+    def test_reviewer_reassignment_keeps_original_coordinator_readback(self):
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            home = Path(directory)
+            (home / 'autowork').mkdir()
+            (home / 'autowork/goal-handoff.json').write_text(json.dumps(
+                {'task_id': 't_fixture', 'profile': 'fixture'}))
+            snapshot = {'task': {'id': 't_fixture', 'assignee': 'reviewer', 'status': 'done'},
+                        'runs': [{'id': 7, 'profile': 'fixture', 'outcome': 'review_requested'},
+                                 {'id': 8, 'profile': 'reviewer', 'outcome': 'completed'}]}
+            receipt = home / 'autowork/goal-handoff.json'
+            saved = json.loads(receipt.read_text())
+            receipt.write_text(json.dumps({**saved, 'current_handoff':
+                                           {'task_id': 't_other', 'profile': 'other'}}))
+            with patch.object(m, 'run', return_value=json.dumps(snapshot)):
+                result = m.reconcile([], home, 'fixture', 't_fixture')
+            self.assertEqual(result['next_action'], 'verify_and_integrate')
+            self.assertEqual(result['run_ownership'], 'other_profile')
+            self.assertFalse(result['worker_observed'])
+            self.assertFalse(result['delivery']['delivered'])
+
+    def test_foreign_assignment_requires_saved_original_review_handoff(self):
+        with tempfile.TemporaryDirectory(dir=SCRATCH) as directory:
+            home = Path(directory)
+            (home / 'autowork').mkdir()
+            receipt = home / 'autowork/goal-handoff.json'
+            original = {'task_id': 't_fixture', 'profile': 'fixture'}
+            snapshot = {'task': {'id': 't_fixture', 'assignee': 'reviewer', 'status': 'done'},
+                        'runs': [{'id': 7, 'profile': 'fixture', 'outcome': 'review_requested'},
+                                 {'id': 8, 'profile': 'reviewer', 'outcome': 'completed'}]}
+            cases = [({'task_id': 't_other', 'profile': 'fixture'}, snapshot),
+                     ({'task_id': 't_fixture', 'profile': 'other'}, snapshot),
+                     ({'task_id': 't_other', 'profile': 'other',
+                       'current_handoff': original}, snapshot),
+                     (original, {**snapshot, 'runs': [snapshot['runs'][1]]}),
+                     (original, {**snapshot, 'task': {**snapshot['task'], 'status': 'running'}}),
+                     (original, {**snapshot, 'runs': [snapshot['runs'][0],
+                                                    {**snapshot['runs'][1], 'profile': 'other'}]})]
+            for saved, readback in cases:
+                receipt.write_text(json.dumps(saved))
+                with self.subTest(saved=saved, readback=readback), \
+                     patch.object(m, 'run', return_value=json.dumps(readback)):
+                    with self.assertRaisesRegex(RuntimeError, 'different profile'):
+                        m.reconcile([], home, 'fixture', 't_fixture')
+
     def test_wrong_card_readback_is_rejected(self):
         snapshot = {'task': {'id': 't_other', 'assignee': 'fixture', 'status': 'done'},
                     'runs': [], 'events': []}
