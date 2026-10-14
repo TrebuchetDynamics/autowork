@@ -101,8 +101,32 @@ class ConsultationTests(unittest.TestCase):
             before = db.read_bytes()
             evidence = m.original_evidence('one', root)
             self.assertEqual(evidence['around_message_id'], 3)
-            self.assertNotIn('owner-private-content', str(evidence))
             self.assertEqual(db.read_bytes(), before)
+            self.assertEqual(evidence['anchor_excerpt'], 'owner-private-content')
+            self.assertFalse(evidence['anchor_truncated'])
+            with sqlite3.connect(db) as connection:
+                connection.execute('UPDATE messages SET content=? WHERE id=3',
+                                   ('token=private-value ' + 'x' * 3000,))
+            bounded = m.original_evidence('one', root)
+            self.assertNotIn('private-value', bounded['anchor_excerpt'])
+            self.assertLessEqual(len(bounded['anchor_excerpt']), 2000)
+            self.assertTrue(bounded['anchor_truncated'])
+            import json
+            for content, omitted in [
+                    (json.dumps({'password': 'prefix ' + 'LEAK_MARKER ' * 300}), False),
+                    ('x' * 1975 + ' token=a END_MARKER', True),
+                    ('x' * 65537, True)]:
+                with sqlite3.connect(db) as connection:
+                    connection.execute('UPDATE messages SET content=? WHERE id=3', (content,))
+                actual = m.original_evidence('one', root)
+                self.assertNotIn('LEAK_MARKER', actual['anchor_excerpt'])
+                self.assertLessEqual(len(actual['anchor_excerpt']), 2000)
+                if omitted:
+                    self.assertTrue(actual['anchor_truncated'])
+                if len(content) > 65536:
+                    self.assertEqual(actual['anchor_excerpt'], '')
+            with sqlite3.connect(db) as connection:
+                connection.execute('UPDATE messages SET content=? WHERE id=3', ('owner-private-content',))
             with patch.object(m, 'execute', return_value={'stdout': '{"type":"result","exit_code":0,"text":"ok"}', 'stderr': '', 'returncode': 0, 'timed_out': False}) as call:
                 m.consult('one', root, 'hermes', 65)
             prompt = call.call_args.args[0][-1]
