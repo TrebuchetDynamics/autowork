@@ -309,7 +309,8 @@ P labels alone change nothing. To reprioritize, move whole task blocks in TODO.m
 then run `goals.py reorder <repo>`: it records the new order in goals.json only and
 refuses missing or duplicated bodies. Insert a new body where it should rank. An
 unrecorded ledger reports `UNMIGRATED`; migrate it once with
-`goals.py bootstrap-order <repo> --dry-run`, review every proposed move, then apply
+`goals.py bootstrap-order <repo> --dry-run`, review every proposed move and any
+`eligible_order_changes` (blocks stay within their `###` groups), then apply
 with `--expected-revision` from that report. Bootstrap never reruns; drift is fixed
 with `reorder`. Confirm `next --json` returns the intended leading picks. Derive pick summaries from the selector, not hand-kept lists. Report actual eligible
 picks, not claimed work. Needs decision/focus is not eligibility or live availability.

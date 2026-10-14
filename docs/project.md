@@ -711,9 +711,13 @@ ID, so a human reorder in TODO.md did not change selection when goals.json exist
   running first. Scheduled Autowork invokes it on drift before selecting new work.
 - `goals.py bootstrap-order` is a one-time, versioned migration. It ranks every
   unfinished task by the legacy order (section, goal priority, goal status, ID,
-  excluding focus and dependencies), moves whole task blocks within their sections
-  without changing their contents, verifies the eligible order is unchanged and
-  records the snapshot. A matching repository gets the snapshot without a TODO.md
+  excluding focus and dependencies), moves whole task blocks within their groups
+  without changing their contents and records the snapshot. A group is a `##`
+  section or a heading inside it that is not a task's own ID heading; blocks never
+  cross one. It refuses a changed first eligible pick and lists every deeper
+  eligible-order change in the dry run for review. On 2026-10-14 the user accepted
+  group-aware bootstrap, including bravo's TASK-002 moving
+  from 31st to 34th of 37 eligible tasks. A matching repository gets the snapshot without a TODO.md
   rewrite. `--dry-run` reports every proposed move and the revision token that the
   apply step requires. An existing record makes bootstrap a no-op; disagreement
   never reruns it.

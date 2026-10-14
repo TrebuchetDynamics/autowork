@@ -12,7 +12,8 @@ claim of a tagged release, completed installation or live workflow qualification
   priority. `goals.py next`, direct selection, backlog checks and retry selection
   share one guard that returns `PRIORITY_DRIFT` instead of the stale pick.
   `goals.py reorder` reconciles; `goals.py bootstrap-order` is the one-time,
-  dry-run-first migration. Unrecorded ledgers keep legacy order with a visible
+  dry-run-first migration; it keeps tasks within their `###` groups, refuses a
+  changed first pick and reports deeper eligible-order changes. Unrecorded ledgers keep legacy order with a visible
   `UNMIGRATED` flag. Fleet migration is a separate pending task.
 
 - Automatic completed-task archival during `goals.py render`, plus an archive-only

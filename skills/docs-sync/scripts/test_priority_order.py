@@ -41,7 +41,7 @@ def ledger(tasks, goal_rows=None):
                        'depends_on': t.get('depends_on', [])} for t in tasks]}
 
 
-class PriorityOrderTests(unittest.TestCase):
+class Fixture(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -80,6 +80,7 @@ class PriorityOrderTests(unittest.TestCase):
         # Ledger (legacy) order T1, T2; TODO order T2, T1 before migration.
         self.write(todo(now=[body('T2', 'urgent'), body('T1', 'old')]), ledger([{'id': 'T1'}, {'id': 'T2'}]))
 
+class PriorityOrderTests(Fixture):
     def test_t1_t2_migration_preserves_then_human_reorder_changes_selection(self):
         self.t1_t2_fixture()
         before_blocks = {tid: body(tid, title) for tid, title in (('T1', 'old'), ('T2', 'urgent'))}
@@ -257,6 +258,38 @@ class PriorityOrderTests(unittest.TestCase):
         picks, status = goals.queue(data, self.todo.read_text(), allow_drift=True)
         self.assertEqual(status['state'], 'drift')
         self.assertEqual([t['id'] for t, _ in picks], ['T1', 'T2'])
+
+
+class GroupedLayoutTests(Fixture):
+    rows = [{'id': 'G1', 'priority': 1}, {'id': 'G2', 'priority': 2}, {'id': 'G3', 'priority': 3}]
+
+    def grouped(self, first, second):
+        return ('# Work\n\n## Now\n\n### Group A\n\n' + ''.join(first) +
+                '### Group B\n\n' + ''.join(second) + '## Goal coverage\n\n')
+
+    def tasks(self):
+        return ledger([{'id': 'T1', 'goal': 'G1'}, {'id': 'T2', 'goal': 'G2'}, {'id': 'T3', 'goal': 'G3'}], self.rows)
+
+    def test_tasks_reorder_only_within_their_group_and_changes_are_reported(self):
+        self.write(self.grouped([body('T3', 'c'), body('T1', 'a')], [body('T2', 'b')]), self.tasks())
+        self.assertEqual(self.next_ids(), ['T1', 'T2', 'T3'])
+        plan, applied = self.bootstrap()
+        self.assertEqual(plan['regions'], [{'heading': 'Now / Group A', 'before': ['T3', 'T1'], 'after': ['T1', 'T3']}])
+        self.assertEqual(plan['eligible_order_changes'], [
+            {'task': 'T2', 'position_before': 2, 'position_after': 3},
+            {'task': 'T3', 'position_before': 3, 'position_after': 2}])
+        self.assertEqual(self.todo.read_text(), self.grouped([body('T1', 'a'), body('T3', 'c')], [body('T2', 'b')]))
+        self.assertEqual(self.next_ids(), ['T1', 'T3', 'T2'])
+
+    def test_group_layout_that_would_change_the_first_pick_is_refused(self):
+        self.write(self.grouped([body('T3', 'c')], [body('T1', 'a'), body('T2', 'b')]), self.tasks())
+        before = (self.todo.read_bytes(), self.goals.read_bytes())
+        result = self.cli('bootstrap-order', '--dry-run')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['outcome'], 'BOOTSTRAP_CONFLICT')
+        self.assertTrue(any('first eligible pick' in reason for reason in report['reasons']), report)
+        self.assertEqual((self.todo.read_bytes(), self.goals.read_bytes()), before)
 
 
 class TaskBodyTests(unittest.TestCase):

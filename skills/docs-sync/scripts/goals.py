@@ -592,10 +592,21 @@ def reconcile_order(data, text):
 
 
 def task_blocks(text):
-    """Movable task blocks: an ID heading or checkbox up to the next block in its section."""
+    """Movable task blocks: an ID heading or checkbox up to the next block in its group.
+
+    A group is a `##` section, or a heading inside it that is not a task's own ID
+    heading (for example `### P2 — Parity`). Blocks never move across a group heading.
+    """
     prose = task_prose(text)
     marks = list(re.finditer(TASK_MARK, prose, re.M))
-    sections = [(m.start(), m[1].strip()) for m in re.finditer(r'^##[ \t]+(.+)$', prose, re.M)]
+    own = {block_start(prose, mark) for mark in marks}
+    sections, section = [], ''
+    for m in re.finditer(r'^(#{2,6})[ \t]+(.+)$', prose, re.M):
+        if len(m[1]) == 2:
+            section = m[2].strip()
+            sections.append((m.start(), section))
+        elif m.start() not in own:
+            sections.append((m.start(), f'{section} / {m[2].strip()}'))
     blocks = []
     for mark in marks:
         region = max((s for s in sections if s[0] < mark.start()), default=(0, ''))
@@ -661,11 +672,15 @@ def bootstrap_plan(data, text):
     migrated = dict(data, priority_order={'schema': PRIORITY_SCHEMA, 'tasks': order})
     before_picks = [t['id'] for t, _ in eligible(data)]
     after_picks = [t['id'] for t, _ in eligible(migrated)]
-    if not reasons and before_picks != after_picks:
-        reasons.append(f'eligible order would change ({before_picks} -> {after_picks}); '
-                       'legacy order is not representable in TODO.md sections')
+    if not reasons and before_picks[:1] != after_picks[:1]:
+        reasons.append(f'first eligible pick would change ({before_picks[:1]} -> {after_picks[:1]}); '
+                       'legacy order is not representable within TODO.md groups')
+    # Keeping owner-written groups can move deeper tasks; report each one for review.
+    changes = [{'task': tid, 'position_before': before_picks.index(tid) + 1,
+                'position_after': after_picks.index(tid) + 1}
+               for tid in before_picks if tid in after_picks and before_picks.index(tid) != after_picks.index(tid)]
     return {'reasons': reasons, 'regions': regions, 'text': new_text, 'record': migrated['priority_order'],
-            'next_before': before_picks[:1], 'next_after': after_picks[:1]}
+            'next_before': before_picks[:1], 'next_after': after_picks[:1], 'eligible_order_changes': changes}
 
 def render_text(repo, data, text=None):
     def cell(value):
@@ -1310,7 +1325,8 @@ def execute(a):
         plan = bootstrap_plan(data, before.decode('utf-8'))
         rewrite = plan['text'].encode('utf-8') != before
         report = {'regions': plan['regions'], 'rewrite_todo': rewrite, 'priority_order': plan['record']['tasks'],
-                  'next_before': plan['next_before'], 'next_after': plan['next_after'], 'revision': revision(a.repo)}
+                  'next_before': plan['next_before'], 'next_after': plan['next_after'],
+                  'eligible_order_changes': plan['eligible_order_changes'], 'revision': revision(a.repo)}
         if plan['reasons']:
             print(json.dumps(dict(report, outcome='BOOTSTRAP_CONFLICT', reasons=plan['reasons']), indent=2))
             sys.exit(1)

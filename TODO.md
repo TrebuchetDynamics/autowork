@@ -108,7 +108,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
-- Status: open; TOOLSET-028 offline implementation is verified; live migration awaits separate authorization.
+- Status: open; group-aware dry-run is clean in all 9 repositories (2026-10-14): first picks unchanged; the only eligible-order change is the accepted bravo TASK-002 move from 31st to 34th. Apply awaits authorization.
 - Goal: PRIORITY — Make TODO.md order the enforced human priority.
 - Sources: [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
 - Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), pause only jobs this work pauses, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, commit locally per repository and resume only passing repositories.
@@ -117,7 +117,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: TOOLSET-028.
 - Ownership: Toolset coordinator under separate live authorization.
 - Exclusions: No push, no unrelated job changes, no resuming jobs that were already paused.
-- Next action: With explicit authorization, dry-run `goals.py bootstrap-order` in each fleet repository and report every proposed move.
+- Next action: With explicit authorization, re-run each dry-run, then apply with its revision per the rollout sequence.
 
 ## Goal coverage
 
