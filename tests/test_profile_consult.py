@@ -183,6 +183,11 @@ class ConsultationTests(unittest.TestCase):
             with sqlite3.connect(root / 'profiles/one/state.db') as db:
                 db.execute('UPDATE sessions SET title=?', ('prefix\x00' + 'x' * 65537,))
             self.assertEqual(m.original_evidence('one', root)['title'], '')
+            with sqlite3.connect(root / 'profiles/one/state.db') as db:
+                db.execute('UPDATE sessions SET title=NULL, cwd=NULL, git_repo_root=NULL')
+            result = m.original_evidence('one', root)
+            for field in ('title', 'cwd', 'git_repo_root'):
+                self.assertIsNone(result[field])
 
     def test_unusable_history_fails_closed(self):
         import sqlite3
