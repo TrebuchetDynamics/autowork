@@ -66,11 +66,17 @@ def entries(text, prose, known_ids):
         records.append((match.start(), end, task[1], None))
     for index, match in enumerate(boxes):
         end = boxes[index + 1].start() if index + 1 < len(boxes) else len(text)
+        # A heading at or above the level of the group enclosing this checkbox is a
+        # sibling group, not this task's content: archiving must not carry it away.
+        group = next((h for h in reversed(headings) if h.start() < match.start()
+                      and h.start() not in task_headings), None)
+        group_level = len(group[1]) if group is not None else 2
         # Only a known task can end this body. An unknown task-shaped heading
         # overlaps it instead: prepare() retains the ambiguous unit intact.
         # This protects both unregistered tasks and titled evidence subsections.
         end = min(end, next((h.start() for h in headings if h.start() > match.start()
-                             and (len(h[1]) <= 2 or h.start() in known_headings)), len(text)))
+                             and (len(h[1]) <= max(2, group_level) or h.start() in known_headings)),
+                            len(text)))
         records.append((match.start(), end, match[2], match[1]))
     # A task heading immediately followed by its own checkbox is one source
     # unit, not two tasks. Keep other overlaps visible to prepare(): a different

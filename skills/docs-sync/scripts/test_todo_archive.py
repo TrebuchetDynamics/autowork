@@ -209,6 +209,15 @@ class TodoArchiveTests(unittest.TestCase):
         self.assertNotIn('A complete receipt', self.todo.read_text())
         self.assertIn(self.open, self.todo.read_text())
 
+    def test_sibling_group_heading_after_a_done_task_stays_in_live_todo(self):
+        done = self.done + '#### Evidence\n\nA receipt stays with T1.\n\n'
+        self.todo.write_text('# TODO\n\n## Now\n\n### Core work\n\n' + done +
+                             '### Later group\n\n' + self.open)
+        self.cli('archive')
+        self.assertIn(done, self.archive.read_text())
+        self.assertNotIn('Later group', self.archive.read_text())
+        self.assertEqual(self.todo.read_text().count('### Later group\n\n' + self.open), 1)
+
     def test_unchecked_qualification_after_nested_heading_prevents_archival(self):
         for heading in ('#### Evidence', '#### Evidence: test results', '#### Evidence — test results'):
             with self.subTest(heading=heading):
