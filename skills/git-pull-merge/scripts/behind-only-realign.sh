@@ -12,7 +12,7 @@
 # Nothing is ever discarded, stashed, rebased or reset --hard.
 set -euo pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel); cd "$REPO_ROOT"
-SRC=${1:-@{u}}
+SRC=${1:-'@{u}'}
 NEW=$(git rev-parse "$SRC"); OLD=$(git rev-parse HEAD)
 SAFETY_REF=${REALIGN_SAFETY_REF:-safety/pre-pull-$(date +%Y%m%d)}
 
