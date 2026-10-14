@@ -38,7 +38,17 @@ preview. Compare them with the latest explicit owner decisions and replace super
 clauses rather than appending a contradictory grant. Bind selection to current
 TODO/ledger order; a hardcoded milestone must not override a later reprioritization,
 and a reorder alone changes neither cadence nor active work. Reuse existing settings
-unless the user changes them. For a new job with no cadence, propose every 30 minutes and
+unless the user changes them. For an authorized multi-profile refresh, first classify
+each existing job (development, research/documents, delivery, read-only audit) and
+adapt its instruction to that role; preserve each job's publication authority,
+reporting policy, continuity and paused state, since shared wiring does not make
+permissions interchangeable. A profile with no matching job is a coverage gap, not
+permission to create one. For research/design-only work, bind the job to the
+accepted document tasks and carry forward no-code, no-install, no-commit and
+external-action limits; a request for recurring execution lifts only an earlier
+no-scheduling boundary. Require substantive research or design artifacts, not
+repeated backlog audits, and report an exhausted task filter without broadening
+scope. For a new job with no cadence, propose every 30 minutes and
 ask for the cadence before creating it. For wall-clock schedules, establish the
 timezone and report the scheduler's normalized next occurrence. Never confuse a
 one-shot delay with a recurring interval. A bare invocation helps complete missing
@@ -156,7 +166,8 @@ report it instead of creating another job. Required fields unsupported by this
 installation are a concrete setup limitation, not permission to silently omit them.
 
 Read back the saved job: ID, profile, canonical workdir, recurring cadence/timezone,
-enabled state, skill/prompt, scope, limits, delivery and next run. Check scheduler
+enabled state, skill/prompt, scope, limits, delivery and next run. Verify the full
+saved prompt and failure-delivery field, not a truncated list preview. Check scheduler
 status read-only. Correct attributable mismatches through supported updates; never
 claim active scheduling when the scheduler is unavailable. Finish with those concise
 settings and what was actually verified. Registration and job readback do not prove
