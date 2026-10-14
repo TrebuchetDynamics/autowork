@@ -360,6 +360,25 @@ class ConsultationTests(unittest.TestCase):
                         m.run_all(root, maintenance / 'results', 'self', 'hermes', 10)
                     discover.assert_not_called()
 
+    def test_native_discovery_includes_long_profile_with_single_space(self):
+        from unittest.mock import patch
+        m = self.load()
+        listing = (' ◆default         gpt-6.1-sol                  running      —            —\n'
+                   '  landing-golf gpt-6.1-sol                  running      landing-golf —\n')
+        with patch.object(m, 'execute', return_value={'stdout': listing, 'stderr': '', 'returncode': 0, 'timed_out': False}):
+            self.assertEqual(m.discover(Path('/home/o/.hermes'), 'hermes'),
+                             ['default', 'landing-golf'])
+
+    def test_native_discovery_refuses_malformed_output(self):
+        from unittest.mock import patch
+        m = self.load()
+        for listing in ('garbage', '  named model\n', ' ◆default model\n ◆default model\n',
+                        ' ◆Default model\n', ' ◆' + 'a' * 65 + ' model\n'):
+            with self.subTest(listing=listing), patch.object(m, 'execute', return_value={
+                    'stdout': listing, 'stderr': '', 'returncode': 0, 'timed_out': False}):
+                with self.assertRaises(RuntimeError):
+                    m.discover(Path('/home/o/.hermes'), 'hermes')
+
     def test_native_discovery_and_failure_does_not_skip_remaining(self):
         m = self.load()
         from unittest.mock import patch
