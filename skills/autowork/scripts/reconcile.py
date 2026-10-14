@@ -13,6 +13,7 @@ import hashlib
 from pathlib import Path
 from start_goal import run, profile_home
 from delivery_state import evaluate
+import continuation_capability
 
 
 def reconcile(prefix, home, profile, task_id=None, repo=None):
@@ -86,6 +87,7 @@ def reconcile(prefix, home, profile, task_id=None, repo=None):
         next_action = 'reconcile_unknown_state'
     return {'profile': profile, 'task_id': task_id, 'board_id': 'default', 'status': task['status'],
             'next_action': next_action,
+            'continuation_capability': continuation_capability.assess(None),
             'delivery': delivery, 'human_report': delivery['progress'], 'selection_required': True,
             'run_profile': owner, 'run_ownership': ownership, 'card_run_observed': bool(runs),
             'title': task.get('title'), 'run_id': latest.get('id'),
@@ -114,7 +116,8 @@ def main():
     # Store only the previous validated report projection, not raw worker prose.
     projection = {k: result.get(k) for k in
                   ('profile', 'board_id', 'task_id', 'status', 'run_ownership', 'run_id',
-                   'worker_outcome', 'run_status', 'run_ended_at', 'worker_pid', 'next_action', 'delivery')}
+                   'worker_outcome', 'run_status', 'run_ended_at', 'worker_pid', 'next_action', 'delivery',
+                   'continuation_capability')}
     projection['evidence_digest'] = hashlib.sha256(json.dumps(
         {'metadata': result.get('metadata'), 'event': result.get('latest_event'),
          'error': result.get('error'), 'summary': result.get('summary')}, sort_keys=True).encode()).hexdigest()

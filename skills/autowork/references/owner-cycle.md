@@ -421,3 +421,8 @@ A missing canonical backlog with an existing owned proposal needs integration,
 not another discovery pass or replacement goals.json. Surface the exact proposed
 files, current owner and parent-only repository rule. An explicit owner grant may
 permit reviewed integration; absence of an active session lease alone does not.
+
+Original-card continuation capability and its exact accounting boundary are documented
+in [the native continuation contract](continuation-capability.md). Missing native
+controls are reported explicitly; an ordinary unblock or new goal limit cannot
+enforce the original cumulative remainder.

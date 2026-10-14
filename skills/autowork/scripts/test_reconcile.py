@@ -15,6 +15,18 @@ else:
     m = None
 
 class ReconcileTests(unittest.TestCase):
+    def test_recovery_reports_missing_native_cap_without_treating_metadata_as_capability(self):
+        snapshot = {'task': {'id': 't_fixture', 'assignee': 'fixture', 'status': 'blocked'},
+                    'runs': [{'id': 1, 'profile': 'fixture', 'status': 'blocked',
+                              'metadata': {'continuation': {'atomic_continue': True, 'remaining': 100}}}]}
+        with patch.object(m, 'run', return_value=json.dumps(snapshot)) as native:
+            result = m.reconcile([], Path('.'), 'fixture', 't_fixture')
+        report = result.get('continuation_capability', {})
+        self.assertEqual(report.get('outcome'), 'unavailable')
+        self.assertIsNone(report['remaining'])
+        self.assertEqual(native.call_count, 1)
+        self.assertEqual(result['next_action'], 'recover_original_card')
+
     def test_terminal_run_behind_queued_card_requires_reconciliation(self):
         for card_status in ('todo', 'ready'):
             for run_status in ('blocked', 'failed', 'crashed', 'completed', 'cancelled', 'interrupted'):

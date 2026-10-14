@@ -541,6 +541,27 @@ class ComposedReadyTests(unittest.TestCase):
                 self.assertEqual(preparation.read_bytes(), before)
                 self.assertIn('original', str(first))
 
+    def test_missing_native_cap_is_reported_without_dispatch_or_replenishment(self):
+        self.ready_backlog()
+        capability = {'outcome': 'unavailable', 'reason': 'atomic cumulative cap unavailable'}
+        code, receipt, dispatch = self.composed(prior={'task_id': 'original',
+            'next_action': 'recover_original_card', 'continuation_capability': capability})
+        self.assertEqual(code, 1)
+        dispatch.assert_not_called()
+        self.assertEqual(receipt['blocker'], ['atomic cumulative cap unavailable'])
+        self.assertEqual(receipt['recovery'].get('continuation_capability'), capability)
+        self.assertFalse((self.state / 'ready-preflights').exists())
+
+    def test_capability_does_not_block_observation_or_closeout(self):
+        self.ready_backlog()
+        for action in ('reconcile_run_state', 'verify_and_integrate', 'observe_current_run'):
+            _, receipt, dispatch = self.composed(prior={'task_id': 'original',
+                'next_action': action, 'continuation_capability': {
+                    'outcome': 'unavailable', 'reason': 'atomic cap unavailable'}})
+            self.assertEqual(receipt['blocker'], [])
+            self.assertEqual(receipt['next_action'], action)
+            dispatch.assert_not_called()
+
     def test_prior_interrupted_or_review_card_precedes_selection(self):
         self.ready_backlog()
         before = (self.repo / 'goals.json').read_bytes()

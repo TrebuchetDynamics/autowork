@@ -122,6 +122,11 @@ def run_locked(args, state):
                 result.update(outcome='BLOCKED', action='reconcile_original_card',
                               next_action=prior['next_action'], selected_task=None,
                               held_task_ids=[], recovery={'gate': 'native_continuity'}, repairs=[], blocker=[])
+                capability = prior.get('continuation_capability')
+                if (prior.get('next_action') == 'recover_original_card'
+                        and isinstance(capability, dict) and capability.get('outcome') != 'ready'):
+                    result['recovery']['continuation_capability'] = capability
+                    result['blocker'] = [capability['reason']]
                 save(state / 'history' / (result['run_id'] + '.json'), result)
                 save(state / 'unblock-latest.json', result)
                 save(state / 'report-latest.txt', render(result))
