@@ -730,7 +730,8 @@ Planner's calls (reversible; reject any of them):
   2026-10-15: the user chose to advertise `/ui_taste` and `/beautify_github_readme`,
   then `/impeccable` and `/lgtm`, then `/engineering`, `/git_commit_push` and
   `/git_pull_merge`, in the bundle's menu priority, displacing the last seven
-  built-ins at the default 60-entry cap.
+  built-ins at the default 60-entry cap. `/git_pull_merge` was retired the same day
+  when Git Pull Merge merged into Git Commit Push, so six are advertised.
 
 Anti-goals: rewriting upstream text, fetching anything at runtime, adding an MCP or
 account dependency, or presenting the vendored copy as an endorsement by Uizze or

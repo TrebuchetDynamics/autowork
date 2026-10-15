@@ -81,7 +81,7 @@ spellings remain typeable but are deliberately omitted from Telegram menu
 advertising, not merely displaced by capacity. Plan With Me and Docs Sync do not
 register the old repo-interview or repo-docs aliases. The Telegram menu prioritizes
 the five current workflow commands, then `/ui_taste`, `/beautify_github_readme`,
-`/impeccable`, `/lgtm`, `/engineering`, `/git_commit_push` and `/git_pull_merge`.
+`/impeccable`, `/lgtm`, `/engineering` and `/git_commit_push`.
 Hermes' default menu holds 60 entries and its built-ins alone exceed that, so each
 prioritized command displaces the lowest-ranked built-in (currently `/yolo`,
 `/approvals`, `/fast`, `/voice`, `/busy`, `/memory` and `/bundles`), which stays

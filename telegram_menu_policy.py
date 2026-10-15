@@ -5,7 +5,7 @@ import re
 # each one displaces the lowest-ranked built-in, which stays typeable.
 WORKFLOWS = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork',
              'ui_taste', 'beautify_github_readme', 'impeccable', 'lgtm',
-             'engineering', 'git_commit_push', 'git_pull_merge']
+             'engineering', 'git_commit_push']
 # Names this bundle once promoted or registered; compatibility spellings stay
 # typeable but are no longer advertised, so earlier priority entries are removed.
 RETIRED = {'autoresearch', 'autogoal', 'grill_me', 'repo_interview', 'repo_docs', 'git_pull_merge'}
