@@ -160,16 +160,16 @@ This policy applies to Hermes. [Codex/Pi adapters](docs/cross-host.md) preserve 
 - There is **no automatic restoration of previous configuration** on uninstall.
   Back up profile configurations first; see [removal and recovery](docs/uninstall.md).
 
-The runtime-policy opt-out prevents changes **during plugin loading only**.
-Full setup still applies the bundle’s approval policy. There is currently no
-policy-neutral full-installation mode. See [installation](docs/installation.md).
+The runtime-policy opt-out prevents policy changes **during plugin loading and
+setup**. Full setup still applies OMH memory defaults and external integrations;
+there is currently no policy-neutral full-installation mode. See [installation](docs/installation.md).
 See [memory and retained data](docs/memory.md) before enabling memory capture.
 
 ## Installation choices
 
 | Path | Scope | External integrations | Policy effects |
 | --- | --- | --- | --- |
-| `bash install.sh --bundle-only` | All existing live profiles | Skips external-source setup | Applies bundle defaults; not a single-profile or policy-neutral mode |
+| `bash install.sh --bundle-only` | All existing live profiles | Skips external-source setup | Applies bundle defaults except in opted-out profiles; not a single-profile mode |
 | `bash install.sh --yes-deps` | All existing live profiles | OMH, Ponytail, speech, Graphify | Applies defaults and OMH setup |
 | Native Hermes plugin installation | Selected Hermes profile | Manifest declares OMH, Ponytail and speech dependencies | Plugin load applies runtime defaults and provisions missing bundled skills |
 

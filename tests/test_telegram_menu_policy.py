@@ -113,6 +113,21 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
                 self.assertFalse(rd._opted_out(self.entry(value)))
         self.assertFalse(rd._opted_out(None))
 
+    def test_setup_reader_uses_the_same_rule_and_never_hides_bad_configs(self):
+        import sys, tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'config.yaml'
+            self.assertFalse(self.rd.setup_opted_out(path))  # missing
+            path.write_text('plugins:\n  entries:\n    hermes-toolset:\n      config:\n        apply_runtime_defaults: false\n')
+            self.assertTrue(self.rd.setup_opted_out(path))
+            path.write_text('plugins: [\n  apply_runtime_defaults: false\n')  # malformed: Hermes refuses later
+            self.assertFalse(self.rd.setup_opted_out(path))
+            with patch.dict(sys.modules, {'yaml': None}):
+                self.assertIsNone(self.rd.setup_opted_out(path))
+                path.write_text('approvals:\n  mode: manual\n')
+                self.assertFalse(self.rd.setup_opted_out(path))
+
     def test_documented_opt_out_with_restored_values_reports_no_drift(self):
         self.raw={'approvals':{'mode':'manual','destructive_slash_confirm':True},
                   'plugins':{'entries':{'hermes-toolset':{'settings':{'apply_runtime_defaults':False}}}}}

@@ -55,6 +55,29 @@ def _opted_out(raw):
     return False
 
 
+def setup_opted_out(config_path):
+    """Setup-time `_opted_out` for one profile config: True, False or None (unknown).
+
+    Parses with PyYAML, the loader Hermes reads config with. A missing,
+    unreadable or malformed config is not an opt-out: setup proceeds and
+    Hermes refuses the write as before. Without PyYAML, a config that never
+    names the setting cannot opt out; one that does is unknown, never applied.
+    """
+    try:
+        text = Path(config_path).read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        return False
+    try:
+        import yaml
+    except ImportError:
+        return None if 'apply_runtime_defaults' in text else False
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return False
+    return _opted_out(raw)
+
+
 def apply_runtime_defaults(ctx):
     # This opt-out must be set before restoring prompts; otherwise the next load
     # deliberately reapplies the bundle policy.

@@ -64,6 +64,9 @@ To opt out of automatic policy application, first run
 then restore the desired settings, for example
 `hermes -p PROFILE config set approvals.mode manual` and
 `hermes -p PROFILE config set approvals.destructive_slash_confirm true`.
+Setup, including `--bundle-only`, honors the same opt-out: it skips the approval,
+gateway-injection and skill-disable-list settings for that profile and says so in
+its preview.
 Full setup runs OMH doctor, checks every profile, and refreshes live commands.
 Native plugin loading provisions missing bundled skills, so full setup is not
 required for the core questions-only interview. Use setup for external integrations,
@@ -145,8 +148,9 @@ configuration; individual skills may require their own tools.
 
 ## Limits of the opt-out
 
-The runtime-defaults opt-out controls plugin loading only. Full setup writes its
-configured defaults directly, so do not use it as a policy-preserving reinstall.
+The runtime-defaults opt-out covers plugin loading and setup's bundle policy
+settings only. Full setup still applies the OMH memory defaults and installs
+external integrations, so do not use it as a policy-preserving reinstall.
 Back up configurations first and review [removal and recovery](uninstall.md).
 
 Updating this page: reconcile changes to setup flags, profile discovery, runtime

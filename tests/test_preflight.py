@@ -59,6 +59,18 @@ class PreflightTests(unittest.TestCase):
             self.assertIn('memory unchanged', plan)
             self.assertIn('default', plan)
 
+    def test_plan_reports_runtime_defaults_opt_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            (home / 'config.yaml').write_text(
+                'plugins:\n  entries:\n    hermes-toolset:\n      settings:\n        apply_runtime_defaults: false\n')
+            report = self.check(home)
+            self.assertEqual(report['errors'], [])
+            plan = '\n'.join(report['plan'])
+            self.assertIn('runtime-defaults opt-out', plan)
+            self.assertNotIn('apply settings', plan)
+            self.assertNotIn('Plan: config approvals.mode', plan)
+
     def test_network_failure_is_required_failure(self):
         pre = module('setup_preflight')
         with patch.object(pre.subprocess, 'run', side_effect=TimeoutError):

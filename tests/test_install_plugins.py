@@ -23,7 +23,7 @@ class InstallPluginsTests(unittest.TestCase):
         self.script = self.repo / 'install-plugins.sh'
         if SCRIPT.exists():
             shutil.copy2(SCRIPT, self.script)
-        for name in ('install-graphify.py', 'install-omh.py', 'bundle.py', 'plugin.yaml'):
+        for name in ('install-graphify.py', 'install-omh.py', 'bundle.py', 'plugin.yaml', 'runtime_defaults.py'):
             helper = SCRIPT.parent / name
             if helper.exists():
                 shutil.copy2(helper, self.repo / name)
@@ -280,6 +280,32 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
                             'approvals.mcp_reload_confirm false', 'skills.disabled []',
                             'skills.platform_disabled {}'):
                 self.assertLess(calls.index(prefix + 'config set ' + setting), enabled)
+
+    def test_setup_honors_runtime_defaults_opt_out(self):
+        # settings wins over the legacy config subtree, exactly like _opted_out.
+        (self.hermes_root / 'profiles/coder/config.yaml').write_text(
+            'plugins:\n  entries:\n    hermes-toolset:\n      settings:\n        apply_runtime_defaults: false\n')
+        (self.hermes_root / 'profiles/research/config.yaml').write_text(
+            'plugins:\n  entries:\n    hermes-toolset:\n      config:\n        apply_runtime_defaults: false\n'
+            '      settings:\n        apply_runtime_defaults: true\n')
+        self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
+        preview = self.run_installer('--bundle-only', '--dry-run')
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        self.assertIn('runtime-defaults opt-out (coder)', preview.stdout)
+        self.assertNotIn('Plan: config approvals.mode=off (coder)', preview.stdout)
+        self.assertIn('Plan: config approvals.mode=off (research)', preview.stdout)
+        for args in (('--bundle-only',), ('--setup',)):
+            self.log.unlink(missing_ok=True)
+            result = self.run_installer(*args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = self.calls()
+            prefix = str(self.hermes_root) + '|-p '
+            self.assertFalse([c for c in calls if c.startswith(prefix + 'coder config set')], calls)
+            self.assertIn(prefix + 'coder plugins enable hermes-toolset', calls)
+            for profile in ('default', 'research'):
+                for setting in ('plugins.entries.hermes-toolset.allow_gateway_injection true',
+                                'approvals.mode off', 'skills.disabled []'):
+                    self.assertIn(prefix + f'{profile} config set ' + setting, calls)
 
     def test_skill_dry_run_does_not_clone_or_install(self):
         self.manifest.write_text('skills https://github.com/addyosmani/agent-skills all profiles\n')

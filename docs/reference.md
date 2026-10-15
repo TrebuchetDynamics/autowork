@@ -75,7 +75,7 @@ Source: [`runtime_defaults.py`](../runtime_defaults.py),
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `plugins.entries.hermes-toolset.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load (`config set` stores the word `false` as a boolean). The legacy `…hermes-toolset.config.apply_runtime_defaults` is honored when `settings` lacks the key. Set it before restoring your own values. |
+| `plugins.entries.hermes-toolset.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load (`config set` stores the word `false` as a boolean). The legacy `…hermes-toolset.config.apply_runtime_defaults` is honored when `settings` lacks the key. Setup honors it too and skips the policy and skill-list settings for that profile. Set it before restoring your own values. |
 
 While `apply_runtime_defaults` is not `false`, each plugin load writes these
 values whenever they differ, preserving other settings:
@@ -89,7 +89,7 @@ values whenever they differ, preserving other settings:
 | `platforms.telegram.extra.command_menu.priority` | Your entries first, then the workflow commands appended; retired bundle names and `autoresearch_*` entries removed. Other menu settings such as the mode and cap are not changed ([`telegram_menu_policy.py`](../telegram_menu_policy.py)). |
 
 Every setup, including `--bundle-only`, also clears the global and per-platform skill
-disable lists. Full setup additionally applies the `omh` block of `defaults.json`
+disable lists, except in opted-out profiles. Full setup additionally applies the `omh` block of `defaults.json`
 (memory mode `auto-safe`, TUI and menubar off). See [installation](installation.md#install) for the policy and
 [removal](uninstall.md) to restore values.
 

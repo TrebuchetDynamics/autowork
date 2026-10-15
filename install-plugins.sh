@@ -132,8 +132,30 @@ failed=0
 installed=0
 skipped=0
 planned=0
+# Honor plugins.entries.hermes-toolset.settings.apply_runtime_defaults: false
+# (legacy config.*) with the same rule the plugin runtime uses.
+runtime_opt_out() {
+    local config=$hermes_root
+    [[ $1 == default ]] || config=$hermes_root/profiles/$1
+    python3 -B - "$script_dir/runtime_defaults.py" "$config/config.yaml" <<'PYOPTOUT'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('setup_runtime_defaults', sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+sys.exit({True: 10, False: 0}.get(module.setup_opted_out(sys.argv[2]), 11))
+PYOPTOUT
+}
 apply_bundle_defaults() {
-    local profile=$1 key value errors=0
+    local profile=$1 key value errors=0 status=0
+    runtime_opt_out "$profile" || status=$?
+    if ((status == 10)); then
+        $dry_run && printf 'Plan: ' || printf 'Skip: '
+        printf 'bundle policy settings; runtime-defaults opt-out (%s)\n' "$profile"
+        return 0
+    elif ((status)); then
+        printf 'Error: cannot verify runtime-defaults opt-out; bundle policy settings not applied (%s)\n' "$profile" >&2
+        return 1
+    fi
     while IFS=$'\t' read -r key value; do
         if $dry_run; then
             printf 'Plan: config %s=%s (%s)\n' "$key" "$value" "$profile"
