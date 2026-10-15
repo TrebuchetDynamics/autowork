@@ -160,6 +160,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A gateway restart's outcome no longer disappears when another update runs before
+  anyone reads the status: it is kept in `restart.json`, recorded by the next update
+  before that replaces the receipt, and shown as `Last gateway restart` (TOOLSET-092-f2).
+  Finishing a restart also keeps an update that joined it meanwhile.
 - `/toolset` now replies with a short, actionable overview: bundle version, revision and
   profile, the workflow commands that are ready, the last update, other plugins' status
   and counts, and anything that needs setup with the command to fix it. The four lines

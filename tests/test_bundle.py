@@ -246,6 +246,23 @@ class BundleTests(unittest.TestCase):
             result = self.bundle.update_status()
         self.assertIn('Update process stopped without a final receipt', result)
 
+    def test_status_shows_the_last_restart_a_later_receipt_does_not_cover(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 888, 'status': 'up_to_date',
+                                                        'gateway_restart': 'not_needed'}))
+        outcome = {'gateway_restart': 'completed', 'gateway_restart_result': {
+            'gateway_pid': 4242, 'menus_resent': ['a', 'b'], 'menus_not_seen': ['c'], 'interrupted': []}}
+        marker = {'pid': 1, 'requested_ns': 1792101011783225329, 'covers': [777], 'finished': 'completed', 'outcome': outcome}
+        (folder / 'restart.json').write_text(json.dumps(marker))
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+                patch.object(self.bundle, 'gateway_drain', return_value=None), \
+                patch.object(self.bundle, 'linked_profiles', return_value=[]):
+            summary = self.bundle.update_status()
+            self.assertIn('Last gateway restart (requested 2026-10-15', summary)
+            self.assertIn('completed, PID 4242, menus resent 2 of 3', summary)
+            (folder / 'restart.json').write_text(json.dumps({**marker, 'covers': [888]}))
+            self.assertNotIn('Last gateway restart', self.bundle.update_status())
+
     def test_status_lists_profiles_linked_to_a_working_checkout(self):
         home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
         (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'up_to_date',
