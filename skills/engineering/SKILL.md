@@ -1,6 +1,6 @@
 ---
 name: engineering
-description: "Reference adapter for a specific engineering method gap or explicit Addy protocol request; not a mandatory lifecycle or repository coordinator."
+description: "Use for a specific engineering method or Addy protocol."
 version: 0.1.0
 license: MIT
 ---

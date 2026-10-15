@@ -1,6 +1,6 @@
 ---
 name: plan-with-me
-description: "Use when the user wants collaborative planning: research the repository, clarify their initial request and important decisions through questions, then save docs and tasks."
+description: "Use to plan together through research and questions."
 license: MIT
 metadata:
   version: 0.3.0

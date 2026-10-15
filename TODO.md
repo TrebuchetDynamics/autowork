@@ -108,7 +108,9 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index
 
 - [ ] TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index
-- Status: open; recorded, not scheduled.
+- Status: in_progress; offline candidate verified and independently reviewed; canonical integration pending.
+- Planner's call: Use an isolated worktree while canonical has live writers; leave fleet migration (TOOLSET-029's separate authorization) and the already-separated live qualification tasks open. Include git-commit-push in the description-only repair because the new inventory regression exposed its same overlength defect; no body or vendored changes.
+- Candidate evidence: Python 3.12 `python scripts/check.py` passed all four directories (507/576/212/8 tests; one skip; eight native/model/integration modules excluded). The new inventory test first failed on nine overlength descriptions, then passed. Installed Hermes' read-only skill linter reported zero `description-length` warnings across all 13 owned skills. Independent review approved the source/test slice and reran the focused test; `git diff --check` passed. Completion and archival wait for safe canonical integration.
 - Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
 - Sources: [review findings](docs/project.md#new-skill-review-2026-10-15).
 - Scope: Rewrite toolset-owned `description` fields over 60 characters (autoresearch, autowork, beautify-github-readme, cron-autowork, engineering, lgtm, plan-for-me, plan-with-me) to one trigger-first sentence; vendored Impeccable stays unchanged.
