@@ -727,6 +727,36 @@ class ConsultationTests(unittest.TestCase):
                     self.assertEqual(actual[key], '[REDACTED]')
                     self.assertTrue(actual['keep'])
 
+    def test_cookie_credentials_are_withheld_from_consultation_evidence(self):
+        import json
+        import sqlite3
+        from unittest.mock import patch
+        m = self.load()
+        values = ('cookie=synthetic-private-cookie',
+                  'Cookie: "session=synthetic-private-cookie; other=value"',
+                  json.dumps({'Cookie': 'session=synthetic-private-cookie; other=value', 'keep': True}),
+                  json.dumps({'Set-Cookie': ['synthetic-private-cookie'], 'keep': True}))
+        for text in values:
+            with self.subTest(text=text), tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+                root = Path(d)
+                db = self.history(root, 'one', [('original', 'cli', text, None, None, 'one', None, 1)])
+                with sqlite3.connect(db) as connection:
+                    connection.execute('UPDATE messages SET content=?', (text,))
+                before = db.read_bytes()
+                event = json.dumps({'type': 'result', 'exit_code': 0, 'text': text})
+                with patch.object(m, 'execute', return_value={'stdout': event, 'stderr': text,
+                        'returncode': 0, 'timed_out': False}) as run:
+                    result = m.consult('one', root, 'offline-fixture', 10)
+                self.assertNotIn('synthetic-private-cookie', run.call_args.args[0][-1])
+                self.assertNotIn('synthetic-private-cookie', json.dumps(result))
+                self.assertEqual(result['status'], 'replied')
+                self.assertEqual(db.read_bytes(), before)
+                sanitized = m.redact(text)
+                self.assertIn('[REDACTED]', sanitized)
+                self.assertEqual(m.redact(sanitized), sanitized)
+                if text.startswith('{'):
+                    self.assertTrue(json.loads(sanitized)['keep'])
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))

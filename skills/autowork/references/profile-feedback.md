@@ -20,6 +20,9 @@ unterminated and nested serialized values through the actual response consumer;
 a passing consultation redactor does
 not qualify the collector's separate masking path. Partial chunks and omitted
 history remain unknown, not proof that every secret representation was covered.
+Keep Cookie credential handling in both collectors and consultation projections;
+exercise quoted and JSON header values through original-evidence injection and
+saved transport results, not just the standalone redactor.
 
 Require each response directory to resolve to its exact `cron/output/JOB_ID`
 location, not merely somewhere inside its profile. An in-profile job or parent

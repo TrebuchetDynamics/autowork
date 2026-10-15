@@ -33,7 +33,7 @@ def redact(text):
     def scrub(value):
         if isinstance(value, dict):
             return {redact(key): '[REDACTED]' if re.search(
-                        r'(?i)(?:api[_-]?key|token|password|secret|authorization)\s*$', key)
+                        r'(?i)(?:api[_-]?key|token|password|secret|authorization|cookie)\s*$', key)
                     else scrub(item) for key, item in value.items()}
         if isinstance(value, list):
             return [scrub(item) for item in value]
@@ -53,10 +53,10 @@ def redact(text):
             return '[NESTED JSON REDACTED]'
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
     # Missing closing quotes must mask through EOF, not expose whitespace tails.
-    text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
-    text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
+    text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
+    text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'\b(?:(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+|(?:gh[pour]|github_pat)_[A-Za-z0-9_-]+|ghs_[A-Za-z0-9_.-]+)', '[REDACTED]', text)
-    text = re.sub(r'''(?is)(["'](?:api[_-]?key|token|password|secret|authorization)["']\s*:\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1"[REDACTED]"', text)
+    text = re.sub(r'''(?is)(["'](?:api[_-]?key|token|password|secret|authorization|cookie)["']\s*:\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1"[REDACTED]"', text)
     text = re.sub(r'(?i)bearer\s+[^\s]+', 'Bearer [REDACTED]', text)
     text = re.sub(r'(https?://)[^\s/@]+:[^\s/@]+@', r'\1[REDACTED]@', text)
     return text
