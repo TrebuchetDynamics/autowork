@@ -74,9 +74,15 @@ def verify(repo, common, slot, contracts):
             or report.get('blockers') != [] or not isinstance(report.get('checks'), list)
             or any(not isinstance(c, dict) or c.get('result') != 'pass' for c in report['checks'])):
         raise ValueError('report.json does not match worker commit/files or reports failure')
+    verify_scope(repo, common, slot, contracts, files)
+    return files, report
+
+
+def verify_scope(repo, common, slot, contracts, files):
+    task = contracts[slot['task_id']]
     others: list[list[str]] = [list(dispatch.COORDINATOR_FILES)]
     for other in state.slots(common):
-        if other['task_id'] == slot['task_id'] or other['state'] == 'released':
+        if other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed'):
             continue
         if other.get('commit'):
             others.append(changed(repo, other['baseline'], other['commit']))
@@ -85,7 +91,39 @@ def verify(repo, common, slot, contracts):
     overlap = plan.overlap(files, plan.paths(task['fields'].get('Touches', '')), others)
     if overlap['outside'] or overlap['conflicts']:
         raise ValueError('changed files violate Touches or coordinator/other-slot ownership: ' + str(overlap))
-    return files, report
+
+
+def require_no_writers(repo):
+    workers = execution.external_workers(repo)
+    blocking = execution.blocking_workers(workers, repo)
+    common = state.common_dir(repo)
+    pool = state.slots(common)
+    for worker in workers:
+        if worker in blocking or worker['active'] is False:
+            continue
+        # Only a birth-identity-matched live pool leader (or its still-owned
+        # process group) in that slot's isolated checkout is exempt. An unknown
+        # agent in a sibling worktree is not evidence of pool membership.
+        attributed = False
+        for slot in pool:
+            leader = slot.get('worker')
+            if (not leader or execution.identity(leader['pid']) != leader
+                    or slot['state'] not in ('dispatched', 'running')
+                    or not worker['workspaces'] or set(worker['workspaces']) != {slot['worktree']}):
+                continue
+            try:
+                fields = Path(f'/proc/{worker["pid"]}/stat').read_text().rsplit(')', 1)[1].split()
+                same_group = int(fields[2]) == leader['pid']
+            except (OSError, ValueError, IndexError):
+                same_group = False
+            found = {k: worker[k] for k in ('pid', 'start_ticks', 'boot_id')}
+            if execution.identity(worker['pid']) == found and (found == leader or same_group):
+                attributed = True
+                break
+        if not attributed:
+            blocking.append(worker)
+    if blocking:
+        raise ValueError('live or unknown external writer/session; preserve canonical checkout')
 
 
 def integration_worktree(repo, common, baseline):
@@ -115,29 +153,40 @@ def integrate(repo, owner_pid, task, argv, timeout):
         with execution.lock(common / 'writer.lock'):
             state.require_owner(common, owner_pid)
             slot = slot_for(common, task)
-            if not slot or slot['state'] != 'reported':
-                raise ValueError('integration requires a reported slot')
+            if not slot or slot['state'] not in ('reported', 'integrating'):
+                raise ValueError('integration requires a reported or abandoned integrating slot')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
-            reported = {s['task_id'] for s in state.slots(common) if s['state'] == 'reported'}
+            reported = {s['task_id'] for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
             first = next((t for t in contracts if t in reported), None)
             if first != task:
                 raise ValueError('integrate the highest-priority reported task first')
             try:
+                require_no_writers(repo)
                 files, report = verify(repo, common, slot, contracts)
+                if slot['state'] == 'integrating':
+                    recovered = recover_integration(repo, common, slot, contracts)
+                    if recovered:
+                        return recovered
             except (ValueError, OSError) as exc:
                 return hold(common, slot, str(exc))
-            slot = state.change(common, slot, 'integrating', {'report': report})
+            if slot['state'] == 'reported':
+                slot = state.change(common, slot, 'integrating', {'report': report})
         check = None
         def save_receipt(path, value):
+            nonlocal slot
             with execution.lock(common / 'writer.lock'):
                 state.require_owner(common, owner_pid)
                 execution.save(path, value)
+                slot = state.write_slot(common, dict(slot, checks=value), slot)
 
         try:
             for attempt in range(2):
                 with execution.lock(common / 'writer.lock'):
                     state.require_owner(common, owner_pid)
+                    require_no_writers(repo)
                     baseline = git(repo, 'rev-parse', 'HEAD')
+                    if git(repo, 'merge-base', baseline, slot['commit']) == slot['commit']:
+                        raise ValueError('worker commit already in canonical HEAD; no fresh two-parent integration')
                     canonical_branch = git(repo, 'symbolic-ref', 'HEAD')
                     root = integration_worktree(repo, common, baseline)
                     try:
@@ -146,9 +195,20 @@ def integrate(repo, owner_pid, task, argv, timeout):
                         git(root, 'merge', '--abort')
                         raise ValueError('merge conflict; worker and canonical checkout preserved')
                     merge = git(root, 'rev-parse', 'HEAD')
+                    if git(repo, 'rev-list', '--parents', '-n', '1', merge).split()[1:] != [baseline, slot['commit']]:
+                        raise ValueError('integration candidate must have canonical and worker parents')
+                    files = changed(repo, baseline, merge)
+                    verify_scope(repo, common, slot, contracts, files)
+                    run_id = execution.uuid.uuid4().hex
+                    integration = {'commit': merge, 'baseline': baseline, 'changed_files': files,
+                                   'check_receipt': str(common / (run_id + '.json')),
+                                   'task_contract': contracts[task]['contract'], 'canonical_branch': canonical_branch}
+                    # Durable intent precedes validation and FF. An abandoned helper
+                    # can only recover this exact candidate, never infer a landing.
+                    slot = state.write_slot(common, dict(slot, integration=integration, checks=None), slot)
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
-                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt)
+                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
                 if (check['outcome'] != 'EXECUTED' or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
                     raise ValueError('integration validation failed or changed the integration tree')
@@ -157,8 +217,10 @@ def integrate(repo, owner_pid, task, argv, timeout):
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.
                     fresh_contracts = {t['id']: t for t in dispatch.contracts(repo)}
                     verify(repo, common, slot, fresh_contracts)
+                    verify_scope(repo, common, slot, fresh_contracts, changed(repo, baseline, merge))
                     if fresh_contracts[task]['contract'] != contracts[task]['contract']:
                         raise ValueError('task contract changed during validation')
+                    require_no_writers(repo)
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
                         raise ValueError('canonical branch changed during validation')
                     if git(repo, 'rev-parse', 'HEAD') != baseline:
@@ -170,15 +232,62 @@ def integrate(repo, owner_pid, task, argv, timeout):
                     git(repo, 'merge', '--ff-only', merge)
                     if git(repo, 'rev-parse', 'HEAD') != merge:
                         raise ValueError('canonical fast-forward readback mismatch')
-                    integration = {'commit': merge, 'baseline': baseline, 'changed_files': files,
-                                   'check_receipt': check['command_receipt']['receipt'],
-                                   'task_contract': contracts[task]['contract']}
                     state.change(common, slot, 'integrated', {'integration': integration, 'checks': check})
                     return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration}
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             with execution.lock(common / 'writer.lock'):
                 state.require_owner(common, owner_pid)
                 return hold(common, slot, str(exc), **({'checks': check} if check is not None else {}))
+
+
+def validated_receipt(repo, common, slot):
+    info, checks = slot.get('integration') or {}, slot.get('checks') or {}
+    receipt_path = Path(info.get('check_receipt', ''))
+    if receipt_path.parent != common or receipt_path.suffix != '.json':
+        raise ValueError('validation receipt must be in repository execution state')
+    saved = execution.read(receipt_path)
+    if (saved != checks or checks.get('outcome') != 'EXECUTED'
+            or checks.get('context', {}).get('integration_commit') != info.get('commit')
+            or checks.get('command_receipt', {}).get('exit_code') != 0
+            or checks['command_receipt'].get('task_id') != slot['task_id']
+            or checks['command_receipt'].get('receipt') != str(receipt_path)
+            or checks['command_receipt'].get('inputs_match') is not True
+            or git(repo, 'merge-base', info['commit'], 'HEAD') != info['commit']
+            or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
+               != [info['baseline'], slot['commit']]):
+        raise ValueError('missing, failed, stale or mismatched integration validation')
+    return info, checks
+
+
+def recover_integration(repo, common, slot, contracts):
+    """Called only under integration.lock: no cooperating validation is alive.
+
+    Before FF, require exact baseline and an unmodified isolated candidate and
+    rerun validation. After FF, require durable passing evidence for that exact
+    landed merge. Missing or contradictory evidence is held, never adopted.
+    """
+    info = slot.get('integration') or {}
+    if (not info.get('commit') or not info.get('baseline')
+            or info.get('task_contract') != contracts[slot['task_id']]['contract']
+            or info.get('canonical_branch') != git(repo, 'symbolic-ref', 'HEAD')
+            or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
+               != [info['baseline'], slot['commit']]):
+        raise ValueError('abandoned integration lacks exact candidate/contract/branch evidence')
+    files = changed(repo, info['baseline'], info['commit'])
+    verify_scope(repo, common, slot, contracts, files)
+    if files != info.get('changed_files'):
+        raise ValueError('abandoned integration delta does not match intent')
+    root = execution.safe_path(repo.parent / (repo.name + '-autowork-integration'))
+    if (not dispatch.created_by_autowork(common, root, '(detached)')
+            or state.common_dir(root) != common
+            or git(root, 'rev-parse', 'HEAD') != info['commit']
+            or git(root, 'status', '--porcelain', '--untracked-files=all')):
+        raise ValueError('abandoned integration tree changed; preserve for diagnosis')
+    if git(repo, 'rev-parse', 'HEAD') == info['baseline']:
+        return None  # Pre-FF; remerge and revalidate, retaining worker attempt.
+    validated_receipt(repo, common, slot)
+    state.change(common, slot, 'integrated', {})
+    return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info}
 
 
 def goals_command(repo, *argv):
@@ -194,23 +303,17 @@ def close(repo, owner_pid, task):
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
+        require_no_writers(repo)
         slot = slot_for(common, task)
-        if not slot or slot['state'] != 'integrated':
+        if not slot or slot['state'] not in ('integrated', 'closed'):
             raise ValueError('close requires an integrated slot with passing validation')
-        info, checks = slot.get('integration', {}), slot.get('checks', {})
-        receipt_path = Path(info.get('check_receipt', ''))
-        if receipt_path.parent != common or receipt_path.suffix != '.json':
-            raise ValueError('validation receipt must be in repository execution state')
-        saved = execution.read(receipt_path)
-        if (saved != checks or checks.get('outcome') != 'EXECUTED'
-                or checks.get('context', {}).get('integration_commit') != info.get('commit')
-                or checks.get('command_receipt', {}).get('exit_code') != 0
-                or checks['command_receipt'].get('task_id') != task
-                or checks['command_receipt'].get('inputs_match') is not True
-                or git(repo, 'merge-base', info['commit'], 'HEAD') != info['commit']
-                or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
-                   != [info['baseline'], slot['commit']]):
-            raise ValueError('missing, failed, stale or mismatched integration validation')
+        info, checks = validated_receipt(repo, common, slot)
+        if slot['state'] == 'closed':
+            archive = repo / 'TODO.archive.md'
+            archived = execution.goals_module().task_bodies(archive.read_text()) if archive.exists() else {}
+            if len(archived.get(task, [])) != 1 or archived[task][0][1].lower() != 'x':
+                raise ValueError('closed cleanup requires completed archive provenance')
+            return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
         # The helper has no TODO-only `task` CLI. Use its same coordination and
         # atomic writer in this narrow adapter instead of creating a goals ledger.
         goals = execution.goals_module()
@@ -220,6 +323,7 @@ def close(repo, owner_pid, task):
             raise ValueError('task contract changed since integration; no close')
         indexed = (repo / 'goals.json').exists()
         if indexed:
+            require_no_writers(repo)
             goals_command(repo, 'task', task, 'done')
         # `goals.py task` updates the index, not the authored checkbox/body.
         # Update that exact body under the helper's own stale-write guard too.
@@ -235,7 +339,9 @@ def close(repo, owner_pid, task):
                 body = text[block['start']:block['end']]
                 body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\] ' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
                 body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
+                require_no_writers(repo)
                 goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
+        require_no_writers(repo)
         archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
         # Read back exact target before journaling closure; archive can fail safely
         # after task mutation, in which case slot stays integrated and is retryable.
@@ -245,18 +351,40 @@ def close(repo, owner_pid, task):
         if task not in archived or archived[task][0][1].lower() != 'x':
             raise ValueError('archive readback does not contain the completed task')
         slot = state.change(common, slot, 'closed', {})
-        cleaned = False
-        root = Path(slot['worktree'])
-        if (dispatch.created_by_autowork(common, root, slot['branch']) and root.exists()
-                and not state.worker_live(slot)):
-            state.workspace(common, root, slot['branch'], slot['baseline'])
-            if (not git(root, 'status', '--porcelain', '--untracked-files=all')
-                    and git(root, 'rev-parse', 'HEAD') == slot['commit']):
-                git(repo, 'worktree', 'remove', str(root))
-                git(repo, 'branch', '-d', slot['branch'])
-                cleaned = True
-                state.event(common, 'worker_cleaned', task_id=task, worktree=str(root), branch=slot['branch'])
-        return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleaned}
+        return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
+
+
+def cleanup_worker(repo, common, slot):
+    """Independent idempotent cleanup; never repeat the archive/closed transition."""
+    root = execution.safe_path(slot['worktree'])
+    if not dispatch.created_by_autowork(common, root, slot['branch']) or state.worker_live(slot):
+        return False
+    path = common / ('cleanup-' + slot['task_id'] + '-' + str(slot['attempt']) + '.json')
+    intent = {k: slot[k] for k in ('task_id', 'attempt', 'worktree', 'branch', 'baseline', 'commit')}
+    previous = execution.read(path)
+    if path.exists() and previous != intent:
+        raise ValueError('cleanup provenance does not match closed worker')
+    if root.exists():
+        state.workspace(common, root, slot['branch'], slot['baseline'])
+        if (git(root, 'status', '--porcelain', '--untracked-files=all')
+                or git(root, 'rev-parse', 'HEAD') != slot['commit']):
+            return False
+        require_no_writers(root)
+        execution.save(path, intent)  # Durable before either destructive operation.
+        git(repo, 'worktree', 'remove', str(root))
+    elif previous != intent:
+        return False  # An absent directory alone is not evidence of our removal.
+    registrations = git(repo, 'worktree', 'list', '--porcelain').split('\n\n')
+    if root.exists() or any('worktree ' + str(root) in block.splitlines() for block in registrations):
+        raise ValueError('worker removal readback mismatch')
+    if git(repo, 'branch', '--list', slot['branch']):
+        if (git(repo, 'rev-parse', 'refs/heads/' + slot['branch']) != slot['commit']
+                or any('branch refs/heads/' + slot['branch'] in block.splitlines() for block in registrations)):
+            return False
+        git(repo, 'branch', '-d', slot['branch'])
+    if git(repo, 'branch', '--list', slot['branch']):
+        raise ValueError('worker branch cleanup readback mismatch')
+    return True
 
 
 def retry_held(args):
