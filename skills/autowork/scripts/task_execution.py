@@ -341,6 +341,16 @@ def digest(path):
 
 
 def select(repo, requested, plan):
+    # Keep sequential selection lazy: later contracts cannot change its result.
+    return next(_contracts(repo, requested, plan))
+
+
+def select_all(repo, requested=None, plan=None):
+    """Return every passing contract in priority order using sequential checks."""
+    return list(_contracts(repo, requested, plan, parallel=True))
+
+
+def _contracts(repo, requested, plan, *, parallel=False):
     goals = goals_module()
     todo = repo / 'TODO.md'
     bodies = goals.task_bodies(todo.read_text())
@@ -373,6 +383,7 @@ def select(repo, requested, plan):
                                               if any(item[2] in ('Now', 'Next') for item in items)}
     if any(len(bodies[key]) != 1 for key in executable.union(wanted or ()) if key in bodies):
         raise ValueError('duplicate TODO task IDs; reconcile the repository contract')
+    accepted = False
     reasons = []
     for tid in (wanted or ordered):
         if tid not in bodies:
@@ -426,9 +437,15 @@ def select(repo, requested, plan):
             if anchor and anchor not in {re.sub(r'[^\w -]', '', heading.lower()).replace(' ', '-')
                                         for heading in re.findall(r'^#+\s+(.+)', source.read_text(), re.M)}:
                 raise ValueError('named plan heading does not exist')
-        return {'id': tid, 'title': body.splitlines()[0].strip(' —:-'),
-                'section': section, 'contract': body.strip(), 'fields': fields, 'priority': priority}
-    raise ValueError('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')
+        if parallel and ledger and 'Status' not in fields:
+            # Parallel admission must retain the ledger's effective running state;
+            # sequential callers keep their historical byte-for-byte contract.
+            fields = dict(fields, Status=indexed[tid]['status'])
+        yield {'id': tid, 'title': body.splitlines()[0].strip(' —:-'),
+               'section': section, 'contract': body.strip(), 'fields': fields, 'priority': priority}
+        accepted = True
+    if not accepted:
+        raise ValueError('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')
 
 
 def command(args, repo, state, common, task, lease, lock_fd):
