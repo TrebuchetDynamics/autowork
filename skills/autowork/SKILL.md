@@ -72,6 +72,13 @@ review step. Keep Hermes Agent unchanged.
    independent review where required and source freshness still apply. Reuse checks
    only for matching inputs when policy allows; rerun changed-input and mandatory
    gates. A missing required review holds completion, not unrelated authorized work.
+   When aggregate acceptance is blocked, recover independently useful in-scope fixes
+   from an idle candidate instead of repeating the blocker report. Verify provenance
+   and current writer inactivity, compare adopted bytes, rerun affected checks and
+   obtain required review. Integrate a partial slice only when repository policy
+   permits it; record its commit and remaining failed gates under the original TODO
+   ID. Never call focused passes a full-suite pass, waive a gate, close the parent
+   task, or infer dependency/upstream/publication authority from partial delivery.
 5. **Close out.** Commit attributable verified paths locally unless forbidden.
    Use ordinary Git, repository review and integration policy. Inspect fresh target
    state and serialize canonical writes; preserve unrelated dirty work. Never push,
