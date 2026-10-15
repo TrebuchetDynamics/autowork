@@ -304,6 +304,9 @@ def summarize_update(result):
     if result.get('gateway_restart'):
         line = f"Gateway restart: {result['gateway_restart']}"
         drain = result.get('gateway_restart_progress')
+        covers = (drain.get('covers') if isinstance(drain, dict) else None) or result.get('gateway_restart_covers') or 0
+        if covers > 1:
+            line += f' (covers {covers} updates)'
         if isinstance(drain, dict) and drain.get('state') == 'deferred':
             turns = drain.get('chat_turns')
             line += (', waiting for no chat turn in flight ('

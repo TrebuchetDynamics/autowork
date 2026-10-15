@@ -223,8 +223,11 @@ next step and restarts nothing. Cron schedules persist (a job mid-run during a
 restart is marked `unknown` and not retried; its next tick runs normally).
 Otherwise it reports `not_running`, or `not_needed` for a no-op or incomplete
 activation. While a deferred or requested restart is outstanding, a later update
-reports `pending` instead of starting another one; that restart loads the newer
-release too. `/toolset update status` then shows the waiter's latest chat-turn
+reports `pending` and joins it instead of starting another one, so a burst of
+updates restarts the gateway once; that restart loads the newest release, and its
+outcome reaches the latest receipt with `gateway_restart_covers`, the number of
+updates it covers. The waiter never restarts while an update is still applying
+files: it shares the update lock and waits for the next check. `/toolset update status` then shows the waiter's latest chat-turn
 count, or the seconds left and turns a requested restart is draining
 (`gateway_restart_progress` in the full receipt). To restart immediately anyway, run `hermes gateway restart` yourself;
 Hermes then waits for chat turns up to `agent.restart_after_turn_timeout`. Drift,

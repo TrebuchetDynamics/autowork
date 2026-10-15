@@ -66,7 +66,7 @@ class QuietRestartTests(unittest.TestCase):
         self.assertIsNone(self.mod.chat_turns(self.root, self.homes))
 
     def receipt(self, **fields):
-        record = {'status': 'updated', 'pid': 777, 'gateway_restart': 'deferred', **fields}
+        record = {'status': 'updated', 'pid': 1, 'started_ns': 777, 'gateway_restart': 'deferred', **fields}
         (self.state / 'latest.json').write_text(json.dumps(record))
 
     def wait(self, turns, *, window=100, gateway_pids=None):
@@ -79,7 +79,7 @@ class QuietRestartTests(unittest.TestCase):
         with patch.object(self.mod, 'chat_turns', side_effect=lambda *_: next(sequence)), \
              patch.object(self.mod, 'gateway_pid', side_effect=lambda *_: next(pids, 100)), \
              patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart:
-            outcome = self.mod.restart_when_quiet(self.root, self.homes, self.state, update_pid=777, gateway=100,
+            outcome = self.mod.restart_when_quiet(self.root, self.homes, self.state, update_id=777, gateway=100,
                                                   window=window, poll=10, sleep=sleep, clock=lambda: clock['now'])
         return outcome, restart, json.loads((self.state / 'latest.json').read_text())
 
@@ -107,10 +107,10 @@ class QuietRestartTests(unittest.TestCase):
         self.assertEqual(latest['gateway_restart'], 'reloaded')
 
     def test_waiter_never_overwrites_a_newer_update_receipt(self):
-        self.receipt(pid=999, gateway_restart='pending')
+        self.receipt(started_ns=999, gateway_restart='pending')
         outcome, restart, latest = self.wait([0])
         self.assertEqual(outcome, 'requested')
-        self.assertEqual(latest['pid'], 999)
+        self.assertEqual(latest['started_ns'], 999)
         self.assertEqual(latest['gateway_restart'], 'pending')
 
     def test_live_waiter_counts_as_a_pending_restart_and_reports_progress(self):
@@ -119,14 +119,34 @@ class QuietRestartTests(unittest.TestCase):
         self.addCleanup(waiter.kill)
         (self.state / 'restart.json').write_text(json.dumps(
             {'mode': 'deferred', 'waiter_pid': waiter.pid, 'deferred_ns': 1, 'window_s': 21600,
-             'chat_turns': 2, 'checked_ns': 5}))
+             'chat_turns': 2, 'checked_ns': 5, 'covers': [1, 2]}))
         self.assertIsNotNone(self.mod.pending_restart(self.state))
         progress = self.mod.gateway_drain(self.state)
         self.assertEqual(progress['state'], 'deferred')
         self.assertEqual(progress['chat_turns'], 2)
+        self.assertEqual(progress['covers'], 2)
         waiter.kill()
         waiter.wait()
         self.assertIsNone(self.mod.pending_restart(self.state))
+
+    def test_waiter_never_restarts_while_an_update_holds_the_lock(self):
+        self.receipt()
+        lock = (self.state / 'lock').open('a')
+        self.addCleanup(lock.close)
+        import fcntl
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        sleeps = []
+        def sleep(seconds):
+            sleeps.append(seconds)
+            fcntl.flock(lock, fcntl.LOCK_UN)  # the update finishes during the first wait
+        with patch.object(self.mod, 'chat_turns', return_value=0), \
+             patch.object(self.mod, 'gateway_pid', return_value=100), \
+             patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart:
+            outcome = self.mod.restart_when_quiet(self.root, self.homes, self.state, update_id=777, gateway=100,
+                                                  window=100, poll=10, sleep=sleep, clock=lambda: 0.0)
+        self.assertEqual(outcome, 'requested')
+        self.assertEqual(sleeps, [10])
+        self.assertEqual(restart.call_count, 1)
 
 
 class UpdateDefersRestartTests(unittest.TestCase):
@@ -189,6 +209,59 @@ class UpdateDefersRestartTests(unittest.TestCase):
         self.assertEqual(receipt['gateway_restart'], 'deferred')
         restart.assert_not_called()
         waiter.assert_called_once()
+
+    def test_burst_of_updates_while_busy_restarts_once_and_lists_every_update(self):
+        sleeper = [sys.executable, '-c', 'import time; time.sleep(60)', '--restart-when-quiet']
+        spawned = []
+        def command(*_):
+            return sleeper
+        with patch.object(self.mod, '_waiter_command', side_effect=command):
+            original = self.mod.start_quiet_restart
+            def start(*args):
+                pid = original(*args)
+                spawned.append(pid)
+                return pid
+            receipts = []
+            for _ in range(3):
+                with patch.object(self.mod, 'start_quiet_restart', side_effect=start):
+                    receipts.append(self.update_unpatched_waiter(2))
+        for pid in spawned:
+            self.addCleanup(lambda p=pid: (subprocess.run(['kill', str(p)]), None))
+        self.assertEqual([r['gateway_restart'] for r in receipts], ['deferred', 'pending', 'pending'])
+        self.assertEqual(len(spawned), 1)
+        state = self.home / 'maintenance/toolset-update'
+        marker = json.loads((state / 'restart.json').read_text())
+        self.assertEqual(marker['covers'], [r['started_ns'] for r in receipts])
+        subprocess.run(['kill', str(spawned[0])])
+        with patch.object(self.mod, 'chat_turns', return_value=0), \
+             patch.object(self.mod, 'gateway_pid', return_value=100), \
+             patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart:
+            outcome = self.mod.restart_when_quiet(self.home, [self.home], state, update_id=receipts[0]['started_ns'],
+                                                  gateway=100, window=100, poll=10, sleep=lambda _: None,
+                                                  clock=lambda: 0.0)
+        latest = json.loads((state / 'latest.json').read_text())
+        self.assertEqual(outcome, 'requested')
+        self.assertEqual(restart.call_count, 1)
+        self.assertEqual(latest['started_ns'], receipts[2]['started_ns'])
+        self.assertEqual(latest['gateway_restart'], 'requested')
+        self.assertEqual(latest['gateway_restart_covers'], 3)
+
+    def update_unpatched_waiter(self, turns):
+        (self.remote / 'skills/demo/SKILL.md').write_text(f'release {len(self.git(self.remote, "log", "--oneline").splitlines())}\n')
+        self.git(self.remote, 'commit', '-am', 'release')
+        self.git(self.repo, 'pull', '--ff-only')
+        prepare = self.mod.prepare
+        with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+             patch.dict('sys.modules', {'setup_bundle': self.stub}), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
+             patch.object(self.mod, 'gateway_running', return_value=True), \
+             patch.object(self.mod, 'gateway_pid', return_value=100), \
+             patch.object(self.mod, 'chat_turns', return_value=turns), \
+             patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
+        restart.assert_not_called()
+        return json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
 
     def test_quiet_gateway_restarts_at_once(self):
         receipt, restart, waiter = self.update(0)

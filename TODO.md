@@ -26,17 +26,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
-### TOOLSET-076 — Coalesce restarts across a burst of updates
-
-- [ ] TOOLSET-076 — Coalesce restarts across a burst of updates
-- Status: open.
-- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
-- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
-- Scope: A deferred or pending restart absorbs later updates: further applied updates extend the same deferred restart instead of requesting another, so a burst of updates causes one restart after the last one.
-- Acceptance: Three updates applied while the gateway is busy produce exactly one restart once it is quiet; status lists every update the restart covers.
-- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
-- Dependencies: TOOLSET-075.
-
 ## Next
 
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
@@ -252,7 +241,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
-| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-076, TOOLSET-077, TOOLSET-078, TOOLSET-079 |
+| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-077, TOOLSET-078, TOOLSET-079 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 

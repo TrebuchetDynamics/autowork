@@ -1415,3 +1415,19 @@ Source section: Now
 - Checks: Failing-first regressions in `tests/test_update_bundle.py` with fake gateway state and worker files, then `python3 scripts/check.py`.
 - Dependencies: None.
 - Exclusions: No Hermes code changes; no edits to `restart_after_turn_timeout` or `cron_drain_timeout`.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-076 — Coalesce restarts across a burst of updates
+
+- [x] TOOLSET-076 — Coalesce restarts across a burst of updates
+- Status: done (2026-10-15). `restart.json` carries `covers` (each update's `started_ns`); an update that finds an outstanding requested or deferred restart joins it under the update lock and reports `pending`; the waiter takes the same lock for every check, so it never restarts while an update is applying files, and records its outcome on the latest receipt whenever that update is covered (`gateway_restart_covers`); `/toolset update status` says how many updates a restart covers. New regressions (three busy updates → one waiter, one restart, latest receipt `requested` covering 3; waiter blocked by a held lock; covered count in status) failed first, then passed; `python3 scripts/check.py` 478/575 (1 skipped)/209/8; `docs.py check` ok. Offline only. A requested restart that is already draining still records no outcome for its covered updates; that is TOOLSET-077.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: A deferred or pending restart absorbs later updates: further applied updates extend the same deferred restart instead of requesting another, so a burst of updates causes one restart after the last one.
+- Acceptance: Three updates applied while the gateway is busy produce exactly one restart once it is quiet; status lists every update the restart covers.
+- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
+- Dependencies: TOOLSET-075.

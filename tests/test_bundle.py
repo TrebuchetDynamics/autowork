@@ -140,6 +140,20 @@ class BundleTests(unittest.TestCase):
         self.assertIn('Gateway restart: deferred_expired', summary)
         self.assertIn('Gateway restart action: Run hermes gateway restart when convenient.', summary)
 
+    def test_status_says_how_many_updates_one_restart_covers(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated',
+            'gateway_restart': 'pending'}))
+        waiting = {'state': 'deferred', 'waiter_pid': 9, 'chat_turns': 1, 'covers': 3}
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+             patch.object(self.bundle, 'gateway_drain', return_value=waiting):
+            self.assertIn('covers 3 updates', self.bundle.update_status())
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated',
+            'gateway_restart': 'requested', 'gateway_restart_covers': 2}))
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+             patch.object(self.bundle, 'gateway_drain', return_value=None):
+            self.assertIn('covers 2 updates', self.bundle.update_status())
+
     def _chat_updater(self, body):
         """Point start_update at a disposable updater script; never the real one."""
         checkout = Path(self.tmp.name) / 'checkout'

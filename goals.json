@@ -427,16 +427,6 @@
   },
   "tasks": [
     {
-      "depends_on": [
-        "TOOLSET-075"
-      ],
-      "goal": "GENTLE-UPDATE",
-      "id": "TOOLSET-076",
-      "section": "Now",
-      "status": "open",
-      "title": "Coalesce restarts across a burst of updates"
-    },
-    {
       "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
@@ -983,6 +973,16 @@
       "section": "Done",
       "status": "done",
       "title": "Restart the gateway only in a quiet window"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-075"
+      ],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-076",
+      "section": "Done",
+      "status": "done",
+      "title": "Coalesce restarts across a burst of updates"
     },
     {
       "depends_on": [],
