@@ -39,7 +39,8 @@ def main():
             assert f'autoresearch:{name}' in commands
             assert f'autoresearch-{name}' in commands
             assert f'autoresearch{name}' not in menu
-        assert all('autoresearch_' + name in menu for name in names if name != 'plan'), menu
+        # Compatibility aliases stay typeable but are no longer advertised (b021c54).
+        assert not any(key.startswith('autoresearch') for key in menu), menu
         assert 'plan_for_me' in menu and 'autoresearch' not in menu, menu
         assert 'autowork' in menu, menu
         assert 'autogoal' not in commands and 'autogoal' not in menu
