@@ -63,6 +63,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Setup and update verification honor the documented runtime-policy opt-out
+  (`plugins.entries.hermes-toolset.settings.apply_runtime_defaults: false`), so an
+  opted-out profile with its own approval values is no longer reported as
+  `incomplete`. The native registration probe's opt-out now uses the same path.
+
 - An idle interactive agent session left open in a repository no longer blocks
   Autowork indefinitely. Sessions block only their own checkout and only while
   active (terminal use within 30 minutes, running commands or an open writable

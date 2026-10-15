@@ -44,8 +44,15 @@ def _leaf_paths(expected, prefix=()):
 
 
 def _opted_out(raw):
+    """Mirror Hermes' ctx.get_config: `settings.<key>`, then the legacy `config.<key>`."""
     entry = (((raw.get('plugins') or {}).get('entries') or {}).get('hermes-toolset') or {}) if isinstance(raw, dict) else {}
-    return isinstance(entry, dict) and entry.get('apply_runtime_defaults', True) is False
+    if not isinstance(entry, dict):
+        return False
+    for subtree in ('settings', 'config'):
+        values = entry.get(subtree)
+        if isinstance(values, dict) and 'apply_runtime_defaults' in values:
+            return values['apply_runtime_defaults'] is False
+    return False
 
 
 def apply_runtime_defaults(ctx):

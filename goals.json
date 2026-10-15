@@ -213,11 +213,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)",
+          "result": "pass"
+        }
+      ],
       "id": "POLICY-OPTOUT",
       "priority": 90,
       "source": "docs/installation.md#install",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-033"
       ],
@@ -290,14 +296,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [],
-      "goal": "POLICY-OPTOUT",
-      "id": "TOOLSET-033",
-      "section": "Next",
-      "status": "open",
-      "title": "Read the runtime-policy opt-out from the plugin settings path in finalize verification"
     },
     {
       "depends_on": [],
@@ -476,6 +474,14 @@
       "section": "Done",
       "status": "done",
       "title": "Define repository-type role profiles in the Docs Sync scaffold"
+    },
+    {
+      "depends_on": [],
+      "goal": "POLICY-OPTOUT",
+      "id": "TOOLSET-033",
+      "section": "Done",
+      "status": "done",
+      "title": "Read the runtime-policy opt-out from the plugin settings path in finalize verification"
     },
     {
       "depends_on": [],

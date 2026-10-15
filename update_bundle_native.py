@@ -10,6 +10,10 @@ from pathlib import Path
 import sys
 import tempfile
 
+# Hermes reads plugin options from `settings` (ctx.get_config), so the opt-out lives there.
+PROBE_CONFIG = ('plugins:\n  enabled: [hermes-toolset]\n  entries:\n'
+                '    hermes-toolset:\n      settings:\n        apply_runtime_defaults: false\n')
+
 
 def main():
     action, home, source, revision = sys.argv[1:]
@@ -35,9 +39,7 @@ def main():
             probe = Path(directory)
             (probe / 'plugins').mkdir()
             (probe / 'plugins/hermes-toolset').symlink_to(source, target_is_directory=True)
-            (probe / 'config.yaml').write_text(
-                'plugins:\n  enabled: [hermes-toolset]\n  entries:\n'
-                '    hermes-toolset:\n      apply_runtime_defaults: false\n')
+            (probe / 'config.yaml').write_text(PROBE_CONFIG)
             os.environ['HERMES_HOME'] = str(probe)
             os.chdir(probe)  # avoid project plugin discovery from the caller's cwd
             from hermes_cli.plugins import get_plugin_manager, get_plugin_commands

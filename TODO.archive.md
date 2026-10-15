@@ -835,3 +835,24 @@ Source section: Next
 - Current evidence: `docs.py` gains five profiles, manifest `profile` validation and a `profiles` command; the scaffold documents the profile table and reference, install-upgrade, troubleshooting, user-guide and glossary roles, with Docs Sync/adapter pointers. `test_docs_profiles.py` (5 tests) failed before the change. A throwaway `cli-plugin` manifest for this repository reported exactly its unmapped `reference` and `troubleshooting` roles.
 - Checks run: `python3 scripts/check.py` passed offline: 403/571/197/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. Self-reviewed.
 - Closure: Offline helper and scaffold only; adopting a manifest or writing the missing roles in this or any consumer repository is separate work.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-033 — Read the runtime-policy opt-out from the plugin settings path in finalize verification
+
+- [x] TOOLSET-033 — Read the runtime-policy opt-out from the plugin settings path in finalize verification
+- Status: done
+- Goal: POLICY-OPTOUT — A profile opted out the documented way is not reported as incomplete.
+- Sources: [documented opt-out](docs/installation.md#install), [reference](docs/reference.md#plugin-settings), [`runtime_defaults.py`](runtime_defaults.py) `_opted_out` and `apply_runtime_defaults`, [`setup_runtime.py`](setup_runtime.py) finalize, [existing regression](tests/test_telegram_menu_policy.py), [loader integration](tests/integration_plugin.py).
+- Scope: Found while writing docs/reference.md (source inspection, not a reproduced run). Hermes' `PluginContext.get_config` reads `plugins.entries.hermes-toolset.settings.apply_runtime_defaults` (with a legacy `config` fallback), and the docs and loader integration test use that path, so loading honors the opt-out. `verify_runtime_defaults()` uses `_opted_out()`, which reads `plugins.entries.hermes-toolset.apply_runtime_defaults` without `settings`, and `tests/test_telegram_menu_policy.py` asserts that entry-level shape. Make `_opted_out` read the settings path (and the legacy `config` path), keeping or explicitly retiring the entry-level form.
+- Acceptance: With `settings.apply_runtime_defaults: false` and user-restored approval values, `verify_runtime_defaults()` returns no drift and finalize does not fail that profile; with the opt-out absent or `true`, drift is still reported. Loading behavior is unchanged.
+- Checks: Failing focused regression first in the existing policy tests; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No upstream Hermes edits, profile configuration changes or push.
+- Current evidence: Reproduced offline: with `settings.apply_runtime_defaults: false` and restored approval values, `verify_runtime_defaults()` reported `approvals.mode` and other paths as drift, which finalize turns into `Profile settings not healed`. `_opted_out` now mirrors Hermes' `get_config` (`settings`, then legacy `config`); the entry-level form, which the loader never honored, is retired and its old assertion inverted. The same ineffective entry-level opt-out in `update_bundle_native.py`'s disposable registration probe now uses `settings` via `PROBE_CONFIG`. Three new regressions in `tests/test_telegram_menu_policy.py` failed before the fix.
+- Checks run: `python3 scripts/check.py --timeout 300` passed offline: 406/571/197/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. The longer per-directory timeout reflects host load, not a test change. Self-reviewed.
+- Closure: Offline verification only; no installed profile was re-finalized and no native registration probe was run.

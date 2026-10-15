@@ -67,7 +67,70 @@ class SelfHealTests(unittest.TestCase):
         healed=rd.expected_settings(old)
         old['platforms']['telegram']['extra']['command_menu'].update(healed['platforms']['telegram']['extra']['command_menu'])
         self.assertEqual(rd.settings_drift(old, rd.expected_settings(old)), [])
-        self.assertTrue(rd._opted_out({'plugins':{'entries':{'hermes-toolset':{'apply_runtime_defaults':False}}}}))
+        # Hermes never reads an entry-level key, so it is not an opt-out (TOOLSET-033).
+        self.assertFalse(rd._opted_out({'plugins':{'entries':{'hermes-toolset':{'apply_runtime_defaults':False}}}}))
+
+
+
+class RuntimePolicyOptOutTests(unittest.TestCase):
+    """Verification must honor the opt-out at the path Hermes' get_config reads (TOOLSET-033)."""
+
+    def setUp(self):
+        import sys, types
+        root=Path(__file__).resolve().parents[1]
+        pkg=types.ModuleType('toolset_pkg'); pkg.__path__=[str(root)]
+        bundle=types.ModuleType('toolset_pkg.bundle')
+        bundle.defaults=lambda: {'hermes': {'approvals_mode':'off','destructive_slash_confirm':False,
+                                            'mcp_reload_confirm':False,'allow_gateway_injection':True}}
+        self.raw={}
+        config=types.ModuleType('hermes_cli.config'); config.read_raw_config=lambda: self.raw
+        cli=types.ModuleType('hermes_cli'); cli.config=config
+        saved={k: sys.modules.get(k) for k in ('hermes_cli','hermes_cli.config')}
+        sys.modules.update({'toolset_pkg':pkg,'toolset_pkg.bundle':bundle,'hermes_cli':cli,'hermes_cli.config':config})
+        def restore():
+            for k in list(sys.modules):
+                if k.startswith('toolset_pkg'): sys.modules.pop(k,None)
+            for k,v in saved.items():
+                if v is None: sys.modules.pop(k,None)
+                else: sys.modules[k]=v
+        self.addCleanup(restore)
+        spec=importlib.util.spec_from_file_location('toolset_pkg.runtime_defaults', root/'runtime_defaults.py')
+        self.rd=importlib.util.module_from_spec(spec); sys.modules[spec.name]=self.rd; spec.loader.exec_module(self.rd)
+
+    def entry(self, value):
+        return {'plugins':{'entries':{'hermes-toolset':value}}}
+
+    def test_opt_out_follows_hermes_settings_then_legacy_config(self):
+        rd=self.rd
+        self.assertTrue(rd._opted_out(self.entry({'settings':{'apply_runtime_defaults':False}})))
+        self.assertTrue(rd._opted_out(self.entry({'config':{'apply_runtime_defaults':False}})))
+        self.assertFalse(rd._opted_out(self.entry({'settings':{'apply_runtime_defaults':True},
+                                                   'config':{'apply_runtime_defaults':False}})))
+        self.assertTrue(rd._opted_out(self.entry({'settings':{},'config':{'apply_runtime_defaults':False}})))
+        for value in ({}, {'settings':{'apply_runtime_defaults':'false'}}, {'settings':None},
+                      {'apply_runtime_defaults':False}, None, 'x'):
+            with self.subTest(value=value):
+                self.assertFalse(rd._opted_out(self.entry(value)))
+        self.assertFalse(rd._opted_out(None))
+
+    def test_documented_opt_out_with_restored_values_reports_no_drift(self):
+        self.raw={'approvals':{'mode':'manual','destructive_slash_confirm':True},
+                  'plugins':{'entries':{'hermes-toolset':{'settings':{'apply_runtime_defaults':False}}}}}
+        self.assertEqual(self.rd.verify_runtime_defaults(), [])
+        self.raw['plugins']['entries']['hermes-toolset']['settings']['apply_runtime_defaults']=True
+        self.assertIn('approvals.mode', self.rd.verify_runtime_defaults())
+        del self.raw['plugins']['entries']['hermes-toolset']['settings']
+        self.assertIn('approvals.mode', self.rd.verify_runtime_defaults())
+
+
+    def test_native_registration_probe_config_opts_out(self):
+        import yaml
+        spec=importlib.util.spec_from_file_location(
+            'native_probe', Path(__file__).resolve().parents[1]/'update_bundle_native.py')
+        native=importlib.util.module_from_spec(spec); spec.loader.exec_module(native)
+        probe=yaml.safe_load(native.PROBE_CONFIG)
+        self.assertEqual(probe['plugins']['enabled'], ['hermes-toolset'])
+        self.assertTrue(self.rd._opted_out(probe))
 
 
 class CompatibilityRegistrationTests(unittest.TestCase):
