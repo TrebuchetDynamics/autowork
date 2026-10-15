@@ -952,7 +952,7 @@ Source section: Next
 - Status: done
 - Goal: STARTUP — Start useful implementation sooner with less preparation.
 - Sources: [journal guidance](skills/autowork/references/blockers-and-history.md), [state and recovery](skills/autowork/references/state-and-recovery.md).
-- Scope: Gateway logs on 2026-10-14 show 44 failed reads of `<profile>/autowork/state.json` across bravo, toolset and landing, where no run had written the journal; it exists in only 3 of 9 profiles. Say the journal may be absent, check for it instead of reading blindly, and create it when the first run records progress.
+- Scope: Gateway logs on 2026-10-14 show 44 failed reads of `<profile>/autowork/state.json` across three profiles, where no run had written the journal; it exists in only 3 of 9 profiles. Say the journal may be absent, check for it instead of reading blindly, and create it when the first run records progress.
 - Acceptance: The guidance tells agents to test for the file before reading, treats absence as a first run (not lost continuity or an error), and requires the first recorded run to create it. No other journal semantics change.
 - Checks: Read back both references; `python3 skills/docs-sync/scripts/docs.py check .`; `python3 scripts/check.py`; `git diff --check`; independent review.
 - Dependencies: None.

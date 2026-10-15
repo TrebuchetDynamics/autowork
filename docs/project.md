@@ -610,7 +610,7 @@ ID, so a human reorder in TODO.md did not change selection when goals.json exist
   section or a `###` heading inside it that is not a task's own ID heading; deeper
   headings move with their task, and blocks never cross a group. It refuses a changed first eligible pick and lists every deeper
   eligible-order change in the dry run for review. On 2026-10-14 the user accepted
-  group-aware bootstrap, including bravo's TASK-002 moving
+  group-aware bootstrap, including one repository's design-review task moving
   from 31st to 34th of 37 eligible tasks. A matching repository gets the snapshot without a TODO.md
   rewrite. `--dry-run` reports every proposed move and the revision token that the
   apply step requires. An existing record makes bootstrap a no-op; disagreement
