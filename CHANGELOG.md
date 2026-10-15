@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/toolset update` merges edits profiles made to their installed skill copies
+  instead of stopping on `drift`. It merges from the closest same-path version in
+  trusted history (keeping a pure addition over the release), reports each file under
+  `local_edits`, and still stops before any write on a conflict or an ambiguous
+  starting version.
+
 - Docs Sync's optional document role manifest (`docs/roles.json`) and read-only
   `skills/docs-sync/scripts/docs.py validate|check`: mapped documents and anchors,
   local links, documented script paths, covered paths and unmapped baseline roles.
@@ -66,6 +72,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The cron self-heal helper reported its own refusals only as `ValueError`, hiding
+  the cause (for example a job whose prompt lost its managed wiring). Its fixed
+  refusal messages are now shown; other errors still report only their type.
 - Autowork no longer refuses runnable tasks because of loose checklist lines elsewhere
   in TODO.md or `Dependencies: None.` followed by prose, and its writer detection now
   recognizes the installed `hermes` launcher (TOOLSET-043, TOOLSET-044).

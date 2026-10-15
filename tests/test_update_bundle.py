@@ -82,18 +82,84 @@ class UpdateTests(unittest.TestCase):
         for _, home in self.profiles:
             self.assertEqual((home / 'skills/demo/SKILL.md').read_text(), 'new\n')
 
-    def test_modified_old_copy_is_drift_not_an_invented_merge_base(self):
-        self.advance()
+    def install_lines(self, text):
+        (self.remote / 'skills/demo/SKILL.md').write_text(text)
+        self.git(self.remote, 'commit', '-am', 'lines')
         self.git(self.repo, 'pull', '--ff-only')
+        for _, home in self.profiles:
+            (home / 'skills/demo/SKILL.md').write_text(text)
+
+    def release(self, text):
+        (self.remote / 'skills/demo/SKILL.md').write_text(text)
+        self.git(self.remote, 'commit', '-am', 'release')
+        # The shared checkout advances before profiles update, so old == new.
+        self.git(self.repo, 'pull', '--ff-only')
+
+    def test_edit_to_an_older_installed_copy_merges_onto_the_release_and_is_reported(self):
+        self.install_lines('a\nb\nc\nd\ne\n')
         path = self.home / 'skills/demo/SKILL.md'
-        path.write_text('old\ncustomization\n')
+        path.write_text('a\nb\nc\nd\ne\nlocal lesson\n')
+        self.release('A\nb\nc\nd\ne\n')
         plan = self.plan()
-        self.assertEqual([item['path'] for item in plan['drift']], [str(path)])
-        with self.assertRaisesRegex(ValueError, 'drift'):
-            self.mod.apply(plan, self.home / 'backups')
-        self.assertFalse((self.home / 'backups').exists())
-        self.assertEqual(path.read_text(), 'old\ncustomization\n')
-        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'old\n')
+        self.assertEqual(plan['drift'], [])
+        (edit,) = plan['local_edits']
+        self.assertEqual((edit['profile'], edit['path'], edit['action']), ('default', str(path), 'merged'))
+        self.mod.apply(plan, self.home / 'backups')
+        self.assertEqual(path.read_text(), 'A\nb\nc\nd\ne\nlocal lesson\n')
+        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'A\nb\nc\nd\ne\n')
+
+    def test_copy_closest_to_release_but_missing_its_changes_is_merged_not_kept(self):
+        self.install_lines('a\nb\nc\nd\ne\nf\ng\n')
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text('a\nb\nc\nd\ne\nf\ng\nlesson\n')
+        # The release already ported the lesson and also changed line b.
+        self.release('a\nB\nc\nd\ne\nf\ng\nlesson\n')
+        plan = self.plan()
+        self.assertEqual([e['action'] for e in plan['local_edits']], ['merged'])
+        self.mod.apply(plan, self.home / 'backups')
+        self.assertEqual(path.read_text(), 'a\nB\nc\nd\ne\nf\ng\nlesson\n')
+
+    def test_pure_addition_over_the_release_is_kept(self):
+        self.install_lines('a\nb\nc\n')
+        self.release('a\nB\nc\n')
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text('a\nB\nc\nmine\n')
+        plan = self.plan()
+        self.assertEqual([e['action'] for e in plan['local_edits']], ['kept'])
+        self.assertFalse(any(p == path for p, *_ in plan['writes']))
+
+    def assert_stops_without_writes(self, local):
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text(local)
+        with self.assertRaisesRegex(ValueError, 'Local skill conflict'):
+            self.plan()
+        self.assertEqual(path.read_text(), local)
+
+    def test_equally_close_older_versions_are_ambiguous_not_a_coin_flip(self):
+        self.install_lines('a\nb\nc\nd\ne\nf\ng\n')
+        self.release('a\nb\nc\nd\ne\nF\ng\n')
+        self.release('a\nB\nc\nd\ne\nF\ng\nZ\n')
+        self.assert_stops_without_writes('a\nb\nc\nd\ne\nq\ng\n')
+
+    def test_deliberate_deletion_from_the_release_is_not_silently_undone(self):
+        self.install_lines('a\nb\nc\nd\ne\nf\n')
+        self.release('a\nX\nb\nc\nd\ne\nY\nf\n')
+        self.assert_stops_without_writes('a\nb\nc\nd\ne\nY\nf\n')
+
+    def test_edit_of_a_release_changed_line_stops_instead_of_guessing(self):
+        self.install_lines('a\nfoo\nc\nd\ne\n')
+        self.release('a\nbar\nc\nd\ne\n')
+        self.assert_stops_without_writes('a\nbaz\nc\nd\ne\n')
+
+    def test_conflicting_local_edit_still_stops_the_update_without_writes(self):
+        self.install_lines('a\nb\nc\n')
+        path = self.home / 'skills/demo/SKILL.md'
+        path.write_text('local a\nb\nc\n')
+        self.release('upstream a\nb\nc\n')
+        with self.assertRaisesRegex(ValueError, 'Local skill conflict'):
+            self.plan()
+        self.assertEqual(path.read_text(), 'local a\nb\nc\n')
+        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'a\nb\nc\n')
 
     def test_history_does_not_match_other_paths_or_unreachable_branches(self):
         (self.remote / 'skills/demo/other.md').write_text('unrelated\n')
@@ -108,9 +174,12 @@ class UpdateTests(unittest.TestCase):
         self.git(self.repo, 'pull', '--ff-only')
         for (_, home), content in zip(self.profiles, ('unrelated\n', 'branch-only\n')):
             (home / 'skills/demo/SKILL.md').write_text(content)
-        plan = self.plan()
-        self.assertEqual(len(plan['drift']), 2)
-        self.assertFalse(any(path.name == 'SKILL.md' for path, *_ in plan['writes']))
+        # Bytes from another path or an untrusted branch never become a merge base;
+        # with no closer same-path version they are a conflict, not a silent overwrite.
+        before = [(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles]
+        with self.assertRaisesRegex(ValueError, 'Local skill conflict'):
+            self.plan()
+        self.assertEqual([(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles], before)
 
     def test_historical_lookup_is_cached_per_checkout_and_path(self):
         self.advance()
@@ -130,28 +199,25 @@ class UpdateTests(unittest.TestCase):
         for _, home in self.profiles:
             self.assertEqual((home / 'skills/demo/SKILL.md').read_text(), 'latest\n')
 
-    def test_check_and_update_report_unresolved_drift_without_profile_writes(self):
-        self.advance()
-        self.git(self.repo, 'pull', '--ff-only')
+    def test_check_and_update_report_local_edits_and_still_update(self):
+        self.install_lines('a\nb\nc\nd\ne\n')
         path = self.home / 'skills/demo/SKILL.md'
-        path.write_text('custom\n')
+        path.write_text('a\nb\nc\nd\ne\ncustom\n')
+        self.release('A\nb\nc\nd\ne\n')
         prepare = self.mod.prepare
-        for check in (True, False):
+        for check, status in ((True, 'update_available'), (False, 'updated')):
             with self.subTest(check=check):
                 args = ['--hermes-home', str(self.home)] + (['--check'] if check else [])
                 with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
                      patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
-                     patch.object(self.mod, 'finalize_profiles') as finalize, \
+                     patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+                     patch.object(self.mod, 'gateway_running', return_value=False), \
                      contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(self.mod.main(args), 1)
+                    self.assertEqual(self.mod.main(args), 0)
                 receipt = json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
-                self.assertEqual(receipt['status'], 'incomplete')
-                self.assertEqual(receipt['drift'][0]['path'], str(path))
-                self.assertIn('reconcile', receipt['action'])
-                self.assertNotIn('backup', receipt)
-                finalize.assert_not_called()
-                self.assertEqual(path.read_text(), 'custom\n')
-                self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'old\n')
+                self.assertEqual(receipt['status'], status)
+                self.assertEqual([(e['path'], e['action']) for e in receipt['local_edits']], [(str(path), 'merged')])
+        self.assertEqual(path.read_text(), 'A\nb\nc\nd\ne\ncustom\n')
 
     def test_update_heals_profile_settings_and_requests_one_graceful_gateway_restart(self):
         self.advance()

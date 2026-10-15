@@ -112,15 +112,16 @@ The reply only starts the background updater. Use `/toolset update status` for
 the durable result. If status says the process stopped without a receipt, inspect
 `maintenance/toolset-update/run.log` at the Hermes root and rerun.
 
-### The update refuses or reports `drift`
+### The update refuses, or reports `local_edits`
 
 - **Uncommitted changes or local commits in a plugin checkout:** the updater
   only fast-forwards. Commit, move or reconcile your changes; it never stashes,
   resets or force-pulls.
-- **`drift`:** an installed skill file has unknown local differences on a path
-  upstream did not change. All writes are deferred until you reconcile the
-  listed paths.
-- **Conflicting skill edits:** preserved for you to reconcile.
+- **`local_edits`:** a profile edited its installed skill copy. The edit was merged
+  onto the release (`merged`) or kept because it only adds to it (`kept`); the
+  update still completed. Port lessons that should reach every profile.
+- **`Local skill conflict`:** an installed edit disagrees with the release. Nothing
+  was written; reconcile that file (its backup stays in place) and rerun.
 
 See [update all profiles](installation.md#update-all-profiles) for the full rules.
 

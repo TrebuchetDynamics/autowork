@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -90,6 +91,44 @@ def historical_copy(repo, state, relative, local):
     return local in cache[relative]
 
 
+def closest_base(repo, state, relative, local):
+    """The same-path version a local edit started from, or None when ambiguous.
+
+    Candidates are only this path's own blobs in bounded trusted history (the set
+    historical_copy loads) plus the release, never other paths or branches. The
+    single version with the fewest differing lines wins. A tie between distinct
+    versions is ambiguous, and so is a copy closest to the release that does not
+    purely add to it (stale copy or deliberate edit cannot be told apart): both
+    return None so the caller stops instead of guessing. Results are cached per
+    path and copy, since profiles often carry the same edit.
+    """
+    import difflib
+    key = (relative, hashlib.sha256(local).hexdigest())
+    cache = state.setdefault('bases', {})
+    if key in cache:
+        return cache[key]
+    historical_copy(repo, state, relative, local)
+    new = state['new'].get(relative)
+    candidates = list(dict.fromkeys(state['history'][relative] + ([new] if new is not None else [])))
+    lines = local.splitlines(keepends=True)
+    def matched(blob):
+        theirs = blob.splitlines(keepends=True)
+        matcher = difflib.SequenceMatcher(None, theirs, lines, autojunk=False)
+        return len(theirs), sum(block.size for block in matcher.get_matching_blocks())
+    scored = []
+    for blob in candidates:
+        size, common = matched(blob)
+        scored.append((size + len(lines) - 2 * common, blob, common == size))
+    best = min((score for score, _, _ in scored), default=None)
+    tied = [(blob, only_adds) for score, blob, only_adds in scored if score == best]
+    base = None
+    if len(tied) == 1:
+        blob, only_adds = tied[0]
+        base = blob if blob != new or only_adds else None
+    cache[key] = base
+    return base
+
+
 def skill_destination(home, relative, roots):
     """Use the existing native category, matching install_skills provisioning."""
     parts = Path(relative).parts
@@ -111,7 +150,8 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
     """Fetch trusted main, then preflight ALL sources and destinations before writes."""
     sources = {}
     writes = []
-    drift = []
+    drift = []  # Legacy receipt key: profile edits are now merged into local_edits.
+    local_edits = []
     for name, home in profiles:
         plugin = home / 'plugins/hermes-toolset'
         if (home / 'plugins').is_symlink() or (plugin.is_symlink() and not plugin.exists()):
@@ -145,16 +185,25 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
                 merged = new
             elif local is not None and local != new and local != old and historical_copy(repo, state, relative, local):
                 merged = new
+            elif old == new and local is not None and new is not None and local != new:
+                # A profile edited its installed copy. Merge the edit onto the
+                # release from the version it started from, and report it; only
+                # a real conflict stops the update.
+                base = closest_base(repo, state, relative, local)
+                if base is None:
+                    raise ValueError(f'Local skill conflict: {path}; no single version it started from, reconcile this file before updating')
+                merged = local if base == new else merge_file(base, local, new, path)
+                local_edits.append({'profile': name, 'path': str(path),
+                                    'action': 'kept' if base == new else 'merged',
+                                    'base': hashlib.sha256(base).hexdigest()[:12]})
             else:
                 merged = merge_file(old, local, new, path)
-                if old == new and local != new:
-                    drift.append({'profile': name, 'path': str(path),
-                                  'reason': 'Local bytes differ from current upstream and no exact historical baseline was found'})
             current_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
             mode = current_mode | (0o111 if relative in state['executables'] else 0)
             if merged != local or (merged is not None and mode != current_mode):
                 writes.append((path, local, merged, mode))
-    return {'sources': sources, 'writes': writes, 'drift': drift, 'profiles': [n for n, _ in profiles]}
+    return {'sources': sources, 'writes': writes, 'drift': drift, 'local_edits': local_edits,
+            'profiles': [n for n, _ in profiles]}
 
 
 def apply(plan, backup):
@@ -761,6 +810,9 @@ def main(argv=None):
             changed = bool(plan['writes']) or any(s['before'] != s['after'] for s in plan['sources'].values())
             missing = any(not (h / 'plugins/hermes-toolset').exists() for _, h in profiles)
             result['drift'] = plan['drift']
+            # Profile edits merged onto (or kept over) the release; review and port
+            # any that should reach every profile.
+            result['local_edits'] = plan.get('local_edits', [])
             if plan['drift']:
                 result.update(status='incomplete',
                               action='Review the listed native skill files, back up customizations or intentional pins, and reconcile them with the fetched revision before rerunning /toolset update. No checkout or profile changes were applied.')

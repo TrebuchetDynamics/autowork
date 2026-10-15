@@ -246,10 +246,16 @@ upstream deletions of unmodified files. Compatible local edits are merged;
 conflicting edits are preserved for reconciliation. If the checkout already advanced,
 the updater can refresh a native file whose bytes exactly match that same path in
 trusted upstream history (at most 100 path-changing commits, cached per checkout).
-It does not infer a merge base for modified older copies. Unknown differences on
-unchanged upstream paths are reported as `drift`, with an `incomplete` result;
-all checkout/profile writes are deferred until those files are reconciled. Check
-mode reports the same drift and planned copies without applying them. History
+A profile that edited its installed copy (agents often add lessons there) no longer
+blocks the update. The updater picks the same-path version from that bounded trusted
+history that the copy is closest to, and merges the edit onto the release from it.
+A copy that only adds lines to the current release is kept as is. When the starting
+version is ambiguous (two versions equally close, or a copy closest to the release
+that also removes or changes release lines) the updater does not guess: it stops
+like a conflict. Every such file is listed under
+`local_edits` (`merged` or `kept`) in the result; port the lessons that should reach
+every profile. A conflicting edit still stops the update before any write. Check mode
+reports the same `local_edits` without applying them. History
 outside the bounded window or unavailable in a shallow checkout may require manual
 reconciliation; files absent from both checkout revisions are not inventoried.
 An exact byte match establishes historical content, not whether someone intended
@@ -263,7 +269,7 @@ separate. It does not upgrade unrelated plugins, Hermes Agent or external import
 Existing setup prerequisites still apply; this is not a policy-neutral operation.
 
 `maintenance/toolset-update/latest.json` in the root Hermes home records status,
-source revisions, profiles, unresolved drift paths/actions and the backup location. For updates started from chat,
+source revisions, profiles, merged or kept `local_edits` and the backup location. For updates started from chat,
 `run.log` holds updater and setup output (terminal updates print it);
 per-run backups include original skill files and a manifest. An `incomplete` result
 may follow partial application: preserve the backups, fix the reported cause and
