@@ -79,13 +79,19 @@ def config_values(path):
     stack = []
     values = {}
     seen = set()
-    for number, line in enumerate(path.read_text().splitlines(), 1):
+    text = path.read_text()
+    if text.startswith('\ufeff'):  # Editors may save a UTF-8 BOM; YAML ignores it.
+        text = text[1:]
+    for number, line in enumerate(text.splitlines(), 1):
         if not line.strip() or line.lstrip().startswith('#'):
             continue
         if '\t' in line[:len(line) - len(line.lstrip())]:
             raise SetupError(f'{path}:{number}: tabs are not supported in YAML indentation')
         indent = len(line) - len(line.lstrip(' '))
-        while stack and stack[-1][0] >= indent:
+        # PyYAML (and so Hermes) writes indentless lists: a `- item` at its
+        # parent key's indent still belongs to that key.
+        item = line.lstrip().startswith('-')
+        while stack and (stack[-1][0] > indent or (stack[-1][0] == indent and not item)):
             stack.pop()
         match = re.match(r'([A-Za-z_][A-Za-z0-9_-]*):(?:\s+(.*))?$', line.lstrip())
         parent = tuple(key for _, key in stack)
@@ -105,7 +111,8 @@ def config_values(path):
             seen.add(current)
             if current in targets:
                 values[current] = scalar(raw, location)
-            elif raw and not raw.startswith('#'):
+            elif raw and not re.fullmatch(r'(?:\{\s*\}\s*)?(?:#.*)?', raw):
+                # `key: {}` is an empty mapping; any other inline value is ambiguous.
                 raise SetupError(f'{location}: use a canonical nested mapping for {key}')
         if not raw or raw.startswith('#'):
             stack.append((indent, key))

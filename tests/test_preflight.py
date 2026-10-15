@@ -112,7 +112,8 @@ class ConfigProbeTests(unittest.TestCase):
 
     def test_duplicate_keys_bad_shapes_and_foreign_memory_are_rejected_without_writes(self):
         for config in ('approvals:\n  mode: off\n  mode: manual\n',
-                       'plugins: []\n', 'plugins:\n  entries:\n    omh: false\n',
+                       'plugins: []\n', 'plugins:\n  entries: []\n', 'memory: []\n',
+                       'plugins:\n  entries:\n    omh: false\n',
                        'memory:\n  provider: another\n', 'key: [\n'):
             with self.subTest(config=config), tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / 'config.yaml'
@@ -121,6 +122,19 @@ class ConfigProbeTests(unittest.TestCase):
                     self.assertEqual(self.probe.main([str(path)]), 1)
                 self.assertEqual(path.read_text(), config)
                 self.assertEqual(list(Path(tmp).iterdir()), [path])
+
+    def test_empty_sections_hermes_treats_as_absent_are_accepted(self):
+        for config in ('memory:\n  # provider: omh\nplugins:\n  enabled: [hermes-toolset]\n',
+                       'plugins:\n  entries:\n    foo:\n',
+                       'plugins:\n  entries:\n', 'plugins:\napprovals:\nskills:\n',
+                       '\ufeffmemory: {}\n'):
+            for core in ([], ['--core']):
+                with self.subTest(config=config, core=core), tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / 'config.yaml'
+                    path.write_text(config)
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(self.probe.main([*core, str(path)]), 0, output.getvalue())
 
     def test_core_preserves_foreign_memory_and_errors_do_not_disclose_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -20,11 +20,19 @@ def main(args):
                 config = {}
             if not isinstance(config, dict):
                 raise ValueError()
+            # Hermes treats an empty section (`memory:` with only a comment) as
+            # absent, so normalise None to an empty mapping before shape checks.
             for key in ('plugins', 'approvals', 'skills', 'memory'):
+                if key in config and config[key] is None:
+                    config[key] = {}
                 if key in config and not isinstance(config[key], dict):
                     raise ValueError()
             plugins = config.get('plugins', {})
-            entries = plugins.get('entries', {})
+            entries = plugins.get('entries')
+            if entries is None:
+                entries = {}
+            if isinstance(entries, dict):
+                entries = {k: {} if v is None else v for k, v in entries.items()}
             if not isinstance(entries, dict) or any(not isinstance(v, dict) for v in entries.values()):
                 raise ValueError()
             if not core and config.get('memory', {}).get('provider') not in (None, '', 'builtin', 'omh'):

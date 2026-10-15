@@ -291,6 +291,34 @@ print(json.dumps({'ok': True}))
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.log.exists())
 
+    def test_hermes_written_configs_are_accepted(self):
+        # PyYAML safe_dump writes indentless lists; Hermes also writes empty
+        # flow mappings, and editors may add a BOM or CRLF line endings.
+        store = self.root / 'bound store'
+        for config in ('plugins:\n  enabled:\n  - omh\n  entries:\n    omh:\n      settings:\n'
+                       f'        omh_home: {store}\n',
+                       'memory: {}\nplugins: {}  # none yet\n',
+                       '\ufeffmodel:\n  default: existing\n',
+                       f'\ufeffmodel: x\r\nplugins:\r\n  entries:\r\n    omh:\r\n      settings:\r\n'
+                       f'        omh_home: {store}\r\n'):
+            with self.subTest(config=config):
+                (self.home / 'config.yaml').write_text(config, newline='')
+                result = self.run_helper('--profile', 'default', '--dry-run')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if 'omh_home' in config:
+                    self.assertIn(str(store), result.stdout + result.stderr)
+
+    def test_noncanonical_target_shapes_still_refused(self):
+        for config in ('memory:\n  provider:\n  - omh\n',
+                       'plugins:\n  entries:\n    omh:\n      settings:\n        omh_home:\n        - /x\n',
+                       'plugins:\n  entries: {omh: {}}\n',
+                       'memory: {}\nmemory:\n  provider: omh\n'):
+            with self.subTest(config=config):
+                (self.home / 'config.yaml').write_text(config)
+                result = self.run_helper('--profile', 'default')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.log.exists())
+
     def test_failures_propagate(self):
         for variable, value in [('FAIL_COMMAND', 'setup'), ('BAD_DOCTOR', '1'), ('BAD_PROFILE', '1')]:
             with self.subTest(variable=variable):
