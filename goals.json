@@ -258,6 +258,19 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "UI-TASTE",
+      "priority": 85,
+      "source": "docs/project.md#vendored-ui-taste-skill",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-052",
+        "TOOLSET-053"
+      ],
+      "title": "Ship Uizze's UI Taste as a vendored bundled skill"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -296,20 +309,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-043",
-      "TOOLSET-044",
-      "TOOLSET-045",
-      "TOOLSET-046",
-      "TOOLSET-047",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
       "TOOLSET-011",
       "TOOLSET-013",
-      "TOOLSET-048",
-      "TOOLSET-049",
-      "TOOLSET-050",
-      "TOOLSET-051"
+      "TOOLSET-052",
+      "TOOLSET-053"
     ]
   },
   "tasks": [
@@ -358,6 +364,24 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "UI-TASTE",
+      "id": "TOOLSET-052",
+      "section": "Next",
+      "status": "open",
+      "title": "Vendor the pinned UI Taste skill into skills/ui-taste"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-052"
+      ],
+      "goal": "UI-TASTE",
+      "id": "TOOLSET-053",
+      "section": "Next",
+      "status": "open",
+      "title": "Expose UI Taste on Codex and Pi"
     },
     {
       "depends_on": [],

@@ -687,3 +687,47 @@ preceding checkbox task, `check_receipt` timeout tracebacks and wrapper bypass o
 the shell-status guard, nested worktrees blocking the parent checkout, `/toolset`
 argument case sensitivity, executable-bit removal not propagated, malformed
 `facts.json` tracebacks and untracked leftover skill folders aborting installs.
+
+## Vendored UI Taste skill
+
+Status: Accepted
+
+Request (user, 2026-10-15): add the `ui-taste` skill that `npx skills add
+https://uizze.sh/` installs, vendored into this repository from the Uizze GitHub
+repository as one single skill named `ui-taste`.
+
+Findings:
+- `uizze.sh/.well-known/skills/index.json` publishes `ui-taste` (v0.2.0, 16 files)
+  and `ios-design`. Uizze's `skills/` folder on `main` no longer contains either: per
+  its DISTRIBUTION.md they are domain-only. A complete GitHub mirror existed at commit
+  `afd703a14a5db5f2fe6c2860badbe811058aa9e5` (`skills/ui-taste/`, removed in
+  `8a97121` the same day).
+- At that commit `SKILL.md`, `agents/openai.yaml`, LICENSE, NOTICE and all eight
+  playbooks plus `references/uizze-reference-policy.md` are byte-identical to the
+  domain copy fetched on 2026-10-15; only packaging metadata differs (`MANIFEST.json`,
+  which the commit records with per-file origins, `MODIFICATIONS.md` and
+  `CHECKSUMS.sha256`). All 16 files are plain, non-executable Markdown/JSON/YAML.
+- License: Apache-2.0 with NOTICE attribution to Impeccable (Paul Bakaus, 4.4.0) and
+  ehmo's MIT platform-design-skills; Uizze's repository root is MIT. The playbooks
+  are adaptations of Impeccable 4.4.0, which this bundle already ships as 4.5.2.
+- The skill works offline; it mentions an optional paid Uizze MCP
+  (`find_ui_references`, `find_ui_materials`) and links a remote banner image.
+
+Planner's calls (reversible; reject any of them):
+- Source of record is the immutable commit `afd703a`, not the mutable domain; its
+  16 files are copied byte-for-byte with an `UPSTREAM.json` (repository, revision,
+  path, license, sha256 per file) and a recorded domain cross-check.
+- Vendor only `ui-taste`. `ios-design`, `anti-ui-slop`, `ui-design`, `ui-radar`,
+  `image-to-ui` and `uizze-ui` are not added.
+- Keep the bundled Impeccable alongside it; no routing change between them.
+- Vendor unmodified, like Impeccable. Toolset configures no Uizze MCP connection and
+  never runs `npx` during install, setup or update; the paid MCP stays optional as
+  the skill itself states.
+- Refresh through a documented `git show <revision>:skills/ui-taste/<file>` procedure
+  verified by a hash test, not a new vendoring script.
+- Expose it on Codex and Pi like the other workflows (explicit-only Codex policy, Pi
+  command `/ui_taste`); it is not added to the Telegram menu priority.
+
+Anti-goals: rewriting upstream text, fetching anything at runtime, adding an MCP or
+account dependency, or presenting the vendored copy as an endorsement by Uizze or
+the Impeccable author.
