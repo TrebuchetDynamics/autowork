@@ -9,6 +9,7 @@
     "approvals_mode": "off",
     "destructive_slash_confirm": false,
     "mcp_reload_confirm": false,
+    "max_turns": "unlimited",
     "skills_disabled": [],
     "skills_platform_disabled": {}
   },

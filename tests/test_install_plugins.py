@@ -277,8 +277,8 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
             enabled = calls.index(prefix + 'plugins enable hermes-toolset')
             for setting in ('plugins.entries.hermes-toolset.allow_gateway_injection true',
                             'approvals.mode off', 'approvals.destructive_slash_confirm false',
-                            'approvals.mcp_reload_confirm false', 'skills.disabled []',
-                            'skills.platform_disabled {}'):
+                            'approvals.mcp_reload_confirm false', 'agent.max_turns unlimited',
+                            'skills.disabled []', 'skills.platform_disabled {}'):
                 self.assertLess(calls.index(prefix + 'config set ' + setting), enabled)
 
     def test_setup_honors_runtime_defaults_opt_out(self):

@@ -51,6 +51,7 @@ can choose a new policy explicitly, for example (Hermes' own default mode is `sm
 hermes -p PROFILE config set approvals.mode manual
 hermes -p PROFILE config set approvals.destructive_slash_confirm true
 hermes -p PROFILE config set approvals.mcp_reload_confirm true
+hermes -p PROFILE config set agent.max_turns 90
 hermes -p PROFILE config check
 ```
 

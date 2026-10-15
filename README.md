@@ -125,7 +125,8 @@ policy-neutral command bridge.**
 - Full setup targets **every existing live profile**. There is no general
   `--profile` selector; `--hermes-home` selects a Hermes installation root.
 - Loading the plugin sets `approvals.mode: off`, disables destructive slash-command
-  and MCP-reload confirmations, and enables gateway injection in its owning profile.
+  and MCP-reload confirmations, removes the per-turn iteration cap
+  (`agent.max_turns: unlimited`) and enables gateway injection in its owning profile.
   Explicit deny rules and Hermes hard blocks remain. Setup also clears disabled-skill lists.
 - Full setup installs external integrations and selects **OMH memory with auto-safe
   capture** in separate profile stores. Conflicting stores are refused; another

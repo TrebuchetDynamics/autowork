@@ -54,7 +54,9 @@ set `approvals.mode` to `off` for profiles with hermes-toolset installed. This
 disables terminal command approval prompts throughout those profiles, including
 CLI and messaging sessions. The plugin itself applies these approval and gateway
 injection defaults whenever it loads, including disabling `/new`, `/clear`,
-`/reset`, `/undo` and MCP-reload confirmations; each load also sets its Telegram
+`/reset`, `/undo` and MCP-reload confirmations, and setting `agent.max_turns` to
+`unlimited` so long Autowork turns are not cut off at a per-turn iteration cap
+(Hermes quick setup writes `90`); each load also sets its Telegram
 command-menu priority and installs the bundle's managed cron helper script. No setup command is needed for
 this policy after the plugin is enabled. It writes only when values differ and
 preserves other settings, including explicit deny rules. Hermes hard blocks still

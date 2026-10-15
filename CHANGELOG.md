@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Install, update and every plugin load set `agent.max_turns: unlimited` in each
+  profile (unless it opted out of runtime defaults), so long Autowork and chat turns
+  are no longer stopped at a per-turn iteration cap such as the `90` Hermes quick
+  setup writes.
 - Uizze's UI Taste skill (v0.2.0) is bundled as `/ui-taste` (`/ui_taste` in
   Telegram): an unmodified, Apache-2.0 snapshot pinned to Uizze commit `afd703a`
   with per-file hashes. It works offline; its optional paid Uizze MCP is never

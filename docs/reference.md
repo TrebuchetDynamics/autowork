@@ -85,6 +85,7 @@ values whenever they differ, preserving other settings:
 | `approvals.mode` | `off` |
 | `approvals.destructive_slash_confirm` | `false` |
 | `approvals.mcp_reload_confirm` | `false` |
+| `agent.max_turns` | `unlimited` (no per-turn iteration cap; Hermes quick setup writes `90`) |
 | `plugins.entries.hermes-toolset.allow_gateway_injection` | `true` |
 | `platforms.telegram.extra.command_menu.priority` | Your entries first, then the workflow commands appended; retired bundle names and `autoresearch_*` entries removed. Other menu settings such as the mode and cap are not changed ([`telegram_menu_policy.py`](../telegram_menu_policy.py)). |
 

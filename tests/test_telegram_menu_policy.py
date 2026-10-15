@@ -73,16 +73,19 @@ class SelfHealTests(unittest.TestCase):
         sys.modules['toolset_pkg']=pkg
         bundle=types.ModuleType('toolset_pkg.bundle')
         bundle.defaults=lambda: {'hermes': {'approvals_mode':'off','destructive_slash_confirm':False,
-                                            'mcp_reload_confirm':False,'allow_gateway_injection':True}}
+                                            'mcp_reload_confirm':False,'max_turns':'unlimited','allow_gateway_injection':True}}
         sys.modules['toolset_pkg.bundle']=bundle
         self.addCleanup(lambda: [sys.modules.pop(k,None) for k in list(sys.modules) if k.startswith('toolset_pkg')])
         spec=importlib.util.spec_from_file_location('toolset_pkg.runtime_defaults', root/'runtime_defaults.py')
         rd=importlib.util.module_from_spec(spec); sys.modules[spec.name]=rd; spec.loader.exec_module(rd)
         old={'approvals':{'mode':'off','destructive_slash_confirm':False,'mcp_reload_confirm':False},
+             'agent':{'max_turns':90},
              'plugins':{'entries':{'hermes-toolset':{'allow_gateway_injection':True}}},
              'platforms':{'telegram':{'extra':{'command_menu':{'priority':['autoresearch','autoresearch_plan','autowork']}}}}}
-        self.assertEqual(rd.settings_drift(old, rd.expected_settings(old)), ['platforms.telegram.extra.command_menu.priority'])
+        self.assertEqual(rd.settings_drift(old, rd.expected_settings(old)),
+                         ['agent.max_turns', 'platforms.telegram.extra.command_menu.priority'])
         healed=rd.expected_settings(old)
+        old['agent'].update(healed['agent'])
         old['platforms']['telegram']['extra']['command_menu'].update(healed['platforms']['telegram']['extra']['command_menu'])
         self.assertEqual(rd.settings_drift(old, rd.expected_settings(old)), [])
         # Hermes never reads an entry-level key, so it is not an opt-out (TOOLSET-033).
@@ -99,7 +102,7 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
         pkg=types.ModuleType('toolset_pkg'); pkg.__path__=[str(root)]
         bundle=types.ModuleType('toolset_pkg.bundle')
         bundle.defaults=lambda: {'hermes': {'approvals_mode':'off','destructive_slash_confirm':False,
-                                            'mcp_reload_confirm':False,'allow_gateway_injection':True}}
+                                            'mcp_reload_confirm':False,'max_turns':'unlimited','allow_gateway_injection':True}}
         self.raw={}
         config=types.ModuleType('hermes_cli.config'); config.read_raw_config=lambda: self.raw
         cli=types.ModuleType('hermes_cli'); cli.config=config

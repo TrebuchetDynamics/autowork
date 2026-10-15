@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def expected_settings(raw):
-    """Bundle policy for one profile's raw config: approvals, injection and menu."""
+    """Bundle policy for one profile's raw config: approvals, turn budget, injection and menu."""
     from .bundle import defaults
     from .telegram_menu_policy import menu_patch
 
@@ -14,6 +14,8 @@ def expected_settings(raw):
             'destructive_slash_confirm': wanted['destructive_slash_confirm'],
             'mcp_reload_confirm': wanted['mcp_reload_confirm'],
         },
+        # Hermes quick setup writes a 90-iteration cap that cuts Autowork turns short.
+        'agent': {'max_turns': wanted['max_turns']},
         'plugins': {'entries': {'hermes-toolset': {
             'allow_gateway_injection': wanted['allow_gateway_injection'],
         }}},

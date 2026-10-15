@@ -135,6 +135,7 @@ def preflight(repo, root, profiles, *, bundle_only=False):
         'approvals.mode': defaults['approvals_mode'],
         'approvals.destructive_slash_confirm': defaults['destructive_slash_confirm'],
         'approvals.mcp_reload_confirm': defaults['mcp_reload_confirm'],
+        'agent.max_turns': defaults['max_turns'],
         'skills.disabled': defaults['skills_disabled'],
         'skills.platform_disabled': defaults['skills_platform_disabled'],
         'plugins.entries.hermes-toolset.allow_gateway_injection': defaults['allow_gateway_injection'],
