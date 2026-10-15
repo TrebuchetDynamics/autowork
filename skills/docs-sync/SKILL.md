@@ -151,12 +151,21 @@ qualification separate.
 Reconcile retained checks by reading the receipt, result inventory and actual
 runner liveness together. If the runner is gone but its receipt lacks a terminal
 exit or full aggregate, record the attempt as incomplete/unqualified, not running
-or passed; failed batches do not establish an invented whole-suite total. Record
-a completed focused check with its source/tools, selected-versus-recorded inventory,
+or passed; failed batches do not establish an invented whole-suite total. Before
+promoting a retained full-gate receipt, verify its declared log and owned-source
+hashes, then reconcile the selected inventory with unique recorded test/project
+identities across every batch in code. Preserve retry, flaky and skip classifications;
+summed batch counters can double-count attempts or conceal missing identities.
+Record a completed focused check with its source/tools, selected-versus-recorded inventory,
 setup-versus-product cases, skip reasons and cleanup evidence. Keep its duration
 out of full-gate speedup claims. Put the detailed result in one existing evidence
 owner and link from the live task and plan; update the next action without resetting
-ownership, budgets or acceptance. Record an owner-permitted acceptance waiver with its exact
+ownership, budgets or acceptance. For paired visual evidence, retain baseline and
+candidate observations separately: a defect present in both is an outstanding
+acceptance gap, not proof that the candidate introduced it. State fixture limits
+such as substituted fonts or a blank renderer alongside the claim, because painted
+widget chrome does not establish production typography or device/GPU rendering.
+Record an owner-permitted acceptance waiver with its exact
 criterion, authority, residual risk and remaining checks; it is never an executed
 pass and does not extend to other criteria or tasks. When scope changes, reconcile
 the authority owner, active bodies and operational guidance together.
@@ -225,7 +234,15 @@ run/existing/planned automation. Runbooks give prerequisites/action/signal/recov
 limits and destructive boundaries. Do not invent production or supported recovery.
 CHANGELOG records implemented/released changes, not proposals or routine doc churn.
 On repeat passes, check newly landed scoped commits and update CHANGELOG and the
-affected test-plan together without rewriting earlier entries.
+affected test-plan together without rewriting earlier entries. Reconcile partial
+delivery explicitly: record implemented behavior under the actual Unreleased/version
+section, replace blanket “all checks planned” wording with existing versus remaining
+coverage, and give the same live task one concrete next action. Keep its original
+acceptance and open status when qualification remains; documentation reconciliation
+is not a rerun of historical tests. Anchor changelog edits to the enclosing release
+section and a unique neighboring entry, because headings such as `### Fixed` recur
+across versions. Stop the edit/check chain on a failed replacement so a later
+successful validator cannot mask an unapplied correction.
 
 ## 5. Goal-gap analysis and task bodies
 
@@ -312,7 +329,11 @@ Otherwise cite direct source evidence without inventing graph metadata. Derive b
 prerequisites from corroborated relationships, not graph centrality alone.
 
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
-Acceptance/checks, explicit `Dependencies:` and `Ownership:` fields. Write `Status:` as
+`Acceptance:`, a separate unique `Checks:` field with exact verification commands,
+and explicit `Dependencies:` and `Ownership:` fields. Do not bury all commands in
+Acceptance: an execution consumer can require Checks even when ledger validation
+and backlog-check pass. Mark proposed fixtures and unexecuted commands as planned;
+a Checks field records the required procedure, not a passing result. Write `Status:` as
 the exact indexed token (`open`, `in_progress` or `done`); put qualifications under
 `Readiness:` or `External gates:`. Keep the dependency
 key separate because the consumer checker matches field labels exactly. List actual
@@ -370,6 +391,17 @@ not just counts. Archive never queues work. Audit changes neither file.
 Fix real monitor drift; intentional planned/external/generated references use exact
 tracked `.docs-sync-drift-ignore` lines. Unstated speculative goals get a question
 (default: not in scope), not tasks; explicit booking instruction supplies intent.
+
+### Read-only pending-task reports
+
+Read the current index and full task bodies, enumerate unfinished IDs in queue order,
+and calculate section totals from those same IDs. Report cancelled tasks separately
+as historical, not executable work. Within held sections, distinguish unresolved
+owner choices or live-operation authority from accepted scope awaiting recovery,
+qualification or delivery; a legacy section label does not mean another product
+decision is needed. Describe `in_progress` as recorded status unless worker liveness
+was actually checked, and state whether target identity and deployed readiness were
+assessed. A listing performs no repair, render, task transition or schedule change.
 
 ### Simplify execution, not acceptance
 

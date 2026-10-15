@@ -20,6 +20,9 @@ Read the [planning craft](../shared/PLANNING-CRAFT.md), the
 [planning adaptations](../shared/RESEARCH-PLAN.md). Apply the protocol directly;
 the adaptations govern host tools, accepted scope, persistence and handoff.
 Other research protocols remain in the [Autoresearch skill](../autoresearch/SKILL.md).
+For game animation, environment or level-expansion requests and for
+validation-performance planning, load the matching section of
+[special cases](references/special-cases.md).
 
 ## Investigate and decide
 
@@ -65,12 +68,18 @@ choices as planned, not measured baselines or verified algorithms.
 
 For blocker or unblock requests, read the current task body, latest runs and
 receipts first and report the observed phase; an older summary may predate review
-or recovery. Separate missing intent or excluded repair scope from transport, gate
-or accounting failures, comparing the fix with the original worker contract.
-Reuse the original task, candidate and cumulative accounting; never infer budget
-from displayed turn counts. Save findings in the existing task body; a conditional
-recovery recommendation is not an executable next task, and consumer eligibility
-does not prove a free lease or authorize redispatch.
+or recovery. Verify retained review and gate evidence against the exact owned
+source before choosing the next action. Route an approved, qualified candidate to
+its existing delivery owner rather than planning another implementation or repair;
+otherwise a stale blocker creates duplicate work. Distinguish reviewed candidate,
+main inclusion, deployment and live acceptance, and retain historical failed evidence
+without treating it as the current frontier when a matching newer check passes.
+Separate missing intent or excluded repair scope from transport, gate or accounting
+failures, comparing the fix with the original worker contract. Reuse the original
+task, candidate and cumulative accounting; never infer budget from displayed turn
+counts. Save findings in the existing task body; a conditional recovery recommendation
+is not an executable next task, and consumer eligibility does not prove a free lease
+or authorize redispatch.
 
 For a concrete method gap or explicit protocol request, select one technique through
 [engineering](../engineering/SKILL.md); consult
@@ -87,8 +96,13 @@ Follow the [TODO work center](../shared/TODO-WORKCENTER.md) and
 Use [Docs Sync](../docs-sync/SKILL.md) to persist findings and decisions in the
 existing document owners and actionable tasks in TODO.md, synchronized with
 goals.json. Include acceptance criteria, dependencies, verification and Now/Next
-ordering; distinguish proposed decisions from accepted scope. Reconcile one
-affected batch and reuse input-bound checks when the evidence is unchanged.
+ordering; distinguish proposed decisions from accepted scope. Save observable
+criteria under `Acceptance:` and exact verification commands under a separate,
+unique `Checks:` field. Inspect the current execution consumer's required fields
+before calling a handoff executable: ledger/backlog readiness alone may not check
+its contract shape. Do not claim a task or launch execution just to validate a
+planning handoff. Reconcile one affected batch and reuse input-bound checks when
+the evidence is unchanged.
 
 Before reporting the plan ready, run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff): a fresh
