@@ -1160,3 +1160,43 @@ Source section: Next
 - Exclusions: No network link checking.
 - Current evidence: Implemented in `ada728c` (isolated worktree, reviewed by the coordinator before integration). Footnote definitions are no longer reference links, HTML comments are masked before scanning, `~` script paths are skipped, code-span headings keep their underscores in anchors, and single-quoted link titles are checked. Two regressions in `test_docs_manifest.py` failed before the fix while real broken links and missing scripts are still reported; `docs.py check` on this repository prints ok.
 - Checks run: integrated `main` passed `python3 scripts/check.py` (437/575/209/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed), `docs.py check` and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-060 — Vendor and adapt the Beautify GitHub README skill
+
+- [x] TOOLSET-060 — Vendor and adapt the Beautify GitHub README skill
+- Status: done
+- Goal: README-DESIGN — Vendor the README design skill and use it on this README.
+- Sources: [accepted plan](docs/project.md#readme-design-skill-2026-10-15), [engineering vendor pattern](skills/engineering/SKILL.md), [engineering provenance](skills/engineering/UPSTREAM.json), [portable package test](tests/test_portable_package.py).
+- Scope: Add `skills/beautify-github-readme/` with a toolset adapter `SKILL.md`, the pinned upstream skill under `upstream/` (`SKILL.md` renamed `PROTOCOL.md`; references, scripts and LICENSE byte-exact), `UPSTREAM.json` with repository, revision, license, file hashes, transform and exclusions, and a hash/licence test. Add a Codex/Pi adapter with an explicit-only `agents/openai.yaml`. Document the command, licensing and changelog.
+- Acceptance: The skill registers as `/beautify-github-readme` (`/beautify_github_readme` in Telegram) without a second nested skill; every vendored file matches its recorded hash; the adapter states the toolset rules from the accepted plan; the bundled audit script runs from its vendored path; existing bundle, plugin, install and portable-package tests pass.
+- Checks: `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `python3 skills/beautify-github-readme/upstream/scripts/audit_readme.py README.md`; `git diff --check`; independent review.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No upstream edits, showcase images, image generation, publication or push.
+- Current evidence: Commits b15bbc7 and 5a9c044. Twelve upstream files pinned byte-exact at d6562a5 with sha256 in UPSTREAM.json (modes match); only the adapter registers; Codex/Pi adapters added (12 skills, 26 Pi commands). Full offline check, Pi package test, docs.py check and the vendored audit passed. Independent review verified the bytes against GitHub and requested two fixes (stale cross-host counts, scope wording), both applied.
+- Closure: Offline; live Codex/Pi discovery not re-run.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-061 — Give this README a project-native visual refresh
+
+- [x] TOOLSET-061 — Give this README a project-native visual refresh
+- Status: done
+- Goal: README-DESIGN — Vendor the README design skill and use it on this README.
+- Sources: [accepted plan](docs/project.md#readme-design-skill-2026-10-15), [README](README.md), [skill adapter](skills/beautify-github-readme/SKILL.md).
+- Scope: README mode, visual refresh: keep the current information architecture and every safety statement, add a pure-SVG hero built from the project's real plan → queue → execute loop and a workflow diagram under `assets/readme/`, with alt text and light/dark legibility.
+- Acceptance: The first screen states the value and shows the real loop; SVGs use system fonts, no scripts or `foreignObject`, a 1200-unit viewBox and readable text at 900 px; the README still reads correctly with images off; the upstream audit script and `docs.py check` pass; no claim is added that lacks evidence.
+- Checks: `python3 skills/beautify-github-readme/upstream/scripts/audit_readme.py README.md`; `python3 skills/docs-sync/scripts/docs.py check .`; rendered previews at 900 and 360 px reviewed; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-060.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No raster generation, GIF, attribution badge, showcase PR or push.
+- Current evidence: Commit ff7196f adds assets/readme/hero.svg (3.6 KB) and workflow.svg (4.1 KB), pure SVG with system fonts and no scripts, foreignObject or remote resources, previewed at 900 and 360 px and in a GitHub-rendered page screenshot. The vendored audit (2 local images) and docs.py check passed; every safety statement was kept.
+- Closure: Visual review by the coordinator; owner approval of the design not yet given.

@@ -76,11 +76,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-060/061 (b15bbc7, 5a9c044, ff7196f): python3 scripts/check.py 4/4 directories passed, node --test tests/portable_pi.test.mjs passed, docs.py check ok, vendored audit_readme.py passed with 2 local images; independent review of the vendoring; offline only",
+          "result": "pass"
+        }
+      ],
       "id": "README-DESIGN",
       "priority": 20,
       "source": "docs/project.md#readme-design-skill-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-060",
         "TOOLSET-061"
@@ -364,24 +370,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [],
-      "goal": "README-DESIGN",
-      "id": "TOOLSET-060",
-      "section": "Next",
-      "status": "open",
-      "title": "Vendor and adapt the Beautify GitHub README skill"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-060"
-      ],
-      "goal": "README-DESIGN",
-      "id": "TOOLSET-061",
-      "section": "Next",
-      "status": "open",
-      "title": "Give this README a project-native visual refresh"
     },
     {
       "depends_on": [],
@@ -688,6 +676,24 @@
       "section": "Done",
       "status": "done",
       "title": "Remove docs.py false positives for footnotes, commented-out links and home-relative scripts"
+    },
+    {
+      "depends_on": [],
+      "goal": "README-DESIGN",
+      "id": "TOOLSET-060",
+      "section": "Done",
+      "status": "done",
+      "title": "Vendor and adapt the Beautify GitHub README skill"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-060"
+      ],
+      "goal": "README-DESIGN",
+      "id": "TOOLSET-061",
+      "section": "Done",
+      "status": "done",
+      "title": "Give this README a project-native visual refresh"
     },
     {
       "depends_on": [],
