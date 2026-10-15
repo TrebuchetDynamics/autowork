@@ -26,6 +26,10 @@ OBSERVATIONS = {'last_run_at', 'next_run_at', 'last_status', 'last_error',
                 'quota_hold_cron_expr', 'unreachable_retry'}
 
 
+
+class Refused(ValueError):
+    """A refusal whose fixed message is safe to report (no job, prompt or native output)."""
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'),
                                      allow_nan=False).encode()).hexdigest()
@@ -42,47 +46,47 @@ def unique_object(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError('duplicate JSON field')
+            raise Refused('duplicate JSON field')
         result[key] = value
     return result
 
 
 def read_json(path):
     return json.loads(path.read_text(), object_pairs_hook=unique_object,
-                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite JSON')))
+                      parse_constant=lambda value: (_ for _ in ()).throw(Refused('nonfinite JSON')))
 
 
 def exact_job(home, job_id):
     path = home / 'cron/jobs.json'
     if path.is_symlink() or path.parent.is_symlink():
-        raise ValueError('refuse symlinked cron store')
+        raise Refused('refuse symlinked cron store')
     data = read_json(path)
     rows = data.get('jobs') if isinstance(data, dict) else data
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
-        raise ValueError('invalid cron store')
+        raise Refused('invalid cron store')
     rows = [row for row in rows if row.get('id') == job_id]
     if len(rows) != 1:
-        raise ValueError('expected exactly one existing job in the selected profile')
+        raise Refused('expected exactly one existing job in the selected profile')
     return rows[0]
 
 
 def target(root, profile, job_id, repo):
     if not re.fullmatch(r'[A-Za-z0-9_-]+', profile) or not re.fullmatch(r'[A-Za-z0-9_-]+', job_id):
-        raise ValueError('invalid profile or job ID')
+        raise Refused('invalid profile or job ID')
     if root.parent.name == 'profiles' or root.is_symlink() or (root / 'profiles').is_symlink():
-        raise ValueError('use the default root with independent profile homes')
+        raise Refused('use the default root with independent profile homes')
     home = root if profile == 'default' else root / 'profiles' / profile
     if home.is_symlink() or not (home / 'config.yaml').is_file():
-        raise ValueError('profile home missing or symlinked')
+        raise Refused('profile home missing or symlinked')
     job = exact_job(home, job_id)
     workdir = job.get('workdir')
     if not repo.is_absolute() or not repo.is_dir() or not isinstance(workdir, str) or not Path(workdir).is_absolute() or Path(workdir).resolve() != repo.resolve():
-        raise ValueError('saved workdir must match the explicit existing repository')
+        raise Refused('saved workdir must match the explicit existing repository')
     if (not wiring.is_owner_job(job) or wiring.MARKER not in job.get('prompt', '')
             or job.get('no_agent') is True or type(job.get('enabled')) is not bool):
-        raise ValueError('requires a managed development Autowork job with explicit enabled state')
+        raise Refused('requires a managed development Autowork job with explicit enabled state')
     if profile == 'default' and job.get('name') == 'Profile audit and hermes-toolset maintenance':
-        raise ValueError('audit jobs require their separate maintenance policy')
+        raise Refused('audit jobs require their separate maintenance policy')
     return home, job
 
 
@@ -140,7 +144,7 @@ def heal(root, profile, job_id, repo, *, apply=False, hermes='hermes'):
     directory = home / 'autowork/cron-heal'
     for path in (directory.parent, directory):
         if path.is_symlink():
-            raise ValueError('refuse symlinked healing state')
+            raise Refused('refuse symlinked healing state')
         path.mkdir(mode=0o700, exist_ok=True)
     receipt_path = directory / (job_id + '.json')
     lock_path = directory / (job_id + '.lock')
@@ -151,7 +155,7 @@ def heal(root, profile, job_id, repo, *, apply=False, hermes='hermes'):
         except BlockingIOError:
             return {**result, 'state': 'busy'}
         if receipt_path.is_symlink():
-            raise ValueError('refuse symlinked healing receipt')
+            raise Refused('refuse symlinked healing receipt')
         previous = read_json(receipt_path) if receipt_path.exists() else None
         current = exact_job(home, job_id)
         current_hash = digest(configuration(current))
@@ -160,7 +164,7 @@ def heal(root, profile, job_id, repo, *, apply=False, hermes='hermes'):
                     or previous.get('profile') != profile or previous.get('job_id') != job_id
                     or previous.get('state') not in ('pending', 'updated_verified', 'not_launched')
                     or not re.fullmatch('[0-9a-f]{64}', str(previous.get('expected_sha256', '')))):
-                raise ValueError('invalid saved healing receipt; inspect without resetting it')
+                raise Refused('invalid saved healing receipt; inspect without resetting it')
             if previous['state'] == 'pending':
                 if current_hash == previous['expected_sha256']:
                     save(receipt_path, {**previous, 'state': 'updated_verified'})
@@ -193,7 +197,7 @@ def heal(root, profile, job_id, repo, *, apply=False, hermes='hermes'):
         try:
             after = exact_job(home, job_id)
             if digest(configuration(after)) != receipt['expected_sha256']:
-                raise ValueError('configuration readback mismatch')
+                raise Refused('configuration readback mismatch')
         except (ValueError, OSError, KeyError, TypeError):
             return {**result, 'state': 'edit_uncertain',
                     'next_action': 'Inspect the original edit outcome and current job configuration; do not replay or replace the job.'}
@@ -213,7 +217,7 @@ def main():
         result = heal(args.root, args.profile, args.job_id, args.repo, apply=args.apply)
     except (ValueError, OSError, TypeError, KeyError) as error:
         # Avoid emitting native command output or saved prompt/config secrets.
-        result = {'state': 'refused', 'reason': type(error).__name__}
+        result = {'state': 'refused', 'reason': str(error) if isinstance(error, Refused) else type(error).__name__}
     print(json.dumps(result, sort_keys=True))
     return 0 if result['state'] in ('unchanged', 'updated_verified', 'would_update', 'paused') else 1
 

@@ -147,6 +147,20 @@ class AutohealTests(unittest.TestCase):
                 self.run_heal(apply=True)
         run.assert_not_called()
 
+    def test_cli_names_its_own_refusals_but_hides_other_error_text(self):
+        import contextlib, io, sys
+        argv = ['heal', '--root', str(self.root), '--profile', 'alpha', '--job-id', 'job-1', '--repo', str(self.root)]
+        def cli(**patched):
+            out = io.StringIO()
+            with patch.object(sys, 'argv', argv), contextlib.redirect_stdout(out), \
+                 patch.object(self.module, 'heal', **patched):
+                self.assertEqual(self.module.main(), 1)
+            return json.loads(out.getvalue())
+        refusal = cli(side_effect=self.module.Refused('saved workdir must match the explicit existing repository'))
+        self.assertEqual(refusal, {'state': 'refused', 'reason': 'saved workdir must match the explicit existing repository'})
+        leaked = cli(side_effect=ValueError('prompt text: SECRET'))
+        self.assertEqual(leaked, {'state': 'refused', 'reason': 'ValueError'})
+
     def test_readback_protects_delivery_and_future_configuration_fields(self):
         for field in ('deliver', 'future_policy'):
             with self.subTest(field=field):
