@@ -815,3 +815,51 @@ A live Claude Code workflow run stays a separate task.
 | --- | --- |
 | TOOLSET-065 | Claude Code marketplace and plugin manifests, explicit-only adapters, tests and docs |
 | TOOLSET-066 | Run one questions-only workflow in a real Claude Code session from the installed plugin |
+
+## Test-suite optimization method (2026-10-15)
+
+Status: Accepted
+
+Request (user, 2026-10-15): add a way to optimize and minimize test suites that fits
+the Hermes Toolset pipeline, considering Matt Pocock's
+[TDD skill](https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/SKILL.md).
+
+Findings:
+- The engineering pack already pins Addy Osmani's `test-driven-development` protocol.
+  Pocock's TDD skill (MIT) overlaps it, requires confirming test seams with the user
+  before any test is written, and calls `codebase-design` and `code-review` skills that
+  are not bundled. Nothing bundled covers redundancy, mutation scores or test cost.
+- `scripts/route.py` resolves only protocols listed in the pinned `UPSTREAM.json`, so a
+  toolset-written protocol needs its own entry point.
+- Measured baseline on `75fb76f`: `python3 scripts/check.py` runs 1,247 offline tests
+  (455/575/209/8) in 242 s wall time, directories one after another.
+  `skills/autowork/scripts` takes 146 s; `test_delivery_state.py` holds 10 of its 15
+  slowest tests (about 40 s). coverage.py 7.13.5 and pytest 8.3.3 are installed;
+  no mutation tool is. The suite runs once per checkout, not once per profile.
+
+Planner's calls (reversible; reject any of them):
+- Do not vendor Pocock's TDD skill. Credit and adapt two of its ideas in toolset words:
+  reject tautological assertions, and test at public seams. Seams are chosen by the
+  worker within Autowork's scope, never by a user confirmation step.
+- Add one toolset-owned protocol, `test-suite-optimization`, under
+  `skills/engineering/local/`, selected with `route.py --protocol` like pinned ones. No
+  new slash command, coordinator or task file.
+- The protocol audits first and changes nothing; each consolidation, removal or speed-up
+  becomes its own TODO.md task executed by Autowork. Fewer tests is never the goal:
+  coverage (lines and branches) and, when available, mutation score of the touched
+  modules must not drop, and named regression tests are kept.
+- Redundancy evidence comes from coverage.py per-test contexts, which are installed.
+  Mutation testing is optional: run a tool such as mutmut only from a disposable
+  environment outside the repository, never as a repository dependency.
+- Apply it to this repository first; run `check.py` directories concurrently as the first
+  measured speed-up because it changes no test.
+
+Anti-goals: deleting tests to make a run pass or to hit a count, weakening an assertion
+to keep a merged test green, a second TDD method that competes with the pinned one, or
+a required network or paid tool.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-067 | The `test-suite-optimization` protocol and its engineering routing |
+| TOOLSET-068 | Measured audit of this repository that records bounded follow-up tasks |
+| TOOLSET-069 | `check.py` runs its test directories concurrently with ordered output |

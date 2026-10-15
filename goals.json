@@ -96,6 +96,20 @@
     {
       "depends_on": [],
       "evidence": [],
+      "id": "TEST-SUITE",
+      "priority": 20,
+      "source": "docs/project.md#test-suite-optimization-method-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-067",
+        "TOOLSET-068",
+        "TOOLSET-069"
+      ],
+      "title": "Optimize test suites without losing defect detection"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
       "id": "PRIORITY",
       "priority": 25,
       "source": "docs/project.md#todo-owned-task-priority",
@@ -434,6 +448,32 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the Claude Code plugin with a live questions-only workflow"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-067",
+      "section": "Next",
+      "status": "open",
+      "title": "Add the test-suite-optimization engineering protocol"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-067"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-068",
+      "section": "Next",
+      "status": "open",
+      "title": "Audit this repository's test suite and record bounded follow-ups"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-069",
+      "section": "Next",
+      "status": "open",
+      "title": "Run check.py test directories concurrently"
     },
     {
       "depends_on": [],
