@@ -109,7 +109,7 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 
 | Path | Owner | Contents |
 | --- | --- | --- |
-| `ROOT/maintenance/toolset-update/latest.json` | Updater | Latest update receipt: status, revisions, profiles, local edits, backup location. |
+| `ROOT/maintenance/toolset-update/latest.json` | Updater | Latest update receipt: status, revisions, profiles, local edits, backup location, and the gateway restart's state or recorded outcome (`gateway_restart`, `gateway_restart_result`). |
 | `ROOT/maintenance/toolset-update/restart.json` | Updater | The last gateway restart the updater requested (process ID), or its deferred-restart waiter (process ID, latest chat-turn count), plus `covers`, the updates that restart will load; used to report progress, avoid overlapping restarts and record the outcome on each covered update. |
 | `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/toolset update` and of gateway restarts the updater requests; terminal `hermes toolset update` prints to the terminal. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |

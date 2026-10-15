@@ -544,9 +544,10 @@ def restart_when_quiet(root, homes, folder, *, update_id, gateway, window=QUIET_
                     return 'reloaded'
                 turns = chat_turns(root, homes)
                 if turns == 0 and current is not None:
+                    requested_ns = time.time_ns()
                     pid = request_gateway_restart(root, folder / 'run.log')
-                    _write_marker(folder, {'pid': pid, 'requested_ns': time.time_ns(), 'deferred_ns': deferred_ns,
-                                           'covers': covers})
+                    _write_marker(folder, {'pid': pid, 'requested_ns': requested_ns, 'deferred_ns': deferred_ns,
+                                           'gateway_pid': current, 'covers': covers})
                     _record_restart_outcome(folder, covers, 'requested')
                     return 'requested'
                 _write_marker(folder, {'mode': 'deferred', 'waiter_pid': os.getpid(), 'deferred_ns': deferred_ns,
@@ -562,6 +563,81 @@ def restart_when_quiet(root, homes, folder, *, update_id, gateway, window=QUIET_
                                                '/toolset update.')
                     return 'deferred_expired'
         sleep(poll)
+
+
+BOT_TOKEN = re.compile(r'^\s*(?:export\s+)?TELEGRAM_BOT_TOKEN\s*=\s*\S', re.M)
+LOG_STAMP = re.compile(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)')
+
+
+def _log_lines_since(path, since, marker):
+    """Lines containing marker whose leading local timestamp is at or after since."""
+    try:
+        with path.open('rb') as stream:
+            stream.seek(max(0, stream.seek(0, os.SEEK_END) - 262144))
+            text = stream.read().decode('utf-8', 'replace')
+    except OSError:
+        return []
+    lines = []
+    for line in text.splitlines():
+        stamp = LOG_STAMP.match(line)
+        if stamp and marker in line and stamp.group(1) >= since:
+            lines.append(line)
+    return lines
+
+
+def _telegram_profiles(root):
+    """(name, home) of the root and named profiles that configure a Telegram bot; values are never read out."""
+    homes = [('default', root)] + sorted((p.name, p) for p in (root / 'profiles').glob('*') if p.is_dir())
+    found = []
+    for name, home in homes:
+        try:
+            if BOT_TOKEN.search((home / '.env').read_text(encoding='utf-8', errors='replace')):
+                found.append((name, home))
+        except OSError:
+            continue
+    return found
+
+
+def finish_restart(root, folder):
+    """Record the outcome of a requested restart that is no longer running, once.
+
+    Returns the outcome fields, or None while the restart is still draining, the new
+    gateway has not started yet, or there is nothing to finish. The receipt is updated
+    only when it belongs to a covered update and no update is running.
+    """
+    record = _read_marker(folder)
+    if 'pid' not in record or record.get('finished') or pending_restart(folder) is not None:
+        return None
+    now = gateway_pid(root)
+    if now is None:
+        return None  # stopped or between stop and start; check again later
+    since = datetime.datetime.fromtimestamp(record.get('requested_ns', 0) / 1e9).strftime('%Y-%m-%d %H:%M:%S')
+    if now == record.get('gateway_pid'):
+        outcome = {'gateway_restart': 'restart_failed',
+                   'gateway_restart_action': 'The restart process ended but the same gateway is still running; '
+                                             'inspect maintenance/toolset-update/run.log and run `hermes gateway '
+                                             'restart` if the gateway still serves the old release.'}
+    else:
+        resent, not_seen = [], []
+        for name, home in _telegram_profiles(root):
+            (resent if _log_lines_since(home / 'logs/gateway.log', since, 'Telegram menu:') else not_seen).append(name)
+        interrupted = [line.split('gateway.run: ', 1)[-1] for line in
+                       _log_lines_since(root / 'logs/gateway.log', since, 'Gateway drain timed out')]
+        try:
+            started = datetime.datetime.fromtimestamp(Path(f'/proc/{now}').stat().st_mtime).isoformat(timespec='seconds')
+        except OSError:
+            started = None
+        outcome = {'gateway_restart': 'completed',
+                   'gateway_restart_result': {'gateway_pid': now, 'gateway_started': started,
+                                              'menus_resent': sorted(resent), 'menus_not_seen': sorted(not_seen),
+                                              'interrupted': interrupted}}
+    lock = _try_update_lock(folder)
+    if lock is not None:
+        with lock:
+            fields = {k: v for k, v in outcome.items() if k != 'gateway_restart'}
+            _record_restart_outcome(folder, record.get('covers') or [], outcome['gateway_restart'], **fields)
+            _write_marker(folder, {**record, 'finished': outcome['gateway_restart']})
+    return outcome
 
 
 def _waiter_command(root, update_id, gateway):
@@ -1125,8 +1201,9 @@ def main(argv=None):
                     # force one; otherwise a detached waiter restarts at the first quiet moment.
                     turns = chat_turns(root, [home for _, home in profiles])
                     if turns == 0:
+                        replaced, requested_ns = gateway_pid(root), time.time_ns()
                         pid = request_gateway_restart(root, state_dir / 'run.log')
-                        _write_marker(state_dir, {'pid': pid, 'requested_ns': time.time_ns(),
+                        _write_marker(state_dir, {'pid': pid, 'requested_ns': requested_ns, 'gateway_pid': replaced,
                                                   'covers': [result['started_ns']]})
                         result['gateway_restart'] = 'requested'
                     else:

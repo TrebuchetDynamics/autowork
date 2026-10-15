@@ -32,10 +32,10 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 - Status: open.
-- Historical migration receipt: partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: hermes-toolset, sierra, landing-golf, india, juliet and golf (the last four after a separate checkpoint commit of their pending queue edits). Not migrated: charlie (a staged 9-file docs batch includes the queue files), bravo (live in-progress claim and active session) and kilo (no commits). All matching jobs were already paused and stay paused.
+- Historical migration receipt: partial (2026-10-14): 6 of 9 migrated and committed locally with unchanged eligible order: this repository and five fleet repositories (four of them after a separate checkpoint commit of their pending queue edits). Not migrated: one repository with a staged 9-file docs batch that includes the queue files, one with a live in-progress claim and active session, and one with no commits. All matching jobs were already paused and stay paused.
 - Goal: PRIORITY — Make TODO.md order the enforced human priority.
 - Sources: [accepted priority plan](docs/project.md#todo-owned-task-priority), [accepted rollout](docs/project.md#rollout), [bootstrap contract](docs/project.md#reconciliation-and-bootstrap).
-- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including bravo's deeper difference), preserve stopped/paused jobs, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, and commit locally per repository within the existing migration authority. The later stop-all instruction supersedes automatic resumption.
+- Scope: For each fleet repository with goals.json: dry-run bootstrap and report the full before/after order (including one repository's deeper difference), preserve stopped/paused jobs, lock and verify unchanged inputs, migrate, validate, compare the next pick before and after, and commit locally per repository within the existing migration authority. The later stop-all instruction supersedes automatic resumption.
 - Acceptance: Every repository has a synchronized `priority_order`; first eligible picks are unchanged; matching repositories get no TODO.md rewrite; a failed repository stays paused; a later manual reorder changes selection after reconciliation.
 - Checks: Per-repository dry-run receipts, `goals.py validate` and `goals.py next --json` before and after, and job readback confirming stopped/paused state is unchanged.
 - Dependencies: TOOLSET-028.
@@ -157,17 +157,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.
 
-### TOOLSET-077 — Record the restart outcome in the update status
-
-- [ ] TOOLSET-077 — Record the restart outcome in the update status
-- Status: open.
-- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
-- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
-- Scope: After a requested or deferred restart completes, record the new gateway PID, the time, whether each served bot re-sent its Telegram menu and any work the shutdown interrupted, so `/toolset update status` stops reporting a finished restart as `requested`.
-- Acceptance: Status shows `gateway_restart: completed` with PID and per-profile menu resend results after a fixture restart; an incomplete restart stays visible.
-- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
-- Dependencies: TOOLSET-075.
-
 ### TOOLSET-078 — Report a concurrent update clearly
 
 - [ ] TOOLSET-078 — Report a concurrent update clearly
@@ -197,7 +186,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Status: open; live qualification not run.
 - Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
 - Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15).
-- Scope: On one profile whose cron is paused (india or charlie), record before values: the OMH share of the skill index in a real request prompt (characters and skill count), `omh doctor --json` and the memory provider status. Apply TOOLSET-080 there (plugin reload or `/toolset update` scoped to that profile), then repeat the measurements, load `code-review` and `verification-gate` in a short questions-only chat, and ask OMH's router for a trimmed workflow to see how a disabled recommendation is handled. If all pass, run `/toolset update` for the fleet and record per-profile managed entry counts.
+- Scope: On one profile with OMH whose cron is paused, record before values: the OMH share of the skill index in a real request prompt (characters and skill count), `omh doctor --json` and the memory provider status. Apply TOOLSET-080 there (plugin reload or `/toolset update` scoped to that profile), then repeat the measurements, load `code-review` and `verification-gate` in a short questions-only chat, and ask OMH's router for a trimmed workflow to see how a disabled recommendation is handled. If all pass, run `/toolset update` for the fleet and record per-profile managed entry counts.
 - Acceptance: The trimmed profile's prompt skill index loses the unkept OMH entries (measured characters before and after); kept skills load; `omh doctor` and memory provider status are unchanged; a router recommendation of a disabled skill does not break the turn (or the keep list gains that skill with the reason recorded); fleet rollout lists managed entries per profile; results recorded with Hermes and OMH versions.
 - Checks: before/after prompt measurements, `omh doctor --json` before and after, the chat transcript, `/toolset update status`.
 - Dependencies: TOOLSET-080.
@@ -228,7 +217,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
-| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-077, TOOLSET-078, TOOLSET-079 |
+| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-078, TOOLSET-079 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 

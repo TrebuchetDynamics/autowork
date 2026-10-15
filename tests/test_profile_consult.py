@@ -731,10 +731,10 @@ class ConsultationTests(unittest.TestCase):
         from unittest.mock import patch
         m = self.load()
         listing = (' ◆default         gpt-6.1-sol                  running      —            —\n'
-                   '  landing-golf gpt-6.1-sol                  running      landing-golf —\n')
+                   '  example-long-profile-xyz gpt-6.1-sol                  running      example-long-profile-xyz —\n')
         with patch.object(m, 'execute', return_value={'stdout': listing, 'stderr': '', 'returncode': 0, 'timed_out': False}):
             self.assertEqual(m.discover(Path('/home/o/.hermes'), 'hermes'),
-                             ['default', 'landing-golf'])
+                             ['default', 'example-long-profile-xyz'])
 
     def test_native_discovery_refuses_malformed_output(self):
         from unittest.mock import patch

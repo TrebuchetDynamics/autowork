@@ -952,7 +952,7 @@ Source section: Next
 - Status: done
 - Goal: STARTUP — Start useful implementation sooner with less preparation.
 - Sources: [journal guidance](skills/autowork/references/blockers-and-history.md), [state and recovery](skills/autowork/references/state-and-recovery.md).
-- Scope: Gateway logs on 2026-10-14 show 44 failed reads of `<profile>/autowork/state.json` across bravo, toolset and landing, where no run had written the journal; it exists in only 3 of 9 profiles. Say the journal may be absent, check for it instead of reading blindly, and create it when the first run records progress.
+- Scope: Gateway logs on 2026-10-14 show 44 failed reads of `<profile>/autowork/state.json` across three profiles, where no run had written the journal; it exists in only 3 of 9 profiles. Say the journal may be absent, check for it instead of reading blindly, and create it when the first run records progress.
 - Acceptance: The guidance tells agents to test for the file before reading, treats absence as a first run (not lost continuity or an error), and requires the first recorded run to create it. No other journal semantics change.
 - Checks: Read back both references; `python3 skills/docs-sync/scripts/docs.py check .`; `python3 scripts/check.py`; `git diff --check`; independent review.
 - Dependencies: None.
@@ -1437,6 +1437,22 @@ Source section: Now
 
 Source section: Next
 
+### TOOLSET-077 — Record the restart outcome in the update status
+
+- [x] TOOLSET-077 — Record the restart outcome in the update status
+- Status: done (2026-10-15). Every restart request records the gateway PID it replaces; `finish_restart()` (called by `/toolset update status` once the restart process is gone and a gateway runs) records `completed` with `gateway_restart_result` (new PID and start, Telegram bots with a menu-resend log line after the request versus not seen, forced-drain interruptions) or `restart_failed` when the old gateway still runs, on the covered receipt under the update lock, once; the one-message summary shows it. Six new regressions failed first, then passed; a read-only run of the parsing against the live 12:11 restart found 9 bots resent and 1 interrupted cron run, matching the logs; `python3 scripts/check.py` 484/575 (1 skipped)/209/8; `docs.py check` ok. Offline only.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: After a requested or deferred restart completes, record the new gateway PID, the time, whether each served bot re-sent its Telegram menu and any work the shutdown interrupted, so `/toolset update status` stops reporting a finished restart as `requested`.
+- Acceptance: Status shows `gateway_restart: completed` with PID and per-profile menu resend results after a fixture restart; an incomplete restart stays visible.
+- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
+- Dependencies: TOOLSET-075.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
 ### TOOLSET-080 — Disable unused OMH skills through a managed skills.disabled list
 
 - [x] TOOLSET-080 — Disable unused OMH skills through a managed skills.disabled list
@@ -1449,5 +1465,5 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No `omh setup --core`, `omh skill-profile reconcile`, file deletion, OMH capability-policy change or memory change; no live profile edits (TOOLSET-081); no push.
-- Current evidence: `runtime_defaults.py` finds OMH skills through `skills.external_dirs` folders whose parent `manifest.json` names the `oh-my-hermes` package, reads each SKILL.md's registered name, and sets `skills.disabled` to the user's entries plus the unkept OMH names, recorded in `plugins.entries.hermes-toolset.omh_trim`; it removes only previously managed names and never leaves a bundled toolset skill disabled; without a keep list it trims nothing. Setup (`install-plugins.sh`, `setup_preflight.py`) no longer empties `skills.disabled`. The keep list is top-level `omh_keep_skills` because `install-omh.py` requires the `omh` block's exact keys. Recount by registered name: 35 used skills (364 loads), 41 kept with core and memory skills. New `tests/test_omh_trim.py` (6 tests: registered names, idempotence, keep-list change, no-OMH and no-keep-list profiles, foreign manifest and escaping paths, bundled skills); run against the unchanged code, five failed and the no-OMH case already passed. Read-only preview on live configs: golf and sierra keep 41 of 142 and disable 101; landing-golf (no OMH) unchanged.
+- Current evidence: `runtime_defaults.py` finds OMH skills through `skills.external_dirs` folders whose parent `manifest.json` names the `oh-my-hermes` package, reads each SKILL.md's registered name, and sets `skills.disabled` to the user's entries plus the unkept OMH names, recorded in `plugins.entries.hermes-toolset.omh_trim`; it removes only previously managed names and never leaves a bundled toolset skill disabled; without a keep list it trims nothing. Setup (`install-plugins.sh`, `setup_preflight.py`) no longer empties `skills.disabled`. The keep list is top-level `omh_keep_skills` because `install-omh.py` requires the `omh` block's exact keys. Recount by registered name: 35 used skills (364 loads), 41 kept with core and memory skills. New `tests/test_omh_trim.py` (6 tests: registered names, idempotence, keep-list change, no-OMH and no-keep-list profiles, foreign manifest and escaping paths, bundled skills); run against the unchanged code, five failed and the no-OMH case already passed. Read-only preview on live configs: two OMH profiles keep 41 of 142 and disable 101; a profile without OMH is unchanged.
 - Checks run: `python3 scripts/check.py` passed offline; `tests/test_omh_trim.py` 6 passed; `test_install_plugins.py`, `test_telegram_menu_policy.py`, `test_setup_runtime.py` passed; `install-omh.py` defaults still validate; `docs.py check` ok; `git diff --check` clean. Not merged into the shared checkout: profiles that load the plugin from it would get the trim at their next load, before TOOLSET-081's one-profile qualification.

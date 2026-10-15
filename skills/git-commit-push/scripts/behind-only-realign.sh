@@ -6,7 +6,7 @@
 #   usage: behind-only-realign.sh [<source-ref>]        # default: @{u}
 #   env:   REALIGN_SAFETY_REF     safety branch name (default safety/pre-pull-<date>)
 #          REALIGN_EXCLUDE_RE     ERE of paths excluded from the STRICT PROOF only — live
-#                                 runtime data that changes by design, e.g. '^svc-agent/(data|logs)/'
+#                                 runtime data that changes by design, e.g. '^service-b/(data|logs)/'
 #
 # Aborts unless: HEAD is an ancestor of the source, nothing is staged, no index.lock.
 # Nothing is ever discarded, stashed, rebased or reset --hard.
