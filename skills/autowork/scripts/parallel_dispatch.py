@@ -1,0 +1,333 @@
+"""Start parallel workers in their own worktrees; no integration or task status.
+
+A worker is a host CLI process started in its own process group with the
+worktree as its working directory. Its process identity is the slot's proof of
+life, so a live worker is never replaced or duplicated. Templates never add
+flags that bypass host approvals or sandboxes.
+"""
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import time
+
+import parallel_plan
+import parallel_state as state
+import task_execution as execution
+
+COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
+DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 8
+# Verified against the installed CLIs' --help (2026-10-15). The prompt also
+# arrives on stdin, which Codex reads for `-`.
+TEMPLATES = {
+    'hermes': ['hermes', 'chat', '--query-file', '{prompt_file}', '--oneshot', '--in', '{worktree}',
+               '--run-budget', '{timeout}', '-Q'],
+    'codex': ['codex', 'exec', '-C', '{worktree}', '--sandbox', 'workspace-write',
+              '--add-dir', '{git_common_dir}', '-'],
+    'pi': ['pi', '-p', '@{prompt_file}'],
+}
+HOST_NAMES = {'hermes': 'hermes', 'hermes_cli': 'hermes', 'codex': 'codex', 'pi': 'pi', 'claude': 'claude'}
+OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', 'held', 'interrupted')
+
+
+def coordinator_host(owner_pid):
+    """Name the host whose session owns the coordinator, from its process ancestry."""
+    pid = owner_pid
+    for _ in range(8):
+        try:
+            argv = execution.argv_of(pid)
+            stat = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        except (OSError, ValueError, IndexError):
+            return ''
+        names = [Path(a).name for a in argv[:3]]
+        names += [a.split('.')[0] for a in argv[:4] if a.startswith('hermes_cli')]
+        host = next((HOST_NAMES[n] for n in names if n in HOST_NAMES), '')
+        if host:
+            return host
+        pid = int(stat[1])
+        if pid <= 1:
+            return ''
+    return ''
+
+
+def worker_command(args, owner_pid):
+    """Return (argv template, host label) or (None, fallback reason)."""
+    if not Path('/proc/self/stat').exists():
+        return None, 'parallel workers need Linux /proc process identity'
+    if args.worker_command:
+        try:
+            template = json.loads(args.worker_command)
+        except json.JSONDecodeError as exc:
+            raise ValueError('--worker-command must be a JSON argv list') from exc
+        if not isinstance(template, list) or not template or not all(isinstance(a, str) for a in template):
+            raise ValueError('--worker-command must be a nonempty JSON list of strings')
+        return template, 'custom'
+    host = args.worker_host
+    if host == 'auto':
+        host = coordinator_host(owner_pid)
+    if host == 'claude':
+        return None, 'Claude Code workers need an explicit --worker-command (it chooses their approval mode)'
+    if host not in TEMPLATES:
+        return None, 'no worker template for this coordinator host; pass --worker-host or --worker-command'
+    template = list(TEMPLATES[host])
+    if host == 'hermes' and args.worker_profile:
+        template[1:1] = ['-p', args.worker_profile]
+    if shutil.which(template[0]) is None:
+        return None, f'worker CLI {template[0]!r} is not installed'
+    return template, host
+
+
+def render(template, values):
+    return [re.sub(r'\{(\w+)\}', lambda m: str(values[m[1]]) if m[1] in values else m[0], part)
+            for part in template]
+
+
+def available_memory_mb():
+    for line in Path('/proc/meminfo').read_text().splitlines():
+        if line.startswith('MemAvailable:'):
+            return int(line.split()[1]) // 1024
+    raise ValueError('MemAvailable missing from /proc/meminfo')
+
+
+def resource_gate(running, min_free_mb):
+    memory = available_memory_mb()
+    if memory < min_free_mb * (running + 1):
+        return f'resource gate: {memory} MB available, need {min_free_mb * (running + 1)} MB'
+    load, cpus = os.getloadavg()[0], os.cpu_count() or 1
+    if load >= cpus:
+        return f'resource gate: load average {load:.2f} >= {cpus} CPUs'
+    return ''
+
+
+def data_dir(common, slot):
+    return execution.safe_path(common / 'slot-data' / slot['task_id'] / f'attempt-{slot["attempt"]}')
+
+
+def meta(common, slot):
+    return execution.read(data_dir(common, slot) / 'meta.json') or {}
+
+
+def prompt(task, worktree, branch, baseline, report, resume=False):
+    touches = task['fields'].get('Touches', '(none declared)')
+    lines = [
+        'You are an Autowork worker for exactly one task.',
+        f'Task: {task["id"]}',
+        f'Title: {task["title"]}',
+        f'Worktree: {worktree}',
+        f'Branch: {branch}',
+        f'Baseline: {baseline}',
+        f'Report file: {report}',
+        '',
+        'Implement exactly this one task. The coordinator selected it; do not run Autowork task',
+        'selection, start other Autowork workers, or pick other tasks. You may use your host\'s',
+        'own subagents for this task.',
+        '',
+        'Rules:',
+        f'- Work only inside {worktree}; change only paths within Touches: {touches}',
+        '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
+        '  Put a one-line CHANGELOG proposal in the report instead.',
+        '- Run the task\'s relevant offline checks. Use $TMPDIR for temporary files and only',
+        '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
+        f'- When done, commit once on {branch}. Never push, merge, rebase, switch branches, or touch',
+        '  another worktree. A finished commit is not task completion; the coordinator integrates.',
+        '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
+        '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
+        '  "blockers": [...], "changelog": "..."}. If blocked, report commit null with blockers and stop.',
+    ]
+    if resume:
+        lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
+                  'worktree: inspect git status and continue from them rather than starting over.']
+    return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def create_worktree(repo, common, task_id, baseline):
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
+    branch = 'autowork/' + safe
+    path = (repo.parent / f'{repo.name}-autowork-{safe}').resolve()
+    exists = path.exists() or bool(execution.git(repo, 'branch', '--list', branch))
+    if exists:
+        raise ValueError(f'{path} or branch {branch} already exists and was not created by parallel '
+                         'Autowork; resolve it by hand')
+    result = subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', branch, str(path), baseline],
+                            capture_output=True, text=True, timeout=60)
+    if result.returncode:
+        raise ValueError('git worktree add failed: ' + result.stderr.strip())
+    with execution.lock(common / 'writer.lock'):
+        state.event(common, 'worktree_created', task_id=task_id, worktree=str(path), branch=branch,
+                    baseline=baseline)
+    return path, branch
+
+
+def launch(argv, worktree, data, slot_index, stdin_path):
+    data.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (data / 'tmp').mkdir(exist_ok=True, mode=0o700)
+    env = {k: v for k, v in os.environ.items()
+           if k != 'HERMES_TOOLSET_EXECUTION_COMMON' and not k.startswith('GIT_')}
+    env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_SLOT=str(slot_index),
+               AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
+    with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
+        process = subprocess.Popen(argv, cwd=worktree, env=env, stdin=stdin, stdout=log,
+                                   stderr=subprocess.STDOUT, start_new_session=True)
+    for _ in range(50):
+        found = execution.identity(process.pid)
+        if found:
+            return found
+        time.sleep(0.01)
+    raise ValueError('worker exited before its identity could be recorded; see ' + str(data / 'worker.log'))
+
+
+def stop(worker):
+    """Stop a live worker's process group; identity is rechecked before each signal."""
+    for sig, pause in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 0)):
+        if not execution.active_owner({'owner': worker}):
+            return
+        try:
+            os.killpg(worker['pid'], sig)
+        except ProcessLookupError:
+            return
+        deadline = time.time() + pause
+        while time.time() < deadline and execution.active_owner({'owner': worker}):
+            time.sleep(0.05)
+
+
+def enforce_timeouts(repo, owner_pid, common, worker_timeout):
+    stopped = []
+    for slot in state.slots(common):
+        if (slot['state'] in ('dispatched', 'running') and state.worker_live(slot)
+                and time.time() - slot['started_at'] > worker_timeout):
+            stop(slot['worker'])
+            stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
+                                            reason=f'worker timeout after {worker_timeout:g} s'))
+    return stopped
+
+
+def summary(common, slot):
+    info = meta(common, slot)
+    return {'task': slot['task_id'], 'state': slot['state'], 'attempt': slot['attempt'],
+            'worktree': slot['worktree'], 'branch': slot['branch'], 'baseline': slot['baseline'],
+            'worker_pid': (slot.get('worker') or {}).get('pid'), 'slot': info.get('slot_index'),
+            'command': info.get('command'), 'log': slot.get('log_path'), 'reason': slot.get('reason'),
+            'commit': slot.get('commit')}
+
+
+def capacity(args):
+    count = args.parallel
+    limit = args.max_workers or WORKER_CAP
+    if not 1 <= limit <= HARD_LIMIT:
+        raise ValueError(f'--max-workers must be between 1 and {HARD_LIMIT}')
+    if not 1 <= count <= limit:
+        raise ValueError(f'--parallel must be between 1 and {limit} (raise --max-workers up to {HARD_LIMIT})')
+    return count
+
+
+def fallback(repo, args, reason):
+    task = execution.select(repo, args.tasks, args.plan)
+    return {'outcome': 'SEQUENTIAL_FALLBACK', 'reason': reason, 'workspace': str(repo),
+            'priority': task.pop('priority'), 'task': task,
+            'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
+
+
+def contracts(repo, requested=None, plan=None):
+    try:
+        return execution.select_all(repo, requested, plan)
+    except execution.PriorityDriftError:
+        raise
+    except ValueError:
+        return []
+
+
+def dispatch(args):
+    repo = Path(execution.git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
+    count = capacity(args)
+    template, host = worker_command(args, args.owner_pid)
+    if template is None:
+        return fallback(repo, args, host)
+    claimed = state.claim(repo, args.owner_pid, profile=args.profile, max_workers=count)
+    if claimed['outcome'] != 'CLAIMED':
+        return claimed
+    common = state.common_dir(repo)
+    timeouts = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
+    current = state.reconcile(repo, args.owner_pid)
+    everything = contracts(repo)
+    by_id = {t['id']: t for t in everything}
+    candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
+    occupying = [s for s in current if s['state'] in OCCUPYING]
+    running = [by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}}) for s in occupying]
+    live = [s for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s)]
+    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released') and s['attempt'] == 1}
+    # A restartable slot's own files are not someone else's running work.
+    running = [t for t in running if t['id'] not in restartable]
+    planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
+                                  or t['id'] in restartable], running, all_tasks=everything)
+    used = {meta(common, s).get('slot_index') for s in live}
+    baseline = execution.git(repo, 'rev-parse', 'HEAD')
+    started, waiting = [], list(planned['waiting'])
+    for task in planned['dispatch']:
+        if len(live) + len(started) >= count:
+            waiting.append({'id': task['id'], 'reason': f'all {count} worker slots busy'})
+            continue
+        gate = resource_gate(len(live) + len(started), args.min_free_mem_mb)
+        if gate:
+            waiting.append({'id': task['id'], 'reason': gate})
+            continue
+        previous = restartable.get(task['id'])
+        if previous:
+            worktree, branch, base = Path(previous['worktree']), previous['branch'], previous['baseline']
+        else:
+            worktree, branch = create_worktree(repo, common, task['id'], baseline)
+            base = baseline
+            state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
+                              baseline=base)
+        slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
+        attempt = slot['attempt'] + (1 if previous else 0)
+        data = execution.safe_path(common / 'slot-data' / task['id'] / f'attempt-{attempt}')
+        data.mkdir(parents=True, exist_ok=True, mode=0o700)
+        report = data / 'report.json'
+        prompt_file = data / 'prompt.md'
+        prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous)))
+        index = next(i for i in range(1, HARD_LIMIT + 1) if i not in used)
+        used.add(index)
+        argv = render(template, {'worktree': worktree, 'prompt_file': prompt_file, 'timeout': int(args.worker_timeout),
+                                 'report_file': report, 'git_common_dir': common.parent})
+        if previous:
+            state.transition(repo, args.owner_pid, task['id'], 'dispatched', worktree=str(worktree),
+                             branch=branch, baseline=base)
+        execution.save(data / 'meta.json', {'slot_index': index, 'command': argv, 'host': host,
+                                            'prompt_file': str(prompt_file), 'report_file': str(report)})
+        worker = launch(argv, worktree, data, index, prompt_file)
+        slot = state.transition(repo, args.owner_pid, task['id'], 'running', worker=worker,
+                                log_path=str(data / 'worker.log'))
+        started.append(summary(common, slot))
+    slots = [summary(common, s) for s in state.slots(common)]
+    active = sum(1 for s in state.slots(common) if s['state'] in ('dispatched', 'running') and state.worker_live(s))
+    outcome = 'DISPATCHED' if started else ('WAITING' if active else 'IDLE')
+    return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
+            'active_workers': active, 'dispatched': started, 'waiting': waiting,
+            'timed_out': [s['task_id'] for s in timeouts], 'slots': slots,
+            'next': {'DISPATCHED': 'Run --wait to block until a worker finishes, then review its report.',
+                     'WAITING': 'Run --wait; no other task can start beside the running workers.',
+                     'IDLE': 'No runnable task and no running worker.'}[outcome]}
+
+
+def wait(args, timeout):
+    """Block in the helper (no model tokens) until a worker exits or the timeout passes."""
+    repo = Path(execution.git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
+    common = state.common_dir(repo)
+    state.require_owner(common, args.owner_pid)
+    before = {s['task_id']: s['state'] for s in state.slots(common)}
+    deadline = time.time() + timeout
+    while True:
+        timed_out = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
+        finished = [s for s in state.slots(common)
+                    if s['state'] in ('dispatched', 'running') and not state.worker_live(s)]
+        if timed_out or finished or time.time() >= deadline:
+            current = state.reconcile(repo, args.owner_pid)
+            changed = [summary(common, s) for s in current if before.get(s['task_id']) != s['state']]
+            active = sum(1 for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s))
+            return {'outcome': 'CHANGED' if changed else 'TIMEOUT', 'workspace': str(repo),
+                    'active_workers': active, 'changed': changed,
+                    'next': 'Review reported slots, then run --apply --parallel again to refill.'}
+        time.sleep(0.2)

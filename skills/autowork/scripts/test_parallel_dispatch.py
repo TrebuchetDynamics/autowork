@@ -1,0 +1,244 @@
+"""Offline parallel dispatch checks with a deterministic fake worker CLI."""
+import contextlib
+import io
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+import parallel_dispatch as dispatch
+import parallel_state as state
+import task_execution as execution
+
+FAKE = SCRIPTS / 'fixtures' / 'fake_worker.py'
+
+
+def task(tid, touches, depends='None'):
+    lines = [f'- [ ] {tid} — Task {tid}', f'- Scope: change {touches}.', '- Acceptance: changed.',
+             '- Checks: inspect.', f'- Dependencies: {depends}.']
+    if touches:
+        lines.append(f'- Touches: {touches}')
+    return '\n'.join(lines) + '\n'
+
+
+class DispatchTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.repo = self.root / 'repo'
+        self.repo.mkdir()
+        self.git('init', '-q')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        self.git('config', 'user.name', 'Fixture')
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
+                        task('E', 'e.txt'), task('D', 'a.txt'))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'base')
+        self.owner = os.getppid()
+        self.common = state.common_dir(self.repo)
+        self.spec = self.root / 'spec.json'
+        self.log = self.root / 'workers.jsonl'
+        self.log.touch()
+        self.set_spec({})
+        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log)),
+                        patch.object(dispatch, 'available_memory_mb', return_value=10 ** 6),
+                        patch.object(os, 'getloadavg', return_value=(0.0, 0.0, 0.0))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.addCleanup(self.stop_workers)
+
+    def stop_workers(self):
+        for slot in state.slots(self.common) if (self.common / 'slots').exists() else ():
+            if state.worker_live(slot):
+                dispatch.stop(slot['worker'])
+
+    def git(self, *args, repo=None):
+        return execution.git(repo or self.repo, *args)
+
+    def write_todo(self, *bodies):
+        (self.repo / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
+
+    def set_spec(self, spec):
+        self.spec.write_text(json.dumps(spec))
+
+    def run_cli(self, *args, worker=True):
+        argv = [str(self.repo), '--owner-pid', str(self.owner), *args]
+        if worker:
+            argv += ['--worker-command', json.dumps([sys.executable, str(FAKE), '{prompt_file}', '{worktree}'])]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = execution.main(argv)
+        return code, json.loads(out.getvalue())
+
+    def apply(self, *extra):
+        return self.run_cli('--apply', '--parallel', *extra)
+
+    def wait(self, timeout=20, *extra):
+        return self.run_cli('--parallel', '--wait', '--timeout', str(timeout), *extra)
+
+    def events(self):
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def wait_until_idle(self):
+        for _ in range(40):
+            _, result = self.wait(20)
+            if result['active_workers'] == 0:
+                return result
+        self.fail('workers did not finish')
+
+    def test_independent_tasks_run_together_in_separate_worktrees(self):
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 1.0},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 1.0}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
+        self.assertEqual({w['id']: w['reason'] for w in result['waiting']}['D'], 'overlapping paths with A')
+        self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['E'])
+        self.assertNotIn('C', [w['id'] for w in result['waiting']])  # C's dependency is unfinished
+        _, again = self.apply()
+        self.assertEqual((again['outcome'], again['dispatched']), ('WAITING', []))  # no duplicate start
+        self.wait_until_idle()
+        times = {(e['task'], e['event']): e for e in self.events()}
+        self.assertLess(times['A', 'start']['time'], times['B', 'end']['time'])
+        self.assertLess(times['B', 'start']['time'], times['A', 'end']['time'])
+        self.assertEqual(len([e for e in self.events() if e['event'] == 'start']), 2)
+        slots = {s['task_id']: s for s in state.slots(self.common)}
+        for tid, slot_no in (('A', '1'), ('B', '2')):
+            worktree = self.root / f'repo-autowork-{tid}'
+            self.assertEqual(Path(times[tid, 'start']['cwd']), worktree)
+            self.assertEqual(slots[tid]['state'], 'reported')
+            self.assertEqual(slots[tid]['commit'], self.git('rev-parse', 'HEAD', repo=worktree))
+            self.assertEqual(self.git('symbolic-ref', '--short', 'HEAD', repo=worktree), 'autowork/' + tid)
+            self.assertEqual(times[tid, 'start']['slot'], slot_no)
+            self.assertEqual(times[tid, 'start']['port_base'], str(20000 + 100 * int(slot_no)))
+            self.assertTrue(times[tid, 'start']['tmpdir'].startswith(str(self.common / 'slot-data' / tid)))
+            self.assertFalse(times[tid, 'start']['marker'])
+        prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
+        for text in ('Task: A', 'Touches: a.txt', 'Never edit TODO.md', 'Report file: ', '- Touches: a.txt'):
+            self.assertIn(text, prompt)
+        self.assertEqual(self.git('status', '--porcelain'), '')  # canonical checkout untouched
+
+    def test_refill_starts_next_task_when_a_worker_finishes(self):
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 3.0},
+                       'E': {'files': {'e.txt': 'e'}, 'sleep': 0.2}})
+        self.apply()
+        _, changed = self.wait(20)
+        self.assertEqual([c['task'] for c in changed['changed']], ['A'])
+        _, refill = self.apply()
+        # E takes the free slot; D still overlaps A's unintegrated commit.
+        self.assertEqual([s['task'] for s in refill['dispatched']], ['E'])
+        self.assertEqual(refill['dispatched'][0]['slot'], 1)
+        self.wait_until_idle()
+        times = {(e['task'], e['event']): e['time'] for e in self.events()}
+        self.assertLess(times['E', 'start'], times['B', 'end'])
+
+    def test_dependent_task_waits_until_its_dependency_is_done(self):
+        self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2}})
+        _, result = self.apply()
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A'])
+        self.wait_until_idle()
+        _, result = self.apply()
+        self.assertEqual(result['dispatched'], [])  # A is reported, not done
+
+    def test_timed_out_worker_is_stopped_and_its_worktree_kept(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 60, 'commit': False}})
+        self.apply('--worker-timeout', '1')
+        started = time.time()
+        _, result = self.wait(20, '--worker-timeout', '1')
+        self.assertLess(time.time() - started, 15)
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'interrupted')
+        self.assertIn('timeout', slot['reason'])
+        self.assertFalse(state.worker_live(slot))
+        self.assertEqual((self.root / 'repo-autowork-A/a.txt').read_text(), 'partial')
+
+    def test_crashed_worker_restarts_once_in_the_same_worktree(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1}})
+        self.apply()
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt']), ('interrupted', 1))
+        _, retry = self.apply()
+        self.assertEqual([(s['task'], s['attempt']) for s in retry['dispatched']], [('A', 2)])
+        self.assertEqual(retry['dispatched'][0]['worktree'], slot['worktree'])
+        self.assertIn('previous attempt was interrupted', (self.common / 'slot-data/A/attempt-2/prompt.md')
+                      .read_text().lower())
+        self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'held')  # second failure stays held
+        _, after = self.apply()
+        self.assertEqual(after['dispatched'], [])
+        self.assertEqual(len([e for e in self.events() if e['event'] == 'start']), 2)
+
+    def test_low_memory_holds_dispatch(self):
+        with patch.object(dispatch, 'available_memory_mb', return_value=1000):
+            _, result = self.apply()
+        self.assertEqual(result['outcome'], 'IDLE')
+        self.assertEqual(result['dispatched'], [])
+        self.assertTrue(all('resource gate' in w['reason'] for w in result['waiting']
+                            if w['id'] in ('A', 'B')))
+        self.assertFalse((self.common / 'slots').exists() and state.slots(self.common))
+
+    def test_existing_user_branch_or_folder_is_refused_untouched(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.git('branch', 'autowork/A')
+        before = self.git('rev-parse', 'autowork/A')
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
+        self.assertIn('already exists', result['reason'])
+        self.assertEqual(self.git('rev-parse', 'autowork/A'), before)
+        self.git('branch', '-D', 'autowork/A')
+        folder = self.root / 'repo-autowork-A'
+        folder.mkdir()
+        (folder / 'mine').write_text('user data')
+        _, result = self.apply()
+        self.assertIn('already exists', result['reason'])
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), ['mine'])
+        self.assertEqual(self.events(), [])
+
+    def test_unsupported_host_falls_back_to_the_sequential_contract(self):
+        for args in (('--worker-host', 'claude'), ('--worker-host', 'hermes')):
+            with self.subTest(args=args), patch.object(dispatch.shutil, 'which', return_value=None):
+                code, result = self.run_cli('--apply', '--parallel', *args, worker=False)
+                self.assertEqual((code, result['outcome']), (0, 'SEQUENTIAL_FALLBACK'))
+                self.assertEqual(result['task']['id'], 'A')
+                self.assertFalse((self.common / 'coordinator.json').exists())
+        self.assertEqual(self.events(), [])
+
+    def test_templates_never_bypass_approvals_and_use_scoped_write_roots(self):
+        for host, template in dispatch.TEMPLATES.items():
+            text = ' '.join(template)
+            for flag in ('--yolo', 'bypass', 'danger', 'skip-permissions', '--approve'):
+                self.assertNotIn(flag, text, host)
+        self.assertIn('{git_common_dir}', dispatch.TEMPLATES['codex'])
+        args = type('Args', (), {'worker_command': None, 'worker_host': 'hermes', 'worker_profile': 'work'})
+        with patch.object(dispatch.shutil, 'which', return_value='/bin/hermes'):
+            template, host = dispatch.worker_command(args, self.owner)
+        self.assertEqual((template[:4], host), (['hermes', '-p', 'work', 'chat'], 'hermes'))
+
+    def test_parallel_needs_owner_and_valid_limits(self):
+        for argv in ([str(self.repo), '--apply', '--parallel'],
+                     [str(self.repo), '--owner-pid', str(self.owner), '--apply', '--parallel', '5'],
+                     [str(self.repo), '--owner-pid', str(self.owner), '--apply', '--parallel', '3',
+                      '--max-workers', '9'],
+                     [str(self.repo), '--owner-pid', str(self.owner), '--parallel', '--wait']):
+            out = io.StringIO()
+            with self.subTest(argv=argv[1:]), contextlib.redirect_stdout(out):
+                self.assertEqual(execution.main(argv), 1)
+            self.assertEqual(json.loads(out.getvalue())['outcome'], 'ACTION_REQUIRED')
+        code, result = self.apply('5', '--max-workers', '6')
+        self.assertEqual((code, result['max_workers']), (0, 5))
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -611,6 +611,40 @@ def execute(args):
         return result
 
 
+def parallel_main(args):
+    # Lazy import keeps the sequential CLI unchanged.
+    import parallel_dispatch
+    import parallel_state
+    try:
+        if not args.owner_pid:
+            raise ValueError('parallel mode requires --owner-pid of the persistent coordinator session')
+        if args.wait:
+            if args.timeout is None or args.timeout <= 0:
+                raise ValueError('--wait requires a positive --timeout')
+            if args.parallel is None:
+                args.parallel = parallel_dispatch.DEFAULT_WORKERS
+            result = parallel_dispatch.wait(args, args.timeout)
+        elif args.release:
+            result = parallel_state.release(Path(args.consumer).expanduser().resolve(), args.owner_pid)
+        elif not args.apply:
+            raise ValueError('--parallel requires --apply (or --wait/--release)')
+        elif args.run is not None:
+            raise ValueError('--parallel cannot be combined with --run')
+        else:
+            if args.worker_timeout <= 0 or args.min_free_mem_mb < 0:
+                raise ValueError('--worker-timeout must be positive and --min-free-mem-mb not negative')
+            result = parallel_dispatch.dispatch(args)
+    except BlockingIOError:
+        result = {'outcome': 'BUSY', 'reason': 'Repository execution lock is held by a live operation.'}
+    except PriorityDriftError as exc:
+        result = dict(exc.status, outcome='PRIORITY_DRIFT', reason=str(exc))
+    except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
+        result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
+    print(json.dumps(result, indent=2))
+    return 0 if result['outcome'] in ('DISPATCHED', 'WAITING', 'IDLE', 'CHANGED', 'TIMEOUT',
+                                      'SEQUENTIAL_FALLBACK', 'RELEASED') else 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('consumer')
@@ -629,7 +663,23 @@ def main(argv=None):
     parser.add_argument('--run', nargs=argparse.REMAINDER)
     parser.add_argument('--writers', action='store_true',
                         help='Read-only: report live agent processes and whether they block this checkout.')
+    parallel = parser.add_argument_group('parallel workers (opt-in; see references/parallel-workers.md)')
+    parallel.add_argument('--parallel', nargs='?', const=2, type=int, metavar='N',
+                          help='With --apply, start up to N workers (default 2, at most 4 unless --max-workers).')
+    parallel.add_argument('--max-workers', type=int, help='Raise the --parallel cap (hard limit 8).')
+    parallel.add_argument('--worker-host', choices=('auto', 'hermes', 'codex', 'pi', 'claude'), default='auto',
+                          help='Worker CLI template; auto uses the coordinator host.')
+    parallel.add_argument('--worker-command', help='JSON argv template with {worktree}, {prompt_file}, {timeout}.')
+    parallel.add_argument('--worker-profile', help='Hermes profile for workers (default: the coordinator profile).')
+    parallel.add_argument('--worker-timeout', type=float, default=3600.0,
+                          help='Stop a worker after this many seconds (default 3600).')
+    parallel.add_argument('--min-free-mem-mb', type=int, default=1500,
+                          help='Start a worker only with this much MemAvailable per running worker plus one.')
+    parallel.add_argument('--wait', action='store_true',
+                          help='With --parallel and --timeout S, block until a worker exits or S passes.')
     args = parser.parse_args(argv)
+    if args.parallel is not None or args.wait:
+        return parallel_main(args)
     if args.writers:
         try:
             repo = Path(git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
