@@ -960,3 +960,23 @@ Source section: Next
 - Exclusions: No new state file, schema or helper; no profile state edits.
 - Current evidence: Commit 0a4d45e edits both references; the pinned phrase in `test_picker_policy` still holds. Full offline check passed; independent review APPROVE.
 - Closure: Guidance only; agent behavior in live runs not yet observed.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-042 — End the archive file with one newline after a closeout
+
+- [x] TOOLSET-042 — End the archive file with one newline after a closeout
+- Status: done
+- Goal: ARCHIVAL — Integrate archival and reconcile the rendering contract.
+- Sources: [archiver](skills/docs-sync/scripts/todo_archive.py), [archive contract](skills/docs-sync/references/todo-archive.md), [archive tests](skills/docs-sync/scripts/test_todo_archive.py), [supersession tests](skills/docs-sync/scripts/test_supersession.py).
+- Scope: A task block ends with the blank line that separates it from the next heading, and `archive_completed()` appends the block verbatim, so the archive ends with an extra blank line and `git diff --check` fails after an ordinary closeout (reproduced closing TOOLSET-040/041 on 2026-10-14). Decided approach: treat trailing blank lines as a separator, not task content. Archive `block.rstrip(newlines) + newline` (preserving CRLF), use that same trimmed block for the conservation and retry checks, and update the archive contract wording and the 12 exact-byte assertions in `test_todo_archive.py` and `test_supersession.py` to the trimmed form.
+- Acceptance: After archiving any closed task, the archive ends with exactly one newline and `git diff --check` passes; task content bytes (excluding trailing blank lines) are preserved, including CRLF; retry and render remain byte-stable; live TODO.md is unchanged apart from the moved block.
+- Checks: `python3 -m unittest discover -s skills/docs-sync/scripts -p 'test_todo_archive.py'`; same for `test_supersession.py` and `test_goals.py`; `python3 scripts/check.py`; `git diff --check` after a fixture closeout.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to which tasks are archived or to archive ordering; no push.
+- Current evidence: `prepare()` in `todo_archive.py` (the archiver; there is no `archive_completed()`) now archives each body as `rstrip` of line breaks plus one line break of its own style, and uses that trimmed block for conservation and retry, which still recognizes bodies archived earlier with their separator. Updated the 12 exact-byte assertions in `test_todo_archive.py`/`test_supersession.py` through an `archived_form()` helper, plus one in `tests/test_workflow_cycle.py`; added LF/CRLF one-newline, real-Git `git diff --check` and legacy-retry regressions (the first two failed against the old code). Archive contract and CHANGELOG updated. This closeout itself archived with no manual trim.
+- Checks run: `python3 scripts/check.py` passed offline: 411/572/204/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean after this closeout. Self-reviewed.

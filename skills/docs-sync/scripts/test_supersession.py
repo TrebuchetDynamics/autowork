@@ -9,6 +9,12 @@ import unittest
 SCRIPT = Path(__file__).with_name('goals.py')
 
 
+def archived_form(block):
+    """A body as archived: trailing blank lines are a separator, not content (TOOLSET-042)."""
+    nl = (b'\r\n' if b'\r\n' in block else b'\n') if isinstance(block, bytes) else ('\r\n' if '\r\n' in block else '\n')
+    return block.rstrip(b'\r\n' if isinstance(block, bytes) else '\r\n') + nl
+
+
 class SupersessionTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(); self.addCleanup(temporary.cleanup)
@@ -61,7 +67,7 @@ class SupersessionTests(unittest.TestCase):
     def test_archive_preserves_unchecked_original_and_repeat_is_byte_stable(self):
         self.supersede(); self.cli('render')
         archived = self.archive.read_text()
-        for fragment in (self.old, 'Superseded; not completed', 'Successors: NEW', 'Accepted card-free replacement'):
+        for fragment in (archived_form(self.old), 'Superseded; not completed', 'Successors: NEW', 'Accepted card-free replacement'):
             self.assertIn(fragment, archived)
         self.assertNotIn(self.old, self.todo.read_text())
         self.assertIn('- [ ] NEW:', self.todo.read_text())

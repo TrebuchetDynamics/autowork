@@ -127,12 +127,17 @@
           "kind": "executed",
           "ref": "cd skills/docs-sync/scripts && python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py (411/572/204/8 offline tests passed; includes TOOLSET-042 archive newline, git diff --check and legacy-retry regressions); offline only",
+          "result": "pass"
         }
       ],
       "id": "ARCHIVAL",
       "priority": 40,
       "source": "TODO.archive.md#toolset-009--account-for-archival-in-the-shared-rendering-contract",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "TOOLSET-009",
         "TOOLSET-014",
@@ -319,14 +324,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [],
-      "goal": "ARCHIVAL",
-      "id": "TOOLSET-042",
-      "section": "Next",
-      "status": "open",
-      "title": "End the archive file with one newline after a closeout"
     },
     {
       "depends_on": [],
@@ -553,6 +550,14 @@
       "section": "Done",
       "status": "done",
       "title": "Treat a missing Autowork progress journal as a normal first run"
+    },
+    {
+      "depends_on": [],
+      "goal": "ARCHIVAL",
+      "id": "TOOLSET-042",
+      "section": "Done",
+      "status": "done",
+      "title": "End the archive file with one newline after a closeout"
     },
     {
       "depends_on": [],

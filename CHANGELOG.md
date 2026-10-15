@@ -66,6 +66,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Archiving a closed task no longer leaves an extra blank line at the end of
+  `TODO.archive.md`: the separator before the next heading is not archived, so
+  `git diff --check` passes after an ordinary closeout (LF and CRLF preserved).
+
 - The Cron Autowork Codex adapter is explicit-only like the others; it shipped no
   `agents/openai.yaml`, so Codex could invoke it implicitly.
 

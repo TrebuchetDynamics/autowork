@@ -12,6 +12,12 @@ import goals
 SCRIPT = Path(goals.__file__)
 
 
+def archived_form(block):
+    """A body as archived: trailing blank lines are a separator, not content (TOOLSET-042)."""
+    nl = (b'\r\n' if b'\r\n' in block else b'\n') if isinstance(block, bytes) else ('\r\n' if '\r\n' in block else '\n')
+    return block.rstrip(b'\r\n' if isinstance(block, bytes) else '\r\n') + nl
+
+
 class TodoArchiveTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -36,12 +42,49 @@ class TodoArchiveTests(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
+    def test_closeout_archive_ends_with_one_newline_and_passes_diff_check(self):
+        # TOOLSET-042: the separator blank line before the next heading is not task content.
+        for newline in ('\n', '\r\n'):
+            with self.subTest(newline=repr(newline)):
+                text = ('# TODO\n\n## Done\n\n' + self.done + '## Now\n\n' + self.open).replace('\n', newline)
+                self.todo.write_bytes(text.encode())
+                self.archive.unlink(missing_ok=True)
+                self.cli('render')
+                archive = self.archive.read_bytes()
+                end = newline.encode()
+                self.assertTrue(archive.endswith(archived_form(self.done.replace('\n', newline)).encode()))
+                self.assertFalse(archive.endswith(end + end), archive[-40:])
+                self.assertIn(self.open.replace('\n', newline).encode(), self.todo.read_bytes())
+                before = (self.todo.read_bytes(), archive)
+                self.cli('render')
+                self.assertEqual((self.todo.read_bytes(), self.archive.read_bytes()), before)
+
+    def test_closeout_passes_git_diff_check(self):
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), *a], capture_output=True, text=True,
+                                        env={'GIT_AUTHOR_NAME': 'F', 'GIT_AUTHOR_EMAIL': 'f@example.invalid',
+                                             'GIT_COMMITTER_NAME': 'F', 'GIT_COMMITTER_EMAIL': 'f@example.invalid',
+                                             'GIT_CONFIG_GLOBAL': '/dev/null', 'PATH': '/usr/bin:/bin'})
+        self.todo.write_text('# TODO\n\n## Done\n\n' + self.done + '## Now\n\n' + self.open)
+        self.archive.write_text('# Completed tasks\n')
+        git('init', '-q'); git('add', '-A'); git('commit', '-q', '-m', 'base')
+        self.cli('render')
+        check = git('diff', '--check')
+        self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+
+    def test_retry_recognizes_a_previously_archived_untrimmed_body(self):
+        # Archives written before TOOLSET-042 kept the separator; a retry must not duplicate them.
+        self.archive.write_text('# Completed tasks\n\n\n<!-- archived from TODO.md -->\n\n'
+                                'Source section: Done\n\n' + self.done)
+        self.cli('render')
+        self.assertEqual(self.archive.read_text().count(archived_form(self.done)), 1)
+        self.assertNotIn('T1:', self.todo.read_text())
+
     def test_render_automatically_moves_completed_bodies_and_keeps_ledger(self):
         ledger = self.ledger.read_bytes()
         self.cli('render')
         self.assertNotIn(self.done, self.todo.read_text())
         self.assertIn(self.open, self.todo.read_text())
-        self.assertIn(self.done, self.archive.read_text())
+        self.assertIn(archived_form(self.done), self.archive.read_text())
         self.assertIn('TODO.archive.md', self.todo.read_text())
         self.assertEqual(self.ledger.read_bytes(), ledger)
         before = (self.todo.read_bytes(), self.archive.read_bytes())
@@ -62,7 +105,7 @@ class TodoArchiveTests(unittest.TestCase):
                                       live + b'## Done\r\n' + done)
                 self.cli('render')
                 self.assertTrue(archive.read_bytes().startswith(old))
-                self.assertIn(done, archive.read_bytes())
+                self.assertIn(archived_form(done), archive.read_bytes())
                 self.assertIn(live, self.todo.read_bytes())
                 self.assertNotIn(done, self.todo.read_bytes())
                 self.assertFalse(self.archive.exists())
@@ -94,7 +137,7 @@ class TodoArchiveTests(unittest.TestCase):
                                      '## Done\n' + done)
                 result = json.loads(self.cli('archive').stdout)
                 self.assertEqual(result['archive'], owner.relative_to(self.repo).as_posix())
-                self.assertIn(done, owner.read_text())
+                self.assertIn(archived_form(done), owner.read_text())
                 self.assertIn(active, self.todo.read_text())
                 self.assertEqual(reference.read_text(), '# Archive contract; keep unchanged\n')
                 self.assertFalse((self.repo / 'test_archive.py').exists())
@@ -127,7 +170,7 @@ class TodoArchiveTests(unittest.TestCase):
         self.cli('archive')
         self.assertIn(coverage, self.todo.read_text())
         self.assertNotIn(coverage, self.archive.read_text())
-        self.assertIn(self.done, self.archive.read_text())
+        self.assertIn(archived_form(self.done), self.archive.read_text())
 
     def test_matching_heading_and_checkbox_move_as_one_complete_unit(self):
         for newline in ('\n', '\r\n'):
@@ -140,7 +183,7 @@ class TodoArchiveTests(unittest.TestCase):
                 self.assertEqual(result['moved'], ['T1'])
                 self.assertEqual(result['retained'], [])
                 self.assertNotIn(b'### T1', self.todo.read_bytes())
-                self.assertEqual(self.archive.read_bytes().count(done), 1)
+                self.assertEqual(self.archive.read_bytes().count(archived_form(done)), 1)
                 self.assertIn(self.open.encode(), self.todo.read_bytes())
                 self.assertEqual(self.ledger.read_bytes(), ledger)
                 self.cli('render')
@@ -197,7 +240,7 @@ class TodoArchiveTests(unittest.TestCase):
                 '- [ ] NOT-A-TASK\n```\n\n')
         self.todo.write_text('# TODO\n\n## Done\n\n' + done + '### T2 — Still open\n\n- Status: open\n')
         self.cli('archive')
-        self.assertIn(done, self.archive.read_text())
+        self.assertIn(archived_form(done), self.archive.read_text())
         self.assertNotIn(done, self.todo.read_text())
         self.assertIn('### T2 — Still open\n\n- Status: open\n', self.todo.read_text())
 
@@ -205,7 +248,7 @@ class TodoArchiveTests(unittest.TestCase):
         done = self.done + '#### Evidence\n\nA complete receipt stays with T1.\n\n'
         self.todo.write_text('# TODO\n\n## Done\n' + done + '## Now\n' + self.open)
         self.cli('archive')
-        self.assertIn(done, self.archive.read_text())
+        self.assertIn(archived_form(done), self.archive.read_text())
         self.assertNotIn('A complete receipt', self.todo.read_text())
         self.assertIn(self.open, self.todo.read_text())
 
@@ -214,7 +257,7 @@ class TodoArchiveTests(unittest.TestCase):
         self.todo.write_text('# TODO\n\n## Now\n\n### Core work\n\n' + done +
                              '### Later group\n\n' + self.open)
         self.cli('archive')
-        self.assertIn(done, self.archive.read_text())
+        self.assertIn(archived_form(done), self.archive.read_text())
         self.assertNotIn('Later group', self.archive.read_text())
         self.assertEqual(self.todo.read_text().count('### Later group\n\n' + self.open), 1)
 
@@ -250,7 +293,7 @@ class TodoArchiveTests(unittest.TestCase):
         self.cli('archive')
         self.assertEqual(self.todo.read_bytes(), before)
         self.cli('archive', '--verified-tasks', 'T1')
-        self.assertIn(done, self.archive.read_text())
+        self.assertIn(archived_form(done), self.archive.read_text())
         self.assertIn(self.open, self.todo.read_text())
         self.assertFalse(self.ledger.exists())
         before = (self.todo.read_bytes(), self.archive.read_bytes())
@@ -281,7 +324,7 @@ class TodoArchiveTests(unittest.TestCase):
     def test_repeated_source_blocks_preserve_multiplicity(self):
         self.todo.write_text('# TODO\n\n## Done\n' + self.done * 2)
         self.cli('archive')
-        self.assertEqual(self.archive.read_text().count(self.done), 2)
+        self.assertEqual(self.archive.read_text().count(archived_form(self.done)), 2)
         self.assertNotIn(self.done, self.todo.read_text())
 
     def test_interrupted_move_retries_without_duplicating_archive(self):
@@ -334,7 +377,7 @@ class TodoArchiveTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, 'stale write'):
                 goals.render(self.repo, goals.normalize(self.data))
         self.assertEqual(self.todo.read_bytes(), before + b'Owner continuation\n')
-        self.assertIn(self.done, self.archive.read_text())
+        self.assertIn(archived_form(self.done), self.archive.read_text())
 
     def test_concurrent_archive_append_is_preserved_without_removing_source(self):
         original_write = goals.atomic_write

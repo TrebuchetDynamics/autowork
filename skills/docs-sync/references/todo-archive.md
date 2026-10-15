@@ -59,7 +59,11 @@ The helper preserves original entry bytes and prior archive bytes, verifies the
 archive before removing live text, and retries interrupted moves by whole-block
 containment and multiplicity. Conflicting archive owners, symlinks, changed source
 or changed archive bytes are refused. A crash may leave a duplicate live entry;
-rerun the command to finish safely. The cooperative lock does not prevent a writer
+rerun the command to finish safely. Blank lines that end an entry separate it from
+the next heading and are not entry content: the helper archives each entry ending
+in one line break of its own style (LF or CRLF), so the archive ends with exactly
+one newline and `git diff --check` passes after a closeout. Retries also recognize
+entries archived earlier with their separator. The cooperative lock does not prevent a writer
 that ignores it from editing files. Broader historical narratives and dated
 pass-notes still follow the preservation procedure below.
 

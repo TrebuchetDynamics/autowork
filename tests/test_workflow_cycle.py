@@ -308,7 +308,9 @@ class LedgerCycleTests(unittest.TestCase):
         for body in self.bodies.values():
             completed = body.replace('- [ ]', '- [x]', 1)
             self.assertNotIn(completed, todo)
-            self.assertEqual((self.repo / 'TODO.archive.md').read_text().count(completed), 1)
+            # Archived bodies drop their trailing separator blank line (TOOLSET-042).
+            archived = completed.rstrip('\n') + '\n'
+            self.assertEqual((self.repo / 'TODO.archive.md').read_text().count(archived), 1)
         self.assertFalse((self.repo / 'tasks/todo.md').exists())
 
 

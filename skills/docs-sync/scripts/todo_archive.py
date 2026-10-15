@@ -162,7 +162,10 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
                 retained.append(tid)
             continue
         section = next((h[2] for h in reversed(headings) if h.start() < start and len(h[1]) <= 2), 'Tasks')
-        block = text[start:end]
+        # Trailing blank lines separate a body from the next heading; they are not
+        # task content. Archive the body ending in one line break of its own style.
+        raw = text[start:end]
+        block = raw.rstrip('\r\n') + ('\r\n' if '\r\n' in raw else '\n')
         if superseded:
             block = ('Disposition: Superseded; not completed\nSuccessors: ' +
                      ', '.join(task['superseded_by']) + '\nReason: ' + task['supersession_reason'] +
