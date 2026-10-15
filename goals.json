@@ -469,14 +469,6 @@
     },
     {
       "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-069",
-      "section": "Next",
-      "status": "open",
-      "title": "Run check.py test directories concurrently"
-    },
-    {
-      "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-001",
       "section": "Done",
@@ -840,6 +832,14 @@
       "section": "Done",
       "status": "done",
       "title": "Ship a Claude Code plugin marketplace for the portable adapters"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-069",
+      "section": "Done",
+      "status": "done",
+      "title": "Run check.py test directories concurrently"
     },
     {
       "depends_on": [],

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +112,56 @@ class Check(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('TIMEOUT', result.stdout)
 
+
+    def sleeper(self, relative, seconds, marker):
+        self.write(relative, f'''import time, unittest
+class Check(unittest.TestCase):
+    def test_{marker}(self):
+        time.sleep({seconds})
+        print('OUTPUT-{marker}', flush=True)
+''')
+
+    def test_directories_run_concurrently_with_output_in_directory_order(self):
+        self.sleeper('tests/test_slow.py', 1.5, 'first')
+        self.sleeper('skills/docs-sync/scripts/test_fast.py', 1.5, 'second')
+        started = time.monotonic()
+        result = self.run_check()
+        elapsed = time.monotonic() - started
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertLess(elapsed, 2.8, 'directories did not overlap')
+        out = result.stdout
+        self.assertLess(out.index('CHECK tests'), out.index('OUTPUT-first'))
+        self.assertLess(out.index('OUTPUT-first'), out.index('CHECK skills/docs-sync/scripts'))
+        self.assertLess(out.index('CHECK skills/docs-sync/scripts'), out.index('OUTPUT-second'))
+        self.assertTrue(out.rstrip().endswith('Offline result: 2 test directories passed; 0 failed; 0 modules excluded.'))
+
+    def test_jobs_one_runs_sequentially_with_the_same_output(self):
+        self.sleeper('tests/test_slow.py', 1, 'first')
+        self.sleeper('skills/docs-sync/scripts/test_fast.py', 1, 'second')
+        started = time.monotonic()
+        sequential = self.run_check('--jobs', '1')
+        self.assertGreaterEqual(time.monotonic() - started, 2)
+        concurrent = self.run_check()
+        for result in (sequential, concurrent):
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        strip = lambda text: [line for line in text.splitlines() if not line.startswith(('Ran ', '---', 'OK'))]
+        self.assertEqual(strip(sequential.stdout), strip(concurrent.stdout))
+
+    def test_jobs_must_be_a_positive_integer(self):
+        for value in ('0', '-1', 'x'):
+            with self.subTest(jobs=value):
+                result = self.run_check('--jobs', value)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertNotIn('CHECK', result.stdout)
+
+    def test_concurrent_timeout_fails_only_its_directory(self):
+        self.write('tests/test_hang.py', 'import time; time.sleep(5)\n')
+        self.sleeper('skills/docs-sync/scripts/test_fast.py', 0, 'second')
+        result = self.run_check('--timeout', '1')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('TIMEOUT: ', result.stdout)
+        self.assertIn('OUTPUT-second', result.stdout)
+        self.assertIn('1 test directories passed; 1 failed', result.stdout)
 
 if __name__ == '__main__':
     unittest.main()

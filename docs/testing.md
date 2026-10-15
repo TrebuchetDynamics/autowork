@@ -11,7 +11,10 @@ node --test tests/portable_pi.test.mjs
 
 The checker runs top-level and maintained bundled workflow tests in separate
 Python processes, with a 600-second timeout per directory (the Autowork suite
-alone takes about 150 seconds on an idle machine). `--list` prints the
+alone takes about 150 seconds on an idle machine). The directories run at the same
+time by default, and each one's output is printed whole and in the usual order, so a
+full run takes about as long as the Autowork suite; `--jobs N` limits how many run at
+once and `--jobs 1` runs them one after another. `--list` prints the
 inventory without importing tests. Model, installed native backend and optional
 integration suites are explicitly excluded with reasons; live opt-in flags are
 removed from test subprocesses. Passing this gate does not qualify model/native

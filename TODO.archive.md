@@ -1290,3 +1290,23 @@ Source section: Now
 - Acceptance: A strict plugin validation passes; an isolated install lists exactly the 13 adapters and no root Hermes skills, hooks, agents or MCP servers; adapter links resolve in the installed copy.
 - Checks: `tests/test_portable_package.py`, `python3 scripts/check.py`, `node --test tests/portable_pi.test.mjs`, `claude plugin validate . --strict`.
 - Dependencies: None.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-069 — Run check.py test directories concurrently
+
+- [x] TOOLSET-069 — Run check.py test directories concurrently
+- Status: done
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [plan](docs/project.md#test-suite-optimization-method-2026-10-15), [check runner](scripts/check.py), [check runner tests](tests/test_check.py).
+- Scope: Run the per-directory `unittest` subprocesses of `scripts/check.py` concurrently (default: one worker per directory, `--jobs N` to limit, `--jobs 1` keeps today's sequential behavior). Keep each directory's output contiguous and printed in the current directory order, keep the per-directory timeout and process-group kill, and keep the final summary line byte-identical in format. Document the option in docs/testing.md and the CHANGELOG.
+- Acceptance: Three consecutive full runs pass with the default; wall time is measured before and after on the same machine (baseline 242 s on `75fb76f`) and recorded in the task evidence; output order and the summary format match `--jobs 1`; a timed-out directory still fails the run and is killed while others finish.
+- Checks: the existing check-runner tests plus new ones for ordering, `--jobs 1` and timeout with concurrency; `python3 scripts/check.py` three times with `/usr/bin/time`; `python3 scripts/check.py --jobs 1`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to which tests run or to the excluded native modules; no parallelism inside a directory (left to TOOLSET-068's findings); no push.
+- Current evidence: `scripts/check.py` submits each directory to a thread pool (`--jobs`, default one worker per directory, positive integers only) and prints each directory's buffered output in the original order; timeouts still kill the process group and fail only that directory. Four new tests in `tests/test_check.py` cover overlap with ordered output, `--jobs 1` parity, `--jobs` validation and a concurrent timeout; the first two failed before the change.
+- Checks run: three default full runs passed in 174.8 s, 165.2 s and 164.0 s, and `--jobs 1` passed in 235.4 s, on the same machine as the 242 s baseline (`75fb76f`); the `CHECK`/summary lines of `--jobs 1` and the default are identical; `tests/test_check.py` 10 passed. Offline only.
