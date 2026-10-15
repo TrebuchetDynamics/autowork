@@ -8,8 +8,9 @@ hermes toolset doctor --core     # bundled skills and commands only
 hermes toolset doctor --json     # full stack, machine-readable
 ```
 
-In chat, `/toolset` shows load status and `/toolset list` shows which plugin owns
-each command. Diagnostics check registration only: they never prove that a model
+In chat, `/toolset` shows load status and `/toolset list` shows which of this
+bundle's plugins (or a skill) owns each command; Hermes' `/commands` lists only
+built-in and skill commands, not plugin commands. Diagnostics check registration only: they never prove that a model
 ran, a worker is available or a Telegram message was delivered.
 
 ## Commands
@@ -21,8 +22,8 @@ ran, a worker is available or a Telegram message was delivered.
   profile. Run `hermes -p PROFILE plugins enable hermes-toolset`; see
   [first use](onboarding.md).
 - **Name owned by another plugin:** an existing command keeps its name. The
-  bundle logs `Skipping /NAME: command already exists` and the skill stays
-  available as `hermes-toolset:NAME`; see [workflows](workflows.md#commands).
+  bundle logs `Skipping /NAME: command already exists` (with a `skill_view` hint
+  for most skills) and the skill stays available as `hermes-toolset:NAME`; see [workflows](workflows.md#commands).
 - **Running gateway predates the update:** updating source does not refresh a
   running gateway's registry. Reload the plugin or restart the gateway, then
   open a new conversation.
@@ -30,17 +31,18 @@ ran, a worker is available or a Telegram message was delivered.
 ### A command is missing from Telegram's picker but works when typed
 
 This is expected. Menu capacity is limited, and compatibility spellings such as
-`/autoresearch_plan` are deliberately not advertised. `/commands` lists
-everything; see [workflow commands in the picker](onboarding.md#workflow-commands-in-telegrams-picker).
+`/autoresearch_plan` are deliberately not advertised. `/toolset list` shows them
+(Hermes' `/commands` omits plugin commands); see [workflow commands in the picker](onboarding.md#workflow-commands-in-telegrams-picker).
 
 ### Telegram still shows retired or old commands
 
 Handlers refresh on plugin reload, but the bot menu refreshes only when the
-gateway reconnects. `/toolset update` requests one graceful restart of a running
-gateway when it changed anything and every profile activated cleanly
-(`gateway_restart: requested`), and clears leftover per-chat lists that still contain retired
-commands (`chat_menus_healed`). Otherwise restart the gateway through your normal
-service procedure. See [update all profiles](installation.md#update-all-profiles).
+gateway reconnects. `/toolset update` requests one graceful restart of the running
+root gateway when it changed anything and every profile activated cleanly
+(`gateway_restart: requested`); profile-dedicated gateways are not detected. It also
+clears leftover per-chat lists that still contain retired commands for the owner and
+home chats configured in each profile's `.env` (`chat_menus_healed`). Otherwise
+restart the gateway through your normal service procedure. See [update all profiles](installation.md#update-all-profiles).
 
 ### The agent follows old skill instructions after an update
 
@@ -57,8 +59,9 @@ them, or keep using the core workflows; see [installation](installation.md#insta
 
 ### Setup or a profile reports `incomplete`
 
-- Read the profile's `errors` and the update or setup log; later stages can fail
-  after earlier ones wrote, and there is no automatic rollback.
+- Read the setup output or the profile's `errors` (update receipts record
+  `enable_exit` and `finalize_exit` per profile; details are in `run.log`); later
+  stages can fail after earlier ones wrote, and there is no automatic rollback.
 - Missing dependency consent: rerun with `--yes-deps`.
 - Native security scans and blocked dependencies are reported, never bypassed.
 - Fix the reported cause and rerun the same command; see
@@ -91,11 +94,13 @@ CLI startup can apply runtime defaults before setup's preflight runs. From a
 source checkout, `bash install.sh --yes-deps --dry-run` previews without booting
 Hermes; see the [README](../README.md#first-use-in-your-project).
 
-### Setup printed `memory off` for a profile
+### Setup is BLOCKED by a memory provider, or printed `memory off`
 
-OMH setup never replaces another selected memory provider. The line names the
-provider and the command that clears it (`hermes -p PROFILE memory off`); run it,
-then rerun setup to use OMH memory. `memory.provider is not set` means OMH did not
+OMH never replaces another selected memory provider. Full setup's preflight
+reports `BLOCKED: ... existing memory provider conflicts with OMH setup`; running
+`install-omh.py` directly instead prints `memory off` with the provider's name and
+the command that clears it (`hermes memory off`, with `-p PROFILE` for a named
+profile). Run it, then rerun setup to use OMH memory. `memory.provider is not set` means OMH did not
 take the empty slot; check `hermes -p PROFILE memory status`. See
 [memory](memory.md#omh-memory-per-profile).
 
@@ -122,7 +127,8 @@ See [update all profiles](installation.md#update-all-profiles) for the full rule
 ### The bundle broke after moving or deleting its checkout
 
 Source installs link each profile to the checkout. Restore it at the same path,
-or reinstall from its new location; see [update or remove](onboarding.md#update-or-remove).
+or delete the now-dangling `plugins/hermes-toolset` link in each profile and rerun
+setup from the new location (setup and update refuse a dangling link); see [update or remove](onboarding.md#update-or-remove).
 
 ## Workflows
 
@@ -134,16 +140,18 @@ By design: documentation and planning never start implementation. Run
 ### Autowork reports `PRIORITY_DRIFT` or `UNMIGRATED`
 
 `TODO.md` task order changed since the last recorded priority, or the project has
-not recorded one yet. Scheduled Autowork reconciles drift itself; manually, run
+not recorded one yet. Scheduled Autowork's skill instructs it to run `reorder` on drift (no script does
+this automatically); manually, run
 the commands the report prints (`goals.py reorder`, or a one-time
 `goals.py bootstrap-order` for `UNMIGRATED`). See
 [TODO-owned task priority](project.md#todo-owned-task-priority).
 
 ### `docs.py check` reports findings
 
-Each line names the role, the document and the problem: a broken link or anchor,
-a documented script that does not exist, or a baseline role that is neither
-mapped nor recorded as not applicable. Fix the document or the manifest; see the
+Each line names the role and the problem, and the document where one applies: a
+manifest validation error, a missing mapped document or anchor, a broken link or
+anchor, a documented script that does not exist, a missing covered path, or a
+baseline role that is neither mapped nor recorded as not applicable. Fix the document or the manifest; see the
 [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest).
 
 ## Still stuck

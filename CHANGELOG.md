@@ -13,7 +13,8 @@ claim of a tagged release, completed installation or live workflow qualification
   `docs.py stale` lists roles whose covered paths changed after their
   `verified_at` commit. An optional repository-type `profile` (service, library,
   cli-plugin, application, infrastructure) sets the baseline roles, adding reference,
-  install/upgrade, troubleshooting, user-guide and glossary roles. Repositories
+  install/upgrade, troubleshooting and user-guide baseline roles; the scaffold also
+  documents a glossary role. Repositories
   without a manifest are unaffected.
 
 - Planning craft shared by `/plan_with_me` and `/plan_for_me`, adapted from
@@ -28,8 +29,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 - Telegram-routed Autowork jobs announce each run's start. The plugin copies the
   bundle's `autowork-start-notice.py` cron script into every profile's `scripts/`
-  folder, and `/cron_autowork` attaches it; the finished report remains Hermes'
-  normal cron delivery.
+  folder (a same-named script without the bundle marker is never replaced; the
+  plugin logs a warning), and `/cron_autowork` attaches it; the finished report
+  remains Hermes' normal cron delivery.
 - `/cron_autowork` with a cadence resumes the matched paused job on that cadence
   (for example `/cron_autowork 5m`), unless the request says to keep it paused.
   Multi-profile refreshes and repairs still never resume a job.
@@ -37,7 +39,8 @@ claim of a tagged release, completed installation or live workflow qualification
 - TODO.md order is the enforced human priority. goals.json records a versioned
   `priority_order`; selection ranks focus, section, recorded order, then goal
   priority. `goals.py next`, direct selection, backlog checks and retry selection
-  share one guard that returns `PRIORITY_DRIFT` instead of the stale pick.
+  share one guard: selection returns `PRIORITY_DRIFT` instead of the stale pick, and
+  `backlog-check` reports drift as an ineligible reason.
   `goals.py reorder` reconciles; `goals.py bootstrap-order` is the one-time,
   dry-run-first migration; it keeps tasks within their `###` groups, refuses a
   changed first pick and reports deeper eligible-order changes. Unrecorded ledgers keep legacy order with a visible
@@ -67,8 +70,8 @@ claim of a tagged release, completed installation or live workflow qualification
   suite takes about 150 seconds idle, so any machine load reported a false
   TIMEOUT failure with every test passing. The default is now 600 seconds.
 - OMH setup reports `memory off` for a profile where another memory provider
-  kept the slot (with the `hermes memory off` command to clear it), instead of
-  printing a plain success line while OMH memory stayed off.
+  kept the slot (with the `hermes memory off` command to clear it) or the slot
+  stayed unset, instead of printing a plain success line while OMH memory stayed off.
 
 - Autowork accepted only `Checks:` as a task's verification field, while Docs Sync
   and `goals.py next` also accepted `Verification:`. Every kilo task used

@@ -11,8 +11,10 @@ Source: [runtime configuration writes](../runtime_defaults.py),
 ## Before installation
 
 Keep a private backup of each target profile's `config.yaml` and an inventory of
-its plugin and skill directories. Include memory-provider selection, existing
-store bindings, `approvals`, disabled-skill lists and plugin enablement. Configs
+its plugin and skill directories and `scripts/`. Include memory-provider selection,
+existing store bindings (including `plugins.entries.omh.settings.omh_home`),
+`approvals`, disabled-skill lists, the Telegram
+`platforms.telegram.extra.command_menu.priority` list and plugin enablement. Configs
 can contain credentials; do not commit or publish backups. Full setup discovers
 all live profiles, so a default-profile backup alone is insufficient.
 
@@ -30,8 +32,9 @@ hermes -p PROFILE plugins disable hermes-toolset
 hermes -p PROFILE plugins remove hermes-toolset
 ```
 
-These are Hermes' native removal commands. Repeat for each profile you intend to
-remove. A shared gateway can still have loaded handlers: restart it through your
+These are Hermes' native removal commands. `plugins remove` also deletes the whole
+`plugins.entries.hermes-toolset` entry, including that opt-out, so set the opt-out
+again before any later reinstall. Repeat for each profile you intend to remove. A shared gateway can still have loaded handlers: restart it through your
 normal service procedure after ongoing work has stopped, and reopen CLI sessions.
 Removing a local plugin link does not mean its source checkout should be deleted.
 
@@ -52,9 +55,10 @@ hermes -p PROFILE config check
 ```
 
 These are example settings, **not** reconstructed previous values. Also inspect
-`plugins.entries.hermes-toolset`, global/channel skill-disable lists, plugin
-activation and memory configuration. Restore removed keys as absent when that was
-the prior state; do not replace an entire config with an old copy blindly.
+global/per-platform skill-disable lists, the Telegram command-menu priority, plugin
+activation, memory configuration and the bundle-managed
+`scripts/autowork-start-notice.py`. Restore removed keys as absent (`hermes -p
+PROFILE config unset KEY`) when that was the prior state; do not replace an entire config with an old copy blindly.
 
 ## Skills, integrations and memories remain separate
 

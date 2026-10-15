@@ -42,7 +42,9 @@ install that plugin into your Codex configuration. After installation, use the
 next turn if the client refreshes skill discovery; otherwise start a new session.
 
 Codex uses skill invocation, not Hermes slash-command registration. The adapters
-are explicit-only in Codex so installation does not automatically invoke a workflow.
+are explicit-only in Codex (`allow_implicit_invocation: false` in each
+`agents/openai.yaml`) so installation does not automatically invoke a workflow. Cron
+Autowork currently ships no such policy file, so Codex may invoke it implicitly.
 Update a Git install with `codex plugin marketplace upgrade hermes-toolset-marketplace`
 (it refreshes Git marketplace snapshots only); remove with
 `codex plugin remove hermes-toolset@hermes-toolset-marketplace`. Removal does not
@@ -51,7 +53,8 @@ undo repository work or delete plans. The marketplace registration remains until
 
 ## Pi coding agent
 
-Requires Pi with package manifests and extension commands. From this checkout:
+Requires Pi with package manifests and extension commands, and Node 22 or later. From
+this checkout:
 
 ```sh
 pi install .
@@ -77,7 +80,7 @@ Local installs refer to this checkout; keep it in place. The extension registers
 
 All 13 `/autoresearch_<protocol>` commands are available. The other commands are
 `/cron_autowork` (scheduling guidance through host capabilities, not a Hermes timer),
-`/autoresearch`, `/engineering`, `/impeccable`, `/grill_me`, `/lgtm`,
+`/autoresearch`, `/engineering`, `/impeccable`, `/lgtm`,
 `/git_commit_push` and `/git_pull_merge`. Native `/skill:<name>` invocation is also
 available; skill names use hyphens. Command arguments remain literal prompt text.
 `/grill_me` loads Plan With Me with explicit challenge mode and preserves the
@@ -105,7 +108,7 @@ Python 3 is needed for those helpers; a questions-only interview needs no Python
 Neither package installs external integrations, modifies approval policies, copies
 credentials, or changes model/memory settings. Host permissions and repo instructions
 still apply. Installing the package exposes skills, not proof of an executed workflow.
-The Gemini/Claude-specific commands in vendored research protocols are adapted to
+Host-specific commands in vendored research protocols are adapted to
 native tools; the portable host contract wins over foreign runtime instructions.
 
 Offline checks:

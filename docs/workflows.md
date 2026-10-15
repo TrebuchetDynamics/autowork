@@ -25,7 +25,9 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/autoresearch` | `/autoresearch` | Route a research goal or run a bounded metric loop |
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
 | `/cron-autowork` | `/cron_autowork` | Create or update a recurring Autowork job; preserve existing scope. Giving a cadence for a paused job resumes it unless you say to keep it paused |
-| `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps |
+| `/impeccable` | `/impeccable` | Design and front-end quality workflow |
+| `/engineering` | `/engineering` | Select one engineering protocol for a concrete method gap |
+| `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps; `/toolset update [--check\|status]` updates all profiles |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
 decisions and actionable tasks through Docs Sync, following the shared
@@ -67,7 +69,7 @@ Public skill names match the workflow names. Source directories stay stable for 
 | Primary command | Public skill ID | Compatibility command |
 | --- | --- | --- |
 | `/plan_with_me` | `plan-with-me` | None |
-| `/plan_for_me` | `plan-for-me` | `/autoresearch_plan` |
+| `/plan_for_me` | `plan-for-me` | `/autoresearch:plan` (CLI), `/autoresearch_plan` (Telegram); runs the Autoresearch skill's plan protocol with the same planning adaptations |
 | `/docs_sync` | `docs-sync` | None |
 | `/autowork` | `autowork` | None; Autogoal is retired |
 
@@ -84,7 +86,8 @@ an already-running gateway's command registry: use supported plugin reload and
 verify activation before claiming the new names work in messaging.
 
 Docs Sync and autowork decide routine engineering choices autonomously within the
-accepted scope. Workers receive the selected task, accepted decisions, scope, checks
+accepted scope. The executing session (or an optional authorized delegate) works
+from the selected task, accepted decisions, scope, checks
 and completion rules. For a concrete method gap or explicit request, they select one
 [Addy protocol](../skills/engineering/SKILL.md). Autowork retains workflow authority;
 protocols supply techniques within its contract. Handoffs record methods that
@@ -96,7 +99,8 @@ The [engineering cycle](../skills/shared/ENGINEERING-CYCLE.md) is an optional ro
 reference when method selection is unclear. A ready task needs no routing prepass.
 A documentation-only `/docs_sync` request does not launch workers. To continue
 through a spec, explicitly ask `/autowork` to implement that accepted spec within
-its stated scope. Default `/autowork` hands off one slice. Review acceptance and
+its stated scope. Default `/autowork` completes one useful slice in the current
+session, including recovery and closeout. Review acceptance and
 executed evidence precede canonical closure; no push or deployment is implied.
 Skill availability and support files are checked at use time; a missing skill is
 reported with its safe fallback, not silently treated as loaded.
@@ -198,14 +202,17 @@ Host-native delegation remains optional and needs existing authorization.
 
 Autowork works in the canonical checkout unless something is actually writing
 there. A running Autowork command for the repository blocks every worktree. Any
-other agent session (`pi`, `claude`, `codex`, `hermes`) blocks only the checkout
-it is in, and only while it is active: terminal input or output in the last 30
-minutes, running commands, or an open writable repository file. A launcher whose
+other agent session (such as `pi`, `claude`, `codex`, `hermes` or `aider`) blocks
+only the checkouts it touches (its working directory, path arguments or open writable
+files), and only while it is active (terminal input or output in the last 30
+minutes, running commands, or an open writable repository file) or its activity
+cannot be determined, for example without a readable terminal. A launcher whose
 only child is the agent itself does not count as running commands. An idle
 session left open is listed under `idle_sessions` and never blocks, killed or
 messaged. For an active one the helper returns `BUSY` with an `isolate` branch and
 `git worktree add` command; the task runs there, and `owner_cycle.py REPO
---writers` (read-only, `CLEAR` or `BUSY`) gates merging the branch back.
+--writers` (read-only; `CLEAR`, `BUSY` or `ACTION_REQUIRED`, exit 1 unless `CLEAR`)
+gates merging the branch back.
 
 ### Delivery batches and partial completion
 
@@ -258,7 +265,7 @@ or permission to resume a schedule.
 
 ## Scheduling behavior
 
-Use `/cron_autowork` for schedule setup; `/autowork` performs the work. The scheduling
+Use `/cron-autowork` (`/cron_autowork` in Telegram) for schedule setup; `/autowork` performs the work. The scheduling
 skill lists existing jobs first, binds the actual repository/workdir and profile,
 updates a matching job, and verifies the saved cadence, prompt and execution limits.
 A new job without a cadence asks for one. `prompt only` creates no job. Portable
@@ -270,11 +277,12 @@ recurring jobs report every occurrence by default, including unchanged blockers.
 Setup confirmation, job execution and scheduled message delivery have separate
 receipts. Scheduling alone does not trigger an immediate development run.
 
-Each run of a Telegram-routed Autowork job sends a start message before the agent
-begins, and the run's report when it finishes. The start message comes from the
+Each run of a Telegram-routed Autowork job with the start-notice script attached
+sends a start message before the agent begins, and the run's report when it finishes. The start message comes from the
 bundle's `autowork-start-notice.py` pre-run script, which the plugin copies into
 every profile's `scripts/` folder (Hermes runs cron scripts only from there) and
-`/cron_autowork` attaches to the job. A same-named script without the bundle
+`/cron_autowork` attaches to the job unless the job already has a different script
+(it keeps that one and reports the notice as not attached). A same-named script without the bundle
 marker is treated as the user's and never replaced. The script never fails a run;
 a missing token, ambiguous job match or unreachable Bot API is reported in the
 run's own prompt instead.

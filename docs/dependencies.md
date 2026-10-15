@@ -20,7 +20,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | Grill Me 2.1.0 | Bundled [SKILL.md](../skills/grill-me/SKILL.md) | Its checked-in bytes are fixed by this repository revision. |
 | OMH setup CLI | Git revision pinned in defaults.json | The Hermes plugin source is separately resolved through the source inventory/catalog. |
 | OMH plugin, Ponytail, Hermes Speech | Native Hermes installs from declared sources | No unified bundle lockfile pins their installed revisions. |
-| Addy agent-skills (25 protocols) | Vendored commit and hashes in [UPSTREAM.json](../skills/engineering/UPSTREAM.json) | Updated only through a reviewed Toolset change; shared references included. Two defensive examples are paraphrased, with original and adapted hashes recorded. |
+| Addy agent-skills (25 protocols) | Vendored commit and hashes in [UPSTREAM.json](../skills/engineering/UPSTREAM.json) | Updated only through a reviewed Toolset change; shared references included. Two defensive examples are paraphrased, with original and adapted hashes recorded; a refresh restores upstream bytes, so re-apply them by hand. |
 | Graphify | Dedicated setup helper | Not covered by a unified bundle lockfile. |
 
 Ordinary installation skips existing resources. `/toolset update` updates bundled
@@ -75,8 +75,13 @@ python3 -m unittest discover -s tests -p test_engineering_vendor.py
 The pack includes all 25 skills, their local support files, root references, docs,
 commands and analytical personas, plus licensing/source documentation. Host hooks,
 harness manifests, evals and root upstream scripts are excluded and never activated.
-The refresh tool copies Git objects from that revision, not dirty working files;
-review its diff before committing. Review newly introduced links and dependencies,
-run the full offline checks and native registration test, then ship with the bundle.
+The refresh tool copies Git objects from that revision, not dirty working files, and
+writes upstream bytes unchanged: it reverts the two paraphrased defensive examples
+(`browser-testing-with-devtools`, `source-driven-development`) and drops their
+`upstream_sha256` records. Re-apply both paraphrases and their hashes, then review
+the diff before committing; `test_engineering_vendor.py` does not catch their loss. Review newly introduced links and dependencies,
+run the full offline checks and the native registration test
+(`skills/autowork/scripts/test_registration_admission.py` with
+`HERMES_NATIVE_REGISTRATION_TEST=1`), then ship with the bundle.
 `/toolset update` consumes that reviewed snapshot; it never fetches Addy latest.
 Existing profile-level Addy imports remain untouched as optional alternatives.

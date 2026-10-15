@@ -471,8 +471,8 @@ These references do not grant commit, push, cleanup or execution authority.
 
 ## Skill policy regression checks
 
-For changes to this delivery policy, run through `terminal` from the shared-skills
-repository: `python git-commit-push/scripts/test_delivery_scope.py -v`.
-The canonical `make check` discovers this offline suite. These checks pin scope,
+For changes to this delivery policy, run through `terminal` from the Hermes Toolset
+repository: `python3 skills/git-commit-push/scripts/test_delivery_scope.py -v`.
+`python3 scripts/check.py` discovers this offline suite. These checks pin scope,
 cross-agent eligibility, live-writer exclusions and stale-ledger reconciliation;
 they are policy-contract tests, not proof of model behavior or live publication.

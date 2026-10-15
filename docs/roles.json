@@ -12,12 +12,12 @@
         "update_bundle.py",
         "runtime_defaults.py"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "8738cc636fdc"
     },
     "reference": {
       "status": "created",
       "path": "docs/reference.md",
-      "verified_at": "6c2f4e51d8d2",
+      "verified_at": "add009f149ad",
       "covers": [
         "bundle.py",
         "setup_bundle.py",
@@ -49,12 +49,12 @@
         "runtime_defaults.py",
         "skills/grill-me/SKILL.md"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "8738cc636fdc"
     },
     "troubleshooting": {
       "status": "created",
       "path": "docs/troubleshooting.md",
-      "verified_at": "31ff7ff6f0e2",
+      "verified_at": "8738cc636fdc",
       "covers": [
         "bundle.py",
         "setup_runtime.py",
@@ -87,7 +87,7 @@
         "scripts/check.py",
         "tests"
       ],
-      "verified_at": "6c2f4e51d8d2"
+      "verified_at": "add009f149ad"
     },
     "changelog": {
       "status": "maintained",
@@ -105,7 +105,7 @@
         "autoresearch_commands.py",
         "telegram_menu_policy.py"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "8738cc636fdc"
     },
     "removal": {
       "status": "maintained",
@@ -117,7 +117,7 @@
       "covers": [
         "adapters"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "8738cc636fdc"
     },
     "memory": {
       "status": "maintained",
@@ -141,7 +141,7 @@
         "skills/autoresearch/UPSTREAM.json",
         "skills/engineering/UPSTREAM.json"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "8738cc636fdc"
     },
     "contributing": {
       "status": "maintained",

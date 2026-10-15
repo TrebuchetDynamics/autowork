@@ -22,9 +22,11 @@ Explicit specialist commands still work independently within their stated scope.
 
 The main commands are **`/plan_with_me`** (ask and plan together),
 **`/plan_for_me`** (investigate and decide), **`/docs_sync`** (maintain docs and
-TODO.md), and **`/autowork`** (execute). Underscore and hyphen spellings work in
-CLI; Telegram displays underscores. `/autoresearch_plan` remains a compatibility
-command for planning.
+TODO.md), and **`/autowork`** (execute). In CLI chat, `/plan_with_me`, `/plan_for_me`
+and `/docs_sync` work with underscores or hyphens; other commands use hyphens
+(`/cron-autowork`, `/autoresearch:plan`). Telegram displays underscores and accepts
+either. `/autoresearch:plan` (`/autoresearch_plan` in Telegram) remains a
+compatibility command for planning.
 
 ## What you can do
 
@@ -33,14 +35,14 @@ command for planning.
 | Clarify a project | `/plan_with_me Design a caching layer` | Researches the repo, clarifies your request with focused questions, and saves the plan and tasks. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
 | Challenge a plan | `/plan_with_me Challenge this cache design` | Questions assumptions before implementation. | Core + configured model |
 | Maintain docs and tasks | `/docs_sync Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
-| Schedule repository work | `/cron_autowork every 30 minutes for this repo; no push` | Creates or updates a matching Autowork job and verifies its settings. Telegram-routed jobs post a message when each run starts and the report when it finishes. | Available scheduler + verified repository/profile |
+| Schedule repository work | `/cron-autowork every 30 minutes for this repo; no push` | Creates or updates a matching Autowork job and verifies its settings. Telegram-routed jobs with the start-notice script attached post a message when each run starts, and every Telegram-routed job posts the report when it finishes. | Available scheduler + verified repository/profile |
 | Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, calls bounded Autoresearch for unresolved planning or research questions, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; supporting tools only when needed |
 | Research and improve | `/plan_for_me Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through docs_sync. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
 | Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
 | Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
 | Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. | Profile setup tools + selected integrations |
-| Update the bundle | `/toolset update` | Checks upstream, updates plugin copies and bundled skills across all existing profiles, re-applies each profile's command menu and settings, and requests one graceful gateway restart when anything changed. Use `/toolset update status` for the result. | Git, upstream access and clean plugin checkouts |
+| Update the bundle | `/toolset update` | Checks upstream, updates plugin copies and bundled skills across all existing profiles, re-applies each profile's command menu and settings, and requests one graceful restart of the root gateway when anything changed (restart profile-dedicated gateways yourself). Use `/toolset update status` for the result. | Git, upstream access and clean plugin checkouts |
 | Inspect capabilities | `/toolset list` | Lists registered commands and their owners; `hermes toolset doctor --json` reports missing imports. | Core; inventory does not prove workflow readiness |
 
 **Core** means bundled commands with a configured model; `doctor --core` checks
@@ -84,8 +86,9 @@ a task:
 `Verification:` is accepted in place of `Checks:`, but not both on one task.
 
 When goals.json is present it records that order. To reprioritize, move whole task
-blocks in TODO.md and run `goals.py reorder <repo>`; until then Autowork stops with
-`PRIORITY_DRIFT` instead of running the old order. A ledger without a recorded
+blocks in TODO.md and run `goals.py reorder <repo>`; until then Autowork's default
+selection stops with `PRIORITY_DRIFT` instead of running the old order (a task you
+name explicitly can still run). A ledger without a recorded
 order reports `UNMIGRATED` and keeps legacy selection until a one-time
 `goals.py bootstrap-order` (dry-run first). Focus and dependencies still decide
 which eligible task runs; they never rewrite your order.
@@ -178,9 +181,10 @@ there is currently no separate minimal, policy-neutral Hermes package.
 
 These commands use the default profile. For an existing named profile, add
 `-p work` after `hermes` throughout (for example, `hermes -p work toolset doctor --core`).
-The manifest requires OMH, Ponytail and Hermes Speech, so native installation may
-involve dependency resolution or consent even though the smoke check needs none
-of those services.
+The manifest lists OMH, Ponytail and Hermes Speech as advisory dependencies: native
+installation does not install them, and the plugin loads with a warning when they
+are absent. The smoke check needs none of them; `hermes toolset setup --yes-deps`
+adds them.
 
 ```sh
 hermes plugins install TrebuchetDynamics/hermes-toolset
@@ -272,8 +276,10 @@ the result. Terminal equivalent: `hermes toolset update`. This targets **all liv
 profiles**, preserves local conflicts and uses fast-forward updates only. It also
 self-heals each profile's command menu, approval and injection settings
 (`settings_healed` in the result) and, when anything changed and every profile is
-ready, requests one graceful restart of a running gateway so Telegram menus refresh; in-flight turns finish first and
-cron schedules persist. It also clears leftover per-chat Telegram menus
+ready, requests one graceful restart of the running root gateway (profile-dedicated
+gateways are not detected; restart them yourself) so Telegram menus refresh;
+in-flight turns get a bounded drain period and cron schedules persist. It also clears
+leftover per-chat Telegram menus for each profile's configured owner and home chats
 that still list retired commands (`chat_menus_healed`). It refuses while a plugin checkout has
 uncommitted changes. See
 [update behavior and recovery](docs/installation.md#update-all-profiles).

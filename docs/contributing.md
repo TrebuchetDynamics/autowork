@@ -11,7 +11,8 @@ activity and preserve unrelated changes. Use an isolated branch/worktree when
 concurrent work needs isolation. No Hermes profile, Kanban card, native worker or
 additional public tracking file is required, including recovery of older work.
 
-Make a scoped change, run the task's acceptance checks and affected offline tests,
+Make a scoped change, run the task's acceptance checks and affected offline tests
+(`python3 scripts/check.py`; it does not run `node --test tests/portable_pi.test.mjs`),
 and submit normal repository review. Required independent review remains required;
 review-requested changes and integration use ordinary Git/project tools. Commit only
 attributable verified work under existing authority, then reconcile task evidence and
@@ -35,14 +36,19 @@ skills/
 
 Use a folder name of 1–32 lowercase letters, digits, hyphens, or underscores,
 starting with a letter or digit. The folder determines the command name; keep
-the skill's frontmatter `name` consistent with it. Workflow commands and their
-aliases are registered explicitly in `workflow_commands.py`. Underscores become hyphens
+the skill's frontmatter `name` consistent with it (enforced only for portable
+adapters). Most folders are registered automatically; `workflow_commands.py`
+registers both spellings for Plan With Me, Plan For Me and Docs Sync, and
+`autoresearch_commands.py` registers the research selectors. Underscores become hyphens
 in CLI commands and Telegram uses underscores: `my_skill` becomes `/my-skill`
 in CLI chat and `/my_skill` in Telegram. `my-skill` and `my_skill` cannot coexist.
 
-Every immediate child containing `SKILL.md` is discovered at plugin startup.
-Folders without that file are ignored. Invalid names, ambiguous aliases, or
-skill paths pointing outside the bundle cause an explicit plugin-load error.
+Every immediate child containing `SKILL.md` is discovered at plugin startup, except
+the retired `repo-docs` and `repo-interview`; `grill-me` gets a command but no
+separate skill identity while `plan-with-me` exists. Folders without `SKILL.md` are
+ignored. Invalid names, ambiguous aliases inside the bundle, or skill paths pointing
+outside it cause an explicit plugin-load error. A clash with an existing Hermes or
+plugin command only logs a warning and skips that command.
 
 For a GitHub installation, publish your skill changes and run:
 
@@ -51,10 +57,11 @@ hermes plugins update hermes-toolset
 hermes gateway restart
 ```
 
-Follow any Hermes request to stop a running gateway before updating. For a local
-symlink installation, edit this checkout and restart instead. New commands are
-discovered on startup, not watched live. Telegram's menu has limited capacity;
-Hermes controls which commands appear there.
+For a local symlink installation, edit this checkout and restart instead. New commands are
+discovered on startup, not watched live. A restart does not refresh a skill already
+copied into the profile's native skill directory; use `/toolset update` for that.
+Telegram's menu has limited capacity; the bundle prioritizes only the five workflow
+commands in [`telegram_menu_policy.py`](../telegram_menu_policy.py).
 
 
 ## Portable hosts

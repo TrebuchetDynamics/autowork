@@ -120,7 +120,9 @@ These are operator-run live checks, not recorded model or Telegram test results.
 
 For a native Git install, use `hermes -p work plugins update hermes-toolset`, then
 reload or restart the gateway through your normal service procedure and reopen CLI
-sessions. Recheck `doctor --core` and first use.
+sessions. `plugins update` does not refresh skill copies already in the profile's
+skill directory; `/toolset update` synchronizes them. Recheck `doctor --core` and
+first use.
 
 For a source install, the profile plugin links to your checkout. Keep its path
 stable; moving or deleting it breaks those links. Review local edits before
@@ -139,7 +141,8 @@ The picker advertises the current workflow commands: `/plan_with_me`,
 Hermes' menu priority, keep your own entries, mode and cap, and remove compatibility
 entries this bundle added earlier. Compatibility spellings such as `/autoresearch`,
 `/autoresearch_plan` and `/autoresearch_debug` still run when typed but are not
-advertised; `/commands` lists everything beyond the picker.
+advertised; `/toolset list` lists them (Hermes' `/commands` shows only built-in and
+skill commands).
 Command registration and Telegram's stored menu are separate: a gateway plugin
 reload wires handlers, while a gateway reconnect refreshes the bot menu. Tests use
 the configured menu cap, not an artificial 100-entry limit.

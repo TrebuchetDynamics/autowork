@@ -12,9 +12,10 @@
       "id": "PORTABLE",
       "priority": 10,
       "source": "docs/project.md#accepted-requirements",
-      "status": "met",
+      "status": "partial",
       "tasks": [
-        "TOOLSET-001"
+        "TOOLSET-001",
+        "TOOLSET-035"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -257,7 +258,7 @@
       "TOOLSET-019",
       "TOOLSET-011",
       "TOOLSET-013",
-      "TOOLSET-034"
+      "TOOLSET-035"
     ]
   },
   "tasks": [
@@ -314,6 +315,14 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-035",
+      "section": "Next",
+      "status": "open",
+      "title": "Make the Cron Autowork Codex adapter explicit-only like the other adapters"
     },
     {
       "depends_on": [],

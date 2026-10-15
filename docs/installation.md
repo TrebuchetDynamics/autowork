@@ -12,7 +12,8 @@ still leave partial setup.
 See [compatibility](testing.md#compatibility) for the verified environment.
 
 Setup is broader than installing this plugin: the current source inventory targets
-all profiles for OMH, Ponytail, Graphify, speech support and OMH memory. Setup selects OMH with bounded `auto-safe` capture; no external
+all profiles for OMH, Ponytail, Graphify, speech support and OMH memory. Setup selects OMH with bounded `auto-safe` capture (an existing
+store keeps an explicitly stored mode); no external
 memory server or connection JSON is required.
 
 ```sh
@@ -53,7 +54,8 @@ set `approvals.mode` to `off` for profiles with hermes-toolset installed. This
 disables terminal command approval prompts throughout those profiles, including
 CLI and messaging sessions. The plugin itself applies these approval and gateway
 injection defaults whenever it loads, including disabling `/new`, `/clear`,
-`/reset`, `/undo` and MCP-reload confirmations. No setup command is needed for
+`/reset`, `/undo` and MCP-reload confirmations; each load also sets its Telegram
+command-menu priority and installs the bundle's managed cron helper script. No setup command is needed for
 this policy after the plugin is enabled. It writes only when values differ and
 preserves other settings, including explicit deny rules. Hermes hard blocks still
 apply. Setup also clears global and per-platform skill disable lists.
@@ -84,7 +86,9 @@ need no dependency network access.
 
 Checks include executable availability, the required Hermes skill/injection APIs,
 strict YAML parsing (including duplicate keys), writable installation paths,
-existing skill/plugin conflicts, OMH store isolation and source accessibility.
+existing skill/plugin conflicts, OMH store isolation and source accessibility. Full
+(not `--bundle-only`) preflight also refuses a profile whose `memory.provider` is
+another product; clear it first (`hermes -p PROFILE memory off`).
 Compatibility is inspected from local Hermes source without loading its plugins;
 the configuration parser uses Hermes's managed Python and does not print config
 values or parser excerpts that could contain credentials. Unrecognized runtime
@@ -109,13 +113,16 @@ updated/removed, avoiding finalization through stale code.
 
 `skills/grill-me/SKILL.md` (version 2.1.0) adapts the MIT-licensed official
 `official/software-development/grill-me` skill (version 2.0.0) with
-mattpocock/skills grilling guidance, preserving their attribution. It is available through `/grill-me` in CLI chat and
-`/grill_me` in Telegram. Enabling/loading hermes-toolset installs missing bundled
+mattpocock/skills grilling guidance, preserving their attribution. `/grill-me` (CLI)
+and `/grill_me` (Telegram) remain typeable compatibility commands that run
+`plan-with-me` in challenge mode with this skill as its reference; `/grill_me` is not
+shown in the Telegram menu. Enabling/loading hermes-toolset installs missing bundled
 skills and shared support files into that profile's native skill directory, using
 the same offline provisioner as full setup. Existing flat and categorized skills
 are preserved; incomplete existing slots fail visibly instead of being replaced.
-Ordinary plugin loading never installs network dependencies, changes sibling
-profiles, or reloads a gateway. Full setup provisions native skills across all
+Ordinary plugin loading writes only inside the owning profile (its config and
+`scripts/`); it never installs network dependencies, changes sibling profiles, or
+reloads a gateway. Full setup provisions native skills across all
 profiles before external plugin setup.
 Setup refreshes running gateway command handlers and checks their activation
 receipts automatically. It does not send test messages or restart ongoing turns.
@@ -187,17 +194,22 @@ profile skills/configuration. It still writes Git fetch metadata and its receipt
 
 An update also self-heals each profile: plugin activation re-applies the bundle's
 command menu, approval and gateway-injection settings, and finalize fails the
-profile if they did not land. `settings_healed` lists profiles whose config changed.
+profile if they did not land (profiles that opted out of runtime defaults are not
+checked). `settings_healed` lists profiles whose config changed.
 Because Telegram menus refresh only when the gateway reconnects, an update that
 changed code, skills or settings requests one graceful `hermes gateway restart`
 (`gateway_restart: requested`) when every profile activated cleanly and a gateway
-is running: in-flight turns drain first and cron schedules persist (a job mid-run
-during the restart is marked `unknown` and not retried; its next tick runs normally).
-Otherwise it reports `not_running`, or `not_needed` for a no-op or incomplete update.
+is running: in-flight turns drain first (up to Hermes' `restart_after_turn_timeout`,
+30 minutes by default) and cron schedules persist (a job mid-run during the restart
+is marked `unknown` and not retried; its next tick runs normally). Otherwise it
+reports `not_running`, or `not_needed` for a no-op or incomplete activation; drift,
+error and check results carry no `gateway_restart` field. Only the gateway recorded
+in the root's `gateway.pid` is detected and restarted; a separately running
+named-profile gateway keeps its old menu until you restart it.
 
 Telegram shows a chat's own command list ahead of the default, private and group
-lists that Hermes refreshes, so a leftover chat-scoped list never updates. For each
-profile bot token, the update checks the chats in `TELEGRAM_ALLOWED_USERS` and
+lists that Hermes refreshes, so a leftover chat-scoped list never updates. On an applied update (not check mode or drift), for each
+profile bot token in that profile's `.env`, the update checks the chats in `TELEGRAM_ALLOWED_USERS` and
 `TELEGRAM_HOME_CHANNEL` and deletes a chat-scoped list only when it still contains
 a retired bundle command; that chat then uses the refreshed private or group list.
 Chat lists without retired names are left alone. `chat_menus_healed` reports
@@ -246,7 +258,8 @@ separate. It does not upgrade unrelated plugins, Hermes Agent or external import
 Existing setup prerequisites still apply; this is not a policy-neutral operation.
 
 `maintenance/toolset-update/latest.json` in the root Hermes home records status,
-source revisions, profiles, unresolved drift paths/actions and the backup location. `run.log` holds setup details;
+source revisions, profiles, unresolved drift paths/actions and the backup location. For updates started from chat,
+`run.log` holds updater and setup output (terminal updates print it);
 per-run backups include original skill files and a manifest. An `incomplete` result
 may follow partial application: preserve the backups, fix the reported cause and
 rerun. There is no automatic rollback. A stopped gateway is reported by setup;
@@ -293,10 +306,13 @@ The source must be a clean standalone Git checkout at the supplied commit.
 Local mode does not fetch, pull, advance the source checkout, expand the selection,
 change enablement, reload gateways, restart workers or change schedules. Use the
 Python interpreter from the installed Hermes environment, where `hermes_cli` and
-its dependencies are importable. Missing native APIs fail closed.
+its dependencies are importable; the Hermes source used for native admission is
+resolved from the `hermes` on `PATH`. Missing native APIs fail closed.
 
-Preflight checks tracked source closure, installed checkout and skill drift,
-repository/helper locks and actual process references to the selected installation.
+Preflight holds the updater lock and checks tracked source closure, installed
+checkout and skill drift and actual process references to the selected installation;
+the worker handoff lock is taken before each profile is staged. Even `--check`
+creates `maintenance/toolset-update/` and its lock file.
 Historical Kanban cards, including missing, malformed, blocked or done records, are
 not ownership leases or deployment vetoes and are not queried to establish safety.
 Preserve actual active consumers and candidates; uncertain process/workspace ownership
@@ -329,11 +345,12 @@ runtime protection. The updater does not migrate or rewrite active cards.
 from the legacy updater receipt. Each run's backup directory retains a manifest,
 original skill bytes, original plugin slot, and a Git snapshot of a previously
 linked source. Successful profiles record installed SHA-256 hashes and the native
-registration probe's commands. A failed native install restores an empty plugin
-slot from backup; partial native output is preserved for inspection, never erased.
+registration probe's commands. After a failure while the plugin slot is moved aside,
+the original plugin is moved back if the slot is still empty; partial native output is preserved for inspection, never erased.
 An interruption can leave plugin and skill publication at different phases.
 Rerun the same command to resume the original source, selection, staging and
-backup. A different revision/selection is refused while that run is incomplete.
+backup. A different revision/selection, including the same profiles in a different order,
+is refused while that run is incomplete.
 Completed unchanged deployments perform no native installation or scan; drift is
 still checked. Retain the run directory: native installation provenance points to its staged local
 source, and its original backups support later reconciliation.

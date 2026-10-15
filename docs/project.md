@@ -30,8 +30,11 @@ unattended completion; verification must distinguish dispatch, execution and del
 
 The accepted [TODO-first execution plan](#todo-first-execution-without-kanban)
 is implemented: Autowork executes from repository tasks without Kanban prerequisites,
-including historical-card gates. Legacy orchestration is retained only as a test
-fixture and historical reference, outside the distributed execution path.
+including historical-card gates. The direct execution path loads only the task
+index helpers; legacy orchestration modules still ship in `skills/autowork/scripts`
+as test fixtures and historical reference, and a few native admission and recovery
+helpers outside the direct path (`ready_preflight.py`, `publication.py`) still import
+`start_goal` from them.
 
 ## Current components
 
@@ -604,8 +607,8 @@ ID, so a human reorder in TODO.md did not change selection when goals.json exist
   unfinished task by the legacy order (section, goal priority, goal status, ID,
   excluding focus and dependencies), moves whole task blocks within their groups
   without changing their contents and records the snapshot. A group is a `##`
-  section or a heading inside it that is not a task's own ID heading; blocks never
-  cross one. It refuses a changed first eligible pick and lists every deeper
+  section or a `###` heading inside it that is not a task's own ID heading; deeper
+  headings move with their task, and blocks never cross a group. It refuses a changed first eligible pick and lists every deeper
   eligible-order change in the dry run for review. On 2026-10-14 the user accepted
   group-aware bootstrap, including bravo's TASK-002 moving
   from 31st to 34th of 37 eligible tasks. A matching repository gets the snapshot without a TODO.md
@@ -648,5 +651,6 @@ path or authorize rewriting consumer repositories.
 - Absent a manifest, Docs Sync keeps its current prose behavior; adoption is
   opt-in per repository and never creates empty documents.
 
-Open question: manifest location (default: `docs/roles.json`, reusing an existing
-docs index when present).
+Implemented: TOOLSET-030 to TOOLSET-032 added `docs.py validate|check|stale|profiles`
+(goal DOCS-COMPLETENESS met on offline evidence). The manifest defaults to
+`docs/roles.json` (`--manifest` overrides it); this repository uses that path.

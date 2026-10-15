@@ -14,8 +14,9 @@ symlink aliases and inherited global `OMH_HOME`, are refused before writes; a
 duplicate anywhere among the Hermes root's profiles blocks setup, even for
 profiles that were not selected.
 Clear another selected provider explicitly before setup; OMH never silently
-steals its slot. If one is selected, setup still completes but OMH memory stays off,
-and setup prints `OMH setup: NAME (memory off: memory.provider is <name>; run ...)`
+steals its slot. Full setup's preflight refuses such a profile. Running
+`install-omh.py` directly still completes, but OMH memory stays off,
+and the helper prints `OMH setup: NAME (memory off: memory.provider is <name>; run ...)`
 with the `hermes [-p NAME] memory off` command to clear it. It prints
 `memory off: memory.provider is not set` when OMH left the slot empty, and
 `memory provider unverified: ...` when the profile config cannot be read back.
