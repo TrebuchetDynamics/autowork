@@ -337,6 +337,34 @@ class RecoveryTests(DirectExecutionTests):
         self.assertEqual(p.returncode, 1, result)
         self.assertIn('unresolved dependency', result['reason'])
 
+    def test_installed_hermes_launcher_is_an_agent_session(self):
+        from task_execution import is_agent
+        launcher = "import sys\nfrom hermes_cli.main import main\nsys.exit(main())"
+        self.assertTrue(is_agent(['/usr/bin/python3', '-I', '-c', launcher, '-p', 'default']))
+        self.assertTrue(is_agent(['python3', '-m', 'hermes_cli.main', 'chat']))
+        self.assertFalse(is_agent(['python3', '-I', '-c', 'import time; time.sleep(1)', '-p', 'default']))
+        self.assertFalse(is_agent(['python3', '-m', 'http.server', 'hermes_cli']))
+        self.assertFalse(is_agent(['python3', 'tool.py', '-c', 'hermes_cli']))
+        import pty
+        def spawn(code):
+            master, slave = pty.openpty()
+            self.addCleanup(os.close, master)
+            worker = subprocess.Popen([sys.executable, '-I', '-c', code, '-p', 'fixture'], cwd=self.repo,
+                                      stdin=slave, stdout=slave, stderr=slave)
+            os.close(slave)
+            self.addCleanup(lambda: (worker.kill(), worker.wait()))
+            stamp = time.time() - 60
+            os.utime(os.readlink(f'/proc/{worker.pid}/fd/0'), (stamp, stamp))
+            return worker
+        unrelated = spawn('import time; time.sleep(30)')
+        p = subprocess.run([sys.executable, str(SCRIPT), str(self.repo), '--writers'], capture_output=True, text=True, timeout=15)
+        self.assertEqual(json.loads(p.stdout)['outcome'], 'CLEAR', p.stdout)
+        hermes = spawn("import time\n# launcher for hermes_cli.main\ntime.sleep(30)")
+        p = subprocess.run([sys.executable, str(SCRIPT), str(self.repo), '--writers'], capture_output=True, text=True, timeout=15)
+        report = json.loads(p.stdout)
+        self.assertEqual([w['pid'] for w in report['blocking']], [hermes.pid], p.stdout)
+        self.assertNotIn(unrelated.pid, [w['pid'] for w in report.get('idle_sessions', [])])
+
     def test_named_plan_selects_only_tasks_linked_to_it(self):
         (self.repo / 'SPEC.md').write_text('# Slice\nOnly T2 is in this plan.\n')
         self.todo.write_text(self.todo.read_text().replace('Dependencies: T1.', 'Dependencies: None.\n  Sources: [slice](SPEC.md#slice)'))

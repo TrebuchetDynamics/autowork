@@ -145,7 +145,18 @@ AGENT_NAMES = {'hermes', 'hermes_cli', 'codex', 'claude', 'aider', 'pi', 'run_ag
 
 
 def is_agent(argv):
-    return bool({Path(arg).name for arg in argv[:3] if arg and not arg.startswith('-')} & AGENT_NAMES)
+    if {Path(arg).name for arg in argv[:3] if arg and not arg.startswith('-')} & AGENT_NAMES:
+        return True
+    # The installed launcher runs `python3 -I -c '<... hermes_cli.main ...>'`; a module
+    # run is `python3 -m hermes_cli...`. Only the interpreter's own options are inspected.
+    for option, value in zip(argv[1:], argv[2:]):
+        if option == '-c':
+            return re.search(r'\bhermes_cli\b', value) is not None
+        if option == '-m':
+            return value.split('.')[0] == 'hermes_cli'
+        if not option.startswith('-'):
+            break
+    return False
 
 
 def argv_of(pid, proc=Path('/proc')):
