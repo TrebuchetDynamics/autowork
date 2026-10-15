@@ -47,6 +47,24 @@ class ChatMenuTests(unittest.TestCase):
         self.assertEqual(policy.stale_chat_menus({}, call), [])
         self.assertEqual(calls, [])
 
+class ChatMenuRobustnessTests(unittest.TestCase):
+    def test_only_ascii_integer_chat_ids_are_accepted(self):
+        env={'TELEGRAM_ALLOWED_USERS':'--5,²,٣,1-2,+7,11','TELEGRAM_HOME_CHANNEL':'-33'}
+        self.assertEqual(policy.chat_ids(env), [11, -33])
+    def test_a_failing_chat_does_not_stop_the_remaining_chats(self):
+        menus={11:['autogoal'], 7:['autogoal'], 22:['autogoal'], -33:['autoresearch_plan']}
+        def call(method, scope):
+            chat=scope['chat_id']
+            if chat==7: raise OSError('Bad Request: chat not found')
+            if method=='deleteMyCommands':
+                menus.pop(chat); return True
+            return [{'command': c} for c in menus.get(chat, [])]
+        failed=[]
+        env={'TELEGRAM_ALLOWED_USERS':'11,7,22','TELEGRAM_HOME_CHANNEL':'-33'}
+        self.assertEqual(policy.stale_chat_menus(env, call, failed), [11, 22, -33])
+        self.assertEqual(failed, [(7, 'OSError')])
+        self.assertEqual(menus, {7:['autogoal']})
+
 class SelfHealTests(unittest.TestCase):
     def test_old_profile_menu_is_detected_and_expected_settings_heal_it(self):
         import sys, types

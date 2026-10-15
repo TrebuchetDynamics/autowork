@@ -217,9 +217,11 @@ lists that Hermes refreshes, so a leftover chat-scoped list never updates. On an
 profile bot token in that profile's `.env`, the update checks the chats in `TELEGRAM_ALLOWED_USERS` and
 `TELEGRAM_HOME_CHANNEL` and deletes a chat-scoped list only when it still contains
 a retired bundle command; that chat then uses the refreshed private or group list.
-Chat lists without retired names are left alone. `chat_menus_healed` reports
-cleared chats by their last four digits; an unreachable Bot API is reported and
-never fails the update.
+Chat lists without retired names are left alone. Each chat is checked
+independently, so one failing chat does not stop the others. `chat_menus_healed`
+reports cleared chats by their last four digits, plus any `failed` chats the
+same way when only some chats fail; an unreachable Bot API is reported and never
+fails the update.
 
 `status` is the chat form handled by the plugin; it is not a positional argument
 to the terminal command `hermes toolset update`. Terminal update forms below wait

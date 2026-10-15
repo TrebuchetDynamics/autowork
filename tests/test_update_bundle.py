@@ -910,5 +910,65 @@ def cmd_install(source, *, force, ref, enable):
         self.assertEqual((self.home/'installed').read_text(), self.stage.as_uri())
 
 
+class ChatMenuEnvTests(unittest.TestCase):
+    """TOOLSET-050: `.env` comments, odd chat IDs and per-chat failures during menu healing."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        spec = importlib.util.spec_from_file_location('update_env_under_test', ROOT/'update_bundle.py')
+        self.mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.mod)
+        sys.path.insert(0, str(ROOT)); self.addCleanup(sys.path.remove, str(ROOT))
+
+    def test_inline_comments_are_dropped_like_dotenv(self):
+        (self.home/'.env').write_text(
+            '# leading comment\n'
+            'TELEGRAM_BOT_TOKEN=111:AAA # main bot\n'
+            'TELEGRAM_ALLOWED_USERS="11,22" # owner and wife\n'
+            "TELEGRAM_HOME_CHANNEL='-1001'   # group\n"
+            'export PLAIN=value\n'
+            'HASH=a#b\n'
+            'QUOTED_HASH="x # y"\n'
+            'EMPTY=\n')
+        self.assertEqual(self.mod.read_env(self.home/'.env'), {
+            'TELEGRAM_BOT_TOKEN': '111:AAA', 'TELEGRAM_ALLOWED_USERS': '11,22',
+            'TELEGRAM_HOME_CHANNEL': '-1001', 'PLAIN': 'value', 'HASH': 'a#b',
+            'QUOTED_HASH': 'x # y', 'EMPTY': ''})
+
+    def test_commented_env_reaches_every_owner_chat(self):
+        (self.home/'.env').write_text('TELEGRAM_BOT_TOKEN=tok # bot\n'
+                                      'TELEGRAM_ALLOWED_USERS="11,22" # owner and wife\n'
+                                      'TELEGRAM_HOME_CHANNEL=-1001 # group\n')
+        seen = []
+        def call(token, method, scope):
+            seen.append((token, scope['chat_id'])); return []
+        self.assertEqual(self.mod.heal_chat_menus([('default', self.home)], call), [])
+        self.assertEqual(seen, [('tok', 11), ('tok', 22), ('tok', -1001)])
+
+    def test_odd_chat_ids_are_skipped_not_fatal(self):
+        (self.home/'.env').write_text('TELEGRAM_BOT_TOKEN=tok\nTELEGRAM_ALLOWED_USERS=--5,²,123456789\n')
+        menus = {123456789: ['autogoal']}
+        def call(token, method, scope):
+            if method == 'deleteMyCommands': return menus.pop(scope['chat_id']) is not None
+            return [{'command': c} for c in menus.get(scope['chat_id'], [])]
+        self.assertEqual(self.mod.heal_chat_menus([('default', self.home)], call),
+                         [{'profile': 'default', 'status': 'cleared', 'chats': ['...6789']}])
+
+    def test_failing_chat_is_reported_and_remaining_chats_are_healed(self):
+        (self.home/'.env').write_text('TELEGRAM_BOT_TOKEN=tok\nTELEGRAM_ALLOWED_USERS=11,70007,22\n'
+                                      'TELEGRAM_HOME_CHANNEL=-1001\n')
+        menus = {11: ['autogoal'], 22: ['autogoal'], -1001: ['autoresearch_plan']}
+        def call(token, method, scope):
+            if scope['chat_id'] == 70007: raise OSError('Bad Request: chat not found')
+            if method == 'deleteMyCommands': return menus.pop(scope['chat_id']) is not None
+            return [{'command': c} for c in menus.get(scope['chat_id'], [])]
+        self.assertEqual(self.mod.heal_chat_menus([('default', self.home)], call), [
+            {'profile': 'default', 'status': 'cleared', 'chats': ['...11', '...22', '...1001'],
+             'failed': ['...0007'], 'error': 'OSError'}])
+        self.assertEqual(menus, {})
+        def all_fail(*_, **__): raise OSError('offline')
+        self.assertEqual(self.mod.heal_chat_menus([('default', self.home)], all_fail),
+                         [{'profile': 'default', 'status': 'unreachable', 'error': 'OSError'}])
+
+
 if __name__ == '__main__':
     unittest.main()

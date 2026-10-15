@@ -277,6 +277,17 @@ def config_snapshot(profiles):
     return snapshot
 
 
+def env_value(raw):
+    """One `.env` value as python-dotenv reads it: quoted content, or text before ` #`."""
+    raw = raw.strip()
+    if raw[:1] in ('"', "'"):
+        match = re.match(r'"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'', raw)
+        if match and (match.end() == len(raw) or re.match(r'\s*(#.*)?$', raw[match.end():])):
+            return match.group(1) if match.group(1) is not None else match.group(2)
+        return raw.strip('"\'')
+    return re.sub(r'\s+#.*', '', raw).strip()
+
+
 def read_env(path):
     values = {}
     try:
@@ -287,7 +298,7 @@ def read_env(path):
         line = line.strip()
         if '=' in line and not line.startswith('#'):
             key, value = line.split('=', 1)
-            values[key.removeprefix('export ').strip()] = value.strip().strip('"\'')
+            values[key.removeprefix('export ').strip()] = env_value(value)
     return values
 
 
@@ -311,15 +322,24 @@ def heal_chat_menus(profiles, call=telegram_call):
         if not token or token in seen:
             continue
         seen.add(token)
-        from telegram_menu_policy import stale_chat_menus
+        from telegram_menu_policy import chat_ids, stale_chat_menus
+        failed = []
         try:
-            cleared = stale_chat_menus(env, lambda method, **kw: call(token, method, **kw))
+            cleared = stale_chat_menus(env, lambda method, **kw: call(token, method, **kw), failed)
         except (OSError, ValueError) as error:
             results.append({'profile': name, 'status': 'unreachable', 'error': type(error).__name__})
             continue
+        # Chat IDs stay out of the receipt beyond their last digits.
+        def masked(chats): return [f'...{str(c)[-4:]}' for c in chats]
+        result = {'profile': name, 'status': 'cleared' if cleared else 'unreachable'}
         if cleared:
-            # Chat IDs stay out of the receipt beyond their last digits.
-            results.append({'profile': name, 'status': 'cleared', 'chats': [f'...{str(c)[-4:]}' for c in cleared]})
+            result['chats'] = masked(cleared)
+        if failed and len(failed) < len(chat_ids(env)):
+            result['failed'] = masked(chat for chat, _ in failed)
+        if failed:
+            result['error'] = failed[0][1]
+        if cleared or failed:
+            results.append(result)
     return results
 
 
