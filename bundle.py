@@ -187,6 +187,15 @@ def updater_alive(pid):
     return state not in ('Z', 'X')
 
 
+def gateway_drain(folder):
+    """Restart progress from the updater module, loaded by path like its subprocess."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('hermes_toolset_update_bundle', ROOT / 'update_bundle.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.gateway_drain(folder)
+
+
 def update_status():
     path = update_home() / 'maintenance/toolset-update/latest.json'
     if not path.is_file():
@@ -204,6 +213,9 @@ def update_status():
         if result.get('status') == 'running':
             if not updater_alive(result.get('pid')):
                 return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /toolset update.'
+        if result.get('gateway_restart') in ('requested', 'pending'):
+            drain = gateway_drain(path.parent)
+            result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
         # Gateway attachment extraction removes bare existing file paths from prose.
         # Keep the receipt literal; escape embedded fences without changing JSON values.
         payload = json.dumps(result, indent=2).replace('`', r'\u0060')

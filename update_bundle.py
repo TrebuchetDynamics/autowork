@@ -355,8 +355,48 @@ def gateway_running(root):
 def request_gateway_restart(root, log):
     """Graceful restart: Hermes drains in-flight turns, then reconnects and re-pushes menus."""
     with log.open('ab') as stream:
-        subprocess.Popen(['hermes', 'gateway', 'restart'], stdin=subprocess.DEVNULL, stdout=stream,
-                         stderr=stream, start_new_session=True, env=dict(os.environ, HERMES_HOME=str(root)))
+        stream.write(f'--- toolset update: gateway restart requested {time.time_ns()}\n'.encode())
+        stream.flush()
+        process = subprocess.Popen(['hermes', 'gateway', 'restart'], stdin=subprocess.DEVNULL, stdout=stream,
+                                   stderr=stream, start_new_session=True, env=dict(os.environ, HERMES_HOME=str(root)))
+    return process.pid
+
+
+def pending_restart(folder):
+    """A restart this updater requested that is still waiting for in-flight turns, or None."""
+    try:
+        record = json.loads((folder / 'restart.json').read_text())
+        pid = int(record['pid'])
+        argv = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
+        state = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        return None
+    # A recycled PID or a zombie is not the restart we started.
+    if state in ('Z', 'X') or not any(argv[i:i + 2] == [b'gateway', b'restart'] for i in range(1, len(argv))):
+        return None
+    return record
+
+
+def gateway_drain(folder):
+    """Progress of a pending updater restart, read from the restart output in run.log."""
+    record = pending_restart(folder)
+    if record is None:
+        return None
+    progress = {'restart_pid': record['pid'], 'requested_ns': record.get('requested_ns')}
+    try:
+        with (folder / 'run.log').open('rb') as stream:
+            stream.seek(max(0, stream.seek(0, os.SEEK_END) - 65536))
+            tail = stream.read().decode('utf-8', 'replace')
+    except OSError:
+        return progress
+    tail = tail[tail.rfind('restarting gracefully'):] if 'restarting gracefully' in tail else ''
+    block = tail[tail.rfind('still draining'):] if 'still draining' in tail else ''
+    left = re.match(r'still draining\D*(\d+)s left', block)
+    if left:
+        progress['seconds_left'] = int(left.group(1))
+    progress['waiting_on'] = [line.strip().lstrip('•').strip() for line in block.splitlines()
+                              if line.strip().startswith('•')]
+    return progress
 
 
 def root_home(home):
@@ -855,14 +895,21 @@ def main(argv=None):
                 # A plugin reload rewires handlers, but Telegram menus refresh only on reconnect.
                 if not ready or not (changed or missing or healed):
                     result['gateway_restart'] = 'not_needed'
+                elif pending_restart(state_dir):
+                    # An earlier restart is still draining; it reloads this update too.
+                    result['gateway_restart'] = 'pending'
                 elif gateway_running(root):
-                    request_gateway_restart(root, state_dir / 'run.log')
+                    pid = request_gateway_restart(root, state_dir / 'run.log')
+                    marker = state_dir / 'restart.json'
+                    if not marker.is_symlink():
+                        marker.write_text(json.dumps({'pid': pid, 'requested_ns': time.time_ns()}) + '\n')
                     result['gateway_restart'] = 'requested'
                 else:
                     result['gateway_restart'] = 'not_running'
-            result['note'] = ('Existing chats may retain loaded instructions. A requested gateway restart drains '
-                              'in-flight turns before refreshing commands and Telegram menus; '
-                              'workers and schedules are not restarted.')
+            result['note'] = ('Existing chats may retain loaded instructions. A requested gateway restart first waits '
+                              'for in-flight chat turns to finish (up to agent.restart_after_turn_timeout), then '
+                              'refreshes commands and Telegram menus; /toolset update status shows what it waits on. '
+                              'Workers and schedules are not restarted.')
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             result.update(status='incomplete', error=str(error),
                           action='Resolve the named checkout/file error and rerun /toolset update. Partial changes, if any, are retained with backups.')

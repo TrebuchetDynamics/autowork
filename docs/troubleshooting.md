@@ -39,7 +39,10 @@ This is expected. Menu capacity is limited, and compatibility spellings such as
 Handlers refresh on plugin reload, but the bot menu refreshes only when the
 gateway reconnects. `/toolset update` requests one graceful restart of the running
 root gateway when it changed anything and every profile activated cleanly
-(`gateway_restart: requested`); profile-dedicated gateways are not detected. It also
+(`gateway_restart: requested`, or `pending` while an earlier one is still draining);
+profile-dedicated gateways are not detected. A graceful restart waits for in-flight
+chat turns, up to 30 minutes by default; `/toolset update status` shows
+`gateway_restart_progress` with what it is waiting on. It also
 clears leftover per-chat lists that still contain retired commands for the owner and
 home chats configured in each profile's `.env` (`chat_menus_healed`). Otherwise
 restart the gateway through your normal service procedure. See [update all profiles](installation.md#update-all-profiles).

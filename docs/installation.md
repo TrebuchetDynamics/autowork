@@ -207,7 +207,11 @@ changed code, skills or settings requests one graceful `hermes gateway restart`
 is running: in-flight turns drain first (up to Hermes' `restart_after_turn_timeout`,
 30 minutes by default) and cron schedules persist (a job mid-run during the restart
 is marked `unknown` and not retried; its next tick runs normally). Otherwise it
-reports `not_running`, or `not_needed` for a no-op or incomplete activation; drift,
+reports `not_running`, or `not_needed` for a no-op or incomplete activation. While an
+earlier requested restart is still draining, a later update reports `pending` instead
+of starting another one; the draining restart loads the newer release too.
+`/toolset update status` then adds `gateway_restart_progress` with the seconds left
+and the turns it is waiting on; finishing or stopping those turns releases it sooner. Drift,
 error and check results carry no `gateway_restart` field. Only the gateway recorded
 in the root's `gateway.pid` is detected and restarted; a separately running
 named-profile gateway keeps its old menu until you restart it.

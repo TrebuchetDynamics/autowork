@@ -93,6 +93,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `/toolset update` no longer looks like it skipped the gateway restart. A graceful
+  restart waits for in-flight chat turns (up to 30 minutes by default); `/toolset
+  update status` now shows `gateway_restart_progress` with the time left and the turns
+  it is waiting on, and an update during that wait reports `pending` instead of
+  starting a second, overlapping restart.
+
 - `/toolset update status` reports a finished, refused or killed chat-started update
   correctly instead of "starting"/"running" forever, and a symlinked Hermes home
   can update from chat (TOOLSET-048).

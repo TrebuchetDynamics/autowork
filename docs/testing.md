@@ -158,7 +158,8 @@ compatibility entries are removed without deleting user choices, reconciliation
 is idempotent, and typed compatibility registrations remain available with required
 text hints. Finalization fixtures reject settings that remain unhealed after load.
 Local-Git updater fixtures check `settings_healed`, one requested restart after
-change, `not_running` for an absent gateway, and no restart on an unchanged retry.
+change, `not_running` for an absent gateway, no restart on an unchanged retry, and
+`pending` with no second restart while a requested one is still draining.
 
 These use temporary profiles and mocked activation/restart calls. Passing them
 proves the local contracts, not that a real gateway drained, reconnected, refreshed

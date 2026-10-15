@@ -234,7 +234,7 @@ class UpdateTests(unittest.TestCase):
                  patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
                  patch.object(self.mod, 'finalize_profiles', side_effect=activate), \
                  patch.object(self.mod, 'gateway_running', return_value=running), \
-                 patch.object(self.mod, 'request_gateway_restart') as restart, \
+                 patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
                  contextlib.redirect_stdout(io.StringIO()):
                 stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autoresearch]}}}}\n')
                 self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
@@ -270,7 +270,7 @@ class UpdateTests(unittest.TestCase):
              patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
              patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
-             patch.object(self.mod, 'request_gateway_restart') as restart, \
+             patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
              contextlib.redirect_stdout(io.StringIO()):
             for _ in range(2):
                 self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
@@ -278,6 +278,42 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual([r['status'] for r in receipts], ['updated', 'up_to_date'])
         self.assertEqual([r['gateway_restart'] for r in receipts], ['requested', 'not_needed'])
         self.assertEqual(restart.call_count, 1)
+
+    def test_draining_restart_is_reported_and_not_requested_again(self):
+        self.advance()
+        self.git(self.repo, 'pull', '--ff-only')
+        prepare = self.mod.prepare
+        state = self.home / 'maintenance/toolset-update'
+        self.assertIsNone(self.mod.gateway_drain(state))
+        drain = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'gateway', 'restart'])
+        self.addCleanup(drain.wait)
+        self.addCleanup(drain.kill)
+        def spawn(root, log):
+            log.write_text('⏳ User service restarting gracefully (PID 7) — waiting up to 1885s...\n'
+                           '  ⏳ still draining — 1525s left before the forced restart\n'
+                           '     waiting on 1 active work unit(s):\n'
+                           '       • chat turn agent:demo running 8m32s [model m]\n'
+                           '     finish or kill the work above to release the drain now\n')
+            return drain.pid
+        with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+             patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+             patch.object(self.mod, 'gateway_running', return_value=True), \
+             patch.object(self.mod, 'request_gateway_restart', side_effect=spawn) as restart, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
+            self.assertEqual(json.loads((state / 'latest.json').read_text())['gateway_restart'], 'requested')
+            self.assertEqual(self.mod.gateway_drain(state)['waiting_on'], ['chat turn agent:demo running 8m32s [model m]'])
+            self.assertEqual(self.mod.gateway_drain(state)['seconds_left'], 1525)
+            (self.remote / 'skills/demo/SKILL.md').write_text('newer\n')
+            self.git(self.remote, 'commit', '-am', 'second update')
+            self.git(self.repo, 'pull', '--ff-only')
+            self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
+            self.assertEqual(json.loads((state / 'latest.json').read_text())['gateway_restart'], 'pending')
+            self.assertEqual(restart.call_count, 1)
+            drain.kill()
+            drain.wait()
+            self.assertIsNone(self.mod.gateway_drain(state))
 
     def test_check_reports_stale_copies_without_applying_them(self):
         self.advance()

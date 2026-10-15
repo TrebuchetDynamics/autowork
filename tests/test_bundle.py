@@ -102,6 +102,15 @@ class BundleTests(unittest.TestCase):
             self.assertIn('updated',result)
             self.assertIn('did not produce',result)
 
+    def test_status_shows_what_a_pending_gateway_restart_waits_on(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated', 'gateway_restart': 'requested'}))
+        drain = {'restart_pid': 9, 'seconds_left': 1525, 'waiting_on': ['chat turn agent:demo running 8m32s']}
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            with patch.object(self.bundle, 'gateway_drain', return_value=drain):
+                self.assertEqual(json.loads(self.bundle.update_status().strip('`json\n'))['gateway_restart_progress'], drain)
+            self.assertIn('completed or not tracked', self.bundle.update_status())
+
     def _chat_updater(self, body):
         """Point start_update at a disposable updater script; never the real one."""
         checkout = Path(self.tmp.name) / 'checkout'
