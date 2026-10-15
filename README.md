@@ -101,8 +101,9 @@ questions. With an empty queue it inspects the repository and records a justifie
 task instead of inventing busywork.
 
 **Command spelling.** Telegram uses underscores and its menu shows `/plan_with_me`,
-`/plan_for_me`, `/docs_sync`, `/autowork` and `/cron_autowork`; other bundled
-commands such as `/git_commit_push` work when typed. In CLI chat the three planning
+`/plan_for_me`, `/docs_sync`, `/autowork`, `/cron_autowork`, `/ui_taste` and
+`/beautify_github_readme`; other bundled commands such as `/git_commit_push` work
+when typed. In CLI chat the three planning
 and docs commands accept underscores or hyphens; other commands use hyphens
 (`/cron-autowork`, `/autoresearch:plan`). Older spellings (`/autoresearch`,
 `/autoresearch_plan`, `/autoresearch_<protocol>`) still run but are not advertised.

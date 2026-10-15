@@ -137,7 +137,8 @@ restoring configuration. Removal alone does not undo prior setup writes.
 ### Workflow commands in Telegram's picker
 
 The picker advertises the current workflow commands: `/plan_with_me`,
-`/plan_for_me`, `/docs_sync`, `/autowork` and `/cron_autowork`. Plugin runtime defaults put them in
+`/plan_for_me`, `/docs_sync`, `/autowork` and `/cron_autowork`, plus the design skills
+`/ui_taste` and `/beautify_github_readme`. Plugin runtime defaults put them in
 Hermes' menu priority, keep your own entries, mode and cap, and remove compatibility
 entries this bundle added earlier. Compatibility spellings such as `/autoresearch`,
 `/autoresearch_plan` and `/autoresearch_debug` still run when typed but are not

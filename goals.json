@@ -318,7 +318,8 @@
       "tasks": [
         "TOOLSET-062",
         "TOOLSET-063",
-        "TOOLSET-064"
+        "TOOLSET-064",
+        "TOOLSET-070"
       ],
       "title": "Fix review findings in the newly vendored UI skills"
     },
@@ -381,7 +382,8 @@
       "TOOLSET-011",
       "TOOLSET-013",
       "TOOLSET-064",
-      "TOOLSET-066"
+      "TOOLSET-066",
+      "TOOLSET-068"
     ]
   },
   "tasks": [
@@ -840,6 +842,14 @@
       "section": "Done",
       "status": "done",
       "title": "Run check.py test directories concurrently"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-070",
+      "section": "Done",
+      "status": "done",
+      "title": "Advertise UI Taste and Beautify GitHub README in the Telegram menu"
     },
     {
       "depends_on": [],

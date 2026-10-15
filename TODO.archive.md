@@ -1330,3 +1330,19 @@ Source section: Next
 - Exclusions: No vendoring of Pocock's skill, no new slash command or Telegram menu entry, no repository dependency on a mutation tool, no edits to pinned upstream files, no push.
 - Current evidence: `skills/engineering/local/test-suite-optimization/PROTOCOL.md` (89 lines) has the five parts (Measure first, Find candidates, Keep, Record tasks do not edit, Acceptance for each change) plus a Never list, credits the tautology and seam criteria to Matt Pocock's MIT `tdd` skill without copying text, and drops its user-confirmation step. `route.py` gained a `LOCAL` map: `--protocol test-suite-optimization` returns `source: toolset` without a hash; a local name equal to a pinned one and a local name in a phase `--domain` are rejected. The engineering adapter, Codex/Pi engineering adapter, engineering cycle table, dependencies table and CHANGELOG name it. The new routing test failed before the change.
 - Checks run: `tests/test_engineering_vendor.py` 8 passed; `route.py --protocol test-suite-optimization` and `--protocol performance-optimization` both route; `npm pack --dry-run` and a temporary profile install include the protocol; `docs.py check` ok; `git diff --check` clean. Full `scripts/check.py` runs on the merged tree.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-070 — Advertise UI Taste and Beautify GitHub README in the Telegram menu
+
+- [x] TOOLSET-070 — Advertise UI Taste and Beautify GitHub README in the Telegram menu
+- Status: done (2026-10-15). Hermes' default 60-entry Telegram menu already held 67 built-ins, so both commands were registered but never listed. The user chose to add `ui_taste` and `beautify_github_readme` to the bundle's managed menu priority (`telegram_menu_policy.py`), displacing the last two built-ins (`memory`, `bundles`), which stay typeable. Updated menu tests failed first, then passed; Hermes' own `telegram_menu_commands` on a copy of the toolset profile config lists both right after the five workflows; `python3 scripts/check.py` 460/575 (1 skipped)/209/8; `docs.py check` ok. Offline only: running gateways re-apply the priority and push the menu on their next plugin load.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [superseded menu call](docs/project.md#vendored-ui-taste-skill), [menu policy](telegram_menu_policy.py).
+- Scope: Bundle menu priority, its tests and the docs that list advertised commands.
+- Acceptance: A clean profile's priority ends with `ui_taste` and `beautify_github_readme`; user entries, mode and cap are preserved; Hermes' menu builder shows both.
+- Checks: `tests/test_telegram_menu_policy.py`, `python3 scripts/check.py`, `docs.py check`.
+- Dependencies: None.

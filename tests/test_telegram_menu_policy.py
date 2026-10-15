@@ -4,7 +4,8 @@ import unittest
 spec=importlib.util.spec_from_file_location('menu_policy',Path(__file__).resolve().parents[1]/'telegram_menu_policy.py')
 policy=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
-WORKFLOWS=['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork']
+WORKFLOWS=['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork',
+           'ui_taste', 'beautify_github_readme']
 
 def priority(raw):
     return policy.menu_patch(raw)['platforms']['telegram']['extra']['command_menu']
@@ -14,13 +15,19 @@ class MenuPolicyTests(unittest.TestCase):
         menu=priority({})
         self.assertEqual(menu['priority'], WORKFLOWS)
         self.assertNotIn('max_commands',menu)
+    def test_every_advertised_skill_command_is_a_bundled_skill(self):
+        # Telegram spells a skill's hyphens as underscores; workflow aliases are registered separately.
+        skills={p.name.replace('-','_') for p in (Path(policy.__file__).parent/'skills').iterdir() if (p/'SKILL.md').is_file()}
+        self.assertTrue({'ui_taste','beautify_github_readme'} <= skills)
+        self.assertLessEqual(set(WORKFLOWS) - skills, {'plan_with_me','plan_for_me','docs_sync'})
     def test_stale_compatibility_entries_are_removed_and_user_choices_kept(self):
         old=['autoresearch','autoresearch_plan','autoresearch_debug','autoresearch-fix','status','custom',
              'autowork','plan_with_me','grill_me','repo_interview','repo_docs','autogoal']
         raw={'platforms':{'telegram':{'extra':{'command_menu':{'priority':old,
              'max_commands':40,'priority_mode':'append'}}}}}
         menu=priority(raw)
-        self.assertEqual(menu['priority'], ['status','custom','autowork','plan_with_me','plan_for_me','docs_sync','cron_autowork'])
+        self.assertEqual(menu['priority'], ['status','custom','autowork','plan_with_me','plan_for_me','docs_sync','cron_autowork',
+                                           'ui_taste','beautify_github_readme'])
         raw['platforms']['telegram']['extra']['command_menu'].update(menu)
         self.assertEqual(priority(raw), menu)
         self.assertEqual(raw['platforms']['telegram']['extra']['command_menu']['priority_mode'],'append')
