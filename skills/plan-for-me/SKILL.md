@@ -3,7 +3,7 @@ name: plan-for-me
 description: "Use when the user wants you to investigate a repository, choose a supported approach, and save a plan and actionable tasks without an interview."
 license: MIT
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   hermes:
     tags: [research, requirements, documentation, planning]
 ---
@@ -14,13 +14,19 @@ metadata:
 approach within the user's scope, and saves the plan and tasks. The public skill
 ID is `plan-for-me`; its source directory is `skills/plan-for-me/`.
 
-Read the [shared contract](../shared/COMMON-CONTRACT.md), the pinned
+Read the [planning craft](../shared/PLANNING-CRAFT.md), the
+[shared contract](../shared/COMMON-CONTRACT.md), the pinned
 [Autoresearch plan protocol](../autoresearch/upstream/plan.md), and the
 [planning adaptations](../shared/RESEARCH-PLAN.md). Apply the protocol directly;
 the adaptations govern host tools, accepted scope, persistence and handoff.
 Other research protocols remain in the [Autoresearch skill](../autoresearch/SKILL.md).
 
 ## Investigate and decide
+
+Size the work first and say the size in plain words
+([planning craft](../shared/PLANNING-CRAFT.md#know-what-you-know)): a clear task
+gets one TODO task and no planning pass; a project gets a written plan section and
+dependent tasks. Split several independent projects and plan them in order.
 
 Inspect project instructions, relevant implementation and tests, existing docs,
 accepted decisions, TODO.md/goals.json and active task ownership. Reuse existing
@@ -34,6 +40,15 @@ selection. Ask only for genuinely missing product intent or external authority,
 and continue independent work. Delegation does not erase approval controls or
 explicit scope, spending, ownership and stop limits. Never invent acceptance or
 reopen settled choices without new evidence.
+
+Write down what the user asked for as theirs and everything else as yours: goals,
+non-goals and anti-goals (what would make the result a failure even if it works),
+constraints, and every default you chose, each marked as the planner's call so the
+user can reject it. Generate several approaches before choosing; record the rejected
+ones only when the reason is non-obvious. Surface any contradiction between the
+request and the code instead of planning around it. Name new domain terms precisely
+and record them, and give a decision its own ADR only when it is hard to reverse,
+surprising without context and a real trade-off.
 
 When a new requirement supersedes a completed slice's deliberate limitation,
 record the prospective override in the current spec and queue a successor; keep
@@ -75,11 +90,18 @@ goals.json. Include acceptance criteria, dependencies, verification and Now/Next
 ordering; distinguish proposed decisions from accepted scope. Reconcile one
 affected batch and reuse input-bound checks when the evidence is unchanged.
 
+Before reporting the plan ready, run the
+[builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff): a fresh
+reader in Autowork's place lists what it would have to guess. Write answers already
+known into the tasks, settle minor ones as the planner's call, and ask the user only
+the questions that change what gets built, in one message. Keep just the affected
+tasks pending until they answer; independent tasks stay ready.
+
 Planning includes saving this work by default. Explicit read-only, chat-only,
 no-write or dry-run requests save nothing. Planning alone does not authorize
 implementation, commits, worker dispatch or a recurring schedule. Preserve any
 separate implementation authority already given and the normal Autowork gates.
 
-Finish with the chosen approach, supporting evidence, changed document paths,
-task IDs, unresolved questions and the next executable task. Report consumer
+Finish with the chosen approach, supporting evidence, the planner's calls, changed
+document paths, task IDs, unresolved questions and the next executable task. Report consumer
 readiness only when its check actually ran; a saved plan is not completed work.

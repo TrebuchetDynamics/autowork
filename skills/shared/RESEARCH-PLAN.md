@@ -62,16 +62,20 @@ its discovery pass. Read the pinned plan protocol, then adapt its phases here.
   desired outcome, scope/non-goals, constraints and observable success. Separate
   explicit requirements from assumptions and unresolved choices; improve clarity
   without expanding the user's goal. Reuse this brief in the existing plan owner.
-- Inspect enough evidence to ask a useful first question. Ask one highest-impact
-  question at a time, wait for the answer, then investigate only the uncertainty
-  that answer changes. Do not complete a speculative plan before learning intent.
-  Offer practical options, tradeoffs and a recommendation when useful. For vague
-  words such as “easy”, ask for a concrete user situation or success example.
-- Use brainstorming to expose alternatives and Grill Me's decision tree to challenge
-  important assumptions, failure cases and costly choices. Load the grill protocol
-  only when that depth is useful or requested. This interview's one-question pacing,
-  scope and stop rules override grill's whole-frontier rounds, exhaustive questioning
-  and generic final implementation-approval prompt. Do not ask every possible question.
+- Inspect enough evidence to ask a useful first question, then follow the
+  [planning craft](PLANNING-CRAFT.md): size the work, offer to skip the questions,
+  get the user describing before offering options. Ask in rounds (one open question,
+  or the few ready frontier decisions numbered with recommendations, worded so “yes”
+  accepts them), wait for the answer, then investigate only the uncertainty that
+  answer changes. Do not complete a speculative plan before learning intent. For
+  vague words such as “easy”, ask for a concrete user situation or success example.
+- Think wide privately to expose alternatives, and use Grill Me's decision tree to
+  challenge important assumptions, failure cases and costly choices. Load the grill
+  protocol only when that depth is useful or requested. This interview's round size,
+  scope and stop rules override grill's exhaustive questioning and generic final
+  implementation-approval prompt. Do not ask every possible question. Play each
+  understood part back with guesses marked, and run the builder check before
+  handing off saved tasks.
 - Research repository facts yourself; ask the user about preferences, ambiguities
   and consequential tradeoffs the evidence cannot settle. “You decide” delegates
   that choice within the stated constraints; record your reasoned decision and

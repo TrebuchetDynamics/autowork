@@ -5,8 +5,9 @@ description: "Investigate a repository, choose a supported approach, and save a 
 
 # Plan For Me
 
-Read the [host contract](../COMMON.md). Investigate relevant source, tests and
-existing decisions. Compare practical options, choose a supported approach and
+Read the [host contract](../COMMON.md) and the
+[planning craft](../../../skills/shared/PLANNING-CRAFT.md). Size the work first.
+Investigate relevant source, tests and existing decisions. Compare practical options, choose a supported approach and
 record material reasoning. Ask only for consequential missing intent or authority;
 continue independent planning. Do not reopen settled choices or invent requirements.
 
@@ -16,8 +17,10 @@ Use that protocol directly; do not route back through the Autoresearch adapter.
 Research relevant code and evidence; routine planning needs no experiment. Save accepted plans and complete
 TODO.md tasks through [Docs Sync](../docs-sync/SKILL.md), including acceptance,
 dependencies and Now/Next ordering. Planning does not implement or dispatch workers.
-Explicit read-only/chat-only/no-write/dry-run requests save nothing. Report saved
-paths, task IDs and the next executable task, distinguishing proposals from ready work.
+Explicit read-only/chat-only/no-write/dry-run requests save nothing. Record goals, non-goals,
+anti-goals and every default as the planner's call, and run the builder check on
+the saved tasks before reporting them ready. Report saved paths, task IDs, the
+planner's calls and the next executable task, distinguishing proposals from ready work.
 
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
 resume accepted decisions and existing task IDs, investigate only missing evidence,

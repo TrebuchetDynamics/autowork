@@ -7,6 +7,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Planning craft shared by `/plan_with_me` and `/plan_for_me`, adapted from
+  obra/superpowers `brainstorming` and mattpocock/skills `grilling` and
+  `domain-modeling`: sizing (a clear task skips the interview), facts-versus-decisions,
+  anti-goals, stated planner's calls, precise terms with ADRs only for hard-to-reverse
+  surprising trade-offs, and a builder check that has a fresh reader list what
+  Autowork would still have to guess before tasks are reported ready.
+  `/plan_with_me` offers to skip the questions, asks describing questions before
+  options, works in short rounds worded so "yes" accepts the recommendations, and
+  plays each part back with guesses marked; its special cases moved to a reference.
+
 - Telegram-routed Autowork jobs announce each run's start. The plugin copies the
   bundle's `autowork-start-notice.py` cron script into every profile's `scripts/`
   folder, and `/cron_autowork` attaches it; the finished report remains Hermes'

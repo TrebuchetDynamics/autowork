@@ -1,7 +1,7 @@
 ---
 name: grill-me
 description: "Adversarial plan interview before implementation."
-version: 2.0.0
+version: 2.1.0
 author: "Rafael Zendron (rafaumeu) + Matt Pocock (mattpocock/skills, grilling) + Hermes Agent"
 license: MIT
 platforms: [linux, macos, windows]
@@ -42,7 +42,9 @@ prerequisites are already settled — the questions you can ask NOW without
 guessing at answers you haven't heard yet.
 
 Work in **rounds**: ask the whole current frontier in one message, numbered,
-each question carrying your recommended answer. Then wait. A question whose
+each question carrying your recommended answer. Word each question so "yes"
+accepts your recommendation, so agreeing never means answering "no"; a plain
+"yes" to the round accepts every recommendation in it. Then wait. A question whose
 answer depends on another question still open in this round belongs to a
 LATER round, not this one.
 

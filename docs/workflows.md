@@ -28,11 +28,20 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
-decisions and actionable tasks through Docs Sync. `/plan_with_me` improves your
-initial request with one focused question at a time about ambiguities and important
-choices; it researches facts itself and can challenge assumptions using Grill Me.
-`/plan_for_me` investigates and chooses within your delegated scope. Both reuse
-existing answers and plans. Add
+decisions and actionable tasks through Docs Sync, following the shared
+[planning craft](../skills/shared/PLANNING-CRAFT.md). Both size the work first (a
+clear task gets no interview), say every default they chose as the planner's call,
+record goals, non-goals and anti-goals, and run a builder check: a fresh reader in
+Autowork's place lists what it would still have to guess, and only the answers that
+change what gets built come back to you, in one message.
+
+`/plan_with_me` opens by offering to skip the questions (reply *plan it for me*),
+then gets you describing before offering options. It asks in short rounds: one open
+question, or a few ready decisions numbered with recommendations, worded so a plain
+"yes" accepts them. It plays each understood part back with its guesses marked,
+researches facts itself, flags terms and claims that contradict the code, and can
+challenge assumptions using Grill Me. `/plan_for_me` investigates and chooses
+within your delegated scope. Both reuse existing answers and plans. Add
 `questions only` for an interview without file changes.
 
 For example, type `/docs_sync update the architecture documentation` in Hermes
