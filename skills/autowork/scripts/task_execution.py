@@ -542,6 +542,13 @@ def execute(args):
     common = safe_path(common_git / 'autowork-execution')
     state = safe_path(Path(args.state_dir).expanduser()) if args.state_dir else common
     with lock(state / 'goal-handoff.lock'), lock(common / 'writer.lock') as fd:
+        # Lazy import keeps the sequential CLI unchanged when no parallel lease exists.
+        if (common / 'coordinator.json').exists():
+            from parallel_state import live_coordinator
+            coordinator = live_coordinator(common)
+            if coordinator is not None:
+                return {'outcome': 'BUSY', 'reason': 'A live parallel coordinator owns this repository.',
+                        'owner': coordinator['owner']}
         claim_path = common / 'active.json'
         claim = read(claim_path)
         if claim is None and claim_path.exists():

@@ -564,7 +564,7 @@
       "goal": "PARALLEL",
       "id": "TOOLSET-086-9f",
       "section": "Next",
-      "status": "open",
+      "status": "in_progress",
       "title": "Add a repository coordinator lease, worker slots and an execution journal"
     },
     {
