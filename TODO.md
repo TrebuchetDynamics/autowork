@@ -26,76 +26,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
-### TOOLSET-043 — Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks
-
-- [ ] TOOLSET-043 — Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks
-- Status: open
-- Goal: RELIABILITY-2026-10 — Autowork selects the runnable task the ledger and `goals.py next` agree on.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [task_execution.py](skills/autowork/scripts/task_execution.py) duplicate-ID check and dependency parsing
-- Scope: A checklist line without a task ID anywhere in TODO.md (for example `- [ ] Add dark mode` under a Backlog heading) makes `owner_cycle.py` return `ACTION_REQUIRED: duplicate TODO task IDs`; `Dependencies: None. <prose>` is read as unresolved dependencies. Limit the duplicate check to executable task IDs, and treat a Dependencies field whose first clause is `None` as having none.
-- Acceptance: With either fixture change, `owner_cycle.py REPO` returns the same `READY` selection as the unmodified fixture; genuine duplicate task IDs and real unresolved dependencies are still refused.
-- Checks: New regressions in `skills/autowork/scripts/test_task_execution.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No change to ledger-mode dependency semantics beyond the `None` prefix; no edits to consumer repositories.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-044 — Detect the installed hermes launcher as a live writer
-
-- [ ] TOOLSET-044 — Detect the installed hermes launcher as a live writer
-- Status: open
-- Goal: RELIABILITY-2026-10 — A live Hermes session in the checkout blocks Autowork like other agents.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [task_execution.py](skills/autowork/scripts/task_execution.py) `is_agent`
-- Scope: The installed launcher runs `python3 -I -c '<launcher … hermes_cli.main …>' -p PROFILE`, which `is_agent` does not recognize, so `--writers` reports `CLEAR` beside an active Hermes chat. Recognize `hermes_cli` in the `-c` program text or `-m` module argument.
-- Acceptance: A fixture process with that argv and its cwd in the repo is reported as an agent session (active or idle by the existing rules); unrelated Python processes are still ignored.
-- Checks: New regression in `skills/autowork/scripts/test_task_execution.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No change to idle thresholds or to Autowork-command blocking; never signal or kill processes.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-045 — Honor the runtime-defaults opt-out during setup
-
-- [ ] TOOLSET-045 — Honor the runtime-defaults opt-out during setup
-- Status: open
-- Goal: RELIABILITY-2026-10 — Setup never reverses a profile's documented runtime-policy opt-out.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [install-plugins.sh](install-plugins.sh) `apply_bundle_defaults`, [setup_preflight.py](setup_preflight.py), [runtime_defaults.py](runtime_defaults.py) `_opted_out`
-- Scope: With `plugins.entries.hermes-toolset.settings.apply_runtime_defaults: false`, setup (full and `--bundle-only`) still runs `config set approvals.mode off` and the other policy keys. Skip the policy keys for opted-out profiles using the same settings-then-legacy-config rule as `_opted_out`, and say so in the preflight plan.
-- Acceptance: For an opted-out fixture profile, setup issues no approval, injection or skill-list `config set` and the plan reports the skip; other profiles are unchanged.
-- Checks: New regression in the existing setup tests (`tests/test_complete_setup.py` or `tests/test_preflight.py`); `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No change to plugin-load behavior; no real profile writes.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-046 — Keep the plugin loading when one native skill copy cannot be provisioned
-
-- [ ] TOOLSET-046 — Keep the plugin loading when one native skill copy cannot be provisioned
-- Status: open
-- Goal: RELIABILITY-2026-10 — One incomplete native skill folder never removes every bundled command.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [__init__.py](__init__.py) `register`, [install_skills.py](install_skills.py)
-- Scope: `register()` raises when `install()` reports any failure, for example a profile `skills/engineering/` folder without `SKILL.md`, so no command, skill or `/toolset` registers. Log the provisioning messages as a warning and continue registration; plugin commands load skills by qualified name, not from native copies.
-- Acceptance: With an incomplete same-named native folder, registration completes, the failure is logged, and other missing native skills are still provisioned.
-- Checks: New regression in `tests/test_plugin.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No overwriting of the incomplete user folder.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-047 — Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading
-
-- [ ] TOOLSET-047 — Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading
-- Status: open
-- Goal: RELIABILITY-2026-10 — TODO.md line endings and legacy layouts never break selection or lose content.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [goals.py](skills/docs-sync/scripts/goals.py) section parsing and coverage rendering
-- Scope: Level-2 headings are captured with a trailing `\r` or space, so CRLF TODO files fail `init` and backlog checks with `section Now\r differs`. `render` replaces a marker-less legacy coverage section up to the next level-1 or level-2 heading, deleting level-3 subsections such as a decisions log. Trim heading text; stop the replaced span at any heading or refuse when it holds more than the coverage table.
-- Acceptance: A CRLF copy of a valid fixture initializes and selects like the LF one; a `Now ` heading with a trailing space matches `Now`; rendering a legacy coverage section keeps following level-3 content byte-identical.
-- Checks: New regressions in `skills/docs-sync/scripts/test_goals.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No change to the marker-delimited coverage block format.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
 ## Next
 
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
@@ -240,7 +170,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | Goal | Status | Evidence | Task |
 | --- | --- | --- | --- |
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
-| RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | unmet | — | TOOLSET-043, TOOLSET-044, TOOLSET-045, TOOLSET-046, TOOLSET-047, TOOLSET-048, TOOLSET-049, TOOLSET-050, TOOLSET-051 |
+| RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | unmet | — | TOOLSET-048, TOOLSET-049, TOOLSET-050, TOOLSET-051 |
 | BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass; executed <code>uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only</code> → pass | — |
 | PRIORITY: Make TODO.md order the enforced human priority | unmet | — | TOOLSET-029 |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | executed <code>Shared TOOLSET-017/018/019 implementation integrated eb72be6; independent review findings repaired with failing-then-passing regressions; final Python 3.12 scripts/check.py passed 318/470/139/8 tests, two skips/eight excluded. Native recovery, deployment and model qualification remain incomplete.</code> → pass; executed <code>TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-016: exact 9b894fd same-card review approved; integration b470c68 Python 3.12 scripts/check.py passed 283/448/139/8 offline tests (2 skipped, 8 excluded), bash -n and git diff --check passed; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-020: exact 5e05e6b native independent review approved; integration-candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 319/475/139/8 offline tests, two skips/eight excluded; local main integration preservation ZERO_CHANGED; native/model/live qualification unrun</code> → pass; executed <code>TOOLSET-021 exact ab12f821 native independent review run398 approved; integration 49739eff: env -u HERMES_KANBAN_DB uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 332/495/139/8 offline tests, 3 skips, 8 excluded; git diff --check HEAD^1 passed; native/model/live/startup unqualified</code> → pass; executed <code>TOOLSET-022 exact 816678e3 native independent review run406 approved; integration 5f49a2e0: Python 3.12 scripts/check.py on frozen integration candidate passed 332/510/139/8 offline tests, three skips/eight native-model-integration modules excluded; whitespace passed; native/model/live/startup unqualified</code> → pass | TOOLSET-003, TOOLSET-019 |

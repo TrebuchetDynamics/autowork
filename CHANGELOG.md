@@ -66,6 +66,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Autowork no longer refuses runnable tasks because of loose checklist lines elsewhere
+  in TODO.md or `Dependencies: None.` followed by prose, and its writer detection now
+  recognizes the installed `hermes` launcher (TOOLSET-043, TOOLSET-044).
+- Setup honors `apply_runtime_defaults: false`: an opted-out profile keeps its own
+  approval, injection and skill-list settings (TOOLSET-045).
+- One incomplete native skill folder in a profile no longer stops the plugin from
+  registering every command; it is logged and preserved (TOOLSET-046).
+- `goals.py` accepts CRLF and trailing-space section headings, and `render` no longer
+  deletes content after a legacy Goal coverage section (TOOLSET-047).
 - Archiving a closed task no longer leaves an extra blank line at the end of
   `TODO.archive.md`: the separator before the next heading is not archived, so
   `git diff --check` passes after an ordinary closeout (LF and CRLF preserved).

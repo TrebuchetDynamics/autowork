@@ -309,46 +309,6 @@
   "tasks": [
     {
       "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-043",
-      "section": "Now",
-      "status": "open",
-      "title": "Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-044",
-      "section": "Now",
-      "status": "open",
-      "title": "Detect the installed hermes launcher as a live writer"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-045",
-      "section": "Now",
-      "status": "open",
-      "title": "Honor the runtime-defaults opt-out during setup"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-046",
-      "section": "Now",
-      "status": "open",
-      "title": "Keep the plugin loading when one native skill copy cannot be provisioned"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-047",
-      "section": "Now",
-      "status": "open",
-      "title": "Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -658,6 +618,46 @@
       "section": "Done",
       "status": "done",
       "title": "End the archive file with one newline after a closeout"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-043",
+      "section": "Done",
+      "status": "done",
+      "title": "Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-044",
+      "section": "Done",
+      "status": "done",
+      "title": "Detect the installed hermes launcher as a live writer"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-045",
+      "section": "Done",
+      "status": "done",
+      "title": "Honor the runtime-defaults opt-out during setup"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-046",
+      "section": "Done",
+      "status": "done",
+      "title": "Keep the plugin loading when one native skill copy cannot be provisioned"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-047",
+      "section": "Done",
+      "status": "done",
+      "title": "Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading"
     },
     {
       "depends_on": [],

@@ -980,3 +980,103 @@ Source section: Next
 - Exclusions: No change to which tasks are archived or to archive ordering; no push.
 - Current evidence: `prepare()` in `todo_archive.py` (the archiver; there is no `archive_completed()`) now archives each body as `rstrip` of line breaks plus one line break of its own style, and uses that trimmed block for conservation and retry, which still recognizes bodies archived earlier with their separator. Updated the 12 exact-byte assertions in `test_todo_archive.py`/`test_supersession.py` through an `archived_form()` helper, plus one in `tests/test_workflow_cycle.py`; added LF/CRLF one-newline, real-Git `git diff --check` and legacy-retry regressions (the first two failed against the old code). Archive contract and CHANGELOG updated. This closeout itself archived with no manual trim.
 - Checks run: `python3 scripts/check.py` passed offline: 411/572/204/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean after this closeout. Self-reviewed.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-043 — Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks
+
+- [x] TOOLSET-043 — Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks
+- Status: done
+- Goal: RELIABILITY-2026-10 — Autowork selects the runnable task the ledger and `goals.py next` agree on.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [task_execution.py](skills/autowork/scripts/task_execution.py) duplicate-ID check and dependency parsing
+- Scope: A checklist line without a task ID anywhere in TODO.md (for example `- [ ] Add dark mode` under a Backlog heading) makes `owner_cycle.py` return `ACTION_REQUIRED: duplicate TODO task IDs`; `Dependencies: None. <prose>` is read as unresolved dependencies. Limit the duplicate check to executable task IDs, and treat a Dependencies field whose first clause is `None` as having none.
+- Acceptance: With either fixture change, `owner_cycle.py REPO` returns the same `READY` selection as the unmodified fixture; genuine duplicate task IDs and real unresolved dependencies are still refused.
+- Checks: New regressions in `skills/autowork/scripts/test_task_execution.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to ledger-mode dependency semantics beyond the `None` prefix; no edits to consumer repositories.
+- Current evidence: Implemented in `57cc6c0` (isolated worktree, reviewed by the coordinator before integration). The duplicate-ID refusal now considers only executable IDs (ledger tasks, or Now/Next without a ledger, plus `--tasks`), and a Dependencies field whose first clause is `None` has no dependencies. Regressions `test_loose_checklist_lines_without_task_ids_do_not_refuse_selection` and `test_none_dependency_followed_by_prose_is_no_dependency` failed before the fix; genuine duplicates and real unresolved dependencies are still refused. The planner's original fixture repro now returns `READY` for both cases.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (415/575/207/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed) and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-044 — Detect the installed hermes launcher as a live writer
+
+- [x] TOOLSET-044 — Detect the installed hermes launcher as a live writer
+- Status: done
+- Goal: RELIABILITY-2026-10 — A live Hermes session in the checkout blocks Autowork like other agents.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [task_execution.py](skills/autowork/scripts/task_execution.py) `is_agent`
+- Scope: The installed launcher runs `python3 -I -c '<launcher … hermes_cli.main …>' -p PROFILE`, which `is_agent` does not recognize, so `--writers` reports `CLEAR` beside an active Hermes chat. Recognize `hermes_cli` in the `-c` program text or `-m` module argument.
+- Acceptance: A fixture process with that argv and its cwd in the repo is reported as an agent session (active or idle by the existing rules); unrelated Python processes are still ignored.
+- Checks: New regression in `skills/autowork/scripts/test_task_execution.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to idle thresholds or to Autowork-command blocking; never signal or kill processes.
+- Current evidence: Implemented in `646b040` (isolated worktree, reviewed by the coordinator before integration). `is_agent` also inspects the interpreter's own options and recognizes `hermes_cli` in `-c` program text or a `-m hermes_cli…` module. Regression `test_installed_hermes_launcher_is_an_agent_session` (direct and real-process `--writers` checks) failed before the fix. Known limit: an interpreter option taking a value (`-X`, `-W`) before `-c` is not scanned past; the installed launcher uses only `-I`.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (415/575/207/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed) and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-045 — Honor the runtime-defaults opt-out during setup
+
+- [x] TOOLSET-045 — Honor the runtime-defaults opt-out during setup
+- Status: done
+- Goal: RELIABILITY-2026-10 — Setup never reverses a profile's documented runtime-policy opt-out.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [install-plugins.sh](install-plugins.sh) `apply_bundle_defaults`, [setup_preflight.py](setup_preflight.py), [runtime_defaults.py](runtime_defaults.py) `_opted_out`
+- Scope: With `plugins.entries.hermes-toolset.settings.apply_runtime_defaults: false`, setup (full and `--bundle-only`) still runs `config set approvals.mode off` and the other policy keys. Skip the policy keys for opted-out profiles using the same settings-then-legacy-config rule as `_opted_out`, and say so in the preflight plan.
+- Acceptance: For an opted-out fixture profile, setup issues no approval, injection or skill-list `config set` and the plan reports the skip; other profiles are unchanged.
+- Checks: New regression in the existing setup tests (`tests/test_complete_setup.py` or `tests/test_preflight.py`); `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to plugin-load behavior; no real profile writes.
+- Current evidence: Implemented in `782ccfc` (isolated worktree, reviewed by the coordinator before integration). Setup reads the profile config with `runtime_defaults.setup_opted_out` (the same settings-then-legacy rule as `_opted_out`), skips all six policy keys for an opted-out profile, says so in the preflight plan and install output, and refuses rather than guesses when the opt-out cannot be read without PyYAML. Regressions in `tests/test_install_plugins.py`, `tests/test_preflight.py` and `tests/test_telegram_menu_policy.py` failed before the fix; installation, reference and README docs updated.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (415/575/207/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed) and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-046 — Keep the plugin loading when one native skill copy cannot be provisioned
+
+- [x] TOOLSET-046 — Keep the plugin loading when one native skill copy cannot be provisioned
+- Status: done
+- Goal: RELIABILITY-2026-10 — One incomplete native skill folder never removes every bundled command.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [__init__.py](__init__.py) `register`, [install_skills.py](install_skills.py)
+- Scope: `register()` raises when `install()` reports any failure, for example a profile `skills/engineering/` folder without `SKILL.md`, so no command, skill or `/toolset` registers. Log the provisioning messages as a warning and continue registration; plugin commands load skills by qualified name, not from native copies.
+- Acceptance: With an incomplete same-named native folder, registration completes, the failure is logged, and other missing native skills are still provisioned.
+- Checks: New regression in `tests/test_plugin.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No overwriting of the incomplete user folder.
+- Current evidence: Implemented in `e761bca` (isolated worktree, reviewed by the coordinator before integration). `register()` logs incomplete native provisioning as a warning and continues; the incomplete user folder is preserved and other skills are provisioned. Regression `test_incomplete_native_folder_is_logged_and_registration_continues` failed with the RuntimeError before the fix; installation doc updated. `doctor` does not check native skill copies, so the plugin-load warning is the only signal.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (415/575/207/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed) and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-047 — Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading
+
+- [x] TOOLSET-047 — Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading
+- Status: done
+- Goal: RELIABILITY-2026-10 — TODO.md line endings and legacy layouts never break selection or lose content.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [goals.py](skills/docs-sync/scripts/goals.py) section parsing and coverage rendering
+- Scope: Level-2 headings are captured with a trailing `\r` or space, so CRLF TODO files fail `init` and backlog checks with `section Now\r differs`. `render` replaces a marker-less legacy coverage section up to the next level-1 or level-2 heading, deleting level-3 subsections such as a decisions log. Trim heading text; stop the replaced span at any heading or refuse when it holds more than the coverage table.
+- Acceptance: A CRLF copy of a valid fixture initializes and selects like the LF one; a `Now ` heading with a trailing space matches `Now`; rendering a legacy coverage section keeps following level-3 content byte-identical.
+- Checks: New regressions in `skills/docs-sync/scripts/test_goals.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to the marker-delimited coverage block format.
+- Current evidence: Implemented in `d3acb6a`, `c1a509e` (isolated worktree, reviewed by the coordinator before integration). `task_bodies` trims `\r` and trailing blanks from level-2 section names, and a marker-less legacy coverage section is replaced only up to the next heading of any level. `HeadingLineEndingTests` (CRLF parity across init/validate/next/backlog-check/bootstrap-order, trailing-space headings, level-3 content kept) failed before the fix. Known limit: the generated coverage block is still written with LF lines in a CRLF file.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (415/575/207/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed) and `git diff --check`. Offline only.
