@@ -617,3 +617,31 @@ locks and verifies unchanged inputs, migrates, validates, compares the next pick
 before and after, and commits locally per repository without push. Preserve all
 stopped/paused jobs under the owner's later stop-all instruction; a successful
 migration does not authorize resumption. Failed repositories remain deferred.
+
+## Checkable core-document completeness
+
+Status: Accepted
+
+Decision: On 2026-10-14 the user approved recording two Docs Sync improvements as
+bounded tasks: a machine-checkable document role manifest and repository-type
+role profiles. Today Docs Sync's core-document completeness, link and command
+checks, and drift detection are prose instructions that only an agent applies;
+`goals.py` has no equivalent for documents. This acceptance covers offline helper,
+skill-reference and regression work; it does not accept a particular manifest
+path or authorize rewriting consumer repositories.
+
+- A tracked manifest records each document role's path (or combined section),
+  outcome status, covered source paths and last-verified commit. Helper checks
+  report broken local links/anchors, documented repository commands that do not
+  exist, and roles that are neither mapped nor recorded as not applicable.
+- A staleness check lists roles whose covered source paths changed after their
+  last-verified commit. It reads Git history only and never rewrites documents.
+- Repository-type profiles (service, library, CLI/plugin, application,
+  infrastructure) declare baseline roles, so applicability is not re-decided on
+  every run. Reference (commands/configuration), glossary, troubleshooting and
+  installation/upgrade become explicit roles where a profile needs them.
+- Absent a manifest, Docs Sync keeps its current prose behavior; adoption is
+  opt-in per repository and never creates empty documents.
+
+Open question: manifest location (default: `docs/roles.json`, reusing an existing
+docs index when present).

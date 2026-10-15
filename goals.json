@@ -190,6 +190,20 @@
         "TOOLSET-023"
       ],
       "title": "Start useful implementation sooner with less preparation"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "DOCS-COMPLETENESS",
+      "priority": 80,
+      "source": "docs/project.md#checkable-core-document-completeness",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-030",
+        "TOOLSET-031",
+        "TOOLSET-032"
+      ],
+      "title": "Make core-document completeness and drift machine-checkable"
     }
   ],
   "priority_order": {
@@ -200,7 +214,10 @@
       "TOOLSET-003",
       "TOOLSET-019",
       "TOOLSET-011",
-      "TOOLSET-013"
+      "TOOLSET-013",
+      "TOOLSET-030",
+      "TOOLSET-031",
+      "TOOLSET-032"
     ]
   },
   "tasks": [
@@ -257,6 +274,26 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-030"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-031",
+      "section": "Next",
+      "status": "open",
+      "title": "Report stale document roles from covered-path history"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-030"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-032",
+      "section": "Next",
+      "status": "open",
+      "title": "Define repository-type role profiles in the Docs Sync scaffold"
     },
     {
       "depends_on": [],
@@ -407,6 +444,14 @@
       "section": "Done",
       "status": "done",
       "title": "Enforce TODO.md priority order offline with drift guard, reconciliation and bootstrap"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-030",
+      "section": "Done",
+      "status": "done",
+      "title": "Add a document role manifest and offline docs check"
     },
     {
       "depends_on": [],

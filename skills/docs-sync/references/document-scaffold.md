@@ -30,6 +30,30 @@ creating or rewriting AGENTS.md or changing repository policy.
 | docs/operations/runbook.md | Prerequisites; run/health; diagnosis; recovery/rollback; backup limits | Supported operational procedures; no invented recovery guarantees |
 | CHANGELOG.md | Notable changes grouped by actual version/release convention | Implemented/released changes, not proposed work or audit diaries |
 
+### Optional role manifest
+
+A repository may record its role mapping in `docs/roles.json` so coverage and
+integrity are checked by the bundled `scripts/docs.py`, not only by reading:
+
+```json
+{"version": 1, "roles": {
+  "readme": {"status": "maintained", "path": "README.md", "covers": ["src"], "verified_at": "fb2798f"},
+  "architecture": {"status": "maintained", "path": "docs/design.md#current-system"},
+  "runbook": {"status": "not_applicable", "reason": "No deployed service."}
+}}
+```
+
+Statuses are the role outcomes reported by the parent skill. Mapped roles need a
+repository-relative `path` (optionally `#anchor`); not-applicable roles need a
+`reason` and no path. `covers` lists source paths the role documents and
+`verified_at` the commit at which it was last verified. Run `docs.py validate <repo>`
+for shape and `docs.py check <repo>` to also check mapped documents and anchors,
+local and reference-style links, `python`/`python3`/`sh`/`bash`/`node` script paths in
+inline code (including after a relative `cd`), covered paths and
+unmapped baseline roles (README, PRD, architecture, spec, test-plan, runbook,
+CHANGELOG). Both are read-only, never fetch URLs and report `no manifest` when none
+exists. Create a manifest only when the repository adopts one; never to fill a gap.
+
 Architecture and spec may share a file with explicit Current and Planned sections.
 Link source paths/symbols for structural claims and task IDs for proposed changes.
 Do not rewrite accepted requirements merely to match incomplete implementation.

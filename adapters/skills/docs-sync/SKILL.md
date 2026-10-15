@@ -33,6 +33,8 @@ fmt/validate/render with the absolute repository path. Its rendering does not cr
 full task bodies. Do not create a second tracker when the repository already has an
 authoritative equivalent. Use source inspection for routine edits; graph tools only
 when available and useful or explicitly required. Check links, commands and statuses.
+With a [role manifest](../../../skills/docs-sync/references/document-scaffold.md#optional-role-manifest),
+also run the bundled `docs.py check <repo>` and keep the manifest synchronized.
 
 The scaffold's parent-skill references describe document roles, not permission to
 start Hermes coordination. Use this adapter for execution rules. Keep actual external

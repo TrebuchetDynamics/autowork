@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Docs Sync's optional document role manifest (`docs/roles.json`) and read-only
+  `skills/docs-sync/scripts/docs.py validate|check`: mapped documents and anchors,
+  local links, documented script paths, covered paths and unmapped baseline roles.
+  Repositories without a manifest are unaffected.
+
 - Planning craft shared by `/plan_with_me` and `/plan_for_me`, adapted from
   obra/superpowers `brainstorming` and mattpocock/skills `grilling` and
   `domain-modeling`: sizing (a clear task skips the interview), facts-versus-decisions,
