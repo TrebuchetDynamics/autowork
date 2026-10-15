@@ -1,76 +1,36 @@
 # Hermes Toolset
 
-An opinionated toolkit for running repository work across Hermes profiles—from
-questions and research to documented tasks, implementation, checks and commits.
-Use the same workflows in Hermes CLI and Telegram. Install into one profile with
-the native plugin manager, or deploy across your fleet with the setup tools.
+**Turn repository goals into verified changes, tracked in TODO.md.**
 
-**Codex and Pi are also supported** through native packages with portable workflow
-adapters. See [Codex and Pi installation](docs/cross-host.md) for their install and
-invocation syntax. The Hermes fleet installer below is only for Hermes.
+Plan with the agent (`/plan_with_me`), let it investigate and decide
+(`/plan_for_me`), and have it execute the next ready task (`/autowork`). Plans,
+priorities, acceptance checks and progress stay in your repository's TODO.md, so
+the next run—yours, a teammate's or a scheduled job's—picks up where the last
+one left off.
 
-Hermes already supports skills and plugins. This bundle adds a coordinated set of
-repository workflows, automatic slash-command registration, shared installation
-across profiles, and verification that gateway commands were registered. It includes
-the complete [Impeccable design skill](skills/impeccable/SKILL.md) and
-25 pinned [Addy engineering protocols](skills/engineering/SKILL.md), with shared
-checklists, loaded one technique at a time when needed. Phase bundles are optional.
+It runs in Hermes CLI and Telegram, installs into one profile or a whole fleet,
+and also ships native packages for [Codex and Pi](docs/cross-host.md).
 
-**Autowork coordinates repository development.** Supporting skills are available
-on demand; installation does not load them all or require a full workflow per task.
-Explicit specialist commands still work independently within their stated scope.
-
-The main commands are **`/plan_with_me`** (ask and plan together),
-**`/plan_for_me`** (investigate and decide), **`/docs_sync`** (maintain docs and
-TODO.md), and **`/autowork`** (execute). In CLI chat, `/plan_with_me`, `/plan_for_me`
-and `/docs_sync` work with underscores or hyphens; other commands use hyphens
-(`/cron-autowork`, `/autoresearch:plan`). Telegram displays underscores and accepts
-either. `/autoresearch:plan` (`/autoresearch_plan` in Telegram) remains a
-compatibility command for planning.
-
-## What you can do
-
-| Workflow | Example in CLI chat | Result and possible changes | Readiness needed |
-| --- | --- | --- | --- |
-| Clarify a project | `/plan_with_me Design a caching layer` | Researches the repo, clarifies your request with focused questions, and saves the plan and tasks. Use `questions only` to avoid writes. | Core + model; file/terminal tools to save decisions |
-| Challenge a plan | `/plan_with_me Challenge this cache design` | Questions assumptions before implementation. | Core + configured model |
-| Maintain docs and tasks | `/docs_sync Record the accepted cache design` | Updates docs and organizes accepted work into tasks with acceptance criteria and dependencies. Does not start implementation. | File/terminal tools; graph tooling for relevant relationship analysis |
-| Schedule repository work | `/cron-autowork every 30 minutes for this repo; no push` | Creates or updates a matching Autowork job and verifies its settings. Telegram-routed jobs with the start-notice script attached post a message when each run starts, and every Telegram-routed job posts the report when it finishes. | Available scheduler + verified repository/profile |
-| Develop a repository | `/autowork Implement the accepted cache specification` | Reads TODO.md, calls bounded Autoresearch for unresolved planning or research questions, then executes and verifies a useful slice. Default invocation selects one task; no push/deploy implied. | Configured model + execution tools; supporting tools only when needed |
-| Research and improve | `/plan_for_me Reduce cache latency` | Saves actionable plans and findings to TODO.md by default, synchronizing goals.json through docs_sync. Planning does not implement; explicit read-only requests write nothing. | Research/experiment tools for the selected protocol; file/terminal tools to record tasks |
-| Continue approved work | `/lgtm` | Continues the agreed work without asking again; respects changes such as “no push.” | Tools required by the agreed work |
-| Deliver changes | `/git-commit-push only src/cache` | Validates, commits and pushes the specified work. Add `no push` for local commits. | Git + repository checks; remote credentials for push |
-| Integrate upstream | `/git-pull-merge` | Runs the repository's pull/merge workflow. | Git + remote access and repository checks |
-| Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. | Profile setup tools + selected integrations |
-| Update the bundle | `/toolset update` | Checks upstream, updates plugin copies and bundled skills across all existing profiles, re-applies each profile's command menu and settings, and requests one graceful restart of the root gateway when anything changed (restart profile-dedicated gateways yourself). Use `/toolset update status` for the result. | Git, upstream access and clean plugin checkouts |
-| Inspect capabilities | `/toolset list` | Lists registered commands and their owners; `hermes toolset doctor --json` reports missing imports. | Core; inventory does not prove workflow readiness |
-
-**Core** means bundled commands with a configured model; `doctor --core` checks
-registration, not the workflow prerequisites above.
-
-Telegram uses underscores. Its picker advertises the workflow commands
-`/plan_with_me`, `/plan_for_me`, `/docs_sync`, `/autowork` and `/cron_autowork`;
-other bundled commands such as `/git_commit_push` still work when typed. Older
-compatibility spellings (`/autoresearch`, `/autoresearch_plan`,
-`/autoresearch_<protocol>`) still run but are not advertised. See
-[commands and workflows](docs/workflows.md) for the full research command set.
-
-`/autowork` is the repository-development command. Upgrade existing installations
-with the migration procedure in [installation](docs/installation.md).
-
-## A typical workflow
+## How it works
 
 ```text
 /plan_with_me Design a caching layer for this repository
-/autowork Implement that accepted specification; commit locally, no push
+/autowork Implement the next ready task; commit locally, no push
 ```
 
-The interview asks questions and uses docs_sync to save accepted decisions and
-tasks automatically; a separate docs command is unnecessary. **TODO.md is the
-central work queue** for plans, user orders and progress, and its order is the
-human priority. A runnable task needs an ID, a place under `## Now` or `## Next`,
-and unique Scope, Acceptance and Checks fields; an arbitrary checklist line is not
-a task:
+1. **Plan.** `/plan_with_me` researches the repository, asks you about the choices
+   only you can make, and saves the decisions and tasks. `/plan_for_me` does the
+   same without the interview, recording each choice it made as the planner's call.
+2. **Queue.** Accepted work becomes TODO.md tasks, in your priority order. Docs Sync
+   (`/docs_sync`) keeps docs, TODO.md and its `goals.json` index consistent.
+3. **Execute.** `/autowork` selects the next ready task, implements it, runs its
+   checks and commits locally. It never pushes or deploys unless you say so.
+4. **Repeat.** `/cron_autowork 15m` schedules Autowork. Telegram-routed jobs post
+   a start message (when the start-notice script is attached) and a report each run.
+
+A runnable task has an ID, sits under `## Now` or `## Next`, and has unique Scope,
+Acceptance and Checks fields (`Verification:` also works, but not both). An
+arbitrary checklist line is not a task:
 
 ```markdown
 ## Now
@@ -83,46 +43,14 @@ a task:
   Dependencies: None.
 ```
 
-`Verification:` is accepted in place of `Checks:`, but not both on one task.
+**TODO.md order is the priority.** To reprioritize, move whole task blocks and run
+`goals.py reorder <repo>`. Until you do, Autowork's default selection stops with
+`PRIORITY_DRIFT` rather than run the old order (a task you name explicitly still
+runs). A `goals.json` without a recorded order reports `UNMIGRATED` until a one-time
+`goals.py bootstrap-order` (dry-run first). Dependencies and focus decide which
+eligible task runs; they never rewrite your order.
 
-When goals.json is present it records that order. To reprioritize, move whole task
-blocks in TODO.md and run `goals.py reorder <repo>`; until then Autowork's default
-selection stops with `PRIORITY_DRIFT` instead of running the old order (a task you
-name explicitly can still run). A ledger without a recorded
-order reports `UNMIGRATED` and keeps legacy selection until a one-time
-`goals.py bootstrap-order` (dry-run first). Focus and dependencies still decide
-which eligible task runs; they never rewrite your order.
-
-Already have an idea? Plan it first, then authorize execution:
-
-```text
-/plan_for_me Reduce cache latency; do not implement yet
-/autowork Implement the next ready cache task from TODO.md; commit locally, no push
-```
-
-Autoresearch saves in-scope findings and actionable tasks by default; you do not
-need to say “save.” It reuses task IDs and links supporting plans rather than
-creating a competing backlog. Explicit `read-only`, `chat-only`, `no-write` or
-`--dry-run` requests write nothing. Planning alone starts neither implementation
-nor a recurring job.
-
-Autowork uses a clear runnable task directly. When unresolved research or decomposition questions remain, it invokes bounded
-Autoresearch. An empty queue first gets a bounded inspection; clear repairs need
-no research ceremony. It records useful
-work in TODO.md and retries selection in the same run. Under broad repository
-scope, that can include evidenced documentation, UI/accessibility, test or refactor
-work. It preserves dependencies, active workers and live-operation limits; it does
-not invent tasks to inflate completion counts. See [the TODO work-center contract](skills/shared/TODO-WORKCENTER.md).
-
-Contributors can start with README.md, AGENTS.md and TODO.md, select an accepted
-ready task, make a scoped change in ordinary Git, run its checks and submit normal
-project review. No Hermes profile, Kanban card or extra task registry is required.
-Autowork follows the same path in the current session; host-native delegation is
-optional. Old cards do not veto recovery or integration. Actual process/workspace
-activity, required tests/review, explicit budgets and publication limits still apply.
-See [contributing](docs/contributing.md#work-on-a-repository-task).
-
-Illustrative result after an authorized task completes—not a test receipt:
+A typical Autowork report, illustrative rather than a test receipt:
 
 ```text
 CACHE — COMPLETED; 1 TODO task completed
@@ -133,19 +61,58 @@ Next: CACHE-02 — Verify eviction behavior [eligible, not started].
 Delivery: local commit <SHA>; not pushed, as requested.
 ```
 
-An observed active run with verified admission is **RUNNING**, not completed. **COMPLETED** requires verified
-task acceptance and closure; a passing build or successful dispatch is insufficient.
-For a genuine user-dependent blocker, the report leads with **Action needed from
-you:** the exact action and target, why it is needed, and what will resume afterward.
-Autowork performs already-authorized repairs without asking again. These are
-[reporting instructions](skills/autowork/references/dispatch-and-reporting.md),
-not a guarantee that every cron occurrence completes a task.
+**COMPLETED** means verified acceptance and closure, not just a passing build;
+a verified active run reports **RUNNING**. A genuine blocker leads with **Action
+needed from you:** the exact action, why, and what resumes afterward. See
+[reporting](skills/autowork/references/dispatch-and-reporting.md) and the
+[TODO work-center contract](skills/shared/TODO-WORKCENTER.md).
+
+Contributors need none of this machinery: read README.md, AGENTS.md and TODO.md,
+pick a ready task, make the change in ordinary Git, run its checks and submit for
+review. See [contributing](docs/contributing.md#work-on-a-repository-task).
+
+## What you can do
+
+| Goal | Example | What happens |
+| --- | --- | --- |
+| Plan together | `/plan_with_me Design a caching layer` | Asks focused questions, then saves decisions and tasks. `questions only` writes nothing. |
+| Challenge a plan | `/plan_with_me Challenge this cache design` | Tests assumptions before implementation. |
+| Let it plan | `/plan_for_me Reduce cache latency` | Investigates, chooses an approach and saves tasks; does not implement. |
+| Maintain docs and tasks | `/docs_sync Record the accepted cache design` | Updates docs and turns accepted work into tasks with acceptance and dependencies. |
+| Develop | `/autowork Implement the accepted cache spec` | Executes and verifies one useful slice; no push or deploy implied. |
+| Schedule development | `/cron_autowork every 30 minutes for this repo; no push` | Creates or updates one Autowork job and verifies it; with a cadence, a paused job resumes. |
+| Continue approved work | `/lgtm` | Continues the agreed work without asking again, honoring limits such as "no push". |
+| Deliver | `/git-commit-push only src/cache` | Validates, commits and pushes; add `no push` for local commits. |
+| Integrate upstream | `/git-pull-merge` | Runs the repository's pull and merge workflow. |
+| Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. |
+| Update the bundle | `/toolset update` | Updates every profile; see [updating](#updating). |
+| Inspect | `/toolset list` | Lists registered commands and their owners. |
+
+Planning saves its results by default; `read-only`, `chat-only`, `no-write` or
+`--dry-run` writes nothing, and planning never starts implementation or a schedule.
+Autowork uses a ready task directly and only calls bounded research for unresolved
+questions. With an empty queue it inspects the repository and records a justified
+task instead of inventing busywork.
+
+**Command spelling.** Telegram uses underscores and its menu shows `/plan_with_me`,
+`/plan_for_me`, `/docs_sync`, `/autowork` and `/cron_autowork`; other bundled
+commands such as `/git_commit_push` work when typed. In CLI chat the three planning
+and docs commands accept underscores or hyphens; other commands use hyphens
+(`/cron-autowork`, `/autoresearch:plan`). Older spellings (`/autoresearch`,
+`/autoresearch_plan`, `/autoresearch_<protocol>`) still run but are not advertised.
+See [commands and workflows](docs/workflows.md).
+
+**Bundled skills.** The workflows draw on the complete
+[Impeccable design skill](skills/impeccable/SKILL.md) and 25 pinned
+[engineering protocols](skills/engineering/SKILL.md), loaded one technique at a
+time when a task needs it. Loading a skill is not proof it was applied; application
+receipts name the protocol and the actual decision or check.
 
 ## Read before installing
 
-This policy applies to Hermes. [Codex/Pi adapters](docs/cross-host.md) preserve their host settings.
-
-**The defaults are designed for an autonomous fleet, not a policy-neutral command bridge.**
+These defaults apply to Hermes; the [Codex and Pi adapters](docs/cross-host.md)
+keep their hosts' settings. **They are designed for an autonomous fleet, not a
+policy-neutral command bridge.**
 
 - Full setup targets **every existing live profile**. There is no general
   `--profile` selector; `--hermes-home` selects a Hermes installation root.
@@ -162,29 +129,26 @@ This policy applies to Hermes. [Codex/Pi adapters](docs/cross-host.md) preserve 
 
 The runtime-policy opt-out prevents policy changes **during plugin loading and
 setup**. Full setup still applies OMH memory defaults and external integrations;
-there is currently no policy-neutral full-installation mode. See [installation](docs/installation.md).
-See [memory and retained data](docs/memory.md) before enabling memory capture.
+there is currently no policy-neutral full-installation mode. See
+[installation](docs/installation.md), and [memory and retained data](docs/memory.md)
+before enabling memory capture.
 
-## Installation choices
+## Install
 
 | Path | Scope | External integrations | Policy effects |
 | --- | --- | --- | --- |
-| `bash install.sh --bundle-only` | All existing live profiles | Skips external-source setup | Applies bundle defaults except in opted-out profiles; not a single-profile mode |
+| Native Hermes plugin | Selected Hermes profile | Manifest lists OMH, Ponytail and speech as advisory | Plugin load applies runtime defaults and provisions missing bundled skills |
+| `bash install.sh --bundle-only` | All existing live profiles | Skips external-source setup | Applies bundle defaults except in opted-out profiles |
 | `bash install.sh --yes-deps` | All existing live profiles | OMH, Ponytail, speech, Graphify | Applies defaults and OMH setup |
-| Native Hermes plugin installation | Selected Hermes profile | Manifest declares OMH, Ponytail and speech dependencies | Plugin load applies runtime defaults and provisions missing bundled skills |
 
-The standalone command registration code does not require a memory or speech
-service to register commands. The published manifest describes the complete stack;
-there is currently no separate minimal, policy-neutral Hermes package.
+Command registration does not need a memory or speech service. There is currently
+no separate minimal, policy-neutral Hermes package.
 
-## Try the native plugin in one profile
+### Try the native plugin in one profile
 
-These commands use the default profile. For an existing named profile, add
-`-p work` after `hermes` throughout (for example, `hermes -p work toolset doctor --core`).
-The manifest lists OMH, Ponytail and Hermes Speech as advisory dependencies: native
-installation does not install them, and the plugin loads with a warning when they
-are absent. The smoke check needs none of them; `hermes toolset setup --yes-deps`
-adds them.
+These commands use the default profile; for a named profile add `-p work` after
+`hermes` throughout. Native installation does not install the advisory
+dependencies, and the plugin loads with a warning when they are absent.
 
 ```sh
 hermes plugins install TrebuchetDynamics/hermes-toolset
@@ -192,18 +156,18 @@ hermes plugins enable hermes-toolset
 hermes toolset doctor --core
 ```
 
-Loading it still applies the runtime policy above. This is not a policy-preserving
-trial, and native installation alone does not perform full external setup.
-Continue at [first use](#first-use-in-your-project); the source path below is an
-alternative for fleet setup or local development.
+Loading still applies the runtime policy above; this is not a policy-preserving
+trial. `hermes toolset setup --yes-deps --dry-run`, then without `--dry-run`, adds
+the full stack—and **expands setup to every live profile**, even when launched
+with `-p PROFILE`.
 
-## Fleet setup from source
+### Fleet setup from source
 
-Prerequisites: an existing Hermes installation with a configured model, Git,
-Bash and Python 3.12 for setup/tests (Hermes uses its managed interpreter). Use the [verified compatibility record](docs/testing.md#compatibility)
-to check your environment. Telegram also needs its normal Hermes bot configuration.
-
-After reviewing the effects above and backing up configuration:
+Prerequisites: an existing Hermes installation with a configured model, Git, Bash
+and Python 3.12 for setup and tests (Hermes uses its managed interpreter). Check the
+[verified compatibility record](docs/testing.md#compatibility). Telegram needs its
+normal Hermes bot configuration. After reviewing the effects above and backing up
+configuration:
 
 ```sh
 git clone https://github.com/TrebuchetDynamics/hermes-toolset.git
@@ -212,15 +176,19 @@ bash install.sh --bundle-only --dry-run
 bash install.sh --bundle-only
 ```
 
-This starts with the bundled workflows and skips external-source setup. Keep the
-checkout: the installed plugin links to it. Profile `status` is `ready` or
-`incomplete`. The separate `gateway` field reports `commands_reloaded`,
-`not_running`, `deferred_by_request`, `unreachable` or `reload_incomplete`.
+Keep the checkout: the installed plugin links to it. Each profile reports `status`
+`ready` or `incomplete`, and a separate `gateway` field (`commands_reloaded`,
+`not_running`, `deferred_by_request`, `unreachable` or `reload_incomplete`). Add
+external integrations later with `bash install.sh --yes-deps` (needs `uv` unless the
+OMH and Graphify CLIs are installed). Note that **CLI startup can apply runtime
+defaults before [preflight](docs/installation.md#preflight-before-fleet-writes),
+even with `--dry-run`**; `bash install.sh --yes-deps --dry-run` previews without
+booting Hermes.
 
 ## First use in your project
 
-Open **your project**, not the Toolset checkout. These commands use default; if
-you installed into a named profile, keep `-p PROFILE` after `hermes` in both commands.
+Open **your project**, not the Toolset checkout (keep `-p PROFILE` if you installed
+into a named profile):
 
 ```sh
 hermes toolset doctor --core
@@ -228,10 +196,9 @@ cd /path/to/your-project
 hermes
 ```
 
-Core readiness checks bundled skill/command registration. Missing external
-integrations are listed separately and do not fail `--core`. Plain `doctor` checks
-the full stack; add `--json` for automation. Neither mode runs a model or verifies
-live messaging. In the new CLI chat, try:
+`--core` checks bundled skill and command registration; missing external
+integrations are listed separately. Plain `doctor` checks the full stack (`--json`
+for automation). Neither runs a model or verifies live messaging. In the new chat:
 
 ```text
 /toolset list
@@ -239,53 +206,33 @@ live messaging. In the new CLI chat, try:
 ```
 
 Expected first success: the agent asks one relevant question and changes no files.
-This uses the bundled interview skill and your configured model; it does not need
-OMH, speech, Graphify or a worker. It is a live smoke check you perform, not a claim
-that automated registration tests exercised the model. Resolve any missing skill
-or model error before attempting implementation workflows.
+This needs only the bundled skills and your configured model—a live smoke check you
+perform, not something the automated tests prove. Then try the
+[core-only requirements interview](docs/onboarding.md#core-only-requirements-interview)
+or the [full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task),
+which saves docs and a TODO.md task. See [onboarding](docs/onboarding.md) for
+Telegram checks and project binding. A profile is not a filesystem sandbox.
 
-Next, use the [core-only requirements interview](docs/onboarding.md#core-only-requirements-interview)
-to produce a useful decision summary in chat. The separate
-[full-workflow exercise](docs/onboarding.md#optional-see-decisions-become-a-task)
-saves docs and a TODO.md task; it requires file/terminal tools; Graphify is relevant to relationship analysis.
+## Updating
 
-The bundled engineering pack is available without external skill imports. Autowork,
-Autoresearch and Docs Sync use its planning, implementation, debugging and review
-methods while keeping TODO.md as the shared queue. Application receipts identify
-the protocol revision and actual decision/check; loading a skill is not proof of use.
+Run `/toolset update` in CLI chat or Telegram (`hermes toolset update` in a
+terminal); `--check` previews and `status` shows the last result. It updates
+**every live profile** with fast-forward updates only, and refuses while a plugin
+checkout has uncommitted changes. Along the way it:
 
-Before upgrading, note that **CLI startup can apply runtime defaults before
-[preflight](docs/installation.md#preflight-before-fleet-writes), even with `--dry-run`**.
-Use `bash install.sh --yes-deps --dry-run` from a source checkout to preview without
-booting Hermes. Full setup needs `uv` unless OMH and Graphify CLIs are installed.
+- merges edits that profiles made to their installed skills onto the release and
+  lists them under `local_edits` (a real conflict stops the update before any write);
+- re-applies each profile's command menu, approval and injection settings
+  (`settings_healed`) and clears leftover per-chat Telegram menus that still list
+  retired commands (`chat_menus_healed`);
+- when anything changed and every profile is ready, requests one graceful restart
+  of the running root gateway so Telegram menus refresh; in-flight turns get a
+  bounded drain period and cron schedules persist. Restart profile-dedicated
+  gateways yourself.
 
-To add the full stack after native installation (no checkout needed):
-**This expands setup to every live profile**, even when launched with `-p PROFILE`.
-
-```sh
-hermes toolset setup --yes-deps --dry-run
-hermes toolset setup --yes-deps
-```
-
-From a source checkout, apply with `bash install.sh --yes-deps`.
-Later failures can still leave partial setup; read the outcome.
-
-For subsequent bundle updates, use `/toolset update` in CLI chat or Telegram;
-`/toolset update --check` previews availability and `/toolset update status` shows
-the result. Terminal equivalent: `hermes toolset update`. This targets **all live
-profiles**, preserves local conflicts and uses fast-forward updates only. It also
-self-heals each profile's command menu, approval and injection settings
-(`settings_healed` in the result) and, when anything changed and every profile is
-ready, requests one graceful restart of the running root gateway (profile-dedicated
-gateways are not detected; restart them yourself) so Telegram menus refresh;
-in-flight turns get a bounded drain period and cron schedules persist. It also clears
-leftover per-chat Telegram menus for each profile's configured owner and home chats
-that still list retired commands (`chat_menus_healed`). It refuses while a plugin checkout has
-uncommitted changes. See
-[update behavior and recovery](docs/installation.md#update-all-profiles).
-
-See [onboarding](docs/onboarding.md) for Telegram checks, project binding and updates.
-A profile is not a filesystem sandbox.
+See [update behavior and recovery](docs/installation.md#update-all-profiles).
+Installations from before `/autowork` replaced its older command follow the
+migration procedure in [installation](docs/installation.md).
 
 ## What verification proves
 
@@ -296,14 +243,13 @@ A profile is not a filesystem sandbox.
 | Live gateway command refresh | Activation receipts checked during setup |
 | Actual model behavior or live Telegram delivery | Not established by those checks; requires a configured live session |
 
-`/toolset` reports registrations, not whether every service is connected.
-Hermes' CLI `/toolsets` lists available tool groups and marks the enabled ones, a different inventory.
-[Testing and compatibility](docs/testing.md) explains checks, exclusions and limits.
+`/toolset` reports registrations, not whether every service is connected. Hermes'
+own `/toolsets` lists tool groups, a different inventory. See
+[testing and compatibility](docs/testing.md).
 
 ## Documentation
 
 - [Product scope and architecture](docs/project.md) · [Work queue](TODO.md) · [Changelog](CHANGELOG.md)
-
 - [Installation, profile scope and policy opt-out](docs/installation.md)
 - [Commands, Autoresearch and the engineering workflow](docs/workflows.md)
 - [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
@@ -312,5 +258,5 @@ Hermes' CLI `/toolsets` lists available tool groups and marks the enabled ones, 
 - [Dependencies, reproducibility and licensing](docs/dependencies.md)
 - [Adding skills](docs/contributing.md) · [Testing and compatibility](docs/testing.md)
 
-Licensed under the [MIT License](LICENSE). Bundled third-party components retain
-their own licenses and attribution; see [licensing details](docs/dependencies.md#licensing).
+Licensed under the [MIT License](LICENSE). Bundled third-party components keep their
+own licenses and attribution; see [licensing details](docs/dependencies.md#licensing).
