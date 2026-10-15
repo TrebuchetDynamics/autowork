@@ -237,11 +237,13 @@ updates it covers. The waiter never restarts while an update is still applying
 files: it shares the update lock and waits for the next check. `/toolset update status` then shows the waiter's latest chat-turn
 count, or the seconds left and turns a requested restart is draining
 (`gateway_restart_progress` in the full receipt). Once a requested restart has
-finished, the next `/toolset update status` records its outcome on the receipt:
+finished, the next `/toolset update status` or update records its outcome on the receipt:
 `completed` with `gateway_restart_result` (the new gateway's PID and start time,
 which profiles' Telegram bots logged a menu resend after the restart and which did
 not, and any forced-drain interruptions from the gateway log), or `restart_failed`
-when the restart ended with the old gateway still running. To restart immediately anyway, run `hermes gateway restart` yourself;
+when the restart ended with the old gateway still running. The outcome is also kept in
+`restart.json`, so when a later update has already replaced that receipt, status shows
+it as `Last gateway restart` (`last_gateway_restart` in the full receipt). To restart immediately anyway, run `hermes gateway restart` yourself;
 Hermes then waits for chat turns up to `agent.restart_after_turn_timeout`. Drift,
 error and check results carry no `gateway_restart` field. Only the gateway recorded
 in the root's `gateway.pid` is detected and restarted; a separately running

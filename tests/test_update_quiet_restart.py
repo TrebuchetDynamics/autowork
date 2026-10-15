@@ -332,6 +332,38 @@ class RestartOutcomeTests(unittest.TestCase):
         # Recorded once: the marker no longer describes an unfinished restart.
         self.assertIsNone(self.mod.finish_restart(self.root, self.state))
 
+    def test_outcome_outlives_a_later_receipt(self):
+        """TOOLSET-084: a later update replaced the receipt before anyone read the status."""
+        self.scenario(os.getpid())
+        later = {'status': 'up_to_date', 'pid': 6, 'started_ns': 888, 'gateway_restart': 'not_needed'}
+        (self.state / 'latest.json').write_text(json.dumps(later))
+        outcome = self.mod.finish_restart(self.root, self.state)
+        self.assertEqual(json.loads((self.state / 'latest.json').read_text()), later)
+        marker = json.loads((self.state / 'restart.json').read_text())
+        self.assertEqual((marker['finished'], marker['outcome']), ('completed', outcome))
+
+    def test_next_update_records_the_outcome_before_replacing_the_receipt(self):
+        self.scenario(os.getpid())
+        stub = ModuleType('setup_bundle')
+        def no_profiles(root): raise ValueError('stop after the receipt')
+        stub.live_profiles = no_profiles
+        with patch.dict('sys.modules', {'setup_bundle': stub}), contextlib.redirect_stdout(io.StringIO()):
+            self.mod.main(['--hermes-home', str(self.root), '--check'])
+        marker = json.loads((self.state / 'restart.json').read_text())
+        self.assertEqual(marker['outcome']['gateway_restart_result']['gateway_pid'], os.getpid())
+
+    def test_a_join_during_finishing_is_kept(self):
+        self.scenario(os.getpid())
+        take = self.mod._try_update_lock
+        def joined_then_lock(folder):
+            record = json.loads((folder / 'restart.json').read_text())
+            (folder / 'restart.json').write_text(json.dumps({**record, 'covers': [777, 999]}))
+            return take(folder)
+        with patch.object(self.mod, '_try_update_lock', joined_then_lock):
+            self.mod.finish_restart(self.root, self.state)
+        marker = json.loads((self.state / 'restart.json').read_text())
+        self.assertEqual((marker['covers'], marker['finished']), ([777, 999], 'completed'))
+
     def test_restart_that_left_the_old_gateway_stays_visible(self):
         self.scenario(1)
         (self.root / 'gateway.pid').write_text(json.dumps({'pid': os.getpid()}))

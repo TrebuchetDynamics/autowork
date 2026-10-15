@@ -1600,3 +1600,41 @@ Source section: Next
 - Planner calls while implementing: the prompt arrives both as a file and on stdin; a slot whose clean worker died is retried once like an interrupted one; held slots are left to TOOLSET-088-a7; a `--worker-host auto` coordinator is identified from its process ancestry.
 - Independent review (2026-10-15) found and this task fixed: Hermes coordinators (`python3 -I -c '<hermes_cli>'`) were not auto-detected; the worker timeout came from each call instead of the worker's start; a child surviving its leader let a restart put a second writer in the worktree (liveness and stop now cover the whole process group, escalating to SIGKILL); a dispatch interrupted before its slot blocked the task forever (the journal-recorded worktree is now adopted); launch failures spent the retry (now held with the cause); malformed queues looked idle (`NoEligibleTask` now separates them); dispatch and wait passes are serialized by `dispatch.lock`.
 - Checks run: `test_parallel_dispatch.py` 17 passed (the 6 new regressions fail on the pre-fix commit `0a84fb2`), the first 10 passed 5 consecutive runs; `test_parallel_state.py` and `test_parallel_plan.py` pass; `python3 scripts/check.py` passed all four offline directories; `git diff --check` clean. The dispatch-lock race has no deterministic test.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-092-f2 — Keep the restart outcome when a later update replaces the receipt
+
+- [x] TOOLSET-092-f2 — Keep the restart outcome when a later update replaces the receipt
+- Status: done (2026-10-15). `finish_restart` stores the outcome in `restart.json` (`finished`, `outcome`), rereads the marker under the update lock so an update that joined meanwhile keeps its `covers`, and every update records a finished restart before it replaces the receipt. `/toolset update status` shows `Last gateway restart (requested …): completed, PID N, menus resent K of M` (`last_gateway_restart` in the full receipt) when the latest receipt does not cover that restart. Four new regressions failed on the previous code and pass; `python3 scripts/check.py` passed. Offline only; live confirmation stays in TOOLSET-084.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: TOOLSET-084 live evidence (receipts replaced at 15:52 and 15:53 on 2026-10-15), [updater](update_bundle.py), [status](bundle.py).
+- Scope: Keep a finished restart's outcome durable and visible even when a later update or check replaces the receipt it covers.
+- Acceptance: The outcome survives in `restart.json`; the next update records it before writing its own receipt; status shows it for a receipt that does not cover the restart; a concurrent join is not lost.
+- Checks: `tests/test_update_quiet_restart.py` RestartOutcomeTests, `tests/test_bundle.py`, `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No Hermes changes; no live restart in this task.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-084 — Qualify the gentler update rollout live
+
+- [x] TOOLSET-084 — Qualify the gentler update rollout live
+- Status: done (2026-10-15). Confirming run after TOOLSET-092-f2 (afe1482): `hermes toolset update` requested the restart at once with no chat turn in flight; the gateway restarted as PID 553964 at 16:49:53; `/toolset update status`, run through the pinned plugin's own code, showed `Gateway restart: completed, new gateway PID 553964` with menus resent for all nine Telegram profiles and none missing, and `restart.json` kept the same outcome. The only timeout logged was Hermes' 30 s cron drain; cron workers started 43 and 59 minutes earlier were still running afterwards. Earlier live evidence follows.
+- Evidence: Live evidence 2026-10-15. (1) The 15:33 restart was requested by the deferred waiter with no chat turn in flight; a Telegram turn that started at the same moment made Hermes wait, and it ended on its own at 15:37:26 with 1590 s left before any forced drain, and the gateway restarted at 15:38:24. (2) The 15:50 restart was requested at once (no chat turn) and completed as PID 3947525 at 15:51:05; all nine Telegram profiles logged a menu resend. Both restarts logged only the 30 s cron-drain timeout ("interrupting remaining work"); the three external cron workers of the 15:50 restart kept running. (3) Two concurrent `update_bundle.py --check` runs: the second waited 10 s, exited 3 with `busy`, the first run's PID/mode/start, and left its receipt untouched. (4) All seven linked profiles were pinned at the linked revision 02c017c; each is a clean clone and later updates advanced them (57ca912, then the other writer's 82c78a5) while the checkout's unreleased state no longer reaches them. Gap: two later updates (15:52, 15:53) replaced the 15:49 receipt before its outcome was recorded, so no receipt kept `completed`; fixed offline in TOOLSET-092-f2.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [linked profiles](docs/installation.md#linked-profiles-and-pinned-clones).
+- Scope: After the user publishes TOOLSET-075..079 and asks for an update, run `hermes toolset update` and confirm from the receipt and gateway log that the restart was requested only with no chat turn in flight (or deferred and later completed), that `/toolset update status` shows the new gateway PID and menu resends, and that a second update during the first reports `busy`. With the user's OK, pin one linked profile and confirm it loads the clone after the next restart.
+- Acceptance: A live receipt records `gateway_restart: completed` with `gateway_restart_result`, or a deferred restart that later completed; no forced drain appears in the gateway log for that restart; any pinned profile runs the same revision as before.
+- Checks: `/toolset update status full`; the gateway log around the restart; `git -C PROFILE/plugins/hermes-toolset rev-parse HEAD` for a pinned profile.
+- Dependencies: TOOLSET-092-f2.
+- Prior work: TOOLSET-079 (done, archived).
+- Ownership: Toolset coordinator; live steps need the user's request.
+- Exclusions: No push, update, restart or pinning without the user's request.

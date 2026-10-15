@@ -1,7 +1,7 @@
 ---
 name: ui-taste
 description: "Use to build, polish or review web and iOS UI screens."
-version: 0.2.1
+version: 0.2.2
 license: Apache-2.0
 ---
 
@@ -48,6 +48,16 @@ Adapter-local references linked below resolve relative to this SKILL.md.
   failures, recovery actions and security consent reachable. Keep installation
   warnings before installation links/actions inside the same disclosure. Preserve
   readable large text, touch targets and keyboard/Back operation.
+- **Read layout regressions before choosing the refinement.** Inspect existing
+  responsive, density, accessibility and action tests alongside the screen. Treat
+  meaningful bounds as design inputs: stacking every label above its value can
+  make a dense registry unusable even when one card looks cleaner. Fix alignment,
+  wrapping and action priority before spending more vertical space; do not relax
+  established bounds to accommodate a preferred composition.
+- **Size layout transitions to the available panel.** Compare the ledger's actual
+  minimum width with its containing panel, including map/sidebar modes. Choose
+  the table/card transition from that fit rather than a generic viewport breakpoint;
+  otherwise a laptop or sidebar can inherit a clipped desktop table.
 - **Verify what you ship.** Render the result with whatever browser or renderer is
   available at representative desktop and mobile sizes. When nothing can render it,
   say the checks were code-only rather than claiming a visual pass.
@@ -55,6 +65,18 @@ Adapter-local references linked below resolve relative to this SKILL.md.
   viewport's bounds, not only a button's position: short content can leave the
   button above system chrome even when the viewport still extends underneath it.
   Use a negative control to prove the regression detects the removed protection.
+  Run existing behavioral tests as well as new visual/layout assertions. When a
+  failure appears, compare the same test against pristine source under equivalent
+  fixture conditions before classifying it as pre-existing or changing the harness.
+  A baseline pass does not establish the candidate's failure mechanism. Capture
+  settled states, not navigation dimming or loading overlays; distinguish verified
+  layout from external assets that have not finished loading. After any
+  correction, bind fresh checks, captures and review to the revised source hashes;
+  an earlier screenshot or approval does not qualify the new bytes.
+- **Report gate outcomes, not just exit codes.** Separate focused no-retry
+  passes from broader retry-enabled gates. Disclose flaky safety-action tests and
+  skipped coverage even when the command exits successfully; a clean focused run
+  does not erase broader failures or establish reproducibility.
 - **Delivery stays separate.** Documentation changes follow
   [Docs Sync](../docs-sync/SKILL.md). Commit, push or publish only through the
   repository's normal delivery workflow (for example
@@ -89,6 +111,9 @@ use [app-derived artwork](references/app-derived-artwork.md).
 For Flutter widget captures, disclosure regressions and Android test-APK handoffs,
 read [Flutter/Android validation](references/flutter-validation.md), a reference
 owned by this adapter rather than the pinned upstream playbooks.
+
+For dense web registries, isolated browser fixtures and baseline/candidate failure
+comparison, read [browser validation](references/browser-validation.md).
 
 Report the playbooks used, files changed, what was actually rendered and checked,
 and any limitation that affected the result.

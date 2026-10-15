@@ -368,19 +368,25 @@
           "kind": "executed",
           "ref": "TOOLSET-075..079 offline: python3 scripts/check.py (506/576/209/8 passed, 1 skipped) and node --test tests/portable_pi.test.mjs (3 passed); read-only pin dry run against the live home refused an unreleased revision as designed; live rollout not qualified (TOOLSET-084)",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-084 live 2026-10-15: hermes toolset update at afe1482 requested the restart with no chat turn in flight; /toolset update status showed gateway_restart completed, new PID 553964, menus resent 9/9; concurrent --check returned busy (exit 3) without touching the first receipt; earlier deferred restart waited for a chat turn that ended on its own (no forced chat drain); 7 linked profiles pinned to clean clones that only updates advance",
+          "result": "pass"
         }
       ],
       "id": "GENTLE-UPDATE",
       "priority": 88,
       "source": "docs/project.md#gentler-update-rollout-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-075",
         "TOOLSET-076",
         "TOOLSET-077",
         "TOOLSET-078",
         "TOOLSET-079",
-        "TOOLSET-084"
+        "TOOLSET-084",
+        "TOOLSET-092-f2"
       ],
       "title": "Roll out updates without forcing gateway restarts"
     },
@@ -550,14 +556,6 @@
       "section": "Next",
       "status": "open",
       "title": "Restore the OMH memory plugin on Hermes 0.22"
-    },
-    {
-      "depends_on": [],
-      "goal": "GENTLE-UPDATE",
-      "id": "TOOLSET-084",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify the gentler update rollout live"
     },
     {
       "depends_on": [
@@ -1087,6 +1085,14 @@
     },
     {
       "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-084",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify the gentler update rollout live"
+    },
+    {
+      "depends_on": [],
       "goal": "PARALLEL",
       "id": "TOOLSET-085-1a",
       "section": "Done",
@@ -1111,6 +1117,14 @@
       "section": "Done",
       "status": "done",
       "title": "Dispatch workers in their own worktrees with a refilled worker pool"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-092-f2",
+      "section": "Done",
+      "status": "done",
+      "title": "Keep the restart outcome when a later update replaces the receipt"
     },
     {
       "depends_on": [],
