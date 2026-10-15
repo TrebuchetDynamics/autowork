@@ -197,8 +197,9 @@ an applicable-role outcome. Build substantive supported content despite unknowns
 label questions/defaults and book real question tasks, not fabricated intent/history.
 README links detailed owners; reuse requirement IDs without duplicated schemas.
 When the repository has a [role manifest](references/document-scaffold.md#optional-role-manifest),
-keep it synchronized with these outcomes and run `scripts/docs.py check <repo>`; fix
-or report every finding. Its pass does not prove content accuracy.
+keep it synchronized with these outcomes, run `scripts/docs.py stale <repo>` to scope
+Maintain and `scripts/docs.py check <repo>` before reporting; fix or report every
+finding. A pass does not prove content accuracy.
 
 ADRs cover significant hard-to-reverse choices, not routine edits/interview answers.
 Check current numbering; otherwise use unique zero-padded IDs and Proposed/Accepted/

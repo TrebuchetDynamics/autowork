@@ -280,16 +280,6 @@
         "TOOLSET-030"
       ],
       "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-031",
-      "section": "Next",
-      "status": "open",
-      "title": "Report stale document roles from covered-path history"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-030"
-      ],
-      "goal": "DOCS-COMPLETENESS",
       "id": "TOOLSET-032",
       "section": "Next",
       "status": "open",
@@ -452,6 +442,16 @@
       "section": "Done",
       "status": "done",
       "title": "Add a document role manifest and offline docs check"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-030"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-031",
+      "section": "Done",
+      "status": "done",
+      "title": "Report stale document roles from covered-path history"
     },
     {
       "depends_on": [],

@@ -793,3 +793,24 @@ Source section: Next
 - Review: An independent read-only review found one blocker (absolute links resolved outside the repository) and four should-fix defects (traceback on overlong paths, underscore and setext anchors, scripts after `cd`); all were reproduced as regressions and fixed, along with reference-style links, query strings, unclosed fences, path-naming diagnostics and a missing repository path.
 - Checks run: `python3 scripts/check.py` passed offline after the review fixes: 403/571/185/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. The run set aside the uncommitted TOOLSET-031/032 test files.
 - Closure: Offline helper and documentation only; no repository has adopted a manifest yet.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-031 — Report stale document roles from covered-path history
+
+- [x] TOOLSET-031 — Report stale document roles from covered-path history
+- Status: done
+- Goal: DOCS-COMPLETENESS — Detect documentation drift from source changes instead of relying on an agent rereading files.
+- Sources: [accepted completeness plan](docs/project.md#checkable-core-document-completeness), TOOLSET-030 manifest schema.
+- Scope: Add a read-only `docs.py stale` command that lists roles whose covered source paths changed between the recorded last-verified commit and HEAD, with the changing commits. Docs Sync uses the list to scope Maintain passes and updates last-verified commits only for roles it actually verified.
+- Acceptance: Unchanged covered paths report nothing; a covered-path commit after last-verified reports that role with the commit; an unknown or non-ancestor last-verified commit is reported as unverifiable, not fresh. No files are written.
+- Checks: Real-Git fixture regressions in the docs-sync test directory; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-030.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No automatic document edits, timestamp churn, history rewriting or push.
+- Current evidence: Adds read-only `docs.py stale` (Git history only, inherited `GIT_*` overrides removed, literal pathspecs) and `test_docs_stale.py` (7 real-Git fixture tests, all failing before the command existed), plus scaffold, Docs Sync, adapter and CHANGELOG notes. A throwaway manifest over this repository reported exactly the roles whose covered paths changed after their verified commits.
+- Checks run: `python3 scripts/check.py` passed offline: 403/571/192/8 tests in 4 directories, 1 skipped, 8 modules excluded, with the uncommitted TOOLSET-032 test file set aside; `git diff --check` clean. Self-reviewed; no separate independent review for this read-only increment.
+- Closure: Offline helper only; no repository has adopted a manifest yet.

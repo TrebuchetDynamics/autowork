@@ -120,20 +120,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
 - Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
 
-### TOOLSET-031 — Report stale document roles from covered-path history
-
-- [ ] TOOLSET-031 — Report stale document roles from covered-path history
-- Status: open
-- Goal: DOCS-COMPLETENESS — Detect documentation drift from source changes instead of relying on an agent rereading files.
-- Sources: [accepted completeness plan](docs/project.md#checkable-core-document-completeness), TOOLSET-030 manifest schema.
-- Scope: Add a read-only `docs.py stale` command that lists roles whose covered source paths changed between the recorded last-verified commit and HEAD, with the changing commits. Docs Sync uses the list to scope Maintain passes and updates last-verified commits only for roles it actually verified.
-- Acceptance: Unchanged covered paths report nothing; a covered-path commit after last-verified reports that role with the commit; an unknown or non-ancestor last-verified commit is reported as unverifiable, not fresh. No files are written.
-- Checks: Real-Git fixture regressions in the docs-sync test directory; `python3 scripts/check.py`; `git diff --check`.
-- Dependencies: TOOLSET-030.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No automatic document edits, timestamp churn, history rewriting or push.
-- Next action: Implement `docs.py stale` against the TOOLSET-030 schema.
-
 ### TOOLSET-032 — Define repository-type role profiles in the Docs Sync scaffold
 
 - [ ] TOOLSET-032 — Define repository-type role profiles in the Docs Sync scaffold
@@ -164,6 +150,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | CONTINUATION: Resolve and align continuation authority | met | executed <code>TOOLSET-007 historical check-reuse implementation verified in 9d1c7dc offline gate: check_receipt/retry_selection/reconcile regression modules passed; full 288/451/139/8, two skips and eight excluded native/model modules. Historical task archived; TOOLSET-008 independently reviewed and integrated.</code> → pass; executed <code>TOOLSET-008: independently reviewed and integrated 9d1c7dc; Python 3.12 scripts/check.py passed 288/451/139/8 tests, 2 skipped and 8 native/model modules excluded; exact correction review reran 26 checks. Native behavior not qualified.</code> → pass | — |
 | CRON-REPORTING: Make Telegram scheduling reports reliable across invocation surfaces | partial | executed <code>Offline source guidance: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests (246 run, 2 skipped; no live delivery qualification)</code> → pass | TOOLSET-011 |
 | STARTUP: Start useful implementation sooner with less preparation | unmet | executed <code>Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013</code> → pass | TOOLSET-013 |
-| DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | unmet | — | TOOLSET-031, TOOLSET-032 |
+| DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | unmet | — | TOOLSET-032 |
 
 <!-- goals:coverage:end -->

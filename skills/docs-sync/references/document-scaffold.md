@@ -54,6 +54,12 @@ unmapped baseline roles (README, PRD, architecture, spec, test-plan, runbook,
 CHANGELOG). Both are read-only, never fetch URLs and report `no manifest` when none
 exists. Create a manifest only when the repository adopts one; never to fill a gap.
 
+`docs.py stale <repo>` lists roles whose `covers` paths changed in commits after
+their `verified_at` commit, and reports a missing, unknown or non-ancestor commit as
+unverifiable rather than fresh. Use it to scope a Maintain pass; after actually
+verifying a role, set its `verified_at` to the commit you verified against. It reads
+Git history only and ignores inherited `GIT_*` overrides.
+
 Architecture and spec may share a file with explicit Current and Planned sections.
 Link source paths/symbols for structural claims and task IDs for proposed changes.
 Do not rewrite accepted requirements merely to match incomplete implementation.

@@ -5,6 +5,8 @@
   docs.py check <repo> [--manifest PATH]      validate, then check mapped documents, local
                                                links/anchors, documented script paths, covered
                                                paths and unmapped baseline roles
+  docs.py stale <repo> [--manifest PATH]      list roles whose covered paths changed after
+                                               their verified_at commit (Git history only)
 
 The manifest defaults to docs/roles.json. Without one, both commands report
 `no manifest` and exit 0 so Docs Sync keeps its prose-only behavior. Both commands
@@ -13,7 +15,9 @@ are read-only; external URLs are never fetched.
 import argparse
 import json
 from pathlib import Path, PurePosixPath
+import os
 import re
+import subprocess
 import sys
 from urllib.parse import unquote
 
@@ -209,6 +213,36 @@ def check(root, data):
     return errors
 
 
+def git(root, *args):
+    """Read the requested checkout's history; inherited Git overrides must not redirect it."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
+    return subprocess.run(['git', '--literal-pathspecs', '-C', str(root), *args], env=env,
+                          capture_output=True, text=True, timeout=60)
+
+
+def stale(root, data):
+    if git(root, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}').returncode:
+        return [f'repository: {root} is not a Git repository with commits']
+    errors = []
+    for role, entry in data['roles'].items():
+        covers = entry.get('covers', [])
+        if not covers:
+            continue
+        commit = entry.get('verified_at')
+        if commit is None:
+            errors.append(f'{role}: unverifiable: no verified_at commit')
+        elif git(root, 'rev-parse', '--verify', '--quiet', f'{commit}^{{commit}}').returncode:
+            errors.append(f'{role}: unverifiable: {commit} is not a known commit')
+        elif git(root, 'merge-base', '--is-ancestor', commit, 'HEAD').returncode:
+            errors.append(f'{role}: unverifiable: {commit} is not an ancestor of HEAD')
+        else:
+            changes = git(root, 'log', '--format=%h', f'{commit}..HEAD', '--', *covers).stdout.split()
+            if changes:
+                errors.append(f'{role}: stale since {commit}: {len(changes)} covered-path '
+                              f'commit(s): {" ".join(changes)}')
+    return errors
+
+
 def load(root, manifest):
     path = relative(manifest)
     if path is None:
@@ -228,7 +262,7 @@ def load(root, manifest):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('validate', 'check'))
+    parser.add_argument('command', choices=('validate', 'check', 'stale'))
     parser.add_argument('repo')
     parser.add_argument('--manifest', default=DEFAULT_MANIFEST)
     args = parser.parse_args(argv)
@@ -244,6 +278,8 @@ def main(argv=None):
         errors = validate(data)
     if not errors and args.command == 'check':
         errors = check(root, data)
+    if not errors and args.command == 'stale':
+        errors = stale(root, data)
     for error in errors:
         print(error)
     if not errors:
