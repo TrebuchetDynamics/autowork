@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Engineering protocol `test-suite-optimization` (`route.py --protocol
+  test-suite-optimization`): measure a suite's time and per-test coverage, find
+  duplicate, subsumed, slow or low-value tests, and record each consolidation or
+  speed-up as its own task whose acceptance keeps coverage and mutation score
+  (TOOLSET-067). It is toolset-written, selected only with `--protocol`, and cannot
+  shadow a pinned protocol.
 - Claude Code plugin: `claude plugin marketplace add TrebuchetDynamics/hermes-toolset`
   then `claude plugin install hermes-toolset@hermes-toolset` exposes the 13 portable
   adapters as `/hermes-toolset:<skill>`. Only the adapters load; the Hermes-only root

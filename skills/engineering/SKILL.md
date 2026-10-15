@@ -27,7 +27,12 @@ Select exactly one protocol and verify its pinned hash and shared reference hash
 python3 "<engineering-skill-dir>/scripts/route.py" --protocol performance-optimization
 ```
 
-Read the returned protocol and relevant supporting references. If the method is
+Read the returned protocol and relevant supporting references.
+
+The adapter also carries toolset-written protocols under `local/`, versioned with this
+repository rather than pinned, selected only with `--protocol` and never in a phase
+bundle: `test-suite-optimization` audits slow, redundant or low-signal tests and turns
+each consolidation or speed-up into its own task without losing defect detection. If the method is
 unclear, consult the menu in [engineering cycle](../shared/ENGINEERING-CYCLE.md).
 Stop when the gap is resolved; do not load every protocol or invent a skill quota.
 
