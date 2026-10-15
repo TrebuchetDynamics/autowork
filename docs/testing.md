@@ -138,6 +138,14 @@ These checks do not call a model or send a Telegram message. Use the separate
 
 ## Installer preflight
 
+OMH pin contracts in `test_install_omh.py` check the v3.0.2 immutable source and
+its use in a fresh-install preview without force or live setup. Source inspection
+of that release's manifest admits Hermes 0.22 and its catalog retains all 41 kept
+skills. These are offline contracts, not proof that an existing OMH executable or
+Hermes plugin was upgraded. Native qualification still needs provider status and
+standalone doctor against the same existing profile/store before and after an
+authorized refresh; see [memory compatibility](memory.md#hermes-022-compatibility).
+
 `test_preflight.py` covers admission failure before any installer call, unchanged
 profile snapshots, incomplete destination conflicts, source timeouts and the core
 policy/memory preview. Run it with Hermes's managed Python as well to exercise

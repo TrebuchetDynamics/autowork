@@ -10,7 +10,7 @@ import unittest
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'install-omh.py'
-SOURCE = 'git+https://github.com/rlaope/oh-my-hermes.git@021e5c63d976b4e0faf9cfc7d608701d98fe1722'
+SOURCE = 'git+https://github.com/rlaope/oh-my-hermes.git@117f67a2347b82ea527ca1d7f8c0e8d609ec8c4c'
 FAKE = '''import json, os, sys
 with open(os.environ['CALL_LOG'], 'a') as log:
     log.write(json.dumps(sys.argv[1:]) + '\\n')
@@ -71,6 +71,21 @@ class InstallOmhTests(unittest.TestCase):
         self.assertNotIn('hindsight', defaults['imported_plugins'])
         self.assertNotIn('  - hindsight', (root / 'plugin.yaml').read_text())
         self.assertNotIn('/plugins/hindsight', (root / 'plugins/PLUGINS.md').read_text())
+
+    def test_bundle_pins_hermes_022_compatible_omh_release(self):
+        # OMH 3.0.0 excluded Hermes 0.22 in plugin.yaml. The v3.0.2 release
+        # removes that ceiling; this is a pin contract, not live qualification.
+        defaults = json.loads((SCRIPT.parent / 'plugins/defaults.json').read_text())
+        self.assertEqual(defaults['omh']['source'], SOURCE)
+
+    def test_checked_in_source_reaches_fresh_install_preview_without_force(self):
+        self.defaults.write_bytes((SCRIPT.parent / 'plugins/defaults.json').read_bytes())
+        (self.bin / 'omh').unlink()
+        result = self.run_helper('--profile', 'default', '--dry-run')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('uv tool install ' + SOURCE, result.stdout)
+        self.assertNotIn('--force', result.stdout)
+        self.assertFalse(self.log.exists())
 
     def test_shared_stores_refused_before_any_setup(self):
         child = self.home / 'profiles/coder'

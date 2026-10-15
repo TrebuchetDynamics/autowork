@@ -49,6 +49,36 @@ migrated by this change. Removing its plugin does not erase its stored memories.
 
 ## OMH runtime troubleshooting
 
+### Hermes 0.22 compatibility
+
+OMH 3.0.0's plugin manifest requires `>=0.21.1,<0.22.0`. Hermes 0.22
+therefore skips that plugin even if its files and standalone CLI are installed.
+`hermes -p PROFILE memory status` can show `Provider: omh` with
+`Plugin: NOT installed`; that is not evidence of an empty or deleted store.
+A passing `omh doctor` alone does not establish Hermes memory-provider registration.
+
+Fresh Toolset OMH installs now pin the official
+[v3.0.2 source](https://github.com/rlaope/oh-my-hermes/tree/117f67a2347b82ea527ca1d7f8c0e8d609ec8c4c),
+whose plugin manifest requires `>=0.21.1` and declares the `omh` memory provider.
+The 41 catalog names in Toolset's keep list still map to skills in that release.
+This manifest and catalog inspection is not a native runtime qualification.
+
+`install-omh.py` reuses an `omh` executable already on PATH; changing the pin
+does **not** upgrade that executable or refresh an installed 3.0.0 plugin.
+Existing installations need a separately authorized, scoped OMH upgrade and
+plugin refresh, followed by `hermes -p PROFILE memory status` and the standalone
+doctor against the profile's existing store. Do not remove the version guard,
+force-replace a plugin, restart a shared gateway or run fleet-wide setup merely
+to make status green.
+
+Until native registration is verified, retain the existing OMH binding and all
+memory files, and treat OMH recall/capture as unavailable. Hermes' built-in
+`MEMORY.md`/`USER.md` injection can remain available when enabled; it does not
+read or migrate OMH records. Do not switch providers, create a replacement store
+or import records without the owner's explicit choice.
+
+### Existing-store binding
+
 A passing standalone OMH doctor does not prove that the live Hermes plugin can
 bind its runtime store. If chat reports `RuntimeBindingError`, ask the agent to
 invoke `omh_status` without home overrides to obtain the specific refusal.

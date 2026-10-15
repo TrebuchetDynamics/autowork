@@ -17,7 +17,7 @@
     "omh-plan"
   ],
   "omh": {
-    "source": "git+https://github.com/rlaope/oh-my-hermes.git@021e5c63d976b4e0faf9cfc7d608701d98fe1722",
+    "source": "git+https://github.com/rlaope/oh-my-hermes.git@117f67a2347b82ea527ca1d7f8c0e8d609ec8c4c",
     "full": true,
     "memory_mode": "auto-safe",
     "tui": false,

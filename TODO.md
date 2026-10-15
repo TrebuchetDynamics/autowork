@@ -216,7 +216,11 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
 
 - [ ] TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
-- Status: open
+- Status: in_progress
+- Planner's call: Deliver the compatible fresh-install pin and interim guidance in an isolated candidate; do not upgrade the active profile, switch providers or expand to sibling profiles under this occurrence's no-deployment scope. Reuse the existing installer; no automatic upgrade or new dependency mechanism.
+- Partial delivery: Pin official OMH v3.0.2 at `117f67a2347b82ea527ca1d7f8c0e8d609ec8c4c`. Its plugin manifest admits Hermes 0.22 (`>=0.21.1`) and declares the OMH provider; all 41 kept catalog names map to release SKILL.md registrations. New offline tests cover the checked-in pin and no-force fresh-install preview. Independent source review approved this slice; native installation remains unverified.
+- Observed boundary: Read-only status in the active profile still reports OMH selected but its plugin unavailable; standalone doctor reports `ok: true`. No cross-profile inference, provider switch, setup, plugin refresh or memory-store write was performed. Changing the source pin does not upgrade an existing `omh` executable on PATH.
+- Next action: Integrate the reviewed pin/docs/tests after canonical writer admission. Under separately scoped installation authority, refresh the existing OMH executable/plugin, then compare native provider status and standalone doctor against the same existing store; retain the parent open until the required native checks and integration are verified.
 - Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
 - Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), [bundle defaults](plugins/defaults.json).
 - Scope: On Hermes 0.22.0, loading OMH 3.0.0 logs "Plugin 'omh' skipped: requires hermes >=0.21.1,<0.22.0, running 0.22.0", and `hermes memory status` in a profile whose `memory.provider` is `omh` reports the plugin as not installed, so OMH memory is likely inactive fleet-wide. Confirm across profiles, find the OMH release or pin that supports Hermes 0.22, and update `plugins/defaults.json`'s pinned `omh.source` (or document the incompatibility and the safe interim provider) without changing memory stores.

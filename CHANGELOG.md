@@ -5,6 +5,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ## Unreleased
 
+### Fixed
+
+- Fresh OMH installs pin v3.0.2, whose plugin manifest no longer excludes
+  Hermes 0.22 (TOOLSET-082). Existing OMH executables and installed plugins are
+  not upgraded automatically; native registration and existing-store verification
+  remain separate. No memory provider or store is changed by the pin update.
+
 ### Added
 
 - `/toolset update status` and `hermes toolset doctor` list profiles whose plugin links
