@@ -1,2 +1,2 @@
-# YAML parsing in the offline profile audit suites.
+# YAML parsing in the offline profile audit, portable package and menu policy tests.
 PyYAML==6.0.3

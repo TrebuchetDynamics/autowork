@@ -37,27 +37,31 @@ fixture and historical reference, outside the distributed execution path.
 
 | Component | Source | Responsibility |
 | --- | --- | --- |
-| Hermes registration | [entry point](../__init__.py), [workflow aliases](../workflow_commands.py), [research aliases](../autoresearch_commands.py) | Discover skill folders, publish current skill IDs, register commands and route conversation arguments |
+| Hermes registration | [entry point](../__init__.py), [workflow aliases](../workflow_commands.py), [research aliases](../autoresearch_commands.py) | Discover skill folders, provision them and `skills/shared` into the profile, apply runtime defaults and cron scripts, publish current skill IDs, register commands (with `/toolset` and imported-skill aliases from [bundle](../bundle.py)) and route conversation arguments |
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
 | Autowork execution | [cycle](../skills/autowork/scripts/owner_cycle.py), [task execution](../skills/autowork/scripts/task_execution.py) | Select repository tasks and coordinate direct execution with live-writer protection; the agent implements and reports actual results |
 | Task index and history | [goals helper](../skills/docs-sync/scripts/goals.py), [archive helper](../skills/docs-sync/scripts/todo_archive.py) | Validate and update goals.json, render TODO coverage and archive explicitly closed, ledger-done bodies and separately labelled superseded history under the shared Git lock; supersession does not claim completion |
 | Codex package | [manifest](../.codex-plugin/plugin.json), [marketplace](../.agents/plugins/marketplace.json) | Install portable skills into Codex; no Hermes gateway or configuration dependency |
-| Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands and pass literal arguments to portable workflows |
+| Pi package | [manifest](../package.json), [extension](../adapters/pi.mjs) | Register native commands, expose `adapters/skills` as Pi skills and pass literal arguments to portable workflows |
 | Portable behavior | [host contract](../adapters/skills/COMMON.md) | Use the current host's tools; preserve permissions, memory and credentials |
 
-Hermes commands inject a skill-loading request into the current conversation. The
-model performs the workflow; command registration alone does not run it. Codex
+Hermes workflow commands inject a skill-loading request into the current conversation
+(`/toolset` answers directly). The model performs the workflow; command registration alone does not run it. Codex
 loads portable skills directly. Pi commands read adapter instructions and send a
 user message, queued as a follow-up when the session is busy.
 
-Hermes publishes `plan-with-me`, `plan-for-me`, `docs-sync` and `autoresearch`
-from their matching source directories. The retired repo-interview and repo-docs
-commands are not registered. Portable discovery exposes the same primary names;
-Grill Me is a Plan With Me challenge reference rather than a separate public skill.
-Pi retains `/grill_me` compatibility. Independent Autoresearch and all 13 selectors
-remain available; its plan selector runs Autoresearch's pinned plan protocol with
-Plan For Me's planning adaptations, and `/plan_for_me` is the dedicated planner.
+Hermes publishes every bundled skill folder except `grill-me` under its matching
+source directory; the primary workflow skills are `plan-with-me`, `plan-for-me`,
+`docs-sync` and `autoresearch`. The retired repo-interview and repo-docs commands
+are not registered. Portable discovery exposes the same primary names; Grill Me is
+a Plan With Me challenge reference rather than a separate public skill. Hermes
+(`/grill-me`, `/grill_me` in Telegram) and Pi (`/grill_me`) keep a compatibility
+command that opens Plan With Me in challenge mode, and Hermes still provisions the
+native grill-me skill into the profile. Independent Autoresearch and all 13 selectors
+remain available. In Hermes its plan selector runs Autoresearch's pinned plan protocol
+with Plan For Me's planning adaptations; the Codex and Pi adapters hand it to Plan
+For Me. `/plan_for_me` is the dedicated planner everywhere.
 Shared protocols retain their existing helper/reference paths. Local package
 discovery is distinct from model execution and cross-host live qualification.
 

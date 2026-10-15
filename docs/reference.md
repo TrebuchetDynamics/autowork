@@ -50,11 +50,11 @@ Run from a clone of this repository. The shell installers are thin wrappers.
 | Script | Flags | Effect |
 | --- | --- | --- |
 | `bash install.sh` | Same as `hermes toolset setup` | Executes [`setup_bundle.py`](../setup_bundle.py). |
-| `bash install-plugins.sh` | Same as `install.sh`; `--help` | Public calls execute `setup_bundle.py`. Only the internal `--sources-only` stage uses the installer flags shown by `--help`. |
-| `bash install-skills.sh` | `--dry-run`, `--hermes-home ROOT`, `--profile-home HOME` | Runs [`install_skills.py`](../install_skills.py): copies `skills/` into the default and every existing profile, or only `--profile-home`. Never overwrites existing skill paths or changes configuration. |
-| `python3 update_bundle.py` | `--hermes-home ROOT` (required), `--check`, `--profile NAME` (repeatable with `--source`), `--source CHECKOUT`, `--revision SHA`, `--native-python PATH` | All-profile update, or with `--source` and `--revision` a scoped deployment of a reviewed local commit; see [installation](installation.md#deploy-an-exact-local-revision-to-selected-profiles). |
-| `python3 install-graphify.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Installs Graphify's Hermes skill into selected existing profiles. |
-| `python3 install-omh.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Applies the checked-in OMH defaults to selected homes; see [memory](memory.md). |
+| `bash install-plugins.sh` | Same as `install.sh`; `--help` | Public calls, including `--help`, execute `setup_bundle.py`. The source-installer usage appears only with the internal `--sources-only --help`. |
+| `bash install-skills.sh` | `--dry-run`, `--hermes-home ROOT`, `--profile-home HOME` | Runs [`install_skills.py`](../install_skills.py): copies `skills/` (except retired `repo-docs` and `repo-interview`) into the default and every existing profile, or only `--profile-home`; `--hermes-home` and `--profile-home` are mutually exclusive. Never overwrites existing skill paths or changes configuration. |
+| `python3 update_bundle.py` | `--hermes-home ROOT` (required), `--check`, `--profile NAME` (repeatable with `--source`), `--source CHECKOUT`, `--revision SHA`, `--native-python PATH` | All-profile update, or with `--profile`, `--source`, `--revision` and `--native-python` (all four required) a scoped deployment of a reviewed local commit; see [installation](installation.md#deploy-an-exact-local-revision-to-selected-profiles). |
+| `python3 install-graphify.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Installs Graphify's Hermes skill into selected existing profiles; installs the `graphifyy` tool with `uv tool install` when missing. |
+| `python3 install-omh.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Applies the checked-in OMH defaults to selected homes, installing `omh` with `uv tool install` when missing, and writes `plugins.entries.omh.settings.omh_home`; see [memory](memory.md). |
 | `python3 scripts/check.py` | `--list`, `--timeout SECONDS` (default 180 per directory) | Runs the offline test inventory; see [testing](testing.md). |
 
 ## Repository helpers used by workflows
@@ -75,7 +75,7 @@ Source: [`runtime_defaults.py`](../runtime_defaults.py),
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `plugins.entries.hermes-toolset.settings.apply_runtime_defaults` | `true` | `false` stops the plugin from applying the runtime policy below on load. Set it before restoring your own values. |
+| `plugins.entries.hermes-toolset.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load (`config set` stores the word `false` as a boolean). The legacy `…hermes-toolset.config.apply_runtime_defaults` is honored when `settings` lacks the key. Set it before restoring your own values. |
 
 While `apply_runtime_defaults` is not `false`, each plugin load writes these
 values whenever they differ, preserving other settings:
@@ -86,11 +86,11 @@ values whenever they differ, preserving other settings:
 | `approvals.destructive_slash_confirm` | `false` |
 | `approvals.mcp_reload_confirm` | `false` |
 | `plugins.entries.hermes-toolset.allow_gateway_injection` | `true` |
-| Telegram command menu priority | Current workflow commands first; your entries, mode and cap kept ([`telegram_menu_policy.py`](../telegram_menu_policy.py)) |
+| `platforms.telegram.extra.command_menu.priority` | Your entries first, then the workflow commands appended; retired bundle names and `autoresearch_*` entries removed. Other menu settings such as the mode and cap are not changed ([`telegram_menu_policy.py`](../telegram_menu_policy.py)). |
 
-Full setup also applies the `omh` block of `defaults.json` (memory mode
-`auto-safe`, TUI and menubar off) and clears the global and per-platform skill
-disable lists. See [installation](installation.md#install) for the policy and
+Every setup, including `--bundle-only`, also clears the global and per-platform skill
+disable lists. Full setup additionally applies the `omh` block of `defaults.json`
+(memory mode `auto-safe`, TUI and menubar off). See [installation](installation.md#install) for the policy and
 [removal](uninstall.md) to restore values.
 
 ## Environment variables
@@ -99,13 +99,13 @@ disable lists. See [installation](installation.md#install) for the policy and
 | --- | --- | --- |
 | `HERMES_HOME` | Setup, skill installer, `install-plugins.sh` | Default Hermes root when `--hermes-home` is absent. A named-profile home (`ROOT/profiles/NAME`) resolves to `ROOT`. Defaults to `~/.hermes`. `/toolset update` uses the running profile's Hermes root the same way. |
 | `OMH_HOME` | [`install-omh.py`](../install-omh.py) | An exported or `.env` binding is preserved as the OMH store location; see [memory](memory.md). |
-| `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing | Chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing, from each profile's `.env` (not the process environment) | For each distinct bot token, the chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
 
 ## Files and state
 
 | Path | Owner | Contents |
 | --- | --- | --- |
 | `ROOT/maintenance/toolset-update/latest.json` | Updater | Latest update receipt: status, revisions, profiles, drift, backup location. |
-| `ROOT/maintenance/toolset-update/run.log` | Updater | Setup and update output. |
+| `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/toolset update` and of gateway restarts the updater requests; terminal `hermes toolset update` prints to the terminal. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |

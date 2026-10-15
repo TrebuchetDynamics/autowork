@@ -3,7 +3,7 @@
 ## Verify
 
 ```sh
-uv run --no-project --with-requirements requirements-test.txt python scripts/check.py
+uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py
 python3 scripts/check.py --list
 python -m py_compile __init__.py bundle.py install-omh.py install-graphify.py
 node --test tests/portable_pi.test.mjs
@@ -71,8 +71,8 @@ instead of sending Telegram messages or calling a model.
 `tests/integration_bundle.py` checks an existing isolated `HERMES_HOME`: all
 loaded skill content, CLI queues and captured gateway routing for every generated
 alias, plus the expected-import inventory. Run it with the same Hermes Python
-environment and source `PYTHONPATH`. It exits nonzero for missing or blocked
-imports. Native command registration is inspected; upstream actions, external
+environment and source `PYTHONPATH`. It exits nonzero for missing plugins, missing,
+blocked or ambiguous skills, and skill sources not yet set up. Native command registration is inspected; upstream actions, external
 services, and live Telegram delivery are not invoked.
 
 From this repository's root, use the installed Hermes interpreter and source
@@ -92,7 +92,8 @@ check at your live profile; plugin loading may write runtime records.
 HERMES_HOME="/path/to/isolated-installed-profile" PYTHONPATH="$HERMES_SOURCE" "$HERMES_PYTHON" -c 'import hermes_bootstrap, runpy, sys; runpy.run_path(sys.argv[1], run_name="__main__")' tests/integration_bundle.py
 ```
 
-The offline suite runs in GitHub Actions. Live Telegram delivery and model
+The offline suite runs in GitHub Actions; CI byte-compiles only `__init__.py`, not
+the four files above. Live Telegram delivery and model
 execution require your configured Hermes installation.
 
 ## Compatibility
@@ -105,12 +106,13 @@ minimum-version guarantee:
 | Host | Ubuntu 24.04.4, x86_64 |
 | Hermes | `v0.21.6+556.g6a2662a`, source `6a2662a4aaad68e1b75f6e7ac789409aa653abf7` |
 | Native integration interpreter | Hermes-managed Python 3.14.7 |
-| Offline tests | Python 3.12; audit tests also require PyYAML |
+| Offline tests | Python 3.12; the suite also requires PyYAML (profile audit, portable package and Telegram menu tests) |
 | CI declaration | Ubuntu runner and Python 3.12 in [.github/workflows/test.yml](../.github/workflows/test.yml); a declaration is not a current passing CI result |
 | Required Hermes APIs | `register_skill`, `register_command`, origin-aware `inject_message`, profile-scoped loader and native gateway control socket |
 | Other Hermes revisions / macOS / Windows | Not qualified by these receipts; shell setup requires Bash |
 
-The manifest does not currently enforce `requires_hermes`. Do not interpret
+The manifest does not declare `requires_hermes`, although current Hermes loaders
+enforce it when present. Do not interpret
 “current Hermes” as compatibility evidence. Check `hermes --version`, then use the
 native integration tests against that interpreter. There is no supported claim
 that an earlier version has all required APIs.

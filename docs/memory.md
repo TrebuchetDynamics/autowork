@@ -6,14 +6,19 @@ Source: [OMH setup](../install-omh.py) and [bundle defaults](../plugins/defaults
 
 OMH is the bundled external memory provider. Full setup selects
 `memory.provider: omh` (when no other provider holds that slot) with `auto-safe` policy and binds the plugin to an
-independent store for every profile: `<hermes-home>/omh` when the profile has no
+independent store for every selected profile: `<hermes-home>/omh` when the profile has no
 OMH binding yet. Existing stores are preserved: an explicit profile binding, the
 profile `.env` or exported `OMH_HOME`, or, for a profile already using OMH without
 one, its standalone `~/.omh`. Resolved duplicate stores, including
-symlink aliases and inherited global `OMH_HOME`, are refused before writes.
+symlink aliases and inherited global `OMH_HOME`, are refused before writes; a
+duplicate anywhere among the Hermes root's profiles blocks setup, even for
+profiles that were not selected.
 Clear another selected provider explicitly before setup; OMH never silently
 steals its slot. If one is selected, setup still completes but OMH memory stays off,
-and setup prints `memory off: memory.provider is <name>` with the command to clear it.
+and setup prints `OMH setup: NAME (memory off: memory.provider is <name>; run ...)`
+with the `hermes [-p NAME] memory off` command to clear it. It prints
+`memory off: memory.provider is not set` when OMH left the slot empty, and
+`memory provider unverified: ...` when the profile config cannot be read back.
 
 `auto-safe` admits only bounded eligible records; other candidates still need
 review. Reviewed OMH records and Hermes built-in `MEMORY.md`/`USER.md` remain
@@ -46,19 +51,20 @@ migrated by this change. Removing its plugin does not erase its stored memories.
 A passing standalone OMH doctor does not prove that the live Hermes plugin can
 bind its runtime store. If chat reports `RuntimeBindingError`, ask the agent to
 invoke `omh_status` without home overrides to obtain the specific refusal.
-For a missing profile binding, point Hermes at the existing OMH store; do not
+A missing binding reads `Tool execution failed: RuntimeBindingError: OMH home is
+not configured for this profile`. For a missing profile binding, point Hermes at the existing OMH store; do not
 create a replacement store or overwrite managed skills. With the default setup
 layout, use:
 
 ```sh
-hermes config set plugins.entries.omh.settings.omh_home "$HOME/.hermes/omh"
+hermes -p default config set plugins.entries.omh.settings.omh_home "$HOME/.hermes/omh"
 omh --omh-home "$HOME/.hermes/omh" --hermes-home "$HOME/.hermes" doctor
 ```
 
 Substitute the actual existing store and profile home if they differ. For a named
-profile, also use `hermes -p PROFILE config set` for that profile's setting.
-Retry the native `omh_status` tool in chat; successful runtime reads verify the
-binding fix. Other binding failures require diagnosis, not this setting change.
+profile, use `hermes -p PROFILE config set` with that profile's store instead.
+Retry the native `omh_status` tool in chat (start a new session if the retry still
+fails); successful runtime reads verify the binding fix. Other binding failures require diagnosis, not this setting change.
 
 
 ## Capture, inspection and deletion
@@ -72,9 +78,10 @@ that `auto-safe` guarantees privacy.
 
 `auto-safe` enables OMH's automatic admission of candidates that pass its eligibility
 and safety checks. It does not mean every captured candidate is automatically
-approved. In the locally inspected implementation, duplicate candidates, derived
-content requiring review, and relative-time summaries can remain on the review
-path. These rules belong to the installed OMH version, not this command bridge;
+approved. In the locally inspected implementation, automatic admission also needs
+a `safe` safety verdict (and a principal context for user-scope captures), while
+duplicate candidates, derived content requiring review and relative-time summaries
+always stay on the review path. These rules belong to the installed OMH version, not this command bridge;
 check its actual policy and candidate review output. No blanket retention period,
 secret-detection guarantee or automatic purge is promised by Toolset.
 
