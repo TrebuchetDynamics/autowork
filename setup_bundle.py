@@ -18,12 +18,14 @@ def live_profiles(root):
     result = [('default', root)]
     markers = ('config.yaml', '.env', 'SOUL.md', 'profile.yaml', 'auth.json', 'state.db')
     for home in sorted((root / 'profiles').glob('*')):
-        if home.is_symlink():
-            raise ValueError(f'Refusing shared/symlinked profile: {home.name}')
+        # Hermes ignores tombstoned, invalidly named and unmarked entries, so a
+        # stray symlink among them must not abort setup; refuse only live ones.
         if (home.is_dir() and home.name != 'default'
                 and re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}', home.name)
                 and not (root / 'profiles/.deleted' / home.name).exists()
                 and any((home / m).is_file() or (home / m).is_symlink() for m in markers)):
+            if home.is_symlink():
+                raise ValueError(f'Refusing shared/symlinked profile: {home.name}')
             result.append((home.name, home))
     return result
 

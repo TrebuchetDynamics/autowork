@@ -96,9 +96,28 @@ sys.exit(5 if os.environ.get('VERIFY_FAIL')==sys.argv[2] else 0)
         import shutil
         sample=self.home/'profiles/sample'
         shutil.rmtree(sample)
-        sample.symlink_to(self.home,target_is_directory=True)
+        shared=Path(self.tmp.name)/'shared'
+        shared.mkdir()
+        (shared/'config.yaml').touch()
+        sample.symlink_to(shared,target_is_directory=True)
         self.assertNotEqual(self.run_setup().returncode,0)
         self.assertEqual(self.calls(),[])
+
+    def test_profile_symlinks_hermes_ignores_do_not_abort_setup(self):
+        profiles=self.home/'profiles'
+        shared=Path(self.tmp.name)/'shared'
+        shared.mkdir()
+        (shared/'config.yaml').touch()
+        (profiles/'.deleted/gone').touch()
+        (profiles/'gone').symlink_to(shared,target_is_directory=True)
+        (profiles/'Bad.Name').symlink_to(shared,target_is_directory=True)
+        (profiles/'dangling').symlink_to(Path(self.tmp.name)/'missing')
+        empty=Path(self.tmp.name)/'empty'
+        empty.mkdir()
+        (profiles/'unmarked').symlink_to(empty,target_is_directory=True)
+        result=self.run_setup()
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual([c[2] for c in self.calls()[2:]],['default','sample'])
 
     def test_dry_run_never_finalizes_and_invalid_flags_never_run_children(self):
         self.assertEqual(self.run_setup('--dry-run').returncode, 0)
