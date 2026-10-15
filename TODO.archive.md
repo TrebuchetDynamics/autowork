@@ -1257,3 +1257,20 @@ Source section: Now
 - Checks: Failing-first fixture regressions in `tests/test_beautify_readme_vendor.py`, then `python3 scripts/check.py` and the Node package test.
 - Dependencies: None.
 - Exclusions: No edits to vendored upstream files; no network.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-063 — Put UI Taste behind a toolset adapter
+
+- [x] TOOLSET-063 — Put UI Taste behind a toolset adapter
+- Status: done (2026-10-15). The 16 pinned files moved byte-exact (git mv) to `skills/ui-taste/upstream/` with `SKILL.md` stored as `PROTOCOL.md`; a toolset `SKILL.md` (54-character trigger) adds design-skill precedence, read-only scheduled runs, paid-tool limits and verification rules; UPSTREAM.json, the Codex/Pi wrapper, dependency docs and CHANGELOG follow. Updated `tests/test_ui_taste_bundle.py` failed first (5), then passed; Hermes' skill linter reports no description-length warning; `python3 scripts/check.py` 450/575 (1 skipped)/209/8, Node 3 passed, `docs.py check` ok. Offline only: installed profiles keep their old native copy until `/toolset update` applies the move.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15), [UI Taste plan](docs/project.md#vendored-ui-taste-skill), [Beautify layout](docs/project.md#readme-design-skill-2026-10-15).
+- Scope: Move the 16 pinned files byte-exact to `skills/ui-taste/upstream/` with `SKILL.md` renamed `PROTOCOL.md`; add a toolset `SKILL.md` with a trigger-first description of at most 60 characters and the accepted rules (design-skill precedence, audit-only scheduled runs, paid Uizze tools only through an existing host connection); update `UPSTREAM.json`, the Codex/Pi wrapper, tests and the refresh procedure.
+- Acceptance: Only the adapter registers as a skill; every upstream file matches its pinned hash and upstream's own checksums after the recorded rename; a clean profile receives the adapter and playbooks; Hermes' skill linter reports no description-length warning for `ui-taste`.
+- Checks: Failing-first updates to `tests/test_ui_taste_bundle.py`, `python3 scripts/check.py`, the Node package test and `docs.py check`.
+- Dependencies: None.
+- Exclusions: No upstream text changes, MCP configuration or runtime fetches.

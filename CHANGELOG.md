@@ -11,6 +11,10 @@ claim of a tagged release, completed installation or live workflow qualification
   Telegram): an unmodified, Apache-2.0 snapshot pinned to Uizze commit `afd703a`
   with per-file hashes. It works offline; its optional paid Uizze MCP is never
   configured by Toolset. Codex (explicit-only) and Pi (`/ui_taste`) expose it too.
+  The pinned files sit under `upstream/` behind a toolset adapter with a short
+  trigger for Hermes' skill index, one-design-skill-per-task precedence with
+  Impeccable, read-only scheduled runs, and paid Uizze tools only through an
+  existing host connection.
 - `/beautify-github-readme` (`/beautify_github_readme`): oil-oil's MIT-licensed
   Beautify GitHub README skill, vendored byte-exact at `d6562a5` with file hashes,
   behind a toolset adapter (scope first, README claims stay Docs Sync facts, pure SVG

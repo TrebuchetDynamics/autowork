@@ -1,19 +1,19 @@
 {
   "repository": "https://github.com/uizze/uizze",
   "revision": "afd703a14a5db5f2fe6c2860badbe811058aa9e5",
-  "path": "skills/ui-taste",
+  "source_path": "skills/ui-taste",
   "version": "0.2.0",
   "license": "Apache-2.0",
   "distribution": "https://uizze.sh/.well-known/skills/index.json",
   "domain_check": "2026-10-15: the uizze.sh copy is byte-identical on the 13 content files (SKILL.md, agents/openai.yaml, LICENSE, NOTICE, reference/*, references/*); MANIFEST.json, MODIFICATIONS.md and CHECKSUMS.sha256 differ as packaging metadata.",
-  "transform": "none; files copied byte-for-byte with git show <revision>:<path>",
-  "sha256": {
+  "transform": "All 16 files copied byte-for-byte with git show <revision>:<path> into upstream/; SKILL.md is stored as PROTOCOL.md so Hermes registers only the toolset adapter. Upstream's CHECKSUMS.sha256 still names it SKILL.md.",
+  "files": {
     "CHECKSUMS.sha256": "f6d00c0577709e7137defae9ace6a2cba2d1d00aefb60284909f60332393a109",
     "LICENSE": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812",
     "MANIFEST.json": "57ceef38320b67360e68200885b69084a86ac3a0a962ce0ffcaff32d9745d44e",
     "MODIFICATIONS.md": "794dd55db721a88277513667ff983f8e3d95fb2ec67ee5e635ac34bd29126f7f",
     "NOTICE": "e05d42aec2a6d4d48cf409c8644ceccdeedfdcbafc4088a6fef25add462ede3c",
-    "SKILL.md": "1bfdbda78ee8e0ef92a0c4808fc5408da719b0eee84bb25f667f5bf029bd1980",
+    "PROTOCOL.md": "1bfdbda78ee8e0ef92a0c4808fc5408da719b0eee84bb25f667f5bf029bd1980",
     "agents/openai.yaml": "9960f78c7202b9f93393ea24f7d7325c6d195ee67ebff5c8a15f1a5d49d555ba",
     "reference/audit.md": "71b4ba9d828697e7b1badc49346c17a5fd5359561e34bb4cf04247b36bb61a6c",
     "reference/craft.md": "6d5a51dafd71c51ff8c75026bfa6c6d13fca8fe2f5558ebf2431c5830695a95d",

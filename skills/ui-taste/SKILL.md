@@ -1,69 +1,41 @@
 ---
 name: ui-taste
-description: Give your coding agent better UI taste. Build and polish web and iOS interfaces with Uizze's anti-ui-slop playbooks and optional real-product references. Use for UI design, implementation, redesign, critique, or a final visual review in Claude Code, Codex, Cursor, or Copilot.
-license: Apache-2.0; see LICENSE and NOTICE for third-party attribution
-metadata:
-  version: "0.2.0"
-  author: "UIZZE <business@uizze.com>"
-  compatibility: "Designed for Claude Code, Codex, Cursor, and GitHub Copilot; works in any agent that can read project files and fetch a URL."
-  tags: "ui-design, design-system, design-review, frontend, web-ui, ios-ui"
+description: "Use to build, polish or review web and iOS UI screens."
+version: 0.2.0
+license: Apache-2.0
 ---
 
-![Stop Making UI Slop with UIZZE](https://uizze.com/landing/anti-ui-slop-skill-banner.png)
+# UI Taste
 
-# UI Taste by Uizze
+`/ui-taste` (Telegram `/ui_taste`) applies Uizze's pinned
+[UI Taste protocol](upstream/PROTOCOL.md), Apache-2.0 licensed
+([licence](upstream/LICENSE), [notice](upstream/NOTICE),
+[provenance](UPSTREAM.json)). This adapter controls host integration. Read the
+protocol, then apply the rules below, which take precedence over it where they
+differ. Its `reference/` playbooks and `references/` policy resolve inside
+`upstream/`; load only the ones the request needs.
 
-**Stop shipping the same AI slop.**
+## Toolset rules
 
-“Make it look better” gets old after the tenth prompt. Give your agent a workflow for choosing layouts, fixing visual hierarchy, and polishing the details you notice when you use the app.
+- **One design skill per task.** Use the design skill the user names. A UI request
+  that names neither uses UI Taste. [Impeccable](../impeccable/SKILL.md) stays the
+  choice for its own commands (`/impeccable <command>`, its `init`, hooks, doctor
+  and pin tooling); do not load both for the same task.
+- **Scheduled work is read-only by default.** Scheduled, cron or Autowork-driven
+  runs audit only unless their TODO task scope authorizes UI edits; use the
+  protocol's audit playbook and report findings.
+- **Paid Uizze tools stay optional.** Call `find_ui_references` or
+  `find_ui_materials` only when the host already exposes them in this session.
+  Toolset and this skill never configure an MCP server, sign up for an account, ask
+  for a token or payment, or send private source code, customer data or credentials
+  in a query. Missing access never blocks local design work.
+- **Verify what you ship.** Render the result with whatever browser or renderer is
+  available at representative desktop and mobile sizes. When nothing can render it,
+  say the checks were code-only rather than claiming a visual pass.
+- **Delivery stays separate.** Documentation changes follow
+  [Docs Sync](../docs-sync/SKILL.md). Commit, push or publish only through the
+  repository's normal delivery workflow (for example
+  [Git Commit Push](../git-commit-push/SKILL.md)) and its existing authority.
 
-Built on [Uizze's](https://uizze.com) anti-ui-slop workflow. Eight design playbooks for web and iOS, with optional real-product references, fonts and icons through Uizze MCP.
-
-**Free skill. No account required.** Agent-connected references and materials use the optional paid MCP.
-
-## Prerequisites
-
-- A screen or component to build, redesign, or review — a file path or a short description.
-- Existing components, design tokens, and visual language, when available. For a new project, establish a small coherent system from the brief rather than requiring an existing one.
-- Optional access to the paid Uizze MCP for focused references and hosted materials.
-
-## Authentication
-
-- The free skill and public catalogue work without an account, token, MCP connection, dependency, script, or executable.
-- The optional full UIZZE MCP may use the host's normal connection and authentication flow. Never claim it is connected without an actual host result.
-
-## Work from the product
-
-Read the brief, existing UI, components, tokens, assets, and any PRODUCT.md or DESIGN.md before designing. The user's request and project constraints outrank this skill. Preserve an established visual system for extensions and polish; replace it only for an approved redesign. A new project does not require those files.
-
-Identify the audience, primary task, important states, and intended result. Ask only about missing choices that would materially change the work. A precise request is enough to proceed; do not turn a small fix into a discovery workshop.
-
-## Select the workflow
-
-Load the playbook for the requested action, plus the platform and craft guidance needed to execute it:
-
-- New interface or major redesign: [new-work](reference/new-work.md)
-- Product or dashboard work: [operate](reference/operate.md)
-- Refinement and polish: [polish](reference/polish.md)
-- Simplification: [distill](reference/distill.md)
-- Explicit audit: [audit](reference/audit.md), read-only unless fixes were requested
-- Native iOS: [iOS](reference/ios.md), alongside the action's playbook
-- Explicit `/overdrive`, “Uizze Overdrive”, or a request for exceptional interaction work: [Overdrive](reference/overdrive.md)
-
-For implementation, use [craft](reference/craft.md) after the direction is settled. Load only relevant files; multiple complementary playbooks are allowed. Overdrive is opt-in, not the default for ordinary UI work. It requires a chosen direction before implementation.
-
-“Use Uizze Overdrive on this screen” works through this router; a native slash command depends on the host. These are self-contained Markdown playbooks, not an installer, background service, or executable engine.
-
-## Optional Uizze evidence
-
-Read [the reference policy](references/uizze-reference-policy.md) before using `find_ui_references` or `find_ui_materials`. Inspect relevant visual evidence when it can inform the layout, state, interaction, or assets. Use the host's available tools, not invented calls or connections. Paid retrieval is optional; missing access does not block local design work.
-
-Distinguish an exact reference, a related example, no match, and a service error. Briefly disclose a limitation that affected the result. Never claim an image was inspected or a state was found without evidence.
-
-## Finish
-
-Build the requested scope and exercise its important states. Render and inspect the real result at representative desktop/mobile sizes or native device classes, including the user's reported failing size. Compare it with the chosen direction or supplied reference, not just with the absence of runtime errors.
-
-Fix material problems in a batch, then render and inspect again. Stop once the requested result is verified; do not keep inventing work. If a bounded pass cannot resolve an issue, report it instead of claiming a pass. When rendering is unavailable, distinguish code checks from visual verification.
-
-Keep the handoff concise: what changed, what was actually tested, and any remaining limitation. A skill does not authorize publishing, purchases, new dependencies, account changes, or destructive actions.
+Report the playbooks used, files changed, what was actually rendered and checked,
+and any limitation that affected the result.

@@ -361,14 +361,6 @@
   "tasks": [
     {
       "depends_on": [],
-      "goal": "SKILL-REVIEW",
-      "id": "TOOLSET-063",
-      "section": "Now",
-      "status": "open",
-      "title": "Put UI Taste behind a toolset adapter"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -770,6 +762,14 @@
       "section": "Done",
       "status": "done",
       "title": "Make the README audit catch dark-mode and reference-style images"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-063",
+      "section": "Done",
+      "status": "done",
+      "title": "Put UI Taste behind a toolset adapter"
     },
     {
       "depends_on": [],
