@@ -1,7 +1,7 @@
 ---
 name: autowork
 description: "Execute authorized repository tasks directly: select, implement, verify and close out using TODO.md."
-version: 0.28.0
+version: 0.28.1
 author: Hermes Agent
 platforms: [linux, macos]
 metadata:
@@ -60,6 +60,11 @@ review step. Keep Hermes Agent unchanged.
 
    Resolve ACTUAL_SESSION_PID from the real persistent current coordinator process;
    never use a guessed PID or a transient shell that exits before work starts.
+   The process must be task-scoped: verify its role and birth identity before
+   invoking `--apply`. A shared gateway/server ancestor is not the owner; a common
+   parent does not identify the current conversation. Keep inspection and mutation in
+   separate calls or a conditional branch that refuses an invalid owner; printing
+   an invalid role before an unconditional mutation is not a guard.
    `EXECUTE` returns a contract for this session to implement; it is not proof of
    implementation or a background launch. `PRIORITY_DRIFT` means a human changed
    TODO.md order since it was recorded: run `goals.py reorder <repo> --expected-revision
@@ -118,6 +123,13 @@ has changed or holds open; otherwise keep the committed branch, report it as
 awaiting integration and continue with independent work next occurrence. Shared-tooling fixes follow
 [cross-profile recovery](references/owner-cycle.md#cross-profile-recovery-and-deployment).
 
+Distinguish a `BUSY` response from an existing live Autowork execution lease: a
+`--writers` result of `CLEAR` does not release or override that lease. Compare the
+recorded owner with this session's verified dedicated runtime identity before
+calling it another worker; inspect actual activity without taking over, removing
+the lease or opening a competing worktree to bypass it. Report a preserved live
+owner separately from verified implementation progress.
+
 Caller scope and saved stop/batch limits control continuation. Default: one useful
 slice including recovery and closeout. Explicit stops win. Apply
 [mode precedence](references/iteration-and-decisions.md#mode-precedence).
@@ -164,6 +176,14 @@ next task and precise blocker. A selected contract, completed session or checkbo
 not product acceptance. Never claim live qualification or Telegram delivery from
 offline fixtures. Honor every-occurrence reporting; otherwise exactly `[SILENT]`
 is allowed only after reconciliation and required work search find no reportable delta.
+For interactive updates, lead with the concrete artifact or result and say plainly
+whether work is executing, waiting or idle; keep unchanged implementation details out
+of repeated messages. After a user asks to continue tool work, return a visible result
+or precise remaining blocker, never an empty response. Coalesce delayed completion
+notices into the current task report: a late failure from an already-repaired attempt
+is not a fresh regression, and an already-reported pass is not another completed task.
+Keep exact run/source bindings in receipts instead of narrating every old notification
+to the user.
 
 ## Reference map
 

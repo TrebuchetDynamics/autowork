@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.11.2
+version: 0.11.3
 license: MIT
 metadata:
   hermes:
@@ -99,6 +99,21 @@ new approval: reread target rows/blocks and merge only the authorized delta into
 the latest state, or reconstruct it when the target itself changed. Never replay a
 whole-file snapshot or repin evidence to hide drift. Follow
 [stale-target reconciliation](references/concurrent-maintenance.md#reconcile-a-stale-or-occupied-target).
+
+Check canonical writer ownership before authoring a queue rewrite, not only before
+landing it. Verify a lease's process birth identity and what its pinned inputs
+protect; PID existence alone can mistake a reused PID for its owner. Distinguish
+an owner-requested priority update for the next selection from rewriting a running
+worker's assigned contract. Use the supported scoped reorder under canonical
+integration authority when it preserves the current worker and its evidence; do
+not infer a blanket ordering veto merely from a live process or whole-queue hash.
+Keep execution admission separate: a consumer-ready reordered queue may still be
+BUSY. Never interrupt a worker, delete its lease, repin its candidate or bypass an
+actual pinned-input prohibition to force progress. If an overlapping write, that
+prohibition or another designated integration owner prevents landing, retain the
+scoped candidate, baselines and intended helper operations in durable private
+storage, not expiring scratch, and label new tasks pending integration rather than
+queued or ready in the consumer.
 
 Use a private pinned Git worktree for writing unless explicit scope restricts edits
 to the current checkout. Before ledger/TODO changes load
@@ -243,6 +258,10 @@ is not a rerun of historical tests. Anchor changelog edits to the enclosing rele
 section and a unique neighboring entry, because headings such as `### Fixed` recur
 across versions. Stop the edit/check chain on a failed replacement so a later
 successful validator cannot mask an unapplied correction.
+Treat a failed preservation assertion the same way: chain shell checks with `&&`
+or use checked subprocess calls, not `;`, so a later successful validator cannot
+mask a failed conservation check. After a failure, inspect the affected bytes
+before resuming only the unapplied work.
 
 ## 5. Goal-gap analysis and task bodies
 
@@ -329,6 +348,11 @@ affected Sources: verified nodes/paths, confidence and coverage, or the graph ga
 Otherwise cite direct source evidence without inventing graph metadata. Derive bounded outcome slices, blast radius and real
 prerequisites from corroborated relationships, not graph centrality alone.
 
+Keep `Goal:` to the exact indexed goal ID and put explanatory prose in a separate
+`Payoff:` field. Never append a description or semicolon clause to `Goal:`: the
+consumer compares the whole field with the ledger ID, even when ledger validation
+passes.
+
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
 `Acceptance:`, a separate unique `Checks:` (or `Verification:`) field with exact verification commands,
 and explicit `Dependencies:` and `Ownership:` fields. Do not bury all commands in
@@ -356,6 +380,11 @@ questions/defaults. Proposals stay outside executable Now/Next. Accepted tasks b
 there even when this docs pass does not execute them; execution needs its own authority.
 Saving never launches autowork, claims cards, resumes cron or changes schedules.
 
+Before writing preservation assertions about TODO.md order, inspect the current
+`priority_order` schema: for a versioned object, compare its `tasks` sequence rather
+than iterating object keys. Remove only the intentionally added or moved IDs from
+that sequence when proving the previous relative order survived.
+
 TODO.md order is the human priority. `goals.py next <repo> --json` ranks focus, then
 section, then the recorded `priority_order`, with goal priority only as a fallback;
 P labels alone change nothing. To reprioritize, move whole task blocks in TODO.md,
@@ -369,8 +398,24 @@ unrecorded ledger reports `UNMIGRATED`; migrate it once with
 with `--expected-revision` from that report. Bootstrap never reruns; drift is fixed
 with `reorder`. Confirm `next --json` returns the intended leading picks. Derive pick summaries from the selector, not hand-kept lists. Report actual eligible
 picks, not claimed work. Needs decision/focus is not eligibility or live availability.
+Report the first `open` selection separately from retained `in_progress` entries,
+because an existing owner's task is not new work to claim.
 "No eligible follow-ups" requires all goals met with executed evidence and `next`
 printing `none`; otherwise report the actual gap.
+
+### Put deferred qualification last
+
+When the owner asks to leave real-world checks until the end, identify the exact
+checks from the conversation and move their complete bodies to the queue tail;
+do not merely add a deferred label or reorder every held task. Preserve their
+relative order, acceptance, status, dependencies and access gates, and preserve the
+relative order of unrelated work. Run `goals.py reorder`, validate/render, then
+check both physical placement and selector eligibility: visual order alone does
+not exclude a task from execution. Keep that deferred tail intact during later
+priority changes unless the owner changes it. Do not add dependency edges from
+independent implementation or fixture QA to these externally gated checks, because
+that would turn an access gap into a development stop. Deferral is neither a pass
+nor cancellation, and it grants no device, credential or live-operation authority.
 
 Every writing Bootstrap/Maintain pass automatically archives completed task bodies:
 `goals.py render <repo>` performs the move with coverage rendering, or run
@@ -547,6 +592,11 @@ clean against HEAD. Report scope, changed owners, actual checks, gaps and eligib
 includes role/path/outcome coverage; Maintain only affected roles. Include TODO/goals
 paths, IDs/status counts, validate and archive checks, and consumer state/exit.
 Backlog is not dispatch/delivery proof. Name language/behavior checks not performed.
+For ELI5 or owner-decision summaries, lead with the everyday outcome and the exact
+input needed (a safe test phone, a disposable server, or permission), not a wall of
+task IDs. Separate product choices from access/authorization and missing runtime
+contracts; permission cannot create an absent capability. Keep IDs in the saved
+backlog or a secondary detail, and do not reopen already answered defaults.
 When graph analysis was used or required, include Graphify coverage/limitations,
 freshness, actual queries, source corroboration
 and the evidence chain behind changed docs and tasks; graph output alone is not delivery.

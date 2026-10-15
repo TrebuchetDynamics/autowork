@@ -178,6 +178,10 @@ For a scoped dirty-worktree documentation proposal:
 2. Allocate each ID from the current ledger immediately before `add-task`, with
    `goals.py new-id` or by omitting the ID; its two-hex-digit hash keeps IDs
    distinct when another clone takes the same number.
+   Keep supported suffixed IDs literal (for example `T-123-45`); never collapse
+   them to `T-123` when parsing or comparing bodies, and verify whole-token
+   uniqueness. A numeric-only regex can miss a reserved prefix or silently compare
+   two different tasks as one. Prefer the maintained parser and exact ledger IDs.
    Obtain a fresh `revision` token for each mutation and pass `--expected-revision`;
    reserving a sequence in memory does not protect it from another writer.
 3. After integration and `fmt`/`validate`/`render`, compare pre-existing task

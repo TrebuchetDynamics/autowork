@@ -101,6 +101,17 @@ claim visible here. Before canonical integration, inspect its latest run through
 the scheduler's supported run/status interface and reconcile it as a possible
 writer. Do not pause or resume a schedule merely to obtain a slot.
 
+## Recovery implementation checks
+
+Normalize persisted worktree paths to absolute roots at every creation and retry
+boundary, not only initial dispatch. Test recovery from a different working
+directory; a successful same-directory retry can hide unusable saved state.
+
+Exercise retry exhaustion for both dirty and clean worker exits. A dead worker
+with no changes is still a failed attempt; when the accepted retry limit requires
+a hold, do not persist a released/ready disposition that suggests fresh capacity.
+Keep the prior attempt's artifacts and verify repeat reconciliation adds no events.
+
 ## Cross-profile recovery and deployment
 
 When a fix spans shared Toolset source and consumer profiles:
