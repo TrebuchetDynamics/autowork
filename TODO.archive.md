@@ -1498,3 +1498,20 @@ Source section: Next
 - Exclusions: No memory-store changes, no OMH reinstall, no resumed cron jobs.
 - Current evidence: Qualified on one OMH profile with its cron paused, Hermes 0.22.0 and OMH 3.0.0. Measured with Hermes' own `build_skills_system_prompt`: the skill index fell from 24,016 to 15,253 characters (318 to 218 lines); OMH entries from 142 lines and 12,349 characters to 41 lines and 3,522. `omh doctor --json` stayed ok, 54/54 with 4 warnings, before and after; `hermes memory status` was unchanged (see TOOLSET-082). A questions-only `hermes chat -Q` in an empty scratch folder loaded `omh-code-review` and `omh-verification-gate`, and `omh-plan` returned "Skill 'omh-plan' is disabled" without breaking the turn; nothing was edited. Only `skills.disabled` and `plugins.entries.hermes-toolset.omh_trim` changed in that profile. Fleet rollout: merged as `1200fe7`, pushed, `/toolset update` ready on all 10 profiles; each of the 9 OMH profiles has 101 managed entries and the profile without OMH none. The gateway restart was deferred until no chat turn was in flight.
 - Checks run: before/after index measurement, `omh doctor --json` before and after, the chat transcript, per-profile config read-back after `/toolset update`.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-083 — Keep unattributed cron stagnation unknown
+
+- [x] TOOLSET-083 — Keep unattributed cron stagnation unknown
+- Status: done; independent review approved. Focused collector/correctness: 25 passed; Python 3.12 offline gate: 495/576/209/8 passed, one skip and eight excluded modules. Installed consumer replay returns unknown/null for every observed profile, preserves historical counters and run IDs, and is stable on replay. No worker recovery or scheduler state change is inferred.
+- Goal: RECOVERY — Preserve evidence-bounded scheduled maintenance.
+- Sources: [accepted requirements](docs/project.md#accepted-requirements), [collector](skills/autowork/scripts/audit_profiles.py).
+- Scope: Stop the audit collector from classifying unchanged historical handoffs plus unrelated cron completions as repeated task failure; retain historical counters, deduplicated occurrence IDs and log cursors.
+- Acceptance: Without exact job/occurrence/task attribution and fresh structured evidence, stagnation and its count remain unknown; same-job, cross-job and replay fixtures cannot create a stall claim; retained historical evidence is preserved.
+- Checks: Focused collector and correctness modules, same-receipt before/after replay, installed-consumer readback and independent review; `git diff --check`.
+- Dependencies: None.
+- Exclusions: No product writes, worker recovery, automatic pause/resume, runtime edits or publication.

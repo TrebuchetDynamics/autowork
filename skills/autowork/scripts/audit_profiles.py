@@ -413,28 +413,19 @@ def log_chunks(home, prior, file_budget, profile_budget, gaps):
 
 
 def progress(row, previous):
-    # Compare task evidence, never unrelated workspace dirt or scheduling fields.
-    evidence = {'continuity': {name: {k: value for k, value in fields.items() if k not in
-                 ('worker_session_id', 'run_id', 'status', 'path', 'owner_profile')} for name, fields in row['continuity'].items()}}
-    fingerprint = digest(json.dumps(evidence, sort_keys=True).encode())
+    # Historical handoffs do not link cron occurrences to fresh task evidence.
     finished = [r for r in row['executions'] if r.get('status') in ('completed', 'failed') and r.get('finished_at') and r.get('id')]
     latest = finished[0]['id'] if finished else None
-    meaningful = (any(isinstance(r.get('task_id'), str) and r['task_id'] for r in row['continuity'].values())
-                  and row['repo']['state'] == 'observed')
-    count = previous.get('consecutive', 0)
     seen = set(previous.get('completed_runs', []))
     if previous.get('completed_run'): seen.add(previous['completed_run'])
-    if previous.get('fingerprint') != fingerprint:
-        count = 0
-    elif meaningful and latest and latest not in seen:
-        count += 1
-    if latest: seen.add(latest)
-    result = {'consecutive': count, 'state': 'unknown' if not meaningful or not latest else
-              'repeated_no_progress' if count >= 2 else 'observed',
-              'boundary': 'new finished completed or failed cron run with unchanged task/blocker/check/commit evidence; unrelated repo dirt excluded, task-to-cron-run attribution unknown; observation is not auto-pause authorization'}
-    saved = {'fingerprint': fingerprint, 'completed_run': latest or previous.get('completed_run'),
-             'completed_runs': sorted(seen), 'consecutive': count}
-    if not meaningful: row['gaps'].append('no-progress: task/repo evidence unavailable')
+    seen.update(r['id'] for r in finished)
+    # Retain legacy counters/fingerprints as history, never as a validated streak.
+    saved = {**previous, 'completed_run': latest or previous.get('completed_run'),
+             'completed_runs': sorted(seen)}
+    row['gaps'].append('no-progress: exact job/occurrence/task attribution and fresh evidence unavailable')
+    result = {'consecutive': None, 'state': 'unknown',
+              'boundary': 'task-to-cron-run attribution unknown; historical counters are not validated streaks; '
+                          'observation is not auto-pause authorization'}
     return result, saved
 
 

@@ -134,33 +134,33 @@ class CollectorTests(unittest.TestCase):
             db.execute('create table executions(id text, job_id text, status text, started_at text, finished_at text)')
             db.execute("insert into executions values('run1','job','completed','1','1')")
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 0)
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
         (repo / 'unrelated-untracked').write_text('foreign work\n')
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 0)
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
         with sqlite3.connect(home / 'cron/executions.db') as db:
             db.execute("insert into executions values('run2','job','completed','2','2')")
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 1)
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 1)
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
         (home / 'autowork/state.json').write_text(json.dumps({'task_id': 't1', 'blocker': 'needs check',
                                                             'checks': ['failed'], 'worker_session_id': 'new-worker'}))
         with sqlite3.connect(home / 'cron/executions.db') as db:
             db.execute("insert into executions values('run3','different-job','completed','3','3')")
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 2)
-        self.assertEqual(summary['profiles'][0]['no_progress']['state'], 'repeated_no_progress')
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
+        self.assertEqual(summary['profiles'][0]['no_progress']['state'], 'unknown')
         (repo / 'a').write_text('real changed bytes\n')
         with sqlite3.connect(home / 'cron/executions.db') as db:
             db.execute("insert into executions values('run4','job','completed','4','4')")
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 3)
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
         row = self.receipt(summary)['profiles'][0]
         self.assertIn('untracked content not inspected', row['gaps'])
         (home / 'autowork/state.json').write_text(json.dumps({'task_id': 't1', 'blocker': 'new blocker', 'checks': ['passed']}))
         _, summary = self.run_collector()
-        self.assertEqual(summary['profiles'][0]['no_progress']['consecutive'], 0)
+        self.assertIsNone(summary['profiles'][0]['no_progress']['consecutive'])
 
     def test_rename_status_counts_one_record_and_backlog_readiness_is_read_only(self):
         home = self.profile('default')

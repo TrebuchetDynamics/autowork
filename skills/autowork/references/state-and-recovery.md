@@ -171,11 +171,15 @@ body/accepted-plan failures, canonical authority, and unknown live admission.
 Compact output omits unchanged repository fields, never failure/coverage signals.
 Long consumer reasons are bounded excerpts with counts and `details_omitted`;
 read the private receipt for complete sanitized diagnostics before recovery.
-No-progress excludes unrelated repository dirt and worker run/status identifiers;
-checks, blocker, task and attributed commit changes reset it. Missing task evidence
-remains unknown, and a new cron run is not proof of a new task attempt. Completed
+No-progress stays `unknown` with a null count: historical handoffs plus cron
+completions do not establish exact job/occurrence/task attribution or fresh task
+evidence, even when the cached task is unchanged. Do not infer a stall or progress
+from response prose, HEAD changes or another job's completion. Legacy counters and
+fingerprints remain private historical diagnostics, not validated streaks. Completed
 run IDs are retained for replay deduplication; that state currently grows with run
-history and must not be silently pruned into false retry counts.
+history and must not be silently pruned into false retry counts. Auto-pause still
+requires independently corroborated, exact owner-run evidence under the explicit
+scheduled policy; this collector cannot supply it.
 
 For maintained `Sources:` recovery, use the canonical task-field parser for
 unique nonempty continued values; a header locator supplies insertion coordinates

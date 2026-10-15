@@ -82,7 +82,7 @@ class CorrectnessTests(unittest.TestCase):
         path.write_text(json.dumps({'task_id': None, 'current_handoff': {'task_id': 'nested'}}))
         self.assertEqual(inspect_profile('one', home, None)['continuity']['goal-handoff.json']['task_id'], 'nested')
 
-    def test_new_worker_run_id_alone_does_not_reset_stagnation(self):
+    def test_new_worker_run_id_alone_does_not_establish_stagnation(self):
         row = {'continuity': {'goal-handoff.json': {'task_id': 't1', 'run_id': 1}},
                'repo': {'state': 'observed'},
                'executions': [{'id': 'r1', 'status': 'completed', 'finished_at': '1'}], 'gaps': []}
@@ -90,7 +90,30 @@ class CorrectnessTests(unittest.TestCase):
         row['continuity']['goal-handoff.json']['run_id'] = 2
         row['executions'][0]['id'] = 'r2'
         result, _ = progress(row, saved)
-        self.assertEqual(result['consecutive'], 1)
+        self.assertIsNone(result['consecutive'])
+
+    def test_stale_handoff_never_establishes_attributed_stagnation(self):
+        previous = {'fingerprint': 'legacy', 'consecutive': 11,
+                    'completed_run': 'old', 'completed_runs': ['historical', 'old']}
+        for job in ('development', 'delivery-sync'):
+            with self.subTest(job=job):
+                row = {'continuity': {'goal-handoff.json': {'task_id': 'old-task', 'run_id': 7}},
+                       'repo': {'state': 'observed', 'head': 'new-commit'},
+                       'executions': [{'id': 'new', 'job_id': job, 'status': 'completed',
+                                       'finished_at': 'today'}], 'gaps': []}
+                # Matching the old fingerprint still cannot link a cron run to a task.
+                _, baseline = progress(row, {})
+                prior = {**previous, 'fingerprint': baseline.get('fingerprint')}
+                result, saved = progress(row, prior)
+                self.assertEqual(result['state'], 'unknown')
+                self.assertIsNone(result['consecutive'])
+                self.assertEqual(saved['consecutive'], 11)
+                self.assertEqual(saved['fingerprint'], prior['fingerprint'])
+                self.assertEqual(saved['completed_runs'], ['historical', 'new', 'old'])
+                self.assertEqual(previous['completed_runs'], ['historical', 'old'])
+                again, replay = progress(row, saved)
+                self.assertEqual(again, result)
+                self.assertEqual(replay, saved)
 
     def test_invalid_task_identity_stays_unknown(self):
         row = {'continuity': {'state.json': {'task_id': 23}}, 'repo': {'state': 'observed'},
@@ -125,35 +148,35 @@ class CorrectnessTests(unittest.TestCase):
         _, saved = progress(row, {})
         row['executions'][0]['id'] = 'r2'
         result, saved = progress(row, saved)
-        self.assertEqual(result['consecutive'], 1)
+        self.assertIsNone(result['consecutive'])
         row['executions'][0]['id'] = 'r1'
         result, _ = progress(row, saved)
-        self.assertEqual(result['consecutive'], 1)
+        self.assertIsNone(result['consecutive'])
 
-    def test_finished_failed_occurrences_share_completed_run_deduplication(self):
+    def test_finished_failed_occurrences_preserve_ids_without_stall_inference(self):
         row = {'continuity': {'state.json': {'task_id': 't1'}}, 'repo': {'state': 'observed'},
                'executions': [{'id': 'r1', 'status': 'completed', 'finished_at': '1'}], 'gaps': []}
         _, saved = progress(row, {})
         saved['completed_runs'].append('historical')
-        for run_id, status, expected in [('r2', 'failed', 1), ('r2', 'failed', 1),
-                                         ('r3', 'failed', 2), ('r2', 'failed', 2),
-                                         ('r1', 'completed', 2), ('r4', 'completed', 3)]:
+        for run_id, status in [('r2', 'failed'), ('r2', 'failed'),
+                               ('r3', 'failed'), ('r2', 'failed'),
+                               ('r1', 'completed'), ('r4', 'completed')]:
             with self.subTest(run_id=run_id, status=status):
                 row['executions'] = [{'id': run_id, 'status': status, 'finished_at': '2'}]
                 result, saved = progress(row, saved)
-                self.assertEqual(result['consecutive'], expected)
+                self.assertIsNone(result['consecutive'])
                 self.assertIn('historical', saved['completed_runs'])
                 self.assertIn(run_id, saved['completed_runs'])
                 self.assertIn('task-to-cron-run attribution unknown', result['boundary'])
                 self.assertIn('observation is not auto-pause authorization', result['boundary'])
-        self.assertEqual(result['state'], 'repeated_no_progress')
+        self.assertEqual(result['state'], 'unknown')
         self.assertEqual(saved['completed_runs'], ['historical', 'r1', 'r2', 'r3', 'r4'])
         for finished_at in (None, ''):
             with self.subTest(finished_at=finished_at):
                 row['executions'].insert(0, {'id': 'unfinished', 'status': 'failed',
                                             'finished_at': finished_at})
                 result, saved = progress(row, saved)
-                self.assertEqual(result['consecutive'], 3)
+                self.assertIsNone(result['consecutive'])
                 self.assertNotIn('unfinished', saved['completed_runs'])
 
     def test_failed_occurrence_without_task_evidence_stays_unknown(self):
@@ -161,7 +184,7 @@ class CorrectnessTests(unittest.TestCase):
                'executions': [{'id': 'r1', 'status': 'failed', 'finished_at': '1'}], 'gaps': []}
         result, saved = progress(row, {})
         self.assertEqual(result['state'], 'unknown')
-        self.assertEqual(result['consecutive'], 0)
+        self.assertIsNone(result['consecutive'])
         self.assertEqual(saved['completed_runs'], ['r1'])
 
     def test_unknown_execution_gap_does_not_recount_same_run(self):
@@ -173,7 +196,7 @@ class CorrectnessTests(unittest.TestCase):
         self.assertEqual(result['state'], 'unknown')
         row['executions'] = [{'id': 'r1', 'status': 'completed', 'finished_at': '1'}]
         result, _ = progress(row, saved)
-        self.assertEqual(result['consecutive'], 0)
+        self.assertIsNone(result['consecutive'])
 
     def test_compact_unchanged_preserves_blockers_failures_and_coverage(self):
         row = {'profile': 'one', 'gaps': ['untracked content not inspected'], 'repo': {'state': 'observed', 'head': 'abc'},
