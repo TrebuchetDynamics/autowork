@@ -1,6 +1,8 @@
 # Hermes Toolset
 
-**Turn repository goals into verified changes, tracked in TODO.md.**
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Hermes Toolset: turn repository goals into verified changes, tracked in TODO.md. A TODO.md card shows a completed task, the next ready task that /autowork picks up, and a queued one.">
+</p>
 
 Plan with the agent (`/plan_with_me`), let it investigate and decide
 (`/plan_for_me`), and have it execute the next ready task (`/autowork`). Plans,
@@ -12,6 +14,10 @@ It runs in Hermes CLI and Telegram, installs into one profile or a whole fleet,
 and also ships native packages for [Codex and Pi](docs/cross-host.md).
 
 ## How it works
+
+<p align="center">
+  <img src="./assets/readme/workflow.svg" width="100%" alt="Plan with /plan_with_me or /plan_for_me, queue the tasks in TODO.md in your priority order, execute the next ready task with /autowork, and get a report; the next run takes the next ready task.">
+</p>
 
 ```text
 /plan_with_me Design a caching layer for this repository
