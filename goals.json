@@ -561,17 +561,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-085-1a",
-        "TOOLSET-086-9f"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-087-32",
-      "section": "Next",
-      "status": "open",
-      "title": "Dispatch workers in their own worktrees with a refilled worker pool"
-    },
-    {
-      "depends_on": [
         "TOOLSET-087-32"
       ],
       "goal": "PARALLEL",
@@ -1111,6 +1100,17 @@
       "section": "Done",
       "status": "done",
       "title": "Add a repository coordinator lease, worker slots and an execution journal"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-085-1a",
+        "TOOLSET-086-9f"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-087-32",
+      "section": "Done",
+      "status": "done",
+      "title": "Dispatch workers in their own worktrees with a refilled worker pool"
     },
     {
       "depends_on": [],

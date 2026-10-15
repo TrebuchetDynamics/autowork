@@ -118,9 +118,27 @@ def slots(common):
     return result
 
 
+def group_alive(pgid):
+    """A process group ID cannot be reused while any member lives; zombies are reaped first."""
+    try:
+        os.waitpid(pgid, os.WNOHANG)  # Reap our own exited child so it stops counting.
+    except ChildProcessError:
+        pass
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
 def worker_live(slot):
+    """Workers lead their own process group; a surviving child keeps the slot live."""
     worker = slot.get('worker')
-    return worker is not None and execution.active_owner({'owner': worker})
+    if worker is None:
+        return False
+    return execution.active_owner({'owner': worker}) or group_alive(worker['pid'])
 
 
 def workspace(common, worktree, branch, baseline):
