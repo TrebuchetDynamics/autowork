@@ -36,7 +36,7 @@ Source: [`bundle.py`](../bundle.py) `handle_chat`, `list_commands`, `start_updat
 
 | Form | Effect |
 | --- | --- |
-| `/toolset` | Plugin versions and load status, with tool, command, skill and hook counts and any missing imports. |
+| `/toolset` | Bundle version, revision and profile; ready workflow commands; the last update; other plugins' load status and counts; missing imports with the setup command. |
 | `/toolset list` | Every available command with its owner and Telegram spelling. |
 | `/toolset list TEXT` or `/toolset TEXT` | Commands whose name or owner contains `TEXT`, for example `/toolset omh`. |
 | `/toolset update` | Starts the all-profile updater in the background and returns immediately. |

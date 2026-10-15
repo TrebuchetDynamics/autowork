@@ -2,8 +2,9 @@
 
 ## Commands
 
-Use `/toolset` for plugin versions, load status, registered tool/command/skill/hook
-counts, and unavailable imports. These are registered capabilities, not a claim
+Use `/toolset` for a short overview: the bundle version and revision, the profile serving
+the chat, which workflow commands are ready, the last update, other plugins' load status
+and counts, and what still needs setup. These are registered capabilities, not a claim
 that every tool is enabled in the current chat. Hermes's `/toolsets` lists tool
 groups; plugins that provide skills, commands, or hooks need not appear there.
 Use `/toolset list` in CLI chat or Telegram for the installed command inventory,

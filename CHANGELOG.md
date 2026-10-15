@@ -137,6 +137,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `/toolset` now replies with a short, actionable overview: bundle version, revision and
+  profile, the workflow commands that are ready, the last update, other plugins' status
+  and counts, and anything that needs setup with the command to fix it. The four lines
+  of capability caveats are gone from the reply (the docs keep them).
 - `/toolset update status` replies with a short summary (outcome, revisions, files
   written, local edits, healed settings and menus, gateway restart) instead of the whole
   JSON receipt, which Telegram had to split across several messages.

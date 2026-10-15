@@ -115,31 +115,113 @@ def inventory():
             'note': 'Menu capacity is limited; typed commands and /toolset list remain available.'}
 
 
+# Workflow commands shown first in the overview, in Telegram spelling.
+LEAD_WORKFLOWS = ('plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork', 'git_commit_push')
+
+
+def _ago(started_ns):
+    try:
+        minutes = max(0, int((time.time_ns() - int(started_ns)) / 60e9))
+    except (TypeError, ValueError):
+        return ''
+    if minutes < 60:
+        return f'{minutes} min ago'
+    return f'{minutes // 60} h ago' if minutes < 48 * 60 else f'{minutes // 1440} days ago'
+
+
+def _identity():
+    """Bundle revision and the profile serving this chat, best effort."""
+    try:
+        revision = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '--short', 'HEAD'],
+                                  capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        revision = ''
+    try:
+        from hermes_constants import get_hermes_home
+        home = Path(get_hermes_home()).expanduser()
+        profile = home.name if home.parent.name == 'profiles' else 'default'
+    except Exception:
+        profile = ''
+    return revision, profile
+
+
+def _last_update():
+    try:
+        result = json.loads((update_home() / 'maintenance/toolset-update/latest.json').read_text())
+    except Exception:
+        return None
+    after = sorted({s.get('after', '')[:7] for s in (result.get('sources') or {}).values()} - {''})
+    when = _ago(result.get('started_ns'))
+    return (f"Last update: {result.get('status', 'unknown')}"
+            + (f', {when}' if when else '') + (f", at {', '.join(after)}" if after else '')
+            + ' · /toolset update status')
+
+
+def overview(report):
+    """A short, actionable /toolset reply: what is installed, ready, missing and next."""
+    revision, profile = _identity()
+    own = next((p for p in report['plugins'] if p['name'] == 'hermes-toolset'), None)
+    version = f" {own['version']}" if own and own.get('version') else ''
+    head = f'Hermes Toolset{version}' + (f' ({revision})' if revision else '')
+    if profile:
+        head += f' · profile {profile}'
+    if own and own.get('error'):
+        head += f": error — {own['error']}"
+    elif own and not own.get('enabled'):
+        head += ': disabled'
+    lines = [head]
+    available = {row['telegram'] for row in report['commands']}
+    ready = [name for name in LEAD_WORKFLOWS if name in available]
+    toolset_skills = [n for n in report['plugin_skills'] if n.startswith('hermes-toolset:')]
+    if ready:
+        lines.append('Ready: ' + ' '.join('/' + name for name in ready)
+                     + (f' · {len(toolset_skills)} skills, {len(report["commands"])} commands in all'
+                        if toolset_skills else ''))
+    last = _last_update()
+    if last:
+        lines.append(last)
+    for plugin in report['plugins']:
+        if plugin['name'] == 'hermes-toolset':
+            continue
+        name = plugin['name'] + (f" {plugin['version']}" if plugin.get('version') else '')
+        if plugin.get('error'):
+            lines.append(f"{name}: error — {plugin['error']}")
+            continue
+        if not plugin.get('enabled'):
+            lines.append(f'{name}: disabled')
+            continue
+        skills = sum(n.startswith(plugin['name'] + ':') for n in report['plugin_skills'])
+        counts = [f'{n} {label}' for n, label in ((plugin.get('tools', 0), 'tools'),
+                  (plugin.get('commands', 0), 'commands'), (skills, 'skills'), (plugin.get('hooks', 0), 'hooks')) if n]
+        lines.append(f'{name}: loaded' + (f" — {', '.join(counts)}" if counts else ''))
+        if plugin.get('memory_provider'):
+            lines.append('  memory provider; server connectivity not checked')
+    gaps = []
+    if report['missing_plugins']:
+        gaps.append('plugins ' + ', '.join(report['missing_plugins']))
+    if report['missing_skills']:
+        gaps.append('skills ' + ', '.join(report['missing_skills']))
+    if report['unchecked_skill_sources']:
+        gaps.append('skill sources ' + ', '.join(report['unchecked_skill_sources']))
+    if gaps:
+        lines.append('Needs setup: ' + '; '.join(gaps) + ' → hermes toolset setup')
+    if report['telegram_menu_hidden']:
+        lines.append(f"Telegram menu hides {report['telegram_menu_hidden']} commands; type them directly.")
+    lines.append('More: /toolset list · /toolset update · hermes toolset doctor')
+    return lines
+
+
 def list_commands(raw_args=''):
     report = inventory()
     request = raw_args.strip().lower()
+    if not request:
+        return '\n'.join(overview(report))
     query = request[5:].strip() if request.startswith('list ') else ('' if request == 'list' else request)
     rows = [r for r in report['commands'] if not query or query in r['command'] or query in r['source']]
-    if request:
-        lines = [f'Toolset commands: {len(rows)} matches']
-        for row in rows:
-            alias = f" (Telegram: /{row['telegram']})" if row['telegram'] != row['command'] else ''
-            lines.append(f"/{row['command']}{alias} — {row['source']}")
-    else:
-        lines = ['Hermes toolset bundle']
-        for plugin in report['plugins']:
-            name = plugin['name']
-            version = f" {plugin['version']}" if plugin.get('version') else ''
-            status = 'error' if plugin.get('error') else ('loaded' if plugin.get('enabled') else 'disabled')
-            skills = sum(n.startswith(name + ':') for n in report['plugin_skills'])
-            lines.append(f"{name}{version}: {status} — {plugin.get('tools', 0)} tools, "
-                         f"{plugin.get('commands', 0)} commands, {skills} skills, {plugin.get('hooks', 0)} hooks")
-            if plugin.get('memory_provider'):
-                lines.append('  Memory capabilities load through memory.provider; server connectivity is not checked here.')
-        lines += [f"{len(report['commands'])} available commands across plugins and local/external skills.",
-                  'Per-plugin skill counts cover registered plugin skills; OMH workflow skills are loaded separately.',
-                  'Counts show registered capabilities, not tools enabled in your current chat.',
-                  '/toolsets lists tool groups; plugins can provide skills, commands and hooks without a tool group.']
+    lines = [f'Toolset commands: {len(rows)} matches']
+    for row in rows:
+        alias = f" (Telegram: /{row['telegram']})" if row['telegram'] != row['command'] else ''
+        lines.append(f"/{row['command']}{alias} — {row['source']}")
     if report['missing_plugins']:
         lines.append('Missing/disabled plugins: ' + ', '.join(report['missing_plugins']))
     lines.extend(f"{p['name']}: {p['error']}" for p in report['plugins'] if p.get('error'))
@@ -147,10 +229,6 @@ def list_commands(raw_args=''):
         lines.append('Unavailable skill commands (missing, blocked, or ambiguous): ' + ', '.join(report['missing_skills']))
     if report['unchecked_skill_sources']:
         lines.append('Skill repositories not yet set up: ' + ', '.join(report['unchecked_skill_sources']))
-    if report['telegram_menu_hidden']:
-        lines.append('Telegram menu capacity hides some entries; type their commands directly.')
-    lines.append('Commands: /toolset list · Update all profiles: /toolset update · Filter: /toolset ponytail')
-    lines.append('Diagnostics: hermes toolset doctor --json · Setup: hermes toolset setup')
     return '\n'.join(lines)
 
 

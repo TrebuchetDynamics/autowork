@@ -367,13 +367,25 @@ class BundleTests(unittest.TestCase):
                 'unchecked_skill_sources': [], 'telegram_menu_hidden': 12}
 
     def test_default_summary_reports_capabilities_and_gaps_without_command_dump(self):
-        with patch.object(self.bundle, 'inventory', return_value=self.report()):
+        report = self.report()
+        report['plugins'].insert(0, {'name': 'hermes-toolset', 'version': '0.2.0', 'enabled': True,
+                                     'tools': 0, 'commands': 44, 'hooks': 0, 'error': None})
+        report['plugin_skills'] += ['hermes-toolset:autowork', 'hermes-toolset:docs-sync']
+        report['commands'].append({'command': 'autowork', 'telegram': 'autowork', 'source': 'hermes-toolset'})
+        report['missing_plugins'] = ['hermes-speech']
+        with patch.object(self.bundle, 'inventory', return_value=report), \
+                patch.object(self.bundle, '_identity', return_value=('abc1234', 'work')), \
+                patch.object(self.bundle, '_last_update', return_value='Last update: updated, 5 min ago, at abc1234 · /toolset update status'):
             output = self.bundle.list_commands('')
-        self.assertIn('ponytail 5.1.0: loaded', output)
-        self.assertIn('0 tools, 6 commands, 2 skills, 2 hooks', output)
-        self.assertIn('blocked-skill', output)
-        self.assertIn('/toolsets', output)
+        lines = output.splitlines()
+        self.assertEqual(lines[0], 'Hermes Toolset 0.2.0 (abc1234) · profile work')
+        self.assertEqual(lines[1], 'Ready: /docs_sync /autowork · 2 skills, 3 commands in all')
+        self.assertIn('ponytail 5.1.0: loaded — 6 commands, 2 skills, 2 hooks', output)
+        self.assertIn('Needs setup: plugins hermes-speech; skills blocked-skill → hermes toolset setup', output)
+        self.assertIn('Telegram menu hides 12 commands', output)
         self.assertNotIn('/docs-sync', output)
+        self.assertNotIn('Counts show', output)
+        self.assertLessEqual(len(lines), 8)
 
     def test_list_filter_shows_only_matches_and_distinct_telegram_aliases(self):
         with patch.object(self.bundle, 'inventory', return_value=self.report()):
