@@ -138,11 +138,79 @@ def active_owner(claim):
     return identity(owner['pid']) == owner
 
 
+SESSION_IDLE_SECONDS = 30 * 60
+
+
+AGENT_NAMES = {'hermes', 'hermes_cli', 'codex', 'claude', 'aider', 'pi', 'run_agent.py'}
+
+
+def is_agent(argv):
+    return bool({Path(arg).name for arg in argv[:3] if arg and not arg.startswith('-')} & AGENT_NAMES)
+
+
+def argv_of(pid, proc=Path('/proc')):
+    try:
+        return (proc / str(pid) / 'cmdline').read_bytes().decode(errors='replace').split('\0')
+    except OSError:
+        return []
+
+
+def child_pids(pid, proc=Path('/proc')):
+    kids = []
+    for task in (proc / str(pid) / 'task').glob('*'):
+        try:
+            kids += [int(k) for k in (task / 'children').read_text().split()]
+        except (OSError, ValueError):
+            continue
+    return kids
+
+
+def terminal(pid, proc=Path('/proc')):
+    """The process's interactive terminal device, from its standard streams."""
+    for fd in ('0', '1', '2'):
+        try:
+            path = os.readlink(proc / str(pid) / 'fd' / fd)
+        except OSError:
+            continue
+        if path.startswith('/dev/pts/') or re.fullmatch(r'/dev/tty\d*', path):
+            return path
+    return None
+
+
+def session_activity(pid, writing=False, now=None, idle_seconds=SESSION_IDLE_SECONDS):
+    """(active, evidence) for an interactive agent session; active is None when unknown.
+
+    A terminal's access/modify times move with every keystroke and every byte the
+    session prints, so a long-untouched terminal with no running commands and no
+    open writable repository file is an idle session left open, not a writer.
+    """
+    if writing:
+        return True, 'holds a writable file in the repository'
+    # A launcher wrapping the agent (node -> native binary) is not running commands;
+    # the wrapped agent is observed and judged on its own.
+    if any(not is_agent(argv_of(kid)) for kid in child_pids(pid)):
+        return True, 'running commands'
+    tty = terminal(pid)
+    if not tty:
+        return None, 'no terminal; activity unknown'
+    try:
+        info = os.stat(tty)
+    except OSError:
+        return None, 'terminal unreadable; activity unknown'
+    quiet = (time.time() if now is None else now) - max(info.st_atime, info.st_mtime)
+    if quiet < idle_seconds:
+        return True, f'terminal used {int(quiet // 60)} min ago'
+    return False, f'terminal idle {int(quiet // 3600)} h {int(quiet % 3600 // 60)} min'
+
+
 def external_workers(repo):
     """Observe live agent processes, never infer activity from historical cards.
 
-    This supplements cooperative Git-common-dir locking; it cannot lock an
-    unaware editor or a writer on another machine.
+    Each entry is a process identity plus ``kind`` (``autowork`` for commands
+    this helper launched, ``session`` for other agent processes), the worktrees
+    it touches and, for sessions, whether it is active. This supplements
+    cooperative Git-common-dir locking; it cannot lock an unaware editor or a
+    writer on another machine.
     """
     workspaces = [Path(line[9:]).resolve() for line in
                   git(repo, 'worktree', 'list', '--porcelain').splitlines()
@@ -152,20 +220,22 @@ def external_workers(repo):
     marker = ('HERMES_TOOLSET_EXECUTION_COMMON=' + git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).encode()
     for entry in Path('/proc').glob('[0-9]*'):
         pid = int(entry.name)
-        if pid in own or not identity(pid):
+        found = identity(pid)
+        if pid in own or not found:
             continue
         try:
             argv = (entry / 'cmdline').read_bytes().decode(errors='replace').split('\0')
             # A detached command still carries its repository attribution after
             # its launching helper crashes. Never adopt while it is alive.
             if marker in (entry / 'environ').read_bytes().split(b'\0'):
-                workers.append(identity(pid))
+                workers.append(dict(found, kind='autowork', workspaces=[str(w) for w in workspaces],
+                                    active=True, evidence='Autowork command for this repository'))
                 continue
-            names = {Path(arg).name for arg in argv[:3] if arg and not arg.startswith('-')}
-            if not names.intersection({'hermes', 'hermes_cli', 'codex', 'claude', 'aider', 'pi', 'run_agent.py'}):
+            if not is_agent(argv):
                 continue
             cwd = (entry / 'cwd').resolve(strict=True)
             paths = [cwd] + [Path(arg).resolve() for arg in argv if arg.startswith('/')]
+            written = []
             # Native/manual agents can launch outside the workspace. Inspect
             # explicit argv paths and currently open writable files as well.
             for link in (entry / 'fd').iterdir():
@@ -173,14 +243,26 @@ def external_workers(repo):
                     info = (entry / 'fdinfo' / link.name).read_text()
                     flags = int(re.search(r'^flags:\s+([0-7]+)', info, re.M)[1], 8)
                     if flags & os.O_ACCMODE:
-                        paths.append(link.resolve(strict=True))
+                        written.append(link.resolve(strict=True))
                 except (OSError, TypeError):
                     continue
-            if any(path == root or root in path.parents for path in paths for root in workspaces):
-                workers.append(identity(pid))
+            inside = lambda path, root: path == root or root in path.parents
+            touched = [root for root in workspaces if any(inside(path, root) for path in paths + written)]
+            if touched:
+                writing = any(inside(path, root) for path in written for root in touched)
+                active, evidence = session_activity(pid, writing)
+                workers.append(dict(found, kind='session', workspaces=[str(w) for w in touched],
+                                    active=active, evidence=evidence))
         except (OSError, ValueError):
             continue
     return workers
+
+
+def blocking_workers(workers, repo):
+    """Autowork commands block every worktree; a session blocks only the checkout it
+    touches, and only while active or of unknown activity."""
+    return [w for w in workers if w['kind'] == 'autowork'
+            or (w['active'] is not False and str(repo) in w['workspaces'])]
 
 
 def subreaper():
@@ -451,8 +533,19 @@ def execute(args):
         if claim and active_owner(claim) and claim.get('task_id') != task['id']:
             return dict(result, outcome='BUSY', reason='Release the current task before claiming another.')
         workers = external_workers(repo)
-        if workers:
-            return dict(result, outcome='BUSY', reason='Live agent process in this repository; reconcile its work first.', owners=workers)
+        blocking = blocking_workers(workers, repo)
+        idle = [w for w in workers if w not in blocking]
+        if idle:
+            result['idle_sessions'] = idle
+        if any(w['kind'] == 'autowork' for w in blocking):
+            return dict(result, outcome='BUSY', reason='Live Autowork command in this repository; reconcile its work first.', owners=blocking)
+        if blocking:
+            branch = 'autowork/' + re.sub(r'[^A-Za-z0-9._-]+', '-', task['id'])
+            return dict(result, outcome='BUSY', owners=blocking,
+                        reason='Active agent session in this checkout; run this task from an isolated worktree.',
+                        isolate={'branch': branch,
+                                 'command': ['git', '-C', str(repo), 'worktree', 'add', '-b', branch,
+                                             str(repo.parent / f'{repo.name}-{branch.replace("/", "-")}')]})
         lease = {'task_id': task['id'], 'workspace': str(repo), 'profile': args.profile,
                  'owner': owner or identity(os.getpid()), 'selected_inputs': selected_inputs}
         save(claim_path, lease)
@@ -484,7 +577,20 @@ def main(argv=None):
     parser.add_argument('--budget-seconds', type=float, help='Optional cumulative command walltime; not a model spending limit.')
     parser.add_argument('--source-path', action='append', default=[])
     parser.add_argument('--run', nargs=argparse.REMAINDER)
+    parser.add_argument('--writers', action='store_true',
+                        help='Read-only: report live agent processes and whether they block this checkout.')
     args = parser.parse_args(argv)
+    if args.writers:
+        try:
+            repo = Path(git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
+            workers = external_workers(repo)
+            blocking = blocking_workers(workers, repo)
+            result = {'outcome': 'BUSY' if blocking else 'CLEAR', 'workspace': str(repo),
+                      'blocking': blocking, 'idle_sessions': [w for w in workers if w not in blocking]}
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
+        print(json.dumps(result, indent=2))
+        return 0 if result['outcome'] == 'CLEAR' else 1
     try:
         if args.scope == 'tasks' and not args.tasks:
             raise ValueError('--scope tasks requires an explicit --tasks filter')

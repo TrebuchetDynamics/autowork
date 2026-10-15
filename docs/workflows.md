@@ -187,6 +187,17 @@ is required for selection, recovery or local integration. Preserve actual writer
 useful candidates, explicit allocations, required checks/review and publication limits.
 Host-native delegation remains optional and needs existing authorization.
 
+Autowork works in the canonical checkout unless something is actually writing
+there. A running Autowork command for the repository blocks every worktree. Any
+other agent session (`pi`, `claude`, `codex`, `hermes`) blocks only the checkout
+it is in, and only while it is active: terminal input or output in the last 30
+minutes, running commands, or an open writable repository file. A launcher whose
+only child is the agent itself does not count as running commands. An idle
+session left open is listed under `idle_sessions` and never blocks, killed or
+messaged. For an active one the helper returns `BUSY` with an `isolate` branch and
+`git worktree add` command; the task runs there, and `owner_cycle.py REPO
+--writers` (read-only, `CLEAR` or `BUSY`) gates merging the branch back.
+
 ### Delivery batches and partial completion
 
 Autowork executes one coherent outcome in the current session: connected consumers,

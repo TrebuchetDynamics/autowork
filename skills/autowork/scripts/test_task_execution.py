@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -176,6 +177,86 @@ class RecoveryTests(DirectExecutionTests):
             self.assertEqual(result['outcome'], 'BUSY', result)
         finally:
             worker.kill(); worker.wait()
+
+    def session(self, cwd, quiet_seconds):
+        """A real `pi`-named process on its own pseudo-terminal, last used quiet_seconds ago."""
+        import pty
+        bindir = Path(self.tmp.name) / 'bin'; bindir.mkdir(exist_ok=True)
+        if not (bindir / 'pi').exists():
+            (bindir / 'pi').symlink_to(sys.executable)
+        master, slave = pty.openpty()
+        self.addCleanup(os.close, master)
+        worker = subprocess.Popen([str(bindir / 'pi'), '-c', 'import time; time.sleep(30)'], cwd=cwd,
+                                  stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        self.addCleanup(lambda: (worker.kill(), worker.wait()))
+        tty = os.readlink(f'/proc/{worker.pid}/fd/0')
+        stamp = time.time() - quiet_seconds
+        os.utime(tty, (stamp, stamp))
+        return worker
+
+    def commit_fixture(self):
+        subprocess.run(['git', '-C', str(self.repo), 'add', '.'], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '-qm', 'fixture'], check=True)
+
+    def test_idle_terminal_session_does_not_block(self):
+        worker = self.session(self.repo, 2 * 3600)
+        _, result = self.call('--apply', '--owner-pid', str(os.getpid()))
+        self.assertEqual(result['outcome'], 'EXECUTE', result)
+        idle, = result['idle_sessions']
+        self.assertEqual((idle['pid'], idle['active']), (worker.pid, False))
+        self.assertIn('terminal idle 2 h', idle['evidence'])
+        p = subprocess.run([sys.executable, str(SCRIPT), str(self.repo), '--writers'], capture_output=True, text=True, timeout=15)
+        self.assertEqual((p.returncode, json.loads(p.stdout)['outcome']), (0, 'CLEAR'), p.stdout)
+
+    def test_active_session_blocks_only_its_checkout_and_names_an_isolated_branch(self):
+        self.commit_fixture()
+        worker = self.session(self.repo, 60)
+        _, result = self.call('--apply', '--owner-pid', str(os.getpid()))
+        self.assertEqual(result['outcome'], 'BUSY', result)
+        self.assertEqual(result['owners'][0]['pid'], worker.pid)
+        self.assertIn('isolated worktree', result['reason'])
+        self.assertEqual(result['isolate']['branch'], 'autowork/T1')
+        p = subprocess.run([sys.executable, str(SCRIPT), str(self.repo), '--writers'], capture_output=True, text=True, timeout=15)
+        self.assertEqual(json.loads(p.stdout)['blocking'][0]['pid'], worker.pid)
+        command = result['isolate']['command']
+        subprocess.run(command, check=True, capture_output=True)
+        p = subprocess.run([sys.executable, str(SCRIPT), command[-1], '--state-dir', str(self.state),
+                            '--apply', '--owner-pid', str(os.getpid())], env=self.env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(json.loads(p.stdout)['outcome'], 'EXECUTE', p.stdout)
+
+    def test_session_running_commands_is_active_despite_quiet_terminal(self):
+        from task_execution import session_activity
+        worker = subprocess.Popen(['sh', '-c', 'sleep 30 & wait'])
+        self.addCleanup(lambda: (worker.kill(), worker.wait()))
+        for _ in range(50):
+            if session_activity(worker.pid)[1] == 'running commands':
+                break
+            time.sleep(0.05)
+        self.assertEqual(session_activity(worker.pid), (True, 'running commands'))
+        self.assertEqual(session_activity(worker.pid, writing=True)[0], True)
+
+    def test_launcher_wrapping_an_idle_agent_is_idle(self):
+        bindir = Path(self.tmp.name) / 'bin'; bindir.mkdir(exist_ok=True)
+        (bindir / 'codex').symlink_to(sys.executable)
+        code = f"import subprocess,time; subprocess.Popen([{str(bindir / 'codex')!r}, '-c', 'import time; time.sleep(30)']); time.sleep(30)"
+        self.session(self.repo, 2 * 3600)  # creates bin/pi
+        import pty
+        master, slave = pty.openpty(); self.addCleanup(os.close, master)
+        launcher = subprocess.Popen([str(bindir / 'pi'), '-c', code], cwd=self.repo, stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        self.addCleanup(lambda: (subprocess.run(['pkill', '-P', str(launcher.pid)]), launcher.kill(), launcher.wait()))
+        tty = os.readlink(f'/proc/{launcher.pid}/fd/0'); stamp = time.time() - 2 * 3600
+        from task_execution import session_activity, child_pids
+        for _ in range(50):
+            if child_pids(launcher.pid):
+                break
+            time.sleep(0.05)
+        os.utime(tty, (stamp, stamp))
+        self.assertFalse(session_activity(launcher.pid)[0])
+        _, result = self.call('--apply', '--owner-pid', str(os.getpid()))
+        self.assertEqual(result['outcome'], 'EXECUTE', result)
 
     def test_failed_command_is_not_task_completion(self):
         before = self.todo.read_bytes()

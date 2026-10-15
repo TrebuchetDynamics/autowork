@@ -1,7 +1,7 @@
 ---
 name: autowork
 description: "Execute authorized repository tasks directly: select, implement, verify and close out using TODO.md."
-version: 0.27.0
+version: 0.28.0
 author: Hermes Agent
 platforms: [linux, macos]
 metadata:
@@ -93,7 +93,20 @@ hosts; an enabled same-repository cron run may also be writing. Preserve useful
 candidates; do not kill workers or delete worktrees to migrate. A live writer does
 not freeze priority: apply an owner's reorder to the next selection through Docs
 Sync, without interrupting current work or faking a dependency, and report it only
-after `goals.py next` agrees. Shared-tooling fixes follow
+after `goals.py next` agrees.
+
+Work in the canonical checkout by default; it needs no merge step. The task helper
+separates two kinds of live process. An Autowork command for the repository blocks
+every worktree. Any other agent session (`pi`, `claude`, `codex`, `hermes`) blocks
+only the checkout it touches, and only while active: recent terminal use, running
+commands or an open writable repository file. A session idle past 30 minutes is
+reported under `idle_sessions` and does not block; never kill or message it. When the
+helper returns `BUSY` with `isolate`, create that worktree and branch (reuse it if it
+already exists), rerun the helper with that worktree as the consumer, and do the
+task there. Integrate the verified branch into the canonical checkout only when
+`owner_cycle.py CANONICAL --writers` returns `CLEAR` and the merge touches no file the session
+has changed or holds open; otherwise keep the committed branch, report it as
+awaiting integration and continue with independent work next occurrence. Shared-tooling fixes follow
 [cross-profile recovery](references/owner-cycle.md#cross-profile-recovery-and-deployment).
 
 Caller scope and saved stop/batch limits control continuation. Default: one useful

@@ -44,6 +44,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- An idle interactive agent session left open in a repository no longer blocks
+  Autowork indefinitely. Sessions block only their own checkout and only while
+  active (terminal use within 30 minutes, running commands or an open writable
+  repository file); an active one gets an isolated worktree branch instead of a
+  dead end. `owner_cycle.py REPO --writers` reports the classification read-only.
 - `/toolset update` clears leftover chat-scoped Telegram menus that still list
   retired commands such as `/autogoal`; Telegram preferred them over the lists
   Hermes refreshes, so restarts never removed them (`chat_menus_healed`).
