@@ -731,3 +731,29 @@ Planner's calls (reversible; reject any of them):
 Anti-goals: rewriting upstream text, fetching anything at runtime, adding an MCP or
 account dependency, or presenting the vendored copy as an endorsement by Uizze or
 the Impeccable author.
+
+## README design skill (2026-10-15)
+
+Status: Accepted
+
+Decision: On 2026-10-15 the user asked to add
+[oil-oil/beautify-github-readme](https://github.com/oil-oil/beautify-github-readme)
+(MIT, pinned at `d6562a5f5c484d069f8560b39c215c9cda4b5a55`) to the bundle, vendor
+it, adapt it to this toolset, and then use it on this README. The layout follows the
+engineering pack: a toolset-owned `SKILL.md` adapter, the upstream skill byte-exact
+under `upstream/` (its `SKILL.md` renamed `PROTOCOL.md` so it is not registered as a
+second skill), and `UPSTREAM.json` with file hashes checked by a test. The repository's
+showcase images, translated READMEs and Codex agent manifest are excluded.
+
+Adapter rules (planner's calls): commands are `/beautify-github-readme` and
+`/beautify_github_readme`; README text is documentation whose claims stay verified
+through Docs Sync, so `docs.py check` runs after README edits; pure SVG is the default
+because Hermes has no bundled image-generation skill; the upstream attribution and
+showcase offer is never made unsolicited; scheduled or Autowork-driven runs only
+audit unless their task scope authorizes edits; delivery uses the repository's
+normal commit workflow. A Codex/Pi adapter ships with the explicit-only policy.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-060 | Vendor and adapt the skill with provenance, tests and docs |
+| TOOLSET-061 | Visual refresh of this README with a project-native hero and workflow diagram |

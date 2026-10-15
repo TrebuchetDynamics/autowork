@@ -13,6 +13,7 @@ const workflows = {
   engineering: ['engineering', 'Apply a focused engineering method'],
   impeccable: ['impeccable', 'Improve interface design'],
   ui_taste: ['ui-taste', 'Improve UI taste with Uizze playbooks'],
+  beautify_github_readme: ['beautify-github-readme', 'Redesign or audit a GitHub README'],
   grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
   git_commit_push: ['git-commit-push', 'Validate, commit and push owned changes'],

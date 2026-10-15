@@ -1,0 +1,28 @@
+{
+  "repository": "https://github.com/oil-oil/beautify-github-readme",
+  "revision": "d6562a5f5c484d069f8560b39c215c9cda4b5a55",
+  "license": "MIT",
+  "source_path": "skills/beautify-github-readme",
+  "included": [
+    "LICENSE",
+    "skills/beautify-github-readme/SKILL.md",
+    "skills/beautify-github-readme/references",
+    "skills/beautify-github-readme/scripts"
+  ],
+  "excluded": "Showcase assets, translated READMEs and agents/openai.yaml (a Codex manifest whose default prompt uses upstream invocation syntax); the toolset adapter supplies host integration.",
+  "transform": "SKILL.md becomes PROTOCOL.md so Hermes does not register a second skill; all bytes unchanged.",
+  "files": {
+    "LICENSE": "d44a3ca218007a85d3be41a0b76553d746e42336c7a63c6c6687d2619199c3c4",
+    "PROTOCOL.md": "f3854a1ff509d26f44e5e6a7547a3670e1d2733987d6b300ddcc68c1a17aa14b",
+    "references/content-architecture.md": "6c915f670819947df2e64d045218afe072d538c418c5b1450d5ab92d755cee0d",
+    "references/github-readme-canvas.md": "576ce0add01c3e0ea2ff2c39a0a7e59c69d3096c05796b0671527930c56cb49d",
+    "references/hybrid-svg-production.md": "ab664473785efb609461a73b957f8f69e6ed32730ce11689b6123d9d038b28b1",
+    "references/motion-production.md": "c9ada426364ee6fd089e434c01d5d34246413d4591421b41e2a5b786b94e895a",
+    "references/project-native-hero.md": "8630160574d789d04d7f7ef6553a8936a810808a822401982f231a3cc327ef29",
+    "references/showcase-contribution.md": "b011cb4646719e832286b8e0ad03db38ac9e7a19b80d4c580cc0954b5dbcb567",
+    "references/svg-production.md": "062da9b8a552b5674ca3e79fbe04c02302d0ee5c6f61a24e3db2e64a61f58198",
+    "references/visual-direction.md": "09b1d2bf38e375ffa2a1d6b337ce5b649c38a9118d9f4242837e8979f3bb4912",
+    "scripts/audit_readme.py": "266d4ff92b9cb7ea78b48a2d26ed628940a09ee6d71c74881275567b0d2828ed",
+    "scripts/render_motion_gif.py": "e7332f450943c6ea604fb724159ecac5826614382f9dbeffe274d8ae68a669b5"
+  }
+}

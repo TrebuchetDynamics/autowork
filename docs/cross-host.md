@@ -2,10 +2,10 @@
 
 Hermes Toolset provides native packages for three hosts. Codex and Pi use the
 portable adapters, not the Hermes plugin loader. Neither requires Hermes installed.
-These adapters expose 12 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
-Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, LGTM, Git Commit
-Push and Git Pull Merge. Grill Me is Plan With Me's challenge mode, not a
-thirteenth skill.
+These adapters expose 13 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, Beautify GitHub README,
+LGTM, Git Commit Push and Git Pull Merge. Grill Me is Plan With Me's challenge mode, not a
+fourteenth skill.
 Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
@@ -80,8 +80,8 @@ Local installs refer to this checkout; keep it in place. The extension registers
 
 All 13 `/autoresearch_<protocol>` commands are available. The other commands are
 `/cron_autowork` (scheduling guidance through host capabilities, not a Hermes timer),
-`/autoresearch`, `/engineering`, `/impeccable`, `/ui_taste`, `/lgtm`,
-`/git_commit_push` and `/git_pull_merge`. Native `/skill:<name>` invocation is also
+`/autoresearch`, `/engineering`, `/impeccable`, `/ui_taste`, `/beautify_github_readme`,
+`/lgtm`, `/git_commit_push` and `/git_pull_merge`. Native `/skill:<name>` invocation is also
 available; skill names use hyphens. Command arguments remain literal prompt text.
 `/grill_me` loads Plan With Me with explicit challenge mode and preserves the
 request unchanged. The old standalone `grill-me` skill is no longer discoverable;
@@ -121,11 +121,12 @@ node --test tests/portable_pi.test.mjs
 
 Validated locally with Codex CLI 0.162.1 and Pi 1.2.0: native marketplace/plugin
 and Pi installation into isolated temporary homes, Codex app-server skill discovery
-and Pi's installed resource loader discover 11 portable skills. Pi loads 25 commands,
-including `/grill_me` compatibility and all 13 research selectors. Archive extraction
-tests check installed references, literal arguments and queued commands without
-checkout files. That live validation predates UI Taste; the offline archive tests now expect 12
-portable skills and 26 Pi commands, and no live Codex or Pi install has been rerun. No credentials or configured live accounts are used. These are
+and Pi's installed resource loader discovered 11 portable skills and Pi loaded 25
+commands, including `/grill_me` compatibility and all 13 research selectors. That run
+predates UI Taste and Beautify GitHub README: the package now ships 13 skills and 27
+Pi commands, checked offline by `tests/portable_pi.test.mjs`; no live Codex or Pi
+install has been rerun. Archive extraction tests check installed references, literal
+arguments and queued commands without checkout files. No credentials or configured live accounts are used. These are
 tested versions, not an established minimum-version guarantee.
 These checks do not prove model output quality, Git delivery or Telegram execution.
 The model smoke test is the questions-only invocation above: one useful question,

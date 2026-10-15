@@ -18,6 +18,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | Autoresearch 2.2.2 | Vendored revision and file hashes in [UPSTREAM.json](../skills/autoresearch/UPSTREAM.json) | Reviewed updates require refreshing the pinned subtree and tests. |
 | UI Taste 0.2.0 (Uizze) | Vendored from a pinned Uizze commit, [pin and hashes](../skills/ui-taste/UPSTREAM.json) | Plain Markdown playbooks copied unchanged; works offline. Its optional paid Uizze MCP is never configured by Toolset. |
 | Impeccable 4.5.2 | Vendored official Hermes package, [pin and hashes](../skills/impeccable/UPSTREAM.json) | All references and scripts ship with the plugin; Apache-2.0 license and notices retained. |
+| Beautify GitHub README | Vendored revision and file hashes in [UPSTREAM.json](../skills/beautify-github-readme/UPSTREAM.json) | Upstream skill byte-exact under `upstream/`; the toolset adapter sets host rules; MIT license retained. |
 | Grill Me 2.1.0 | Bundled [SKILL.md](../skills/grill-me/SKILL.md) | Its checked-in bytes are fixed by this repository revision. |
 | OMH setup CLI | Git revision pinned in defaults.json | The Hermes plugin source is separately resolved through the source inventory/catalog. |
 | OMH plugin, Ponytail, Hermes Speech | Native Hermes installs from declared sources | No unified bundle lockfile pins their installed revisions. |
@@ -60,6 +61,7 @@ and copyright notices.
 - Vendored UI Taste retains its [Apache-2.0 license](../skills/ui-taste/LICENSE), [notice](../skills/ui-taste/NOTICE) (Impeccable 4.4.0 by Paul Bakaus and ehmo's MIT platform-design-skills) and Uizze's [modifications notice](../skills/ui-taste/MODIFICATIONS.md). It is an unmodified copy, not an endorsement by Uizze or the Impeccable author.
 - Vendored Addy agent-skills retains its [MIT license and attribution](../skills/engineering/upstream/LICENSE). Two defensive examples have documented paraphrases with original/adapted hashes; other pinned protocol bytes are preserved. SKILL.md filenames become PROTOCOL.md to avoid duplicate host discovery.
 - Vendored Autoresearch retains its [MIT license and attribution](../skills/autoresearch/upstream/LICENSE).
+- Vendored Beautify GitHub README (oil-oil) retains its [MIT license](../skills/beautify-github-readme/upstream/LICENSE); its SKILL.md becomes PROTOCOL.md to avoid duplicate host discovery, other bytes unchanged.
 - Grill Me declares MIT in its [skill metadata](../skills/grill-me/SKILL.md).
 - Other bundled files may carry individual notices. Retain those notices.
 - External integrations remain subject to their upstream licenses. A complete
