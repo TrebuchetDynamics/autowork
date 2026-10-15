@@ -8,13 +8,16 @@
       "covers": [
         "install.sh",
         "bundle.py",
-        "plugins/defaults.json"
-      ]
+        "plugins/defaults.json",
+        "update_bundle.py",
+        "runtime_defaults.py"
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "reference": {
       "status": "created",
       "path": "docs/reference.md",
-      "verified_at": "0cc7f571a2aa",
+      "verified_at": "31ff7ff6f0e2",
       "covers": [
         "bundle.py",
         "setup_bundle.py",
@@ -40,13 +43,18 @@
         "setup_runtime.py",
         "update_bundle.py",
         "update_bundle_native.py",
-        "install-plugins.sh"
-      ]
+        "install-plugins.sh",
+        "plugins/PLUGINS.md",
+        "plugins/defaults.json",
+        "runtime_defaults.py",
+        "skills/grill-me/SKILL.md"
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "troubleshooting": {
       "status": "created",
       "path": "docs/troubleshooting.md",
-      "verified_at": "0cc7f571a2aa",
+      "verified_at": "31ff7ff6f0e2",
       "covers": [
         "bundle.py",
         "setup_runtime.py",
@@ -63,8 +71,10 @@
         "bundle.py",
         "workflow_commands.py",
         "autoresearch_commands.py",
-        "skills"
-      ]
+        "skills",
+        "adapters/pi.mjs"
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "prd": {
       "status": "maintained",
@@ -76,7 +86,8 @@
       "covers": [
         "scripts/check.py",
         "tests"
-      ]
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "changelog": {
       "status": "maintained",
@@ -93,7 +104,8 @@
         "workflow_commands.py",
         "autoresearch_commands.py",
         "telegram_menu_policy.py"
-      ]
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "removal": {
       "status": "maintained",
@@ -104,14 +116,17 @@
       "path": "docs/cross-host.md",
       "covers": [
         "adapters"
-      ]
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "memory": {
       "status": "maintained",
       "path": "docs/memory.md",
       "covers": [
-        "install-omh.py"
-      ]
+        "install-omh.py",
+        "plugins/defaults.json"
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "dependencies": {
       "status": "maintained",
@@ -119,8 +134,14 @@
       "covers": [
         "plugins/PLUGINS.md",
         "requirements-test.txt",
-        "package.json"
-      ]
+        "package.json",
+        "plugins/defaults.json",
+        "plugin.yaml",
+        "skills/grill-me/SKILL.md",
+        "skills/autoresearch/UPSTREAM.json",
+        "skills/engineering/UPSTREAM.json"
+      ],
+      "verified_at": "31ff7ff6f0e2"
     },
     "contributing": {
       "status": "maintained",

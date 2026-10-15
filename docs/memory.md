@@ -6,8 +6,10 @@ Source: [OMH setup](../install-omh.py) and [bundle defaults](../plugins/defaults
 
 OMH is the bundled external memory provider. Full setup selects
 `memory.provider: omh` with `auto-safe` policy and binds the plugin to an
-independent store for every profile: `<hermes-home>/omh` for new bindings.
-Existing explicit stores are preserved. Resolved duplicate stores, including
+independent store for every profile: `<hermes-home>/omh` when the profile has no
+OMH binding yet. Existing stores are preserved: an explicit profile binding, the
+profile `.env` or exported `OMH_HOME`, or, for a profile already using OMH without
+one, its standalone `~/.omh`. Resolved duplicate stores, including
 symlink aliases and inherited global `OMH_HOME`, are refused before writes.
 Clear another selected provider explicitly before setup; OMH never silently
 steals its slot.

@@ -268,8 +268,8 @@ For subsequent bundle updates, use `/toolset update` in CLI chat or Telegram;
 the result. Terminal equivalent: `hermes toolset update`. This targets **all live
 profiles**, preserves local conflicts and uses fast-forward updates only. It also
 self-heals each profile's command menu, approval and injection settings
-(`settings_healed` in the result) and, when anything changed, requests one graceful
-gateway restart so Telegram menus refresh; in-flight turns finish first and
+(`settings_healed` in the result) and, when anything changed and every profile is
+ready, requests one graceful restart of a running gateway so Telegram menus refresh; in-flight turns finish first and
 workers and schedules keep running. It also clears leftover per-chat Telegram menus
 that still list retired commands (`chat_menus_healed`). It refuses while a plugin checkout has
 uncommitted changes. See

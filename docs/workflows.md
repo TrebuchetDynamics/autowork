@@ -77,7 +77,7 @@ accessible through their commands and the Plan For Me adapter. Autoresearch comp
 spellings remain typeable but are deliberately omitted from Telegram menu
 advertising, not merely displaced by capacity. Plan With Me and Docs Sync do not
 register the old repo-interview or repo-docs aliases. The Telegram menu prioritizes
-the four current workflow names. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
+the five current workflow commands. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
 they do not register a live command. Hindsight is not a bundle integration; its
 negative tests prevent accidental reintroduction. Updating source does not refresh
 an already-running gateway's command registry: use supported plugin reload and

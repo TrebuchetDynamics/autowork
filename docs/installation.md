@@ -12,8 +12,7 @@ still leave partial setup.
 See [compatibility](testing.md#compatibility) for the verified environment.
 
 Setup is broader than installing this plugin: the current source inventory targets
-all profiles for OMH, Ponytail, external skills, Graphify, speech support,
-and OMH memory. Setup selects OMH with bounded `auto-safe` capture; no external
+all profiles for OMH, Ponytail, Graphify, speech support and OMH memory. Setup selects OMH with bounded `auto-safe` capture; no external
 memory server or connection JSON is required.
 
 ```sh
@@ -42,8 +41,8 @@ check returns nonzero and reports setup as incomplete.
 Plugins are enabled per profile. For a named profile, use that profile's home for
 the link and `hermes -p PROFILE plugins enable hermes-toolset` to enable it.
 `hermes toolset setup` installs and enables the sources in
-[plugins/PLUGINS.md](../plugins/PLUGINS.md), including external skill repositories,
-Graphify's Hermes integration, and OMH's full memory setup. It also links and enables
+[plugins/PLUGINS.md](../plugins/PLUGINS.md), including any external skill repositories
+it lists (currently none), Graphify's Hermes integration, and OMH's full memory setup. It also links and enables
 hermes-toolset itself in every existing live profile, preserving existing plugin
 installations. After creating another profile, rerun setup or, from this checkout,
 run `bash install-plugins.sh --bundle-only` to add just this bundle and its defaults
@@ -57,7 +56,7 @@ injection defaults whenever it loads, including disabling `/new`, `/clear`,
 `/reset`, `/undo` and MCP-reload confirmations. No setup command is needed for
 this policy after the plugin is enabled. It writes only when values differ and
 preserves other settings, including explicit deny rules. Hermes hard blocks still
-apply. Setup also clears global and per-channel skill disable lists.
+apply. Setup also clears global and per-platform skill disable lists.
 To opt out of automatic policy application, first run
 `hermes -p PROFILE config set plugins.entries.hermes-toolset.settings.apply_runtime_defaults false`,
 then restore the desired settings, for example
@@ -108,9 +107,9 @@ updated/removed, avoiding finalization through stale code.
 
 ## Bundled Grill Me
 
-`skills/grill-me/SKILL.md` bundles the MIT-licensed official
-`official/software-development/grill-me` skill (version 2.0.0), preserving its
-upstream attribution. It is available through `/grill-me` in CLI chat and
+`skills/grill-me/SKILL.md` (version 2.1.0) adapts the MIT-licensed official
+`official/software-development/grill-me` skill (version 2.0.0) with
+mattpocock/skills grilling guidance, preserving their attribution. It is available through `/grill-me` in CLI chat and
 `/grill_me` in Telegram. Enabling/loading hermes-toolset installs missing bundled
 skills and shared support files into that profile's native skill directory, using
 the same offline provisioner as full setup. Existing flat and categorized skills
@@ -191,8 +190,9 @@ command menu, approval and gateway-injection settings, and finalize fails the
 profile if they did not land. `settings_healed` lists profiles whose config changed.
 Because Telegram menus refresh only when the gateway reconnects, an update that
 changed code, skills or settings requests one graceful `hermes gateway restart`
-(`gateway_restart: requested`): in-flight turns drain first, and workers and
-schedules keep running. A no-op update does not restart the gateway.
+(`gateway_restart: requested`) when every profile activated cleanly and a gateway
+is running: in-flight turns drain first, and workers and schedules keep running.
+Otherwise it reports `not_running`, or `not_needed` for a no-op or incomplete update.
 
 Telegram shows a chat's own command list ahead of the default, private and group
 lists that Hermes refreshes, so a leftover chat-scoped list never updates. For each

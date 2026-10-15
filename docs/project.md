@@ -56,7 +56,8 @@ from their matching source directories. The retired repo-interview and repo-docs
 commands are not registered. Portable discovery exposes the same primary names;
 Grill Me is a Plan With Me challenge reference rather than a separate public skill.
 Pi retains `/grill_me` compatibility. Independent Autoresearch and all 13 selectors
-remain available; its plan selector routes to Plan For Me without a routing loop.
+remain available; its plan selector runs Autoresearch's pinned plan protocol with
+Plan For Me's planning adaptations, and `/plan_for_me` is the dedicated planner.
 Shared protocols retain their existing helper/reference paths. Local package
 discovery is distinct from model execution and cross-host live qualification.
 

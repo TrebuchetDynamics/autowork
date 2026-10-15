@@ -36,8 +36,9 @@ everything; see [workflow commands in the picker](onboarding.md#workflow-command
 ### Telegram still shows retired or old commands
 
 Handlers refresh on plugin reload, but the bot menu refreshes only when the
-gateway reconnects. `/toolset update` requests one graceful gateway restart when
-it changes anything, and clears leftover per-chat lists that still contain retired
+gateway reconnects. `/toolset update` requests one graceful restart of a running
+gateway when it changed anything and every profile activated cleanly
+(`gateway_restart: requested`), and clears leftover per-chat lists that still contain retired
 commands (`chat_menus_healed`). Otherwise restart the gateway through your normal
 service procedure. See [update all profiles](installation.md#update-all-profiles).
 
