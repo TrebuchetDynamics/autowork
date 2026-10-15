@@ -31,7 +31,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - [ ] AUDIT-QUOTED-SECRET — Redact complete quoted credential values in fleet observations
 - Status: in_progress; local implementation and offline qualification complete; canonical integration and installed adoption pending writer admission.
 - Verified implementation: Complete quoted values are masked before delimiter redaction; complete JSON documents are decoded and scrubbed before re-encoding. Initial regression reproduced 72 failures; independent review found two serialized-message cases, reproduced and repaired. Final independent review approved the source; its in-memory removal controls failed as expected.
-- Verification: 25 focused collector/response/analyzer tests passed. Full Python 3.12 offline check passed 506 / 578 / 209 / 8 tests, one skip and eight excluded modules. Same-input read-only response replay covered all discovered profiles/jobs, preserved source bytes and existing projections, and passed the synthetic RED/GREEN control. No second collector or worker ran.
+- Verification: Original 25 focused checks and Python 3.12 gate passed. After reconciling newer canonical task-ID/planning changes, 39 focused collector/response tests and the Python 3.12 offline gate passed 506 / 581 / 212 / 8 tests, one skip and eight excluded modules. RED controls reproduced scrubber stack exhaustion, JSON-key disclosure and contextual/numeric masking regressions; the decoded envelope now supplements rather than bypasses existing masking. Final independent review approved; 1,304 differential cases included 1,167 baseline-masked cases with zero regressions. Same-input read-only response replay covered all discovered profiles/jobs and preserved source bytes and existing projections. Integration and installed adoption remain unverified; no second collector or worker ran.
 - Remaining action: Recheck canonical writers; integrate the reviewed candidate when the supported writer check is CLEAR, then verify installed helper hashes and the same read-only consumer. No push or schedule activation.
 - Goal: RECOVERY — Preserve credential boundaries during read-only fleet collection.
 - Sources: [collector](skills/autowork/scripts/audit_profiles.py), [response regressions](skills/autowork/scripts/test_response_tail.py), [testing contract](docs/testing.md).
@@ -42,6 +42,103 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Exclusions: No product, credential, runtime, sibling profile or schedule mutation; no push.
 
 ## Next
+
+### TOOLSET-085-1a — Select several eligible tasks and decide which can run together
+
+- [ ] TOOLSET-085-1a — Select several eligible tasks and decide which can run together
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [task selection](skills/autowork/scripts/task_execution.py), [ledger eligibility](skills/docs-sync/scripts/goals.py).
+- Scope: Add `skills/autowork/scripts/parallel_plan.py` with a pure function that takes the ordered runnable tasks (reuse `task_execution.select()`'s per-task contract checks, refactored so one function returns every passing task in order instead of the first) plus the running set, and returns the tasks to dispatch now and a reason for each waiting task. Parse two new optional TODO fields: `Touches:` (comma list of repo paths, directory prefixes ending in `/`, or globs) and `Resources:` (tokens; `live` and `exclusive` mean run alone). Conflict rules from the plan: direct or transitive dependency, overlapping paths (prefix or glob match in either direction), a shared resource token, a serial path (built-in list: package manifests, lockfiles, migration and schema folders, CI workflow files), or a missing `Touches:` means not together. Never dispatch `in_progress` tasks or tasks held by a live slot; an `in_progress` task without a slot counts as running work with its `Touches:`, and without `Touches:` it blocks all dispatch beside it (reported). Fill rule: the highest-priority runnable task is always considered first; if it must run alone or conflicts with running work, nothing lower is dispatched. Also export `overlap(actual_paths, declared, other_sets)` for TOOLSET-088's check of reported files. No dispatch, lease or CLI changes.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Unit tests show: two independent tasks with disjoint `Touches:` are both selected; a dependent pair (including transitive) is not; overlapping paths, globs, a shared resource token, `live`/`exclusive`, a serial path and a missing `Touches:` each serialize; the top task that must run alone blocks lower dispatch; an `in_progress` task without a slot blocks overlapping dispatch, and blocks everything without `Touches:`; existing `select()` behavior and every existing `test_task_execution.py`/`test_priority_selection.py` case are unchanged.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_plan.py` (new); `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No inference of file sets from prose or by an LLM; no changes to goals.py ordering.
+
+### TOOLSET-086-9f — Add a repository coordinator lease, worker slots and an execution journal
+
+- [ ] TOOLSET-086-9f — Add a repository coordinator lease, worker slots and an execution journal
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [current lease](skills/autowork/scripts/task_execution.py).
+- Scope: Add `skills/autowork/scripts/parallel_state.py` storing `coordinator.json`, `slots/<TASK>.json` and append-only `journal.jsonl` under `<git-common-dir>/autowork-execution/`, written atomically under the existing `writer.lock` and reusing `task_execution`'s process identity (PID, start ticks, boot ID). Functions: claim/release the coordinator lease bound to the `--owner-pid` identity of the persistent coordinator session (refuse a second live coordinator; supersede a dead one; reject a missing or non-ancestor owner), create/update slots through the state machine in the plan, including the retry transitions from its builder-check answers (`interrupted` → `dispatched` attempt 2 in the same worktree; `held` → a fresh attempt on `autowork/<TASK>-r2`; a second failure stays `held`); illegal transitions raise, append journal events, and `reconcile(repo)` that classifies each slot as live worker (adopt), dead with commit (queue integration), dead with uncommitted changes (`interrupted`, worktree kept), or clean without commit (`released`). Make `task_execution.execute()` return `BUSY` while a live parallel coordinator exists, and make the coordinator claim refuse while a live sequential `active.json` owner exists. A live lease never expires by age.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Tests show two coordinators cannot both claim one repository (also across two linked worktrees); a sequential claim and a parallel coordinator exclude each other; a dead coordinator is superseded; reconcile is idempotent (running it twice gives the same states and journal adds nothing new the second time) and classifies the four worker cases above with real Git fixtures; an illegal slot transition is refused; existing lease tests pass unchanged.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_state.py` (new); `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No worker launch, worktree creation or integration (TOOLSET-087/088); no heartbeat-based expiry.
+
+### TOOLSET-087-32 — Dispatch workers in their own worktrees with a refilled worker pool
+
+- [ ] TOOLSET-087-32 — Dispatch workers in their own worktrees with a refilled worker pool
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [bounded runner and isolate suggestion](skills/autowork/scripts/task_execution.py); builds on TOOLSET-085-1a and TOOLSET-086-9f.
+- Scope: Add `skills/autowork/scripts/parallel_dispatch.py` and new `task_execution` flags: `--parallel [N]` (default 2, cap 4 unless `--max-workers`, hard limit 8), `--max-workers`, `--worker-host hermes|codex|pi`, `--worker-command JSON` (argv with `{worktree}`, `{prompt_file}`, `{timeout}`), `--worker-timeout` (default 3600), `--min-free-mem-mb` (default 1500), and `--wait --timeout S`. With `--apply --parallel`, claim the coordinator lease, reconcile slots, compute the dispatch set (TOOLSET-085-1a), and for each task create worktree `<parent>/<repo>-autowork-<TASK>` on branch `autowork/<TASK>` at the recorded canonical HEAD (refuse an existing branch or folder that the journal does not show Autowork created), write the self-contained worker prompt from the plan (task body, worktree, branch, baseline, rules, `report.json` schema), and start the worker CLI in its own process group with cwd = worktree, its own `TMPDIR`, `AUTOWORK_SLOT` and `AUTOWORK_PORT_BASE`, without `HERMES_TOOLSET_EXECUTION_COMMON`. Record worker identity and log path in the slot. Resource gate: hold dispatch while MemAvailable < `--min-free-mem-mb` × (running workers + 1) or the 1-minute load average ≥ CPU count. Restart an `interrupted` slot once in its own worktree with a resume note. Templates never add approval- or sandbox-bypass flags (Codex adds only the worktree and Git common directory as write roots); `--parallel` output shows each worker command. Hermes workers use the coordinator's profile unless `--worker-profile` is given. `--apply --parallel` and every later parallel call require the coordinator's `--owner-pid`. `--wait` blocks until a worker exits or the timeout passes and returns the changed slots; a worker past `--worker-timeout` gets its process group stopped and becomes `interrupted`. Calling `--apply --parallel` again refills free slots. Verify the shipped templates against the installed CLIs (`hermes chat --query-file F --oneshot --in DIR --run-budget S`; `codex exec -C DIR` with the sandbox setting that still allows commits from a linked worktree; Pi's prompt argument) and ship only verified ones; with no usable template, non-Linux or a Claude Code coordinator without `--worker-command`, return `SEQUENTIAL_FALLBACK` plus the ordinary single-task contract. Tests use a deterministic fake worker script (edits files, sleeps, commits, writes `report.json`).
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/fixtures/
+- Acceptance: With the fake worker: two independent tasks start in separate worktrees and run at the same time (overlapping process lifetimes recorded in the journal); a dependent or conflicting task is not started; a third task fills the slot freed by the first finisher; a timed-out worker is stopped and its worktree kept; a crashed worker's slot reconciles per TOOLSET-086-9f without a duplicate start, and an interrupted slot restarts once in the same worktree; low memory holds dispatch; user branches/folders with the target names are refused untouched; the unsupported-host path returns `SEQUENTIAL_FALLBACK`; plain `owner_cycle.py --apply` output is unchanged.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_dispatch.py` (new); `python3 scripts/check.py`; `git diff --check`; the template verification commands recorded in task evidence.
+- Dependencies: TOOLSET-085-1a, TOOLSET-086-9f.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No integration or task closing (TOOLSET-088-a7); no real LLM worker run in tests; no Claude Code approval-mode template.
+
+### TOOLSET-088-a7 — Integrate finished workers one at a time and close tasks only after validation
+
+- [ ] TOOLSET-088-a7 — Integrate finished workers one at a time and close tasks only after validation
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [delivery verifier](skills/autowork/scripts/delivery_state.py), [bounded runner](skills/autowork/scripts/task_execution.py).
+- Scope: Add `skills/autowork/scripts/parallel_integrate.py` and flags `--integrate TASK --run ARGV... --timeout S` and `--parallel-close TASK`. Integrate in priority order among `reported` slots, under the writer lock: verify the commit descends from the slot baseline and matches `report.json`; compare `git diff --name-only baseline..commit` with the task's `Touches:`, coordinator-owned files and other slots' files (`parallel_plan.overlap`), holding the task on any mismatch; in the coordinator-owned integration worktree (`<parent>/<repo>-autowork-integration`, detached), check out canonical HEAD and run `git merge --no-ff autowork/<TASK>`, aborting and holding on conflict; run the validation argv in that worktree through the bounded process core factored out of `command()` (cwd parameter, no `active.json`, `writer.lock` only around state writes; sequential `command()` output byte-identical); then fast-forward the canonical checkout with `git merge --ff-only` only if its HEAD is unchanged (redo the merge once on a moved HEAD; hold after that). Record `integrated` with the merge commit and check receipt. `--parallel-close` refuses unless the slot is `integrated` with a passing validation receipt, then runs `goals.py task TASK done` (and `goals.py archive`), journals it, and removes the clean worker worktree and branch it created. Held and failed slots keep their worktrees. Once no worker is running, a held slot gets one fresh attempt on `autowork/<TASK>-r2` from the current canonical HEAD; a second failure stays held for Plan For Me's fix-or-skip.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Tests show: a clean worker branch merges and validates, then closes; `--parallel-close` before integration or after a failed validation is refused and the ledger is unchanged; a merge conflict leaves the canonical checkout, its dirty user files and the worker branch untouched and holds the task; a file outside `Touches:` or a coordinator-owned file holds integration; a moved canonical HEAD is re-merged once; a held task gets exactly one fresh `-r2` attempt after the pool drains, keeping the first attempt's branch; sequential `--run` output is unchanged; a failed worker never removes another slot's commit or worktree; the canonical checkout is only ever fast-forwarded.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_integrate.py` (new); `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-087-32.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No rebase, automatic conflict resolution, reset of the canonical checkout, push or remote integration.
+
+### TOOLSET-089-72 — Report parallel progress and metrics, with an end-to-end fixture and benchmark
+
+- [ ] TOOLSET-089-72 — Report parallel progress and metrics, with an end-to-end fixture and benchmark
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15); reads the journal from TOOLSET-086-9f.
+- Scope: Add `--parallel-status [--json]` printing the plan's table (header `AUTOWORK — PARALLEL`, `Workers: a/m active`, one row per task with state, worker slot, elapsed, blocked reason; then completed, failed and integration-queue counts) and, with `--json`, worktree, checks, commit and integration fields. Compute metrics from the journal: total wall time, worker time, integration time, waiting/blocked time, peak workers, conflict and retry counts. Add an end-to-end test with a disposable repository whose TODO has task A and B (independent, disjoint `Touches:`) and C (depends on A), driven through the real CLI with the fake worker: A and B overlap in time, C starts only after A is closed, and the final canonical checkout passes the fixture's own test. Add `scripts/bench_parallel.py` running the same controlled workload sequentially and with `--parallel 2`, printing elapsed times and coordinator overhead.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_e2e.py, scripts/bench_parallel.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Status output matches a golden snapshot for a fixed journal and stays under 25 lines for 4 workers; the A/B/C end-to-end test passes deterministically 5 times in a row; the benchmark's measured sequential and parallel times and overhead are recorded in this task's evidence with the machine and workload, without claiming LLM-worker speedups.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_e2e.py`; `python3 scripts/bench_parallel.py`; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-088-a7.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No live host workers (TOOLSET-091-00); no change to sequential output.
+
+### TOOLSET-090-2d — Document parallel Autowork and wire it into each host
+
+- [ ] TOOLSET-090-2d — Document parallel Autowork and wire it into each host
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [Autowork skill](skills/autowork/SKILL.md), [adapter skill](adapters/skills/autowork/SKILL.md), [cross-host guide](docs/cross-host.md).
+- Scope: Add a short parallel-mode section to `skills/autowork/SKILL.md` and a reference `skills/autowork/references/parallel-workers.md` with the coordinator loop (claim, dispatch, `--wait`, review report, `--integrate`, `--parallel-close`, metadata commit, refill), `Touches:`/`Resources:` authoring, conflict handling, worktrees, recovery and authority. Mirror the invocation in `adapters/skills/autowork/SKILL.md` (Claude Code: sequential unless `--worker-command` is given; Codex and Pi: their templates). Document the `Touches:`/`Resources:` fields in the shared TODO rules and Docs Sync so planners write them. Fix the stale "Delegation does not create Git worktrees" line in `references/accepted-plan-execution.md`. Update README (one short paragraph and a link, no internals), docs/workflows.md, docs/cross-host.md (host capability table), docs/testing.md and the CHANGELOG. Add tests: sequential `owner_cycle.py --apply` results are byte-identical to before for an existing fixture, and an unsupported host returns `SEQUENTIAL_FALLBACK`.
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/, adapters/skills/autowork/SKILL.md, skills/shared/TODO-WORKCENTER.md, skills/docs-sync/SKILL.md, README.md, docs/workflows.md, docs/cross-host.md, docs/testing.md, CHANGELOG.md, skills/autowork/scripts/test_parallel_compat.py
+- Acceptance: Docs describe only implemented behavior and flags (checked against `--help`); the host table states which hosts run parallel workers and which fall back; compatibility and fallback tests pass; `docs.py check` passes; skill bundle and adapter tests pass.
+- Checks: `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `node --test tests/portable_pi.test.mjs`; `git diff --check`.
+- Dependencies: TOOLSET-089-72.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No new Telegram command (the flag passes through `/autowork` arguments); no Hermes Agent changes.
+
+### TOOLSET-091-00 — Qualify parallel Autowork with real host workers
+
+- [ ] TOOLSET-091-00 — Qualify parallel Autowork with real host workers
+- Status: open.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15).
+- Scope: On a disposable local repository (not a fleet project) with three small real tasks (A, B independent; C depends on A), run `/autowork --parallel 2` from a Hermes coordinator with Hermes workers, then repeat with Codex and Pi workers where installed. Record per run: worker overlap, integration order, C waiting for A, combined test result, wall time against a sequential run of the same tasks, worker and integration time, and any held or interrupted slot. Interrupt one run's coordinator mid-way and confirm a restart adopts live workers without duplicates.
+- Acceptance: Each qualified host shows two real workers overlapping in separate worktrees, sequential integration, C after A, a passing combined check and no push; the interruption test starts no duplicate worker; measured times recorded with host versions; any host that fails stays documented as sequential-only.
+- Checks: `--parallel-status --json` at each step, the journal, `git log --graph` of the disposable repository, and the recorded elapsed times.
+- Dependencies: TOOLSET-090-2d.
+- Environment prerequisite: Installed host CLIs with working model access; owner availability to observe the run.
+- Exclusions: No fleet repositories or profiles, no push, no cron schedule.
 
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
@@ -168,7 +265,8 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Scope: In a scratch directory, rerun per-test coverage with subprocess measurement (coverage.py `COVERAGE_PROCESS_START` with a scratch `sitecustomize.py` or `.pth`, `parallel = True`, then `coverage combine`), so the 493 tests without records gain them. Recompute identical and strict-subset groups. Read every group of 3 or more and every subset case among the 30 slowest tests; classify each as distinct contract, parametrize candidate or removal candidate under the protocol's Keep rules. Add the subprocess-coverage recipe to the protocol's "Measure first" section. Record results in the audit section and up to three follow-up tasks with exact tests and measured before values.
 - Acceptance: Per-test records exist for at least 1,150 of the 1,253 tests or the shortfall is explained; every group read has a recorded classification with its reason; removal candidates name the remaining test that covers their behavior; no test or source file outside the protocol changes.
 - Checks: `python3 skills/docs-sync/scripts/goals.py validate .`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --stat`; `git diff --check`.
-- Dependencies: TOOLSET-068.
+- Dependencies: None.
+- Prior work: TOOLSET-068 (done, archived).
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.
 
@@ -194,7 +292,8 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Scope: After the user publishes TOOLSET-075..079 and asks for an update, run `hermes toolset update` and confirm from the receipt and gateway log that the restart was requested only with no chat turn in flight (or deferred and later completed), that `/toolset update status` shows the new gateway PID and menu resends, and that a second update during the first reports `busy`. With the user's OK, pin one linked profile and confirm it loads the clone after the next restart.
 - Acceptance: A live receipt records `gateway_restart: completed` with `gateway_restart_result`, or a deferred restart that later completed; no forced drain appears in the gateway log for that restart; any pinned profile runs the same revision as before.
 - Checks: `/toolset update status full`; the gateway log around the restart; `git -C PROFILE/plugins/hermes-toolset rev-parse HEAD` for a pinned profile.
-- Dependencies: TOOLSET-079.
+- Dependencies: None.
+- Prior work: TOOLSET-079 (done, archived).
 - Ownership: Toolset coordinator; live steps need the user's request.
 - Exclusions: No push, update, restart or pinning without the user's request.
 
@@ -223,6 +322,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
 | GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | executed <code>TOOLSET-075..079 offline: python3 scripts/check.py (506/576/209/8 passed, 1 skipped) and node --test tests/portable_pi.test.mjs (3 passed); read-only pin dry run against the live home refused an unreleased revision as designed; live rollout not qualified (TOOLSET-084)</code> → pass | TOOLSET-084 |
+| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | unmet | — | TOOLSET-085-1a, TOOLSET-086-9f, TOOLSET-087-32, TOOLSET-088-a7, TOOLSET-089-72, TOOLSET-090-2d, TOOLSET-091-00 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 

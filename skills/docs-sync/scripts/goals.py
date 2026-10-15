@@ -32,7 +32,9 @@ Agents change goals.json only through these commands, never by hand-editing JSON
   goals.py supersede <repo> <TASK> --by T1,T2 --reason TEXT
                                                 retire without acceptance; render archives unchecked original history
   goals.py section <repo> <TASK> <Now|Next|Needs decision>
-  goals.py add-task <repo> <TASK> --goal <GOAL> --title <text> [--section Now|Next|Needs decision] [--depends-on T1,T2]
+  goals.py new-id <repo> [--prefix P]           print an unused ID such as P-084-a7 (next number + 2-hex hash)
+  goals.py add-task <repo> [TASK] --goal <GOAL> --title <text> [--section Now|Next|Needs decision] [--depends-on T1,T2]
+                                                omit TASK to allocate one with new-id rules
   goals.py evidence <repo> <GOAL> --kind executed|inspection --ref <cmd/path> --result pass|fail [--ran-at ISO]
 
 Rule (the met rule): a goal is `met` only with executed+pass evidence and all tasks done.
@@ -60,6 +62,7 @@ import math
 import os
 import tempfile
 import re
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -492,6 +495,41 @@ def redact(repo, data, replacements_file, archive_dir):
 def todo_text(repo):
     blob = checked_bytes(Path(repo) / 'TODO.md')
     return blob.decode('utf-8') if blob is not None else ''
+
+
+NEW_ID_SOURCES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'docs/TODO-archive.md')
+
+
+def known_ids(repo, data):
+    """Every task-shaped token in the ledger, TODO and archives, so a new ID never reuses history."""
+    ids = {t['id'] for t in (data or {}).get('tasks', []) if isinstance(t.get('id'), str)}
+    for name in NEW_ID_SOURCES:
+        blob = checked_bytes(Path(repo) / name)
+        if blob is not None:
+            ids.update(re.findall(r'(?<![\w-])[A-Za-z][A-Za-z0-9_]*-\d+(?:-[0-9a-f]{2})?(?![\w-])', blob.decode('utf-8', 'replace')))
+    return ids
+
+
+def new_task_id(repo, data, prefix=None):
+    """Next number plus a two-hex-digit hash: collaborators who pick the same number still get distinct IDs."""
+    ids = known_ids(repo, data)
+    numbered = [m.groups() for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-(\d+)(?:-[0-9a-f]{2})?', i) for i in ids) if m]
+    if prefix is None:
+        ledger = [m.group(1) for m in (re.fullmatch(r'([A-Za-z][A-Za-z0-9_]*)-\d+(?:-[0-9a-f]{2})?', t['id'])
+                                       for t in (data or {}).get('tasks', [])) if m]
+        pool = ledger or [p for p, _ in numbered]
+        prefix = max(sorted(set(pool)), key=pool.count) if pool else 'T'
+    if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', prefix) is None:
+        sys.exit('invalid prefix: use letters, digits or underscores; start with a letter; no write')
+    numbers = [n for p, n in numbered if p == prefix]
+    width = max([3] + [len(n) for n in numbers])
+    number = str(max([0] + [int(n) for n in numbers]) + 1).zfill(width)
+    for _ in range(64):
+        digest = hashlib.sha256(f'{prefix}-{number}:{time.time_ns()}:{os.urandom(8).hex()}'.encode()).hexdigest()
+        candidate = f'{prefix}-{number}-{digest[:2]}'
+        if candidate not in ids:
+            return candidate
+    sys.exit(f'could not find an unused ID for {prefix}-{number}; no write')
 
 
 def eligible(data):
@@ -1227,7 +1265,10 @@ def main():
     sup.add_argument('--reason', required=True, help='accepted disposition, never passing evidence')
     s2 = sub.add_parser('section'); s2.add_argument('repo'); s2.add_argument('task')
     s2.add_argument('section', choices=[s for s in SECTIONS if s not in ('Done', 'Superseded')])
-    n2 = sub.add_parser('add-task'); n2.add_argument('repo'); n2.add_argument('task')
+    ni = sub.add_parser('new-id'); ni.add_argument('repo')
+    ni.add_argument('--prefix', help='ID prefix (default: the ledger\'s most common one)')
+    n2 = sub.add_parser('add-task'); n2.add_argument('repo'); n2.add_argument('task', nargs='?', help='omit to allocate a new hashed ID')
+    n2.add_argument('--prefix', help='prefix for an allocated ID (default: the ledger\'s most common one)')
     n2.add_argument('--goal', required=True); n2.add_argument('--title', required=True)
     n2.add_argument('--section', default='Next', choices=[s for s in SECTIONS if s not in ('Done', 'Superseded')])
     n2.add_argument('--depends-on', default='')
@@ -1266,6 +1307,8 @@ def execute(a):
         data = load(a.repo) if path_of(a.repo).exists() else None
         result = archive_tasks(a.repo, data, verified_tasks=tuple(filter(None, a.verified_tasks.split(','))))
         print(json.dumps(result)); return
+    if a.cmd == 'new-id':
+        print(new_task_id(a.repo, load(a.repo) if path_of(a.repo).exists() else None, a.prefix)); return
     data = load(a.repo)
 
     if a.cmd == 'redact':
@@ -1403,6 +1446,10 @@ def execute(a):
         task['section'] = a.section
         dump(a.repo, data); print(f'ok {a.task} -> {a.section}'); return
     if a.cmd == 'add-task':
+        if a.task is None:
+            a.task = new_task_id(a.repo, data, a.prefix)
+        elif a.prefix:
+            sys.exit('--prefix applies only when TASK is omitted; no write')
         if re.fullmatch(TASK_ID, a.task) is None:
             sys.exit('invalid task ID: use letters, digits, underscores or hyphens; start with a letter or digit; no write')
         if any(x['id'] == a.task for x in data['tasks']):

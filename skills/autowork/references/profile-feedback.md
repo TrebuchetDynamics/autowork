@@ -12,8 +12,12 @@ replies remain separate evidence.
 
 Before retaining collector projections, mask complete quoted credential values
 before comma/newline field splitting, and decode complete JSON envelopes before
-masking their string values. Test raw, escaped, unterminated and nested serialized
-values through the actual response consumer; a passing consultation redactor does
+masking their string values and keys. Keep the existing contextual and opaque-value
+masking after JSON decoding; decoding supplements that coverage, never bypasses it.
+Fail closed on scrubber stack exhaustion,
+withholding that envelope rather than aborting other responses. Test raw, escaped,
+unterminated and nested serialized values through the actual response consumer;
+a passing consultation redactor does
 not qualify the collector's separate masking path. Partial chunks and omitted
 history remain unknown, not proof that every secret representation was covered.
 

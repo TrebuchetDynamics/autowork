@@ -175,7 +175,9 @@ For a scoped dirty-worktree documentation proposal:
 1. Save exact canonical `TODO.md` and `goals.json` baselines before authoring.
    Prepare a targeted insertion in the private pinned worktree; do not use its
    HEAD version as the baseline when canonical documents already contain edits.
-2. Allocate each numeric ID from the current ledger immediately before `add-task`.
+2. Allocate each ID from the current ledger immediately before `add-task`, with
+   `goals.py new-id` or by omitting the ID; its two-hex-digit hash keeps IDs
+   distinct when another clone takes the same number.
    Obtain a fresh `revision` token for each mutation and pass `--expected-revision`;
    reserving a sequence in memory does not protect it from another writer.
 3. After integration and `fmt`/`validate`/`render`, compare pre-existing task

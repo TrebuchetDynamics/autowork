@@ -77,18 +77,25 @@ class BundleTests(unittest.TestCase):
         }
         saved = json.dumps(receipt)
         (folder / 'latest.json').write_text(saved)
-        with patch.object(self.bundle, 'update_home', return_value=home):
-            rendered = self.bundle.handle_chat('update status full')
-            summary = self.bundle.handle_chat('update status')
-        self.assertTrue(summary.startswith('```text\n') and summary.endswith('\n```'), summary)
-        self.assertNotIn('`', summary[len('```text\n'):-len('\n```')])
-        self.assertIn(str(self.path), summary)  # inside the fence, never a bare attachment path
-        self.assertTrue(rendered.startswith('```json\n'), rendered)
-        self.assertTrue(rendered.endswith('\n```'), rendered)
-        payload = rendered[len('```json\n'):-len('\n```')]
-        self.assertNotIn('`', payload)  # Embedded delimiters cannot expose paths.
-        self.assertEqual(json.loads(payload), receipt)
-        self.assertEqual((folder / 'latest.json').read_text(), saved)
+        linked = [{'profile': 'example', 'target': str(self.path), 'revision': 'a' * 40}]
+        for current in (None, [], linked):
+            with self.subTest(linked_profiles=current), \
+                    patch.object(self.bundle, 'update_home', return_value=home), \
+                    patch.object(self.bundle, 'linked_profiles', return_value=current):
+                rendered = self.bundle.handle_chat('update status full')
+                summary = self.bundle.handle_chat('update status')
+            self.assertTrue(summary.startswith('```text\n') and summary.endswith('\n```'), summary)
+            self.assertNotIn('`', summary[len('```text\n'):-len('\n```')])
+            self.assertIn(str(self.path), summary)  # inside the fence, never a bare attachment path
+            self.assertTrue(rendered.startswith('```json\n'), rendered)
+            self.assertTrue(rendered.endswith('\n```'), rendered)
+            payload = rendered[len('```json\n'):-len('\n```')]
+            self.assertNotIn('`', payload)  # Embedded delimiters cannot expose paths.
+            expected: dict[str, object] = dict(receipt)
+            if current is not None:
+                expected['linked_profiles'] = [{k: row[k] for k in ('profile', 'target')} for row in current]
+            self.assertEqual(json.loads(payload), expected)
+            self.assertEqual((folder / 'latest.json').read_text(), saved)
 
     def test_new_cli_receipt_is_not_hidden_by_older_chat_request(self):
         home=Path(self.tmp.name);folder=home/'maintenance/toolset-update';folder.mkdir(parents=True)

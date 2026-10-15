@@ -62,6 +62,62 @@ class ResponseTailTests(unittest.TestCase):
         self.assertNotIn('handoff', status)
         self.assertEqual(status['receipt'], '/private/state/unblock-latest.json')
 
+    def test_json_projection_preserves_existing_context_and_opaque_masking(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-11.md'
+            opaque = '7' * 64
+            cases = [{key: 'synthetic-private-value', 'status': 'held'}
+                     for key in ('access_token', 'refresh_token', 'db_password')]
+            cases += [{'value': int(opaque), 'status': 'held'}, [int(opaque), 'held']]
+            for case in cases:
+                with self.subTest(case_kind=type(case).__name__):
+                    path.write_text(json.dumps(case))
+                    before = path.read_bytes()
+                    row = cron_responses(home, [{'id': 'j1'}], [])[0]
+                    self.assertNotIn('synthetic-private-value', row['payload'])
+                    self.assertNotIn(opaque, row['payload'])
+                    self.assertIn('held', row['payload'])
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_json_object_keys_keep_existing_secret_masking(self):
+        import json
+        from audit_profiles import safe
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-11.md'
+            for key in ('ghp_syntheticPrivateCredential', 'https://example.test/private', 'x' * 64):
+                with self.subTest(key_kind=len(key)):
+                    path.write_text(json.dumps({key: 'held', 'ordinary': 'diagnostic'}))
+                    before = path.read_bytes()
+                    row = cron_responses(home, [{'id': 'j1'}], [])[0]
+                    self.assertNotIn(key, row['payload'])
+                    self.assertEqual(json.loads(row['payload']), {safe(key): 'held', 'ordinary': 'diagnostic'})
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_deep_json_response_is_withheld_without_losing_other_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            deep = output / '2026-10-11.md'
+            healthy = output / '2026-10-12.md'
+            healthy.write_text('healthy response\n')
+            for depth in (600, 1200):
+                with self.subTest(depth=depth):
+                    deep.write_text('[' * depth + '{"password":"synthetic-private-value"}' + ']' * depth)
+                    before = deep.read_bytes()
+                    rows = cron_responses(home, [{'id': 'j1'}], [])
+                    self.assertEqual(len(rows), 2)
+                    self.assertNotIn('synthetic-private-value', rows[0]['payload'])
+                    self.assertEqual(rows[1]['payload'], 'healthy response\n')
+                    self.assertEqual(deep.read_bytes(), before)
+
     def test_two_newest_outputs_retained_without_mutating_sources(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

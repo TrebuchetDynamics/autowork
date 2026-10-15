@@ -1021,3 +1021,216 @@ size instead of the measured index and unchanged review/verification use.
 | --- | --- |
 | TOOLSET-080 | Managed OMH trim through `skills.disabled`, applied by setup, plugin load and update |
 | TOOLSET-081 | Live qualification on one profile, then fleet rollout with before/after index size |
+
+## Parallel Autowork (2026-10-15)
+
+Status: Accepted
+
+Request (user, 2026-10-15, delegated with `/plan_for_me`): evolve Autowork into one
+coordinator with several workers. The coordinator picks independent eligible tasks
+from TODO.md/goals.json, runs each in its own Git worktree and branch, integrates the
+results one at a time, and marks a task done only after the integrated result passes
+validation. Sequential Autowork must keep working as it does today. Core principle:
+parallelize independent implementation, not repository authority.
+
+Findings (source as of `89549d2`):
+- `goals.py eligible()` already returns every eligible task in priority order
+  (focus, section, recorded TODO order, goal priority), but it keeps `in_progress`
+  tasks. `task_execution.select()` walks that list and returns only the first task
+  that passes its contract checks (unique Scope/Acceptance/Checks, dependencies done
+  in TODO, archive or ledger, TODO/ledger agreement).
+- `task_execution.execute()` holds one repository lease,
+  `<git-common-dir>/autowork-execution/active.json`, under `writer.lock`; a live lease
+  returns `BUSY`. Owner liveness is `/proc` identity (PID, start ticks, boot ID), with
+  no heartbeat; a dead owner's lease is superseded. Processes carrying
+  `HERMES_TOOLSET_EXECUTION_COMMON` count as Autowork and block every worktree.
+- `BUSY` already suggests an isolated worktree (`<parent>/<repo>-autowork-<TASK>`,
+  branch `autowork/<TASK>`), and `--writers` gates merging back. There is no merge
+  helper: integration is manual Git. `delivery_state.integration_state()` verifies
+  ff or two-parent merges and recomputes conflict-free merges with `merge-tree`.
+- TODO bodies have no file or resource field; `Scope:` is prose.
+  `disjoint_fallback.verify()` compares declared path prefixes but is tied to old
+  native cards.
+- `goals.py` mutations run under a repository-wide `flock` shared by all worktrees,
+  with `--expected-revision` guards.
+- Hosts: all four supported hosts have a headless CLI that can run one worker in a
+  given folder. Hermes: `hermes chat --query-file F --oneshot --in DIR
+  --run-budget S`. Codex: `codex exec -C DIR`. Pi: `pi -p`, run with the worktree as
+  its working directory. Claude Code: `claude -p`, but unattended runs need a
+  permission mode, which would change the user's approval policy. Hermes'
+  in-process `delegate_task` copies the parent's cwd and has no per-child folder; its
+  `delegation.worktree_isolation` creates its own worktrees from HEAD, outside
+  Autowork's records. `references/accepted-plan-execution.md` still says delegation
+  never creates worktrees.
+
+Decisions (all planner's calls; reversible; reject any of them):
+- **Entry point.** `owner_cycle.py REPO --parallel N` (and `/autowork --parallel N`,
+  or "parallel N" in free-text hosts) turns on parallel mode. Without it nothing
+  changes. N defaults to 2 when the flag has no number and is capped at 4 unless
+  `--max-workers` raises it (hard limit 8). It never starts more workers than there
+  are runnable independent tasks.
+- **Workers are separate host CLI processes**, not in-process subagents. The helper
+  starts each one in its worktree from a host template, in its own process group,
+  and records its PID identity. A live PID is how ownership is proven: a lease held
+  by a live worker never expires. Shipped templates: `hermes`, `codex`, `pi`.
+  Claude Code coordinators fall back to sequential mode unless the user passes their
+  own `--worker-command`, because a template would have to pick an approval mode for
+  them. Any coordinator can pass `--worker-command` (JSON argv with `{worktree}`,
+  `{prompt_file}`, `{timeout}` placeholders). Without a usable template or Linux
+  `/proc`, parallel mode reports `SEQUENTIAL_FALLBACK` with the reason and returns
+  the ordinary single-task contract.
+- **Workers never select tasks.** A worker gets a generated, self-contained prompt
+  with its one task body, worktree, branch, baseline commit and rules. The prompt
+  does not load the Autowork skill, to avoid recursive selection. Rules: edit only
+  inside the worktree; never edit coordinator-owned files; commit locally once;
+  never push, merge or touch another worktree; write `report.json` (commit, changed
+  files, checks run with results, blockers, one proposed CHANGELOG line). Workers may
+  use their host's own subagents, but may not start other workers.
+- **Coordinator-owned files:** TODO.md, TODO.archive.md, goals.json and CHANGELOG.md.
+  Only the coordinator writes them, after integration. A worker change to any of them
+  holds that task's integration.
+- **Independence is declared, then checked.** New optional task fields:
+  - `Touches:` a comma list of repository paths, directory prefixes ending in `/`,
+    or globs.
+  - `Resources:` tokens such as `port:8080`, `db:test`, `network`, `live`, `exclusive`.
+
+  Two tasks may run together only when all of these hold:
+  - neither depends on the other, directly or transitively;
+  - both declare `Touches:`, and their path sets do not overlap;
+  - they share no resource token;
+  - neither has `live` or `exclusive`;
+  - neither touches a serial path. Serial paths are package manifests, lockfiles,
+    migration and schema folders, and CI workflow files.
+
+  A task without `Touches:` runs alone. When a worker reports, its actual
+  `git diff --name-only baseline..commit` must stay inside its `Touches:` and must
+  not overlap work that is running or already integrated in this run. Otherwise
+  integration is held and the task is retried alone after the others.
+- **Priority is preserved.** Each free slot first considers the highest-priority
+  runnable task. If that task can run alone only, or conflicts with running work,
+  no lower-priority task is dispatched. The pool drains, and the top task then runs
+  by itself. Lower-priority work fills slots only beside compatible higher-priority
+  work.
+- **Repository lease and journal.** These live under
+  `<git-common-dir>/autowork-execution/`:
+  - `coordinator.json`: one live coordinator per repository. It holds the owner
+    identity, workspace, profile, maximum workers and start time.
+  - `slots/<TASK>.json`: task, worktree, branch, baseline, worker identity, state
+    and report.
+  - `journal.jsonl`: append-only events with timestamps.
+
+  All writes happen under the existing `writer.lock`. A sequential claim returns
+  `BUSY` while a live parallel coordinator exists, and the reverse is also true.
+  Worker processes do not carry `HERMES_TOOLSET_EXECUTION_COMMON`, so they don't
+  block the coordinator. Slot states: `dispatched`, `running`, `reported`,
+  `integrating`, `integrated`, `closed`, `held` (reason), `interrupted`, `released`.
+- **Recovery is idempotent.** A new coordinator, run in either mode, first
+  reconciles every slot:
+  - Live worker: adopt it and keep waiting. Never start a duplicate.
+  - Dead worker with a commit: queue the task for integration.
+  - Dead worker with uncommitted changes: mark `interrupted` and preserve the
+    worktree. Restart once in the same worktree with a resume note; a second
+    failure becomes `held`.
+  - Clean worktree with no commit: release the task back to the queue.
+
+  A worker that exceeds `--worker-timeout` (default 3600 s) has its process group
+  stopped and becomes `interrupted`. A failed worker never removes another worker's
+  result.
+- **Worktrees** use the existing convention, `<parent>/<repo>-autowork-<TASK>` on
+  branch `autowork/<TASK>`, created from the canonical HEAD recorded as the slot
+  baseline. Existing user branches or worktrees with those names are refused rather
+  than reused unless the slot journal shows Autowork created them. Clean integrated
+  worktrees are removed. Held, interrupted and failed ones are kept for diagnosis.
+  Each worker gets its own `TMPDIR` under the slot and `AUTOWORK_SLOT` /
+  `AUTOWORK_PORT_BASE` (20000 + 100 × slot) for tests that open ports.
+- **Integration** happens in a coordinator-owned integration worktree, one task at
+  a time, in priority order among reported tasks:
+  1. Verify the commit descends from the baseline, the changed files and the report.
+  2. In the integration worktree, detach at canonical HEAD and run
+     `git merge --no-ff autowork/<TASK>`. A conflict aborts the merge and holds the
+     task.
+  3. Run the coordinator's validation argv (task checks plus a combined regression)
+     through the existing bounded `--run` runner.
+  4. Fast-forward the canonical checkout with `git merge --ff-only` only if its HEAD
+     has not moved. If it moved, redo the merge once on the new HEAD. Git's own
+     refusal protects dirty files.
+
+  `--parallel-close TASK` then runs `goals.py task TASK done` and the archive step
+  only for an `integrated` and validated slot. The coordinator edits the TODO body
+  and CHANGELOG and commits that metadata. A refill follows, so dependents (task C
+  after A) become eligible only after A closes.
+- **Resource gate.** No new worker starts while `MemAvailable` is below
+  `--min-free-mem-mb` (default 1500 per running worker plus one), or while the
+  1-minute load average is at or above the CPU count. Such a slot waits rather than
+  failing. Token or provider spend is not metered: unknown usage is not zero, so the
+  only caps are wall time (`--worker-timeout`, Hermes `--run-budget`) and the
+  number of workers.
+- **Observability.** `--parallel-status [--json]` prints the coordinator table:
+  workers active/maximum, and per task the state, worker slot, worktree, elapsed
+  time, blocked reason, checks, commit and integration state. It also prints run
+  metrics computed from the journal: total wall time, worker time, integration time,
+  waiting or blocked time, peak workers, conflicts and retries. `--wait --timeout S`
+  blocks in the helper until a worker exits, so the coordinator spends no tokens
+  polling.
+- **Authority is unchanged.** Workers and the coordinator make local commits only.
+  There is no push, deployment, history rewrite or remote integration without the
+  existing explicit authorization. A worker's successful exit is never completion.
+
+Builder-check answers (planner's calls, 2026-10-15):
+- **Worker permissions.** Templates never add flags that bypass approvals or
+  sandboxes. Hermes workers use the profile's own approval settings (Toolset-managed
+  profiles already run unattended). The Codex template keeps the host's approval
+  policy and adds only scoped write roots: the worktree and the Git common directory.
+  A host whose worker cannot commit under those limits gets no template and falls
+  back to sequential mode. `--parallel` output lists each worker's command, so the
+  permissions in use are visible.
+- **The slot is the claim.** Dispatch does not write TODO.md or goals.json; tasks stay
+  `open` until `--parallel-close`. Sequential runs see parallel work through the
+  coordinator lease (`BUSY`). A task already `in_progress` without a slot (left by a
+  sequential run) is never dispatched. Its `Touches:` count as running work. If it
+  has no `Touches:`, no task is dispatched beside it, and the status reports why.
+- **Retries.** An `interrupted` slot (dead worker with uncommitted changes, or a
+  timeout) restarts once in the same worktree and branch with a resume note (attempt
+  2). A `held` slot (conflict, files outside `Touches:`, coordinator-owned file,
+  failed validation) waits until no worker is running, then gets one fresh attempt:
+  new branch `autowork/<TASK>-r2` and worktree from the current canonical HEAD.
+  The first attempt's branch and worktree are kept. After a second failure the slot
+  stays `held` and the task goes to Plan For Me's fix-or-skip, as for any blocked task.
+- **Validation runner.** Factor the bounded process core (subreaper, timeout,
+  descendant cleanup, receipt) out of `command()` into a function that takes a
+  working directory. The sequential `command()` keeps calling it, and its output is
+  tested byte-identical. Integration validation runs in the integration worktree
+  under the coordinator lease only: no `active.json` is written, and `writer.lock`
+  is held only for state writes, not for the whole run.
+- **Worker profile and model.** Hermes workers run in the coordinator's profile with
+  its default model; `--worker-profile` may override that. TOOLSET-091-00 checks
+  that concurrent sessions in one profile behave.
+- **Owner proof.** `--apply --parallel` requires `--owner-pid` of the persistent
+  coordinator session, like sequential `--apply`. Every refill, wait, integrate and
+  close call passes the same PID, and `coordinator.json` records that identity.
+  A run with no persistent ancestor gets `ACTION_REQUIRED`.
+- **Memory gate.** Dispatch needs `MemAvailable` ≥ `--min-free-mem-mb` ×
+  (running workers + 1).
+
+Anti-goals: a second task board, remote queue or database; in-process subagent
+fleets without per-worker folders; dispatching lower-priority work ahead of a
+runnable higher-priority task; treating per-worktree test passes as combined
+correctness; automatic conflict resolution or rebasing worker branches; parallel
+mode changing the default single-task behavior; claiming LLM-worker speedups from
+the controlled benchmark.
+
+Remaining uncertainty (resolved during implementation, recorded in task evidence):
+the exact Codex sandbox flags that allow commits from a linked worktree (its Git
+directory is outside the worktree), and Pi's prompt-file argument. Both are verified
+against the installed CLIs before their templates ship. Templates that cannot be
+verified stay out of the default list.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-085-1a | Select several runnable tasks and decide which can run together (`Touches:`/`Resources:`, serial paths, priority-preserving fill) |
+| TOOLSET-086-9f | Repository coordinator lease, worker slots, journal and idempotent slot recovery |
+| TOOLSET-087-32 | Worktree creation, worker prompts, host CLI templates, resource gate, timeout, wait and refill |
+| TOOLSET-088-a7 | Sequential integration through an integration worktree, validation, guarded close |
+| TOOLSET-089-72 | Status table and metrics, end-to-end A/B/C fixture, sequential-versus-parallel benchmark |
+| TOOLSET-090-2d | Skill, adapter, README and workflow/cross-host/testing docs; compatibility and fallback tests |
+| TOOLSET-091-00 | Live qualification with real host workers on a disposable repository |

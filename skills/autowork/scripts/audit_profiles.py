@@ -158,7 +158,7 @@ def safe(value):
 
     def scrub(item):
         if isinstance(item, dict):
-            return {key: '[REDACTED]' if re.fullmatch(
+            return {safe(key): '[REDACTED]' if re.fullmatch(
                         r'(?i)api[_-]?key|token|password|secret|authorization|cookie', key)
                     else scrub(part) for key, part in item.items()}
         if isinstance(item, list):
@@ -170,7 +170,12 @@ def safe(value):
     except (ValueError, RecursionError):
         parsed = None
     if isinstance(parsed, (dict, list, str)):
-        return json.dumps(scrub(parsed), ensure_ascii=False)
+        try:
+            # Decoding supplements, never bypasses, the contextual masking below.
+            text = json.dumps(scrub(parsed), ensure_ascii=False)
+        except RecursionError:
+            # A decodable envelope can still exceed the recursive scrubber's stack.
+            return '[NESTED JSON REDACTED]'
     # Mask whole quoted values before delimiters can expose a credential suffix.
     text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)(bearer\s+)[^\s,;]+', r'\1[REDACTED]', text)

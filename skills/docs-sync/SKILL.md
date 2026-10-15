@@ -275,7 +275,8 @@ an unchanged repeat leaves both content files byte-identical. Then run `fmt`,
 not dispatch or model qualification. For maintenance, use supported operations
 or reconcile goal objects with intent `source` under the canonical owner, then
 `fmt`. There is no `add-goal` command; `init` is not a merge/migration interface.
-`add-task` rejects unknown goals. Goal-less TODO bodies cannot replace ledger state.
+`add-task` rejects unknown goals; omit its ID (or run `new-id`) to allocate the next
+number with a two-hex-digit hash, such as `T-012-c4`, so parallel clones do not collide. Goal-less TODO bodies cannot replace ledger state.
 
 1. Collect stated requirements/acceptance, planned design/ADR work, test/operations
    gaps, README promises and real owner questions. Reuse IDs. Goals record id/title/
