@@ -8,17 +8,23 @@ apply; these add the lessons learned for specific kinds of planning.
 
 When the matching task was cancelled, separate permission to revisit its plan,
 to reactivate it and to execute it; ask which boundary changes rather than reviving an
-old execution grant. On reactivation reuse its ID, keep the cancellation in history,
-and report queue eligibility separately from execution authority.
+old execution grant. On reactivation reuse its ID and keep the cancellation in
+history. If the owner instead requests a new replacement, allocate its successor
+against the current queue, then supersede the old task with an explicit link;
+preserve original acceptance/results without importing withdrawn scope or
+historical allowance. Report queue eligibility separately from execution authority.
 
 ## Validation-performance plans
 
-Reuse existing phase receipts; ask once whether the
-goal is release latency or developer feedback; restore correctness before optimizing
-(a failing run is not a performance baseline); keep an active frozen candidate
-untouched; then plan one-variable experiments judged by repeated passing full-gate
-times under matched conditions with unchanged test identities. Never invent an SLA,
-and leave a speedup unverified without a repeatable gain. Planning launches nothing.
+First distinguish measured performance work from qualitative test-value cleanup.
+For measured work, reuse existing phase receipts; ask once whether the goal is
+release latency or developer feedback, restore correctness before optimizing,
+keep an active frozen candidate untouched, then use one-variable experiments and
+repeated passing full-gate times under matched conditions. A failing run is not a
+performance baseline. Never invent an SLA or claim speedup without repeatable
+evidence. For explicitly qualitative cleanup, follow SKILL.md's simpler-test-cleanup
+rules instead of carrying forward timing experiments. Preserve required behavioral
+coverage, not necessarily redundant test identities. Planning launches nothing.
 
 ## Blockers and recovery
 

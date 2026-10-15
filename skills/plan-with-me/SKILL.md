@@ -114,6 +114,24 @@ unresolved matters left open. Silence is neither an answer nor acceptance. In
 scheduled/noninteractive runs, report the single highest-value question and leave
 it pending; do not fabricate replies or poll.
 
+## Scope reductions and simpler test cleanup
+
+When the user chooses a simpler qualitative task, remove timing, benchmark,
+repeated-run and speed-target requirements from its active contract; retain
+correctness checks instead of the retired measurement campaign. Prefer one bounded
+test-value cleanup over new measurement infrastructure in that scope. Inspect
+unchanged test verdicts before edits. Require each deletion or consolidation to
+identify duplicated behavior/assertions and the retained test protecting them;
+low priority, similar names, coverage overlap or fewer tests alone never justify
+losing unique regression, security, boundary or configuration protection. Keep
+uncertain cases and report recommendations instead.
+
+State whether low-priority items means test cases or repository tasks; do not
+silently turn a test-cleanup request into unrelated backlog cancellation. If the
+user requests a new simpler replacement, save the successor and supersede the old
+task without marking its unproven outcome passed. Creating that replacement does
+not implement it, renew an execution budget or dispatch a worker.
+
 ## Save answers and finish the plan
 
 During an ongoing interview, save material explicit answers in the existing owner
