@@ -559,16 +559,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-087-32"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-088-a7",
-      "section": "Next",
-      "status": "open",
-      "title": "Integrate finished workers one at a time and close tasks only after validation"
-    },
-    {
-      "depends_on": [
         "TOOLSET-088-a7"
       ],
       "goal": "PARALLEL",
@@ -1117,6 +1107,16 @@
       "section": "Done",
       "status": "done",
       "title": "Dispatch workers in their own worktrees with a refilled worker pool"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-087-32"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-088-a7",
+      "section": "Done",
+      "status": "done",
+      "title": "Integrate finished workers one at a time and close tasks only after validation"
     },
     {
       "depends_on": [],
