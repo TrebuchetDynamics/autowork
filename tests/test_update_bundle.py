@@ -120,6 +120,19 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual([(e['path'], e['action']) for e in plan['local_edits']], [(str(edited), 'kept_retired')])
         self.assertEqual(self.plan()['writes'], [])
 
+    def test_retired_name_of_a_required_external_skill_is_never_removed(self):
+        graph = self.remote / 'skills/graphify'
+        graph.mkdir(parents=True); (graph / 'SKILL.md').write_text('bundled once\n')
+        self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'bundle graphify')
+        self.git(self.remote, 'rm', '-rq', 'skills/graphify'); self.git(self.remote, 'commit', '-m', 'external now')
+        self.git(self.repo, 'pull', '--ff-only')
+        for _, home in self.profiles:
+            (home / 'skills/graphify').mkdir(parents=True)
+            (home / 'skills/graphify/SKILL.md').write_text('bundled once\n')
+        plan = self.plan()
+        self.assertEqual([w for w in plan['writes'] if 'graphify' in str(w[0])], [])
+        self.assertEqual(plan['local_edits'], [])
+
     def test_edit_to_an_older_installed_copy_merges_onto_the_release_and_is_reported(self):
         self.install_lines('a\nb\nc\nd\ne\n')
         path = self.home / 'skills/demo/SKILL.md'
