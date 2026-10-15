@@ -26,6 +26,30 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
+### TOOLSET-062 — Make the README audit catch dark-mode and reference-style images
+
+- [ ] TOOLSET-062 — Make the README audit catch dark-mode and reference-style images
+- Status: open.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15), [adapter](skills/beautify-github-readme/SKILL.md), [vendored audit](skills/beautify-github-readme/upstream/scripts/audit_readme.py).
+- Scope: Add a toolset `scripts/audit_readme.py` to the Beautify skill that reuses the upstream SVG checks and also audits `<source srcset>` candidates and reference-style images, resolves root-relative paths against the repository root and accepts `<…>` destinations; ignore images inside fenced code. Point the adapter (and its Codex/Pi wrapper) at it. Upstream bytes stay unchanged.
+- Acceptance: A missing dark-mode `srcset` image, a missing or undefined reference-style image and a missing root-relative image each fail; existing root-relative and angle-bracket images pass; this README still passes.
+- Checks: Failing-first fixture regressions in `tests/test_beautify_readme_vendor.py`, then `python3 scripts/check.py` and the Node package test.
+- Dependencies: None.
+- Exclusions: No edits to vendored upstream files; no network.
+
+### TOOLSET-063 — Put UI Taste behind a toolset adapter
+
+- [ ] TOOLSET-063 — Put UI Taste behind a toolset adapter
+- Status: open.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15), [UI Taste plan](docs/project.md#vendored-ui-taste-skill), [Beautify layout](docs/project.md#readme-design-skill-2026-10-15).
+- Scope: Move the 16 pinned files byte-exact to `skills/ui-taste/upstream/` with `SKILL.md` renamed `PROTOCOL.md`; add a toolset `SKILL.md` with a trigger-first description of at most 60 characters and the accepted rules (design-skill precedence, audit-only scheduled runs, paid Uizze tools only through an existing host connection); update `UPSTREAM.json`, the Codex/Pi wrapper, tests and the refresh procedure.
+- Acceptance: Only the adapter registers as a skill; every upstream file matches its pinned hash and upstream's own checksums after the recorded rename; a clean profile receives the adapter and playbooks; Hermes' skill linter reports no description-length warning for `ui-taste`.
+- Checks: Failing-first updates to `tests/test_ui_taste_bundle.py`, `python3 scripts/check.py`, the Node package test and `docs.py check`.
+- Dependencies: None.
+- Exclusions: No upstream text changes, MCP configuration or runtime fetches.
+
 ## Next
 
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
@@ -105,6 +129,18 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
 - Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
 
+### TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index
+
+- [ ] TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index
+- Status: open; recorded, not scheduled.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15).
+- Scope: Rewrite toolset-owned `description` fields over 60 characters (autoresearch, autowork, beautify-github-readme, cron-autowork, engineering, lgtm, plan-for-me, plan-with-me) to one trigger-first sentence; vendored Impeccable stays unchanged.
+- Acceptance: Hermes' skill linter reports no `description-length` warning for toolset-owned skills, and a test enforces the limit.
+- Checks: A regression over `skills/*/SKILL.md`, then `python3 scripts/check.py`.
+- Dependencies: None.
+- Exclusions: No vendored-file edits.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -125,6 +161,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | STARTUP: Start useful implementation sooner with less preparation | unmet | executed <code>Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013</code> → pass | TOOLSET-013 |
 | DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | met | executed <code>python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)</code> → pass | — |
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
+| SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-062, TOOLSET-063, TOOLSET-064 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 

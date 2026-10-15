@@ -757,3 +757,31 @@ normal commit workflow. A Codex/Pi adapter ships with the explicit-only policy.
 | --- | --- |
 | TOOLSET-060 | Vendor and adapt the skill with provenance, tests and docs |
 | TOOLSET-061 | Visual refresh of this README with a project-native hero and workflow diagram |
+
+## New skill review (2026-10-15)
+
+Status: Accepted
+
+Decision: On 2026-10-15 a read-only review of the two newly vendored skills (UI
+Taste and Beautify GitHub README) against Hermes' skill loader, linter and the
+portable packages found the issues below. The user asked to record them and fix the
+first two. Every finding was reproduced; the fix approaches are the planner's calls.
+
+| Task | Finding | Fix |
+| --- | --- | --- |
+| TOOLSET-062 | Beautify's vendored `audit_readme.py` misses a missing dark-mode `<picture><source srcset>` image and reference-style images (`![x][ref]`), and wrongly reports root-relative `/assets/…` and `<path with spaces>` images as missing | A toolset audit script beside the adapter that reuses the upstream SVG checks; the adapter runs it instead of the upstream one |
+| TOOLSET-063 | UI Taste ships its upstream `SKILL.md` directly, so Hermes gets no toolset rules (scheduled runs, paid Uizze tools, Impeccable precedence) and indexes it by a 276-character description truncated to *"Give your coding agent better UI taste. Build and polish ..."* | Move the pinned files byte-exact under `upstream/` (`SKILL.md` becomes `PROTOCOL.md`) behind a toolset adapter, the Beautify layout |
+| TOOLSET-064 | Hermes' skill index keeps 57 characters of each description; nine other bundled skills lose their trigger phrase | Recorded, not scheduled: trigger-first descriptions of at most 60 characters |
+
+UI Taste adapter rules (planner's calls, replacing the earlier "no routing change
+between them" call): load one design skill per task, the one the user names; an
+unnamed UI request uses UI Taste, and Impeccable stays the choice for its own
+commands (`/impeccable …`, design-context setup and its detector). Scheduled, cron
+or Autowork-driven runs use only the read-only audit playbook unless their task
+scope authorizes UI edits. The paid Uizze tools are used only when the host already
+exposes them; Toolset never configures the MCP, asks for an account or token, or
+sends private code in a query.
+
+Also observed and left unrecorded: the repository has no `.gitattributes`, so a
+Windows checkout that converts line endings would fail every vendored-file hash test.
+Windows is not a documented target.

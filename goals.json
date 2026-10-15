@@ -296,6 +296,20 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "SKILL-REVIEW",
+      "priority": 86,
+      "source": "docs/project.md#new-skill-review-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-062",
+        "TOOLSET-063",
+        "TOOLSET-064"
+      ],
+      "title": "Fix review findings in the newly vendored UI skills"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -334,18 +348,33 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-060",
-      "TOOLSET-061",
+      "TOOLSET-062",
+      "TOOLSET-063",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
       "TOOLSET-011",
       "TOOLSET-013",
-      "TOOLSET-052",
-      "TOOLSET-053"
+      "TOOLSET-064"
     ]
   },
   "tasks": [
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-062",
+      "section": "Now",
+      "status": "open",
+      "title": "Make the README audit catch dark-mode and reference-style images"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-063",
+      "section": "Now",
+      "status": "open",
+      "title": "Put UI Taste behind a toolset adapter"
+    },
     {
       "depends_on": [],
       "goal": "RECOVERY",
@@ -391,6 +420,14 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-064",
+      "section": "Next",
+      "status": "open",
+      "title": "Give bundled skills trigger-first descriptions within Hermes' 60-character index"
     },
     {
       "depends_on": [],
