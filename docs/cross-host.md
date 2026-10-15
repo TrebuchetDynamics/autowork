@@ -43,8 +43,7 @@ next turn if the client refreshes skill discovery; otherwise start a new session
 
 Codex uses skill invocation, not Hermes slash-command registration. The adapters
 are explicit-only in Codex (`allow_implicit_invocation: false` in each
-`agents/openai.yaml`) so installation does not automatically invoke a workflow. Cron
-Autowork currently ships no such policy file, so Codex may invoke it implicitly.
+`agents/openai.yaml`) so installation does not automatically invoke a workflow.
 Update a Git install with `codex plugin marketplace upgrade hermes-toolset-marketplace`
 (it refreshes Git marketplace snapshots only); remove with
 `codex plugin remove hermes-toolset@hermes-toolset-marketplace`. Removal does not

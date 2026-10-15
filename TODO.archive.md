@@ -877,3 +877,24 @@ Source section: Next
 - Current evidence: After each profile's setup and store binding, `install-omh.py` rereads `memory.provider` with its existing bounded reader and prints `OMH setup: <profile> (memory off: memory.provider is <name>; run `hermes [-p <profile>] memory off`, then rerun setup to use OMH memory)`, `(memory off: memory.provider is not set)`, or a plain line when OMH holds the slot; an unreadable config after setup is reported as unverified instead of failing. The exit status and the provider are unchanged. Four regressions in `tests/test_install_omh.py` (fake OMH can now claim the slot); the two memory-off cases failed before the change. Memory and troubleshooting docs and CHANGELOG updated.
 - Checks run: `python3 scripts/check.py --timeout 300` passed offline: 410/572/197/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. Self-reviewed.
 - Closure: Offline only; no real profile was set up and upstream OMH's refusal was confirmed by source inspection of the pinned commit.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-035 — Make the Cron Autowork Codex adapter explicit-only like the other adapters
+
+- [x] TOOLSET-035 — Make the Cron Autowork Codex adapter explicit-only like the other adapters
+- Status: done
+- Goal: PORTABLE — Installing the Codex package must not let any adapter run implicitly.
+- Sources: [cross-host contract](docs/cross-host.md#codex), `adapters/skills/*/agents/openai.yaml` (10 of the 11 adapter skills set `policy.allow_implicit_invocation: false`), codex-cli 0.162.1 `skills/src/model.rs` (a missing policy defaults to implicit invocation allowed), [portable package test](tests/test_portable_package.py).
+- Scope: Found during claim-by-claim docs verification. `adapters/skills/cron-autowork/` has no `agents/openai.yaml`. Add one matching the sibling adapters' explicit-only policy, add a portable-package regression that every adapter skill ships an explicit-only policy, and then drop the Cron Autowork exception from docs/cross-host.md.
+- Acceptance: Every directory under `adapters/skills/` that contains `SKILL.md` has `agents/openai.yaml` with `allow_implicit_invocation: false`; the new regression fails before the file is added; the npm package file list still includes it.
+- Checks: `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No Codex marketplace publication, live Codex install or push.
+- Current evidence: Added `adapters/skills/cron-autowork/agents/openai.yaml` (`policy.allow_implicit_invocation: false`, identical to the sibling adapters) and `test_every_codex_adapter_is_explicit_only` in `tests/test_portable_package.py`, which failed only for cron-autowork before the file existed. `npm pack --dry-run` includes the new file. docs/cross-host.md no longer carries the exception; CHANGELOG updated.
+- Checks run: `python3 scripts/check.py` passed offline: 411/572/201/8 tests in 4 directories, 1 skipped, 8 modules excluded; `node --test tests/portable_pi.test.mjs` 3 passed; `git diff --check` clean. Self-reviewed.
+- Closure: Offline only; no live Codex install was run.

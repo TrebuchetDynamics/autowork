@@ -66,6 +66,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The Cron Autowork Codex adapter is explicit-only like the others; it shipped no
+  `agents/openai.yaml`, so Codex could invoke it implicitly.
+
 - `scripts/check.py` allowed 180 seconds per test directory while the Autowork
   suite takes about 150 seconds idle, so any machine load reported a false
   TIMEOUT failure with every test passing. The default is now 600 seconds.

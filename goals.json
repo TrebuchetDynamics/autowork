@@ -7,12 +7,17 @@
           "kind": "executed",
           "ref": "Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only",
+          "result": "pass"
         }
       ],
       "id": "PORTABLE",
       "priority": 10,
       "source": "docs/project.md#accepted-requirements",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "TOOLSET-001",
         "TOOLSET-035"
@@ -319,14 +324,6 @@
     {
       "depends_on": [],
       "goal": "PORTABLE",
-      "id": "TOOLSET-035",
-      "section": "Next",
-      "status": "open",
-      "title": "Make the Cron Autowork Codex adapter explicit-only like the other adapters"
-    },
-    {
-      "depends_on": [],
-      "goal": "PORTABLE",
       "id": "TOOLSET-001",
       "section": "Done",
       "status": "done",
@@ -517,6 +514,14 @@
       "section": "Done",
       "status": "done",
       "title": "Make install-omh report when OMH did not take the memory provider slot"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-035",
+      "section": "Done",
+      "status": "done",
+      "title": "Make the Cron Autowork Codex adapter explicit-only like the other adapters"
     },
     {
       "depends_on": [],

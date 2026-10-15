@@ -38,6 +38,15 @@ class PortablePackageTests(unittest.TestCase):
         self.assertNotIn('finish_task.py', worker)
         self.assertIn('native tools', worker)
 
+    def test_every_codex_adapter_is_explicit_only(self):
+        # Codex treats a missing policy as implicit invocation allowed (TOOLSET-035).
+        for skill in sorted((ROOT / 'adapters/skills').glob('*/SKILL.md')):
+            with self.subTest(adapter=skill.parent.name):
+                policy = skill.parent / 'agents/openai.yaml'
+                self.assertTrue(policy.is_file(), f'{policy} is missing')
+                data = yaml.safe_load(policy.read_text())
+                self.assertIs(data['policy']['allow_implicit_invocation'], False)
+
     def test_challenge_is_a_planning_mode_and_research_plan_is_not_recursive(self):
         folder = ROOT / 'adapters/skills'
         challenge = (folder / 'grill-me/PROTOCOL.md').read_text()
