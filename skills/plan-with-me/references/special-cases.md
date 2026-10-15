@@ -59,6 +59,30 @@ dependencies and UI; a suggested framework stays a candidate. Ask about public v
 private audience before choosing a publication layout; hidden URLs or robots rules
 do not protect confidential content.
 
+## Investor briefs
+
+For an investor anteproject, separate the learning library, conceptual architecture
+and executive presentation from a full implementation specification, binding quote
+or investment plan. Capture the meeting horizon without inventing an exact date;
+ask for the date only when it changes the delivery sequence. Plan a concise deck
+with sourced findings, proposed capabilities, alternatives, dependencies, accountable
+roles, cost categories and the next due-diligence decisions. Never present proposed
+team capabilities, investor resources or expected permission access as verified facts.
+Keep exhaustive source reconciliation as supporting work rather than silently making
+it a prerequisite for every preliminary presentation; retain explicit research gaps
+and do not weaken the later production acceptance gates.
+
+## Jurisdiction and geography changes
+
+When incorporation or operating geography changes, distinguish the incorporation
+country, target player markets, physical-venue locations and hosting/data locations
+before choosing legal research. Ask first about the unresolved player/venue market;
+forming a company in one country does not establish gaming rights elsewhere. Keep
+prior jurisdiction-specific PRDs as attributed references, not the new applicability
+baseline. Leave unclear dictated company/regime names unresolved rather than
+inventing a legal structure from transcription. Record a possible physical venue as
+a scenario until selected, not as an automatic expansion of launch scope.
+
 ## Saving across a long interview
 
 Put accepted amendments before preserved historical
@@ -76,7 +100,13 @@ writers through targeted reconciliation and batch final checks once.
 When an answer settles broad scope, mark it
 settled in its decision owner and reconcile affected conditional tasks and summary
 wording; leave only unresolved subchoices Open. Put the current scope and an
-explicit supersession notice before preserved obsolete guidance.
+explicit supersession notice before preserved obsolete guidance. Reconcile an
+investor-brief, jurisdiction or deadline change into the existing affected TODO
+bodies and goals index, not only the narrative plan. If a scheduled research job
+still names the old scope, inspect its full saved instruction and disclose the
+mismatch; update it only under existing scheduling authority, preserving cadence,
+paused state, history and no-code/publication limits. A one-time commit/push request
+does not create standing publication permission for future research runs.
 
 ## Allowances, continuations and live gates
 

@@ -18,8 +18,8 @@ tasks. Read the [planning craft](../shared/PLANNING-CRAFT.md), the pinned
 Use Docs Sync to reconcile findings and answers into existing documentation. Follow
 the [shared contract](../shared/COMMON-CONTRACT.md) and
 [plan handoff](../shared/PLAN-HANDOFF.md). For cancelled tasks, blockers, pending-task
-lists, validation performance, onboarding pages, teaching, long interviews and live
-gates, load the matching section of [special cases](references/special-cases.md).
+lists, validation performance, onboarding pages, teaching, investor briefs,
+jurisdiction changes, long interviews and live gates, load the matching section of [special cases](references/special-cases.md).
 
 `/plan_with_me` (`/plan-with-me` also works in CLI) starts an interview about the
 current repository; arguments narrow the topic. Its default scope includes saving
