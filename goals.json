@@ -76,14 +76,21 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-080/081: python3 scripts/check.py passed; one-profile qualification cut OMH skill-index entries from 12,349 to 3,522 characters with code-review and verification-gate loading and omh doctor unchanged; fleet rollout 101 managed entries in each of 9 OMH profiles",
+          "result": "pass"
+        }
+      ],
       "id": "OMH-TRIM",
       "priority": 20,
       "source": "docs/project.md#omh-catalog-trim-2026-10-15",
       "status": "unmet",
       "tasks": [
         "TOOLSET-080",
-        "TOOLSET-081"
+        "TOOLSET-081",
+        "TOOLSET-082"
       ],
       "title": "Keep the OMH skills profiles use and drop the rest from every prompt"
     },
@@ -515,14 +522,12 @@
       "title": "Report linked profiles and offer pinned clones"
     },
     {
-      "depends_on": [
-        "TOOLSET-080"
-      ],
+      "depends_on": [],
       "goal": "OMH-TRIM",
-      "id": "TOOLSET-081",
+      "id": "TOOLSET-082",
       "section": "Next",
       "status": "open",
-      "title": "Qualify the OMH trim on one profile, then roll it out"
+      "title": "Restore the OMH memory plugin on Hermes 0.22"
     },
     {
       "depends_on": [],
@@ -983,6 +988,16 @@
       "section": "Done",
       "status": "done",
       "title": "Disable unused OMH skills through a managed skills.disabled list"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-080"
+      ],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-081",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify the OMH trim on one profile, then roll it out"
     },
     {
       "depends_on": [],

@@ -1478,3 +1478,23 @@ Source section: Next
 - Acceptance: A check started during a running update never returns the running record as its own result and never overwrites it.
 - Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
 - Dependencies: None.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-081 — Qualify the OMH trim on one profile, then roll it out
+
+- [x] TOOLSET-081 — Qualify the OMH trim on one profile, then roll it out
+- Status: done
+- Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
+- Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15).
+- Scope: On one profile with OMH whose cron is paused, record before values: the OMH share of the skill index in a real request prompt (characters and skill count), `omh doctor --json` and the memory provider status. Apply TOOLSET-080 there (plugin reload or `/toolset update` scoped to that profile), then repeat the measurements, load `code-review` and `verification-gate` in a short questions-only chat, and ask OMH's router for a trimmed workflow to see how a disabled recommendation is handled. If all pass, run `/toolset update` for the fleet and record per-profile managed entry counts.
+- Acceptance: The trimmed profile's prompt skill index loses the unkept OMH entries (measured characters before and after); kept skills load; `omh doctor` and memory provider status are unchanged; a router recommendation of a disabled skill does not break the turn (or the keep list gains that skill with the reason recorded); fleet rollout lists managed entries per profile; results recorded with Hermes and OMH versions.
+- Checks: before/after prompt measurements, `omh doctor --json` before and after, the chat transcript, `/toolset update status`.
+- Dependencies: TOOLSET-080.
+- Environment prerequisite: A profile with OMH installed and its cron paused; owner availability for the short chat.
+- Exclusions: No memory-store changes, no OMH reinstall, no resumed cron jobs.
+- Current evidence: Qualified on one OMH profile with its cron paused, Hermes 0.22.0 and OMH 3.0.0. Measured with Hermes' own `build_skills_system_prompt`: the skill index fell from 24,016 to 15,253 characters (318 to 218 lines); OMH entries from 142 lines and 12,349 characters to 41 lines and 3,522. `omh doctor --json` stayed ok, 54/54 with 4 warnings, before and after; `hermes memory status` was unchanged (see TOOLSET-082). A questions-only `hermes chat -Q` in an empty scratch folder loaded `omh-code-review` and `omh-verification-gate`, and `omh-plan` returned "Skill 'omh-plan' is disabled" without breaking the turn; nothing was edited. Only `skills.disabled` and `plugins.entries.hermes-toolset.omh_trim` changed in that profile. Fleet rollout: merged as `1200fe7`, pushed, `/toolset update` ready on all 10 profiles; each of the 9 OMH profiles has 101 managed entries and the profile without OMH none. The gateway restart was deferred until no chat turn was in flight.
+- Checks run: before/after index measurement, `omh doctor --json` before and after, the chat transcript, per-profile config read-back after `/toolset update`.

@@ -169,18 +169,18 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Exclusions: No automatic conversion of live profiles; converting them is a separate, user-authorized live step.
 
-### TOOLSET-081 — Qualify the OMH trim on one profile, then roll it out
+### TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
 
-- [ ] TOOLSET-081 — Qualify the OMH trim on one profile, then roll it out
-- Status: open; live qualification not run.
+- [ ] TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
+- Status: open
 - Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
-- Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15).
-- Scope: On one profile with OMH whose cron is paused, record before values: the OMH share of the skill index in a real request prompt (characters and skill count), `omh doctor --json` and the memory provider status. Apply TOOLSET-080 there (plugin reload or `/toolset update` scoped to that profile), then repeat the measurements, load `code-review` and `verification-gate` in a short questions-only chat, and ask OMH's router for a trimmed workflow to see how a disabled recommendation is handled. If all pass, run `/toolset update` for the fleet and record per-profile managed entry counts.
-- Acceptance: The trimmed profile's prompt skill index loses the unkept OMH entries (measured characters before and after); kept skills load; `omh doctor` and memory provider status are unchanged; a router recommendation of a disabled skill does not break the turn (or the keep list gains that skill with the reason recorded); fleet rollout lists managed entries per profile; results recorded with Hermes and OMH versions.
-- Checks: before/after prompt measurements, `omh doctor --json` before and after, the chat transcript, `/toolset update status`.
-- Dependencies: TOOLSET-080.
-- Environment prerequisite: A profile with OMH installed and its cron paused; owner availability for the short chat.
-- Exclusions: No memory-store changes, no OMH reinstall, no resumed cron jobs.
+- Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), [bundle defaults](plugins/defaults.json).
+- Scope: On Hermes 0.22.0, loading OMH 3.0.0 logs "Plugin 'omh' skipped: requires hermes >=0.21.1,<0.22.0, running 0.22.0", and `hermes memory status` in a profile whose `memory.provider` is `omh` reports the plugin as not installed, so OMH memory is likely inactive fleet-wide. Confirm across profiles, find the OMH release or pin that supports Hermes 0.22, and update `plugins/defaults.json`'s pinned `omh.source` (or document the incompatibility and the safe interim provider) without changing memory stores.
+- Acceptance: `hermes memory status` shows the OMH plugin installed and available in an OMH profile, or the incompatibility and its interim handling are recorded; OMH stores and existing memories are untouched; the trim's keep list still matches the new release's skill names.
+- Checks: `hermes memory status` and `omh doctor --json` in one profile before and after; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No memory-store migration or deletion; no provider switch without the owner.
 
 ## Goal coverage
 
@@ -193,7 +193,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | met | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass; executed <code>uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only</code> → pass | — |
-| OMH-TRIM: Keep the OMH skills profiles use and drop the rest from every prompt | unmet | — | TOOLSET-081 |
+| OMH-TRIM: Keep the OMH skills profiles use and drop the rest from every prompt | unmet | executed <code>TOOLSET-080/081: python3 scripts/check.py passed; one-profile qualification cut OMH skill-index entries from 12,349 to 3,522 characters with code-review and verification-gate loading and omh doctor unchanged; fleet rollout 101 managed entries in each of 9 OMH profiles</code> → pass | TOOLSET-082 |
 | README-DESIGN: Vendor the README design skill and use it on this README | met | executed <code>TOOLSET-060/061 (b15bbc7, 5a9c044, ff7196f): python3 scripts/check.py 4/4 directories passed, node --test tests/portable_pi.test.mjs passed, docs.py check ok, vendored audit_readme.py passed with 2 local images; independent review of the vendoring; offline only</code> → pass | — |
 | TEST-SUITE: Optimize test suites without losing defect detection | unmet | — | TOOLSET-072, TOOLSET-073 |
 | PRIORITY: Make TODO.md order the enforced human priority | unmet | — | TOOLSET-029 |
