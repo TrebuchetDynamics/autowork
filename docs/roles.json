@@ -17,7 +17,7 @@
     "reference": {
       "status": "created",
       "path": "docs/reference.md",
-      "verified_at": "31ff7ff6f0e2",
+      "verified_at": "af068ee6d4af",
       "covers": [
         "bundle.py",
         "setup_bundle.py",
@@ -74,7 +74,7 @@
         "skills",
         "adapters/pi.mjs"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "af068ee6d4af"
     },
     "prd": {
       "status": "maintained",
@@ -87,7 +87,7 @@
         "scripts/check.py",
         "tests"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "af068ee6d4af"
     },
     "changelog": {
       "status": "maintained",
@@ -126,7 +126,7 @@
         "install-omh.py",
         "plugins/defaults.json"
       ],
-      "verified_at": "31ff7ff6f0e2"
+      "verified_at": "af068ee6d4af"
     },
     "dependencies": {
       "status": "maintained",

@@ -116,7 +116,8 @@ native integration tests against that interpreter. There is no supported claim
 that an earlier version has all required APIs.
 
 `tests/integration_autoresearch.py` checks all research aliases, CLI queues,
-Telegram menu entries and captured gateway origin routing. Like the main plugin
+the Telegram menu (current workflows advertised, Autoresearch compatibility aliases
+not advertised) and captured gateway origin routing. Like the main plugin
 integration test, it runs without a live model or message delivery.
 
 ## Core versus full-stack diagnostics
