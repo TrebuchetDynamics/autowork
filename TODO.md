@@ -105,62 +105,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
 - Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
 
-### TOOLSET-048 — Report finished or killed chat updates correctly and accept a symlinked Hermes home
-
-- [ ] TOOLSET-048 — Report finished or killed chat updates correctly and accept a symlinked Hermes home
-- Status: open
-- Goal: RELIABILITY-2026-10 — `/toolset update status` reflects the real updater state.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [bundle.py](bundle.py) `start_update`, `update_status`
-- Scope: The gateway never reaps the chat-started updater, so `os.kill(pid, 0)` succeeds on the zombie and status says starting/running forever; a symlinked Hermes home is refused only in chat. Reap or detect zombies before liveness checks and resolve the home before the symlink check.
-- Acceptance: A finished, refused or killed child is reported from its receipt or as stopped; a symlinked home starts the update as the terminal command does.
-- Checks: New regressions in `tests/test_bundle.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No change to the updater itself.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-049 — Accept Hermes-written YAML and stray profile symlinks during setup and update
-
-- [ ] TOOLSET-049 — Accept Hermes-written YAML and stray profile symlinks during setup and update
-- Status: open
-- Goal: RELIABILITY-2026-10 — Valid Hermes configs and leftover profile entries never block setup.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [install-omh.py](install-omh.py) `config_values`, [scripts/preflight_config.py](scripts/preflight_config.py), [setup_bundle.py](setup_bundle.py) `live_profiles`
-- Scope: Indentless lists (`enabled:` followed by `- omh` at the same indent), `memory: {}`, a UTF-8 BOM and empty sections are rejected; a symlink under `profiles/` that Hermes ignores (tombstoned or invalid name) aborts setup and update. Accept those shapes on non-target keys and apply the symlink refusal after the profile filters.
-- Acceptance: Each recorded fixture passes preflight and the OMH plan; real target-key conflicts and live shared/symlinked profiles are still refused.
-- Checks: New regressions in `tests/test_install_omh.py` and `tests/test_preflight.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: Keep the readers bounded; no PyYAML bootstrap dependency.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-050 — Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures
-
-- [ ] TOOLSET-050 — Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures
-- Status: open
-- Goal: RELIABILITY-2026-10 — Every configured owner and home chat is checked once per update.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [update_bundle.py](update_bundle.py) `read_env`, `heal_chat_menus`, [telegram_menu_policy.py](telegram_menu_policy.py) `chat_ids`, `stale_chat_menus`
-- Scope: Inline ` # comments` stay in unquoted values (corrupting the token and chat IDs), `--5` or non-ASCII digits raise, and the first chat whose `getMyCommands` fails stops healing for the rest. Strip inline comments as dotenv does, accept only `-?[0-9]+`, and handle each chat independently, reporting failures.
-- Acceptance: The recorded `.env` fixtures yield the dotenv values; a failing chat is reported while the remaining chats are still healed.
-- Checks: New regressions in `tests/test_telegram_menu_policy.py` and `tests/test_update_bundle.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No live Bot API calls in tests.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
-### TOOLSET-051 — Remove docs.py false positives for footnotes, commented-out links and home-relative scripts
-
-- [ ] TOOLSET-051 — Remove docs.py false positives for footnotes, commented-out links and home-relative scripts
-- Status: open
-- Goal: RELIABILITY-2026-10 — `docs.py check` reports only real documentation defects.
-- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [docs.py](skills/docs-sync/scripts/docs.py)
-- Scope: Footnote definitions (`[^1]: text`) parse as reference links, HTML-commented links are checked, and `python3 ~/...` script paths are reported missing. Exclude footnotes, mask HTML comments before scanning and skip `~` paths.
-- Acceptance: Each recorded fixture checks clean while real broken links and missing repository scripts are still reported.
-- Checks: New regressions in `skills/docs-sync/scripts/test_docs_manifest.py`; `python3 scripts/check.py`; `git diff --check`
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No network link checking.
-- Next action: Write the failing regression from the recorded repro, then apply the smallest fix.
-
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -170,7 +114,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | Goal | Status | Evidence | Task |
 | --- | --- | --- | --- |
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
-| RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | unmet | — | TOOLSET-048, TOOLSET-049, TOOLSET-050, TOOLSET-051 |
+| RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | met | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass; executed <code>uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only</code> → pass | — |
 | PRIORITY: Make TODO.md order the enforced human priority | unmet | — | TOOLSET-029 |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | executed <code>Shared TOOLSET-017/018/019 implementation integrated eb72be6; independent review findings repaired with failing-then-passing regressions; final Python 3.12 scripts/check.py passed 318/470/139/8 tests, two skips/eight excluded. Native recovery, deployment and model qualification remain incomplete.</code> → pass; executed <code>TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-016: exact 9b894fd same-card review approved; integration b470c68 Python 3.12 scripts/check.py passed 283/448/139/8 offline tests (2 skipped, 8 excluded), bash -n and git diff --check passed; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-020: exact 5e05e6b native independent review approved; integration-candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 319/475/139/8 offline tests, two skips/eight excluded; local main integration preservation ZERO_CHANGED; native/model/live qualification unrun</code> → pass; executed <code>TOOLSET-021 exact ab12f821 native independent review run398 approved; integration 49739eff: env -u HERMES_KANBAN_DB uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 332/495/139/8 offline tests, 3 skips, 8 excluded; git diff --check HEAD^1 passed; native/model/live/startup unqualified</code> → pass; executed <code>TOOLSET-022 exact 816678e3 native independent review run406 approved; integration 5f49a2e0: Python 3.12 scripts/check.py on frozen integration candidate passed 332/510/139/8 offline tests, three skips/eight native-model-integration modules excluded; whitespace passed; native/model/live/startup unqualified</code> → pass | TOOLSET-003, TOOLSET-019 |

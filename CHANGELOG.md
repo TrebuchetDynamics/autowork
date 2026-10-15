@@ -72,6 +72,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `/toolset update status` reports a finished, refused or killed chat-started update
+  correctly instead of "starting"/"running" forever, and a symlinked Hermes home
+  can update from chat (TOOLSET-048).
+- Setup accepts configs Hermes writes (indentless lists, `{}`, a BOM, empty sections)
+  and ignores profile symlinks Hermes does not treat as live (TOOLSET-049).
+- Telegram menu healing reads `.env` values like python-dotenv, skips malformed chat
+  IDs and keeps healing the remaining chats when one fails (TOOLSET-050).
+- `docs.py check` no longer flags footnotes, commented-out links or `~/` script paths,
+  keeps underscores in code-span heading anchors and checks single-quoted link titles
+  (TOOLSET-051).
 - The cron self-heal helper reported its own refusals only as `ValueError`, hiding
   the cause (for example a job whose prompt lost its managed wiring). Its fixed
   refusal messages are now shown; other errors still report only their type.

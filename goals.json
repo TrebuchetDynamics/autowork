@@ -26,11 +26,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only",
+          "result": "pass"
+        }
+      ],
       "id": "RELIABILITY-2026-10",
       "priority": 15,
       "source": "docs/project.md#reliability-bug-harvest-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-043",
         "TOOLSET-044",
@@ -355,38 +361,6 @@
     },
     {
       "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-048",
-      "section": "Next",
-      "status": "open",
-      "title": "Report finished or killed chat updates correctly and accept a symlinked Hermes home"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-049",
-      "section": "Next",
-      "status": "open",
-      "title": "Accept Hermes-written YAML and stray profile symlinks during setup and update"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-050",
-      "section": "Next",
-      "status": "open",
-      "title": "Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures"
-    },
-    {
-      "depends_on": [],
-      "goal": "RELIABILITY-2026-10",
-      "id": "TOOLSET-051",
-      "section": "Next",
-      "status": "open",
-      "title": "Remove docs.py false positives for footnotes, commented-out links and home-relative scripts"
-    },
-    {
-      "depends_on": [],
       "goal": "PORTABLE",
       "id": "TOOLSET-001",
       "section": "Done",
@@ -658,6 +632,38 @@
       "section": "Done",
       "status": "done",
       "title": "Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-048",
+      "section": "Done",
+      "status": "done",
+      "title": "Report finished or killed chat updates correctly and accept a symlinked Hermes home"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-049",
+      "section": "Done",
+      "status": "done",
+      "title": "Accept Hermes-written YAML and stray profile symlinks during setup and update"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-050",
+      "section": "Done",
+      "status": "done",
+      "title": "Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-051",
+      "section": "Done",
+      "status": "done",
+      "title": "Remove docs.py false positives for footnotes, commented-out links and home-relative scripts"
     },
     {
       "depends_on": [],

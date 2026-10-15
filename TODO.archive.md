@@ -1080,3 +1080,83 @@ Source section: Now
 - Exclusions: No change to the marker-delimited coverage block format.
 - Current evidence: Implemented in `d3acb6a`, `c1a509e` (isolated worktree, reviewed by the coordinator before integration). `task_bodies` trims `\r` and trailing blanks from level-2 section names, and a marker-less legacy coverage section is replaced only up to the next heading of any level. `HeadingLineEndingTests` (CRLF parity across init/validate/next/backlog-check/bootstrap-order, trailing-space headings, level-3 content kept) failed before the fix. Known limit: the generated coverage block is still written with LF lines in a CRLF file.
 - Checks run: integrated `main` passed `python3 scripts/check.py` (415/575/207/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed) and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-048 — Report finished or killed chat updates correctly and accept a symlinked Hermes home
+
+- [x] TOOLSET-048 — Report finished or killed chat updates correctly and accept a symlinked Hermes home
+- Status: done
+- Goal: RELIABILITY-2026-10 — `/toolset update status` reflects the real updater state.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [bundle.py](bundle.py) `start_update`, `update_status`
+- Scope: The gateway never reaps the chat-started updater, so `os.kill(pid, 0)` succeeds on the zombie and status says starting/running forever; a symlinked Hermes home is refused only in chat. Reap or detect zombies before liveness checks and resolve the home before the symlink check.
+- Acceptance: A finished, refused or killed child is reported from its receipt or as stopped; a symlinked home starts the update as the terminal command does.
+- Checks: New regressions in `tests/test_bundle.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to the updater itself.
+- Current evidence: Implemented in `f5da55c` (isolated worktree, reviewed by the coordinator before integration). A new `updater_alive()` reaps the gateway's own exited child, treats `/proc` zombie states as dead and a `PermissionError` as alive, and the home is resolved before the state-directory symlink check. Four regressions in `tests/test_bundle.py` (refused child shows its latest receipt, SIGKILLed child shows stopped, other-user pid still running, symlinked home starts) failed before the fix; a symlinked state directory is still refused. Zombie tests need Linux `/proc`.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (437/575/209/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed), `docs.py check` and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-049 — Accept Hermes-written YAML and stray profile symlinks during setup and update
+
+- [x] TOOLSET-049 — Accept Hermes-written YAML and stray profile symlinks during setup and update
+- Status: done
+- Goal: RELIABILITY-2026-10 — Valid Hermes configs and leftover profile entries never block setup.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [install-omh.py](install-omh.py) `config_values`, [scripts/preflight_config.py](scripts/preflight_config.py), [setup_bundle.py](setup_bundle.py) `live_profiles`
+- Scope: Indentless lists (`enabled:` followed by `- omh` at the same indent), `memory: {}`, a UTF-8 BOM and empty sections are rejected; a symlink under `profiles/` that Hermes ignores (tombstoned or invalid name) aborts setup and update. Accept those shapes on non-target keys and apply the symlink refusal after the profile filters.
+- Acceptance: Each recorded fixture passes preflight and the OMH plan; real target-key conflicts and live shared/symlinked profiles are still refused.
+- Checks: New regressions in `tests/test_install_omh.py` and `tests/test_preflight.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: Keep the readers bounded; no PyYAML bootstrap dependency.
+- Current evidence: Implemented in `22107d8`, `2e0d110` (isolated worktree, reviewed by the coordinator before integration). `install-omh.py` strips a BOM, keeps indentless `- item` lines under their key and accepts `key: {}` on non-target keys; `preflight_config.py` treats empty sections and entries as empty mappings; `live_profiles` refuses only symlinks that would be live profiles. Regressions in `tests/test_install_omh.py`, `tests/test_preflight.py` and `tests/test_complete_setup.py` failed before the fixes, and target-key lists or `{}`, duplicates and live symlinked profiles are still refused; each recorded bug-hunt fixture now passes.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (437/575/209/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed), `docs.py check` and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-050 — Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures
+
+- [x] TOOLSET-050 — Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures
+- Status: done
+- Goal: RELIABILITY-2026-10 — Every configured owner and home chat is checked once per update.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [update_bundle.py](update_bundle.py) `read_env`, `heal_chat_menus`, [telegram_menu_policy.py](telegram_menu_policy.py) `chat_ids`, `stale_chat_menus`
+- Scope: Inline ` # comments` stay in unquoted values (corrupting the token and chat IDs), `--5` or non-ASCII digits raise, and the first chat whose `getMyCommands` fails stops healing for the rest. Strip inline comments as dotenv does, accept only `-?[0-9]+`, and handle each chat independently, reporting failures.
+- Acceptance: The recorded `.env` fixtures yield the dotenv values; a failing chat is reported while the remaining chats are still healed.
+- Checks: New regressions in `tests/test_telegram_menu_policy.py` and `tests/test_update_bundle.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No live Bot API calls in tests.
+- Current evidence: Implemented in `77ec9a5` (isolated worktree, reviewed by the coordinator before integration). `read_env` reads values as python-dotenv does (quoted content, inline ` #` comments dropped), `chat_ids` accepts only `-?[0-9]+`, and `stale_chat_menus` handles each chat independently, recording failures so `heal_chat_menus` still reports cleared chats and adds masked `failed` chats. Six regressions in `tests/test_telegram_menu_policy.py` and `tests/test_update_bundle.py` failed before the fix; installation doc updated. Escape sequences in double-quoted values are not decoded.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (437/575/209/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed), `docs.py check` and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-051 — Remove docs.py false positives for footnotes, commented-out links and home-relative scripts
+
+- [x] TOOLSET-051 — Remove docs.py false positives for footnotes, commented-out links and home-relative scripts
+- Status: done
+- Goal: RELIABILITY-2026-10 — `docs.py check` reports only real documentation defects.
+- Sources: [harvest plan](docs/project.md#reliability-bug-harvest-2026-10-15), [docs.py](skills/docs-sync/scripts/docs.py)
+- Scope: Footnote definitions (`[^1]: text`) parse as reference links, HTML-commented links are checked, and `python3 ~/...` script paths are reported missing. Exclude footnotes, mask HTML comments before scanning and skip `~` paths.
+- Acceptance: Each recorded fixture checks clean while real broken links and missing repository scripts are still reported.
+- Checks: New regressions in `skills/docs-sync/scripts/test_docs_manifest.py`; `python3 scripts/check.py`; `git diff --check`
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No network link checking.
+- Current evidence: Implemented in `ada728c` (isolated worktree, reviewed by the coordinator before integration). Footnote definitions are no longer reference links, HTML comments are masked before scanning, `~` script paths are skipped, code-span headings keep their underscores in anchors, and single-quoted link titles are checked. Two regressions in `test_docs_manifest.py` failed before the fix while real broken links and missing scripts are still reported; `docs.py check` on this repository prints ok.
+- Checks run: integrated `main` passed `python3 scripts/check.py` (437/575/209/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed), `docs.py check` and `git diff --check`. Offline only.
