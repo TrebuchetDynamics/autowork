@@ -443,14 +443,30 @@
         "TOOLSET-034"
       ],
       "title": "Report OMH memory left off when another provider holds the slot"
+    },
+    {
+      "depends_on": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live",
+          "result": "pass"
+        }
+      ],
+      "id": "PI-RUNNER",
+      "priority": 96,
+      "source": "docs/project.md#continuous-pi-runner-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-093-01",
+        "TOOLSET-094-65"
+      ],
+      "title": "Run Autowork continuously through Pi with a model fallback"
     }
   ],
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-085-1a",
-      "TOOLSET-086-9f",
-      "TOOLSET-087-32",
       "TOOLSET-088-a7",
       "TOOLSET-089-72",
       "TOOLSET-090-2d",
@@ -465,7 +481,7 @@
       "TOOLSET-072",
       "TOOLSET-073",
       "TOOLSET-082",
-      "TOOLSET-084"
+      "TOOLSET-094-65"
     ]
   },
   "tasks": [
@@ -586,6 +602,16 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify parallel Autowork with real host workers"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-093-01"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-094-65",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the Pi runner's fallback and a multi-task run live"
     },
     {
       "depends_on": [],
@@ -1125,6 +1151,14 @@
       "section": "Done",
       "status": "done",
       "title": "Keep the restart outcome when a later update replaces the receipt"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-093-01",
+      "section": "Done",
+      "status": "done",
+      "title": "Build the continuous Pi Autowork runner"
     },
     {
       "depends_on": [],

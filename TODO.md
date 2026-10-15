@@ -212,6 +212,19 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No memory-store migration or deletion; no provider switch without the owner.
 
+### TOOLSET-094-65 — Qualify the Pi runner's fallback and a multi-task run live
+
+- [ ] TOOLSET-094-65 — Qualify the Pi runner's fallback and a multi-task run live
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/project.md#continuous-pi-runner-2026-10-15), [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: In a disposable repository with two or three small tasks, run `--until-empty` live; then force the fallback (for example by making the primary fail authentication in a throwaway Pi agent directory) and confirm DeepSeek V4.1 Flash resumes and completes a task, and that Ctrl+C mid-task resumes cleanly.
+- Acceptance: `runs.jsonl` shows each task completed once, a provider failure followed by a fallback completion with `fallback_reason`, and an interrupted run resumed in the same session; no push.
+- Checks: `runs.jsonl`, `git log` of the disposable repository, and the runner's output.
+- Dependencies: TOOLSET-093-01.
+- Ownership: Toolset coordinator; spends OpenRouter credit, so run it on the owner's request.
+- Exclusions: No run against a real project repository.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -240,5 +253,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | unmet | — | TOOLSET-089-72, TOOLSET-090-2d, TOOLSET-091-00 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | unmet | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass | TOOLSET-094-65 |
 
 <!-- goals:coverage:end -->

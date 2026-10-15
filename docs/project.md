@@ -1234,3 +1234,28 @@ verified stay out of the default list.
 | TOOLSET-089-72 | Status table and metrics, end-to-end A/B/C fixture, sequential-versus-parallel benchmark |
 | TOOLSET-090-2d | Skill, adapter, README and workflow/cross-host/testing docs; compatibility and fallback tests |
 | TOOLSET-091-00 | Live qualification with real host workers on a disposable repository |
+
+## Continuous Pi runner (2026-10-15)
+
+Status: Accepted
+
+Request (user, 2026-10-15): a copyable script that runs Autowork continuously
+through the Pi coding agent, one bounded Pi run per task, with GPT-6.1 Sol
+(`openai-codex`) as the primary model and DeepSeek V4.1 Flash (`openrouter`) as the
+fallback, idling without model calls when no task is runnable.
+
+Review findings that shaped it: Autowork's portable instructions look for new work
+when nothing is ready, so the runner selects the task itself with `goals.py next`
+and names it; Pi's JSON mode exits 0 on a failed model response, so the runner reads
+the events; extension commands queue their prompt, so the runner uses the documented
+`/skill:autowork`; local locks do not coordinate with Hermes Autowork cron jobs.
+
+Owner's decisions: ship the script in this package and target the caller's
+repository (a copy still targets its own repository); TODO-only repositories get
+`--once` only; refuse when a Hermes Autowork cron job targets the same repository;
+the fallback has the same authority as the primary, and each run records its model.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-093-01 | `scripts/pi-autowork.sh`, fake-Pi tests and the usage guide |
+| TOOLSET-094-65 | Qualify fallback switching and a multi-task continuous run live |

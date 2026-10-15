@@ -1660,3 +1660,21 @@ Source section: Next
 - Delivery (2026-10-15): `parallel_integrate.py` plus `--integrate TASK --run ARGV... --timeout S` and `--parallel-close TASK` on `owner_cycle.py`; results `INTEGRATED`, `CLOSED`, `RETRIED`. Validation runs in the detached integration worktree through `bounded_command()`, factored out of the sequential `command()` (whose lease, budget and receipt output are unchanged); the canonical checkout is only fast-forwarded. Held slots get one fresh `autowork/<TASK>-r2` attempt once no worker runs (`dispatch_with_retries`). Close cleanup is retryable and follows Docs Sync's archive owner, including legacy and linked archives.
 - Implementation: by the toolset Autowork cron (b8ac329, review fixes 2927cca, archive-owner fix 0e2fa22, refreshed onto main as 1e5b97b), with the cron's independent review approving the final source. Canonical integration was held by the cron while other sessions were active in canonical main; the interactive coordinator took the released lease and integrated.
 - Checks run: `test_parallel_integrate.py` (48) with `test_parallel_dispatch.py` 65 passed together; every acceptance item has a named test (clean merge/close, close refusal and byte-identical ledger, conflict preserving dirty files and other slots, outside-Touches and coordinator-file holds, moved HEAD re-merged once then held, single `-r2` retry after drain, sequential output byte-identical, ff-only canonical updates); `python3 scripts/check.py` passed all four offline directories on the merge (510/664/212/8); `git diff --check` clean. Offline only; real workers remain TOOLSET-091-00.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-093-01 — Build the continuous Pi Autowork runner
+
+- [x] TOOLSET-093-01 — Build the continuous Pi Autowork runner
+- Status: done (2026-10-15). `scripts/pi-autowork.sh` selects each task with `goals.py next` (no model call on an empty queue; drift and ledger errors reported separately), runs `pi --mode json` with an explicit provider/model, `/skill:autowork` naming exactly that task, `--no-approve` and a per-task session, then confirms completion from `goals.json`. It falls back to DeepSeek V4.1 Flash for 30 minutes on provider errors read from the JSON events (even with exit 0) or an unauthenticated primary, and resumes the same session; retries crashes with backoff; skips no-progress tasks until the ledger changes; stops on uncommitted foreign changes, an in-progress Git operation or a Hermes Autowork job on the same repository; holds a `flock` lock; blocks pushes through Git config; forwards Ctrl+C and resumes interrupted tasks; keeps compact redacted records outside the repository. 20 fake-Pi tests in `tests/test_pi_autowork.py` cover the spec's 15 cases and more; ShellCheck is clean. Live smoke on a throwaway repository: GPT-6.1 Sol completed, committed, closed and archived a one-file task in 74 s (462k tokens). Fallback switching and a multi-task continuous run are unverified live (TOOLSET-094-65).
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/project.md#continuous-pi-runner-2026-10-15), [usage](docs/cross-host.md#run-autowork-continuously), [Pi adapter](adapters/skills/autowork/SKILL.md).
+- Scope: A standalone Bash runner, deterministic tests with a fake Pi and disposable repositories, and a concise usage guide; no change to Autowork's contracts, no scheduler, daemon or database.
+- Acceptance: The spec's 15 test cases pass offline; ShellCheck passes; a bounded real Pi run completes one task in a disposable repository.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`; one `--once` run against a disposable repository.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push; no change to the Autowork skill.

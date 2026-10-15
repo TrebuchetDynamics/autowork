@@ -142,6 +142,87 @@ without a warning. Check `/` completions rather than assuming this package repla
 Use Pi's package controls (`pi list`, `pi update --extensions`, `pi remove <source>`)
 for management. Removing the package leaves repository documents and commits intact.
 
+### Run Autowork continuously
+
+[`scripts/pi-autowork.sh`](../scripts/pi-autowork.sh) runs Autowork through Pi
+one task at a time until you stop it. Pi does one bounded task per run; the script
+picks the task, chooses the model, and checks the result in the repository.
+`TODO.md` and `goals.json` stay the source of truth.
+
+Prerequisites: Pi with this package installed (above), Node 22, `git`, `jq`,
+`python3`, `flock`, `setsid` and `timeout`, and Pi credentials for both models.
+`pi auth check --provider openai-codex --model gpt-6.1-sol` and
+`pi auth check --provider openrouter --model deepseek/deepseek-v4.1-flash` should
+print `ready`; set `OPENROUTER_API_KEY` or sign in through Pi. The script never
+reads, prints or changes credentials.
+
+Run it from inside the repository you want worked on, or name it:
+
+```sh
+/path/to/hermes-toolset/scripts/pi-autowork.sh --dry-run
+/path/to/hermes-toolset/scripts/pi-autowork.sh
+/path/to/hermes-toolset/scripts/pi-autowork.sh --repo ~/git/my-project --until-empty
+```
+
+A copy placed in another repository works on that repository from any directory
+and is ignored when the script checks for uncommitted changes; it finds this
+package through `pi list`.
+
+| Option | Effect |
+| --- | --- |
+| (none) | Run until stopped; when no task is runnable, wait and check again |
+| `--once` | Run at most one task |
+| `--until-empty` | Exit when no runnable task remains |
+| `--dry-run` | Show the repository, models, queue and lock; change nothing |
+| `--repo PATH` | Work on the repository at `PATH` |
+| `--interval SECONDS` | Idle check interval (default 60) |
+| `--max-cycles N` | Stop after N Pi runs |
+| `--no-fallback` | Never use the fallback model |
+
+Environment variables tune the rest, listed by `--help`: the models
+(`PI_AUTOWORK_PRIMARY`, `PI_AUTOWORK_FALLBACK`), per-run timeout (90 minutes),
+retries (3), consecutive failures before exiting (3), fallback cooldown
+(30 minutes), total runtime and reported cost.
+
+How it works:
+
+- **Queue.** Before each run it asks `goals.py next` for the next runnable task, so
+  an empty queue costs no model call; it never asks Autowork to find new work.
+  Continuous and `--until-empty` runs need `goals.json`; in a TODO-only repository
+  only `--once` works, and Autowork picks the task. A changed TODO.md order
+  (priority drift) or an unreadable ledger is reported, not treated as an empty queue.
+- **One task per run.** Pi is told to execute exactly that task, commit locally
+  and close it. A task counts as done only when `goals.json` says so. A run that
+  commits but leaves the task open continues it next time; a run with no commit
+  skips the task until `TODO.md` or `goals.json` changes.
+- **Models.** Every run names the provider and model: `openai-codex/gpt-6.1-sol`
+  first. The script switches to `openrouter/deepseek/deepseek-v4.1-flash` for
+  30 minutes when the primary is unauthenticated or a run ends on a provider error
+  (Pi's JSON events report it even when Pi exits 0), never because a test failed.
+  The fallback resumes the same task in the same Pi session, so partial work is
+  reconciled rather than redone.
+- **Safety.** One runner per repository (a `flock` lock); a second one exits with
+  status 3. It will not start over uncommitted changes it did not make, during a
+  merge or rebase, or while a Hermes Autowork cron job targets the same repository
+  (set `PI_AUTOWORK_ALLOW_HERMES=1` to override). Pushes from Pi's Git commands are
+  blocked for the run; this is a guard, not a security boundary, and does not cover
+  other tools such as `gh`. Pi runs with `--no-approve`, so a repository's own Pi
+  extensions do not load; its `AGENTS.md` still does.
+- **Stopping.** Ctrl+C lets the current Pi run end (a second Ctrl+C forces it),
+  keeps partial work and exits 130; the next start resumes that task first.
+
+State lives outside the repository, in
+`${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`: `runner.log`,
+`runs.jsonl` (one record per run: task, provider, model, seconds, commits, retries,
+fallback reason, tokens, reported cost, redacted error), Pi sessions, and
+`inflight.json` while a task is unfinished. Raw Pi output, which contains prompts
+and code, is not kept. Reported cost uses Pi's catalog prices; for a subscription
+provider such as `openai-codex` it is an estimate, not a bill.
+
+Exit status: 0 done, 1 stopped on a failure or blocker, 2 setup error, 3 another
+runner is active, 4 needs attention (uncommitted changes, Git operation, priority
+drift, ledger error or Hermes job), 130 stopped.
+
 ## Behavior and verification
 
 The adapters ask native questions, inspect files, maintain TODO.md, and execute
