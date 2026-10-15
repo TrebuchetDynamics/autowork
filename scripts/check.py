@@ -72,7 +72,7 @@ def run_directory(directory, tests, env, timeout):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
-    parser.add_argument('--timeout', type=float, default=180, help='seconds allowed per test directory (default: 180)')
+    parser.add_argument('--timeout', type=float, default=600, help='seconds allowed per test directory (default: 600)')
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be positive')

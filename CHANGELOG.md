@@ -63,6 +63,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `scripts/check.py` allowed 180 seconds per test directory while the Autowork
+  suite takes about 150 seconds idle, so any machine load reported a false
+  TIMEOUT failure with every test passing. The default is now 600 seconds.
 - OMH setup reports `memory off` for a profile where another memory provider
   kept the slot (with the `hermes memory off` command to clear it), instead of
   printing a plain success line while OMH memory stayed off.

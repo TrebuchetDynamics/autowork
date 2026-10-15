@@ -55,7 +55,7 @@ Run from a clone of this repository. The shell installers are thin wrappers.
 | `python3 update_bundle.py` | `--hermes-home ROOT` (required), `--check`, `--profile NAME` (repeatable with `--source`), `--source CHECKOUT`, `--revision SHA`, `--native-python PATH` | All-profile update, or with `--profile`, `--source`, `--revision` and `--native-python` (all four required) a scoped deployment of a reviewed local commit; see [installation](installation.md#deploy-an-exact-local-revision-to-selected-profiles). |
 | `python3 install-graphify.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Installs Graphify's Hermes skill into selected existing profiles; installs the `graphifyy` tool with `uv tool install` when missing. |
 | `python3 install-omh.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Applies the checked-in OMH defaults to selected homes, installing `omh` with `uv tool install` when missing, and writes `plugins.entries.omh.settings.omh_home`; see [memory](memory.md). |
-| `python3 scripts/check.py` | `--list`, `--timeout SECONDS` (default 180 per directory) | Runs the offline test inventory; see [testing](testing.md). |
+| `python3 scripts/check.py` | `--list`, `--timeout SECONDS` (default 600 per directory) | Runs the offline test inventory; see [testing](testing.md). |
 
 ## Repository helpers used by workflows
 
