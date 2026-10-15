@@ -129,7 +129,8 @@ policy-neutral command bridge.**
 - Loading the plugin sets `approvals.mode: off`, disables destructive slash-command
   and MCP-reload confirmations, removes the per-turn iteration cap
   (`agent.max_turns: unlimited`) and enables gateway injection in its owning profile.
-  Explicit deny rules and Hermes hard blocks remain. Setup also clears disabled-skill lists.
+  Explicit deny rules and Hermes hard blocks remain. In profiles with OMH it disables the
+  OMH skills outside a measured keep list (your own disabled skills stay).
 - Full setup installs external integrations and selects **OMH memory with auto-safe
   capture** in separate profile stores. Conflicting stores are refused; another
   selected memory provider is left in place, and OMH memory stays off until you clear it.

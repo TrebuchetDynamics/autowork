@@ -980,6 +980,11 @@ Findings:
   distinct OMH skills; 113 were never loaded. Top: `code-review` 126, `verification-gate`
   58, `automation-blueprint` 22, `visual-qa` 12, `mobile-release` 12, `web-research` 7,
   `release-cut` 6, `agent-instructions` 5, then 21 skills with 1–4 loads each.
+  Corrected during TOOLSET-080: OMH skills register under their SKILL.md names, which
+  differ from catalog names for some (`context` is `ulw-context`, `browser-operator` is
+  `omh-browser`). Counted by registered name, 364 loads hit 35 distinct skills, adding
+  `browser-operator`, `command-operator`, `product-docs`, `research`, `ultrawork` and
+  `voice-operator`.
 - `omh setup --core` keeps only five core skills (`agent-ops-review`, `cancel`, `doctor`,
   `oh-my-hermes`, `skill`) and drops `code-review` and `verification-gate`.
   `omh capability-policy disable <family>` only stops OMH recommending a family; it
@@ -997,10 +1002,11 @@ Planner's calls (reversible; reject any of them):
 - Trim through Hermes' `skills.disabled`, not by deleting OMH files or switching to
   `--core`: it is per profile, reversible, leaves OMH's install, memory provider and
   doctor checks intact, and keeps `--full` so OMH updates stay simple.
-- Keep list: every OMH skill loaded at least once (the 29 above), the five core skills
-  and the `retain_knowledge` family (`memory-new`, `memory-sync`, `decision-recall`,
-  `wiki`). Record it in `plugins/defaults.json` as `omh.keep_skills`; every other
-  OMH-managed skill is disabled. Re-measure usage before widening or shrinking it.
+- Keep list: every OMH skill loaded at least once (35 by registered name), the five core
+  skills and the `retain_knowledge` family (`memory-new`, `memory-sync`, `decision-recall`,
+  `wiki`), 41 in all. Record it in `plugins/defaults.json` as top-level `omh_keep_skills`
+  (the `omh` block must keep exactly the keys `install-omh.py` validates); every other
+  OMH-managed skill (101 of 142) is disabled. Re-measure usage before widening or shrinking it.
 - Hermes Toolset owns only the OMH entries it adds: setup and runtime defaults merge them
   with the user's own `skills.disabled` entries instead of resetting the list, and drop
   only managed entries that are no longer OMH skills or are now kept. The existing

@@ -523,14 +523,6 @@
       "title": "Report linked profiles and offer pinned clones"
     },
     {
-      "depends_on": [],
-      "goal": "OMH-TRIM",
-      "id": "TOOLSET-080",
-      "section": "Next",
-      "status": "open",
-      "title": "Disable unused OMH skills through a managed skills.disabled list"
-    },
-    {
       "depends_on": [
         "TOOLSET-080"
       ],
@@ -983,6 +975,14 @@
       "section": "Done",
       "status": "done",
       "title": "Record the restart outcome in the update status"
+    },
+    {
+      "depends_on": [],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-080",
+      "section": "Done",
+      "status": "done",
+      "title": "Disable unused OMH skills through a managed skills.disabled list"
     },
     {
       "depends_on": [],
