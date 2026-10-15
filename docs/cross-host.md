@@ -121,8 +121,10 @@ node --test tests/portable_pi.test.mjs
 
 Validated locally with Codex CLI 0.162.1 and Pi 1.2.0: native marketplace/plugin
 and Pi installation into isolated temporary homes, Codex app-server skill discovery
-and Pi's installed resource loader discover 11 portable skills. Pi loads 25 commands,
-including `/grill_me` compatibility and all 13 research selectors. Archive extraction
+and Pi's installed resource loader discovered 11 portable skills and Pi loaded 25
+commands, including `/grill_me` compatibility and all 13 research selectors. That run
+predates Beautify GitHub README: the package now ships 12 skills and 26 Pi commands,
+checked offline by `tests/portable_pi.test.mjs` but not yet re-run against those hosts. Archive extraction
 tests check installed references, literal arguments and queued commands without
 checkout files. No credentials or configured live accounts are used. These are
 tested versions, not an established minimum-version guarantee.

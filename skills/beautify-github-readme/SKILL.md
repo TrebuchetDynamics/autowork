@@ -17,10 +17,11 @@ inside `upstream/`.
 ## Toolset rules
 
 - **Scope first.** Keep the protocol's choice between README mode and asset-only
-  mode, and its audit-only path. An explicit request ("beautify the README", "only a
-  hero") is the answer; otherwise ask the one compact scope question, through
-  `clarify` when available. Scheduled, cron or Autowork-driven runs audit only unless
-  their TODO task scope authorizes README or asset edits.
+  mode, and its audit-only path. Only a request that names the scope ("redesign the
+  whole README", "only a hero", "audit it") answers it; a bare "beautify it" does not.
+  Otherwise ask the one compact scope question, through `clarify` when available.
+  Scheduled, cron or Autowork-driven runs audit only unless their TODO task scope
+  authorizes README or asset edits.
 - **The README is documentation.** Its claims, commands and safety statements are
   Docs Sync facts. A redesign may reorder and shorten copy but must not drop a
   safety or policy statement, invent adoption, benchmarks or compatibility, or
