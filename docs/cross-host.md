@@ -43,9 +43,11 @@ next turn if the client refreshes skill discovery; otherwise start a new session
 
 Codex uses skill invocation, not Hermes slash-command registration. The adapters
 are explicit-only in Codex so installation does not automatically invoke a workflow.
-Use the installed client's plugin marketplace controls to update; remove with
+Update a Git install with `codex plugin marketplace upgrade hermes-toolset-marketplace`
+(it refreshes Git marketplace snapshots only); remove with
 `codex plugin remove hermes-toolset@hermes-toolset-marketplace`. Removal does not
-undo repository work or delete plans. A marketplace registration may remain.
+undo repository work or delete plans. The marketplace registration remains until
+`codex plugin marketplace remove hermes-toolset-marketplace`.
 
 ## Pi coding agent
 
@@ -85,8 +87,9 @@ use `$hermes-toolset:plan-with-me` in Codex or `/skill:plan-with-me` in Pi with
 routes to Plan For Me, which reads the pinned plan protocol directly, never back
 through Autoresearch. All other selectors retain their shipped protocols.
 A command entered during an active turn is queued as a follow-up, not injected as
-shell code. Existing same-name third-party skills or commands may cause host collision
-diagnostics; inspect those rather than assuming this package replaced them.
+shell code. A same-name third-party skill keeps the first one discovered and Pi
+warns; same-name extension commands are all kept but renamed `/name:1`, `/name:2`
+without a warning. Check `/` completions rather than assuming this package replaced them.
 
 Use Pi's package controls (`pi list`, `pi update --extensions`, `pi remove <source>`)
 for management. Removing the package leaves repository documents and commits intact.
