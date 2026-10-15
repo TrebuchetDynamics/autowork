@@ -386,6 +386,24 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "PARALLEL",
+      "priority": 89,
+      "source": "docs/project.md#parallel-autowork-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-085-1a",
+        "TOOLSET-086-9f",
+        "TOOLSET-087-32",
+        "TOOLSET-088-a7",
+        "TOOLSET-089-72",
+        "TOOLSET-090-2d",
+        "TOOLSET-091-00"
+      ],
+      "title": "Run independent Autowork tasks in parallel workers with one coordinator"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -424,6 +442,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-085-1a",
+      "TOOLSET-086-9f",
+      "TOOLSET-087-32",
+      "TOOLSET-088-a7",
+      "TOOLSET-089-72",
+      "TOOLSET-090-2d",
+      "TOOLSET-091-00",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
@@ -533,6 +558,73 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the gentler update rollout live"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-085-1a",
+      "section": "Next",
+      "status": "open",
+      "title": "Select several eligible tasks and decide which can run together"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-086-9f",
+      "section": "Next",
+      "status": "open",
+      "title": "Add a repository coordinator lease, worker slots and an execution journal"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-085-1a",
+        "TOOLSET-086-9f"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-087-32",
+      "section": "Next",
+      "status": "open",
+      "title": "Dispatch workers in their own worktrees with a refilled worker pool"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-087-32"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-088-a7",
+      "section": "Next",
+      "status": "open",
+      "title": "Integrate finished workers one at a time and close tasks only after validation"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-088-a7"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-089-72",
+      "section": "Next",
+      "status": "open",
+      "title": "Report parallel progress and metrics, with an end-to-end fixture and benchmark"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-089-72"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-090-2d",
+      "section": "Next",
+      "status": "open",
+      "title": "Document parallel Autowork and wire it into each host"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-090-2d"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-091-00",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify parallel Autowork with real host workers"
     },
     {
       "depends_on": [],
