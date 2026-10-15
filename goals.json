@@ -31,12 +31,17 @@
           "kind": "executed",
           "ref": "Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only",
+          "result": "pass"
         }
       ],
       "id": "BACKLOG",
       "priority": 20,
       "source": "docs/project.md#accepted-requirements",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "TOOLSET-002",
         "TOOLSET-024"
@@ -304,14 +309,6 @@
       "title": "Deploy reviewed local fixes to selected eligible profiles"
     },
     {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-024",
-      "section": "Next",
-      "status": "open",
-      "title": "Reject malformed goal source fields before task selection"
-    },
-    {
       "depends_on": [
         "TOOLSET-028"
       ],
@@ -434,6 +431,14 @@
       "section": "Done",
       "status": "done",
       "title": "Align current project status with reviewed offline delivery"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-024",
+      "section": "Done",
+      "status": "done",
+      "title": "Reject malformed goal source fields before task selection"
     },
     {
       "depends_on": [],

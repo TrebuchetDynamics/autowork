@@ -898,3 +898,24 @@ Source section: Next
 - Current evidence: Added `adapters/skills/cron-autowork/agents/openai.yaml` (`policy.allow_implicit_invocation: false`, identical to the sibling adapters) and `test_every_codex_adapter_is_explicit_only` in `tests/test_portable_package.py`, which failed only for cron-autowork before the file existed. `npm pack --dry-run` includes the new file. docs/cross-host.md no longer carries the exception; CHANGELOG updated.
 - Checks run: `python3 scripts/check.py` passed offline: 411/572/201/8 tests in 4 directories, 1 skipped, 8 modules excluded; `node --test tests/portable_pi.test.mjs` 3 passed; `git diff --check` clean. Self-reviewed.
 - Closure: Offline only; no live Codex install was run.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-024 — Reject malformed goal source fields before task selection
+
+- [x] TOOLSET-024 — Reject malformed goal source fields before task selection
+- Status: done
+- Goal: BACKLOG — Keep accepted-source identity structurally trustworthy for backlog consumers.
+- Sources: [accepted scope](docs/project.md#accepted-requirements), [task-index contract](docs/project.md#interface-and-state-contract), [validator](skills/docs-sync/scripts/goals.py), [regressions](skills/docs-sync/scripts/test_goals.py).
+- Scope: Reject non-string goal source fields in the existing ledger shape validator and add focused offline API/CLI regressions. Preserve supported string sources and additional metadata; document the diagnostic if needed.
+- Acceptance: Object, list, Boolean and numeric source fields cannot validate, normalize or yield eligible tasks. Diagnostics identify the affected goal field without leaking supplied values or traceback. Existing valid string sources, version checks and duplicate-key refusals remain passing. Refused CLI mutations leave ledger/TODO bytes unchanged.
+- Checks: `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py`; repeat for test_milestone_focus.py and test_goal_concurrency.py; `git diff --check`. Independently review the exact candidate before coordinator local integration.
+- Dependencies: None.
+- Ownership: toolset coordinator and one isolated native worker; coordinator owns canonical ledger and integration.
+- Exclusions: No upstream edits, deployment, publication, profile/job/settings changes, live/model qualification, acceptance weakening or foreign edits.
+- Decision: Use the existing shape validator, not new path-format policy. This is a routine agent decision under authorized repository maintenance, not historical user approval. Current reproduction: a nonempty object source returns no shape/semantic errors and an eligible task despite the source-heading contract.
+- Delivery: Candidate `fffe414` (branch `autowork/TOOLSET-024`) was integrated as `3389de1` with an identical patch (same `git patch-id`). Its independent review approved the exact five-file slice with no findings (coordinator receipts `occurrence-977177-closeout.json` and `occurrence-1285855-closeout.json`; review transcript `deleg_38441a22`).
+- Closure evidence (2026-10-15, on `main` at 5db9ccf): `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p` for test_goals.py, test_milestone_focus.py and test_goal_concurrency.py all passed. A CLI probe with object, list, Boolean and numeric sources made `validate`, `next --json` and `task T1 in_progress` exit 1 with a diagnostic naming `source`, never printed the supplied sentinel value or a traceback, and left goals.json and TODO.md byte-identical; a string source still validated and selected T1. The full offline gate on the integrated code passed in the coordinator receipt (403/571/201/8). Offline only; no live qualification is implied.
