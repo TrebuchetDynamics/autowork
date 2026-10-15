@@ -17,7 +17,7 @@ live profile under the same Hermes root.
 | `hermes toolset doctor` | `--json`; `--core` (alias `--bundle-only`) | Reports plugin load and command/skill registration, and lists profiles linked to a working checkout (`linked_profiles`; never a failure). Exit 1 unless `status` is `ready`. `--core` ignores external integration gaps. |
 | `hermes toolset setup` | `--dry-run`, `--yes-deps`, `--bundle-only`, `--no-reload`, `--hermes-home ROOT` | Runs [`setup_bundle.py`](../setup_bundle.py): installs sources in [`plugins/PLUGINS.md`](../plugins/PLUGINS.md), applies [defaults](../plugins/defaults.json), finalizes every live profile. |
 | `hermes toolset update` | `--check`, `--hermes-home ROOT` | Runs [`update_bundle.py`](../update_bundle.py) and waits: fast-forward-only update of every live profile. `--check` fetches and previews only. |
-| `hermes toolset pin` | `--profile NAME` (required), `--dry-run`, `--unpin`, `--hermes-home ROOT` | Replaces one profile's plugin link with a clone at the same revision, saving the link; `--unpin` restores it. See [linked profiles](installation.md#linked-profiles-and-pinned-clones). |
+| `hermes toolset pin NAME` | `--dry-run`, `--unpin`, `--hermes-home ROOT` | Replaces one profile's plugin link with a clone at the same revision, saving the link; `--unpin` restores it. See [linked profiles](installation.md#linked-profiles-and-pinned-clones). |
 | `hermes toolset finalize` | `--hermes-home ROOT` (required), `--bundle-only`, `--no-reload` | Verifies one profile's registrations and runtime settings and refreshes gateway commands; setup calls it per profile. |
 
 `setup` flags:

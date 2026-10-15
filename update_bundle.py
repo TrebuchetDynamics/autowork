@@ -986,7 +986,7 @@ def pin_profile(root, name, *, dry_run=False, upstream=UPSTREAM):
     backup = state / 'pinned' / f'{name}-{time.time_ns()}'
     result = {**row, 'status': 'would_pin' if dry_run else 'pinned', 'backup': str(backup),
               'note': 'The profile keeps this revision; only /toolset update advances it. The gateway loads the '
-                      'clone at its next restart. Undo with: hermes toolset pin --unpin --profile ' + name}
+                      'clone at its next restart. Undo with: hermes toolset pin --unpin ' + name}
     if dry_run:
         return result
     state.mkdir(parents=True, exist_ok=True)

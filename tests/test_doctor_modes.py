@@ -45,13 +45,13 @@ class DoctorModes(unittest.TestCase):
             self.assertEqual((code, json.loads(output)['linked_profiles']), (0, rows))
             code, output = self.run_doctor('--core')
         self.assertIn('any gateway restart loads its current files: work', output)
-        self.assertIn('hermes toolset pin --profile NAME --dry-run', output)
+        self.assertIn('hermes toolset pin NAME --dry-run', output)
 
     def test_pin_command_runs_the_updater_for_one_profile(self):
         parser = argparse.ArgumentParser()
         self.bundle.setup_parser(parser)
         for options, flag in ((['--dry-run'], '--pin-profile'), (['--unpin'], '--unpin-profile')):
-            args = parser.parse_args(['pin', '--profile', 'work', '--hermes-home', '/h', *options])
+            args = parser.parse_args(['pin', 'work', '--hermes-home', '/h', *options])
             with patch.object(self.bundle.subprocess, 'run') as run:
                 run.return_value.returncode = 0
                 self.assertEqual(self.bundle.handle_cli(args), 0)
