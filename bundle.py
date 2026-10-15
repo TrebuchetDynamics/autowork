@@ -301,6 +301,23 @@ def linked_lines(rows):
             'Preview pinning one to its current revision: hermes toolset pin NAME --dry-run']
 
 
+def last_restart(folder, started_ns):
+    """The recorded outcome of the last updater restart this receipt does not cover, or None."""
+    try:
+        updater = _updater()
+        marker = updater._read_marker(folder)
+        if 'pid' in marker and not marker.get('finished') and not gateway_drain(folder):
+            updater.finish_restart(folder.parent.parent, folder)
+            marker = updater._read_marker(folder)
+    except (Exception, SystemExit):
+        return None
+    outcome = marker.get('outcome')
+    if not isinstance(outcome, dict) or started_ns in (marker.get('covers') or []):
+        return None
+    requested = marker.get('requested_ns')
+    return {**outcome, 'requested': time.strftime('%Y-%m-%d %H:%M', time.localtime(requested / 1e9)) if requested else None}
+
+
 def summarize_update(result):
     """A few chat lines for an update receipt; the full JSON stays one argument away."""
     status = result.get('status', 'unknown')
@@ -359,6 +376,13 @@ def summarize_update(result):
             line += ', done'
         if line:
             lines.append(line)
+    last = result.get('last_gateway_restart')
+    if isinstance(last, dict):
+        done = last.get('gateway_restart_result') or {}
+        menus = done.get('menus_resent') or []
+        lines.append(f"Last gateway restart (requested {last.get('requested') or '?'}): {last.get('gateway_restart')}"
+                     + (f", PID {done['gateway_pid']}, menus resent {len(menus)} of "
+                        f"{len(menus) + len(done.get('menus_not_seen') or [])}" if done.get('gateway_pid') else ''))
     lines += linked_lines(result.get('linked_profiles'))
     lines.append('Full receipt: /toolset update status full')
     return lines
@@ -394,6 +418,8 @@ def update_status(full=False):
                 result.update(finished)
             else:
                 result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
+        elif (last := last_restart(path.parent, result.get('started_ns'))) is not None:
+            result['last_gateway_restart'] = last
         current = linked_profiles()
         if current is not None:
             result['linked_profiles'] = [{k: r[k] for k in ('profile', 'target')} for r in current]

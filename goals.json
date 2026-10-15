@@ -380,7 +380,8 @@
         "TOOLSET-077",
         "TOOLSET-078",
         "TOOLSET-079",
-        "TOOLSET-084"
+        "TOOLSET-084",
+        "TOOLSET-092-f2"
       ],
       "title": "Roll out updates without forcing gateway restarts"
     },
@@ -1111,6 +1112,14 @@
       "section": "Done",
       "status": "done",
       "title": "Dispatch workers in their own worktrees with a refilled worker pool"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-092-f2",
+      "section": "Done",
+      "status": "done",
+      "title": "Keep the restart outcome when a later update replaces the receipt"
     },
     {
       "depends_on": [],
