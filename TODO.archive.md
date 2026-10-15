@@ -1346,3 +1346,19 @@ Source section: Now
 - Acceptance: A clean profile's priority ends with `ui_taste` and `beautify_github_readme`; user entries, mode and cap are preserved; Hermes' menu builder shows both.
 - Checks: `tests/test_telegram_menu_policy.py`, `python3 scripts/check.py`, `docs.py check`.
 - Dependencies: None.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-071 — Advertise Impeccable and LGTM in the Telegram menu
+
+- [x] TOOLSET-071 — Advertise Impeccable and LGTM in the Telegram menu
+- Status: done (2026-10-15). At the user's request `impeccable` and `lgtm` follow `ui_taste` and `beautify_github_readme` in the bundle's managed menu priority; at Hermes' 60-entry default the built-ins `voice`, `busy`, `memory` and `bundles` leave the menu and stay typeable. Updated menu tests failed first, then passed; Hermes' own `telegram_menu_commands` on a copy of the toolset profile config lists all four right after the five workflows; `python3 scripts/check.py` passed; `docs.py check` ok.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [menu policy](telegram_menu_policy.py), [superseded menu call](docs/project.md#vendored-ui-taste-skill).
+- Scope: Bundle menu priority, its tests and the docs that list advertised commands.
+- Acceptance: A clean profile's priority ends with `impeccable` and `lgtm`; Hermes' menu builder shows both.
+- Checks: `tests/test_telegram_menu_policy.py`, `python3 scripts/check.py`, `docs.py check`.
+- Dependencies: None.

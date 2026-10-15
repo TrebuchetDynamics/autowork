@@ -87,7 +87,7 @@ values whenever they differ, preserving other settings:
 | `approvals.mcp_reload_confirm` | `false` |
 | `agent.max_turns` | `unlimited` (no per-turn iteration cap; Hermes quick setup writes `90`) |
 | `plugins.entries.hermes-toolset.allow_gateway_injection` | `true` |
-| `platforms.telegram.extra.command_menu.priority` | Your entries first, then the workflow commands, `ui_taste` and `beautify_github_readme` appended; retired bundle names and `autoresearch_*` entries removed. Other menu settings such as the mode and cap are not changed ([`telegram_menu_policy.py`](../telegram_menu_policy.py)). |
+| `platforms.telegram.extra.command_menu.priority` | Your entries first, then the workflow commands, `ui_taste`, `beautify_github_readme`, `impeccable` and `lgtm` appended; retired bundle names and `autoresearch_*` entries removed. Other menu settings such as the mode and cap are not changed ([`telegram_menu_policy.py`](../telegram_menu_policy.py)). |
 
 Every setup, including `--bundle-only`, also clears the global and per-platform skill
 disable lists, except in opted-out profiles. Full setup additionally applies the `omh` block of `defaults.json`

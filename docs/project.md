@@ -727,9 +727,9 @@ Planner's calls (reversible; reject any of them):
   verified by a hash test, not a new vendoring script.
 - Expose it on Codex and Pi like the other workflows (explicit-only Codex policy, Pi
   command `/ui_taste`); it is not added to the Telegram menu priority. Superseded
-  2026-10-15: the user chose to advertise `/ui_taste` and `/beautify_github_readme`
-  in the bundle's menu priority, displacing the last two built-ins at the default
-  60-entry cap.
+  2026-10-15: the user chose to advertise `/ui_taste` and `/beautify_github_readme`,
+  then also `/impeccable` and `/lgtm`, in the bundle's menu priority, displacing the
+  last four built-ins at the default 60-entry cap.
 
 Anti-goals: rewriting upstream text, fetching anything at runtime, adding an MCP or
 account dependency, or presenting the vendored copy as an endorsement by Uizze or

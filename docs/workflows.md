@@ -81,10 +81,11 @@ accessible through their commands and the Plan For Me adapter. Autoresearch comp
 spellings remain typeable but are deliberately omitted from Telegram menu
 advertising, not merely displaced by capacity. Plan With Me and Docs Sync do not
 register the old repo-interview or repo-docs aliases. The Telegram menu prioritizes
-the five current workflow commands and the `/ui_taste` and `/beautify_github_readme`
-design skills. Hermes' default menu holds 60 entries and its built-ins alone exceed
-that, so each prioritized command displaces the lowest-ranked built-in (currently
-`/memory` and `/bundles` for the last two), which stays typeable. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
+the five current workflow commands, then `/ui_taste`, `/beautify_github_readme`,
+`/impeccable` and `/lgtm`. Hermes' default menu holds 60 entries and its built-ins
+alone exceed that, so each prioritized command displaces the lowest-ranked built-in
+(currently `/voice`, `/busy`, `/memory` and `/bundles` for the last four), which
+stays typeable. Do not rename helper paths or saved receipt keys for presentation. Autogoal references in migration code preserve old state;
 they do not register a live command. Hindsight is not a bundle integration; its
 negative tests prevent accidental reintroduction. Updating source does not refresh
 an already-running gateway's command registry: use supported plugin reload and

@@ -319,7 +319,8 @@
         "TOOLSET-062",
         "TOOLSET-063",
         "TOOLSET-064",
-        "TOOLSET-070"
+        "TOOLSET-070",
+        "TOOLSET-071"
       ],
       "title": "Fix review findings in the newly vendored UI skills"
     },
@@ -850,6 +851,14 @@
       "section": "Done",
       "status": "done",
       "title": "Advertise UI Taste and Beautify GitHub README in the Telegram menu"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-071",
+      "section": "Done",
+      "status": "done",
+      "title": "Advertise Impeccable and LGTM in the Telegram menu"
     },
     {
       "depends_on": [],
