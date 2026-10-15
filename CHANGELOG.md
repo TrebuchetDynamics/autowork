@@ -123,6 +123,10 @@ claim of a tagged release, completed installation or live workflow qualification
   inside the skill, with its two helper scripts. The `/git-pull-merge` command is retired
   in Hermes, Codex, Pi and Claude Code (12 portable skills, 26 Pi commands), removed from
   Telegram menus, and `/toolset update` deletes unedited installed copies from profiles.
+- `/git-commit-push` syncs by default (2.1.0): after committing it fetches and merges the
+  upstream (fast-forward, else a merge commit; never rebase or stash), re-runs checks on
+  the merged tree, then pushes. `no pull`, `no sync` or `ff-only` keeps the old
+  push-first behavior; a pull with nothing to commit reports SYNCED.
 
 ### Fixed
 

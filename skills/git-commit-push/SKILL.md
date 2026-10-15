@@ -1,7 +1,7 @@
 ---
 name: git-commit-push
-description: "Use when committing, pushing, pulling or merging Git changes."
-version: 2.0.0
+description: "Use when committing, pushing, pulling or merging Git changes; ships sync with upstream by default."
+version: 2.1.0
 license: MIT
 metadata:
   hermes:
@@ -26,17 +26,20 @@ identity and existing receipts first; unchanged evidence can satisfy that handof
 ## When this applies
 
 - The user asks to commit, push, or ship ("commit and push", "ship it", "push that").
-- `/git-commit-push` (CLI) or `/git_commit_push` (Telegram) was invoked: that invocation **is** the ship request. Any text after the command narrows scope (paths, topic, "audit", "dry run", "no push").
+- `/git-commit-push` (CLI) or `/git_commit_push` (Telegram) was invoked: that invocation **is** the ship request. Any text after the command narrows scope (paths, topic, "audit", "dry run", "no push", "no pull").
+- **Every ship also syncs.** By default the branch is pulled and merged with its upstream
+  before pushing (step 6), so a ship leaves local and remote equal. "no pull", "no sync" or
+  "ff-only" narrows it; an audit, the autonomous agent-branch route and a repository
+  main-only policy that forbids merge commits do not sync.
 - LGTM accepts a checkpoint that explicitly offered commit/push (see the `lgtm` skill). A generic
   LGTM after an implementation report never implies shipping.
 - Audit: the user asks for delivery status, a dry run, or "what would you commit". Do not
   stage, commit, or push.
-- **Pull and merge mode:** the user asks to pull, sync, "update from origin/main", merge a
-  branch or PR into the current one, or the text after `/git-commit-push` starts with
+- **Pull and merge only:** the user asks only to pull, sync, "update from origin/main" or
+  merge a branch or PR into the current one, or the text after `/git-commit-push` starts with
   `pull`, `sync` or `merge` (for example `/git-commit-push merge agent/example/t_1234`). Follow
   [pull and merge](references/pull-merge.md) instead of the ship path below; it pushes only
-  when the request also asks for a push. "pull and push" or "merge and push" runs pull and
-  merge first, then this skill's push rules.
+  when the request also asks for a push.
 
 ## Pick the delivery target first
 
@@ -381,7 +384,24 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      the final tree to the combined one. If hooks or another writer changed it, inspect the difference and rerun affected checks before
      claiming verification; do not replay a successful gate merely for reassurance.
 
-6. **Push (explicit ship target only).**
+6. **Sync with upstream (default).**
+   - Unless the request said "no pull", "no sync" or "ff-only" (fast-forward only), after
+     the owned commits exist and before pushing: `git fetch --prune origin`, then
+     `git rev-list --left-right --count HEAD...@{u}`. Nothing incoming: go to step 7.
+   - Integrate with the [pull and merge](references/pull-merge.md) procedure: check incoming
+     paths against dirty files first, fast-forward when there are no local commits, otherwise
+     `git merge --no-ff @{u}` with a message naming what came in. Never rebase, stash, reset
+     or `git pull --rebase`. Overlap with someone else's live work moves the integration into
+     an isolated worktree or holds it, as that procedure says.
+   - Resolve conflicts as that procedure says; never by dropping either side's tests.
+   - Re-gate the merged tree: rerun the checks for the areas the incoming commits touched,
+     and confirm your own paths' blobs are unchanged. A failure the merge caused is part of
+     this delivery: fix it, or `git merge --abort` (before committing) or
+     `git revert -m 1 <merge>` (after) and report HELD.
+   - Having nothing to commit is not a reason to skip the sync: a pull with nothing to push
+     is reported as SYNCED.
+
+7. **Push (explicit ship target only).**
    - Push the configured upstream; with one `origin` and no upstream, `git push -u origin HEAD`.
      A new delivery branch cut from remote main can inherit main as upstream: push an explicit
      refspec (`git push --set-upstream <remote> HEAD:refs/heads/<branch>`) and verify that exact
@@ -391,12 +411,11 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      hashes verify and affected base subtrees (`git rev-parse <candidate>^:<component>` vs
      `origin/<target>:<component>`) match fresh upstream; changed inputs need reconciliation and
      affected checks. Read back the remote ref, PR head and file list.
-   - Do not `git pull` / `--autostash` first. Push; on rejection, `git fetch` and inspect (the
-     [pull and merge mode](references/pull-merge.md) covers integrating remote changes safely).
-     Fast-forward only when the incoming commits don't overlap yours and it is clearly safe. Merge or rebase needs
-     explicit approval. On a fast-forward-only or no-merge route, do not fall back to a
-     reference's merge recipe after rejection: rebuild and requalify from fresh upstream, or report
-     the conflict. Never force-push. Measure the overlap against the merge base, not against
+   - Never `--autostash`. Step 6 has already merged upstream; if the push is still rejected
+     because upstream moved again, repeat step 6 once and push. Rebase needs explicit approval.
+     On a "no pull" or "ff-only" request, or a fast-forward-only or no-merge route, do not
+     fall back to a reference's merge recipe after rejection: rebuild and requalify from fresh
+     upstream, or report the conflict. Never force-push. Measure the overlap against the merge base, not against
      HEAD: `git diff --name-only $(git merge-base HEAD origin/main)..origin/main` lists what they
      changed, while `HEAD..origin/main` also lists your own unpushed files and reads as an overlap
      that is not there.
@@ -414,7 +433,7 @@ Report the branch and sha it prints. Never point it at main/master or the checke
    - Verify the remote: `git fetch -q && [ "$(git rev-parse HEAD)" = "$(git rev-parse @{u})" ] && echo MATCH`.
      The push output alone is not proof.
 
-7. **Close the loop.**
+8. **Close the loop.**
    - `git status --short --branch`; report hashes, the push result, and every remaining path with its reason.
    - If a tracker or `BLOCKERS.md` entry authorized the commit, mark it with the SHAs using an
      anchored patch (reread the file first). Don't rewrite the whole file.
@@ -431,7 +450,7 @@ Report the branch and sha it prints. Never point it at main/master or the checke
   `.impeccable/mocks/` and screenshot/evidence folders follow the repo's gitignore.
 - Do not discard, stash, revert, or `git clean` other agents' or the owner's work to make a commit tidy.
 - Committed is not deployed. Do not deploy, publish, release, rebuild images, restart live
-  services, run migrations, force-push, rewrite history, rebase, merge divergent history,
+  services, run migrations, force-push, rewrite history, rebase,
   change remotes, or delete branches without explicit approval for that exact action.
 - Ask only when ownership, intended behavior, secret handling, destructive history,
   dependency policy, or remote integration changes what the safe action is. A long list of
@@ -440,6 +459,8 @@ Report the branch and sha it prints. Never point it at main/master or the checke
 ## Outcomes
 
 - **COMMITTED**: the requested local commit exists and was read back; no push was requested or performed. Unrelated paths may remain.
+- **SYNCED**: nothing eligible to commit, and upstream changes were merged into the branch
+  (and pushed when the merge created a commit and a push was requested). Report what came in.
 - **SHIPPED**: checked commits reached the authorized remote target and were read back. An
   agent-branch write is COMMITTED; a task-branch push is not main delivery when main was requested.
   Unrelated paths may remain.
@@ -460,7 +481,7 @@ ASKED and HELD describe this delivery only. The surrounding goal or card keeps g
 At most three lines. Leave out empty fields and don't repeat a hash or path.
 
 ```text
-COMMITTED|SHIPPED|NO-OP|ASKED|HELD — <local or agent-branch sha, not pushed | hashes + push result | exact reason>
+COMMITTED|SYNCED|SHIPPED|NO-OP|ASKED|HELD — <local or agent-branch sha, not pushed | hashes + push result | exact reason>; synced: <n incoming, ff|merge|none>
 Checks: <gate(s) and result>; inspected all modified and untracked paths
 Left local: <path — reason, …> | Need: <one action>
 ```
