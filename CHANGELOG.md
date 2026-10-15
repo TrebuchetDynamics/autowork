@@ -16,6 +16,12 @@ claim of a tagged release, completed installation or live workflow qualification
   behind a toolset adapter (scope first, README claims stay Docs Sync facts, pure SVG
   by default, no unsolicited attribution or showcase offer). Codex and Pi adapters
   included.
+- A held or blocked Autowork task now goes to Plan For Me in the same run, which must
+  fix it (reversible in-scope change, recorded as the planner's call) or skip it
+  (split the blocked acceptance into its own open task and continue with the next
+  ready task). Only genuinely unavailable external inputs are reported, once. The
+  rule is in the managed cron block, so existing jobs adopt it at their next
+  self-heal.
 
 - `/toolset update` merges edits profiles made to their installed skill copies
   instead of stopping on `drift`. It merges from the closest same-path version in

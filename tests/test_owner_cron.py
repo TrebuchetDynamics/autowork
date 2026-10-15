@@ -69,7 +69,8 @@ class OwnerCronTests(unittest.TestCase):
         for rule in ('one coherent delivery batch', 'not one task per file',
                      'approved exact-source checks', 'lead with delivered behavior',
                      'parent task remains open', 'source-bound receipts',
-                     'two unchanged blocked observations', 'Keep Hermes Agent unchanged'):
+                     'held or blocked, run hermes-toolset:plan-for-me', 'fix or skip', 'never waived',
+                     'unchanged held report', 'Keep Hermes Agent unchanged'):
             self.assertIn(rule, prompt)
         self.assertIn('Offline removal only; no deployment.', prompt)
         self.assertIn('Do not push or deploy', prompt)
