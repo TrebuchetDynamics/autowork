@@ -910,3 +910,47 @@ Follow-up tasks: TOOLSET-072 (cache the receipt runtime inventory without losing
 in-check drift detection) and TOOLSET-073 (measure subprocess coverage, then review
 the identical and subset groups). No consolidation task is recorded until that
 evidence exists.
+
+## Gentler update rollout (2026-10-15)
+
+Status: Accepted
+
+Request (user, 2026-10-15): improve the update pipeline, preferring less force.
+
+Findings from the 2026-10-15 rollouts (Telegram menu changes TOOLSET-070/071/074):
+- Every applied update requested `hermes gateway restart` at once. Hermes then waits
+  up to `agent.restart_after_turn_timeout` (1800 s) for chat turns before forcing,
+  and gives running cron jobs only `agent.cron_drain_timeout` (30 s). At 11:50 the
+  drain timed out with 3 cron jobs in flight: they survived as external workers,
+  but Hermes skipped its SessionDB checkpoint and clean-shutdown marker and
+  recovered on startup.
+- Small updates produced four gateway restarts in about an hour (10:49, 10:55,
+  11:46, 11:50); one restart reloads every profile.
+- Seven profiles link `plugins/hermes-toolset` to the canonical checkout and three
+  use pinned clones. Any restart deploys the checkout's current state to the linked
+  seven, including another writer's unreleased commits (`/git_pull_merge`
+  disappeared there before any update rolled it out), while the clones change only
+  through an update.
+- `hermes toolset update --check` during another update returns that run's
+  `running` record with no owner or wait; the result stays `gateway_restart:
+  requested` after the restart finished, without the new PID or whether each bot
+  re-sent its menu.
+- Hermes publishes `active_agents` in `gateway_state.json` (busy contract:
+  `derive_gateway_busy`), and each profile's `cron/external-workers/` lists running
+  cron runs.
+
+Planner's calls (reversible; reject any of them): an updater-requested restart waits
+for a quiet gateway (no active agents and no running cron workers) instead of
+relying on Hermes' forced drain, and reports `deferred` rather than forcing when no
+quiet window comes; restarts coalesce so a burst of updates causes one restart;
+linked profiles are reported and can opt into pinned clones so a restart never
+deploys unreleased checkout state; status records the restart outcome. No Hermes
+code or global timeout changes.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-075 | Restart the gateway only in a quiet window; never trigger a forced drain |
+| TOOLSET-076 | Coalesce restarts across a burst of updates |
+| TOOLSET-077 | Record the restart outcome and menu resends in the update status |
+| TOOLSET-078 | Report a concurrent update clearly instead of returning its record |
+| TOOLSET-079 | Report linked profiles and offer pinned clones so restarts deploy only released code |

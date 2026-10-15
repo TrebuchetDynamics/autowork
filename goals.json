@@ -342,6 +342,22 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "GENTLE-UPDATE",
+      "priority": 88,
+      "source": "docs/project.md#gentler-update-rollout-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-075",
+        "TOOLSET-076",
+        "TOOLSET-077",
+        "TOOLSET-078",
+        "TOOLSET-079"
+      ],
+      "title": "Roll out updates without forcing gateway restarts"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -380,6 +396,8 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-075",
+      "TOOLSET-076",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
@@ -388,10 +406,31 @@
       "TOOLSET-064",
       "TOOLSET-066",
       "TOOLSET-072",
-      "TOOLSET-073"
+      "TOOLSET-073",
+      "TOOLSET-077",
+      "TOOLSET-078",
+      "TOOLSET-079"
     ]
   },
   "tasks": [
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-075",
+      "section": "Now",
+      "status": "open",
+      "title": "Restart the gateway only in a quiet window"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-075"
+      ],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-076",
+      "section": "Now",
+      "status": "open",
+      "title": "Coalesce restarts across a burst of updates"
+    },
     {
       "depends_on": [],
       "goal": "RECOVERY",
@@ -471,6 +510,32 @@
       "section": "Next",
       "status": "open",
       "title": "Measure subprocess coverage, then review identical and subset test groups"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-075"
+      ],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-077",
+      "section": "Next",
+      "status": "open",
+      "title": "Record the restart outcome in the update status"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-078",
+      "section": "Next",
+      "status": "open",
+      "title": "Report a concurrent update clearly"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-079",
+      "section": "Next",
+      "status": "open",
+      "title": "Report linked profiles and offer pinned clones"
     },
     {
       "depends_on": [],

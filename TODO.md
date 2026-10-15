@@ -26,6 +26,29 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
+### TOOLSET-075 — Restart the gateway only in a quiet window
+
+- [ ] TOOLSET-075 — Restart the gateway only in a quiet window
+- Status: open.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: When an applied update needs a restart, read `gateway_state.json` (`active_agents`, Hermes' busy contract) and each served profile's `cron/external-workers/`; call `hermes gateway restart` only when no agent turn or cron run is in flight. Otherwise record `gateway_restart: deferred` with what it waits on and keep checking in the background up to a bounded window; when the window ends, leave the restart deferred and report it instead of forcing. `/toolset update restart` (or the terminal form) remains the explicit way to restart now.
+- Acceptance: With a busy fixture the updater never invokes the restart and reports `deferred` with the blocking work; with an idle fixture it restarts once; a window that never goes quiet ends `deferred`, not forced; no Hermes config or timeout is changed.
+- Checks: Failing-first regressions in `tests/test_update_bundle.py` with fake gateway state and worker files, then `python3 scripts/check.py`.
+- Dependencies: None.
+- Exclusions: No Hermes code changes; no edits to `restart_after_turn_timeout` or `cron_drain_timeout`.
+
+### TOOLSET-076 — Coalesce restarts across a burst of updates
+
+- [ ] TOOLSET-076 — Coalesce restarts across a burst of updates
+- Status: open.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: A deferred or pending restart absorbs later updates: further applied updates extend the same deferred restart instead of requesting another, so a burst of updates causes one restart after the last one.
+- Acceptance: Three updates applied while the gateway is busy produce exactly one restart once it is quiet; status lists every update the restart covers.
+- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
+- Dependencies: TOOLSET-075.
+
 ## Next
 
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
@@ -157,6 +180,40 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.
 
+### TOOLSET-077 — Record the restart outcome in the update status
+
+- [ ] TOOLSET-077 — Record the restart outcome in the update status
+- Status: open.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: After a requested or deferred restart completes, record the new gateway PID, the time, whether each served bot re-sent its Telegram menu and any work the shutdown interrupted, so `/toolset update status` stops reporting a finished restart as `requested`.
+- Acceptance: Status shows `gateway_restart: completed` with PID and per-profile menu resend results after a fixture restart; an incomplete restart stays visible.
+- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
+- Dependencies: TOOLSET-075.
+
+### TOOLSET-078 — Report a concurrent update clearly
+
+- [ ] TOOLSET-078 — Report a concurrent update clearly
+- Status: open.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: When another update is running, a new update or `--check` reports `busy` with that run's PID, start time and mode, and either waits for it or exits without overwriting its record.
+- Acceptance: A check started during a running update never returns the running record as its own result and never overwrites it.
+- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
+- Dependencies: None.
+
+### TOOLSET-079 — Report linked profiles and offer pinned clones
+
+- [ ] TOOLSET-079 — Report linked profiles and offer pinned clones
+- Status: open.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: Report which profiles load the plugin through a link to a working checkout (they go live with whatever that checkout contains on any restart) and offer an explicit, reversible conversion to a pinned clone that only an update advances.
+- Acceptance: Status and `/toolset` doctor list linked profiles; an opt-in conversion leaves the profile on the same revision, keeps a backup of the link and is covered by a dry run.
+- Checks: Regressions in `tests/test_update_bundle.py` and the doctor tests, then `python3 scripts/check.py`.
+- Dependencies: None.
+- Exclusions: No automatic conversion of live profiles; converting them is a separate, user-authorized live step.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -180,6 +237,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
+| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-075, TOOLSET-076, TOOLSET-077, TOOLSET-078, TOOLSET-079 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 
