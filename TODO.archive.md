@@ -1362,3 +1362,23 @@ Source section: Now
 - Acceptance: A clean profile's priority ends with `impeccable` and `lgtm`; Hermes' menu builder shows both.
 - Checks: `tests/test_telegram_menu_policy.py`, `python3 scripts/check.py`, `docs.py check`.
 - Dependencies: None.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-068 — Audit this repository's test suite and record bounded follow-ups
+
+- [x] TOOLSET-068 — Audit this repository's test suite and record bounded follow-ups
+- Status: done
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [plan](docs/project.md#test-suite-optimization-method-2026-10-15), [check runner](scripts/check.py), [the protocol from TOOLSET-067](skills/engineering/local/test-suite-optimization/PROTOCOL.md).
+- Scope: Apply the protocol in audit mode to the offline inventory of `python3 scripts/check.py` (excluded native modules stay out). Measure in a scratch directory: per-directory wall time (3 runs), the 30 slowest tests, line and branch coverage of the toolset's Python sources with per-test contexts, and groups of tests whose covered-line sets are identical or strict subsets. Mutation testing is optional: if used, install the tool only in a disposable virtual environment outside the repository and sample the modules with the most redundancy candidates. Inspect the top candidates by reading the tests. Record the baseline and findings in the plan section of docs/project.md, and add up to five follow-up tasks in TODO.md under the TEST-SUITE goal, each with its measured before values, the exact tests involved, the protocol's acceptance template and its checks. Start with `test_delivery_state.py` setup cost (about 40 s of the slowest 15 tests).
+- Acceptance: The plan section records the measured baseline (counts, times, coverage percentages, method and commit); each follow-up task names concrete tests and measurable before values; no test or source file changes in this task; candidates without evidence are listed as unverified, not as tasks.
+- Checks: `python3 skills/docs-sync/scripts/goals.py validate .`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --stat` shows only docs/project.md, TODO.md and goals.json; `git diff --check`.
+- Dependencies: TOOLSET-067.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No test deletion, consolidation or source edit; no repository dependency changes; no push.
+- Current evidence: Audit on `376f7ed` recorded in the [baseline audit](docs/project.md#baseline-audit-toolset-068-2026-10-15): 1,253 tests; sequential 225–237 s over 3 passing `--jobs 1` runs (Autowork 132–139 s); 67% combined line and branch coverage of toolset sources; 760 tests with per-test records; 58 identical-coverage groups (187 tests) and 248 subset cases; mutation not measured. cProfile of `test_delivery_state.py` attributes about 42 s of 110 s to `check_receipt.runtime()` package metadata and 7 s to executable hashing. Sampled identical groups are distinct contracts; no removal recommended. Follow-ups TOOLSET-072 and TOOLSET-073 recorded; no test or source file changed.
+- Checks run: `goals.py validate` ok; `docs.py check` ok; `git diff --stat` limited to docs/project.md, TODO.md and goals.json; `git diff --check` clean.

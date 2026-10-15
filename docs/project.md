@@ -866,3 +866,45 @@ a required network or paid tool.
 | TOOLSET-067 | The `test-suite-optimization` protocol and its engineering routing |
 | TOOLSET-068 | Measured audit of this repository that records bounded follow-up tasks |
 | TOOLSET-069 | `check.py` runs its test directories concurrently with ordered output |
+| TOOLSET-072 | Cache `check_receipt.runtime()`'s package inventory and executable hash safely |
+| TOOLSET-073 | Subprocess coverage, then evidence-based review of identical and subset groups |
+
+### Baseline audit (TOOLSET-068, 2026-10-15)
+
+Method: the `test-suite-optimization` protocol, audit only, on commit `376f7ed`, this
+machine, offline inventory of `scripts/check.py` (97 modules; excluded native modules
+stay out). Raw output stayed in a scratch directory.
+
+| Measure | Result |
+| --- | --- |
+| Tests | 1,253 (461 `tests`, 575 Autowork scripts, 209 Docs Sync scripts, 8 Git Commit Push); 1 skipped |
+| Sequential run, `--jobs 1`, 3 passing runs | 225 s, 225 s, 237 s |
+| Per directory (unittest's own time, 3 runs) | `tests` 26–27 s; Autowork 132–139 s; Docs Sync 37–43 s; Git Commit Push under 0.1 s |
+| Default parallel run (TOOLSET-069) | 164–175 s; bounded by the Autowork directory |
+| Coverage of toolset Python sources (coverage.py 7.13.5, branch, tests and vendored `upstream/` omitted) | 67% of 9,370 statements and 4,040 branches combined |
+| Tests with per-test coverage records | 760 of 1,253; the rest reach code only through subprocesses or check text |
+| Identical covered-line sets | 58 groups, 187 tests |
+| Strict subset of a sibling in the same class | 248 tests |
+| Mutation score | Not measured; no tool installed and none added |
+
+Findings:
+- **Cost, not redundancy, dominates.** `test_delivery_state.py` (23 tests) holds 9 of
+  the 15 slowest tests. Profiling it (110 s under cProfile) attributes about 42 s to
+  `check_receipt.runtime()` building `packages` from `importlib.metadata.distributions()`
+  (449,000 email-header parses) and 7 s to re-hashing `sys.executable`, on every call
+  before and after each check. Subprocesses take about 9 s. The same code runs in
+  real Autowork check receipts, so its cost also scales with the host's installed
+  packages in production.
+- **Identical coverage is mostly not duplication.** The largest groups read so far
+  (`test_owner_cron` prompt tests, `test_update_bundle` historical-board veto tests)
+  each assert different required text or a different board state through one shared
+  helper. They are cheap and distinct contracts; none is recommended for removal.
+  The other groups and the 248 subset cases are unverified leads.
+- **Subprocess blind spot.** 493 tests have no coverage record because the code they
+  exercise runs in child processes, so redundancy evidence is missing exactly where
+  many slow tests live. Any removal here first needs subprocess coverage.
+
+Follow-up tasks: TOOLSET-072 (cache the receipt runtime inventory without losing
+in-check drift detection) and TOOLSET-073 (measure subprocess coverage, then review
+the identical and subset groups). No consolidation task is recorded until that
+evidence exists.

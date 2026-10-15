@@ -103,7 +103,9 @@
       "tasks": [
         "TOOLSET-067",
         "TOOLSET-068",
-        "TOOLSET-069"
+        "TOOLSET-069",
+        "TOOLSET-072",
+        "TOOLSET-073"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -453,14 +455,20 @@
       "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
-      "depends_on": [
-        "TOOLSET-067"
-      ],
+      "depends_on": [],
       "goal": "TEST-SUITE",
-      "id": "TOOLSET-068",
+      "id": "TOOLSET-072",
       "section": "Next",
       "status": "open",
-      "title": "Audit this repository's test suite and record bounded follow-ups"
+      "title": "Cache the check receipt runtime inventory without losing drift detection"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-073",
+      "section": "Next",
+      "status": "open",
+      "title": "Measure subprocess coverage, then review identical and subset test groups"
     },
     {
       "depends_on": [],
@@ -835,6 +843,16 @@
       "section": "Done",
       "status": "done",
       "title": "Add the test-suite-optimization engineering protocol"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-067"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-068",
+      "section": "Done",
+      "status": "done",
+      "title": "Audit this repository's test suite and record bounded follow-ups"
     },
     {
       "depends_on": [],
