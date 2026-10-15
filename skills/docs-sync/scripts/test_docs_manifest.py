@@ -192,6 +192,30 @@ class DocsManifestTests(unittest.TestCase):
         self.assertIn('broken link docs/missing-ref.md', out)
         self.assertNotIn('zz.md', out)
 
+    def test_footnotes_comments_and_home_scripts_do_not_false_positive(self):
+        (self.repo / 'CHANGELOG.md').write_text(
+            '# Changelog\n\nNeeds Python[^1] and [^note].\n\n[^1]: Requires Python 3.11.\n'
+            '[^note]: <docs/absent-note.md>\n\n'
+            'Keep `<!--` literal and [real](docs/real-missing.md).\n\n'
+            '<!-- TODO: restore once written: [Guide](docs/guide.md) -->\n'
+            '<!--\n[Old](docs/old.md)\n[old-ref]: docs/old-ref.md\n`python3 scripts/old.py`\n-->\n'
+            'Run `python3 ~/.hermes/skills/demo/run.py` and `python3 scripts/absent.py`.\n')
+        out = self.cli('check', expected=1)
+        self.assertNotIn('Requires', out)
+        self.assertNotIn('absent-note', out)
+        self.assertNotIn('guide.md', out)
+        self.assertNotIn('old', out)
+        self.assertNotIn('~/.hermes', out)
+        self.assertIn('broken link docs/real-missing.md', out)
+        self.assertIn('documented script scripts/absent.py does not exist', out)
+
+    def test_code_span_heading_underscores_and_single_quoted_titles(self):
+        (self.repo / 'CHANGELOG.md').write_text(
+            '# Changelog\n\n## `__init__`\n\n[init](#__init__) [t](docs/missing.md \'Title\')\n')
+        out = self.cli('check', expected=1)
+        self.assertNotIn('__init__', out)
+        self.assertIn('broken link docs/missing.md', out)
+
     def test_overlong_paths_report_instead_of_crashing(self):
         long = 'b' * 300
         (self.repo / 'CHANGELOG.md').write_text(f'# Changelog\n\n[x]({long}.md)\n')

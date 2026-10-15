@@ -40,10 +40,12 @@ FIELDS = {'status', 'path', 'reason', 'covers', 'verified_at'}
 COMMIT = re.compile(r'^[0-9a-f]{7,40}$')
 FENCE = re.compile(r'^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]{0,3}\1[`~]*[ \t]*$|\Z)', re.M | re.S)
 CODE = re.compile(r'`([^`\n]+)`')
-LINK = re.compile(r'!?\[[^\]\n]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"\n]*")?\s*\)')
+LINK = re.compile(r'!?\[[^\]\n]*\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"\n]*"|\'[^\'\n]*\'))?\s*\)')
 SCRIPT = re.compile(r'(?:^|\s)(?:python3?|sh|bash|node)\s+(?:-\S+\s+)*([^\s`]+\.(?:py|sh|mjs|js))(?=\s|$)')
 HEADING = re.compile(r'^(?:#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*|(?![ \t]*[-=>*+#|])([^\n]*\S[^\n]*)\n[ \t]{0,3}(?:=+|-+)[ \t]*)$', re.M)
-REFERENCE = re.compile(r'^[ \t]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)>?', re.M)
+REFERENCE = re.compile(r'^[ \t]{0,3}\[(?!\^)[^\]\n]+\]:[ \t]*<?([^\s>]+)>?', re.M)
+# HTML comments are masked; code spans are matched first so a literal `<!--` stays text.
+COMMENT = re.compile(r'`[^`\n]+`|<!--.*?(?:-->|\Z)', re.S)
 CD = re.compile(r'(?:^|[;&|]\s*)cd\s+([^\s;&|]+)')
 HTML_ANCHOR = re.compile(r'<a\s[^>]*?\b(?:id|name)\s*=\s*["\']([^"\']+)["\']', re.I)
 
@@ -106,7 +108,9 @@ def symlinked(repo, path):
 
 def slug(text):
     text = re.sub(r'!?\[([^\]]*)\]\([^)]*\)', r'\1', text)
-    text = re.sub(r'[`*~]|<[^>]+>|(?<!\w)_+|_+(?!\w)', '', text).strip().lower()
+    # Emphasis markers are stripped outside code spans only; `__init__` keeps its underscores.
+    text = ''.join(part[1:-1] if part.startswith('`') else re.sub(r'[*~]|<[^>]+>|(?<!\w)_+|_+(?!\w)', '', part)
+                   for part in re.split(r'(`[^`]*`)', text)).strip().lower()
     return re.sub(r'[^\w\- ]', '', text).replace(' ', '-')
 
 
@@ -151,7 +155,7 @@ class Repo:
 
 def check_document(repo, role, path):
     errors = []
-    prose = FENCE.sub('', repo.text(path))
+    prose = COMMENT.sub(lambda match: match[0] if match[0].startswith('`') else '', FENCE.sub('', repo.text(path)))
     spans = CODE.findall(prose)
     linkable = CODE.sub('', prose)
     for target in LINK.findall(linkable) + REFERENCE.findall(linkable):
@@ -178,7 +182,7 @@ def check_document(repo, role, path):
         bases = [PurePosixPath(), path.parent, *(PurePosixPath(move) for move in moves)]
         for script in SCRIPT.findall(span):
             candidate = relative(script)
-            if candidate is None or re.search(r'[<>${}*]', script):
+            if candidate is None or re.search(r'[<>${}*]', script) or script.startswith('~'):
                 continue
             if all(repo.problem(base / candidate) for base in bases):
                 errors.append(f'{role}: {path}: documented script {script} does not exist')
