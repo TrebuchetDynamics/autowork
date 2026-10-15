@@ -88,6 +88,9 @@ elif behavior == 'no_progress':
 elif behavior == 'provider_error':
     open('partial.txt', 'w').write('half done\n')
     finish(stop='error', error='429 rate limit exceeded (sk-secret123456789)')
+elif behavior == 'no_key':  # Pi 1.2.0's wording when a provider has no credentials
+    sys.stderr.write('No API key found for openai-codex.\n\nUse /login to log into a provider via OAuth or API key.\n')
+    sys.exit(1)
 elif behavior == 'crash':
     sys.stderr.write('pi: internal error\n')
     sys.exit(1)
@@ -250,6 +253,14 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertNotIn('sk-secret', json.dumps(self.records()))
         self.assertIn('429', done['fallback_reason'])
         self.assertEqual(done['provider'], 'openrouter')
+
+    def test_missing_credentials_at_run_time_fall_back(self):
+        """TOOLSET-094-65 live finding: Pi exits 1 before any event when a provider has no key."""
+        self.set_plan(['no_key', 'complete'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([r['provider'] for r in self.runs()], ['openai-codex', 'openrouter'])
+        self.assertEqual(self.records()[0]['outcome'], 'provider_failure')
 
     def test_no_fallback_retries_the_primary_then_gives_up(self):
         self.set_plan(['provider_error', 'provider_error'])

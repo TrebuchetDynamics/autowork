@@ -1678,3 +1678,21 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No push; no change to the Autowork skill.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-094-65 — Qualify the Pi runner's fallback and a multi-task run live
+
+- [x] TOOLSET-094-65 — Qualify the Pi runner's fallback and a multi-task run live
+- Status: done (2026-10-15). Live in a disposable repository with five one-file tasks and a bare `origin`: (1) a continuous run (`--max-cycles 2`) completed T1 and T2 once each on GPT-6.1 Sol (85 s, 74 s); (2) a wrapper gave the first primary run an empty Pi agent directory, so the real Pi exited 1 with "No API key found for openai-codex"; the runner first classified that as a crash and retried the primary (T3), which exposed a missing pattern; after the fix (TOOLSET-094-65 regression `test_missing_credentials_at_run_time_fall_back`) the same failure on T4 was a provider failure, the primary cooled for 30 minutes, and DeepSeek V4.1 Flash resumed T4 in the same session and completed it (2 commits, 32 s, $0.007 reported, `fallback_reason` recorded); (3) SIGINT 26 s into T5 stopped the real Pi promptly, the runner exited 130 and kept the in-flight record, and the next `--until-empty` run resumed T5 in the same session, completed it and exited on an empty queue. All five tasks are done once; `origin` has no refs; tests 21 passed and ShellCheck is clean.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/project.md#continuous-pi-runner-2026-10-15), [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: In a disposable repository with two or three small tasks, run `--until-empty` live; then force the fallback (for example by making the primary fail authentication in a throwaway Pi agent directory) and confirm DeepSeek V4.1 Flash resumes and completes a task, and that Ctrl+C mid-task resumes cleanly.
+- Acceptance: `runs.jsonl` shows each task completed once, a provider failure followed by a fallback completion with `fallback_reason`, and an interrupted run resumed in the same session; no push.
+- Checks: `runs.jsonl`, `git log` of the disposable repository, and the runner's output.
+- Dependencies: TOOLSET-093-01.
+- Ownership: Toolset coordinator; spends OpenRouter credit, so run it on the owner's request.
+- Exclusions: No run against a real project repository.

@@ -451,12 +451,17 @@
           "kind": "executed",
           "ref": "TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed",
+          "result": "pass"
         }
       ],
       "id": "PI-RUNNER",
       "priority": 96,
       "source": "docs/project.md#continuous-pi-runner-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-093-01",
         "TOOLSET-094-65"
@@ -602,16 +607,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify parallel Autowork with real host workers"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-093-01"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-094-65",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify the Pi runner's fallback and a multi-task run live"
     },
     {
       "depends_on": [],
@@ -1159,6 +1154,16 @@
       "section": "Done",
       "status": "done",
       "title": "Build the continuous Pi Autowork runner"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-093-01"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-094-65",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify the Pi runner's fallback and a multi-task run live"
     },
     {
       "depends_on": [],

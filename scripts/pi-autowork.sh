@@ -365,7 +365,7 @@ run_pi() {
 
 is_provider_failure() {
   [[ $RUN_STOP == error ]] && return 0
-  [[ $RUN_SETTLED != true ]] && grep -qiE '429|rate.?limit|quota|usage limit|overloaded|5[0-9]{2}|unavailable|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN|network|fetch failed|401|403|unauthori[sz]ed|forbidden|credential|expired|no such model|model .*not (found|available)' <<<"$RUN_ERROR"
+  [[ $RUN_SETTLED != true ]] && grep -qiE '429|rate.?limit|quota|usage limit|overloaded|5[0-9]{2}|unavailable|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN|network|fetch failed|401|403|unauthori[sz]ed|forbidden|credential|api key|not logged in|/login|oauth|expired|no such model|model .*not (found|available)' <<<"$RUN_ERROR"
 }
 
 record() {  # outcome task model fallback_reason start_sha
