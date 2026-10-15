@@ -2,10 +2,10 @@
 
 Hermes Toolset provides native packages for four hosts. Claude Code, Codex and Pi
 use the portable adapters, not the Hermes plugin loader. None requires Hermes installed.
-These adapters expose 13 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+These adapters expose 12 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
 Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, Beautify GitHub README,
-LGTM, Git Commit Push and Git Pull Merge. Grill Me is Plan With Me's challenge mode, not a
-fourteenth skill.
+LGTM and Git Commit Push, which also pulls and merges. Grill Me is Plan With Me's
+challenge mode, not a thirteenth skill.
 Every adapter is explicit-only: Claude Code and Pi read `disable-model-invocation: true`
 in its frontmatter and Codex reads `agents/openai.yaml`, so the model never starts a
 workflow on its own.
@@ -125,7 +125,8 @@ Local installs refer to this checkout; keep it in place. The extension registers
 All 13 `/autoresearch_<protocol>` commands are available. The other commands are
 `/cron_autowork` (scheduling guidance through host capabilities, not a Hermes timer),
 `/autoresearch`, `/engineering`, `/impeccable`, `/ui_taste`, `/beautify_github_readme`,
-`/lgtm`, `/git_commit_push` and `/git_pull_merge`. Native `/skill:<name>` invocation is also
+`/lgtm` and `/git_commit_push` (`/git_commit_push pull` or `merge <branch>` integrates
+upstream changes). Native `/skill:<name>` invocation is also
 available; skill names use hyphens. Command arguments remain literal prompt text.
 `/grill_me` loads Plan With Me with explicit challenge mode and preserves the
 request unchanged. The old standalone `grill-me` skill is no longer discoverable;
@@ -174,8 +175,8 @@ Validated locally with Codex CLI 0.162.1 and Pi 1.2.0: native marketplace/plugin
 and Pi installation into isolated temporary homes, Codex app-server skill discovery
 and Pi's installed resource loader discovered 11 portable skills and Pi loaded 25
 commands, including `/grill_me` compatibility and all 13 research selectors. That run
-predates UI Taste and Beautify GitHub README: the package now ships 13 skills and 27
-Pi commands, checked offline by `tests/portable_pi.test.mjs`; no live Codex or Pi
+predates UI Taste, Beautify GitHub README and the Git Pull Merge merge into Git Commit
+Push: the package now ships 12 skills and 26 Pi commands, checked offline by `tests/portable_pi.test.mjs`; no live Codex or Pi
 install has been rerun. Archive extraction tests check installed references, literal
 arguments and queued commands without checkout files. No credentials or configured live accounts are used. These are
 tested versions, not an established minimum-version guarantee.

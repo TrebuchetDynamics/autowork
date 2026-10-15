@@ -1,25 +1,14 @@
----
-name: git-pull-merge
-description: "Use when pulling or merging Git changes safely."
-version: 1.1.1
-license: MIT
-metadata:
-  hermes:
-    tags: [git, pull, merge, sync, worktree, fleet]
-    related_skills: [git-commit-push, systematic-debugging]
----
+# Pull and merge
 
-# Git Pull Merge
-
-The counterpart of `git-commit-push`: bring changes **in** without losing anyone's work. In a fleet
+The inbound mode of [Git Commit Push](../SKILL.md): bring changes **in** without losing anyone's work. In a fleet
 worktree, other agents may have uncommitted edits, so a pull is a coordination problem before it
 is a git problem.
 
 ## When this applies
 
 - The user asks to pull, sync, "update from origin/main", or merge a branch into the current one.
-- `/git-pull-merge` (CLI) or `/git_pull_merge` (Telegram) was invoked: that invocation **is** the
-  request. Text after the command names the source ("agent/example/t_1234", "origin/develop", "PR 52")
+- `/git-commit-push pull|sync|merge …` (CLI) or `/git_commit_push pull|sync|merge …` (Telegram)
+  was invoked: that invocation **is** the request. The rest of the text names the source ("agent/example/t_1234", "origin/develop", "PR 52")
   or narrows scope ("audit", "dry run", "ff-only").
 - Audit: the user asks what a pull would bring in. Fetch and report; change nothing.
 
@@ -27,7 +16,7 @@ is a git problem.
 
 | Request | Source | Integration |
 |---|---|---|
-| bare `/git-pull-merge`, "pull", "sync" | the branch's upstream (`@{u}`) | fast-forward, else merge |
+| `/git-commit-push pull`, "pull", "sync" | the branch's upstream (`@{u}`) | fast-forward, else merge |
 | "merge <branch>" / an agent card branch | that branch (fetch it first if remote) | merge commit |
 | "merge PR <n>" | `gh pr checkout`-free: `git fetch origin pull/<n>/head:pr-<n>` | merge commit |
 | audit / dry run | as above | none (report only) |
@@ -41,7 +30,7 @@ Git rejects it, and object alternates can couple a delivery candidate to mutable
 local storage. Prepare an independent full-history origin clone instead:
 
 ```sh
-python3 <git-pull-merge>/scripts/isolated-origin-clone.py ORIGIN NEW_PRIVATE_PATH \
+python3 <git-commit-push>/scripts/isolated-origin-clone.py ORIGIN NEW_PRIVATE_PATH \
   --expected-main EXACT_OBSERVED_ORIGIN_MAIN_SHA
 ```
 
@@ -73,10 +62,10 @@ leaves its partial private destination retained, never deletes owner files.
    - List the files the source changes: `git diff --name-only HEAD...<source>`.
    - Intersect them with the dirty set from `git status --porcelain`. No overlap → git can update
      safely around the dirty files; go to step 3.
-   - **Overlap with your own uncommitted work:** commit it first (`git-commit-push` rules, or the
+   - **Overlap with your own uncommitted work:** commit it first (the [commit rules](../SKILL.md), or the
      card's `agent_commit.sh` branch), then integrate. When authorized reconciliations are
      already verified on upstream, prefer the rehearsed
-     [published-reconciliation fast-forward](../git-commit-push/references/shared-worktree-safety.md#fast-forward-already-published-reconciliations);
+     [published-reconciliation fast-forward](shared-worktree-safety.md#fast-forward-already-published-reconciliations);
      it never permits staging unrelated work.
      For divergent history with owned overlapping edits, rehearse the owned checkpoint
      and upstream merge in a private candidate, resolve conflicts there, and qualify
@@ -90,7 +79,7 @@ leaves its partial private destination retained, never deletes owner files.
      recipe for an unpublished candidate, because its remote-readback precondition
      has not been satisfied.
    - **Overlap with someone else's live work** (recent mtime, a running card on that area, see
-     `git-commit-push` and its shared-worktree safety reference): do not stash, revert or overwrite it. Integrate into an
+     [the commit rules](../SKILL.md) and [shared-worktree safety](shared-worktree-safety.md)): do not stash, revert or overwrite it. Integrate into an
      isolated worktree instead (`git worktree add <scratch> <target-branch>`, merge there, verify),
      or report exactly which files are blocked and by whom. For multi-branch integration to `main`,
      use one clean `main` worktree and merge each approved branch there; keep the original shared
@@ -119,7 +108,7 @@ leaves its partial private destination retained, never deletes owner files.
        untracked path before and after (raw byte hashes; symlink targets, not referents) and require zero changed, and confirm the
        dirty list shrank only by paths that became identical to the new HEAD. Re-gate the areas the
        incoming commits touched, and never run it while a writer is staged or mid-write.
-       `scripts/behind-only-realign.sh` implements this whole procedure with the guards and the
+       `<git-commit-push>/scripts/behind-only-realign.sh` implements this whole procedure with the guards and the
        before/after hash proof built in; run it instead of hand-typing the sequence, and keep its
        report tail non-fatal (a comparison command exits non-zero by design and must not abort the
        script before it prints the proof). If you modify it, run `tests/test_behind_only_realign.py`
@@ -166,7 +155,7 @@ leaves its partial private destination retained, never deletes owner files.
    - Report the before and after HEAD, what came in (commit count and highlights), conflicts and how
      they were resolved, and the checks run.
    - Push only if the user asked ("pull and push", "merge and push", "merge into origin/main") or
-     the accepted checkpoint said so; use `git-commit-push` rules (no force; PR when the branch is
+     the accepted checkpoint said so; use [the push rules](../SKILL.md) (no force; PR when the branch is
      protected). A remote-main merge request is complete only on verified remote inclusion.
    - A dirty or staged shared checkout constrains local synchronization, not authorized remote
      delivery: land an isolated candidate without touching shared files/index, read back the PR's
@@ -207,8 +196,8 @@ Blocked/Need: <files held for live work | one owner question>  # omit when empty
 
 Audit mode starts with `AUDIT — <n> incoming commits, overlapping dirty files: <list|none>` and changes nothing.
 
-Follow [the shared skill contract](../shared/COMMON-CONTRACT.md) for repo hygiene, verification
+Follow [the shared skill contract](../../shared/COMMON-CONTRACT.md) for repo hygiene, verification
 evidence, and safety defaults.
 
-For a new isolated coding checkout use [WORKTREE-ISOLATION.md](../shared/WORKTREE-ISOLATION.md);
+For a new isolated coding checkout use [WORKTREE-ISOLATION.md](../../shared/WORKTREE-ISOLATION.md);
 setup is not merge, cleanup or delivery authorization.

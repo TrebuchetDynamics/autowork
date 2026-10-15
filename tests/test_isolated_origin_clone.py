@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPER = ROOT / 'skills/git-pull-merge/scripts/isolated-origin-clone.py'
+HELPER = ROOT / 'skills/git-commit-push/scripts/isolated-origin-clone.py'
 
 class IsolatedOriginCloneTests(unittest.TestCase):
     def setUp(self):

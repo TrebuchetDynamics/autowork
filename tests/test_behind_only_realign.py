@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'skills/git-pull-merge/scripts/behind-only-realign.sh'
+SCRIPT = Path(__file__).resolve().parents[1] / 'skills/git-commit-push/scripts/behind-only-realign.sh'
 
 
 class BehindOnlyRealignTests(unittest.TestCase):

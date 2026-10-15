@@ -23,7 +23,7 @@ class PortablePackageTests(unittest.TestCase):
         names = {p.parent.name for p in folder.glob('*/SKILL.md')}
         self.assertEqual(names, {'plan-with-me', 'plan-for-me', 'docs-sync', 'autowork',
             'cron-autowork', 'autoresearch', 'engineering', 'impeccable', 'lgtm',
-            'git-commit-push', 'git-pull-merge', 'ui-taste', 'beautify-github-readme'})
+            'git-commit-push', 'ui-taste', 'beautify-github-readme'})
         for source in folder.rglob('*.md'):
             text = source.read_text()
             if source.name == 'SKILL.md':

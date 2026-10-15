@@ -116,6 +116,14 @@ claim of a tagged release, completed installation or live workflow qualification
 - Adaptive document-role scaffold for Docs Sync (`a16b754`).
 - Verification of explicitly declared writer-registration prerequisites (`d422ea4`).
 
+### Changed
+
+- `git-pull-merge` is merged into `git-commit-push` (2.0.0): `/git-commit-push pull`,
+  `sync` or `merge <branch|PR n>` runs the former pull and merge procedure, now a reference
+  inside the skill, with its two helper scripts. The `/git-pull-merge` command is retired
+  in Hermes, Codex, Pi and Claude Code (12 portable skills, 26 Pi commands), removed from
+  Telegram menus, and `/toolset update` deletes unedited installed copies from profiles.
+
 ### Fixed
 
 - `/toolset update` no longer looks like it skipped the gateway restart. A graceful

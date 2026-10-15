@@ -22,7 +22,7 @@ class MenuPolicyTests(unittest.TestCase):
         self.assertLessEqual(set(WORKFLOWS) - skills, {'plan_with_me','plan_for_me','docs_sync'})
     def test_stale_compatibility_entries_are_removed_and_user_choices_kept(self):
         old=['autoresearch','autoresearch_plan','autoresearch_debug','autoresearch-fix','status','custom',
-             'autowork','plan_with_me','grill_me','repo_interview','repo_docs','autogoal']
+             'autowork','plan_with_me','grill_me','repo_interview','repo_docs','autogoal','git_pull_merge']
         raw={'platforms':{'telegram':{'extra':{'command_menu':{'priority':old,
              'max_commands':40,'priority_mode':'append'}}}}}
         menu=priority(raw)

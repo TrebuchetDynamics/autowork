@@ -195,7 +195,7 @@ class PluginTests(unittest.TestCase):
     def test_repository_skills_are_all_discovered(self):
         self.plugin.SKILLS_DIR = ROOT / "skills"
         self.plugin.register(self.ctx)
-        self.assertTrue({"autowork", "git-commit-push", "git-pull-merge", "grill-me", "lgtm", "docs-sync", "plan-with-me"}
+        self.assertTrue({"autowork", "git-commit-push", "grill-me", "lgtm", "docs-sync", "plan-with-me"}
                         <= set(self.ctx.commands))
         self.assertNotIn('grill-me', self.ctx.skills)
         self.assertEqual(self.ctx.skills['plan-with-me'], ROOT / 'skills/plan-with-me/SKILL.md')

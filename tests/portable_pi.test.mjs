@@ -7,7 +7,7 @@ test('Pi registers workflows and all 13 research commands; routes literal argume
   const messages = [];
   register({registerCommand: (name, handler) => commands.set(name, handler),
     sendUserMessage: (...args) => messages.push(args)});
-  assert.equal(commands.size, 27);
+  assert.equal(commands.size, 26);
   assert.equal(commands.has('autogoal'), false);
   assert.equal(commands.has('cron_autowork'), true);
   const raw = 'read-only\n$(literal); --no-push';
@@ -88,13 +88,13 @@ test('installed archive resolves portable references and commands without checko
       }
     };
     await walk(join(installed, 'adapters/skills'));
-    assert.equal(skillCount, 13);
+    assert.equal(skillCount, 12);
     const commands = new Map();
     const messages = [];
     const {default: installedRegister} = await import(pathToFileURL(join(installed, 'adapters/pi.mjs')));
     installedRegister({registerCommand: (name, handler) => commands.set(name, handler),
       sendUserMessage: (...args) => messages.push(args)});
-    assert.equal(commands.size, 27);
+    assert.equal(commands.size, 26);
     for (const [name, handler] of commands) {
       await handler.handler('read-only; $(literal)\nno push', {isIdle: () => false});
       assert.equal(messages.at(-1)[0].endsWith('read-only; $(literal)\nno push'), true, name);

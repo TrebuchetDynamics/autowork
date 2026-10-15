@@ -89,7 +89,7 @@ review. See [contributing](docs/contributing.md#work-on-a-repository-task).
 | Schedule development | `/cron_autowork every 30 minutes for this repo; no push` | Creates or updates one Autowork job and verifies it; with a cadence, a paused job resumes. |
 | Continue approved work | `/lgtm` | Continues the agreed work without asking again, honoring limits such as "no push". |
 | Deliver | `/git-commit-push only src/cache` | Validates, commits and pushes; add `no push` for local commits. |
-| Integrate upstream | `/git-pull-merge` | Runs the repository's pull and merge workflow. |
+| Integrate upstream | `/git-commit-push pull` | Pulls or merges (`merge <branch>`) without rebasing or discarding local work. |
 | Set up a profile | `/profile-create` | Guides profile creation and shared-toolset setup. |
 | Update the bundle | `/toolset update` | Updates every profile; see [updating](#updating). |
 | Inspect | `/toolset list` | Lists registered commands and their owners. |
