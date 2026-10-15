@@ -6,3 +6,5 @@ __pycache__/
 # Third-party skills installed by extras/vendor/sync_vendor.py (pinned in extras/vendor/manifest.json)
 /vendor/
 .pytest_cache/
+# Claude Code session state and agent worktrees (local only)
+/.claude/
