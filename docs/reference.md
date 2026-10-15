@@ -41,7 +41,8 @@ Source: [`bundle.py`](../bundle.py) `handle_chat`, `list_commands`, `start_updat
 | `/toolset list TEXT` or `/toolset TEXT` | Commands whose name or owner contains `TEXT`, for example `/toolset omh`. |
 | `/toolset update` | Starts the all-profile updater in the background and returns immediately. |
 | `/toolset update --check` | Starts an upstream check only. |
-| `/toolset update status` | Shows the durable result from `maintenance/toolset-update/latest.json` at the Hermes root. |
+| `/toolset update status` | Summarizes the durable result from `maintenance/toolset-update/latest.json` at the Hermes root in a few lines. |
+| `/toolset update status full` | Shows that whole receipt as JSON. |
 
 ## Source-checkout scripts
 

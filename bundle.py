@@ -196,7 +196,50 @@ def gateway_drain(folder):
     return module.gateway_drain(folder)
 
 
-def update_status():
+def summarize_update(result):
+    """A few chat lines for an update receipt; the full JSON stays one argument away."""
+    status = result.get('status', 'unknown')
+    profiles = result.get('profiles') or []
+    sources = (result.get('sources') or {}).values()
+    after = sorted({s.get('after', '')[:7] for s in sources})
+    before = sorted({s.get('before', '')[:7] for s in sources} - set(after))
+    lines = [f'Toolset update: {status}, {len(profiles)} profile(s)'
+             + (f"; at {', '.join(after)}" if after else '')
+             + (f" (from {', '.join(before)})" if before else '')]
+    for key in ('error', 'action', 'request_note'):
+        if result.get(key):
+            lines.append(f'{key.replace("_", " ").capitalize()}: {result[key]}')
+    if 'skill_files' in result:
+        edits = {}
+        for edit in result.get('local_edits') or []:
+            edits[edit.get('action', 'edited')] = edits.get(edit.get('action', 'edited'), 0) + 1
+        lines.append(f"Skill files written: {result['skill_files']}; local edits: "
+                     + (', '.join(f'{n} {a}' for a, n in sorted(edits.items())) or 'none'))
+    if result.get('settings_healed'):
+        lines.append('Settings healed: ' + ', '.join(result['settings_healed']))
+    menus = result.get('chat_menus_healed') or []
+    if menus:
+        by = {}
+        for row in menus:
+            by.setdefault(row.get('status', '?'), []).append(row.get('profile', '?'))
+        lines.append('Chat menus: ' + '; '.join(f'{s} {", ".join(p)}' for s, p in sorted(by.items())))
+    if result.get('gateway_restart'):
+        line = f"Gateway restart: {result['gateway_restart']}"
+        drain = result.get('gateway_restart_progress')
+        if isinstance(drain, dict):
+            waiting = drain.get('waiting_on') or []
+            line += f", draining ({drain.get('seconds_left', '?')}s left, {len(waiting)} turn(s))"
+            lines += [line] + [f'  waiting on {w}' for w in waiting[:3]]
+            line = None
+        elif drain:
+            line += ', done'
+        if line:
+            lines.append(line)
+    lines.append('Full receipt: /toolset update status full')
+    return lines
+
+
+def update_status(full=False):
     path = update_home() / 'maintenance/toolset-update/latest.json'
     if not path.is_file():
         return 'No update receipt yet. Run /toolset update; if just started, check status again shortly.'
@@ -218,8 +261,11 @@ def update_status():
             result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
         # Gateway attachment extraction removes bare existing file paths from prose.
         # Keep the receipt literal; escape embedded fences without changing JSON values.
-        payload = json.dumps(result, indent=2).replace('`', r'\u0060')
-        return f'```json\n{payload}\n```'
+        if full:
+            payload = json.dumps(result, indent=2).replace('`', r'\u0060')
+            return f'```json\n{payload}\n```'
+        summary = '\n'.join(summarize_update(result)).replace('`', "'")
+        return f'```text\n{summary}\n```'
     except (OSError, ValueError) as error:
         return f'Cannot read update receipt: {type(error).__name__}; inspect maintenance/toolset-update/run.log.'
 
@@ -260,7 +306,9 @@ def handle_chat(raw_args=''):
             return start_update(check=True)
         if words[1:] == ['status']:
             return update_status()
-        return 'Usage: /toolset update [--check|status] — updates all existing profiles; no force option.'
+        if words[1:] == ['status', 'full']:
+            return update_status(full=True)
+        return 'Usage: /toolset update [--check|status [full]] — updates all existing profiles; no force option.'
     return list_commands(raw_args)
 
 

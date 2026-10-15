@@ -28,7 +28,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/ui-taste` | `/ui_taste` | Uizze's UI Taste playbooks for building, polishing and reviewing web and iOS interfaces |
 | `/beautify-github-readme` | `/beautify_github_readme` | Redesign or audit a GitHub README with project-native SVG assets |
 | `/engineering` | `/engineering` | Select one engineering protocol for a concrete method gap |
-| `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps; `/toolset update [--check\|status]` updates all profiles |
+| `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps; `/toolset update [--check\|status [full]]` updates all profiles |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
 decisions and actionable tasks through Docs Sync, following the shared

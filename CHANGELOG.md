@@ -130,6 +130,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `/toolset update status` replies with a short summary (outcome, revisions, files
+  written, local edits, healed settings and menus, gateway restart) instead of the whole
+  JSON receipt, which Telegram had to split across several messages.
+  `/toolset update status full` still returns the receipt.
 - `/toolset update` now removes skills retired from the bundle (such as
   `git-pull-merge`) from profiles whose plugin is the shared checkout. It used to compare
   only the checkout's before and after revisions, which match when the checkout had

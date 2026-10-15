@@ -78,7 +78,11 @@ class BundleTests(unittest.TestCase):
         saved = json.dumps(receipt)
         (folder / 'latest.json').write_text(saved)
         with patch.object(self.bundle, 'update_home', return_value=home):
-            rendered = self.bundle.handle_chat('update status')
+            rendered = self.bundle.handle_chat('update status full')
+            summary = self.bundle.handle_chat('update status')
+        self.assertTrue(summary.startswith('```text\n') and summary.endswith('\n```'), summary)
+        self.assertNotIn('`', summary[len('```text\n'):-len('\n```')])
+        self.assertIn(str(self.path), summary)  # inside the fence, never a bare attachment path
         self.assertTrue(rendered.startswith('```json\n'), rendered)
         self.assertTrue(rendered.endswith('\n```'), rendered)
         payload = rendered[len('```json\n'):-len('\n```')]
@@ -108,8 +112,12 @@ class BundleTests(unittest.TestCase):
         drain = {'restart_pid': 9, 'seconds_left': 1525, 'waiting_on': ['chat turn agent:demo running 8m32s']}
         with patch.object(self.bundle, 'update_home', return_value=home):
             with patch.object(self.bundle, 'gateway_drain', return_value=drain):
-                self.assertEqual(json.loads(self.bundle.update_status().strip('`json\n'))['gateway_restart_progress'], drain)
-            self.assertIn('completed or not tracked', self.bundle.update_status())
+                self.assertEqual(json.loads(self.bundle.update_status(full=True).strip('`json\n'))['gateway_restart_progress'], drain)
+                summary = self.bundle.update_status()
+                self.assertIn('draining (1525s left, 1 turn(s))', summary)
+                self.assertIn('waiting on chat turn agent:demo running 8m32s', summary)
+            self.assertIn('completed or not tracked', self.bundle.update_status(full=True))
+            self.assertIn('Gateway restart: requested, done', self.bundle.update_status())
 
     def _chat_updater(self, body):
         """Point start_update at a disposable updater script; never the real one."""
@@ -142,7 +150,7 @@ class BundleTests(unittest.TestCase):
             self._wait_exited(json.loads((folder / 'request.json').read_text())['pid'])
             result = self.bundle.update_status()
         self.assertNotIn('starting', result)
-        self.assertIn('"updated"', result)
+        self.assertIn('Toolset update: updated', result)
         self.assertIn('did not produce', result)
 
     def test_killed_chat_update_child_reports_stopped_not_running(self):
@@ -163,6 +171,27 @@ class BundleTests(unittest.TestCase):
             result = self.bundle.update_status()
         self.assertIn('Update process stopped without a final receipt', result)
 
+    def test_status_summary_fits_one_chat_message(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        names = [f'profile{i}' for i in range(10)]
+        receipt = {'status': 'updated', 'pid': 1, 'started_ns': 1, 'profiles': names,
+                   'sources': {f'/h/{n}/plugins/hermes-toolset': {'before': '10ef9be' + 'a' * 33, 'after': '2187e98' + 'b' * 33} for n in names},
+                   'skill_files': 500, 'drift': [], 'local_edits': [{'action': 'kept_retired'}] * 3,
+                   'backup': '/h/maintenance/toolset-update/x', 'settings_healed': [],
+                   'activation': [{'profile': n, 'status': 'ready', 'enable_exit': 0, 'finalize_exit': 0} for n in names],
+                   'chat_menus_healed': [{'profile': 'profile1', 'status': 'unreachable', 'failed': ['...5095'], 'error': 'HTTPError'},
+                                         {'profile': 'profile4', 'status': 'cleared', 'chats': ['...9244']}],
+                   'gateway_restart': 'requested', 'note': 'n' * 300}
+        (folder / 'latest.json').write_text(json.dumps(receipt))
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+                patch.object(self.bundle, 'gateway_drain', return_value=None):
+            summary = self.bundle.handle_chat('update status')
+        self.assertLess(len(summary), 600)
+        for part in ('Toolset update: updated, 10 profile(s); at 2187e98 (from 10ef9be)', 'Skill files written: 500; local edits: 3 kept_retired',
+                     'Chat menus: cleared profile4; unreachable profile1', 'Gateway restart: requested, done',
+                     'Full receipt: /toolset update status full'):
+            self.assertIn(part, summary)
+
     def test_running_receipt_owned_by_other_user_is_still_running(self):
         home = Path(self.tmp.name)
         folder = home / 'maintenance/toolset-update'
@@ -172,7 +201,7 @@ class BundleTests(unittest.TestCase):
                 patch.object(self.bundle.os, 'kill', side_effect=PermissionError):
             result = self.bundle.update_status()
         self.assertNotIn('Cannot read update receipt', result)
-        self.assertIn('"running"', result)
+        self.assertIn('Toolset update: running', result)
 
     def test_chat_update_accepts_symlinked_hermes_home(self):
         real = Path(self.tmp.name) / 'real-home'

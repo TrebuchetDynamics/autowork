@@ -195,7 +195,9 @@ provisioning; verify `/autowork` is present and the retired command is absent.
 
 Run `/toolset update` in an authorized Hermes CLI or gateway chat. It starts a
 background updater; use `/toolset update status` for its durable result, not the
-initial “requested” message as proof of completion. `/toolset update --check`
+initial “requested” message as proof of completion. The status is a short summary that
+fits one chat message (outcome, revisions, files written, local edits, healed settings
+and menus, gateway restart); `/toolset update status full` shows the whole receipt as JSON. `/toolset update --check`
 fetches upstream and previews changes without advancing checkouts or writing
 profile skills/configuration. It still writes Git fetch metadata and its receipt.
 
@@ -212,8 +214,8 @@ is marked `unknown` and not retried; its next tick runs normally). Otherwise it
 reports `not_running`, or `not_needed` for a no-op or incomplete activation. While an
 earlier requested restart is still draining, a later update reports `pending` instead
 of starting another one; the draining restart loads the newer release too.
-`/toolset update status` then adds `gateway_restart_progress` with the seconds left
-and the turns it is waiting on; finishing or stopping those turns releases it sooner. Drift,
+`/toolset update status` then shows the seconds left and the turns it is waiting on
+(`gateway_restart_progress` in the full receipt); finishing or stopping those turns releases it sooner. Drift,
 error and check results carry no `gateway_restart` field. Only the gateway recorded
 in the root's `gateway.pid` is detected and restarted; a separately running
 named-profile gateway keeps its old menu until you restart it.
