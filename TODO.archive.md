@@ -919,3 +919,44 @@ Source section: Next
 - Decision: Use the existing shape validator, not new path-format policy. This is a routine agent decision under authorized repository maintenance, not historical user approval. Current reproduction: a nonempty object source returns no shape/semantic errors and an eligible task despite the source-heading contract.
 - Delivery: Candidate `fffe414` (branch `autowork/TOOLSET-024`) was integrated as `3389de1` with an identical patch (same `git patch-id`). Its independent review approved the exact five-file slice with no findings (coordinator receipts `occurrence-977177-closeout.json` and `occurrence-1285855-closeout.json`; review transcript `deleg_38441a22`).
 - Closure evidence (2026-10-15, on `main` at 5db9ccf): `uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p` for test_goals.py, test_milestone_focus.py and test_goal_concurrency.py all passed. A CLI probe with object, list, Boolean and numeric sources made `validate`, `next --json` and `task T1 in_progress` exit 1 with a diagnostic naming `source`, never printed the supplied sentinel value or a traceback, and left goals.json and TODO.md byte-identical; a string source still validated and selected T1. The full offline gate on the integrated code passed in the coordinator receipt (403/571/201/8). Offline only; no live qualification is implied.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-040 — Report active sessions in other checkouts separately from idle sessions
+
+- [x] TOOLSET-040 — Report active sessions in other checkouts separately from idle sessions
+- Status: done
+- Goal: STARTUP — Start useful implementation sooner with less preparation.
+- Sources: [writer classification](skills/autowork/scripts/task_execution.py), [ownership rules](skills/autowork/SKILL.md#ownership-limits-and-continuation), [task execution tests](skills/autowork/scripts/test_task_execution.py).
+- Scope: Found while running Autowork from an isolated worktree: `execute()` and `--writers` listed every non-blocking session as `idle_sessions`, including an active session in another checkout (evidence "running commands"), which an integrator could read as safe to merge there. Report idle sessions and active or unknown-activity sessions elsewhere under separate keys, and update the skill wording that names them.
+- Acceptance: A session idle past the threshold appears only under `idle_sessions`; an active session that touches only another checkout appears only under `other_checkout_sessions`; blocking behavior is unchanged; `--writers` from the other checkout still reports that session as blocking.
+- Checks: `python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py`; `python3 scripts/check.py`; `git diff --check`; independent review.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No change to which sessions block, no process signalling, no push.
+- Current evidence: Commit e881deb adds `nonblocking_sessions()` and the regression in `test_active_session_blocks_only_its_checkout_and_names_an_isolated_branch` (it fails before the split: the active session was listed under `idle_sessions`). 42 task-execution tests and the full offline check passed; independent review APPROVE.
+- Closure: Offline; no live fleet run.
+
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-041 — Treat a missing Autowork progress journal as a normal first run
+
+- [x] TOOLSET-041 — Treat a missing Autowork progress journal as a normal first run
+- Status: done
+- Goal: STARTUP — Start useful implementation sooner with less preparation.
+- Sources: [journal guidance](skills/autowork/references/blockers-and-history.md), [state and recovery](skills/autowork/references/state-and-recovery.md).
+- Scope: Gateway logs on 2026-10-14 show 44 failed reads of `<profile>/autowork/state.json` across bravo, toolset and landing, where no run had written the journal; it exists in only 3 of 9 profiles. Say the journal may be absent, check for it instead of reading blindly, and create it when the first run records progress.
+- Acceptance: The guidance tells agents to test for the file before reading, treats absence as a first run (not lost continuity or an error), and requires the first recorded run to create it. No other journal semantics change.
+- Checks: Read back both references; `python3 skills/docs-sync/scripts/docs.py check .`; `python3 scripts/check.py`; `git diff --check`; independent review.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No new state file, schema or helper; no profile state edits.
+- Current evidence: Commit 0a4d45e edits both references; the pinned phrase in `test_picker_policy` still holds. Full offline check passed; independent review APPROVE.
+- Closure: Guidance only; agent behavior in live runs not yet observed.
