@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "profile": "cli-plugin",
+  "roles": {
+    "readme": {
+      "status": "maintained",
+      "path": "README.md",
+      "covers": [
+        "install.sh",
+        "bundle.py",
+        "plugins/defaults.json"
+      ]
+    },
+    "reference": {
+      "status": "created",
+      "path": "docs/reference.md",
+      "verified_at": "0cc7f571a2aa",
+      "covers": [
+        "bundle.py",
+        "setup_bundle.py",
+        "update_bundle.py",
+        "install_skills.py",
+        "install-plugins.sh",
+        "install-graphify.py",
+        "install-omh.py",
+        "runtime_defaults.py",
+        "plugins/defaults.json",
+        "telegram_menu_policy.py",
+        "scripts/check.py",
+        "skills/docs-sync/scripts/goals.py",
+        "skills/docs-sync/scripts/docs.py"
+      ]
+    },
+    "install-upgrade": {
+      "status": "maintained",
+      "path": "docs/installation.md",
+      "covers": [
+        "setup_bundle.py",
+        "setup_preflight.py",
+        "setup_runtime.py",
+        "update_bundle.py",
+        "update_bundle_native.py",
+        "install-plugins.sh"
+      ]
+    },
+    "troubleshooting": {
+      "status": "created",
+      "path": "docs/troubleshooting.md",
+      "verified_at": "0cc7f571a2aa",
+      "covers": [
+        "bundle.py",
+        "setup_runtime.py",
+        "update_bundle.py",
+        "runtime_defaults.py",
+        "telegram_menu_policy.py"
+      ]
+    },
+    "architecture": {
+      "status": "maintained",
+      "path": "docs/project.md#current-components",
+      "covers": [
+        "__init__.py",
+        "bundle.py",
+        "workflow_commands.py",
+        "autoresearch_commands.py",
+        "skills"
+      ]
+    },
+    "prd": {
+      "status": "maintained",
+      "path": "docs/project.md#accepted-requirements"
+    },
+    "test-plan": {
+      "status": "maintained",
+      "path": "docs/testing.md",
+      "covers": [
+        "scripts/check.py",
+        "tests"
+      ]
+    },
+    "changelog": {
+      "status": "maintained",
+      "path": "CHANGELOG.md"
+    },
+    "user-guide": {
+      "status": "maintained",
+      "path": "docs/onboarding.md"
+    },
+    "workflows": {
+      "status": "maintained",
+      "path": "docs/workflows.md",
+      "covers": [
+        "workflow_commands.py",
+        "autoresearch_commands.py",
+        "telegram_menu_policy.py"
+      ]
+    },
+    "removal": {
+      "status": "maintained",
+      "path": "docs/uninstall.md"
+    },
+    "cross-host": {
+      "status": "maintained",
+      "path": "docs/cross-host.md",
+      "covers": [
+        "adapters"
+      ]
+    },
+    "memory": {
+      "status": "maintained",
+      "path": "docs/memory.md",
+      "covers": [
+        "install-omh.py"
+      ]
+    },
+    "dependencies": {
+      "status": "maintained",
+      "path": "docs/dependencies.md",
+      "covers": [
+        "plugins/PLUGINS.md",
+        "requirements-test.txt",
+        "package.json"
+      ]
+    },
+    "contributing": {
+      "status": "maintained",
+      "path": "docs/contributing.md"
+    }
+  }
+}

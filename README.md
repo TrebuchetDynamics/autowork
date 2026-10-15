@@ -297,6 +297,7 @@ Hermes `/toolsets` reports enabled tool groups, a different inventory.
 
 - [Installation, profile scope and policy opt-out](docs/installation.md)
 - [Commands, Autoresearch and the engineering workflow](docs/workflows.md)
+- [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
 - [Memory capture, inspection and existing stores](docs/memory.md)
 - [Removal and recovery](docs/uninstall.md)
 - [Dependencies, reproducibility and licensing](docs/dependencies.md)

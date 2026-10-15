@@ -210,6 +210,18 @@
         "TOOLSET-032"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "POLICY-OPTOUT",
+      "priority": 90,
+      "source": "docs/installation.md#install",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-033"
+      ],
+      "title": "Honor the documented runtime-policy opt-out everywhere it is checked"
     }
   ],
   "priority_order": {
@@ -221,9 +233,7 @@
       "TOOLSET-019",
       "TOOLSET-011",
       "TOOLSET-013",
-      "TOOLSET-030",
-      "TOOLSET-031",
-      "TOOLSET-032"
+      "TOOLSET-033"
     ]
   },
   "tasks": [
@@ -280,6 +290,14 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "POLICY-OPTOUT",
+      "id": "TOOLSET-033",
+      "section": "Next",
+      "status": "open",
+      "title": "Read the runtime-policy opt-out from the plugin settings path in finalize verification"
     },
     {
       "depends_on": [],
