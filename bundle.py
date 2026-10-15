@@ -160,6 +160,33 @@ def update_home():
     return home.parent.parent if home.parent.name == 'profiles' else home
 
 
+def updater_alive(pid):
+    """Return whether an updater pid still runs, reaping our own exited child first."""
+    try:
+        pid = int(pid)
+    except (ValueError, TypeError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        # The gateway discards the Popen, so an exited chat child stays a zombie.
+        if os.waitpid(pid, os.WNOHANG)[0] == pid:
+            return False
+    except ChildProcessError:
+        pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        state = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+    except (OSError, IndexError):
+        return True
+    return state not in ('Z', 'X')
+
+
 def update_status():
     path = update_home() / 'maintenance/toolset-update/latest.json'
     if not path.is_file():
@@ -171,15 +198,11 @@ def update_status():
             requested = json.loads(request.read_text())
             requested_pid = requested.get('pid')
             if requested_pid != result.get('pid') and requested.get('started_ns', 0) > result.get('started_ns', 0):
-                try:
-                    os.kill(int(requested_pid), 0)
+                if updater_alive(requested_pid):
                     return 'Requested update is starting; use /toolset update status shortly.'
-                except (ProcessLookupError, ValueError, TypeError):
-                    result['request_note'] = 'The later chat request did not produce a receipt (another updater may have held the lock). Showing the actual latest updater result.'
+                result['request_note'] = 'The later chat request did not produce a receipt (another updater may have held the lock). Showing the actual latest updater result.'
         if result.get('status') == 'running':
-            try:
-                os.kill(int(result['pid']), 0)
-            except (ProcessLookupError, ValueError, KeyError):
+            if not updater_alive(result.get('pid')):
                 return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /toolset update.'
         # Gateway attachment extraction removes bare existing file paths from prose.
         # Keep the receipt literal; escape embedded fences without changing JSON values.
@@ -190,9 +213,10 @@ def update_status():
 
 
 def start_update(*, check=False):
-    home = update_home()
+    # A symlinked Hermes home is accepted, as by the terminal updater; state below it is not.
+    home = update_home().resolve()
     folder = home / 'maintenance/toolset-update'
-    if any(p.is_symlink() for p in (folder, folder.parent, home)):
+    if any(p.is_symlink() for p in (folder, folder.parent)):
         return 'Update refused: symlinked update state directory.'
     folder.mkdir(parents=True, exist_ok=True)
     log = folder / 'run.log'

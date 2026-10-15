@@ -1,8 +1,10 @@
 import argparse
 import json
+import os
 import importlib.util
 from pathlib import Path
 import tempfile
+import time
 import types
 import unittest
 from unittest.mock import patch
@@ -99,6 +101,94 @@ class BundleTests(unittest.TestCase):
             result=self.bundle.update_status()
             self.assertIn('updated',result)
             self.assertIn('did not produce',result)
+
+    def _chat_updater(self, body):
+        """Point start_update at a disposable updater script; never the real one."""
+        checkout = Path(self.tmp.name) / 'checkout'
+        checkout.mkdir(exist_ok=True)
+        (checkout / 'update_bundle.py').write_text(body)
+        self.bundle.ROOT = checkout
+
+    def _wait_exited(self, pid):
+        # The gateway never waits on the child, so an exited child stays a zombie.
+        stat = Path(f'/proc/{pid}/stat')
+        if not stat.parent.exists():
+            self.skipTest('needs /proc to observe an unreaped child')
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if stat.read_text().rsplit(')', 1)[1].split()[0] == 'Z':
+                return
+            time.sleep(0.05)
+        self.fail('chat-started updater did not exit')
+
+    def test_refused_chat_update_child_reports_latest_receipt_not_starting(self):
+        home = Path(self.tmp.name) / 'home'
+        folder = home / 'maintenance/toolset-update'
+        folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 1, 'started_ns': 1, 'status': 'updated'}))
+        # Like a lock-refused updater: exits without writing a receipt.
+        self._chat_updater('raise SystemExit(1)\n')
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            self.assertIn('requested', self.bundle.start_update())
+            self._wait_exited(json.loads((folder / 'request.json').read_text())['pid'])
+            result = self.bundle.update_status()
+        self.assertNotIn('starting', result)
+        self.assertIn('"updated"', result)
+        self.assertIn('did not produce', result)
+
+    def test_killed_chat_update_child_reports_stopped_not_running(self):
+        home = Path(self.tmp.name) / 'home'
+        folder = home / 'maintenance/toolset-update'
+        self._chat_updater(
+            'import json, os, signal, sys, time\n'
+            'from pathlib import Path\n'
+            'folder = Path(sys.argv[sys.argv.index("--hermes-home") + 1]) / "maintenance/toolset-update"\n'
+            'receipt = {"pid": os.getpid(), "started_ns": time.time_ns(), "status": "running"}\n'
+            '(folder / "latest.json").write_text(json.dumps(receipt))\n'
+            'os.kill(os.getpid(), signal.SIGKILL)\n')
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            self.assertIn('requested', self.bundle.start_update())
+            pid = json.loads((folder / 'request.json').read_text())['pid']
+            self._wait_exited(pid)
+            self.assertEqual(json.loads((folder / 'latest.json').read_text())['pid'], pid)
+            result = self.bundle.update_status()
+        self.assertIn('Update process stopped without a final receipt', result)
+
+    def test_running_receipt_owned_by_other_user_is_still_running(self):
+        home = Path(self.tmp.name)
+        folder = home / 'maintenance/toolset-update'
+        folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 4242, 'started_ns': 1, 'status': 'running'}))
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+                patch.object(self.bundle.os, 'kill', side_effect=PermissionError):
+            result = self.bundle.update_status()
+        self.assertNotIn('Cannot read update receipt', result)
+        self.assertIn('"running"', result)
+
+    def test_chat_update_accepts_symlinked_hermes_home(self):
+        real = Path(self.tmp.name) / 'real-home'
+        real.mkdir()
+        link = Path(self.tmp.name) / 'dot-hermes'
+        link.symlink_to(real, target_is_directory=True)
+        self._chat_updater('raise SystemExit(0)\n')
+        with patch.object(self.bundle, 'update_home', return_value=link):
+            result = self.bundle.start_update()
+        self.assertNotIn('refused', result)
+        self.assertIn('requested', result)
+        request = json.loads((real / 'maintenance/toolset-update/request.json').read_text())
+        self._wait_exited(request['pid'])
+        os.waitpid(request['pid'], 0)
+
+    def test_chat_update_still_refuses_symlinked_state_directory(self):
+        home = Path(self.tmp.name) / 'home'
+        (home / 'maintenance').mkdir(parents=True)
+        elsewhere = Path(self.tmp.name) / 'elsewhere'
+        elsewhere.mkdir()
+        (home / 'maintenance/toolset-update').symlink_to(elsewhere, target_is_directory=True)
+        self._chat_updater('raise SystemExit(0)\n')
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            self.assertIn('symlinked update state directory', self.bundle.start_update())
+        self.assertFalse((elsewhere / 'request.json').exists())
 
     def test_imported_skills_get_commands_without_overwriting_native_handlers(self):
         native = self.commands['ponytail-review']['handler']
