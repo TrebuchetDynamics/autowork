@@ -65,7 +65,7 @@ relative to this repository.
 
 | Helper | Commands | Reference |
 | --- | --- | --- |
-| [`skills/docs-sync/scripts/goals.py`](../skills/docs-sync/scripts/goals.py) | `init`, `validate`, `fmt`, `render`, `revision`, `archive`, `next`, `reorder`, `bootstrap-order`, `focus`, `task`, `supersede`, `section`, `add-task`, `redact`, `evidence`, `backlog-check` | `goals.py --help`; [document scaffold](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization) |
+| [`skills/docs-sync/scripts/goals.py`](../skills/docs-sync/scripts/goals.py) | `init`, `validate`, `fmt`, `render`, `revision`, `archive`, `next`, `reorder`, `bootstrap-order`, `focus`, `task`, `supersede`, `section`, `new-id`, `add-task`, `redact`, `evidence`, `backlog-check` | `goals.py --help`; [document scaffold](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization) |
 | [`skills/docs-sync/scripts/docs.py`](../skills/docs-sync/scripts/docs.py) | `validate`, `check`, `stale`, `profiles` | `docs.py --help`; [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest) |
 
 ## Plugin settings

@@ -576,6 +576,29 @@ class GoalsTests(unittest.TestCase):
                 self.assertIn('invalid task ID', result.stderr)
                 self.assertEqual(path.read_bytes(), before)
 
+    def test_new_id_adds_a_two_hex_hash_after_the_next_number(self):
+        run('fmt', str(self.repo))
+        (self.repo / 'TODO.archive.md').write_text('- [x] TASK-041: archived history\n')
+        ids = {run('new-id', str(self.repo)).stdout.strip() for _ in range(8)}
+        for identifier in ids:
+            self.assertRegex(identifier, r'^TASK-042-[0-9a-f]{2}$')
+        self.assertGreater(len(ids), 1)
+        self.assertRegex(run('new-id', str(self.repo), '--prefix', 'OPS').stdout.strip(), r'^OPS-001-[0-9a-f]{2}$')
+        self.assertNotEqual(run('new-id', str(self.repo), '--prefix', 'bad-prefix').returncode, 0)
+
+    def test_new_id_counts_hashed_ids_and_works_without_a_ledger(self):
+        bare = self.repo / 'bare'; bare.mkdir()
+        (bare / 'TODO.md').write_text('- [ ] APP-007-3f: hashed\n- [ ] APP-002: legacy\n')
+        self.assertRegex(run('new-id', str(bare)).stdout.strip(), r'^APP-008-[0-9a-f]{2}$')
+
+    def test_add_task_without_id_allocates_a_hashed_id(self):
+        run('fmt', str(self.repo))
+        result = run('add-task', str(self.repo), '--goal', 'GOAL-4', '--title', 'Allocated')
+        self.assertRegex(result.stdout, r'^ok TASK-004-[0-9a-f]{2} -> GOAL-4 \(Next\)')
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+        mixed = run('add-task', str(self.repo), 'TASK-020', '--prefix', 'OPS', '--goal', 'GOAL-4', '--title', 'x')
+        self.assertNotEqual(mixed.returncode, 0)
+
     def test_validate_detects_missing_or_wrong_goal_task_membership(self):
         run('fmt', str(self.repo))
         original = self.data()
