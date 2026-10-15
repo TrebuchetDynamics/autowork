@@ -118,6 +118,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/toolset update` no longer restarts the gateway in the middle of a chat turn. It
+  restarts at once only when no chat or API turn is in flight; otherwise it reports
+  `gateway_restart: deferred` and a detached waiter restarts at the first quiet
+  moment within 6 hours, recording `requested`, `reloaded` or `deferred_expired`.
+  It never relies on Hermes' forced drain; cron runs, which Hermes keeps in
+  restart-safe workers, do not hold the restart.
+
 - `git-pull-merge` is merged into `git-commit-push` (2.0.0): `/git-commit-push pull`,
   `sync` or `merge <branch|PR n>` runs the former pull and merge procedure, now a reference
   inside the skill, with its two helper scripts. The `/git-pull-merge` command is retired

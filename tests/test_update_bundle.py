@@ -275,6 +275,7 @@ class UpdateTests(unittest.TestCase):
                  patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
                  patch.object(self.mod, 'finalize_profiles', side_effect=activate), \
                  patch.object(self.mod, 'gateway_running', return_value=running), \
+                 patch.object(self.mod, 'chat_turns', return_value=0), \
                  patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
                  contextlib.redirect_stdout(io.StringIO()):
                 stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autoresearch]}}}}\n')
@@ -311,6 +312,7 @@ class UpdateTests(unittest.TestCase):
              patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
              patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
+             patch.object(self.mod, 'chat_turns', return_value=0), \
              patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
              contextlib.redirect_stdout(io.StringIO()):
             for _ in range(2):
@@ -340,6 +342,7 @@ class UpdateTests(unittest.TestCase):
              patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
              patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
+             patch.object(self.mod, 'chat_turns', return_value=0), \
              patch.object(self.mod, 'request_gateway_restart', side_effect=spawn) as restart, \
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)

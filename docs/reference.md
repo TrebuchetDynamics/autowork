@@ -108,7 +108,7 @@ disable lists, except in opted-out profiles. Full setup additionally applies the
 | Path | Owner | Contents |
 | --- | --- | --- |
 | `ROOT/maintenance/toolset-update/latest.json` | Updater | Latest update receipt: status, revisions, profiles, local edits, backup location. |
-| `ROOT/maintenance/toolset-update/restart.json` | Updater | Process ID of the last gateway restart the updater requested, used to report its drain and avoid overlapping restarts. |
+| `ROOT/maintenance/toolset-update/restart.json` | Updater | The last gateway restart the updater requested (process ID), or its deferred-restart waiter (process ID, latest chat-turn count); used to report progress and avoid overlapping restarts. |
 | `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/toolset update` and of gateway restarts the updater requests; terminal `hermes toolset update` prints to the terminal. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |

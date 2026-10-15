@@ -414,14 +414,6 @@
   },
   "tasks": [
     {
-      "depends_on": [],
-      "goal": "GENTLE-UPDATE",
-      "id": "TOOLSET-075",
-      "section": "Now",
-      "status": "open",
-      "title": "Restart the gateway only in a quiet window"
-    },
-    {
       "depends_on": [
         "TOOLSET-075"
       ],
@@ -952,6 +944,14 @@
       "section": "Done",
       "status": "done",
       "title": "Advertise Engineering and the Git commands in the Telegram menu"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-075",
+      "section": "Done",
+      "status": "done",
+      "title": "Restart the gateway only in a quiet window"
     },
     {
       "depends_on": [],

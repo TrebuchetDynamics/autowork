@@ -947,6 +947,14 @@ linked profiles are reported and can opt into pinned clones so a restart never
 deploys unreleased checkout state; status records the restart outcome. No Hermes
 code or global timeout changes.
 
+Revised while implementing TOOLSET-075: "quiet" means no chat or API turn in flight,
+not "no cron run". A 45-minute sample on 2026-10-15 (10:25–11:10) found 14 cron runs
+overlapping with no gap of even 30 seconds, so a cron-free wait would never restart.
+Cron runs execute in Hermes' restart-safe external workers and keep Hermes'
+documented restart behavior; chat turns are what Hermes interrupts after its wait.
+The updater subtracts claimed cron runs from `active_agents`; unknown activity
+counts as busy.
+
 | Task | Outcome |
 | --- | --- |
 | TOOLSET-075 | Restart the gateway only in a quiet window; never trigger a forced drain |

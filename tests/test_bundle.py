@@ -119,6 +119,27 @@ class BundleTests(unittest.TestCase):
             self.assertIn('completed or not tracked', self.bundle.update_status(full=True))
             self.assertIn('Gateway restart: requested, done', self.bundle.update_status())
 
+    def test_status_shows_a_deferred_restart_and_a_stopped_waiter(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated', 'gateway_restart': 'deferred'}))
+        waiting = {'state': 'deferred', 'waiter_pid': 9, 'chat_turns': 2}
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            with patch.object(self.bundle, 'gateway_drain', return_value=waiting):
+                self.assertEqual(json.loads(self.bundle.update_status(full=True).strip('`json\n'))['gateway_restart_progress'], waiting)
+                summary = self.bundle.update_status()
+                self.assertIn('Gateway restart: deferred, waiting for no chat turn in flight (2 at last check)', summary)
+                self.assertNotIn('draining', summary)
+            with patch.object(self.bundle, 'gateway_drain', return_value=None):
+                summary = self.bundle.update_status()
+                self.assertIn('waiter is not running', summary)
+                self.assertNotIn(', done', summary)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated',
+            'gateway_restart': 'deferred_expired', 'gateway_restart_action': 'Run hermes gateway restart when convenient.'}))
+        with patch.object(self.bundle, 'update_home', return_value=home):
+            summary = self.bundle.update_status()
+        self.assertIn('Gateway restart: deferred_expired', summary)
+        self.assertIn('Gateway restart action: Run hermes gateway restart when convenient.', summary)
+
     def _chat_updater(self, body):
         """Point start_update at a disposable updater script; never the real one."""
         checkout = Path(self.tmp.name) / 'checkout'

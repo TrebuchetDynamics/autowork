@@ -206,7 +206,7 @@ def summarize_update(result):
     lines = [f'Toolset update: {status}, {len(profiles)} profile(s)'
              + (f"; at {', '.join(after)}" if after else '')
              + (f" (from {', '.join(before)})" if before else '')]
-    for key in ('error', 'action', 'request_note'):
+    for key in ('error', 'action', 'gateway_restart_action', 'request_note'):
         if result.get(key):
             lines.append(f'{key.replace("_", " ").capitalize()}: {result[key]}')
     if 'skill_files' in result:
@@ -226,7 +226,13 @@ def summarize_update(result):
     if result.get('gateway_restart'):
         line = f"Gateway restart: {result['gateway_restart']}"
         drain = result.get('gateway_restart_progress')
-        if isinstance(drain, dict):
+        if isinstance(drain, dict) and drain.get('state') == 'deferred':
+            turns = drain.get('chat_turns')
+            line += (', waiting for no chat turn in flight ('
+                     + (f'{turns} at last check' if turns is not None else 'activity not yet read') + ')')
+        elif result['gateway_restart'] == 'deferred' and drain:
+            line += f': {drain}'
+        elif isinstance(drain, dict):
             waiting = drain.get('waiting_on') or []
             line += f", draining ({drain.get('seconds_left', '?')}s left, {len(waiting)} turn(s))"
             lines += [line] + [f'  waiting on {w}' for w in waiting[:3]]
@@ -256,7 +262,13 @@ def update_status(full=False):
         if result.get('status') == 'running':
             if not updater_alive(result.get('pid')):
                 return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /toolset update.'
-        if result.get('gateway_restart') in ('requested', 'pending'):
+        if result.get('gateway_restart') == 'deferred':
+            # The waiter rewrites the receipt when it restarts, sees another restart or gives up.
+            result['gateway_restart_progress'] = gateway_drain(path.parent) or (
+                'the deferred-restart waiter is not running and recorded no outcome; check `hermes gateway status` '
+                'and maintenance/toolset-update/run.log, then run `hermes gateway restart` if the gateway still runs '
+                'the old release')
+        elif result.get('gateway_restart') in ('requested', 'pending'):
             drain = gateway_drain(path.parent)
             result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
         # Gateway attachment extraction removes bare existing file paths from prose.

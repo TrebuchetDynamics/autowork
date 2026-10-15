@@ -206,16 +206,28 @@ command menu, approval and gateway-injection settings, and finalize fails the
 profile if they did not land (profiles that opted out of runtime defaults are not
 checked). `settings_healed` lists profiles whose config changed.
 Because Telegram menus refresh only when the gateway reconnects, an update that
-changed code, skills or settings requests one graceful `hermes gateway restart`
-(`gateway_restart: requested`) when every profile activated cleanly and a gateway
-is running: in-flight turns drain first (up to Hermes' `restart_after_turn_timeout`,
-30 minutes by default) and cron schedules persist (a job mid-run during the restart
-is marked `unknown` and not retried; its next tick runs normally). Otherwise it
-reports `not_running`, or `not_needed` for a no-op or incomplete activation. While an
-earlier requested restart is still draining, a later update reports `pending` instead
-of starting another one; the draining restart loads the newer release too.
-`/toolset update status` then shows the seconds left and the turns it is waiting on
-(`gateway_restart_progress` in the full receipt); finishing or stopping those turns releases it sooner. Drift,
+changed code, skills or settings restarts the gateway once when every profile
+activated cleanly and a gateway is running, but only while no chat or API turn is in
+flight, so Hermes never has to force one. The updater reads Hermes' `active_agents`
+from the root's `gateway_state.json` and subtracts cron runs (jobs holding a
+`fire_claim`), which Hermes runs in restart-safe external workers; with several
+recurring jobs a moment free of cron runs rarely comes, so they do not hold the
+restart. When no chat turn is in flight it requests `hermes gateway restart` at once
+(`gateway_restart: requested`). Otherwise, or when the gateway's activity cannot be
+read (for example while it is starting or draining), it reports `deferred` with
+`gateway_restart_waiting_on` and starts a detached waiter that checks every 30
+seconds for up to 6 hours. The waiter restarts at the first quiet check and sets
+the receipt to `requested`; if another restart loaded the update first it records
+`reloaded`; if the gateway never went quiet it records `deferred_expired` with the
+next step and restarts nothing. Cron schedules persist (a job mid-run during a
+restart is marked `unknown` and not retried; its next tick runs normally).
+Otherwise it reports `not_running`, or `not_needed` for a no-op or incomplete
+activation. While a deferred or requested restart is outstanding, a later update
+reports `pending` instead of starting another one; that restart loads the newer
+release too. `/toolset update status` then shows the waiter's latest chat-turn
+count, or the seconds left and turns a requested restart is draining
+(`gateway_restart_progress` in the full receipt). To restart immediately anyway, run `hermes gateway restart` yourself;
+Hermes then waits for chat turns up to `agent.restart_after_turn_timeout`. Drift,
 error and check results carry no `gateway_restart` field. Only the gateway recorded
 in the root's `gateway.pid` is detected and restarted; a separately running
 named-profile gateway keeps its old menu until you restart it.

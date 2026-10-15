@@ -1398,3 +1398,20 @@ Source section: Now
 - Acceptance: A clean profile's priority ends with `engineering`, `git_commit_push` and `git_pull_merge`; Hermes' menu builder shows them.
 - Checks: `tests/test_telegram_menu_policy.py`, `python3 scripts/check.py`, `docs.py check`.
 - Dependencies: None.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-075 — Restart the gateway only in a quiet window
+
+- [x] TOOLSET-075 — Restart the gateway only in a quiet window
+- Status: done (2026-10-15). `update_bundle.py` restarts at once only when `chat_turns()` (Hermes' `active_agents` minus claimed cron runs) is 0; otherwise, or when activity is unknown, it reports `deferred` and starts a detached `--restart-when-quiet` waiter (30 s checks, 6 h window) that records `requested`, `reloaded` or `deferred_expired` without ever forcing; a live waiter makes later updates report `pending`; `/toolset update status` shows its progress. Quiet was redefined to exclude cron runs (recorded in the plan). Ten new regressions failed first, then passed; three immediate-restart tests now pin `chat_turns=0`; the waiter's command-line path was smoke-tested; `python3 scripts/check.py` 473/575 (1 skipped)/209/8; `docs.py check` ok. Offline only: no live deferred restart has been observed yet.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: When an applied update needs a restart, read `gateway_state.json` (`active_agents`, Hermes' busy contract) and each served profile's `cron/external-workers/`; call `hermes gateway restart` only when no agent turn or cron run is in flight. Otherwise record `gateway_restart: deferred` with what it waits on and keep checking in the background up to a bounded window; when the window ends, leave the restart deferred and report it instead of forcing. `/toolset update restart` (or the terminal form) remains the explicit way to restart now.
+- Acceptance: With a busy fixture the updater never invokes the restart and reports `deferred` with the blocking work; with an idle fixture it restarts once; a window that never goes quiet ends `deferred`, not forced; no Hermes config or timeout is changed.
+- Checks: Failing-first regressions in `tests/test_update_bundle.py` with fake gateway state and worker files, then `python3 scripts/check.py`.
+- Dependencies: None.
+- Exclusions: No Hermes code changes; no edits to `restart_after_turn_timeout` or `cron_drain_timeout`.

@@ -26,18 +26,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
-### TOOLSET-075 — Restart the gateway only in a quiet window
-
-- [ ] TOOLSET-075 — Restart the gateway only in a quiet window
-- Status: open.
-- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
-- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
-- Scope: When an applied update needs a restart, read `gateway_state.json` (`active_agents`, Hermes' busy contract) and each served profile's `cron/external-workers/`; call `hermes gateway restart` only when no agent turn or cron run is in flight. Otherwise record `gateway_restart: deferred` with what it waits on and keep checking in the background up to a bounded window; when the window ends, leave the restart deferred and report it instead of forcing. `/toolset update restart` (or the terminal form) remains the explicit way to restart now.
-- Acceptance: With a busy fixture the updater never invokes the restart and reports `deferred` with the blocking work; with an idle fixture it restarts once; a window that never goes quiet ends `deferred`, not forced; no Hermes config or timeout is changed.
-- Checks: Failing-first regressions in `tests/test_update_bundle.py` with fake gateway state and worker files, then `python3 scripts/check.py`.
-- Dependencies: None.
-- Exclusions: No Hermes code changes; no edits to `restart_after_turn_timeout` or `cron_drain_timeout`.
-
 ### TOOLSET-076 — Coalesce restarts across a burst of updates
 
 - [ ] TOOLSET-076 — Coalesce restarts across a burst of updates
@@ -237,7 +225,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
-| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-075, TOOLSET-076, TOOLSET-077, TOOLSET-078, TOOLSET-079 |
+| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-076, TOOLSET-077, TOOLSET-078, TOOLSET-079 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 
