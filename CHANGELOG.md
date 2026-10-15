@@ -63,6 +63,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Autowork accepted only `Checks:` as a task's verification field, while Docs Sync
+  and `goals.py next` also accepted `Verification:`. Every kilo task used
+  `Verification:`, so its scheduled job selected tasks and then refused them all.
+  `Verification:` is now an accepted spelling (one of the two per task).
+- `tests/integration_autoresearch.py` still expected `/autoresearch_*` aliases in
+  the Telegram menu after they were deliberately unadvertised.
 - Setup and update verification honor the documented runtime-policy opt-out
   (`plugins.entries.hermes-toolset.settings.apply_runtime_defaults: false`), so an
   opted-out profile with its own approval values is no longer reported as

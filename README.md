@@ -81,6 +81,8 @@ a task:
   Dependencies: None.
 ```
 
+`Verification:` is accepted in place of `Checks:`, but not both on one task.
+
 When goals.json is present it records that order. To reprioritize, move whole task
 blocks in TODO.md and run `goals.py reorder <repo>`; until then Autowork stops with
 `PRIORITY_DRIFT` instead of running the old order. A ledger without a recorded

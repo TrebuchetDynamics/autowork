@@ -83,6 +83,8 @@ def compose(args, task, consumer, state, save, selection=None):
         raise ValueError('missing or duplicate accepted task body')
     body = entries[0][0]
     fields = goals.task_fields(body)
+    if goals.task_checks(fields):
+        fields['Checks'] = goals.task_checks(fields)
     if not args.source_path:
         raise ValueError('missing explicit source-path closure; bind task code/docs/tests/dependency inputs')
     for name in ('Scope', 'Acceptance', 'Checks', 'Sources', 'Ownership'):

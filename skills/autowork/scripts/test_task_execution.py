@@ -258,6 +258,15 @@ class RecoveryTests(DirectExecutionTests):
         _, result = self.call('--apply', '--owner-pid', str(os.getpid()))
         self.assertEqual(result['outcome'], 'EXECUTE', result)
 
+    def test_verification_is_an_accepted_spelling_of_checks(self):
+        self.todo.write_text(self.todo.read_text().replace('  Checks: run fixture\n', '  Verification: run fixture\n', 1))
+        _, result = self.call()
+        self.assertEqual((result['outcome'], result['task']['id']), ('READY', 'T1'), result)
+        self.todo.write_text(self.todo.read_text().replace('  Verification: run fixture\n',
+                                                           '  Verification: run fixture\n  Checks: run fixture\n', 1))
+        _, result = self.call('--tasks', 'T1')
+        self.assertIn('T1: duplicate task contract fields', result['reason'])
+
     def test_failed_command_is_not_task_completion(self):
         before = self.todo.read_bytes()
         p, result = self.call('--apply', '--timeout', '2', '--run', sys.executable, '-c', 'raise SystemExit(7)')

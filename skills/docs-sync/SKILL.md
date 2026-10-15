@@ -329,7 +329,7 @@ Otherwise cite direct source evidence without inventing graph metadata. Derive b
 prerequisites from corroborated relationships, not graph centrality alone.
 
 Each body has ID/checkbox, Goal/payoff, Sources, bounded Scope/exclusions, observable
-`Acceptance:`, a separate unique `Checks:` field with exact verification commands,
+`Acceptance:`, a separate unique `Checks:` (or `Verification:`) field with exact verification commands,
 and explicit `Dependencies:` and `Ownership:` fields. Do not bury all commands in
 Acceptance: an execution consumer can require Checks even when ledger validation
 and backlog-check pass. Mark proposed fixtures and unexecuted commands as planned;

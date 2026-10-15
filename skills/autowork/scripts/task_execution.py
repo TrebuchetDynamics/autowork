@@ -359,7 +359,8 @@ def select(repo, requested, plan):
         body, mark, section = bodies[tid][0]
         fields = goals.task_fields(body)
         labels = re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):', goals.task_prose(body), re.M)
-        if any(labels.count(label) > 1 for label in ('Scope', 'Acceptance', 'Checks', 'Dependencies', 'Status', 'Sources')):
+        if (any(labels.count(label) > 1 for label in ('Scope', 'Acceptance', 'Checks', 'Verification', 'Dependencies', 'Status', 'Sources'))
+                or all(label in labels for label in goals.CHECK_LABELS)):
             reasons.append(f'{tid}: duplicate task contract fields')
             continue
         if mark.lower() == 'x' or section not in ('Now', 'Next'):
@@ -368,7 +369,7 @@ def select(repo, requested, plan):
         if ledger and tid not in ordered:
             reasons.append(f'{tid}: ledger dependency or disposition holds execution')
             continue
-        if any(not fields.get(key) for key in ('Scope', 'Acceptance', 'Checks')):
+        if not (fields.get('Scope') and fields.get('Acceptance') and goals.task_checks(fields)):
             reasons.append(f'{tid}: needs unique Scope, Acceptance and Checks fields')
             continue
         deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()

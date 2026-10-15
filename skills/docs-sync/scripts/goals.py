@@ -850,6 +850,15 @@ def task_prose(text):
                   lambda m: re.sub(r'[^\r\n]', ' ', m[0]), markdown_prose(text), flags=re.S)
 
 
+CHECK_LABELS = ('Checks', 'Verification')
+
+
+def task_checks(fields):
+    """A task's verification commands; `Verification:` is an accepted spelling of `Checks:`."""
+    present = [label for label in CHECK_LABELS if fields.get(label)]
+    return fields[present[0]] if len(present) == 1 else None
+
+
 def task_fields(body):
     """Read maintained fields, including continued Sources and header-inline Goal."""
     body = task_prose(body)
