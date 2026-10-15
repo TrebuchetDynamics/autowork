@@ -1240,3 +1240,20 @@ Source section: Next
 - Exclusions: No raster generation, GIF, attribution badge, showcase PR or push.
 - Current evidence: Commit ff7196f adds assets/readme/hero.svg (3.6 KB) and workflow.svg (4.1 KB), pure SVG with system fonts and no scripts, foreignObject or remote resources, previewed at 900 and 360 px and in a GitHub-rendered page screenshot. The vendored audit (2 local images) and docs.py check passed; every safety statement was kept.
 - Closure: Visual review by the coordinator; owner approval of the design not yet given.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-062 — Make the README audit catch dark-mode and reference-style images
+
+- [x] TOOLSET-062 — Make the README audit catch dark-mode and reference-style images
+- Status: done (2026-10-15). `skills/beautify-github-readme/scripts/audit_readme.py` reuses the upstream SVG checks and adds `srcset`, reference-style, root-relative and `<…>` handling; both adapters run it. Five new regressions failed first, then passed; `python3 scripts/check.py` 448/575 (1 skipped)/209/8, `node --test tests/portable_pi.test.mjs` 3 passed, `docs.py check` ok. Offline only.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15), [adapter](skills/beautify-github-readme/SKILL.md), [vendored audit](skills/beautify-github-readme/upstream/scripts/audit_readme.py).
+- Scope: Add a toolset `scripts/audit_readme.py` to the Beautify skill that reuses the upstream SVG checks and also audits `<source srcset>` candidates and reference-style images, resolves root-relative paths against the repository root and accepts `<…>` destinations; ignore images inside fenced code. Point the adapter (and its Codex/Pi wrapper) at it. Upstream bytes stay unchanged.
+- Acceptance: A missing dark-mode `srcset` image, a missing or undefined reference-style image and a missing root-relative image each fail; existing root-relative and angle-bracket images pass; this README still passes.
+- Checks: Failing-first fixture regressions in `tests/test_beautify_readme_vendor.py`, then `python3 scripts/check.py` and the Node package test.
+- Dependencies: None.
+- Exclusions: No edits to vendored upstream files; no network.

@@ -15,7 +15,8 @@ claim of a tagged release, completed installation or live workflow qualification
   Beautify GitHub README skill, vendored byte-exact at `d6562a5` with file hashes,
   behind a toolset adapter (scope first, README claims stay Docs Sync facts, pure SVG
   by default, no unsolicited attribution or showcase offer). Codex and Pi adapters
-  included.
+  included. Its README audit also catches missing dark-mode `<source srcset>` and
+  reference-style images and resolves root-relative paths as GitHub does.
 - A held or blocked Autowork task now goes to Plan For Me in the same run, which must
   fix it (reversible in-scope change, recorded as the planner's call) or skip it
   (split the blocked acceptance into its own open task and continue with the next

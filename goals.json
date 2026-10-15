@@ -362,14 +362,6 @@
     {
       "depends_on": [],
       "goal": "SKILL-REVIEW",
-      "id": "TOOLSET-062",
-      "section": "Now",
-      "status": "open",
-      "title": "Make the README audit catch dark-mode and reference-style images"
-    },
-    {
-      "depends_on": [],
-      "goal": "SKILL-REVIEW",
       "id": "TOOLSET-063",
       "section": "Now",
       "status": "open",
@@ -770,6 +762,14 @@
       "section": "Done",
       "status": "done",
       "title": "Give this README a project-native visual refresh"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-062",
+      "section": "Done",
+      "status": "done",
+      "title": "Make the README audit catch dark-mode and reference-style images"
     },
     {
       "depends_on": [],

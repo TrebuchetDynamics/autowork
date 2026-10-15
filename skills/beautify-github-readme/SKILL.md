@@ -12,7 +12,8 @@ license: MIT
 ([licence](upstream/LICENSE), [provenance](UPSTREAM.json)). This adapter controls
 host integration. Read the protocol, then apply the rules below, which take
 precedence over it where they differ. Its `references/` and `scripts/` paths resolve
-inside `upstream/`.
+inside `upstream/`, except its README audit: run this skill's
+`scripts/audit_readme.py` instead.
 
 ## Toolset rules
 
@@ -27,7 +28,7 @@ inside `upstream/`.
   safety or policy statement, invent adoption, benchmarks or compatibility, or
   contradict [docs](../docs-sync/SKILL.md). After editing, run
   `python3 <docs-sync-skill-dir>/scripts/docs.py check <repo>` when the repository
-  has `docs/roles.json`, plus the protocol's audit script.
+  has `docs/roles.json`, plus the README audit below.
 - **Pure SVG by default.** Hermes has no bundled image-generation skill. Offer hybrid
   composition only when an image-generation tool is actually available in this
   session and the subject needs raster material; otherwise build deterministic SVG.
@@ -44,11 +45,15 @@ inside `upstream/`.
   the repository's normal delivery workflow (for example
   [Git Commit Push](../git-commit-push/SKILL.md)) and its existing authority.
 
-Run the audit directly:
+Run the README audit:
 
 ```sh
-python3 "<beautify-github-readme-skill-dir>/upstream/scripts/audit_readme.py" /path/to/README.md
+python3 "<beautify-github-readme-skill-dir>/scripts/audit_readme.py" /path/to/README.md
 ```
+
+It applies the protocol's SVG checks and also follows GitHub's resolution: dark-mode
+`<picture><source srcset>` variants, reference-style images, root-relative paths
+from the repository root and `<…>` destinations; images in fenced code are skipped.
 
 Report the mode used, files changed, what was deliberately left plain, the checks
 run and any claim you could not verify.

@@ -18,7 +18,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | Autoresearch 2.2.2 | Vendored revision and file hashes in [UPSTREAM.json](../skills/autoresearch/UPSTREAM.json) | Reviewed updates require refreshing the pinned subtree and tests. |
 | UI Taste 0.2.0 (Uizze) | Vendored from a pinned Uizze commit, [pin and hashes](../skills/ui-taste/UPSTREAM.json) | Plain Markdown playbooks copied unchanged; works offline. Its optional paid Uizze MCP is never configured by Toolset. |
 | Impeccable 4.5.2 | Vendored official Hermes package, [pin and hashes](../skills/impeccable/UPSTREAM.json) | All references and scripts ship with the plugin; Apache-2.0 license and notices retained. |
-| Beautify GitHub README | Vendored revision and file hashes in [UPSTREAM.json](../skills/beautify-github-readme/UPSTREAM.json) | Upstream skill byte-exact under `upstream/`; the toolset adapter sets host rules; MIT license retained. |
+| Beautify GitHub README | Vendored revision and file hashes in [UPSTREAM.json](../skills/beautify-github-readme/UPSTREAM.json) | Upstream skill byte-exact under `upstream/`; the toolset adapter sets host rules and adds a README audit that reuses the upstream SVG checks; MIT license retained. |
 | Grill Me 2.1.0 | Bundled [SKILL.md](../skills/grill-me/SKILL.md) | Its checked-in bytes are fixed by this repository revision. |
 | OMH setup CLI | Git revision pinned in defaults.json | The Hermes plugin source is separately resolved through the source inventory/catalog. |
 | OMH plugin, Ponytail, Hermes Speech | Native Hermes installs from declared sources | No unified bundle lockfile pins their installed revisions. |

@@ -26,18 +26,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
-### TOOLSET-062 — Make the README audit catch dark-mode and reference-style images
-
-- [ ] TOOLSET-062 — Make the README audit catch dark-mode and reference-style images
-- Status: open.
-- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
-- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15), [adapter](skills/beautify-github-readme/SKILL.md), [vendored audit](skills/beautify-github-readme/upstream/scripts/audit_readme.py).
-- Scope: Add a toolset `scripts/audit_readme.py` to the Beautify skill that reuses the upstream SVG checks and also audits `<source srcset>` candidates and reference-style images, resolves root-relative paths against the repository root and accepts `<…>` destinations; ignore images inside fenced code. Point the adapter (and its Codex/Pi wrapper) at it. Upstream bytes stay unchanged.
-- Acceptance: A missing dark-mode `srcset` image, a missing or undefined reference-style image and a missing root-relative image each fail; existing root-relative and angle-bracket images pass; this README still passes.
-- Checks: Failing-first fixture regressions in `tests/test_beautify_readme_vendor.py`, then `python3 scripts/check.py` and the Node package test.
-- Dependencies: None.
-- Exclusions: No edits to vendored upstream files; no network.
-
 ### TOOLSET-063 — Put UI Taste behind a toolset adapter
 
 - [ ] TOOLSET-063 — Put UI Taste behind a toolset adapter
@@ -161,7 +149,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | STARTUP: Start useful implementation sooner with less preparation | unmet | executed <code>Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013</code> → pass | TOOLSET-013 |
 | DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | met | executed <code>python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)</code> → pass | — |
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
-| SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-062, TOOLSET-063, TOOLSET-064 |
+| SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-063, TOOLSET-064 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 
