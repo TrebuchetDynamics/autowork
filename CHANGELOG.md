@@ -8,9 +8,10 @@ claim of a tagged release, completed installation or live workflow qualification
 ### Added
 
 - Telegram's command menu now lists `/ui_taste`, `/beautify_github_readme`,
-  `/impeccable` and `/lgtm` after the five workflow commands. Hermes' default
-  60-entry menu was already full of built-ins, so they were registered but never
-  shown; the last four built-ins (currently `/voice`, `/busy`, `/memory` and
+  `/impeccable`, `/lgtm`, `/engineering`, `/git_commit_push` and `/git_pull_merge`
+  after the five workflow commands. Hermes' default 60-entry menu was already full
+  of built-ins, so they were registered but never shown; the last seven built-ins
+  (currently `/yolo`, `/approvals`, `/fast`, `/voice`, `/busy`, `/memory` and
   `/bundles`) move off the menu and still work when typed.
 
 - `scripts/check.py` runs its test directories concurrently, cutting a full offline

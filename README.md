@@ -102,8 +102,9 @@ task instead of inventing busywork.
 
 **Command spelling.** Telegram uses underscores and its menu shows `/plan_with_me`,
 `/plan_for_me`, `/docs_sync`, `/autowork`, `/cron_autowork`, `/ui_taste`,
-`/beautify_github_readme`, `/impeccable` and `/lgtm`; other bundled commands such as `/git_commit_push` work
-when typed. In CLI chat the three planning
+`/beautify_github_readme`, `/impeccable`, `/lgtm`, `/engineering`, `/git_commit_push`
+and `/git_pull_merge`; other bundled commands such as `/autoresearch` and `/toolset`
+work when typed. In CLI chat the three planning
 and docs commands accept underscores or hyphens; other commands use hyphens
 (`/cron-autowork`, `/autoresearch:plan`). Older spellings (`/autoresearch`,
 `/autoresearch_plan`, `/autoresearch_<protocol>`) still run but are not advertised.

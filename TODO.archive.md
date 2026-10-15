@@ -1382,3 +1382,19 @@ Source section: Next
 - Exclusions: No test deletion, consolidation or source edit; no repository dependency changes; no push.
 - Current evidence: Audit on `376f7ed` recorded in the [baseline audit](docs/project.md#baseline-audit-toolset-068-2026-10-15): 1,253 tests; sequential 225–237 s over 3 passing `--jobs 1` runs (Autowork 132–139 s); 67% combined line and branch coverage of toolset sources; 760 tests with per-test records; 58 identical-coverage groups (187 tests) and 248 subset cases; mutation not measured. cProfile of `test_delivery_state.py` attributes about 42 s of 110 s to `check_receipt.runtime()` package metadata and 7 s to executable hashing. Sampled identical groups are distinct contracts; no removal recommended. Follow-ups TOOLSET-072 and TOOLSET-073 recorded; no test or source file changed.
 - Checks run: `goals.py validate` ok; `docs.py check` ok; `git diff --stat` limited to docs/project.md, TODO.md and goals.json; `git diff --check` clean.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-074 — Advertise Engineering and the Git commands in the Telegram menu
+
+- [x] TOOLSET-074 — Advertise Engineering and the Git commands in the Telegram menu
+- Status: done (2026-10-15). At the user's request `engineering`, `git_commit_push` and `git_pull_merge` follow `lgtm` in the bundle's managed menu priority, so all 12 toolset menu commands lead the menu; at Hermes' 60-entry default the built-ins `yolo`, `approvals` and `fast` also leave it and stay typeable. Updated menu tests failed first, then passed; Hermes' own `telegram_menu_commands` on a copy of the toolset profile config lists all 12 first; `python3 scripts/check.py` passed; `docs.py check` ok.
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [menu policy](telegram_menu_policy.py), [superseded menu call](docs/project.md#vendored-ui-taste-skill).
+- Scope: Bundle menu priority, its tests and the docs that list advertised commands.
+- Acceptance: A clean profile's priority ends with `engineering`, `git_commit_push` and `git_pull_merge`; Hermes' menu builder shows them.
+- Checks: `tests/test_telegram_menu_policy.py`, `python3 scripts/check.py`, `docs.py check`.
+- Dependencies: None.

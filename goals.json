@@ -322,7 +322,8 @@
         "TOOLSET-063",
         "TOOLSET-064",
         "TOOLSET-070",
-        "TOOLSET-071"
+        "TOOLSET-071",
+        "TOOLSET-074"
       ],
       "title": "Fix review findings in the newly vendored UI skills"
     },
@@ -386,7 +387,8 @@
       "TOOLSET-013",
       "TOOLSET-064",
       "TOOLSET-066",
-      "TOOLSET-068"
+      "TOOLSET-072",
+      "TOOLSET-073"
     ]
   },
   "tasks": [
@@ -877,6 +879,14 @@
       "section": "Done",
       "status": "done",
       "title": "Advertise Impeccable and LGTM in the Telegram menu"
+    },
+    {
+      "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-074",
+      "section": "Done",
+      "status": "done",
+      "title": "Advertise Engineering and the Git commands in the Telegram menu"
     },
     {
       "depends_on": [],
