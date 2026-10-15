@@ -111,7 +111,7 @@ def main():
         assert result == 'executed' and called == [True]
         commands = get_plugin_commands()
         assert not {'repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'} & commands.keys(), commands.keys()
-        assert {"autowork", "impeccable", "git-commit-push", "git-pull-merge", "lgtm", "docs-sync", "plan-with-me"} <= commands.keys()
+        assert {"autowork", "impeccable", "git-commit-push", "lgtm", "docs-sync", "plan-with-me"} <= commands.keys()
         assert manager.find_plugin_skill("hermes-toolset:docs-sync") == root / "skills/docs-sync/SKILL.md"
         payload = json.loads(skill_view("hermes-toolset:docs-sync"))
         assert "error" not in payload, payload

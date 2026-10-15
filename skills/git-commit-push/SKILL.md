@@ -1,18 +1,20 @@
 ---
 name: git-commit-push
-description: "Use when committing and pushing scoped Git changes."
-version: 1.4.2
+description: "Use when committing, pushing, pulling or merging Git changes."
+version: 2.0.0
 license: MIT
 metadata:
   hermes:
-    tags: [git, commit, push, delivery, worktree, fleet]
-    related_skills: [lgtm, autowork, hard-blockers, systematic-debugging, git-pull-merge]
+    tags: [git, commit, push, pull, merge, sync, delivery, worktree, fleet]
+    related_skills: [lgtm, autowork, hard-blockers, systematic-debugging]
 ---
 
 # Git Commit Push
 
 Adapted from an earlier TrebuchetDynamics delivery workflow.
-Merged with the fleet's shared-worktree rules and autowork's local agent-branch helper.
+Merged with the fleet's shared-worktree rules and autowork's local agent-branch helper, and,
+since 2.0.0, with the former `git-pull-merge` skill: one skill delivers changes out
+(commit, push) and brings them in (pull, merge).
 
 Ship finished work without turning delivery into another project. Local changes are the
 delivery queue, not a reason to stop and ask. Prefer direct execution for a bounded
@@ -29,6 +31,12 @@ identity and existing receipts first; unchanged evidence can satisfy that handof
   LGTM after an implementation report never implies shipping.
 - Audit: the user asks for delivery status, a dry run, or "what would you commit". Do not
   stage, commit, or push.
+- **Pull and merge mode:** the user asks to pull, sync, "update from origin/main", merge a
+  branch or PR into the current one, or the text after `/git-commit-push` starts with
+  `pull`, `sync` or `merge` (for example `/git-commit-push merge agent/example/t_1234`). Follow
+  [pull and merge](references/pull-merge.md) instead of the ship path below; it pushes only
+  when the request also asks for a push. "pull and push" or "merge and push" runs pull and
+  merge first, then this skill's push rules.
 
 ## Pick the delivery target first
 
@@ -384,7 +392,7 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      `origin/<target>:<component>`) match fresh upstream; changed inputs need reconciliation and
      affected checks. Read back the remote ref, PR head and file list.
    - Do not `git pull` / `--autostash` first. Push; on rejection, `git fetch` and inspect (the
-     `git-pull-merge` skill covers integrating remote changes safely).
+     [pull and merge mode](references/pull-merge.md) covers integrating remote changes safely).
      Fast-forward only when the incoming commits don't overlap yours and it is clearly safe. Merge or rebase needs
      explicit approval. On a fast-forward-only or no-merge route, do not fall back to a
      reference's merge recipe after rejection: rebuild and requalify from fresh upstream, or report

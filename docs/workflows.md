@@ -15,8 +15,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | Hermes CLI chat | Telegram | Purpose |
 | --- | --- | --- |
 | `/autowork` | `/autowork` | Inspect the repo, plan missing tasks, execute a useful slice, verify and commit owned changes |
-| `/git-commit-push` | `/git_commit_push` | Commit and push scoped changes |
-| `/git-pull-merge` | `/git_pull_merge` | Pull and merge changes |
+| `/git-commit-push` | `/git_commit_push` | Commit and push scoped changes; `pull`, `sync` or `merge <branch>` integrates upstream changes instead |
 | `/lgtm` | `/lgtm` | Continue the understood next step with existing authorization |
 | `/docs_sync` | `/docs_sync` | Maintain repository documentation |
 | `/plan_with_me` | `/plan_with_me` | Answer focused questions, then update docs and plans |

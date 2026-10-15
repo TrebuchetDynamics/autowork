@@ -8,7 +8,7 @@ WORKFLOWS = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autow
              'engineering', 'git_commit_push', 'git_pull_merge']
 # Names this bundle once promoted or registered; compatibility spellings stay
 # typeable but are no longer advertised, so earlier priority entries are removed.
-RETIRED = {'autoresearch', 'autogoal', 'grill_me', 'repo_interview', 'repo_docs'}
+RETIRED = {'autoresearch', 'autogoal', 'grill_me', 'repo_interview', 'repo_docs', 'git_pull_merge'}
 
 
 def _bundle_owned(name):

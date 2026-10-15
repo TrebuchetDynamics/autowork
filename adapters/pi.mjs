@@ -16,8 +16,7 @@ const workflows = {
   beautify_github_readme: ['beautify-github-readme', 'Redesign or audit a GitHub README'],
   grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
-  git_commit_push: ['git-commit-push', 'Validate, commit and push owned changes'],
-  git_pull_merge: ['git-pull-merge', 'Integrate upstream changes'],
+  git_commit_push: ['git-commit-push', 'Commit and push, or pull and merge, owned changes'],
 };
 
 /** Native Pi command adapter. No subprocess, permission changes or install hooks. */
