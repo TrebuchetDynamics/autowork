@@ -814,3 +814,24 @@ Source section: Next
 - Current evidence: Adds read-only `docs.py stale` (Git history only, inherited `GIT_*` overrides removed, literal pathspecs) and `test_docs_stale.py` (7 real-Git fixture tests, all failing before the command existed), plus scaffold, Docs Sync, adapter and CHANGELOG notes. A throwaway manifest over this repository reported exactly the roles whose covered paths changed after their verified commits.
 - Checks run: `python3 scripts/check.py` passed offline: 403/571/192/8 tests in 4 directories, 1 skipped, 8 modules excluded, with the uncommitted TOOLSET-032 test file set aside; `git diff --check` clean. Self-reviewed; no separate independent review for this read-only increment.
 - Closure: Offline helper only; no repository has adopted a manifest yet.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-032 — Define repository-type role profiles in the Docs Sync scaffold
+
+- [x] TOOLSET-032 — Define repository-type role profiles in the Docs Sync scaffold
+- Status: done
+- Goal: DOCS-COMPLETENESS — Make role applicability consistent per repository type and cover user-facing reference roles.
+- Sources: [accepted completeness plan](docs/project.md#checkable-core-document-completeness), [document scaffold](skills/docs-sync/references/document-scaffold.md), [Docs Sync core owners](skills/docs-sync/SKILL.md).
+- Scope: Define service, library, CLI/plugin, application and infrastructure profiles with baseline roles in the scaffold. Add reference (commands/configuration), glossary, troubleshooting and installation/upgrade roles with ownership boundaries. The manifest records the selected profile and `docs.py check` uses that profile's baseline. Keep the portable adapter skill aligned.
+- Acceptance: Each profile lists its baseline roles; a CLI/plugin manifest missing a reference role fails `check` while a service manifest without one does not; manifests without a profile keep the current baseline. No empty documents are required.
+- Checks: Profile regressions in the docs-sync test directory; portable package/adapter tests already in `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-030.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No consumer-repository migration, document generation or push.
+- Current evidence: `docs.py` gains five profiles, manifest `profile` validation and a `profiles` command; the scaffold documents the profile table and reference, install-upgrade, troubleshooting, user-guide and glossary roles, with Docs Sync/adapter pointers. `test_docs_profiles.py` (5 tests) failed before the change. A throwaway `cli-plugin` manifest for this repository reported exactly its unmapped `reference` and `troubleshooting` roles.
+- Checks run: `python3 scripts/check.py` passed offline: 403/571/197/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. Self-reviewed.
+- Closure: Offline helper and scaffold only; adopting a manifest or writing the missing roles in this or any consumer repository is separate work.

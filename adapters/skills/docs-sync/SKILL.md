@@ -35,6 +35,7 @@ authoritative equivalent. Use source inspection for routine edits; graph tools o
 when available and useful or explicitly required. Check links, commands and statuses.
 With a [role manifest](../../../skills/docs-sync/references/document-scaffold.md#optional-role-manifest),
 also run the bundled `docs.py stale <repo>` and `docs.py check <repo>` and keep it synchronized.
+Its optional repository-type `profile` sets which roles are baseline.
 
 The scaffold's parent-skill references describe document roles, not permission to
 start Hermes coordination. Use this adapter for execution rules. Keep actual external

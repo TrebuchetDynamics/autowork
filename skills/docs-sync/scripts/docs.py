@@ -7,6 +7,7 @@
                                                paths and unmapped baseline roles
   docs.py stale <repo> [--manifest PATH]      list roles whose covered paths changed after
                                                their verified_at commit (Git history only)
+  docs.py profiles                            print each repository-type profile's baseline roles
 
 The manifest defaults to docs/roles.json. Without one, both commands report
 `no manifest` and exit 0 so Docs Sync keeps its prose-only behavior. Both commands
@@ -23,6 +24,16 @@ from urllib.parse import unquote
 
 DEFAULT_MANIFEST = 'docs/roles.json'
 BASELINE = ('readme', 'prd', 'architecture', 'spec', 'test-plan', 'runbook', 'changelog')
+# A manifest's optional `profile` replaces BASELINE; keep document-scaffold.md's table in sync.
+PROFILES = {
+    'service': BASELINE,
+    'library': ('readme', 'reference', 'architecture', 'test-plan', 'changelog'),
+    'cli-plugin': ('readme', 'reference', 'install-upgrade', 'troubleshooting', 'architecture',
+                   'test-plan', 'changelog'),
+    'application': ('readme', 'prd', 'architecture', 'spec', 'test-plan', 'user-guide',
+                    'troubleshooting', 'changelog'),
+    'infrastructure': ('readme', 'architecture', 'runbook', 'test-plan', 'changelog'),
+}
 MAPPED = {'maintained', 'created', 'unchanged_verified', 'created_with_open_questions'}
 UNMAPPED = {'conditional_not_applicable', 'not_applicable'}
 FIELDS = {'status', 'path', 'reason', 'covers', 'verified_at'}
@@ -53,6 +64,8 @@ def validate(data):
     errors = []
     if type(data.get('version')) is not int or data['version'] != 1:
         errors.append('manifest: unsupported version (expected 1)')
+    if 'profile' in data and (not isinstance(data['profile'], str) or data['profile'] not in PROFILES):
+        errors.append(f'manifest: unknown profile (expected one of {", ".join(PROFILES)})')
     roles = data.get('roles')
     if not isinstance(roles, dict):
         return errors + ['manifest: roles must be an object keyed by role name']
@@ -209,7 +222,7 @@ def check(root, data):
     for path, role in documents.items():
         errors += check_document(repo, role, path)
     errors += [f'{role}: baseline role is neither mapped nor recorded as not applicable'
-               for role in BASELINE if role not in data['roles']]
+               for role in PROFILES.get(data.get('profile'), BASELINE) if role not in data['roles']]
     return errors
 
 
@@ -262,10 +275,15 @@ def load(root, manifest):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('validate', 'check', 'stale'))
-    parser.add_argument('repo')
+    parser.add_argument('command', choices=('validate', 'check', 'stale', 'profiles'))
+    parser.add_argument('repo', nargs='?')
     parser.add_argument('--manifest', default=DEFAULT_MANIFEST)
     args = parser.parse_args(argv)
+    if args.command == 'profiles':
+        print(json.dumps({name: list(roles) for name, roles in PROFILES.items()}, indent=2))
+        return 0
+    if args.repo is None:
+        parser.error(f'{args.command} requires a repository path')
     root = Path(args.repo).resolve()
     if not root.is_dir():
         print(f'repository {args.repo} is not a directory')

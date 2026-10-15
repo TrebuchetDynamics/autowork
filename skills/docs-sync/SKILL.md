@@ -200,6 +200,8 @@ When the repository has a [role manifest](references/document-scaffold.md#option
 keep it synchronized with these outcomes, run `scripts/docs.py stale <repo>` to scope
 Maintain and `scripts/docs.py check <repo>` before reporting; fix or report every
 finding. A pass does not prove content accuracy.
+Its optional [profile](references/document-scaffold.md#repository-type-profiles) sets
+the baseline roles for the repository type; choose it from what the repository ships.
 
 ADRs cover significant hard-to-reverse choices, not routine edits/interview answers.
 Check current numbering; otherwise use unique zero-padded IDs and Proposed/Accepted/

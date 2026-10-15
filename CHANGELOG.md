@@ -11,7 +11,10 @@ claim of a tagged release, completed installation or live workflow qualification
   `skills/docs-sync/scripts/docs.py validate|check`: mapped documents and anchors,
   local links, documented script paths, covered paths and unmapped baseline roles.
   `docs.py stale` lists roles whose covered paths changed after their
-  `verified_at` commit. Repositories without a manifest are unaffected.
+  `verified_at` commit. An optional repository-type `profile` (service, library,
+  cli-plugin, application, infrastructure) sets the baseline roles, adding reference,
+  install/upgrade, troubleshooting, user-guide and glossary roles. Repositories
+  without a manifest are unaffected.
 
 - Planning craft shared by `/plan_with_me` and `/plan_for_me`, adapted from
   obra/superpowers `brainstorming` and mattpocock/skills `grilling` and

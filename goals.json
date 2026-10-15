@@ -193,11 +193,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)",
+          "result": "pass"
+        }
+      ],
       "id": "DOCS-COMPLETENESS",
       "priority": 80,
       "source": "docs/project.md#checkable-core-document-completeness",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-030",
         "TOOLSET-031",
@@ -274,16 +280,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-030"
-      ],
-      "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-032",
-      "section": "Next",
-      "status": "open",
-      "title": "Define repository-type role profiles in the Docs Sync scaffold"
     },
     {
       "depends_on": [],
@@ -452,6 +448,16 @@
       "section": "Done",
       "status": "done",
       "title": "Report stale document roles from covered-path history"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-030"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-032",
+      "section": "Done",
+      "status": "done",
+      "title": "Define repository-type role profiles in the Docs Sync scaffold"
     },
     {
       "depends_on": [],

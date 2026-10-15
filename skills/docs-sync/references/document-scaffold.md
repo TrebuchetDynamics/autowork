@@ -50,8 +50,9 @@ repository-relative `path` (optionally `#anchor`); not-applicable roles need a
 for shape and `docs.py check <repo>` to also check mapped documents and anchors,
 local and reference-style links, `python`/`python3`/`sh`/`bash`/`node` script paths in
 inline code (including after a relative `cd`), covered paths and
-unmapped baseline roles (README, PRD, architecture, spec, test-plan, runbook,
-CHANGELOG). Both are read-only, never fetch URLs and report `no manifest` when none
+unmapped baseline roles (the selected
+[profile](#repository-type-profiles)'s, otherwise README, PRD, architecture, spec,
+test-plan, runbook and CHANGELOG). Both are read-only, never fetch URLs and report `no manifest` when none
 exists. Create a manifest only when the repository adopts one; never to fill a gap.
 
 `docs.py stale <repo>` lists roles whose `covers` paths changed in commits after
@@ -59,6 +60,32 @@ their `verified_at` commit, and reports a missing, unknown or non-ancestor commi
 unverifiable rather than fresh. Use it to scope a Maintain pass; after actually
 verifying a role, set its `verified_at` to the commit you verified against. It reads
 Git history only and ignores inherited `GIT_*` overrides.
+
+### Repository-type profiles
+
+A manifest may set `"profile"` to choose which roles `check` treats as baseline, so
+applicability is not re-decided on every pass. Without a profile the baseline is the
+service set. A profile names roles that must be mapped or recorded as not applicable;
+it never requires an empty document, and other roles stay conditional. Choose the
+profile that matches what the repository ships; `docs.py profiles` prints this table.
+
+| Profile | Ships | Baseline roles |
+| --- | --- | --- |
+| `service` | A deployed service or API | `readme`, `prd`, `architecture`, `spec`, `test-plan`, `runbook`, `changelog` |
+| `library` | A package other code imports | `readme`, `reference`, `architecture`, `test-plan`, `changelog` |
+| `cli-plugin` | A command-line tool, plugin or skill bundle | `readme`, `reference`, `install-upgrade`, `troubleshooting`, `architecture`, `test-plan`, `changelog` |
+| `application` | An end-user web, mobile or desktop app | `readme`, `prd`, `architecture`, `spec`, `test-plan`, `user-guide`, `troubleshooting`, `changelog` |
+| `infrastructure` | Deployment, provisioning or platform configuration | `readme`, `architecture`, `runbook`, `test-plan`, `changelog` |
+
+Roles beyond the baseline table above:
+
+| Role | Useful sections | Ownership boundary |
+| --- | --- | --- |
+| `reference` | Commands, options, configuration keys, environment variables, exit codes | Exact current interface; generate from source and check drift where possible |
+| `install-upgrade` | Supported platforms; install; upgrade/migration; compatibility; removal | Supported procedures only; README keeps the shortest path |
+| `troubleshooting` | Symptom; likely cause; check; fix; when to escalate | User-side diagnosis; operator recovery stays in the runbook |
+| `user-guide` | Tasks; examples; limitations | User journeys beyond the README quickstart |
+| `glossary` | Term; meaning; not-to-be-confused-with; source | Project language shared by docs and planning (for example CONTEXT.md) |
 
 Architecture and spec may share a file with explicit Current and Planned sections.
 Link source paths/symbols for structural claims and task IDs for proposed changes.
