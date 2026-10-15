@@ -1,6 +1,6 @@
-# Codex and Pi host contract
+# Claude Code, Codex and Pi host contract
 
-These adapters run repository workflows in the current Codex or Pi session.
+These adapters run repository workflows in the current Claude Code, Codex or Pi session.
 Use this host's actual file, terminal, search, question and delegation tools.
 Read repository instructions and user scope first; preserve unrelated work.
 Do not require Hermes CLI, profiles, gateways, Kanban cards, native origin injection,
@@ -12,8 +12,9 @@ only the selected workflow and relevant references. Resolve links relative to th
 loaded skill file. The canonical primary workflows are Plan With Me, Plan For Me,
 Docs Sync and Autowork. Autoresearch remains independently discoverable with all
 13 research selectors. Grill Me is Plan With Me's challenge mode, not a separate
-public skill; Pi retains `/grill_me` as a compatibility command. In Codex and Pi
-native skill invocation, select `plan-with-me` and request challenge mode.
+public skill; Pi retains `/grill_me` as a compatibility command. In native skill
+invocation (`/hermes-toolset:plan-with-me` in Claude Code), select `plan-with-me`
+and request challenge mode.
 Shared source files are reference material; this contract takes
 precedence over Hermes-specific execution procedures in linked upstream material.
 Never change host permissions, memory configuration, model credentials or approval

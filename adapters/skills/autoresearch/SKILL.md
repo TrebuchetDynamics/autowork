@@ -1,6 +1,7 @@
 ---
 name: autoresearch
 description: "Run bounded repository research, planning or measurable experiments and save findings to TODO.md."
+disable-model-invocation: true
 ---
 
 # Autoresearch

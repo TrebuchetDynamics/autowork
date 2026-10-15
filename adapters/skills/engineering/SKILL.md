@@ -1,6 +1,7 @@
 ---
 name: engineering
 description: "Apply a focused engineering method for planning, implementation or review."
+disable-model-invocation: true
 ---
 
 # Engineering

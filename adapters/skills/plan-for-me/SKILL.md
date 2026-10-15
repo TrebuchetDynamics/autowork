@@ -1,6 +1,7 @@
 ---
 name: plan-for-me
 description: "Investigate a repository, choose a supported approach, and save a plan and TODO tasks without an interview."
+disable-model-invocation: true
 ---
 
 # Plan For Me

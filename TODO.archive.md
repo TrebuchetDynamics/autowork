@@ -1274,3 +1274,19 @@ Source section: Now
 - Checks: Failing-first updates to `tests/test_ui_taste_bundle.py`, `python3 scripts/check.py`, the Node package test and `docs.py check`.
 - Dependencies: None.
 - Exclusions: No upstream text changes, MCP configuration or runtime fetches.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-065 — Ship a Claude Code plugin marketplace for the portable adapters
+
+- [x] TOOLSET-065 — Ship a Claude Code plugin marketplace for the portable adapters
+- Status: done (2026-10-15). `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (entry `source: ./`, `skills: [./adapters/skills/]`); all 13 adapters carry `disable-model-invocation: true`; host contract, cross-host install section, README, contributing and CHANGELOG updated. New package tests failed first for the frontmatter and host contract (the manifest test was written after the manifests); `python3 scripts/check.py` 455/575 (1 skipped)/209/8, Node 3 passed, `claude plugin validate . --strict` and the marketplace validation passed, and Claude Code 2.1.300 installed it into an isolated config listing exactly the 13 adapters, no hooks, agents or MCP servers, all 49 adapter links resolving in the cache copy, then uninstalled cleanly. Offline only: no model session ran a workflow.
+- Goal: CLAUDE-CODE — Install the portable workflows in Claude Code.
+- Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code).
+- Scope: Marketplace and plugin manifests at the repository root that load only `adapters/skills/`, explicit-only adapters, tests and docs.
+- Acceptance: A strict plugin validation passes; an isolated install lists exactly the 13 adapters and no root Hermes skills, hooks, agents or MCP servers; adapter links resolve in the installed copy.
+- Checks: `tests/test_portable_package.py`, `python3 scripts/check.py`, `node --test tests/portable_pi.test.mjs`, `claude plugin validate . --strict`.
+- Dependencies: None.

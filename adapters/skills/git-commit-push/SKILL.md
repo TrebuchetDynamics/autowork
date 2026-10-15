@@ -1,6 +1,7 @@
 ---
 name: git-commit-push
 description: "Validate, commit and push attributable repository changes when delivery is requested."
+disable-model-invocation: true
 ---
 
 # Git Commit Push

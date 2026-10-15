@@ -38,6 +38,39 @@ class PortablePackageTests(unittest.TestCase):
         self.assertNotIn('finish_task.py', worker)
         self.assertIn('native tools', worker)
 
+    def test_claude_code_marketplace_loads_only_the_portable_adapters(self):
+        plugin = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())
+        marketplace = json.loads((ROOT / '.claude-plugin/marketplace.json').read_text())
+        codex = json.loads((ROOT / '.codex-plugin/plugin.json').read_text())
+        pi = json.loads((ROOT / 'package.json').read_text())
+        self.assertEqual(plugin['name'], 'hermes-toolset')
+        self.assertEqual(plugin['version'], codex['version'])
+        self.assertEqual(plugin['version'], pi['version'])
+        # A plugin.json `skills` path adds to the default root skills/ scan, which holds
+        # the Hermes-only skills; only the marketplace entry's list replaces that scan.
+        for key in ('skills', 'commands', 'agents', 'hooks', 'mcpServers'):
+            self.assertNotIn(key, plugin)
+        [entry] = marketplace['plugins']
+        self.assertEqual(entry['name'], plugin['name'])
+        self.assertEqual(entry['source'], './')
+        self.assertEqual(entry['skills'], ['./adapters/skills/'])
+        for folder in ('commands', 'agents', 'hooks', 'bin', 'output-styles', 'monitors'):
+            self.assertFalse((ROOT / folder).exists(), f'{folder}/ would load as a Claude Code component')
+        self.assertFalse((ROOT / '.mcp.json').exists())
+
+    def test_every_portable_adapter_is_explicit_only_in_claude_code_and_pi(self):
+        # Claude Code and Pi read `disable-model-invocation`; Codex reads agents/openai.yaml.
+        for skill in sorted((ROOT / 'adapters/skills').glob('*/SKILL.md')):
+            with self.subTest(adapter=skill.parent.name):
+                metadata = yaml.safe_load(skill.read_text().split('---', 2)[1])
+                self.assertIs(metadata.get('disable-model-invocation'), True)
+
+    def test_host_contract_names_every_portable_host(self):
+        contract = (ROOT / 'adapters/skills/COMMON.md').read_text()
+        for host in ('Claude Code', 'Codex', 'Pi'):
+            self.assertIn(host, contract.split('\n', 1)[0])
+        self.assertIn('/hermes-toolset:plan-with-me', contract)
+
     def test_every_codex_adapter_is_explicit_only(self):
         # Codex treats a missing policy as implicit invocation allowed (TOOLSET-035).
         for skill in sorted((ROOT / 'adapters/skills').glob('*/SKILL.md')):

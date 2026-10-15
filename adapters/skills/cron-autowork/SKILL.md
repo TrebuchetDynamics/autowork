@@ -1,6 +1,7 @@
 ---
 name: cron-autowork
 description: "Create or update recurring Autowork execution with an available scheduler, or prepare a schedule specification when the host cannot schedule."
+disable-model-invocation: true
 ---
 
 # Cron Autowork

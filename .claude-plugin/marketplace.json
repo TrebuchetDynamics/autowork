@@ -1,0 +1,13 @@
+{
+  "name": "hermes-toolset",
+  "owner": {"name": "TrebuchetDynamics"},
+  "description": "Hermes Toolset repository workflows",
+  "plugins": [
+    {
+      "name": "hermes-toolset",
+      "source": "./",
+      "description": "Repository planning, documentation, research and execution workflows for Claude Code.",
+      "skills": ["./adapters/skills/"]
+    }
+  ]
+}

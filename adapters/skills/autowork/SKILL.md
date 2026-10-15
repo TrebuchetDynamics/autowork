@@ -1,6 +1,7 @@
 ---
 name: autowork
 description: "Coordinate repository work: plan missing tasks, implement a useful slice, verify and commit locally."
+disable-model-invocation: true
 ---
 
 # Autowork

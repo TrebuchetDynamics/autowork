@@ -1,6 +1,7 @@
 ---
 name: lgtm
 description: "Resolve a short approval against the immediately preceding concrete recommendation."
+disable-model-invocation: true
 ---
 
 # Lgtm

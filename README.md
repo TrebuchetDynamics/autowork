@@ -11,7 +11,7 @@ the next run—yours, a teammate's or a scheduled job's—picks up where the las
 one left off.
 
 It runs in Hermes CLI and Telegram, installs into one profile or a whole fleet,
-and also ships native packages for [Codex and Pi](docs/cross-host.md).
+and also ships native packages for [Claude Code, Codex and Pi](docs/cross-host.md).
 
 ## How it works
 
@@ -118,7 +118,7 @@ receipts name the protocol and the actual decision or check.
 
 ## Read before installing
 
-These defaults apply to Hermes; the [Codex and Pi adapters](docs/cross-host.md)
+These defaults apply to Hermes; the [Claude Code, Codex and Pi adapters](docs/cross-host.md)
 keep their hosts' settings. **They are designed for an autonomous fleet, not a
 policy-neutral command bridge.**
 

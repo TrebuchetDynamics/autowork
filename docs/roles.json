@@ -115,7 +115,9 @@
       "status": "maintained",
       "path": "docs/cross-host.md",
       "covers": [
-        "adapters"
+        "adapters",
+        ".claude-plugin",
+        ".codex-plugin"
       ],
       "verified_at": "41aaad8fccfe"
     },

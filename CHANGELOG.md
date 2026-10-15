@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Claude Code plugin: `claude plugin marketplace add TrebuchetDynamics/hermes-toolset`
+  then `claude plugin install hermes-toolset@hermes-toolset` exposes the 13 portable
+  adapters as `/hermes-toolset:<skill>`. Only the adapters load; the Hermes-only root
+  skills, hooks and settings do not. All adapters are now explicit-only in Claude
+  Code and Pi (`disable-model-invocation: true`), matching Codex.
+
 - Install, update and every plugin load set `agent.max_turns: unlimited` in each
   profile (unless it opted out of runtime defaults), so long Autowork and chat turns
   are no longer stopped at a per-turn iteration cap such as the `90` Hermes quick

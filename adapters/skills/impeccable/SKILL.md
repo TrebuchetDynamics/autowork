@@ -1,6 +1,7 @@
 ---
 name: impeccable
 description: "Improve interface design, usability and visual consistency using the bundled design guidance."
+disable-model-invocation: true
 ---
 
 # Impeccable

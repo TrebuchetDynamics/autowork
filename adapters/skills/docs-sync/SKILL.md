@@ -1,6 +1,7 @@
 ---
 name: docs-sync
 description: "Create or maintain source-backed project documentation and the central TODO.md work queue."
+disable-model-invocation: true
 ---
 
 # Docs Sync

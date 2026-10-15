@@ -117,6 +117,19 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Exclusions: No vendored-file edits.
 
+### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+
+- [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
+- Status: open; live qualification not run.
+- Goal: CLAUDE-CODE — Install the portable workflows in Claude Code.
+- Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code).
+- Scope: Install the published marketplace into a disposable Claude Code configuration with a configured account, run `/hermes-toolset:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
+- Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
+- Checks: Session transcript or output plus `git status` of the disposable repository.
+- Dependencies: TOOLSET-065.
+- Environment prerequisite: A Claude Code account authorized for a short model run; the plugin pushed to the published repository.
+- Exclusions: No real user repositories, settings or credentials changed.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -138,6 +151,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | met | executed <code>python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)</code> → pass | — |
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
+| CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 

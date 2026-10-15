@@ -310,6 +310,19 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "CLAUDE-CODE",
+      "priority": 87,
+      "source": "docs/project.md#claude-code-package-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-065",
+        "TOOLSET-066"
+      ],
+      "title": "Install the portable workflows in Claude Code"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -348,14 +361,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-062",
-      "TOOLSET-063",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
       "TOOLSET-011",
       "TOOLSET-013",
-      "TOOLSET-064"
+      "TOOLSET-064",
+      "TOOLSET-066"
     ]
   },
   "tasks": [
@@ -412,6 +424,16 @@
       "section": "Next",
       "status": "open",
       "title": "Give bundled skills trigger-first descriptions within Hermes' 60-character index"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-065"
+      ],
+      "goal": "CLAUDE-CODE",
+      "id": "TOOLSET-066",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
       "depends_on": [],
@@ -770,6 +792,14 @@
       "section": "Done",
       "status": "done",
       "title": "Put UI Taste behind a toolset adapter"
+    },
+    {
+      "depends_on": [],
+      "goal": "CLAUDE-CODE",
+      "id": "TOOLSET-065",
+      "section": "Done",
+      "status": "done",
+      "title": "Ship a Claude Code plugin marketplace for the portable adapters"
     },
     {
       "depends_on": [],

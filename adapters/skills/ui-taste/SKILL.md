@@ -1,6 +1,7 @@
 ---
 name: ui-taste
 description: "Build, polish and review web and iOS interfaces with Uizze's bundled UI Taste playbooks."
+disable-model-invocation: true
 ---
 
 # UI Taste

@@ -1,6 +1,7 @@
 ---
 name: git-pull-merge
 description: "Fetch and integrate upstream changes into the current repository when requested."
+disable-model-invocation: true
 ---
 
 # Git Pull Merge

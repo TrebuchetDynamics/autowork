@@ -785,3 +785,33 @@ sends private code in a query.
 Also observed and left unrecorded: the repository has no `.gitattributes`, so a
 Windows checkout that converts line endings would fail every vendored-file hash test.
 Windows is not a documented target.
+
+## Claude Code package (2026-10-15)
+
+Status: Accepted
+
+Decision: On 2026-10-15 the user asked for support for installing hermes-toolset
+skills in Claude Code. It ships as a Claude Code plugin marketplace at the repository
+root, exposing the same 13 portable adapters as Codex and Pi.
+
+Findings (Claude Code 2.1.300 and its plugin documentation):
+- A `skills` path in `.claude-plugin/plugin.json` adds to the default scan of the
+  plugin's root `skills/` folder, which here holds the Hermes-only skills. A
+  marketplace entry with `"source": "./"` and a `skills` list replaces that scan;
+  an isolated install confirmed only the 13 adapters load.
+- Marketplace installs copy the whole repository into Claude Code's plugin cache, so
+  adapter links into `skills/` keep resolving.
+- Claude Code and Pi both honor `disable-model-invocation: true` in skill frontmatter.
+
+Planner's calls (reversible): one marketplace and plugin both named
+`hermes-toolset`; no hooks, agents, MCP servers or settings; every adapter carries
+`disable-model-invocation: true`, so Claude Code matches the Codex explicit-only
+policy and Pi skills also stop being selected automatically (Pi's registered
+commands read `SKILL.md` directly and are unaffected); the host contract names all
+three portable hosts; manifest versions stay equal across Claude Code, Codex and Pi.
+A live Claude Code workflow run stays a separate task.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-065 | Claude Code marketplace and plugin manifests, explicit-only adapters, tests and docs |
+| TOOLSET-066 | Run one questions-only workflow in a real Claude Code session from the installed plugin |

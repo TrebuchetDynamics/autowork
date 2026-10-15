@@ -66,8 +66,11 @@ commands in [`telegram_menu_policy.py`](../telegram_menu_policy.py).
 
 ## Portable hosts
 
-Codex and Pi load [portable adapters](../adapters/skills/COMMON.md), not the Hermes
-entry point. Add or update the corresponding adapter and its local references;
-Pi commands are declared in [adapters/pi.mjs](../adapters/pi.mjs). Validate both
+Claude Code, Codex and Pi load [portable adapters](../adapters/skills/COMMON.md), not
+the Hermes entry point. Add or update the corresponding adapter and its local
+references; every adapter keeps `disable-model-invocation: true` and an explicit-only
+`agents/openai.yaml`. Pi commands are declared in [adapters/pi.mjs](../adapters/pi.mjs);
+the Claude Code marketplace entry in `.claude-plugin/marketplace.json` lists the
+adapters folder. Validate both
 package metadata and command dispatch using [the cross-host checks](cross-host.md#behavior-and-verification).
 Installing or updating Hermes does not install the Codex or Pi package.
