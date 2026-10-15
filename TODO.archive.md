@@ -1532,3 +1532,24 @@ Source section: Next
 - Checks: Regressions in `tests/test_update_bundle.py` and the doctor tests, then `python3 scripts/check.py`.
 - Dependencies: None.
 - Exclusions: No automatic conversion of live profiles; converting them is a separate, user-authorized live step.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-085-1a — Select several eligible tasks and decide which can run together
+
+- [x] TOOLSET-085-1a — Select several eligible tasks and decide which can run together
+- Status: done
+- Local delivery: Implemented pure multi-task selection and declared path/resource/dependency conflict planning; no workers or CLI changes. Python 3.12 offline gate passed 506/586/212/8 tests (one skip; eight modules excluded). Independent review approved after regressions fixed malformed glob classes/newlines, ledger-only running status and directory-glob verification. Integrated into main on 2026-10-15 by the interactive coordinator after re-running `python3 -m unittest skills/autowork/scripts/test_parallel_plan.py` (10 passed) and `python3 scripts/check.py` (4 directories passed) on the merge with `b5092b3`.
+- Planner call: Preserve TOOLSET-064 pending integration and avoid the active canonical writers by using an isolated branch for this ready task. Reuse sequential contract checks lazily and standard-library fnmatch semantics; broad patterns that can include serial paths run alone.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [task selection](skills/autowork/scripts/task_execution.py), [ledger eligibility](skills/docs-sync/scripts/goals.py).
+- Scope: Add `skills/autowork/scripts/parallel_plan.py` with a pure function that takes the ordered runnable tasks (reuse `task_execution.select()`'s per-task contract checks, refactored so one function returns every passing task in order instead of the first) plus the running set, and returns the tasks to dispatch now and a reason for each waiting task. Parse two new optional TODO fields: `Touches:` (comma list of repo paths, directory prefixes ending in `/`, or globs) and `Resources:` (tokens; `live` and `exclusive` mean run alone). Conflict rules from the plan: direct or transitive dependency, overlapping paths (prefix or glob match in either direction), a shared resource token, a serial path (built-in list: package manifests, lockfiles, migration and schema folders, CI workflow files), or a missing `Touches:` means not together. Never dispatch `in_progress` tasks or tasks held by a live slot; an `in_progress` task without a slot counts as running work with its `Touches:`, and without `Touches:` it blocks all dispatch beside it (reported). Fill rule: the highest-priority runnable task is always considered first; if it must run alone or conflicts with running work, nothing lower is dispatched. Also export `overlap(actual_paths, declared, other_sets)` for TOOLSET-088's check of reported files. No dispatch, lease or CLI changes.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Unit tests show: two independent tasks with disjoint `Touches:` are both selected; a dependent pair (including transitive) is not; overlapping paths, globs, a shared resource token, `live`/`exclusive`, a serial path and a missing `Touches:` each serialize; the top task that must run alone blocks lower dispatch; an `in_progress` task without a slot blocks overlapping dispatch, and blocks everything without `Touches:`; existing `select()` behavior and every existing `test_task_execution.py`/`test_priority_selection.py` case are unchanged.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_plan.py` (new); `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No inference of file sets from prose or by an LLM; no changes to goals.py ordering.

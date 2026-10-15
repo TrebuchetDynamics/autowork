@@ -562,14 +562,6 @@
     {
       "depends_on": [],
       "goal": "PARALLEL",
-      "id": "TOOLSET-085-1a",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Select several eligible tasks and decide which can run together"
-    },
-    {
-      "depends_on": [],
-      "goal": "PARALLEL",
       "id": "TOOLSET-086-9f",
       "section": "Next",
       "status": "open",
@@ -1111,6 +1103,14 @@
       "section": "Done",
       "status": "done",
       "title": "Keep unattributed cron stagnation unknown"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-085-1a",
+      "section": "Done",
+      "status": "done",
+      "title": "Select several eligible tasks and decide which can run together"
     },
     {
       "depends_on": [],
