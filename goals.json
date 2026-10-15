@@ -26,6 +26,26 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "RELIABILITY-2026-10",
+      "priority": 15,
+      "source": "docs/project.md#reliability-bug-harvest-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-043",
+        "TOOLSET-044",
+        "TOOLSET-045",
+        "TOOLSET-046",
+        "TOOLSET-047",
+        "TOOLSET-048",
+        "TOOLSET-049",
+        "TOOLSET-050",
+        "TOOLSET-051"
+      ],
+      "title": "Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -270,15 +290,63 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-042",
+      "TOOLSET-043",
+      "TOOLSET-044",
+      "TOOLSET-045",
+      "TOOLSET-046",
+      "TOOLSET-047",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
       "TOOLSET-011",
-      "TOOLSET-013"
+      "TOOLSET-013",
+      "TOOLSET-048",
+      "TOOLSET-049",
+      "TOOLSET-050",
+      "TOOLSET-051"
     ]
   },
   "tasks": [
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-043",
+      "section": "Now",
+      "status": "open",
+      "title": "Stop loose checklist lines and dependency prose from refusing runnable Autowork tasks"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-044",
+      "section": "Now",
+      "status": "open",
+      "title": "Detect the installed hermes launcher as a live writer"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-045",
+      "section": "Now",
+      "status": "open",
+      "title": "Honor the runtime-defaults opt-out during setup"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-046",
+      "section": "Now",
+      "status": "open",
+      "title": "Keep the plugin loading when one native skill copy cannot be provisioned"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-047",
+      "section": "Now",
+      "status": "open",
+      "title": "Parse CRLF and trailing-space section headings and never delete content under a legacy coverage heading"
+    },
     {
       "depends_on": [],
       "goal": "RECOVERY",
@@ -324,6 +392,38 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-048",
+      "section": "Next",
+      "status": "open",
+      "title": "Report finished or killed chat updates correctly and accept a symlinked Hermes home"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-049",
+      "section": "Next",
+      "status": "open",
+      "title": "Accept Hermes-written YAML and stray profile symlinks during setup and update"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-050",
+      "section": "Next",
+      "status": "open",
+      "title": "Make Telegram menu healing robust to .env comments, odd chat IDs and per-chat failures"
+    },
+    {
+      "depends_on": [],
+      "goal": "RELIABILITY-2026-10",
+      "id": "TOOLSET-051",
+      "section": "Next",
+      "status": "open",
+      "title": "Remove docs.py false positives for footnotes, commented-out links and home-relative scripts"
     },
     {
       "depends_on": [],

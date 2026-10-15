@@ -654,3 +654,36 @@ path or authorize rewriting consumer repositories.
 Implemented: TOOLSET-030 to TOOLSET-032 added `docs.py validate|check|stale|profiles`
 (goal DOCS-COMPLETENESS met on offline evidence). The manifest defaults to
 `docs/roles.json` (`--manifest` overrides it); this repository uses that path.
+
+## Reliability bug harvest (2026-10-15)
+
+Status: Accepted
+
+Decision: On 2026-10-15 the user asked for a high-ROI bug harvest using this
+repository's own Plan For Me, Docs Sync and Autowork workflows. Five read-only
+investigations covered the task index and archiver, the all-profile updater, setup
+and installers, the Autowork helpers and the plugin runtime. Every finding below
+was reproduced against a fixture; the top tier was re-reproduced by the planner.
+Ranking (impact × likelihood ÷ fix cost), task grouping and the fix approaches are
+the planner's calls; offline regressions are the acceptance bar and no live
+qualification is implied.
+
+| Rank | Task | Bug | Impact |
+| --- | --- | --- | --- |
+| 1 | TOOLSET-043 | One loose checklist line anywhere in TODO.md, or `Dependencies: None.` followed by prose, makes Autowork refuse runnable tasks | Blocks real fleet repositories now |
+| 2 | TOOLSET-044 | Writer detection misses the installed `hermes` launcher (`python3 -I -c … hermes_cli …`) | A live writer can be overlapped |
+| 3 | TOOLSET-045 | Setup ignores `apply_runtime_defaults: false` and turns approval prompts back off | Silently reverses a security opt-out |
+| 4 | TOOLSET-046 | A profile folder sharing a bundled skill's name without `SKILL.md` makes plugin load raise | Every bundled command disappears |
+| 5 | TOOLSET-047 | CRLF or trailing-space `##` headings fail section checks; `render` deletes `###` content under a legacy Goal coverage heading | Refused init/backlog; silent data loss |
+| 6 | TOOLSET-048 | Chat update status reports a reaped-never zombie or killed updater as running forever; a symlinked Hermes home refuses chat updates | Wrong update status |
+| 7 | TOOLSET-049 | Setup's bounded YAML readers reject Hermes-written configs (indentless lists, `{}`, BOM, empty sections) and a stray profile symlink aborts setup/update | Blocks full setup |
+| 8 | TOOLSET-050 | Telegram menu healing misreads `.env` inline comments and odd chat IDs and stops at the first failing chat | Menus silently not healed |
+| 9 | TOOLSET-051 | `docs.py check` false positives on footnotes, commented-out links and `~/` script paths | False documentation findings |
+
+Lower-ranked reproduced findings stay recorded here for later tasks: merged local
+skill edits reported as drift on the next update (larger fix), `Label:` sub-bullets
+replacing the `Acceptance:` field, archiving unindented section prose with the
+preceding checkbox task, `check_receipt` timeout tracebacks and wrapper bypass of
+the shell-status guard, nested worktrees blocking the parent checkout, `/toolset`
+argument case sensitivity, executable-bit removal not propagated, malformed
+`facts.json` tracebacks and untracked leftover skill folders aborting installs.
