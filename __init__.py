@@ -100,7 +100,8 @@ def register(ctx):
         native_skills.append(shared)
     messages = []
     if install(SKILLS_DIR, [('current', get_hermes_home())], skills=native_skills, report=messages.append):
-        raise RuntimeError('Bundled native skill provisioning failed:\n' + '\n'.join(messages))
+        # Commands load skills by qualified name, so a preserved native folder must not block them.
+        logger.warning('Bundled native skill provisioning incomplete:\n%s', '\n'.join(messages))
     from .runtime_defaults import apply_runtime_defaults, provision_cron_scripts
     apply_runtime_defaults(ctx)
     for name in provision_cron_scripts(SKILLS_DIR, get_hermes_home()):

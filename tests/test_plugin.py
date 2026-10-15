@@ -86,6 +86,23 @@ class PluginTests(unittest.TestCase):
         self.plugin.register(next_ctx)
         self.assertEqual(set(next_ctx.commands), {"alpha", "beta", "toolset"})
 
+    def test_incomplete_native_folder_is_logged_and_registration_continues(self):
+        self.skill("alpha")
+        self.skill("beta")
+        native = Path(self.temp.name) / 'home' / 'skills'
+        user_skill = native / 'alpha' / 'my-own-skill' / 'SKILL.md'
+        user_skill.parent.mkdir(parents=True)
+        user_skill.write_text('user content\n')
+        with self.assertLogs(self.plugin.logger, level='WARNING') as logs:
+            self.plugin.register(self.ctx)
+        self.assertEqual(set(self.ctx.commands), {"alpha", "beta", "toolset"})
+        self.assertEqual(set(self.ctx.skills), {"alpha", "beta"})
+        self.assertTrue(any('incomplete existing skill' in line and 'alpha' in line
+                            for line in logs.output), logs.output)
+        self.assertFalse((native / 'alpha' / 'SKILL.md').exists())
+        self.assertEqual(user_skill.read_text(), 'user content\n')
+        self.assertTrue((native / 'beta' / 'SKILL.md').is_file())
+
     def test_each_handler_loads_its_own_namespaced_skill_and_preserves_arguments(self):
         alpha = self.skill("alpha")
         self.skill("beta")

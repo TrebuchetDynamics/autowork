@@ -122,7 +122,8 @@ and `/grill_me` (Telegram) remain typeable compatibility commands that run
 shown in the Telegram menu. Enabling/loading hermes-toolset installs missing bundled
 skills and shared support files into that profile's native skill directory, using
 the same offline provisioner as full setup. Existing flat and categorized skills
-are preserved; incomplete existing slots fail visibly instead of being replaced.
+are preserved; an incomplete existing slot is never replaced and is logged as a
+warning while the remaining skills and every command still register.
 Ordinary plugin loading writes only inside the owning profile (its config and
 `scripts/`); it never installs network dependencies, changes sibling profiles, or
 reloads a gateway. Full setup provisions native skills across all
