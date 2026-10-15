@@ -716,7 +716,9 @@ def render_text(repo, data, text=None):
         if len(headings) != 1:
             sys.exit('multiple Goal coverage sections in TODO.md; choose the maintained section; no write')
         heading = headings[0]
-        nxt = re.search(r'\n#{1,2}[ \t]+', prose[heading.end():])
+        # Replace only up to the next heading of any level: a following `### Decisions log`
+        # is owner content, not part of the legacy table, and must stay byte-identical.
+        nxt = re.search(r'\n#{1,6}[ \t]+', prose[heading.end():])
         rest = text[heading.end() + nxt.start():] if nxt else '\n'
         text = text[:heading.end()] + '\n\n' + block + '\n' + rest
     else:

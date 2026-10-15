@@ -724,6 +724,23 @@ class HeadingLineEndingTests(unittest.TestCase):
     def test_trailing_space_section_heading_matches_ledger_section(self):
         self.assert_like_lf('space', self.TODO.replace('## Now\n', '## Now \n').replace('## Next\n', '## Next\t\n'))
 
+    def test_render_keeps_level_three_content_after_legacy_coverage(self):
+        repo = self.root / 'legacy'
+        repo.mkdir()
+        (repo / 'goals.json').write_text(json.dumps(sample()))
+        self.assertEqual(run('fmt', str(repo)).returncode, 0)
+        tail = ('### Decisions log\n\n- 2026-10-01: keep the legacy layout.\n- 2026-10-02: ship it.\n\n'
+                '## Now\n\n- [ ] TASK-001\n')
+        (repo / 'TODO.md').write_text('# TODO\n\n## Goal coverage\n\nold table\n\n' + tail)
+        result = run('render', str(repo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = (repo / 'TODO.md').read_text()
+        self.assertTrue(text.endswith(tail), text)
+        self.assertNotIn('old table', text)
+        self.assertIn('| GOAL-4: Decrement floors at 0 | unmet | — | TASK-001 |', text)
+        self.assertEqual(run('render', str(repo)).returncode, 0)
+        self.assertEqual((repo / 'TODO.md').read_text(), text)
+
 
 if __name__ == '__main__':
     unittest.main()
