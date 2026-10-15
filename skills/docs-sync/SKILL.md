@@ -402,6 +402,25 @@ qualification or delivery; a legacy section label does not mean another product
 decision is needed. Describe `in_progress` as recorded status unless worker liveness
 was actually checked, and state whether target identity and deployed readiness were
 assessed. A listing performs no repair, render, task transition or schedule change.
+If an owner stop is not yet reflected in the index, distinguish recorded queue totals
+from pending work after that stop, and expose the stale selector entry as a risk;
+never silently count stopped work as authorized or claim its closeout was applied.
+
+### Owner-stopped closeout
+
+Read the current task and latest retained result before interpreting a close request.
+If acceptance is unmet and the intended disposition is unclear, ask once whether to
+stop without completion or retain the task for qualification; reuse an explicit stop
+answer without asking again. Do not run additional experiments to justify cancellation.
+Preserve the original contract and receipts in append-only history, withdraw active
+continuation instructions, and synchronize the live body and index through supported
+operations. Where the schema lacks cancellation, use its established non-executable
+representation (here open/Needs decision with a CANCELLED gate), never done or a
+fabricated successor. Keep unmet goal evidence unmet. Run the actual selector and
+assert the stopped ID is absent before reporting removal from execution; a private
+proposal or successful validation alone does not prevent dispatch. Queue exclusion
+does not prove an already-running worker stopped: assess it separately when in scope
+and report any unverified liveness. Use the existing [archive procedure](references/todo-archive.md).
 
 ### Simplify execution, not acceptance
 
@@ -414,13 +433,19 @@ replace it, so rerun the original product-plan checks after compaction. Never re
 or repin its admission inputs. Report prose reduction, not measured speedup. Follow
 [queue compaction](references/decisive-planning.md#compact-an-existing-queue).
 
-When asked whether tasks are necessary, separate required behavior, distinct
-package/composed proof, reviewed work awaiting integration and convenience work that
-must not block delivery; prefer shared artifacts and input-matched checks over new
-IDs. When the owner chooses tracked children, keep the parent's ID, acceptance and
-evidence as the aggregate closeout, make the parent depend on the children (never
-the reverse) and give children bounded remaining outcomes. Children done is not the
-parent's acceptance; validate cross-level cycles.
+When asked whether tasks are necessary or may be removed, classify held work as an
+owner choice, operation/target approval, technical reconciliation or dependency-only
+hold; do not present all held work as a new product interview. Remove justified
+obsolete or explicitly stopped work using a non-completion disposition and preserve
+its history. Retain required behavior, distinct package/composed proof and parent
+acceptance records; similar titles or a shared test window do not establish redundancy.
+Compare preconditions, evidence, platform scope and dependencies before merging;
+prefer one compatible observation with separate verdicts when those contracts differ.
+Record the removal or retention reason in the existing queue/plan without inventing
+replacement tasks. When the owner chooses tracked children, keep the parent's ID,
+acceptance and evidence as the aggregate closeout, make the parent depend on the
+children (never the reverse) and give children bounded remaining outcomes. Children
+done is not the parent's acceptance; validate cross-level cycles.
 
 ### Consumer-bound brainstorming handoff check
 
