@@ -10,7 +10,7 @@ When the matching task was cancelled, separate permission to revisit its plan,
 to reactivate it and to execute it; ask which boundary changes rather than reviving an
 old execution grant. On reactivation reuse its ID and keep the cancellation in
 history. If the owner instead requests a new replacement, allocate its successor
-against the current queue, then supersede the old task with an explicit link;
+against the current queue with `goals.py new-id`, then supersede the old task with an explicit link;
 preserve original acceptance/results without importing withdrawn scope or
 historical allowance. Report queue eligibility separately from execution authority.
 

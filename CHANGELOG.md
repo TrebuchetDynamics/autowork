@@ -12,6 +12,11 @@ claim of a tagged release, completed installation or live workflow qualification
   `hermes toolset pin --profile NAME [--dry-run]` replaces one link with a clone at
   the same revision that only updates advance, saving the link; `--unpin` restores it
   (TOOLSET-079). Nothing is converted automatically.
+- New task IDs end in a two-hex-digit hash after the number, such as `TOOLSET-084-a7`,
+  so collaborators adding tasks on separate clones no longer create two tasks with the
+  same ID. `goals.py new-id <repo>` allocates one (next number for the ledger's most
+  common prefix, checked against TODO.md and its archive), and `goals.py add-task`
+  allocates one when the ID is omitted. Existing IDs are unchanged.
 - In profiles with OMH, plugin load (and so `/toolset update`) adds the OMH skills
   outside a measured keep list (`omh_keep_skills`, 41 of 142, including code review,
   verification, core and memory skills) to `skills.disabled`, so Hermes stops listing them
