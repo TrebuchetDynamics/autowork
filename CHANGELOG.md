@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/beautify-github-readme` (`/beautify_github_readme`): oil-oil's MIT-licensed
+  Beautify GitHub README skill, vendored byte-exact at `d6562a5` with file hashes,
+  behind a toolset adapter (scope first, README claims stay Docs Sync facts, pure SVG
+  by default, no unsolicited attribution or showcase offer). Codex and Pi adapters
+  included.
+
 - `/toolset update` merges edits profiles made to their installed skill copies
   instead of stopping on `drift`. It merges from the closest same-path version in
   trusted history (keeping a pure addition over the release), reports each file under

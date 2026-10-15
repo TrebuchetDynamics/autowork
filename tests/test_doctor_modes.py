@@ -19,7 +19,7 @@ class DoctorModes(unittest.TestCase):
         names = [p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')]
         self.report = {
             'plugins': [{'name': 'hermes-toolset', 'enabled': True, 'error': None}],
-            'plugin_skills': ['hermes-toolset:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'git-pull-merge', 'impeccable', 'lgtm', 'profile-create')],
+            'plugin_skills': ['hermes-toolset:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'git-pull-merge', 'impeccable', 'lgtm', 'profile-create', 'beautify-github-readme')],
             'commands': [{'command': name.replace('_', '-'), 'source': 'hermes-toolset', 'kind': 'plugin'}
                          for name in names],
             'missing_plugins': ['omh'], 'missing_skills': ['graphify'],

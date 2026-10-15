@@ -103,9 +103,10 @@ and docs commands accept underscores or hyphens; other commands use hyphens
 See [commands and workflows](docs/workflows.md).
 
 **Bundled skills.** The workflows draw on the complete
-[Impeccable design skill](skills/impeccable/SKILL.md) and 25 pinned
-[engineering protocols](skills/engineering/SKILL.md), loaded one technique at a
-time when a task needs it. Loading a skill is not proof it was applied; application
+[Impeccable design skill](skills/impeccable/SKILL.md), 25 pinned
+[engineering protocols](skills/engineering/SKILL.md) and the
+[Beautify GitHub README](skills/beautify-github-readme/SKILL.md) skill
+(`/beautify-github-readme`), loaded one technique at a time when a task needs it. Loading a skill is not proof it was applied; application
 receipts name the protocol and the actual decision or check.
 
 ## Read before installing

@@ -290,8 +290,8 @@ upgrading from a version that does not register it.
 ## Complete bundled skill installation
 
 Native plugin loading provisions every bundled skill and its support files into
-the selected profile, including Impeccable, Autoresearch, Grill Me and the pinned
-engineering protocols. No separate hub installation is needed for these skills.
+the selected profile, including Impeccable, Beautify GitHub README, Autoresearch,
+Grill Me and the pinned engineering protocols. No separate hub installation is needed for these skills.
 Fleet setup provisions the same bundle across existing live profiles. Existing
 local or categorized skill installations are preserved rather than overwritten.
 `hermes toolset doctor --core` checks registration; full setup and full diagnostics

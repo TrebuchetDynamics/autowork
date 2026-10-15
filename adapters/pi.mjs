@@ -12,6 +12,7 @@ const workflows = {
   autoresearch: ['autoresearch', 'Run bounded research or experiments'],
   engineering: ['engineering', 'Apply a focused engineering method'],
   impeccable: ['impeccable', 'Improve interface design'],
+  beautify_github_readme: ['beautify-github-readme', 'Redesign or audit a GitHub README'],
   grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
   git_commit_push: ['git-commit-push', 'Validate, commit and push owned changes'],
