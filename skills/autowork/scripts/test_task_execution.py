@@ -224,7 +224,15 @@ class RecoveryTests(DirectExecutionTests):
         subprocess.run(command, check=True, capture_output=True)
         p = subprocess.run([sys.executable, str(SCRIPT), command[-1], '--state-dir', str(self.state),
                             '--apply', '--owner-pid', str(os.getpid())], env=self.env, capture_output=True, text=True, timeout=15)
-        self.assertEqual(json.loads(p.stdout)['outcome'], 'EXECUTE', p.stdout)
+        isolated = json.loads(p.stdout)
+        self.assertEqual(isolated['outcome'], 'EXECUTE', p.stdout)
+        # Active elsewhere is not idle: an integrator must not read it as safe to merge.
+        self.assertNotIn('idle_sessions', isolated)
+        self.assertEqual([w['pid'] for w in isolated['other_checkout_sessions']], [worker.pid])
+        p = subprocess.run([sys.executable, str(SCRIPT), command[-1], '--writers'], capture_output=True, text=True, timeout=15)
+        report = json.loads(p.stdout)
+        self.assertEqual((report['outcome'], report['idle_sessions']), ('CLEAR', []))
+        self.assertEqual([w['pid'] for w in report['other_checkout_sessions']], [worker.pid])
 
     def test_session_running_commands_is_active_despite_quiet_terminal(self):
         from task_execution import session_activity

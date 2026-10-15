@@ -100,7 +100,9 @@ separates two kinds of live process. An Autowork command for the repository bloc
 every worktree. Any other agent session (`pi`, `claude`, `codex`, `hermes`) blocks
 only the checkout it touches, and only while active: recent terminal use, running
 commands or an open writable repository file. A session idle past 30 minutes is
-reported under `idle_sessions` and does not block; never kill or message it. When the
+reported under `idle_sessions` and does not block; never kill or message it. An
+active (or unknown-activity) session in another checkout is reported under
+`other_checkout_sessions`: it does not block this one, but it is not idle. When the
 helper returns `BUSY` with `isolate`, create that worktree and branch (reuse it if it
 already exists), rerun the helper with that worktree as the consumer, and do the
 task there. Integrate the verified branch into the canonical checkout only when

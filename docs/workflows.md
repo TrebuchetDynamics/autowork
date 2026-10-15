@@ -208,7 +208,8 @@ files), and only while it is active (terminal input or output in the last 30
 minutes, running commands, or an open writable repository file) or its activity
 cannot be determined, for example without a readable terminal. A launcher whose
 only child is the agent itself does not count as running commands. An idle
-session left open is listed under `idle_sessions` and never blocks, killed or
+session left open is listed under `idle_sessions` (an active or unknown-activity
+session in another checkout under `other_checkout_sessions`) and never blocks, killed or
 messaged. For an active one the helper returns `BUSY` with an `isolate` branch and
 `git worktree add` command; the task runs there, and `owner_cycle.py REPO
 --writers` (read-only; `CLEAR`, `BUSY` or `ACTION_REQUIRED`, exit 1 unless `CLEAR`)

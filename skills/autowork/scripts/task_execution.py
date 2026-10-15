@@ -258,6 +258,13 @@ def external_workers(repo):
     return workers
 
 
+def nonblocking_sessions(workers, blocking):
+    """Split sessions that do not block into idle ones and active ones in other checkouts."""
+    rest = [w for w in workers if w not in blocking]
+    return ([w for w in rest if w['active'] is False],
+            [w for w in rest if w['active'] is not False])
+
+
 def blocking_workers(workers, repo):
     """Autowork commands block every worktree; a session blocks only the checkout it
     touches, and only while active or of unknown activity."""
@@ -535,9 +542,11 @@ def execute(args):
             return dict(result, outcome='BUSY', reason='Release the current task before claiming another.')
         workers = external_workers(repo)
         blocking = blocking_workers(workers, repo)
-        idle = [w for w in workers if w not in blocking]
+        idle, elsewhere = nonblocking_sessions(workers, blocking)
         if idle:
             result['idle_sessions'] = idle
+        if elsewhere:
+            result['other_checkout_sessions'] = elsewhere
         if any(w['kind'] == 'autowork' for w in blocking):
             return dict(result, outcome='BUSY', reason='Live Autowork command in this repository; reconcile its work first.', owners=blocking)
         if blocking:
@@ -587,7 +596,8 @@ def main(argv=None):
             workers = external_workers(repo)
             blocking = blocking_workers(workers, repo)
             result = {'outcome': 'BUSY' if blocking else 'CLEAR', 'workspace': str(repo),
-                      'blocking': blocking, 'idle_sessions': [w for w in workers if w not in blocking]}
+                      'blocking': blocking}
+            result['idle_sessions'], result['other_checkout_sessions'] = nonblocking_sessions(workers, blocking)
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
         print(json.dumps(result, indent=2))
