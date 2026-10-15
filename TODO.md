@@ -28,6 +28,34 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Next
 
+### TOOLSET-060 — Vendor and adapt the Beautify GitHub README skill
+
+- [ ] TOOLSET-060 — Vendor and adapt the Beautify GitHub README skill
+- Status: open
+- Goal: README-DESIGN — Vendor the README design skill and use it on this README.
+- Sources: [accepted plan](docs/project.md#readme-design-skill-2026-10-15), [engineering vendor pattern](skills/engineering/SKILL.md), [engineering provenance](skills/engineering/UPSTREAM.json), [portable package test](tests/test_portable_package.py).
+- Scope: Add `skills/beautify-github-readme/` with a toolset adapter `SKILL.md`, the pinned upstream skill under `upstream/` (`SKILL.md` renamed `PROTOCOL.md`; references, scripts and LICENSE byte-exact), `UPSTREAM.json` with repository, revision, license, file hashes, transform and exclusions, and a hash/licence test. Add a Codex/Pi adapter with an explicit-only `agents/openai.yaml`. Document the command, licensing and changelog.
+- Acceptance: The skill registers as `/beautify-github-readme` (`/beautify_github_readme` in Telegram) without a second nested skill; every vendored file matches its recorded hash; the adapter states the toolset rules from the accepted plan; the bundled audit script runs from its vendored path; existing bundle, plugin, install and portable-package tests pass.
+- Checks: `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `python3 skills/beautify-github-readme/upstream/scripts/audit_readme.py README.md`; `git diff --check`; independent review.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No upstream edits, showcase images, image generation, publication or push.
+- Next action: Copy the pinned files, write the adapter and provenance, then the test.
+
+### TOOLSET-061 — Give this README a project-native visual refresh
+
+- [ ] TOOLSET-061 — Give this README a project-native visual refresh
+- Status: open
+- Goal: README-DESIGN — Vendor the README design skill and use it on this README.
+- Sources: [accepted plan](docs/project.md#readme-design-skill-2026-10-15), [README](README.md), [skill adapter](skills/beautify-github-readme/SKILL.md).
+- Scope: README mode, visual refresh: keep the current information architecture and every safety statement, add a pure-SVG hero built from the project's real plan → queue → execute loop and a workflow diagram under `assets/readme/`, with alt text and light/dark legibility.
+- Acceptance: The first screen states the value and shows the real loop; SVGs use system fonts, no scripts or `foreignObject`, a 1200-unit viewBox and readable text at 900 px; the README still reads correctly with images off; the upstream audit script and `docs.py check` pass; no claim is added that lacks evidence.
+- Checks: `python3 skills/beautify-github-readme/upstream/scripts/audit_readme.py README.md`; `python3 skills/docs-sync/scripts/docs.py check .`; rendered previews at 900 and 360 px reviewed; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-060.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No raster generation, GIF, attribution badge, showcase PR or push.
+- Next action: Run the vendored audit on the current README, then design the hero and diagram.
+
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
 
 - [ ] TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order
@@ -116,6 +144,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | met | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass; executed <code>uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only</code> → pass | — |
+| README-DESIGN: Vendor the README design skill and use it on this README | unmet | — | TOOLSET-060, TOOLSET-061 |
 | PRIORITY: Make TODO.md order the enforced human priority | unmet | — | TOOLSET-029 |
 | RECOVERY: Qualify bounded automatic planning recovery | unverified | executed <code>Shared TOOLSET-017/018/019 implementation integrated eb72be6; independent review findings repaired with failing-then-passing regressions; final Python 3.12 scripts/check.py passed 318/470/139/8 tests, two skips/eight excluded. Native recovery, deployment and model qualification remain incomplete.</code> → pass; executed <code>TOOLSET-015 reviewed 16a750ce: seven disposable real-Git regressions, Bash syntax and whitespace passed; coordinator integration candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 263/448/139/8 offline tests, 2 skipped and 8 excluded; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-016: exact 9b894fd same-card review approved; integration b470c68 Python 3.12 scripts/check.py passed 283/448/139/8 offline tests (2 skipped, 8 excluded), bash -n and git diff --check passed; native recovery NOT_CHECKED</code> → pass; executed <code>TOOLSET-020: exact 5e05e6b native independent review approved; integration-candidate uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 319/475/139/8 offline tests, two skips/eight excluded; local main integration preservation ZERO_CHANGED; native/model/live qualification unrun</code> → pass; executed <code>TOOLSET-021 exact ab12f821 native independent review run398 approved; integration 49739eff: env -u HERMES_KANBAN_DB uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py passed 332/495/139/8 offline tests, 3 skips, 8 excluded; git diff --check HEAD^1 passed; native/model/live/startup unqualified</code> → pass; executed <code>TOOLSET-022 exact 816678e3 native independent review run406 approved; integration 5f49a2e0: Python 3.12 scripts/check.py on frozen integration candidate passed 332/510/139/8 offline tests, three skips/eight native-model-integration modules excluded; whitespace passed; native/model/live/startup unqualified</code> → pass | TOOLSET-003, TOOLSET-019 |
 | ARCHIVAL: Integrate archival and reconcile the rendering contract | met | executed <code>Reviewed 218865c; coordinator exact-commit Python 3.12 scripts/check.py: 253/448/139/8 offline tests passed, 2 skipped, 8 excluded; native same-card review approved; local integration only</code> → pass; executed <code>cd skills/docs-sync/scripts &amp;&amp; python3 -m unittest test_todo_archive test_archive_policy test_render_safety (31 tests; offline only)</code> → pass; executed <code>python3 scripts/check.py (411/572/204/8 offline tests passed; includes TOOLSET-042 archive newline, git diff --check and legacy-retry regressions); offline only</code> → pass | — |

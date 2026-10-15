@@ -77,6 +77,19 @@
     {
       "depends_on": [],
       "evidence": [],
+      "id": "README-DESIGN",
+      "priority": 20,
+      "source": "docs/project.md#readme-design-skill-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-060",
+        "TOOLSET-061"
+      ],
+      "title": "Vendor the README design skill and use it on this README"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
       "id": "PRIORITY",
       "priority": 25,
       "source": "docs/project.md#todo-owned-task-priority",
@@ -296,20 +309,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-043",
-      "TOOLSET-044",
-      "TOOLSET-045",
-      "TOOLSET-046",
-      "TOOLSET-047",
+      "TOOLSET-060",
+      "TOOLSET-061",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
       "TOOLSET-011",
-      "TOOLSET-013",
-      "TOOLSET-048",
-      "TOOLSET-049",
-      "TOOLSET-050",
-      "TOOLSET-051"
+      "TOOLSET-013"
     ]
   },
   "tasks": [
@@ -358,6 +364,24 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "README-DESIGN",
+      "id": "TOOLSET-060",
+      "section": "Next",
+      "status": "open",
+      "title": "Vendor and adapt the Beautify GitHub README skill"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-060"
+      ],
+      "goal": "README-DESIGN",
+      "id": "TOOLSET-061",
+      "section": "Next",
+      "status": "open",
+      "title": "Give this README a project-native visual refresh"
     },
     {
       "depends_on": [],
