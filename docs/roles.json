@@ -17,7 +17,7 @@
     "reference": {
       "status": "created",
       "path": "docs/reference.md",
-      "verified_at": "add009f149ad",
+      "verified_at": "41aaad8fccfe",
       "covers": [
         "bundle.py",
         "setup_bundle.py",
@@ -74,7 +74,7 @@
         "skills",
         "adapters/pi.mjs"
       ],
-      "verified_at": "6c2f4e51d8d2"
+      "verified_at": "41aaad8fccfe"
     },
     "prd": {
       "status": "maintained",
@@ -87,7 +87,7 @@
         "scripts/check.py",
         "tests"
       ],
-      "verified_at": "add009f149ad"
+      "verified_at": "41aaad8fccfe"
     },
     "changelog": {
       "status": "maintained",
@@ -117,7 +117,7 @@
       "covers": [
         "adapters"
       ],
-      "verified_at": "8738cc636fdc"
+      "verified_at": "41aaad8fccfe"
     },
     "memory": {
       "status": "maintained",
