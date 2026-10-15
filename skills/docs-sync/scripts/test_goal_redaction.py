@@ -87,14 +87,25 @@ class RedactionTests(unittest.TestCase):
         self.assertIn('placeholder', result.stderr)
         self.assertEqual(before, self.snapshot())
 
-    def test_non_string_source_and_statuses_are_preserved(self):
+    def test_non_string_source_is_refused_without_writes_or_archive(self):
         self.data['goals'][0]['source'] = {'path': '/home/example/private/PRD.md'}
+        self.data['goals'][0]['status'] = 'partial'
+        (self.repo / 'goals.json').write_text(json.dumps(self.data))
+        before = self.snapshot()
+        result = self.redact()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stderr.strip(), 'goals[0].source must be a string')
+        self.assertNotIn('/home/example', result.stdout + result.stderr)
+        self.assertEqual(before, self.snapshot())
+        self.assertFalse(self.archive.exists())
+
+    def test_valid_source_redaction_preserves_statuses_and_tasks(self):
         self.data['goals'][0]['status'] = 'partial'
         (self.repo / 'goals.json').write_text(json.dumps(self.data))
         result = self.redact()
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads((self.repo / 'goals.json').read_text())
-        self.assertEqual(data['goals'][0]['source'], self.data['goals'][0]['source'])
+        self.assertEqual(data['goals'][0]['source'], '<private-evidence>/PRD.md#g')
         self.assertEqual(data['goals'][0]['status'], 'partial')
         self.assertEqual(data['tasks'], self.data['tasks'])
 

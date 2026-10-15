@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from audit_profiles import backlog_readiness, inspect_profile, progress
+from audit_profiles import backlog_readiness, inspect_profile, progress, safe
 
 
 class CorrectnessTests(unittest.TestCase):
@@ -48,12 +48,15 @@ class CorrectnessTests(unittest.TestCase):
 
     def test_linked_worktree_readiness_observes_local_contract_without_writes(self):
         root = self.repo()
-        child = self.root / 'child'
+        opaque_segment = 'x' * 64
+        child = self.root / opaque_segment / 'child'
         self.git(root, 'worktree', 'add', '-b', 'fixture-child', str(child))
         before = {p: p.read_bytes() for checkout in (root, child)
                   for p in checkout.rglob('*') if p.is_file()}
         ready = backlog_readiness(child, [])
-        self.assertEqual(ready['canonical_readiness'], {'state': 'observed', 'repo': str(child)})
+        self.assertEqual(ready['canonical_readiness'], {'state': 'observed', 'repo': safe(child)})
+        self.assertNotIn(opaque_segment, json.dumps(ready))
+        self.assertIn('[OPAQUE REDACTED]', ready['canonical_readiness']['repo'])
         self.assertEqual(ready['state'], 'consumer_ready')
         self.assertEqual(ready['live_ownership'], 'unknown')
         self.assertEqual(before, {p: p.read_bytes() for checkout in (root, child)

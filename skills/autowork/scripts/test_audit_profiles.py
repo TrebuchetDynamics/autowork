@@ -209,7 +209,7 @@ class CollectorTests(unittest.TestCase):
             result = audit_profiles.backlog_readiness(worker, gaps)
         self.assertEqual(result['state'], 'consumer_ready', result)
         self.assertEqual(result['eligible_task_ids'], ['T1'])
-        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': str(worker)})
+        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': audit_profiles.safe(worker)})
         self.assertEqual(result['live_ownership'], 'unknown')
         self.assertEqual(gaps, [])
         self.assertEqual(before, {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()})
@@ -242,7 +242,7 @@ class CollectorTests(unittest.TestCase):
         with patch.object(audit_profiles.goals, 'backlog_authority', side_effect=AssertionError('native authority queried')):
             result = audit_profiles.backlog_readiness(worker, [])
         self.assertEqual(result['state'], 'consumer_ready', result)
-        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': str(worker)})
+        self.assertEqual(result['canonical_readiness'], {'state': 'observed', 'repo': audit_profiles.safe(worker)})
         self.assertEqual(before, {p: p.read_bytes() for root in (repo, worker) for p in root.rglob('*') if p.is_file()})
 
     def test_job_delivery_and_response_coverage_are_not_silently_omitted(self):

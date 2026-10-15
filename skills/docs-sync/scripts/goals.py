@@ -140,6 +140,8 @@ def shape_errors(data):
                 if not isinstance(value, list) or any(not isinstance(v, str) or not v for v in value):
                     problems.append(f'{location}.{field} must be a list of nonempty strings')
             if collection == 'goals':
+                if 'source' in row and not isinstance(row['source'], str):
+                    problems.append(f'{location}.source must be a string')
                 priority = row.get('priority', 100)
                 if type(priority) not in (int, float) or (isinstance(priority, float) and not math.isfinite(priority)):
                     problems.append(f'{location}.priority must be a finite number')

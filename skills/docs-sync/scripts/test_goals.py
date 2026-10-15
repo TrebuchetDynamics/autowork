@@ -304,6 +304,58 @@ class GoalsTests(unittest.TestCase):
                     self.assertNotIn('Traceback', result.stderr)
                     self.assertEqual((path.read_bytes(), todo.read_bytes()), before)
 
+    def test_non_string_goal_sources_are_rejected_without_writing(self):
+        path = self.repo / 'goals.json'
+        todo = self.repo / 'TODO.md'
+        todo.write_text('# TODO\n\nKeep this task body.\n')
+        for source in ({'private-source': 'sensitive-value'}, ['sensitive-value'],
+                       True, 731942, {}, [], False, 0, None):
+            data = sample()
+            data['goals'][0]['status'] = 'unverified'
+            data['goals'][0]['source'] = source
+            path.write_text(json.dumps(data))
+            before = (path.read_bytes(), todo.read_bytes())
+            for command in (('validate',), ('next', '--json'), ('fmt',), ('render',),
+                            ('task', 'TASK-001', 'done'), ('focus', 'GOAL-4')):
+                with self.subTest(source=source, command=command):
+                    path.write_bytes(before[0])
+                    todo.write_bytes(before[1])
+                    result = run(command[0], str(self.repo), *command[1:])
+                    diagnostic = result.stdout + result.stderr
+                    self.assertNotEqual(result.returncode, 0, diagnostic)
+                    self.assertIn('goals[0].source must be a string', diagnostic)
+                    for private in ('private-source', 'sensitive-value', '731942', 'Traceback'):
+                        self.assertNotIn(private, diagnostic)
+                    self.assertEqual((path.read_bytes(), todo.read_bytes()), before)
+
+    def test_source_shape_api_refuses_non_strings_before_normalization(self):
+        import goals
+        for source in ({'secret': 'value'}, ['value'], True, 731942, {}, [], False, 0, None):
+            with self.subTest(source=source):
+                data = sample()
+                data['goals'][0]['status'] = 'unverified'
+                data['goals'][0]['source'] = source
+                before = json.dumps(data)
+                diagnostic = ['goals[0].source must be a string']
+                self.assertEqual(goals.shape_errors(data), diagnostic)
+                self.assertEqual(goals.errors(data), diagnostic)
+                with self.assertRaisesRegex(ValueError, r'goals\[0\]\.source must be a string'):
+                    goals.normalize(data)
+                self.assertEqual(json.dumps(data), before)
+
+    def test_valid_source_strings_remain_unchanged(self):
+        import goals
+        for source in ('README.md#intent', 'docs/plan with spaces.md#accepted',
+                       'https://example.invalid/spec#intent'):
+            with self.subTest(source=source):
+                data = sample()
+                data['goals'][0]['status'] = 'unverified'
+                data['goals'][0]['source'] = source
+                normalized = goals.normalize(data)
+                self.assertEqual(goals.errors(normalized), [])
+                self.assertEqual(normalized['goals'][0]['source'], source)
+                self.assertTrue(goals.eligible(normalized))
+
     def test_fmt_preserves_extension_metadata(self):
         data = sample()
         data['maintenance'] = {'owner': 'fixture', 'revision': 'preserve-me'}
