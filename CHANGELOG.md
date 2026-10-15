@@ -11,6 +11,9 @@ claim of a tagged release, completed installation or live workflow qualification
   bundle's `autowork-start-notice.py` cron script into every profile's `scripts/`
   folder, and `/cron_autowork` attaches it; the finished report remains Hermes'
   normal cron delivery.
+- `/cron_autowork` with a cadence resumes the matched paused job on that cadence
+  (for example `/cron_autowork 5m`), unless the request says to keep it paused.
+  Multi-profile refreshes and repairs still never resume a job.
 
 - TODO.md order is the enforced human priority. goals.json records a versioned
   `priority_order`; selection ranks focus, section, recorded order, then goal

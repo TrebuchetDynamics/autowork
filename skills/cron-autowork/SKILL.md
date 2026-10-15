@@ -170,7 +170,13 @@ Use scheduler idempotency or serialization when supported. Otherwise recheck for
 a match immediately before creation and disclose that concurrent setup requests
 cannot be guaranteed unique; do not invent a supported idempotency flag.
 Update a single matching job instead of creating a duplicate. Preserve its ID,
-history, unrelated settings and paused/enabled state; resume only when requested.
+history and unrelated settings. A user's `/cron_autowork` with a cadence for a
+paused matched job (for example `/cron_autowork 5m`) asks for that job to run on
+that cadence: save the cadence, resume the job and re-anchor a past `next_run_at`
+as below. It stays paused only when the request says so ("paused", "keep paused",
+"don't start"). Without a cadence or resume request, preserve paused/enabled state.
+This applies to the user's direct request only; a multi-profile refresh or repair
+never resumes a job.
 Prepare one final payload, compare it with captured scope, limits and settings,
 write once and read back the exact saved prompt. Avoid cosmetic rewrites of a
 healthy job; configuration churn completes no repository work.
@@ -220,7 +226,7 @@ conversation without sending a success confirmation.
 For “it did not run/report”, inspect the existing job's last execution, saved output
 and delivery error/receipt separately. Reconcile any active run before an explicitly
 requested run-now through the supported scheduler; never duplicate work or resume
-a paused job implicitly. Report configured, execution observed and Telegram delivery
+a paused job without a cadence or resume request. Report configured, execution observed and Telegram delivery
 verified as separate facts, using actual evidence rather than scheduler health alone.
 
 For an existing Toolset-managed development job, use the bounded

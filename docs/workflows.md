@@ -24,7 +24,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/grill-me` | `/grill_me` | Stress-test a plan through questions |
 | `/autoresearch` | `/autoresearch` | Route a research goal or run a bounded metric loop |
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
-| `/cron-autowork` | `/cron_autowork` | Create or update a recurring Autowork job; preserve existing scope and paused state |
+| `/cron-autowork` | `/cron_autowork` | Create or update a recurring Autowork job; preserve existing scope. Giving a cadence for a paused job resumes it unless you say to keep it paused |
 | `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
