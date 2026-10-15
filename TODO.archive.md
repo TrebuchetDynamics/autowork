@@ -1553,3 +1553,26 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No inference of file sets from prose or by an LLM; no changes to goals.py ordering.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-086-9f — Add a repository coordinator lease, worker slots and an execution journal
+
+- [x] TOOLSET-086-9f — Add a repository coordinator lease, worker slots and an execution journal
+- Status: done
+- Readiness: Offline implementation reviewed and verified in the isolated candidate; canonical integration and task closure remain pending. No worker dispatch or live host qualification.
+- Local evidence: 13 new lease/recovery tests and 49 unchanged execution/priority tests passed on Python 3.12.14. `python3 scripts/check.py` passed all four offline directories (506/589/212/8 tests; one skip; eight modules excluded). Independent review approved after two reproduced retry defects were fixed (relative retry worktree storage and clean second-attempt release).
+- Planner call: Preserve the active canonical writers; use an isolated task checkout rather than overlap their workspace. Reuse existing process identity, file safety, Git and writer-lock helpers; standard library only (bundled Ponytail fallback).
+- Integration: merged into main on 2026-10-15 by the interactive coordinator with TOOLSET-085-1a already integrated; `test_parallel_state.py` and `test_parallel_plan.py` passed together and `python3 scripts/check.py` passed all four offline directories on the merge. Worker dispatch remains TOOLSET-087-32.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [current lease](skills/autowork/scripts/task_execution.py).
+- Scope: Add `skills/autowork/scripts/parallel_state.py` storing `coordinator.json`, `slots/<TASK>.json` and append-only `journal.jsonl` under `<git-common-dir>/autowork-execution/`, written atomically under the existing `writer.lock` and reusing `task_execution`'s process identity (PID, start ticks, boot ID). Functions: claim/release the coordinator lease bound to the `--owner-pid` identity of the persistent coordinator session (refuse a second live coordinator; supersede a dead one; reject a missing or non-ancestor owner), create/update slots through the state machine in the plan, including the retry transitions from its builder-check answers (`interrupted` → `dispatched` attempt 2 in the same worktree; `held` → a fresh attempt on `autowork/<TASK>-r2`; a second failure stays `held`); illegal transitions raise, append journal events, and `reconcile(repo)` that classifies each slot as live worker (adopt), dead with commit (queue integration), dead with uncommitted changes (`interrupted`, worktree kept), or clean without commit (`released`). Make `task_execution.execute()` return `BUSY` while a live parallel coordinator exists, and make the coordinator claim refuse while a live sequential `active.json` owner exists. A live lease never expires by age.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Tests show two coordinators cannot both claim one repository (also across two linked worktrees); a sequential claim and a parallel coordinator exclude each other; a dead coordinator is superseded; reconcile is idempotent (running it twice gives the same states and journal adds nothing new the second time) and classifies the four worker cases above with real Git fixtures; an illegal slot transition is refused; existing lease tests pass unchanged.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_state.py` (new); `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No worker launch, worktree creation or integration (TOOLSET-087/088); no heartbeat-based expiry.

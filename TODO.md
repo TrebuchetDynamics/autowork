@@ -28,24 +28,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Next
 
-### TOOLSET-086-9f — Add a repository coordinator lease, worker slots and an execution journal
-
-- [ ] TOOLSET-086-9f — Add a repository coordinator lease, worker slots and an execution journal
-- Status: in_progress
-- Readiness: Offline implementation reviewed and verified in the isolated candidate; canonical integration and task closure remain pending. No worker dispatch or live host qualification.
-- Local evidence: 13 new lease/recovery tests and 49 unchanged execution/priority tests passed on Python 3.12.14. `python3 scripts/check.py` passed all four offline directories (506/589/212/8 tests; one skip; eight modules excluded). Independent review approved after two reproduced retry defects were fixed (relative retry worktree storage and clean second-attempt release).
-- Planner call: Preserve the active canonical writers; use an isolated task checkout rather than overlap their workspace. Reuse existing process identity, file safety, Git and writer-lock helpers; standard library only (bundled Ponytail fallback).
-- Next action: Integrate this reviewed candidate when fresh canonical writer admission is clear, reconcile current task metadata, run affected combined checks with the retained planner candidate, then close and archive this task. Worker dispatch remains TOOLSET-087-32.
-- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
-- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [current lease](skills/autowork/scripts/task_execution.py).
-- Scope: Add `skills/autowork/scripts/parallel_state.py` storing `coordinator.json`, `slots/<TASK>.json` and append-only `journal.jsonl` under `<git-common-dir>/autowork-execution/`, written atomically under the existing `writer.lock` and reusing `task_execution`'s process identity (PID, start ticks, boot ID). Functions: claim/release the coordinator lease bound to the `--owner-pid` identity of the persistent coordinator session (refuse a second live coordinator; supersede a dead one; reject a missing or non-ancestor owner), create/update slots through the state machine in the plan, including the retry transitions from its builder-check answers (`interrupted` → `dispatched` attempt 2 in the same worktree; `held` → a fresh attempt on `autowork/<TASK>-r2`; a second failure stays `held`); illegal transitions raise, append journal events, and `reconcile(repo)` that classifies each slot as live worker (adopt), dead with commit (queue integration), dead with uncommitted changes (`interrupted`, worktree kept), or clean without commit (`released`). Make `task_execution.execute()` return `BUSY` while a live parallel coordinator exists, and make the coordinator claim refuse while a live sequential `active.json` owner exists. A live lease never expires by age.
-- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/task_execution.py
-- Acceptance: Tests show two coordinators cannot both claim one repository (also across two linked worktrees); a sequential claim and a parallel coordinator exclude each other; a dead coordinator is superseded; reconcile is idempotent (running it twice gives the same states and journal adds nothing new the second time) and classifies the four worker cases above with real Git fixtures; an illegal slot transition is refused; existing lease tests pass unchanged.
-- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_state.py` (new); `python3 scripts/check.py`; `git diff --check`.
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No worker launch, worktree creation or integration (TOOLSET-087/088); no heartbeat-based expiry.
-
 ### TOOLSET-087-32 — Dispatch workers in their own worktrees with a refilled worker pool
 
 - [ ] TOOLSET-087-32 — Dispatch workers in their own worktrees with a refilled worker pool
@@ -297,7 +279,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
 | GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | executed <code>TOOLSET-075..079 offline: python3 scripts/check.py (506/576/209/8 passed, 1 skipped) and node --test tests/portable_pi.test.mjs (3 passed); read-only pin dry run against the live home refused an unreleased revision as designed; live rollout not qualified (TOOLSET-084)</code> → pass | TOOLSET-084 |
-| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | unmet | — | TOOLSET-086-9f, TOOLSET-087-32, TOOLSET-088-a7, TOOLSET-089-72, TOOLSET-090-2d, TOOLSET-091-00 |
+| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | unmet | — | TOOLSET-087-32, TOOLSET-088-a7, TOOLSET-089-72, TOOLSET-090-2d, TOOLSET-091-00 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 
