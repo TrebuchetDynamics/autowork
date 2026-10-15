@@ -38,6 +38,7 @@ Installation makes skills available, not mandatory to load or invoke.
 | Affected docs, accepted decisions or task metadata | Narrow docs-sync Maintain; no repository bootstrap. |
 | User requirements that evidence cannot answer | plan-with-me; Grill Me only for requested/advisable adversarial questioning. |
 | Specific engineering method gap | Engineering reference adapter and the relevant protocol only. |
+| Slow, redundant or low-signal tests | Engineering `--protocol test-suite-optimization`: audit, then one task per change. |
 | Material implementation or simplification choice | [Ponytail](../autowork/references/ponytail.md): smallest complete change, with concrete reuse and verification evidence. |
 | Review of that implementation | Ponytail review criteria in the existing required review lane; resolve separate versus integrated guidance from the installed version. |
 | UI/design work | Impeccable when relevant; no design pass for unrelated changes. |

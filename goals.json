@@ -450,14 +450,6 @@
       "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-067",
-      "section": "Next",
-      "status": "open",
-      "title": "Add the test-suite-optimization engineering protocol"
-    },
-    {
       "depends_on": [
         "TOOLSET-067"
       ],
@@ -832,6 +824,14 @@
       "section": "Done",
       "status": "done",
       "title": "Ship a Claude Code plugin marketplace for the portable adapters"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-067",
+      "section": "Done",
+      "status": "done",
+      "title": "Add the test-suite-optimization engineering protocol"
     },
     {
       "depends_on": [],

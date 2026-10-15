@@ -42,6 +42,28 @@ class EngineeringVendorTests(unittest.TestCase):
         self.assertEqual(Path(selection['skills'][0]['path']),
                          PACK/'upstream/skills/performance-optimization/PROTOCOL.md')
 
+    def test_toolset_protocol_routes_without_a_pin_and_cannot_shadow_one(self):
+        result = subprocess.run(['python3', str(PACK/'scripts/route.py'),
+                                 '--protocol', 'test-suite-optimization'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = json.loads(result.stdout)['skills'][0]
+        self.assertEqual(row['source'], 'toolset')
+        self.assertEqual(Path(row['path']), PACK/'local/test-suite-optimization/PROTOCOL.md')
+        self.assertNotIn('sha256', row)
+        protocol = Path(row['path']).read_text()
+        for part in ('## Measure first', '## Find candidates', '## Keep', '## Record tasks, do not edit',
+                     '## Acceptance for each change', '## Never'):
+            self.assertIn(part, protocol)
+        spec = importlib.util.spec_from_file_location('route_shadow', PACK/'scripts/route.py')
+        router = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(router)
+        router.LOCAL = dict(router.LOCAL, **{'performance-optimization': 'local/x/PROTOCOL.md'})
+        with self.assertRaisesRegex(ValueError, 'shadows a pinned protocol'):
+            router.route(protocol='performance-optimization')
+        with self.assertRaisesRegex(ValueError, 'phase bundles use pinned protocols only'):
+            router.route('implement', ['test-suite-optimization'])
+
     def test_exact_selection_rejects_unknown_or_mixed_requests(self):
         for args in ([], ['--domain', 'performance-optimization'],
                      ['--protocol', '../../bad'],

@@ -1,4 +1,6 @@
-"""Verify one pinned engineering protocol or an explicitly requested phase bundle."""
+"""Verify one pinned engineering protocol or an explicitly requested phase bundle.
+
+Toolset-written protocols under local/ are selected only with --protocol."""
 import argparse
 import hashlib
 import json
@@ -13,18 +15,33 @@ PHASES={
     'document':['documentation-and-adrs'],
     'deliver':['git-workflow-and-versioning'],
 }
+# Toolset-owned methods: versioned with this repository, so no upstream pin.
+LOCAL={
+    'test-suite-optimization':'local/test-suite-optimization/PROTOCOL.md',
+}
 
 
 def route(phase=None, domains=(), pack=PACK, *, protocol=None):
+    manifest=json.loads((pack/'UPSTREAM.json').read_text())
     if protocol is not None:
         if phase is not None or domains:
             raise ValueError('--protocol selects one method; do not combine it with a phase or --domain')
+        if protocol in LOCAL:
+            if protocol in manifest['skills']:
+                raise ValueError('Toolset protocol shadows a pinned protocol: '+protocol)
+            path=pack/LOCAL[protocol]
+            if not path.is_file():
+                raise ValueError('Missing toolset protocol: '+protocol)
+            return {'phase':None,'revision':manifest['revision'],'adapter':str(pack/'SKILL.md'),
+                    'skills':[{'name':protocol,'path':str(path),'source':'toolset'}],
+                    'boundary':'Selection is not proof of skill application, execution or completed tasks.'}
         names = [protocol]
     else:
         if phase not in PHASES:
             raise ValueError('Select --protocol NAME or an explicit phase bundle')
+        if any(name in LOCAL for name in domains):
+            raise ValueError('Toolset protocols are selected with --protocol; phase bundles use pinned protocols only')
         names = list(dict.fromkeys(PHASES[phase] + list(domains)))
-    manifest=json.loads((pack/'UPSTREAM.json').read_text())
     rows=[]
     for name in names:
         if name not in manifest['skills']:raise ValueError('Unknown engineering skill: '+name)
