@@ -12,7 +12,8 @@ profile `.env` or exported `OMH_HOME`, or, for a profile already using OMH witho
 one, its standalone `~/.omh`. Resolved duplicate stores, including
 symlink aliases and inherited global `OMH_HOME`, are refused before writes.
 Clear another selected provider explicitly before setup; OMH never silently
-steals its slot. If one is selected, setup still completes but OMH memory stays off.
+steals its slot. If one is selected, setup still completes but OMH memory stays off,
+and setup prints `memory off: memory.provider is <name>` with the command to clear it.
 
 `auto-safe` admits only bounded eligible records; other candidates still need
 review. Reviewed OMH records and Hermes built-in `MEMORY.md`/`USER.md` remain

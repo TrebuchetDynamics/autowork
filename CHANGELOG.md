@@ -63,6 +63,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- OMH setup reports `memory off` for a profile where another memory provider
+  kept the slot (with the `hermes memory off` command to clear it), instead of
+  printing a plain success line while OMH memory stayed off.
+
 - Autowork accepted only `Checks:` as a task's verification field, while Docs Sync
   and `goals.py next` also accepted `Verification:`. Every kilo task used
   `Verification:`, so its scheduled job selected tasks and then refused them all.

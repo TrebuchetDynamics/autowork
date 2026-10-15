@@ -216,6 +216,22 @@ def prepare_plugin_comments(path):
         path.write_text(updated)
 
 
+def memory_off_note(plan):
+    """Upstream setup leaves another provider's slot alone and still succeeds; say so."""
+    try:
+        provider = config_values(plan['home'] / 'config.yaml').get(('memory', 'provider'), '')
+    except SetupError as exc:
+        return f' (memory provider unverified: {exc})'
+    if provider == 'omh':
+        return ''
+    if not provider:
+        return ' (memory off: memory.provider is not set)'
+    off = shlex.join(['hermes', *([] if plan['name'] == 'default' else ['-p', plan['name']]),
+                      'memory', 'off'])
+    return (f' (memory off: memory.provider is {provider}; run `{off}`, '
+            'then rerun setup to use OMH memory)')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--hermes-home', required=True, type=Path)
@@ -279,7 +295,7 @@ def main(argv=None):
                 prepare_plugin_comments(plan['home'] / 'config.yaml')
                 run(setup, json_output=True)
                 run(binding, env=dict(os.environ, HERMES_HOME=str(root)))
-                print(f'OMH setup: {plan["name"]}')
+                print(f'OMH setup: {plan["name"]}{memory_off_note(plan)}')
         # Doctor runs after root synchronization, checking the final state.
         for plan in plans:
             doctor = [executable, '--hermes-home', str(plan['home']), '--omh-home', str(plan['store']), 'doctor', '--json']

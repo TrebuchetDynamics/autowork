@@ -856,3 +856,24 @@ Source section: Next
 - Current evidence: Reproduced offline: with `settings.apply_runtime_defaults: false` and restored approval values, `verify_runtime_defaults()` reported `approvals.mode` and other paths as drift, which finalize turns into `Profile settings not healed`. `_opted_out` now mirrors Hermes' `get_config` (`settings`, then legacy `config`); the entry-level form, which the loader never honored, is retired and its old assertion inverted. The same ineffective entry-level opt-out in `update_bundle_native.py`'s disposable registration probe now uses `settings` via `PROBE_CONFIG`. Three new regressions in `tests/test_telegram_menu_policy.py` failed before the fix.
 - Checks run: `python3 scripts/check.py --timeout 300` passed offline: 406/571/197/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. The longer per-directory timeout reflects host load, not a test change. Self-reviewed.
 - Closure: Offline verification only; no installed profile was re-finalized and no native registration probe was run.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-034 — Make install-omh report when OMH did not take the memory provider slot
+
+- [x] TOOLSET-034 — Make install-omh report when OMH did not take the memory provider slot
+- Status: done
+- Goal: OMH-SETUP-REPORT — Setup output must not imply OMH memory is active when it is off.
+- Sources: [memory guide](docs/memory.md), [`install-omh.py`](install-omh.py), pinned OMH `src/install/config_adapter.py` `set_memory_provider` (refuses to replace another `memory.provider` and reports "clear it first" without failing setup).
+- Scope: Found during external-claim verification (source inspection, not a reproduced run). When a profile already selects another memory provider, OMH setup leaves it in place and still succeeds, and `install-omh.py` prints `OMH setup: <profile>` without checking. After setup, read the profile's `memory.provider` and report profiles where it is not `omh` as memory-off, without changing the provider.
+- Acceptance: A profile with another provider selected is reported as OMH memory off with the provider name and the clear-it-first remedy; a profile that selected OMH reports as before; no provider is overwritten.
+- Checks: Failing focused offline regression with a fake OMH runner first; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No upstream OMH or Hermes edits, real profile writes or push.
+- Current evidence: After each profile's setup and store binding, `install-omh.py` rereads `memory.provider` with its existing bounded reader and prints `OMH setup: <profile> (memory off: memory.provider is <name>; run `hermes [-p <profile>] memory off`, then rerun setup to use OMH memory)`, `(memory off: memory.provider is not set)`, or a plain line when OMH holds the slot; an unreadable config after setup is reported as unverified instead of failing. The exit status and the provider are unchanged. Four regressions in `tests/test_install_omh.py` (fake OMH can now claim the slot); the two memory-off cases failed before the change. Memory and troubleshooting docs and CHANGELOG updated.
+- Checks run: `python3 scripts/check.py --timeout 300` passed offline: 410/572/197/8 tests in 4 directories, 1 skipped, 8 modules excluded; `git diff --check` clean. Self-reviewed.
+- Closure: Offline only; no real profile was set up and upstream OMH's refusal was confirmed by source inspection of the pinned commit.

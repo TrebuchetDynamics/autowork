@@ -120,20 +120,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
 - Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
 
-### TOOLSET-034 — Make install-omh report when OMH did not take the memory provider slot
-
-- [ ] TOOLSET-034 — Make install-omh report when OMH did not take the memory provider slot
-- Status: open
-- Goal: OMH-SETUP-REPORT — Setup output must not imply OMH memory is active when it is off.
-- Sources: [memory guide](docs/memory.md), [`install-omh.py`](install-omh.py), pinned OMH `src/install/config_adapter.py` `set_memory_provider` (refuses to replace another `memory.provider` and reports "clear it first" without failing setup).
-- Scope: Found during external-claim verification (source inspection, not a reproduced run). When a profile already selects another memory provider, OMH setup leaves it in place and still succeeds, and `install-omh.py` prints `OMH setup: <profile>` without checking. After setup, read the profile's `memory.provider` and report profiles where it is not `omh` as memory-off, without changing the provider.
-- Acceptance: A profile with another provider selected is reported as OMH memory off with the provider name and the clear-it-first remedy; a profile that selected OMH reports as before; no provider is overwritten.
-- Checks: Failing focused offline regression with a fake OMH runner first; `python3 scripts/check.py`; `git diff --check`.
-- Dependencies: None.
-- Ownership: Toolset coordinator under Autowork local repository authority.
-- Exclusions: No upstream OMH or Hermes edits, real profile writes or push.
-- Next action: Reproduce with a fixture profile whose `memory.provider` is another product.
-
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -152,6 +138,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | STARTUP: Start useful implementation sooner with less preparation | unmet | executed <code>Reviewed fef4241; integration e2a0838: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (252/448/135/8 offline tests; 2 skipped; 8 live/integration modules excluded); native timing remains TOOLSET-013</code> → pass | TOOLSET-013 |
 | DOCS-COMPLETENESS: Make core-document completeness and drift machine-checkable | met | executed <code>python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
-| OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | unmet | — | TOOLSET-034 |
+| OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 
 <!-- goals:coverage:end -->

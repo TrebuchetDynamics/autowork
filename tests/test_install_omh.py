@@ -16,6 +16,10 @@ with open(os.environ['CALL_LOG'], 'a') as log:
     log.write(json.dumps(sys.argv[1:]) + '\\n')
 if os.environ.get('FAIL_COMMAND') in sys.argv[1:]:
     sys.exit(9)
+if 'setup' in sys.argv and os.environ.get('SET_PROVIDER'):
+    home = sys.argv[sys.argv.index('--hermes-home') + 1]
+    with open(os.path.join(home, 'config.yaml'), 'a') as config:
+        config.write('memory:\\n  provider: omh\\n')
 if 'doctor' in sys.argv:
     print(json.dumps({'ok': not bool(os.environ.get('BAD_DOCTOR'))}))
 else:
@@ -132,6 +136,41 @@ class InstallOmhTests(unittest.TestCase):
         result = self.run_helper('--profile', 'default')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('off', self.calls()[0])
+
+    def test_reports_memory_off_when_another_provider_keeps_the_slot(self):
+        # TOOLSET-034: upstream setup succeeds but leaves another provider selected.
+        config = 'memory:\n  provider: holographic # existing\n'
+        (self.home / 'config.yaml').write_text(config)
+        child = self.home / 'profiles/coder'
+        child.mkdir(parents=True)
+        (child / 'config.yaml').write_text('memory:\n  provider: honcho\n')
+        result = self.run_helper('--profile', 'default', '--profile', 'coder')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('OMH setup: default (memory off: memory.provider is holographic; '
+                      'run `hermes memory off`, then rerun setup to use OMH memory)', result.stdout)
+        self.assertIn('OMH setup: coder (memory off: memory.provider is honcho; '
+                      'run `hermes -p coder memory off`, then rerun setup to use OMH memory)', result.stdout)
+        self.assertEqual((self.home / 'config.yaml').read_text(), config)
+
+    def test_reports_memory_off_when_provider_slot_stays_empty(self):
+        result = self.run_helper('--profile', 'default')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('OMH setup: default (memory off: memory.provider is not set)', result.stdout)
+
+    def test_unreadable_provider_after_setup_is_reported_not_fatal(self):
+        self.command('omh', FAKE.replace("config.write('memory:\\n  provider: omh\\n')",
+                                         "config.write('memory: {provider: omh}\\n')"))
+        self.env['SET_PROVIDER'] = '1'
+        result = self.run_helper('--profile', 'default')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('OMH setup: default (memory provider unverified:', result.stdout)
+
+    def test_reports_plain_success_when_omh_takes_the_slot(self):
+        self.env['SET_PROVIDER'] = '1'
+        result = self.run_helper('--profile', 'default')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('OMH setup: default\n', result.stdout)
+        self.assertNotIn('memory off', result.stdout)
 
     def test_plugin_comments_do_not_hide_enabled_list_from_omh(self):
         config = self.home / 'config.yaml'

@@ -91,6 +91,14 @@ CLI startup can apply runtime defaults before setup's preflight runs. From a
 source checkout, `bash install.sh --yes-deps --dry-run` previews without booting
 Hermes; see the [README](../README.md#first-use-in-your-project).
 
+### Setup printed `memory off` for a profile
+
+OMH setup never replaces another selected memory provider. The line names the
+provider and the command that clears it (`hermes -p PROFILE memory off`); run it,
+then rerun setup to use OMH memory. `memory.provider is not set` means OMH did not
+take the empty slot; check `hermes -p PROFILE memory status`. See
+[memory](memory.md#omh-memory-per-profile).
+
 ## Updates
 
 ### `/toolset update` replied “requested” but nothing seems to change

@@ -231,11 +231,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)",
+          "result": "pass"
+        }
+      ],
       "id": "OMH-SETUP-REPORT",
       "priority": 95,
       "source": "docs/memory.md",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-034"
       ],
@@ -308,14 +314,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [],
-      "goal": "OMH-SETUP-REPORT",
-      "id": "TOOLSET-034",
-      "section": "Next",
-      "status": "open",
-      "title": "Make install-omh report when OMH did not take the memory provider slot"
     },
     {
       "depends_on": [],
@@ -502,6 +500,14 @@
       "section": "Done",
       "status": "done",
       "title": "Read the runtime-policy opt-out from the plugin settings path in finalize verification"
+    },
+    {
+      "depends_on": [],
+      "goal": "OMH-SETUP-REPORT",
+      "id": "TOOLSET-034",
+      "section": "Done",
+      "status": "done",
+      "title": "Make install-omh report when OMH did not take the memory provider slot"
     },
     {
       "depends_on": [],
