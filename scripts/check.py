@@ -2,6 +2,7 @@
 """Run owned offline unittest suites; never import tests while building inventory."""
 import argparse
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 from pathlib import Path
@@ -49,7 +50,10 @@ def discover_tests(root):
 
 
 def run_directory(directory, tests, env, timeout):
-    """Use the module runner so multiprocessing spawn has a real entry point."""
+    """Use the module runner so multiprocessing spawn has a real entry point.
+
+    Returns (passed, output); the caller prints output so concurrent directories
+    never interleave."""
     command = [sys.executable, '-m', 'unittest', *[path.stem for path in tests]]
     with subprocess.Popen(command, cwd=directory, env=env, text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -62,17 +66,22 @@ def run_directory(directory, tests, env, timeout):
             else:
                 process.kill()
             output, _ = process.communicate()
-            print(output, end='', flush=True)
-            print(f'TIMEOUT: {directory} after {timeout:g}s', flush=True)
-            return False
-    print(output, end='', flush=True)
-    return process.returncode == 0
+            return False, output + f'TIMEOUT: {directory} after {timeout:g}s\n'
+    return process.returncode == 0, output
+
+
+def positive_int(value):
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError('must be a positive integer')
+    return number
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
     parser.add_argument('--timeout', type=float, default=600, help='seconds allowed per test directory (default: 600)')
+    parser.add_argument('--jobs', type=positive_int, help='test directories run at once (default: all; 1 runs them in order)')
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be positive')
@@ -99,12 +108,19 @@ def main(argv=None):
     for flag in LIVE_FLAGS:
         env.pop(flag, None)
     passed = failed = 0
-    for directory, modules in groups.items():
-        print(f'CHECK {directory.relative_to(root)} ({len(modules)} modules)', flush=True)
-        if run_directory(directory, modules, env, args.timeout):
-            passed += 1
-        else:
-            failed += 1
+    items = list(groups.items())
+    # Directories are independent processes; output is still printed whole and in order.
+    with ThreadPoolExecutor(max_workers=args.jobs or len(items)) as pool:
+        runs = [pool.submit(run_directory, directory, modules, env, args.timeout)
+                for directory, modules in items]
+        for (directory, modules), run in zip(items, runs):
+            print(f'CHECK {directory.relative_to(root)} ({len(modules)} modules)', flush=True)
+            ok, output = run.result()
+            print(output, end='', flush=True)
+            if ok:
+                passed += 1
+            else:
+                failed += 1
     print(f'Offline result: {passed} test directories passed; {failed} failed; '
           f'{excluded} modules excluded.', flush=True)
     return int(bool(failed))
