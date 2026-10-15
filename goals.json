@@ -228,6 +228,18 @@
         "TOOLSET-033"
       ],
       "title": "Honor the documented runtime-policy opt-out everywhere it is checked"
+    },
+    {
+      "depends_on": [],
+      "evidence": [],
+      "id": "OMH-SETUP-REPORT",
+      "priority": 95,
+      "source": "docs/memory.md",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-034"
+      ],
+      "title": "Report OMH memory left off when another provider holds the slot"
     }
   ],
   "priority_order": {
@@ -239,7 +251,7 @@
       "TOOLSET-019",
       "TOOLSET-011",
       "TOOLSET-013",
-      "TOOLSET-033"
+      "TOOLSET-034"
     ]
   },
   "tasks": [
@@ -296,6 +308,14 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
+    },
+    {
+      "depends_on": [],
+      "goal": "OMH-SETUP-REPORT",
+      "id": "TOOLSET-034",
+      "section": "Next",
+      "status": "open",
+      "title": "Make install-omh report when OMH did not take the memory provider slot"
     },
     {
       "depends_on": [],

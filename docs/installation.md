@@ -191,7 +191,8 @@ profile if they did not land. `settings_healed` lists profiles whose config chan
 Because Telegram menus refresh only when the gateway reconnects, an update that
 changed code, skills or settings requests one graceful `hermes gateway restart`
 (`gateway_restart: requested`) when every profile activated cleanly and a gateway
-is running: in-flight turns drain first, and workers and schedules keep running.
+is running: in-flight turns drain first and cron schedules persist (a job mid-run
+during the restart is marked `unknown` and not retried; its next tick runs normally).
 Otherwise it reports `not_running`, or `not_needed` for a no-op or incomplete update.
 
 Telegram shows a chat's own command list ahead of the default, private and group

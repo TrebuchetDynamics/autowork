@@ -118,9 +118,9 @@ These are operator-run live checks, not recorded model or Telegram test results.
 
 ## Update or remove
 
-For a native Git install, use `hermes -p work plugins update hermes-toolset`, obey
-any native request to stop the gateway, then reload/restart through your normal
-service procedure and reopen CLI sessions. Recheck `doctor --core` and first use.
+For a native Git install, use `hermes -p work plugins update hermes-toolset`, then
+reload or restart the gateway through your normal service procedure and reopen CLI
+sessions. Recheck `doctor --core` and first use.
 
 For a source install, the profile plugin links to your checkout. Keep its path
 stable; moving or deleting it breaks those links. Review local edits before

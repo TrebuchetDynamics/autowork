@@ -150,7 +150,8 @@ This policy applies to Hermes. [Codex/Pi adapters](docs/cross-host.md) preserve 
   and MCP-reload confirmations, and enables gateway injection in its owning profile.
   Explicit deny rules and Hermes hard blocks remain. Setup also clears disabled-skill lists.
 - Full setup installs external integrations and selects **OMH memory with auto-safe
-  capture** in separate profile stores. Conflicting providers/stores are refused.
+  capture** in separate profile stores. Conflicting stores are refused; another
+  selected memory provider is left in place, and OMH memory stays off until you clear it.
 - External imports are **not fully locked**. Some are pinned; others follow current
   upstream sources. Scans or missing dependencies can leave setup incomplete.
 - There is **no automatic restoration of previous configuration** on uninstall.
@@ -272,7 +273,7 @@ profiles**, preserves local conflicts and uses fast-forward updates only. It als
 self-heals each profile's command menu, approval and injection settings
 (`settings_healed` in the result) and, when anything changed and every profile is
 ready, requests one graceful restart of a running gateway so Telegram menus refresh; in-flight turns finish first and
-workers and schedules keep running. It also clears leftover per-chat Telegram menus
+cron schedules persist. It also clears leftover per-chat Telegram menus
 that still list retired commands (`chat_menus_healed`). It refuses while a plugin checkout has
 uncommitted changes. See
 [update behavior and recovery](docs/installation.md#update-all-profiles).
@@ -290,7 +291,7 @@ A profile is not a filesystem sandbox.
 | Actual model behavior or live Telegram delivery | Not established by those checks; requires a configured live session |
 
 `/toolset` reports registrations, not whether every service is connected.
-Hermes `/toolsets` reports enabled tool groups, a different inventory.
+Hermes' CLI `/toolsets` lists available tool groups and marks the enabled ones, a different inventory.
 [Testing and compatibility](docs/testing.md) explains checks, exclusions and limits.
 
 ## Documentation

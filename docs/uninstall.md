@@ -42,7 +42,7 @@ later unrelated edits. Loading the plugin with runtime defaults enabled would
 reapply its policy, which is why the opt-out comes first.
 
 Without a backup, the old values cannot be recovered from this repository. You
-can choose a new policy explicitly, for example:
+can choose a new policy explicitly, for example (Hermes' own default mode is `smart`):
 
 ```sh
 hermes -p PROFILE config set approvals.mode manual
