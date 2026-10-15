@@ -149,9 +149,13 @@ For a scoped dirty-worktree documentation proposal:
    staged-only changes. Copy only inspected required inputs, never credentials or
    runtime state, and keep foreign overlays separate from authored replacements.
 2. Return targeted old/new replacements and a baseline-to-candidate patch; a
-   repository-wide Git diff includes unrelated pre-existing work. For a scoped
-   whitespace check, `git diff --no-index --check -- <baseline> <candidate>` exits 1
-   for any difference: accept 0 or 1 only with empty stdout and stderr.
+   repository-wide Git diff includes unrelated pre-existing work. Anchor insertions
+   to a unique heading or paragraph, not a blank line from a generic diff opcode:
+   repeated whitespace makes automatic replacements ambiguous. After a partial
+   patch failure, inspect which replacements landed and resume only unapplied
+   hunks, rather than replaying the batch. For a scoped whitespace check,
+   `git diff --no-index --check -- <baseline> <candidate>` exits 1 for any difference:
+   accept 0 or 1 only with empty stdout and stderr.
 3. Under the shared lock, compare all targeted canonical baselines, and the source/
    test/dependency bytes candidate checks used, before applying replacements. If
    only the valid marked coverage block changed, require all other bytes to match
@@ -174,12 +178,16 @@ For a scoped dirty-worktree documentation proposal:
 2. Allocate each numeric ID from the current ledger immediately before `add-task`.
    Obtain a fresh `revision` token for each mutation and pass `--expected-revision`;
    reserving a sequence in memory does not protect it from another writer.
-3. After integration and `fmt`/`validate`/`render`, compare every pre-existing task
-   object with its baseline. Require unchanged statuses, dependencies, sections and
-   focus, unless the pass explicitly authorizes those changes. For each affected
-   goal, allow only the intended additions to its task list. For an evidence-only
-   addition, remove the exact authored record once and require prior evidence
-   unchanged; `fmt` sorts evidence, so the new record need not be last.
+3. After integration and `fmt`/`validate`/`render`, compare pre-existing task
+   objects by stable ID, not by zipping serialized arrays: normalization can reorder
+   rows without changing their meaning. Require unchanged statuses, dependencies,
+   sections and focus except for explicitly authorized deltas. When a cancellation
+   relocates a body, compare priority sequences with that moved ID removed to prove
+   all other relative ordering survived; do not require an unchanged whole sequence
+   or excuse unrelated reordering. For each affected goal, allow only intended
+   membership changes. For an evidence-only addition, remove the exact authored
+   record once and require prior evidence unchanged; `fmt` sorts evidence, so the
+   new record need not be last.
 4. For an insertion-only TODO change, normalize only the marked generated coverage
    block in both snapshots, remove the exact authored insertion once, and require
    the remaining bytes to equal the baseline. Check insertion multiplicity so this
