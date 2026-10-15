@@ -366,14 +366,6 @@
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
     },
     {
-      "depends_on": [],
-      "goal": "UI-TASTE",
-      "id": "TOOLSET-052",
-      "section": "Next",
-      "status": "open",
-      "title": "Vendor the pinned UI Taste skill into skills/ui-taste"
-    },
-    {
       "depends_on": [
         "TOOLSET-052"
       ],
@@ -688,6 +680,14 @@
       "section": "Done",
       "status": "done",
       "title": "Remove docs.py false positives for footnotes, commented-out links and home-relative scripts"
+    },
+    {
+      "depends_on": [],
+      "goal": "UI-TASTE",
+      "id": "TOOLSET-052",
+      "section": "Done",
+      "status": "done",
+      "title": "Vendor the pinned UI Taste skill into skills/ui-taste"
     },
     {
       "depends_on": [],

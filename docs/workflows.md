@@ -26,6 +26,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/profile-create` | `/profile_create` | Create a repository-bound profile with shared setup |
 | `/cron-autowork` | `/cron_autowork` | Create or update a recurring Autowork job; preserve existing scope. Giving a cadence for a paused job resumes it unless you say to keep it paused |
 | `/impeccable` | `/impeccable` | Design and front-end quality workflow |
+| `/ui-taste` | `/ui_taste` | Uizze's UI Taste playbooks for building, polishing and reviewing web and iOS interfaces |
 | `/engineering` | `/engineering` | Select one engineering protocol for a concrete method gap |
 | `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps; `/toolset update [--check\|status]` updates all profiles |
 

@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Uizze's UI Taste skill (v0.2.0) is bundled as `/ui-taste` (`/ui_taste` in
+  Telegram): an unmodified, Apache-2.0 snapshot pinned to Uizze commit `afd703a`
+  with per-file hashes. It works offline; its optional paid Uizze MCP is never
+  configured by Toolset.
+
 - `/toolset update` merges edits profiles made to their installed skill copies
   instead of stopping on `drift`. It merges from the closest same-path version in
   trusted history (keeping a pure addition over the release), reports each file under

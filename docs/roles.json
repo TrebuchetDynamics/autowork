@@ -139,7 +139,8 @@
         "plugin.yaml",
         "skills/grill-me/SKILL.md",
         "skills/autoresearch/UPSTREAM.json",
-        "skills/engineering/UPSTREAM.json"
+        "skills/engineering/UPSTREAM.json",
+        "skills/ui-taste/UPSTREAM.json"
       ],
       "verified_at": "8738cc636fdc"
     },

@@ -1160,3 +1160,23 @@ Source section: Next
 - Exclusions: No network link checking.
 - Current evidence: Implemented in `ada728c` (isolated worktree, reviewed by the coordinator before integration). Footnote definitions are no longer reference links, HTML comments are masked before scanning, `~` script paths are skipped, code-span headings keep their underscores in anchors, and single-quoted link titles are checked. Two regressions in `test_docs_manifest.py` failed before the fix while real broken links and missing scripts are still reported; `docs.py check` on this repository prints ok.
 - Checks run: integrated `main` passed `python3 scripts/check.py` (437/575/209/8 offline tests, 1 skipped, 8 modules excluded), `node --test tests/portable_pi.test.mjs` (3 passed), `docs.py check` and `git diff --check`. Offline only.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-052 — Vendor the pinned UI Taste skill into skills/ui-taste
+
+- [x] TOOLSET-052 — Vendor the pinned UI Taste skill into skills/ui-taste
+- Status: done
+- Goal: UI-TASTE — Hermes profiles get `/ui-taste` (Telegram `/ui_taste`) offline from a reproducible, licensed snapshot.
+- Sources: [UI Taste plan](docs/project.md#vendored-ui-taste-skill), upstream https://github.com/uizze/uizze/tree/afd703a14a5db5f2fe6c2860badbe811058aa9e5/skills/ui-taste, domain index https://uizze.sh/.well-known/skills/index.json, precedent [Impeccable pin](skills/impeccable/UPSTREAM.json) and [its test](tests/test_impeccable_bundle.py).
+- Scope: In a scratch directory run `git clone https://github.com/uizze/uizze.git` and, for each of the 16 paths from `git ls-tree -r --name-only afd703a14a5db5f2fe6c2860badbe811058aa9e5 skills/ui-taste`, write `git show <revision>:<path>` byte-for-byte to `skills/ui-taste/<relative path>`. Add `skills/ui-taste/UPSTREAM.json` with `repository`, `revision`, `path` (`skills/ui-taste`), `version` (`0.2.0`), `license` (`Apache-2.0`), `sha256` for every vendored file, and a `domain_check` note (2026-10-15: uizze.sh copy identical on the 13 content files; `MANIFEST.json`, `MODIFICATIONS.md`, `CHECKSUMS.sha256` differ as packaging metadata). Add `tests/test_ui_taste_bundle.py` and document the skill: dependencies table row, licensing bullet and refresh procedure in docs/dependencies.md, a workflows.md command row, README mention beside Impeccable, CHANGELOG entry, and `skills/ui-taste/UPSTREAM.json` in the `dependencies` role's `covers` in docs/roles.json.
+- Acceptance: `skills/ui-taste/` holds exactly the 16 upstream files plus UPSTREAM.json, each byte-identical to the pinned commit; upstream `CHECKSUMS.sha256` verifies; no file is executable; LICENSE and NOTICE are present. Plugin load registers `/ui-taste`, `hermes-toolset:ui-taste` and provisions the native copy (existing auto-discovery; no registration code change expected). Bundled Impeccable is unchanged.
+- Checks: `python3 -m unittest discover -s tests -p test_ui_taste_bundle.py` (pinned revision, exact file set, sha256 per file, upstream checksums, LICENSE/NOTICE, no executable bit, `name: ui-taste` frontmatter); `python3 -m unittest discover -s tests -p 'test_impeccable_bundle.py'` (clean-profile provisioning, extend it to assert `skills/ui-taste/SKILL.md`); `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No edits to upstream files, no `npx` or network fetch at install/setup/update time, no Uizze MCP configuration, no other Uizze skills, no Telegram menu priority change, no push.
+- Current evidence: The 16 files at Uizze commit `afd703a` were written byte-for-byte with `git show` into `skills/ui-taste/` (mode 0644) with UPSTREAM.json (revision, path, version 0.2.0, Apache-2.0, per-file sha256, domain cross-check). `tests/test_ui_taste_bundle.py` (pinned exact file set and hashes, upstream CHECKSUMS.sha256, LICENSE/NOTICE, no executable bit, `name: ui-taste`, clean-profile provisioning) failed before vendoring; spot checks against the live uizze.sh copy matched. The plugin's `_discover_skills()` registers it as `ui-taste`. `tests/test_doctor_modes.py`'s registered-skill fixture gained `ui-taste`, since doctor derives expected skills from `skills/`. Docs: dependencies (pin, licensing, refresh procedure), workflows command row, README, CHANGELOG, roles.json covers.
+- Checks run: `python3 scripts/check.py` passed offline (440/575/209/8 tests, 1 skipped, 8 modules excluded); `docs.py check` ok; `git diff --check` clean. Offline only; no live Hermes load.
