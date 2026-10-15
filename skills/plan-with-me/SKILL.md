@@ -90,11 +90,15 @@ before the already requested documentation work. Actual user scope takes precede
 
 ## Ask, listen, adapt
 
-Ask **one focused question at a time**, using `clarify` when available or ordinary
-chat when it is not. Wait for the reply before asking the next question. Use plain
-language, give a brief reason it matters, and offer two or three meaningful options
-with a recommendation and tradeoffs when useful. Allow a free-form answer; do not
-force an invented choice or disguise a recommendation as a known fact.
+Ask **one focused decision boundary at a time**, using `clarify` when available or
+ordinary chat when it is not. For a pending-task list, separate unresolved product
+choices, recovery scope/budget and live-operation gates; do not interview every task
+or reopen settled deferrals and cancellations. Group tasks only when one shared
+choice governs them, retaining each task's acceptance and separate operation gates.
+Wait for the reply before asking the next question. Use plain language, give a brief
+reason it matters, and offer two or three meaningful options with a recommendation
+and tradeoffs when useful. Allow a free-form answer; do not force an invented choice
+or disguise a recommendation as a known fact.
 
 Choose the next question by its effect on the plan, not a fixed questionnaire:
 
@@ -139,10 +143,27 @@ do not protect confidential content.
 ## Save answers and finish the plan
 
 During an ongoing interview, save material explicit answers in the existing owner
-when useful for continuity. Keep unanswered issues and inferred requirements
-clearly Open/Proposed. Never mark an entire plan Accepted from one local answer.
-For a resumed interview, read saved answers and ask only what remains unresolved.
-Respect read-only scope and preserve concurrent edits, task IDs and active leases.
+when useful for continuity. Put accepted amendments before preserved historical
+scope and reconcile affected Scope, Sources, Next action and recovery summaries;
+otherwise a worker can obey a superseded prohibition or repeat a settled question.
+Keep older anchors attached to their original content, not an empty heading above
+a newly accepted sibling subsection.
+
+After each successful interim integration, retain its exact bytes/hashes as the next
+baseline. Extend that baseline with the next answer rather than re-merging the whole
+accumulated proposal against the initial interview base; earlier accepted edits can
+otherwise appear as competing changes. Refuse unexpected drift, preserve other
+writers through targeted reconciliation and batch final checks once.
+
+For a conditional extra allowance, record its unit, scope, recovery prerequisite and
+whether it is new or explicitly reused. Preserve consumed and closed allocations;
+permission to plan a continuation does not launch it. A shared live-campaign sequence
+likewise grants no target access or mutation approval; retain per-operation gates.
+
+Keep unanswered issues and inferred requirements clearly Open/Proposed. Never mark
+an entire plan Accepted from one local answer. For a resumed interview, read saved
+answers and ask only what remains unresolved. Respect read-only scope and preserve
+concurrent edits, task IDs and active leases.
 
 When the useful gaps are resolved, or the user asks to finish, give a concise
 readback: outcome, users, success, scope/non-goals, constraints, decisions and any

@@ -240,6 +240,12 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      a command-plus-duration receipt cannot show which candidate it exercised. Read the actual
      compiler/SDK version against the repository pin; on mismatch use an isolated matching
      toolchain, never another session's shared install. Run `git diff --cached --check`.
+   - If that check flags CSV record-ending carriage returns, inspect raw bytes before
+     changing content. For valid CRLF records, use the command-local check
+     `git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --cached --check`
+     while retaining CSV parsing and content/hash checks. Preserve the ordinary
+     whitespace checks and source bytes: CSV writers commonly emit CRLF, and
+     normalizing preserved research artifacts can invalidate evidence fingerprints.
    - Scope `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` to individual Git/index-aware
      probes, not the entire gate environment. Never persist snapshot routing with
      `git config core.worktree`: it redirects other sessions' status, staging and
@@ -337,6 +343,12 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      what you meant, and that the files you held back are still unstaged.
    - Scan staged content for secrets with the repository scanner or an in-process matcher over
      `git diff --cached` (signals: `api[_-]?key|secret|token|passw|BEGIN [A-Z ]*PRIVATE KEY`).
+     Assert the scan received the intended path set and, for a nonempty added-content diff,
+     a nonzero added-line count before accepting zero findings. Use an actual newline when
+     splitting diff text (`String.fromCharCode(10)` avoids nested shell/Python/JavaScript
+     escaping ambiguity); a filter over literal backslash-n can silently scan nothing.
+     Report the scanned count without printing content. For deletion-only changes, explicitly
+     record that there is no added content rather than treating empty input as a scan pass.
      Output only file, line and category; printing matched literals can itself leak a credential.
      Classify every hit before acting on it. A real value blocks the commit, but these patterns also
      catch **names and prose**: a variable assignment whose right-hand side is another variable
