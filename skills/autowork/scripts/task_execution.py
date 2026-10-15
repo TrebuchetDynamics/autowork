@@ -333,8 +333,6 @@ def select(repo, requested, plan):
     goals = goals_module()
     todo = repo / 'TODO.md'
     bodies = goals.task_bodies(todo.read_text())
-    if any(len(items) != 1 for items in bodies.values()):
-        raise ValueError('duplicate TODO task IDs; reconcile the repository contract')
     wanted = requested.split(',') if requested else None
     if wanted and (len(set(wanted)) != len(wanted) or
                    any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', item) for item in wanted)):
@@ -358,6 +356,12 @@ def select(repo, requested, plan):
         ordered = sorted(bodies, key=lambda key: {'Now': 0, 'Next': 1}.get(bodies[key][0][2], 2))
         indexed = {}
         priority = {'state': 'todo_only'}
+    # Loose checklist lines outside executable sections are not task contracts;
+    # only IDs that could be executed must be unique.
+    executable = set(indexed) if ledger else {key for key, items in bodies.items()
+                                              if any(item[2] in ('Now', 'Next') for item in items)}
+    if any(len(bodies[key]) != 1 for key in executable.union(wanted or ()) if key in bodies):
+        raise ValueError('duplicate TODO task IDs; reconcile the repository contract')
     reasons = []
     for tid in (wanted or ordered):
         if tid not in bodies:
@@ -380,7 +384,8 @@ def select(repo, requested, plan):
             reasons.append(f'{tid}: needs unique Scope, Acceptance and Checks fields')
             continue
         deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()
-        if deps.lower() not in ('none', 'none required', '—', '-', ''):
+        # `None. <prose>` or `None; <prose>` declares no dependencies; only the first clause counts.
+        if re.split(r';|\.\s', deps)[0].strip().lower() not in ('none', 'none required', '—', '-', ''):
             ids = re.findall(r'`?([A-Za-z0-9][A-Za-z0-9_-]*)`?', deps)
             # Dependencies must be explicit IDs; unknown prose is not evidence of completion.
             done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'}

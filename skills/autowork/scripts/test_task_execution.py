@@ -313,6 +313,30 @@ class RecoveryTests(DirectExecutionTests):
         self.todo.write_text(self.todo.read_text().replace('Dependencies: None.', 'Dependencies: MISSING\n  Dependencies: T2.'))
         self.assertEqual(self.call('--tasks', 'T1')[0].returncode, 1)
 
+    def test_loose_checklist_lines_without_task_ids_do_not_refuse_selection(self):
+        backlog = '## Backlog\n- [ ] Add dark mode\n- [ ] Add export\n'
+        self.todo.write_text(self.todo.read_text() + backlog)
+        _, result = self.call()
+        self.assertEqual((result['outcome'], result.get('task', {}).get('id')), ('READY', 'T1'), result)
+        self.ledger()
+        _, result = self.call()
+        self.assertEqual((result['outcome'], result.get('task', {}).get('id')), ('READY', 'T1'), result)
+        # Genuine duplicate executable IDs are still refused.
+        self.todo.write_text(self.todo.read_text() + '- [ ] T2 — duplicate\n')
+        self.assertIn('duplicate TODO task IDs', self.call()[1]['reason'])
+
+    def test_none_dependency_followed_by_prose_is_no_dependency(self):
+        self.todo.write_text(self.todo.read_text().replace('Dependencies: None.', 'Dependencies: None. Keep existing cards.'))
+        _, result = self.call()
+        self.assertEqual((result['outcome'], result.get('task', {}).get('id')), ('READY', 'T1'), result)
+        self.todo.write_text(self.todo.read_text().replace('Dependencies: None. Keep existing cards.', 'Dependencies: None; keep cards.'))
+        self.assertEqual(self.call()[1]['task']['id'], 'T1')
+        # Real unresolved dependencies are still refused.
+        self.todo.write_text(self.todo.read_text().replace('Dependencies: None; keep cards.', 'Dependencies: T2. Keep existing cards.'))
+        p, result = self.call('--tasks', 'T1')
+        self.assertEqual(p.returncode, 1, result)
+        self.assertIn('unresolved dependency', result['reason'])
+
     def test_named_plan_selects_only_tasks_linked_to_it(self):
         (self.repo / 'SPEC.md').write_text('# Slice\nOnly T2 is in this plan.\n')
         self.todo.write_text(self.todo.read_text().replace('Dependencies: T1.', 'Dependencies: None.\n  Sources: [slice](SPEC.md#slice)'))
