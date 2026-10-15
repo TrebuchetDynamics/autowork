@@ -902,8 +902,9 @@ def task_bodies(text):
         if section_end:
             end = match.end() + section_end.start()
         block = text[match.end():end]
-        sections = re.findall(r'^##\s+(.+)', prose[:match.start()], re.M)
-        section = sections[-1] if sections else ''
+        # Trim CRLF `\r` and trailing blanks so `## Now \r` names the ledger section `Now`.
+        sections = re.findall(r'^##[ \t]+([^\r\n]*)', prose[:match.start()], re.M)
+        section = sections[-1].strip() if sections else ''
         if section == 'Now / Next':
             explicit = re.findall(r'(?:^|\.\s+)Section:[ \t]*(Now|Next|Needs decision)(?=\.|\s*$)', prose[match.end():end], re.M)
             if len(explicit) == 1:

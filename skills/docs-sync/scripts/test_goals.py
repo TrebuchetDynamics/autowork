@@ -655,5 +655,75 @@ class GoalsTests(unittest.TestCase):
         self.assertIn('TASK-009', [p['task']['id'] for p in picks])
 
 
+
+class HeadingLineEndingTests(unittest.TestCase):
+    """CRLF and trailing-space headings parse like LF ones (TOOLSET-047)."""
+
+    INTENT = {'version': 1, 'goals': [
+        {'id': 'G1', 'title': 'Goal one', 'source': 'PLAN.md#goal-one', 'status': 'unmet',
+         'tasks': ['T1', 'T2'], 'priority': 1}], 'tasks': [
+        {'id': 'T1', 'goal': 'G1', 'title': 'First', 'status': 'open', 'section': 'Now'},
+        {'id': 'T2', 'goal': 'G1', 'title': 'Second', 'status': 'open', 'section': 'Next',
+         'depends_on': ['T1']}]}
+    TODO = ('# TODO\n\n## Now\n\n- [ ] T1: First\n  Goal: G1\n  Scope: do it\n'
+            '  Acceptance: it works\n  Dependencies: None\n  Sources: [Plan](PLAN.md#goal-one)\n'
+            '  Ownership: unclaimed\n\n## Next\n\n- [ ] T2: Second\n  Goal: G1\n  Scope: do more\n'
+            '  Acceptance: more works\n  Dependencies: T1\n  Sources: [Plan](PLAN.md#goal-one)\n'
+            '  Ownership: unclaimed\n')
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def outcome(self, name, todo):
+        repo = self.root / name
+        repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        (repo / 'PLAN.md').write_text('# Plan\n\n## Goal one\n\nStatus: Accepted\n\nBuild the thing.\n')
+        intent = self.root / f'{name}-intent.json'
+        intent.write_text(json.dumps(self.INTENT))
+        source = self.root / f'{name}-todo.md'
+        source.write_bytes(todo.encode('utf-8'))
+        results = {}
+        for label, args in (('init', ('init', str(repo), '--intent', str(intent), '--todo-file', str(source))),
+                            ('validate', ('validate', str(repo))),
+                            ('next', ('next', str(repo), '--json')),
+                            ('backlog', ('backlog-check', str(repo), '--plan', 'PLAN.md#goal-one',
+                                         '--tasks', 'T1')),
+                            ('bootstrap', ('bootstrap-order', str(repo), '--dry-run'))):
+            result = run(*args)
+            stdout = result.stdout.replace(str(repo), 'REPO')
+            if stdout.startswith(('{', '[')):
+                stdout = json.loads(stdout)
+                if isinstance(stdout, dict):  # Hashes of the differently-encoded bytes legitimately differ.
+                    stdout.pop('sha256', None)
+                    stdout.pop('revision', None)
+            results[label] = (result.returncode, stdout, result.stderr)
+        return repo, results
+
+    def assert_like_lf(self, name, todo):
+        _, expected = self.outcome('lf', self.TODO)
+        self.assertEqual(expected['init'][0], 0, expected['init'])
+        repo, actual = self.outcome(name, todo)
+        for label in expected:
+            with self.subTest(command=label):
+                self.assertEqual(actual[label][:2], expected[label][:2], actual[label][2])
+        self.assertEqual(actual['backlog'][1]['state'], 'ready_for_autowork')
+        self.assertEqual([p['task']['id'] for p in actual['next'][1]], ['T1'])
+        return repo
+
+    def test_crlf_todo_initializes_selects_and_checks_like_lf(self):
+        crlf = self.TODO.replace('\n', '\r\n')
+        repo = self.assert_like_lf('crlf', crlf)
+        self.assertEqual((repo / 'TODO.md').read_bytes(), crlf.encode('utf-8'))
+        self.assertEqual(run('render', str(repo)).returncode, 0)
+        rendered = (repo / 'TODO.md').read_bytes()
+        self.assertTrue(rendered.startswith(crlf.encode('utf-8')), rendered[:200])
+
+    def test_trailing_space_section_heading_matches_ledger_section(self):
+        self.assert_like_lf('space', self.TODO.replace('## Now\n', '## Now \n').replace('## Next\n', '## Next\t\n'))
+
+
 if __name__ == '__main__':
     unittest.main()
