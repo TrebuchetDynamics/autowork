@@ -558,7 +558,17 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
 
-    def cleanup_failure_retry(self, failure):
+    def cleanup_failure_retry(self, failure, archive_name='TODO.archive.md'):
+        archive = self.repo / archive_name
+        if archive_name != 'TODO.archive.md':
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            archive.write_text('# Completed tasks\n')
+            if archive_name not in ('todo.archive.md', 'docs/TODO-archive.md'):
+                todo = self.repo / 'TODO.md'
+                todo.write_text('[Completed tasks](' + archive_name + ')\n\n' + todo.read_text())
+                self.git('add', 'TODO.md')
+                self.git('commit', '-qm', 'linked archive owner')
+                self.baseline = self.git('rev-parse', 'HEAD')
         root, commit = self.worker()
         module = self.module()
         module.integrate(self.repo, self.owner, 'A', ['true'], 10)
@@ -572,7 +582,7 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'injected cleanup'):
                 module.close(self.repo, self.owner, 'A')
         self.assertEqual(state.slots(self.common)[0]['state'], 'closed')
-        archived = (self.repo / 'TODO.archive.md').read_bytes()
+        archived = archive.read_bytes()
         with patch.object(module, 'goals_command', side_effect=AssertionError('must not archive twice')):
             result = module.close(self.repo, self.owner, 'A')
             again = module.close(self.repo, self.owner, 'A')
@@ -580,7 +590,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(again['cleaned'], again)
         self.assertFalse(root.exists())
         self.assertFalse(self.git('branch', '--list', 'autowork/A'))
-        self.assertEqual((self.repo / 'TODO.archive.md').read_bytes(), archived)
+        self.assertEqual(archive.read_bytes(), archived)
         events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
         self.assertEqual(sum(e['event'] == 'slot_changed' and e.get('state') == 'closed' for e in events), 1)
 
@@ -589,6 +599,15 @@ class IntegrationTests(unittest.TestCase):
 
     def test_branch_cleanup_failure_is_retryable_after_worktree_removal(self):
         self.cleanup_failure_retry(('branch', '-d'))
+
+    def test_legacy_archive_cleanup_retry(self):
+        self.cleanup_failure_retry(('worktree', 'remove'), 'todo.archive.md')
+
+    def test_nested_legacy_archive_cleanup_retry(self):
+        self.cleanup_failure_retry(('branch', '-d'), 'docs/TODO-archive.md')
+
+    def test_linked_archive_cleanup_retry(self):
+        self.cleanup_failure_retry(('worktree', 'remove'), 'history/completed.md')
 
     def test_closed_cleanup_retry_preserves_changed_worker_branch(self):
         root, _ = self.worker()

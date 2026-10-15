@@ -1,5 +1,6 @@
 """Serialized, validated local integration. Worker reports are evidence, not acceptance."""
 import math
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -299,6 +300,21 @@ def goals_command(repo, *argv):
     return result.stdout
 
 
+def archive_path(repo):
+    """Reuse Docs Sync's history-owner rules, including legacy and linked archives."""
+    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/todo_archive.py'
+    spec = importlib.util.spec_from_file_location('parallel_todo_archive', path)
+    if spec is None or spec.loader is None:
+        raise ValueError('Docs Sync archive helper cannot be loaded')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    prose = execution.goals_module().markdown_prose((repo / 'TODO.md').read_text())
+    try:
+        return repo / module.archive_owner(repo, prose)
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def close(repo, owner_pid, task):
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
@@ -309,7 +325,7 @@ def close(repo, owner_pid, task):
             raise ValueError('close requires an integrated slot with passing validation')
         info, checks = validated_receipt(repo, common, slot)
         if slot['state'] == 'closed':
-            archive = repo / 'TODO.archive.md'
+            archive = archive_path(repo)
             archived = execution.goals_module().task_bodies(archive.read_text()) if archive.exists() else {}
             if len(archived.get(task, [])) != 1 or archived[task][0][1].lower() != 'x':
                 raise ValueError('closed cleanup requires completed archive provenance')
@@ -346,7 +362,7 @@ def close(repo, owner_pid, task):
         # Read back exact target before journaling closure; archive can fail safely
         # after task mutation, in which case slot stays integrated and is retryable.
         # The archive command can return null on an idempotent retry.
-        archive = repo / (archived_result.get('archive') or 'TODO.archive.md')
+        archive = repo / archived_result['archive'] if archived_result.get('archive') else archive_path(repo)
         archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
         if task not in archived or archived[task][0][1].lower() != 'x':
             raise ValueError('archive readback does not contain the completed task')
