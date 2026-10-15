@@ -571,25 +571,6 @@
       "title": "Qualify the gentler update rollout live"
     },
     {
-      "depends_on": [],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-086-9f",
-      "section": "Next",
-      "status": "open",
-      "title": "Add a repository coordinator lease, worker slots and an execution journal"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-085-1a",
-        "TOOLSET-086-9f"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-087-32",
-      "section": "Next",
-      "status": "open",
-      "title": "Dispatch workers in their own worktrees with a refilled worker pool"
-    },
-    {
       "depends_on": [
         "TOOLSET-087-32"
       ],
@@ -1130,6 +1111,25 @@
       "section": "Done",
       "status": "done",
       "title": "Select several eligible tasks and decide which can run together"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-086-9f",
+      "section": "Done",
+      "status": "done",
+      "title": "Add a repository coordinator lease, worker slots and an execution journal"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-085-1a",
+        "TOOLSET-086-9f"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-087-32",
+      "section": "Done",
+      "status": "done",
+      "title": "Dispatch workers in their own worktrees with a refilled worker pool"
     },
     {
       "depends_on": [],

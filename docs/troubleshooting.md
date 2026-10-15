@@ -135,7 +135,7 @@ See [update all profiles](installation.md#update-all-profiles) for the full rule
 
 Profiles linked to a working checkout load its current files at every gateway
 restart. `/toolset update status` lists them; pin the ones that should change only
-through updates with `hermes toolset pin --profile NAME` (preview with `--dry-run`).
+through updates with `hermes toolset pin NAME` (preview with `--dry-run`).
 See [linked profiles](installation.md#linked-profiles-and-pinned-clones).
 
 ### The bundle broke after moving or deleting its checkout

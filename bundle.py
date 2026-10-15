@@ -298,7 +298,7 @@ def linked_lines(rows):
     names = ', '.join(r['profile'] for r in rows)
     targets = ', '.join(sorted({r['target'] for r in rows}))
     return [f'Linked to a working checkout ({targets}); any gateway restart loads its current files: {names}',
-            'Preview pinning one to its current revision: hermes toolset pin --profile NAME --dry-run']
+            'Preview pinning one to its current revision: hermes toolset pin NAME --dry-run']
 
 
 def summarize_update(result):
@@ -474,7 +474,8 @@ def setup_parser(parser):
     finalize.add_argument('--bundle-only', action='store_true')
     finalize.add_argument('--no-reload', action='store_true')
     pin = actions.add_parser('pin', help="Replace a profile's plugin link with a clone of the same revision")
-    pin.add_argument('--profile', required=True)
+    # Positional: Hermes consumes a global --profile/-p before the subcommand sees it.
+    pin.add_argument('profile', metavar='PROFILE')
     pin.add_argument('--dry-run', action='store_true', help='Report what would change; write nothing')
     pin.add_argument('--unpin', action='store_true', help='Restore the link saved by the last pin')
     pin.add_argument('--hermes-home', help='Hermes root containing profiles/')

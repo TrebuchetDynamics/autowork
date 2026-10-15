@@ -789,7 +789,12 @@ class ConsultationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
             root = Path(d) / '.hermes'
             root.mkdir()
-            with patch.object(m, 'discover', return_value=['default', 'alpha', 'zed']), patch.object(m, 'consult', side_effect=[RuntimeError('bad target'), {'profile': 'zed', 'status': 'replied', 'reply': 'ok'}]):
+            def consult(name, *args):
+                if name == 'alpha':
+                    raise RuntimeError('bad target')
+                return {'profile': name, 'status': 'replied', 'reply': 'ok'}
+
+            with patch.object(m, 'discover', return_value=['default', 'alpha', 'zed']), patch.object(m, 'consult', side_effect=consult):
                 results = m.run_all(root, root / 'maintenance' / 'results', 'self', 'hermes', 10)
             self.assertEqual({r['profile']: r['status'] for r in results}, {'default': 'replied', 'alpha': 'failed', 'zed': 'replied'})
 

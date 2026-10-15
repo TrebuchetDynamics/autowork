@@ -258,7 +258,7 @@ class BundleTests(unittest.TestCase):
             full = json.loads(self.bundle.update_status(full=True).strip('`json\n'))
         self.assertIn('Linked to a working checkout (/src/hermes-toolset); any gateway restart loads its current files: '
                       + ', '.join(r['profile'] for r in rows), summary)
-        self.assertIn('hermes toolset pin --profile NAME --dry-run', summary)
+        self.assertIn('hermes toolset pin NAME --dry-run', summary)
         self.assertNotIn('stale', summary)
         self.assertEqual(full['linked_profiles'][0], {'profile': 'profile0', 'target': '/src/hermes-toolset'})
         self.assertLess(len(summary), 600)

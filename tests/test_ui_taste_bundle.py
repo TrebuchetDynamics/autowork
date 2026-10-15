@@ -29,7 +29,7 @@ class UiTasteBundleTests(unittest.TestCase):
         self.assertEqual(vendored, set(self.manifest['files']))
         self.assertEqual(len(self.manifest['files']), 16)
         top = {p.relative_to(PACK).as_posix() for p in PACK.iterdir()}
-        self.assertEqual(top, {'SKILL.md', 'UPSTREAM.json', 'upstream'})
+        self.assertEqual(top, {'SKILL.md', 'UPSTREAM.json', 'upstream', 'references'})
         for name, digest in self.manifest['files'].items():
             self.assertEqual(hashlib.sha256((UPSTREAM / name).read_bytes()).hexdigest(), digest, name)
 
