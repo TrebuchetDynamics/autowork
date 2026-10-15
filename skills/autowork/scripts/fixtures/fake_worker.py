@@ -32,6 +32,10 @@ def note(kind):
 
 
 note('start')
+if spec.get('orphan'):
+    # A child that ignores SIGTERM and outlives this leader, in the same process group.
+    subprocess.Popen([sys.executable, '-c', 'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); '
+                      'time.sleep(60)'])
 for name, text in spec.get('files', {}).items():
     path = worktree / name
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import time
@@ -124,6 +125,10 @@ class DispatchTests(unittest.TestCase):
         for text in ('Task: A', 'Touches: a.txt', 'Never edit TODO.md', 'Report file: ', '- Touches: a.txt'):
             self.assertIn(text, prompt)
         self.assertEqual(self.git('status', '--porcelain'), '')  # canonical checkout untouched
+        journal = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        moment = {(e['task_id'], e['state']): e['timestamp'] for e in journal if e['event'] == 'slot_changed'}
+        self.assertLess(moment['B', 'running'], moment['A', 'reported'])
+        self.assertLess(moment['A', 'running'], moment['B', 'reported'])
 
     def test_refill_starts_next_task_when_a_worker_finishes(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2},
@@ -205,6 +210,8 @@ class DispatchTests(unittest.TestCase):
         self.assertIn('already exists', result['reason'])
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['mine'])
         self.assertEqual(self.events(), [])
+        journal = self.common / 'journal.jsonl'
+        self.assertNotIn('worktree_created', journal.read_text() if journal.exists() else '')
 
     def test_unsupported_host_falls_back_to_the_sequential_contract(self):
         for args in (('--worker-host', 'claude'), ('--worker-host', 'hermes')):
@@ -225,6 +232,72 @@ class DispatchTests(unittest.TestCase):
         with patch.object(dispatch.shutil, 'which', return_value='/bin/hermes'):
             template, host = dispatch.worker_command(args, self.owner)
         self.assertEqual((template[:4], host), (['hermes', '-p', 'work', 'chat'], 'hermes'))
+
+    def test_hermes_launcher_process_is_detected_as_the_coordinator_host(self):
+        process = subprocess.Popen([sys.executable, '-I', '-c', 'import time  # hermes_cli.main\ntime.sleep(30)'])
+        self.addCleanup(process.wait)
+        self.addCleanup(process.kill)
+        time.sleep(0.2)
+        self.assertEqual(dispatch.coordinator_host(process.pid), 'hermes')
+
+    def test_worker_keeps_the_timeout_it_was_started_with(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 60, 'commit': False}})
+        self.apply('--worker-timeout', '1')
+        _, result = self.wait(20)  # default --worker-timeout 3600 on this call
+        self.assertEqual(state.slots(self.common)[0]['state'], 'interrupted')
+
+    def test_surviving_child_keeps_the_slot_live_until_the_group_is_stopped(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'orphan': True}})
+        self.apply('--worker-timeout', '3')
+        _, first = self.wait(1.5)
+        self.assertEqual(first['outcome'], 'TIMEOUT')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'running')
+        self.assertTrue(state.worker_live(slot))
+        _, again = self.apply()
+        self.assertEqual(again['dispatched'], [])  # no second writer beside the orphan
+        _, stopped = self.wait(20)
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'interrupted')
+        self.assertFalse(state.group_alive(slot['worker']['pid']))
+        self.assertEqual(len([e for e in self.events() if e['event'] == 'start']), 1)
+
+    def test_dispatch_interrupted_before_its_slot_adopts_the_recorded_worktree(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}})
+        with patch.object(state, 'create_slot', side_effect=ValueError('lost lease')):
+            code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
+        self.assertTrue((self.root / 'repo-autowork-A').is_dir())
+        _, result = self.apply()
+        self.assertEqual([(s['task'], s['attempt']) for s in result['dispatched']], [('A', 1)])
+        self.assertEqual(result['dispatched'][0]['worktree'], str(self.root / 'repo-autowork-A'))
+
+    def test_launch_failure_is_held_with_its_cause_without_a_retry(self):
+        self.write_todo(task('A', 'a.txt'))
+        code, result = self.run_cli('--apply', '--parallel', '--worker-command', json.dumps([str(self.root / 'missing')]),
+                                    worker=False)
+        self.assertEqual(result['dispatched'], [])
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt']), ('held', 1))
+        self.assertIn('worker launch failed', slot['reason'])
+
+    def test_malformed_queue_is_reported_not_treated_as_idle(self):
+        self.write_todo(task('A', 'a.txt'), task('A', 'b.txt'))
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
+        self.assertIn('duplicate TODO task IDs', result['reason'])
+
+    def test_sequential_apply_is_unchanged_by_parallel_support(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = execution.main([str(self.repo), '--apply', '--owner-pid', str(self.owner)])
+        result = json.loads(out.getvalue())
+        self.assertEqual((code, result['outcome'], result['task']['id']), (0, 'EXECUTE', 'A'))
+        self.assertFalse((self.common / 'coordinator.json').exists())
+        self.assertFalse((self.common / 'journal.jsonl').exists())
 
     def test_parallel_needs_owner_and_valid_limits(self):
         for argv in ([str(self.repo), '--apply', '--parallel'],

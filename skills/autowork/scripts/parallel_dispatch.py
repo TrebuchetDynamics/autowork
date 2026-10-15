@@ -42,9 +42,10 @@ def coordinator_host(owner_pid):
             stat = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
         except (OSError, ValueError, IndexError):
             return ''
-        names = [Path(a).name for a in argv[:3]]
-        names += [a.split('.')[0] for a in argv[:4] if a.startswith('hermes_cli')]
+        names = [Path(a).name for a in argv[:3] if a and not a.startswith('-')]
         host = next((HOST_NAMES[n] for n in names if n in HOST_NAMES), '')
+        if not host and execution.is_agent(argv):
+            host = 'hermes'  # The installed launcher is `python3 -I -c '<... hermes_cli ...>'`.
         if host:
             return host
         pid = int(stat[1])
@@ -143,11 +144,22 @@ def prompt(task, worktree, branch, baseline, report, resume=False):
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
 
 
+def created_by_autowork(common, path, branch):
+    journal = common / 'journal.jsonl'
+    return journal.exists() and any(
+        e.get('event') == 'worktree_created' and e.get('worktree') == str(path) and e.get('branch') == branch
+        for e in map(json.loads, journal.read_text().splitlines()))
+
+
 def create_worktree(repo, common, task_id, baseline):
+    """Return (path, branch, baseline); adopt only a worktree the journal shows Autowork created."""
     safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
     branch = 'autowork/' + safe
     path = (repo.parent / f'{repo.name}-autowork-{safe}').resolve()
     exists = path.exists() or bool(execution.git(repo, 'branch', '--list', branch))
+    if exists and created_by_autowork(common, path, branch) and path.is_dir():
+        # A previous dispatch stopped between creating the worktree and its slot.
+        return path, branch, execution.git(path, 'merge-base', baseline, 'HEAD')
     if exists:
         raise ValueError(f'{path} or branch {branch} already exists and was not created by parallel '
                          'Autowork; resolve it by hand')
@@ -158,7 +170,7 @@ def create_worktree(repo, common, task_id, baseline):
     with execution.lock(common / 'writer.lock'):
         state.event(common, 'worktree_created', task_id=task_id, worktree=str(path), branch=branch,
                     baseline=baseline)
-    return path, branch
+    return path, branch, baseline
 
 
 def launch(argv, worktree, data, slot_index, stdin_path):
@@ -180,27 +192,30 @@ def launch(argv, worktree, data, slot_index, stdin_path):
 
 
 def stop(worker):
-    """Stop a live worker's process group; identity is rechecked before each signal."""
-    for sig, pause in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 0)):
-        if not execution.active_owner({'owner': worker}):
+    """Stop a worker's whole process group, escalating while any member survives."""
+    slot = {'worker': worker}
+    for sig, pause in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 2.0)):
+        if not state.worker_live(slot):
             return
         try:
             os.killpg(worker['pid'], sig)
         except ProcessLookupError:
             return
         deadline = time.time() + pause
-        while time.time() < deadline and execution.active_owner({'owner': worker}):
+        while time.time() < deadline and state.worker_live(slot):
             time.sleep(0.05)
 
 
-def enforce_timeouts(repo, owner_pid, common, worker_timeout):
+def enforce_timeouts(repo, owner_pid, common, default_timeout):
+    """Each worker keeps the timeout it was started with (saved in its meta.json)."""
     stopped = []
     for slot in state.slots(common):
+        limit = meta(common, slot).get('worker_timeout', default_timeout)
         if (slot['state'] in ('dispatched', 'running') and state.worker_live(slot)
-                and time.time() - slot['started_at'] > worker_timeout):
+                and time.time() - slot['started_at'] > limit):
             stop(slot['worker'])
             stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
-                                            reason=f'worker timeout after {worker_timeout:g} s'))
+                                            reason=f'worker timeout after {limit:g} s'))
     return stopped
 
 
@@ -233,10 +248,8 @@ def fallback(repo, args, reason):
 def contracts(repo, requested=None, plan=None):
     try:
         return execution.select_all(repo, requested, plan)
-    except execution.PriorityDriftError:
-        raise
-    except ValueError:
-        return []
+    except execution.NoEligibleTask:
+        return []  # Malformed queues still raise and report ACTION_REQUIRED.
 
 
 def dispatch(args):
@@ -249,6 +262,12 @@ def dispatch(args):
     if claimed['outcome'] != 'CLAIMED':
         return claimed
     common = state.common_dir(repo)
+    # One dispatch or wait pass at a time; a separate file so it never nests with writer.lock.
+    with execution.lock(common / 'dispatch.lock'):
+        return dispatch_locked(args, repo, common, count, template, host)
+
+
+def dispatch_locked(args, repo, common, count, template, host):
     timeouts = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
     current = state.reconcile(repo, args.owner_pid)
     everything = contracts(repo)
@@ -277,8 +296,7 @@ def dispatch(args):
         if previous:
             worktree, branch, base = Path(previous['worktree']), previous['branch'], previous['baseline']
         else:
-            worktree, branch = create_worktree(repo, common, task['id'], baseline)
-            base = baseline
+            worktree, branch, base = create_worktree(repo, common, task['id'], baseline)
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
                               baseline=base)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
@@ -296,8 +314,17 @@ def dispatch(args):
             state.transition(repo, args.owner_pid, task['id'], 'dispatched', worktree=str(worktree),
                              branch=branch, baseline=base)
         execution.save(data / 'meta.json', {'slot_index': index, 'command': argv, 'host': host,
-                                            'prompt_file': str(prompt_file), 'report_file': str(report)})
-        worker = launch(argv, worktree, data, index, prompt_file)
+                                            'prompt_file': str(prompt_file), 'report_file': str(report),
+                                            'worker_timeout': args.worker_timeout})
+        try:
+            worker = launch(argv, worktree, data, index, prompt_file)
+        except (OSError, ValueError) as exc:
+            # A launch failure is not an interrupted attempt: hold it with the cause.
+            slot = state.transition(repo, args.owner_pid, task['id'], 'held', reason='worker launch failed: ' + str(exc),
+                                    log_path=str(data / 'worker.log'))
+            waiting.append({'id': task['id'], 'reason': slot['reason']})
+            used.discard(index)
+            continue
         slot = state.transition(repo, args.owner_pid, task['id'], 'running', worker=worker,
                                 log_path=str(data / 'worker.log'))
         started.append(summary(common, slot))
@@ -320,14 +347,19 @@ def wait(args, timeout):
     before = {s['task_id']: s['state'] for s in state.slots(common)}
     deadline = time.time() + timeout
     while True:
-        timed_out = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
-        finished = [s for s in state.slots(common)
-                    if s['state'] in ('dispatched', 'running') and not state.worker_live(s)]
-        if timed_out or finished or time.time() >= deadline:
-            current = state.reconcile(repo, args.owner_pid)
-            changed = [summary(common, s) for s in current if before.get(s['task_id']) != s['state']]
-            active = sum(1 for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s))
-            return {'outcome': 'CHANGED' if changed else 'TIMEOUT', 'workspace': str(repo),
-                    'active_workers': active, 'changed': changed,
-                    'next': 'Review reported slots, then run --apply --parallel again to refill.'}
+        try:
+            with execution.lock(common / 'dispatch.lock'):
+                timed_out = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
+                finished = [s for s in state.slots(common)
+                            if s['state'] in ('dispatched', 'running') and not state.worker_live(s)]
+                if timed_out or finished or time.time() >= deadline:
+                    current = state.reconcile(repo, args.owner_pid)
+                    changed = [summary(common, s) for s in current if before.get(s['task_id']) != s['state']]
+                    active = sum(1 for s in current
+                                 if s['state'] in ('dispatched', 'running') and state.worker_live(s))
+                    return {'outcome': 'CHANGED' if changed else 'TIMEOUT', 'workspace': str(repo),
+                            'active_workers': active, 'changed': changed,
+                            'next': 'Review reported slots, then run --apply --parallel again to refill.'}
+        except BlockingIOError:
+            pass  # A dispatch pass is running; look again shortly.
         time.sleep(0.2)

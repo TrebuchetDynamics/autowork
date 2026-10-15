@@ -22,6 +22,10 @@ import time
 import uuid
 
 
+class NoEligibleTask(ValueError):
+    """No TODO task passes selection; the queue is idle rather than malformed."""
+
+
 class PriorityDriftError(ValueError):
     """Default selection would run a stale order; reconcile before selecting."""
     def __init__(self, status):
@@ -445,7 +449,7 @@ def _contracts(repo, requested, plan, *, parallel=False):
                'section': section, 'contract': body.strip(), 'fields': fields, 'priority': priority}
         accepted = True
     if not accepted:
-        raise ValueError('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')
+        raise NoEligibleTask('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')
 
 
 def command(args, repo, state, common, task, lease, lock_fd):
