@@ -12,6 +12,7 @@ const workflows = {
   autoresearch: ['autoresearch', 'Run bounded research or experiments'],
   engineering: ['engineering', 'Apply a focused engineering method'],
   impeccable: ['impeccable', 'Improve interface design'],
+  ui_taste: ['ui-taste', 'Improve UI taste with Uizze playbooks'],
   grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
   git_commit_push: ['git-commit-push', 'Validate, commit and push owned changes'],

@@ -2,9 +2,10 @@
 
 Hermes Toolset provides native packages for three hosts. Codex and Pi use the
 portable adapters, not the Hermes plugin loader. Neither requires Hermes installed.
-These adapters expose 11 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
-Cron Autowork, Autoresearch, Engineering, Impeccable, LGTM, Git Commit Push and
-Git Pull Merge. Grill Me is Plan With Me's challenge mode, not a twelfth skill.
+These adapters expose 12 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
+Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, LGTM, Git Commit
+Push and Git Pull Merge. Grill Me is Plan With Me's challenge mode, not a
+thirteenth skill.
 Supporting protocols are bundled and loaded only when needed. Hermes profile
 creation, Telegram routing,
 Kanban workers, fleet setup, memory and speech integrations remain Hermes-only.
@@ -79,7 +80,7 @@ Local installs refer to this checkout; keep it in place. The extension registers
 
 All 13 `/autoresearch_<protocol>` commands are available. The other commands are
 `/cron_autowork` (scheduling guidance through host capabilities, not a Hermes timer),
-`/autoresearch`, `/engineering`, `/impeccable`, `/lgtm`,
+`/autoresearch`, `/engineering`, `/impeccable`, `/ui_taste`, `/lgtm`,
 `/git_commit_push` and `/git_pull_merge`. Native `/skill:<name>` invocation is also
 available; skill names use hyphens. Command arguments remain literal prompt text.
 `/grill_me` loads Plan With Me with explicit challenge mode and preserves the
@@ -123,7 +124,8 @@ and Pi installation into isolated temporary homes, Codex app-server skill discov
 and Pi's installed resource loader discover 11 portable skills. Pi loads 25 commands,
 including `/grill_me` compatibility and all 13 research selectors. Archive extraction
 tests check installed references, literal arguments and queued commands without
-checkout files. No credentials or configured live accounts are used. These are
+checkout files. That live validation predates UI Taste; the offline archive tests now expect 12
+portable skills and 26 Pi commands, and no live Codex or Pi install has been rerun. No credentials or configured live accounts are used. These are
 tested versions, not an established minimum-version guarantee.
 These checks do not prove model output quality, Git delivery or Telegram execution.
 The model smoke test is the questions-only invocation above: one useful question,

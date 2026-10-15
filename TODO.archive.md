@@ -1180,3 +1180,23 @@ Source section: Next
 - Exclusions: No edits to upstream files, no `npx` or network fetch at install/setup/update time, no Uizze MCP configuration, no other Uizze skills, no Telegram menu priority change, no push.
 - Current evidence: The 16 files at Uizze commit `afd703a` were written byte-for-byte with `git show` into `skills/ui-taste/` (mode 0644) with UPSTREAM.json (revision, path, version 0.2.0, Apache-2.0, per-file sha256, domain cross-check). `tests/test_ui_taste_bundle.py` (pinned exact file set and hashes, upstream CHECKSUMS.sha256, LICENSE/NOTICE, no executable bit, `name: ui-taste`, clean-profile provisioning) failed before vendoring; spot checks against the live uizze.sh copy matched. The plugin's `_discover_skills()` registers it as `ui-taste`. `tests/test_doctor_modes.py`'s registered-skill fixture gained `ui-taste`, since doctor derives expected skills from `skills/`. Docs: dependencies (pin, licensing, refresh procedure), workflows command row, README, CHANGELOG, roles.json covers.
 - Checks run: `python3 scripts/check.py` passed offline (440/575/209/8 tests, 1 skipped, 8 modules excluded); `docs.py check` ok; `git diff --check` clean. Offline only; no live Hermes load.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-053 — Expose UI Taste on Codex and Pi
+
+- [x] TOOLSET-053 — Expose UI Taste on Codex and Pi
+- Status: done
+- Goal: UI-TASTE — Codex and Pi users reach the same vendored skill explicitly.
+- Sources: [UI Taste plan](docs/project.md#vendored-ui-taste-skill), [Impeccable adapter](adapters/skills/impeccable/SKILL.md), [Pi extension](adapters/pi.mjs), [portable tests](tests/test_portable_package.py), [Pi tests](tests/portable_pi.test.mjs), [cross-host guide](docs/cross-host.md).
+- Scope: Add `adapters/skills/ui-taste/SKILL.md` (frontmatter `name: ui-taste`, modeled on the Impeccable adapter, pointing to `../../../skills/ui-taste/SKILL.md` under the host contract) and `adapters/skills/ui-taste/agents/openai.yaml` with `policy.allow_implicit_invocation: false`. Add `ui_taste: ['ui-taste', 'Improve UI taste with Uizze playbooks']` to the workflows map in adapters/pi.mjs. Update the expected adapter set in tests/test_portable_package.py, the skill count 11→12 and command count 25→26 in tests/portable_pi.test.mjs, and the current-fact counts and command list in docs/cross-host.md (leave its dated receipt unchanged).
+- Acceptance: Portable discovery exposes `ui-taste` explicit-only in Codex; Pi registers `/ui_taste` passing literal arguments; `npm pack --dry-run` includes the adapter and the vendored skill; all existing portable guarantees still hold.
+- Checks: `python3 -m unittest discover -s tests -p test_portable_package.py`; `node --test tests/portable_pi.test.mjs`; `npm pack --dry-run --json`; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-052.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No Codex marketplace publication, live Codex or Pi install, or push.
+- Current evidence: Added `adapters/skills/ui-taste/SKILL.md` (host contract, bundled guidance, optional MCP only through an existing host connection) and `agents/openai.yaml` with `allow_implicit_invocation: false`, plus the Pi command `ui_taste`. The updated portable tests (adapter set with `ui-taste`; Pi 12 skills and 26 commands; `/ui_taste` routes literal arguments) failed before the change. `npm pack --dry-run` ships the adapter and all 17 vendored files. docs/cross-host.md now lists 12 skills and `/ui_taste` and notes that its live Codex/Pi validation predates UI Taste.
+- Checks run: `python3 scripts/check.py` passed offline (440/575/209/8 tests, 1 skipped, 8 modules excluded); `node --test tests/portable_pi.test.mjs` 3 passed (including the packed-archive install test); `docs.py check` ok; `git diff --check` clean. No live Codex or Pi install was run.

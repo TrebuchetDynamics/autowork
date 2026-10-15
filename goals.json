@@ -258,11 +258,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only",
+          "result": "pass"
+        }
+      ],
       "id": "UI-TASTE",
       "priority": 85,
       "source": "docs/project.md#vendored-ui-taste-skill",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-052",
         "TOOLSET-053"
@@ -364,16 +370,6 @@
       "section": "Next",
       "status": "open",
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-052"
-      ],
-      "goal": "UI-TASTE",
-      "id": "TOOLSET-053",
-      "section": "Next",
-      "status": "open",
-      "title": "Expose UI Taste on Codex and Pi"
     },
     {
       "depends_on": [],
@@ -688,6 +684,16 @@
       "section": "Done",
       "status": "done",
       "title": "Vendor the pinned UI Taste skill into skills/ui-taste"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-052"
+      ],
+      "goal": "UI-TASTE",
+      "id": "TOOLSET-053",
+      "section": "Done",
+      "status": "done",
+      "title": "Expose UI Taste on Codex and Pi"
     },
     {
       "depends_on": [],
