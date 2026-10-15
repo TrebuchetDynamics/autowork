@@ -1,54 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
-  <title id="title">How Hermes Toolset works</title>
-  <desc id="desc">Four stages: plan with /plan_with_me or /plan_for_me, queue accepted work in TODO.md in your priority order, execute the next ready task with /autowork, and report the result to Telegram; the next run picks up the next ready task.</desc>
-
-  <rect width="1200" height="330" rx="24" fill="#11151a"/>
-
-  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
-    <g id="plan" transform="translate(48 40)">
-      <rect width="250" height="190" rx="16" fill="#171c22" stroke="#2a3139" stroke-width="2"/>
-      <text x="24" y="44" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#8a939d" letter-spacing="2">01</text>
-      <text x="24" y="82" font-size="30" font-weight="700" fill="#ecebe6">Plan</text>
-      <text x="24" y="118" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#e5b454">/plan_with_me</text>
-      <text x="24" y="146" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#e5b454">/plan_for_me</text>
-      <text x="24" y="174" font-size="20" fill="#8a939d">decisions + tasks</text>
-    </g>
-
-    <g id="queue" transform="translate(338 40)">
-      <rect width="250" height="190" rx="16" fill="#171c22" stroke="#2a3139" stroke-width="2"/>
-      <text x="24" y="44" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#8a939d" letter-spacing="2">02</text>
-      <text x="24" y="82" font-size="30" font-weight="700" fill="#ecebe6">Queue</text>
-      <text x="24" y="118" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#e5b454">TODO.md</text>
-      <text x="24" y="146" font-size="20" fill="#8a939d">your order is</text>
-      <text x="24" y="174" font-size="20" fill="#8a939d">the priority</text>
-    </g>
-
-    <g id="execute" transform="translate(628 40)">
-      <rect width="250" height="190" rx="16" fill="#e5b454" fill-opacity="0.10" stroke="#e5b454" stroke-width="2"/>
-      <text x="24" y="44" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#e5b454" letter-spacing="2">03</text>
-      <text x="24" y="82" font-size="30" font-weight="700" fill="#ecebe6">Execute</text>
-      <text x="24" y="118" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#e5b454">/autowork</text>
-      <text x="24" y="146" font-size="20" fill="#ecebe6">implement, check,</text>
-      <text x="24" y="174" font-size="20" fill="#ecebe6">commit locally</text>
-    </g>
-
-    <g id="report" transform="translate(918 40)">
-      <rect width="234" height="190" rx="16" fill="#171c22" stroke="#2a3139" stroke-width="2"/>
-      <text x="24" y="44" font-size="18" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#8a939d" letter-spacing="2">04</text>
-      <text x="24" y="82" font-size="30" font-weight="700" fill="#ecebe6">Report</text>
-      <rect x="24" y="100" width="22" height="22" rx="5" fill="#5bbf7a"/>
-      <path d="M29 111 l5 5 l9 -10" fill="none" stroke="#11151a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="56" y="118" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#5bbf7a">COMPLETED</text>
-      <text x="24" y="146" font-size="20" fill="#8a939d">or the action</text>
-      <text x="24" y="174" font-size="20" fill="#8a939d">needed from you</text>
-    </g>
-
-    <g id="arrows" fill="none" stroke="#3a424c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M302 135 h30 m-9 -8 l9 8 l-9 8"/>
-      <path d="M592 135 h30 m-9 -8 l9 8 l-9 8"/>
-      <path d="M882 135 h30 m-9 -8 l9 8 l-9 8"/>
-      <path d="M1035 234 v34 h-572 v-30 m-8 9 l8 -9 l8 9"/>
-    </g>
-    <text x="749" y="296" font-size="20" fill="#8a939d" text-anchor="middle">next run: the next ready task  ·  /cron_autowork schedules it</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="180" viewBox="0 0 1200 180" role="img" aria-labelledby="title desc">
+  <title id="title">Plan, queue, execute, report</title>
+  <desc id="desc">Plan accepted work, queue it in TODO.md, execute an eligible task with /autowork, and report checks and delivery separately. The next authorized run uses the remaining queue.</desc>
+  <rect width="1200" height="180" rx="16" fill="#101a18"/>
+  <g font-family="ui-monospace, 'DejaVu Sans Mono', monospace" font-size="22" fill="#aab8ae">
+    <text x="64" y="48">01</text><text x="322" y="48">02</text>
+    <text x="610" y="48">03</text><text x="950" y="48">04</text>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="48" font-weight="600" fill="#f4f3e8">
+    <text x="64" y="116">Plan</text><text x="322" y="116">Queue</text>
+    <text x="610" y="116" fill="#b7e88c">Execute</text><text x="950" y="116">Report</text>
+  </g>
+  <g fill="none" stroke="#aab8ae" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M218 98 h52 m-11 -9 11 9 -11 9"/>
+    <path d="M516 98 h42 m-11 -9 11 9 -11 9"/>
+    <path d="M850 98 h48 m-11 -9 11 9 -11 9"/>
   </g>
 </svg>
