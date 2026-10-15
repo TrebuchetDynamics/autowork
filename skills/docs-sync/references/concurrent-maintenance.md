@@ -185,9 +185,12 @@ For a scoped dirty-worktree documentation proposal:
    relocates a body, compare priority sequences with that moved ID removed to prove
    all other relative ordering survived; do not require an unchanged whole sequence
    or excuse unrelated reordering. For each affected goal, allow only intended
-   membership changes. For an evidence-only addition, remove the exact authored
-   record once and require prior evidence unchanged; `fmt` sorts evidence, so the
-   new record need not be last.
+   membership changes. Check goal-task membership by IDs after checking uniqueness,
+   not by expecting a new ID at the end: normalization can sort membership lists
+   lexically. Keep this separate from priority sequences, whose relative order is
+   meaningful. For an evidence-only addition, remove the exact authored record once
+   and require prior evidence unchanged; `fmt` sorts evidence, so the new record
+   need not be last.
 4. For an insertion-only TODO change, normalize only the marked generated coverage
    block in both snapshots, remove the exact authored insertion once, and require
    the remaining bytes to equal the baseline. Check insertion multiplicity so this
