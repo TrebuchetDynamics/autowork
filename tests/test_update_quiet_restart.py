@@ -1,8 +1,10 @@
 """Updater-requested gateway restarts wait for a quiet gateway instead of forcing a drain (TOOLSET-075)."""
 import contextlib
+import datetime
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -268,6 +270,105 @@ class UpdateDefersRestartTests(unittest.TestCase):
         self.assertEqual(receipt['gateway_restart'], 'requested')
         restart.assert_called_once()
         waiter.assert_not_called()
+
+
+class RestartOutcomeTests(unittest.TestCase):
+    """A finished restart is recorded with the new gateway, menu resends and interruptions (TOOLSET-077)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.state = self.root / 'maintenance/toolset-update'
+        self.state.mkdir(parents=True)
+        self.mod = load()
+        self.t0 = 1792087874_000000000  # requested_ns
+        self.stamp = lambda offset: datetime.datetime.fromtimestamp(self.t0 / 1e9 + offset).strftime('%Y-%m-%d %H:%M:%S,000')
+        for name, bot in (('alpha', True), ('beta', True), ('quiet', False)):
+            home = self.root / 'profiles' / name
+            (home / 'logs').mkdir(parents=True)
+            (home / '.env').write_text('TELEGRAM_BOT_TOKEN=secret\n' if bot else 'OTHER=1\n')
+        (self.root / 'logs').mkdir()
+        (self.root / '.env').write_text('export TELEGRAM_BOT_TOKEN="x"\n')
+        dead = subprocess.Popen([sys.executable, '-c', 'pass'])
+        dead.wait()
+        self.dead = dead.pid
+
+    def menu(self, home, offset):
+        with (home / 'logs/gateway.log').open('a') as log:
+            log.write(f'{self.stamp(offset)} INFO x.adapter: [Telegram] Telegram menu: 60 commands registered\n')
+
+    def scenario(self, new_gateway):
+        (self.root / 'gateway.pid').write_text(json.dumps({'pid': new_gateway}))
+        (self.state / 'restart.json').write_text(json.dumps(
+            {'pid': self.dead, 'requested_ns': self.t0, 'gateway_pid': 1, 'covers': [777]}))
+        (self.state / 'latest.json').write_text(json.dumps(
+            {'status': 'updated', 'pid': 5, 'started_ns': 777, 'gateway_restart': 'requested'}))
+        self.menu(self.root, -60)                       # before the restart: not a resend
+        self.menu(self.root, 40)
+        self.menu(self.root / 'profiles/alpha', 45)
+        self.menu(self.root / 'profiles/beta', -10)     # beta's bot did not reconnect yet
+        with (self.root / 'logs/gateway.log').open('a') as log:
+            log.write(f'{self.stamp(20)} WARNING gateway.run: Gateway drain timed out after 30.0s with 0 active '
+                      'agent(s), 1 in-flight cron job(s), 0 api_server run(s), and 0 deferred agent worker(s); '
+                      'interrupting remaining work.\n')
+            log.write(f'{self.stamp(-500)} WARNING gateway.run: Gateway drain timed out after 30.0s with 2 active '
+                      'agent(s); interrupting remaining work.\n')  # an older restart
+
+    def test_completed_restart_records_gateway_menus_and_interruptions(self):
+        self.scenario(os.getpid())
+        outcome = self.mod.finish_restart(self.root, self.state)
+        self.assertEqual(outcome['gateway_restart'], 'completed')
+        result = outcome['gateway_restart_result']
+        self.assertEqual(result['gateway_pid'], os.getpid())
+        self.assertEqual(result['menus_resent'], ['alpha', 'default'])
+        self.assertEqual(result['menus_not_seen'], ['beta'])
+        self.assertEqual(len(result['interrupted']), 1)
+        self.assertIn('1 in-flight cron job(s)', result['interrupted'][0])
+        latest = json.loads((self.state / 'latest.json').read_text())
+        self.assertEqual(latest['gateway_restart'], 'completed')
+        self.assertEqual(latest['gateway_restart_result'], result)
+        self.assertNotIn('secret', json.dumps(latest))
+        # Recorded once: the marker no longer describes an unfinished restart.
+        self.assertIsNone(self.mod.finish_restart(self.root, self.state))
+
+    def test_restart_that_left_the_old_gateway_stays_visible(self):
+        self.scenario(1)
+        (self.root / 'gateway.pid').write_text(json.dumps({'pid': os.getpid()}))
+        marker = json.loads((self.state / 'restart.json').read_text())
+        marker['gateway_pid'] = os.getpid()
+        (self.state / 'restart.json').write_text(json.dumps(marker))
+        outcome = self.mod.finish_restart(self.root, self.state)
+        self.assertEqual(outcome['gateway_restart'], 'restart_failed')
+        self.assertIn('run.log', outcome['gateway_restart_action'])
+        self.assertEqual(json.loads((self.state / 'latest.json').read_text())['gateway_restart'], 'restart_failed')
+
+    def test_a_draining_restart_is_not_finished_yet(self):
+        drain = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', 'gateway', 'restart'])
+        self.addCleanup(drain.wait)
+        self.addCleanup(drain.kill)
+        self.scenario(os.getpid())
+        marker = json.loads((self.state / 'restart.json').read_text())
+        marker['pid'] = drain.pid
+        (self.state / 'restart.json').write_text(json.dumps(marker))
+        self.assertIsNone(self.mod.finish_restart(self.root, self.state))
+        self.assertEqual(json.loads((self.state / 'latest.json').read_text())['gateway_restart'], 'requested')
+
+    def test_receipt_of_an_uncovered_update_is_left_alone(self):
+        self.scenario(os.getpid())
+        (self.state / 'latest.json').write_text(json.dumps(
+            {'status': 'up_to_date', 'pid': 6, 'started_ns': 999, 'gateway_restart': 'not_needed'}))
+        self.assertEqual(self.mod.finish_restart(self.root, self.state)['gateway_restart'], 'completed')
+        self.assertEqual(json.loads((self.state / 'latest.json').read_text())['gateway_restart'], 'not_needed')
+
+    def test_every_restart_request_records_the_gateway_it_replaces(self):
+        (self.root / 'gateway.pid').write_text(json.dumps({'pid': os.getpid()}))
+        (self.root / 'gateway_state.json').write_text(json.dumps({'gateway_state': 'running', 'active_agents': 0}))
+        (self.state / 'latest.json').write_text(json.dumps({'started_ns': 777, 'gateway_restart': 'deferred'}))
+        with patch.object(self.mod, 'request_gateway_restart', return_value=4242):
+            self.mod.restart_when_quiet(self.root, [self.root], self.state, update_id=777, gateway=os.getpid(),
+                                        window=10, poll=1, sleep=lambda _: None, clock=lambda: 0.0)
+        self.assertEqual(json.loads((self.state / 'restart.json').read_text())['gateway_pid'], os.getpid())
 
 
 if __name__ == '__main__':

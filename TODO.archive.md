@@ -1431,3 +1431,19 @@ Source section: Now
 - Acceptance: Three updates applied while the gateway is busy produce exactly one restart once it is quiet; status lists every update the restart covers.
 - Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
 - Dependencies: TOOLSET-075.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-077 — Record the restart outcome in the update status
+
+- [x] TOOLSET-077 — Record the restart outcome in the update status
+- Status: done (2026-10-15). Every restart request records the gateway PID it replaces; `finish_restart()` (called by `/toolset update status` once the restart process is gone and a gateway runs) records `completed` with `gateway_restart_result` (new PID and start, Telegram bots with a menu-resend log line after the request versus not seen, forced-drain interruptions) or `restart_failed` when the old gateway still runs, on the covered receipt under the update lock, once; the one-message summary shows it. Six new regressions failed first, then passed; a read-only run of the parsing against the live 12:11 restart found 9 bots resent and 1 interrupted cron run, matching the logs; `python3 scripts/check.py` 484/575 (1 skipped)/209/8; `docs.py check` ok. Offline only.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: After a requested or deferred restart completes, record the new gateway PID, the time, whether each served bot re-sent its Telegram menu and any work the shutdown interrupted, so `/toolset update status` stops reporting a finished restart as `requested`.
+- Acceptance: Status shows `gateway_restart: completed` with PID and per-profile menu resend results after a fixture restart; an incomplete restart stays visible.
+- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
+- Dependencies: TOOLSET-075.

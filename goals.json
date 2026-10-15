@@ -507,16 +507,6 @@
       "title": "Measure subprocess coverage, then review identical and subset test groups"
     },
     {
-      "depends_on": [
-        "TOOLSET-075"
-      ],
-      "goal": "GENTLE-UPDATE",
-      "id": "TOOLSET-077",
-      "section": "Next",
-      "status": "open",
-      "title": "Record the restart outcome in the update status"
-    },
-    {
       "depends_on": [],
       "goal": "GENTLE-UPDATE",
       "id": "TOOLSET-078",
@@ -983,6 +973,16 @@
       "section": "Done",
       "status": "done",
       "title": "Coalesce restarts across a burst of updates"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-075"
+      ],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-077",
+      "section": "Done",
+      "status": "done",
+      "title": "Record the restart outcome in the update status"
     },
     {
       "depends_on": [],

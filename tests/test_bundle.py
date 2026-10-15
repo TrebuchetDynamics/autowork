@@ -140,6 +140,24 @@ class BundleTests(unittest.TestCase):
         self.assertIn('Gateway restart: deferred_expired', summary)
         self.assertIn('Gateway restart action: Run hermes gateway restart when convenient.', summary)
 
+    def test_status_finishes_a_completed_restart_and_summarizes_it(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated', 'gateway_restart': 'requested'}))
+        done = {'gateway_restart': 'completed', 'gateway_restart_result': {
+            'gateway_pid': 4321, 'gateway_started': '2026-10-15T12:15:16', 'menus_resent': ['alpha', 'default'],
+            'menus_not_seen': ['beta'], 'interrupted': ['Gateway drain timed out after 30.0s with 1 in-flight cron job(s)']}}
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+             patch.object(self.bundle, 'gateway_drain', return_value=None), \
+             patch.object(self.bundle, 'finish_restart', return_value=done) as finish:
+            summary = self.bundle.update_status()
+            full = json.loads(self.bundle.update_status(full=True).strip('`json\n'))
+        finish.assert_called_with(home, folder)
+        self.assertIn('Gateway restart: completed, new gateway PID 4321', summary)
+        self.assertIn('Menus resent: alpha, default; not seen: beta', summary)
+        self.assertIn('Interrupted: Gateway drain timed out after 30.0s with 1 in-flight cron job(s)', summary)
+        self.assertNotIn('done', summary)
+        self.assertEqual(full['gateway_restart_result']['gateway_pid'], 4321)
+
     def test_status_says_how_many_updates_one_restart_covers(self):
         home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
         (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated',

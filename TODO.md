@@ -157,17 +157,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.
 
-### TOOLSET-077 — Record the restart outcome in the update status
-
-- [ ] TOOLSET-077 — Record the restart outcome in the update status
-- Status: open.
-- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
-- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
-- Scope: After a requested or deferred restart completes, record the new gateway PID, the time, whether each served bot re-sent its Telegram menu and any work the shutdown interrupted, so `/toolset update status` stops reporting a finished restart as `requested`.
-- Acceptance: Status shows `gateway_restart: completed` with PID and per-profile menu resend results after a fixture restart; an incomplete restart stays visible.
-- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
-- Dependencies: TOOLSET-075.
-
 ### TOOLSET-078 — Report a concurrent update clearly
 
 - [ ] TOOLSET-078 — Report a concurrent update clearly
@@ -241,7 +230,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
-| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-077, TOOLSET-078, TOOLSET-079 |
+| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-078, TOOLSET-079 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 

@@ -125,7 +125,10 @@ claim of a tagged release, completed installation or live workflow qualification
   It never relies on Hermes' forced drain; cron runs, which Hermes keeps in
   restart-safe workers, do not hold the restart. Updates applied while a restart is
   outstanding join it, so a burst of updates restarts the gateway once
-  (`gateway_restart_covers`), and the waiter never restarts mid-update.
+  (`gateway_restart_covers`), and the waiter never restarts mid-update. After the
+  restart, `/toolset update status` records `completed` with the new gateway PID,
+  which Telegram bots resent their menus and any forced-drain interruptions, or
+  `restart_failed` if the old gateway is still running.
 
 - `git-pull-merge` is merged into `git-commit-push` (2.0.0): `/git-commit-push pull`,
   `sync` or `merge <branch|PR n>` runs the former pull and merge procedure, now a reference

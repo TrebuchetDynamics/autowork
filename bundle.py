@@ -265,13 +265,23 @@ def updater_alive(pid):
     return state not in ('Z', 'X')
 
 
-def gateway_drain(folder):
-    """Restart progress from the updater module, loaded by path like its subprocess."""
+def _updater():
+    """The updater module, loaded by path like its subprocess."""
     import importlib.util
     spec = importlib.util.spec_from_file_location('hermes_toolset_update_bundle', ROOT / 'update_bundle.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.gateway_drain(folder)
+    return module
+
+
+def gateway_drain(folder):
+    """Restart progress from the updater module."""
+    return _updater().gateway_drain(folder)
+
+
+def finish_restart(home, folder):
+    """Record and return the outcome of a requested restart that has finished, else None."""
+    return _updater().finish_restart(home, folder)
 
 
 def summarize_update(result):
@@ -307,7 +317,17 @@ def summarize_update(result):
         covers = (drain.get('covers') if isinstance(drain, dict) else None) or result.get('gateway_restart_covers') or 0
         if covers > 1:
             line += f' (covers {covers} updates)'
-        if isinstance(drain, dict) and drain.get('state') == 'deferred':
+        done = result.get('gateway_restart_result')
+        if isinstance(done, dict):
+            line += f", new gateway PID {done.get('gateway_pid')}"
+            lines.append(line)
+            line = None
+            menus = 'Menus resent: ' + (', '.join(done.get('menus_resent') or []) or 'none')
+            if done.get('menus_not_seen'):
+                menus += '; not seen: ' + ', '.join(done['menus_not_seen'])
+            lines.append(menus)
+            lines += [f'Interrupted: {item}' for item in (done.get('interrupted') or [])[:3]]
+        elif isinstance(drain, dict) and drain.get('state') == 'deferred':
             turns = drain.get('chat_turns')
             line += (', waiting for no chat turn in flight ('
                      + (f'{turns} at last check' if turns is not None else 'activity not yet read') + ')')
@@ -351,7 +371,11 @@ def update_status(full=False):
                 'the old release')
         elif result.get('gateway_restart') in ('requested', 'pending'):
             drain = gateway_drain(path.parent)
-            result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
+            finished = None if drain else finish_restart(path.parent.parent.parent, path.parent)
+            if finished:
+                result.update(finished)
+            else:
+                result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
         # Gateway attachment extraction removes bare existing file paths from prose.
         # Keep the receipt literal; escape embedded fences without changing JSON values.
         if full:
