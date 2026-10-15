@@ -194,7 +194,8 @@
         "TOOLSET-025",
         "TOOLSET-026",
         "TOOLSET-027",
-        "TOOLSET-083"
+        "TOOLSET-083",
+        "TOOLSET-092-18"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -627,6 +628,14 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify parallel Autowork with real host workers"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-092-18",
+      "section": "Next",
+      "status": "open",
+      "title": "Reject in-profile output directory aliases during fleet collection"
     },
     {
       "depends_on": [],

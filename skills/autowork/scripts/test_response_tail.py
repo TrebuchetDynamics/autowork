@@ -184,6 +184,35 @@ class ResponseTailTests(unittest.TestCase):
             self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
             self.assertIn('cron response directory outside profile: j1', gaps)
 
+    def test_in_profile_output_alias_cannot_impersonate_another_job(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output'
+            actual = output / 'actual'
+            actual.mkdir(parents=True)
+            source = actual / '2026-10-11.md'
+            source.write_text('another job result\n')
+            (output / 'alias').symlink_to('actual', target_is_directory=True)
+            gaps = []
+            rows = cron_responses(home, [{'id': 'alias'}, {'id': 'actual'}], gaps)
+            self.assertEqual([row['job_id'] for row in rows], ['actual'])
+            self.assertIn('cron response directory aliased: alias', gaps)
+            self.assertEqual(source.read_text(), 'another job result\n')
+
+    def test_aliased_output_parent_cannot_supply_job_responses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            actual = home / 'retained/j1'
+            actual.mkdir(parents=True)
+            source = actual / '2026-10-11.md'
+            source.write_text('retained result\n')
+            (home / 'cron').mkdir()
+            (home / 'cron/output').symlink_to('../retained', target_is_directory=True)
+            gaps = []
+            self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
+            self.assertIn('cron response directory aliased: j1', gaps)
+            self.assertEqual(source.read_text(), 'retained result\n')
+
     def test_looping_output_directory_does_not_abort_collection(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

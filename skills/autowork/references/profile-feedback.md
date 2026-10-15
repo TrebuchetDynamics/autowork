@@ -21,6 +21,12 @@ a passing consultation redactor does
 not qualify the collector's separate masking path. Partial chunks and omitted
 history remain unknown, not proof that every secret representation was covered.
 
+Require each response directory to resolve to its exact `cron/output/JOB_ID`
+location, not merely somewhere inside its profile. An in-profile job or parent
+alias must produce a gap, never another job's falsely attributed output. Keep
+healthy neighboring responses and test this through the actual collector; the
+path check is not a race-proof filesystem sandbox or execution-to-file binding.
+
 Use the shared executable `scripts/profile-consult.py`, independent of optional
 cron tool schemas. Run it with the default root, a NEW private
 maintenance output directory, and a file containing the auditor's local default
