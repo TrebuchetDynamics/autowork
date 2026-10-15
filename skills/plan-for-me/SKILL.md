@@ -35,6 +35,19 @@ and continue independent work. Delegation does not erase approval controls or
 explicit scope, spending, ownership and stop limits. Never invent acceptance or
 reopen settled choices without new evidence.
 
+When a new requirement supersedes a completed slice's deliberate limitation,
+record the prospective override in the current spec and queue a successor; keep
+its completed ID, original acceptance and archived evidence intact. Separate the
+new positive behavior from safety boundaries that still apply, so replacing one
+stop/rejection rule does not silently remove unrelated guards.
+
+Trace a planned state transition through producer, ownership/cancellation guards,
+preview, command commitment and presentation before splitting tasks; a producer-only
+change can be immediately canceled or misclassified by its consumers. Require a
+composed regression for the intended handoff and a negative regression proving
+unrelated ownership loss still cancels. Mark new fixtures and unexercised technical
+choices as planned, not measured baselines or verified algorithms.
+
 For blocker or unblock requests, read the current task body, latest runs and
 receipts first and report the observed phase; an older summary may predate review
 or recovery. Separate missing intent or excluded repair scope from transport, gate
