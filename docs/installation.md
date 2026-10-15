@@ -332,6 +332,32 @@ retain already-loaded instructions; open a new conversation to load updated skil
 The new `/toolset update` handler itself first needs the normal plugin reload if
 upgrading from a version that does not register it.
 
+### Linked profiles and pinned clones
+
+A source install links each profile's `plugins/hermes-toolset` to the checkout, so
+the profile loads whatever that checkout holds at the next gateway restart,
+including commits that were never released. A profile whose plugin is its own clone
+changes only when an update advances it. `/toolset update status` and
+`hermes toolset doctor` list the linked profiles; nothing converts them
+automatically.
+
+To pin one profile, preview it, then run it:
+
+```sh
+hermes toolset pin --profile NAME --dry-run
+hermes toolset pin --profile NAME
+```
+
+Pinning clones the checkout at the revision the link resolves to now, saves the
+link under `maintenance/toolset-update/pinned/NAME-*/` and puts the clone in its
+place, so the profile stays on the same revision. It refuses, writing nothing, when
+the checkout has uncommitted changes (the profile would lose them on its next
+restart), when that revision is not yet on upstream `main` as last fetched (the next
+update could not advance the clone), or while an update runs. The gateway loads the
+clone at its next restart. `hermes toolset pin --unpin --profile NAME` restores the
+saved link and moves the clone beside it instead of deleting it; it also takes
+`--dry-run`.
+
 ## Complete bundled skill installation
 
 Native plugin loading provisions every bundled skill and its support files into

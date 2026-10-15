@@ -284,6 +284,23 @@ def finish_restart(home, folder):
     return _updater().finish_restart(home, folder)
 
 
+def linked_profiles():
+    """Profiles whose plugin links to a working checkout, or None when that cannot be read."""
+    try:
+        return _updater().fleet_linked_profiles(update_home())
+    except (Exception, SystemExit):
+        return None
+
+
+def linked_lines(rows):
+    if not rows:
+        return []
+    names = ', '.join(r['profile'] for r in rows)
+    targets = ', '.join(sorted({r['target'] for r in rows}))
+    return [f'Linked to a working checkout ({targets}); any gateway restart loads its current files: {names}',
+            'Preview pinning one to its current revision: hermes toolset pin --profile NAME --dry-run']
+
+
 def summarize_update(result):
     """A few chat lines for an update receipt; the full JSON stays one argument away."""
     status = result.get('status', 'unknown')
@@ -342,6 +359,7 @@ def summarize_update(result):
             line += ', done'
         if line:
             lines.append(line)
+    lines += linked_lines(result.get('linked_profiles'))
     lines.append('Full receipt: /toolset update status full')
     return lines
 
@@ -376,6 +394,9 @@ def update_status(full=False):
                 result.update(finished)
             else:
                 result['gateway_restart_progress'] = drain or 'completed or not tracked; the gateway has reloaded unless restart output in run.log shows an error'
+        current = linked_profiles()
+        if current is not None:
+            result['linked_profiles'] = [{k: r[k] for k in ('profile', 'target')} for r in current]
         # Gateway attachment extraction removes bare existing file paths from prose.
         # Keep the receipt literal; escape embedded fences without changing JSON values.
         if full:
@@ -452,6 +473,11 @@ def setup_parser(parser):
     finalize.add_argument('--hermes-home', required=True)
     finalize.add_argument('--bundle-only', action='store_true')
     finalize.add_argument('--no-reload', action='store_true')
+    pin = actions.add_parser('pin', help="Replace a profile's plugin link with a clone of the same revision")
+    pin.add_argument('--profile', required=True)
+    pin.add_argument('--dry-run', action='store_true', help='Report what would change; write nothing')
+    pin.add_argument('--unpin', action='store_true', help='Restore the link saved by the last pin')
+    pin.add_argument('--hermes-home', help='Hermes root containing profiles/')
     doctor = actions.add_parser('doctor', help='Report enabled plugins and available commands')
     doctor.add_argument('--json', action='store_true')
     doctor.add_argument('--core', '--bundle-only', dest='core_only', action='store_true',
@@ -508,6 +534,7 @@ def format_diagnosis(report):
             lines.append('  ' + field.replace('_', ' ') + ': ' + ', '.join(names))
     if report['scope'] == 'core' and report['integrations_status'] != 'ready':
         lines.append('External gaps do not fail this core check; workflows using them may be unavailable.')
+    lines += linked_lines(report.get('linked_profiles'))
     lines.append(report['readiness_note'])
     return '\n'.join(lines)
 
@@ -519,8 +546,18 @@ def handle_cli(args):
         if args.check:
             argv.append('--check')
         return subprocess.run(argv, cwd=ROOT, check=False).returncode
+    if args.action == 'pin':
+        argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home',
+                str(args.hermes_home or update_home()), '--unpin-profile' if args.unpin else '--pin-profile', args.profile]
+        if args.dry_run:
+            argv.append('--dry-run')
+        return subprocess.run(argv, cwd=ROOT, check=False).returncode
     if args.action == 'doctor':
-        report = diagnose(inventory(), core_only=getattr(args, 'core_only', False))
+        report = inventory()
+        linked = linked_profiles()
+        if linked is not None:
+            report = {**report, 'linked_profiles': linked}
+        report = diagnose(report, core_only=getattr(args, 'core_only', False))
         print(json.dumps(report, indent=2) if args.json else format_diagnosis(report))
         return int(report['status'] != 'ready')
     if args.action == 'finalize':

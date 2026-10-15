@@ -900,6 +900,148 @@ def selected_profiles(root, names):
     return [(name, available[name]) for name in names]
 
 
+def _same_remote(url, upstream):
+    def norm(value):
+        value = value.strip().rstrip('/')
+        value = value[:-4] if value.endswith('.git') else value
+        return value[7:] if value.startswith('file://') else value
+    return norm(url) == norm(upstream)
+
+
+def _released(repo, revision, upstream):
+    """Whether a revision is on the upstream main this checkout last fetched; None if unknown."""
+    for remote in git(repo, 'remote').decode().split():
+        try:
+            if not _same_remote(git(repo, 'remote', 'get-url', remote).decode(), upstream):
+                continue
+            git(repo, 'rev-parse', '--verify', '--quiet', f'refs/remotes/{remote}/main')
+        except ValueError:
+            continue
+        try:
+            git(repo, 'merge-base', '--is-ancestor', revision, f'refs/remotes/{remote}/main')
+            return True
+        except ValueError:
+            return False
+    return None
+
+
+def linked_profiles(profiles, *, upstream=UPSTREAM):
+    """Profiles whose plugin links to a working checkout: any gateway restart loads its current files."""
+    rows, checkouts = [], {}
+    for name, home in profiles:
+        plugin = home / 'plugins/hermes-toolset'
+        if not plugin.is_symlink():
+            continue
+        target = plugin.resolve()
+        if target not in checkouts:
+            try:
+                revision = git(target, 'rev-parse', 'HEAD').decode().strip()
+                checkouts[target] = {'revision': revision,
+                                     'dirty': bool(git(target, 'status', '--porcelain').strip()),
+                                     'released': _released(target, revision, upstream)}
+            except (ValueError, OSError, subprocess.SubprocessError):
+                checkouts[target] = {'revision': None, 'dirty': None, 'released': None}
+        rows.append({'profile': name, 'link': os.readlink(plugin), 'target': str(target), **checkouts[target]})
+    return rows
+
+
+def fleet_linked_profiles(root):
+    """Linked profiles of a Hermes home, loadable from the plugin process (no setup_bundle on sys.path)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('hermes_toolset_setup_bundle', Path(__file__).resolve().parent / 'setup_bundle.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return linked_profiles(module.live_profiles(root_home(root)))
+
+
+def _pin_records(state, name):
+    folder = state / 'pinned'
+    return sorted(folder.glob(f'{name}-*/record.json')) if folder.is_dir() else []
+
+
+def pin_profile(root, name, *, dry_run=False, upstream=UPSTREAM):
+    """Replace one profile's plugin link with a clone of the same revision; the link is kept for unpin."""
+    from setup_bundle import live_profiles
+    root = root_home(root)
+    home = dict(live_profiles(root)).get(name)
+    if home is None:
+        raise ValueError(f'No profile named {name}')
+    plugin = home / 'plugins/hermes-toolset'
+    if any(p.is_symlink() for p in plugin.parents):
+        raise ValueError('Symlinked plugin parent')
+    if not plugin.is_symlink():
+        return {'profile': name, 'status': 'not_linked',
+                'note': 'The plugin is not a link; it already changes only through an update.'}
+    row = linked_profiles([(name, home)], upstream=upstream)[0]
+    if row['revision'] is None or not plugin.exists():
+        raise ValueError(f"The plugin link points to no readable checkout: {row['link']}")
+    if row['dirty']:
+        raise ValueError(f"{row['target']} has uncommitted changes the profile loads; commit or move them, then pin")
+    if not row['released']:
+        raise ValueError(f"{row['revision'][:12]} is not on upstream main yet (or the checkout has no fetched "
+                         'upstream ref); the next update could not advance the pinned clone. Publish it first.')
+    state = root / 'maintenance/toolset-update'
+    if any(p.is_symlink() for p in (state, *state.parents)):
+        raise ValueError('Symlinked updater state')
+    backup = state / 'pinned' / f'{name}-{time.time_ns()}'
+    result = {**row, 'status': 'would_pin' if dry_run else 'pinned', 'backup': str(backup),
+              'note': 'The profile keeps this revision; only /toolset update advances it. The gateway loads the '
+                      'clone at its next restart. Undo with: hermes toolset pin --unpin --profile ' + name}
+    if dry_run:
+        return result
+    state.mkdir(parents=True, exist_ok=True)
+    lock = _try_update_lock(state)
+    if lock is None:
+        raise ValueError('An update is running; pin the profile after it finishes')
+    with lock:
+        backup.mkdir(parents=True)
+        clone = backup / 'clone'
+        git(backup, 'clone', '--quiet', '--no-hardlinks', '--no-checkout', row['target'], str(clone))
+        git(clone, 'checkout', '--quiet', '-B', 'main', row['revision'])
+        if git(clone, 'rev-parse', 'HEAD').decode().strip() != row['revision'] or git(clone, 'status', '--porcelain').strip():
+            raise ValueError('The new clone does not match the linked revision')
+        (backup / 'record.json').write_text(json.dumps({k: row[k] for k in ('profile', 'link', 'target', 'revision')},
+                                                       indent=2) + '\n')
+        if not plugin.is_symlink() or os.readlink(plugin) != row['link']:
+            raise ValueError('The plugin link changed while pinning; nothing was replaced')
+        plugin.rename(backup / 'link')
+        try:
+            clone.rename(plugin)
+        except OSError:
+            (backup / 'link').rename(plugin)
+            raise
+    return result
+
+
+def unpin_profile(root, name, *, dry_run=False):
+    """Restore the link saved by the latest pin; the clone is moved beside the record, not deleted."""
+    from setup_bundle import live_profiles
+    root = root_home(root)
+    home = dict(live_profiles(root)).get(name)
+    if home is None:
+        raise ValueError(f'No profile named {name}')
+    records = [r for r in _pin_records(root / 'maintenance/toolset-update', name) if (r.parent / 'link').is_symlink()]
+    backup = records[-1].parent if records else None
+    if backup is None:
+        raise ValueError(f'No saved link for {name}; nothing to restore')
+    plugin = home / 'plugins/hermes-toolset'
+    if plugin.is_symlink() or not plugin.is_dir():
+        raise ValueError('The plugin is not a pinned clone; nothing was changed')
+    if git(plugin, 'status', '--porcelain').strip():
+        raise ValueError(f'{plugin} has local changes; move them before unpinning')
+    result = {'profile': name, 'status': 'would_unpin' if dry_run else 'unpinned', 'link': os.readlink(backup / 'link'),
+              'clone_kept_at': str(backup / f'unpinned-{time.time_ns()}')}
+    if dry_run:
+        return result
+    lock = _try_update_lock(root / 'maintenance/toolset-update')
+    if lock is None:
+        raise ValueError('An update is running; unpin the profile after it finishes')
+    with lock:
+        plugin.rename(result['clone_kept_at'])
+        (backup / 'link').rename(plugin)
+    return result
+
+
 def stage_checkout(source, revision, destination, tree):
     """Publish only a completely checked-out snapshot; interrupted temporaries are unused."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1145,6 +1287,9 @@ def main(argv=None):
     parser.add_argument('--source', type=Path, help='Reviewed clean local Git checkout; no fetch')
     parser.add_argument('--revision', help='Exact reviewed 40-character local commit')
     parser.add_argument('--native-python', help='Python from the selected Hermes installation')
+    parser.add_argument('--pin-profile', metavar='NAME', help='Replace this profile\'s plugin link with a clone of the same revision')
+    parser.add_argument('--unpin-profile', metavar='NAME', help='Restore the plugin link saved by the last pin')
+    parser.add_argument('--dry-run', action='store_true', help='With --pin-profile/--unpin-profile: report only')
     parser.add_argument('--restart-when-quiet', type=int, metavar='UPDATE_ID', help=argparse.SUPPRESS)
     parser.add_argument('--gateway-pid', type=int, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -1155,6 +1300,14 @@ def main(argv=None):
         print(restart_when_quiet(root, homes, root / 'maintenance/toolset-update',
                                  update_id=args.restart_when_quiet, gateway=args.gateway_pid))
         return 0
+    if args.pin_profile or args.unpin_profile:
+        try:
+            result = (pin_profile(args.hermes_home, args.pin_profile, dry_run=args.dry_run) if args.pin_profile
+                      else unpin_profile(args.hermes_home, args.unpin_profile, dry_run=args.dry_run))
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            result = {'profile': args.pin_profile or args.unpin_profile, 'status': 'refused', 'error': str(error)}
+        print(json.dumps(result, indent=2))
+        return int(result['status'] == 'refused')
     if any((args.profile, args.source, args.revision, args.native_python)):
         if not all((args.profile, args.source, args.revision, args.native_python)):
             parser.error('local deployment requires --profile, --source, --revision and --native-python')
@@ -1203,6 +1356,7 @@ def main(argv=None):
             result['profiles'] = plan['profiles']
             result['sources'] = {str(p): {k: s[k] for k in ('before', 'after')} for p, s in plan['sources'].items()}
             result['skill_files'] = len(plan['writes'])
+            result['linked_profiles'] = [{k: r[k] for k in ('profile', 'target')} for r in linked_profiles(profiles)]
             changed = bool(plan['writes']) or any(s['before'] != s['after'] for s in plan['sources'].values())
             missing = any(not (h / 'plugins/hermes-toolset').exists() for _, h in profiles)
             result['drift'] = plan['drift']

@@ -14,9 +14,10 @@ live profile under the same Hermes root.
 
 | Command | Flags | Effect |
 | --- | --- | --- |
-| `hermes toolset doctor` | `--json`; `--core` (alias `--bundle-only`) | Reports plugin load and command/skill registration. Exit 1 unless `status` is `ready`. `--core` ignores external integration gaps. |
+| `hermes toolset doctor` | `--json`; `--core` (alias `--bundle-only`) | Reports plugin load and command/skill registration, and lists profiles linked to a working checkout (`linked_profiles`; never a failure). Exit 1 unless `status` is `ready`. `--core` ignores external integration gaps. |
 | `hermes toolset setup` | `--dry-run`, `--yes-deps`, `--bundle-only`, `--no-reload`, `--hermes-home ROOT` | Runs [`setup_bundle.py`](../setup_bundle.py): installs sources in [`plugins/PLUGINS.md`](../plugins/PLUGINS.md), applies [defaults](../plugins/defaults.json), finalizes every live profile. |
 | `hermes toolset update` | `--check`, `--hermes-home ROOT` | Runs [`update_bundle.py`](../update_bundle.py) and waits: fast-forward-only update of every live profile. `--check` fetches and previews only. |
+| `hermes toolset pin` | `--profile NAME` (required), `--dry-run`, `--unpin`, `--hermes-home ROOT` | Replaces one profile's plugin link with a clone at the same revision, saving the link; `--unpin` restores it. See [linked profiles](installation.md#linked-profiles-and-pinned-clones). |
 | `hermes toolset finalize` | `--hermes-home ROOT` (required), `--bundle-only`, `--no-reload` | Verifies one profile's registrations and runtime settings and refreshes gateway commands; setup calls it per profile. |
 
 `setup` flags:
@@ -41,7 +42,7 @@ Source: [`bundle.py`](../bundle.py) `handle_chat`, `list_commands`, `start_updat
 | `/toolset list TEXT` or `/toolset TEXT` | Commands whose name or owner contains `TEXT`, for example `/toolset omh`. |
 | `/toolset update` | Starts the all-profile updater in the background and returns immediately. |
 | `/toolset update --check` | Starts an upstream check only. |
-| `/toolset update status` | Summarizes the durable result from `maintenance/toolset-update/latest.json` at the Hermes root in a few lines. |
+| `/toolset update status` | Summarizes the durable result from `maintenance/toolset-update/latest.json` at the Hermes root in a few lines, and lists profiles linked to a working checkout. |
 | `/toolset update status full` | Shows that whole receipt as JSON. |
 
 ## Source-checkout scripts
@@ -111,6 +112,7 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | --- | --- | --- |
 | `ROOT/maintenance/toolset-update/latest.json` | Updater | Latest update receipt: status, revisions, profiles, local edits, backup location, and the gateway restart's state or recorded outcome (`gateway_restart`, `gateway_restart_result`). |
 | `ROOT/maintenance/toolset-update/restart.json` | Updater | The last gateway restart the updater requested (process ID), or its deferred-restart waiter (process ID, latest chat-turn count), plus `covers`, the updates that restart will load; used to report progress, avoid overlapping restarts and record the outcome on each covered update. |
+| `ROOT/maintenance/toolset-update/pinned/NAME-*/` | `hermes toolset pin` | One pin: `record.json` (profile, link, checkout, revision), the saved `link`, and after unpinning the kept clone (`unpinned-*`). |
 | `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/toolset update` and of gateway restarts the updater requests; terminal `hermes toolset update` prints to the terminal. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |

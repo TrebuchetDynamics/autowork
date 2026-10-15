@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/toolset update status` and `hermes toolset doctor` list profiles whose plugin links
+  to a working checkout, which load its current files at any gateway restart.
+  `hermes toolset pin --profile NAME [--dry-run]` replaces one link with a clone at
+  the same revision that only updates advance, saving the link; `--unpin` restores it
+  (TOOLSET-079). Nothing is converted automatically.
 - In profiles with OMH, plugin load (and so `/toolset update`) adds the OMH skills
   outside a measured keep list (`omh_keep_skills`, 41 of 142, including code review,
   verification, core and memory skills) to `skills.disabled`, so Hermes stops listing them

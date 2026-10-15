@@ -1050,5 +1050,94 @@ class ChatMenuEnvTests(unittest.TestCase):
                          [{'profile': 'default', 'status': 'unreachable', 'error': 'OSError'}])
 
 
+class PinProfileTests(unittest.TestCase):
+    """TOOLSET-079: report linked profiles; opt-in, reversible pinning to a clone."""
+    setUp, git, advance, plan = UpdateTests.setUp, UpdateTests.git, UpdateTests.advance, UpdateTests.plan
+    def pin(self, name='work', **options):
+        with patch.dict('sys.modules', {'setup_bundle': self.setup_stub}):
+            return self.mod.pin_profile(self.home, name, upstream=str(self.remote), **options)
+    def unpin(self, name='work', **options):
+        with patch.dict('sys.modules', {'setup_bundle': self.setup_stub}):
+            return self.mod.unpin_profile(self.home, name, **options)
+    def plugin(self, name='work'):
+        return dict(self.profiles)[name]/'plugins/hermes-toolset'
+
+    def test_reports_only_linked_profiles_with_their_checkout_state(self):
+        rows = self.mod.linked_profiles(self.profiles, upstream=str(self.remote))
+        head = self.git(self.repo, 'rev-parse', 'HEAD')
+        self.assertEqual([(r['profile'], r['revision'], r['dirty'], r['released']) for r in rows],
+                         [('default', head, False, True), ('work', head, False, True)])
+        self.pin()
+        self.assertEqual([r['profile'] for r in self.mod.linked_profiles(self.profiles, upstream=str(self.remote))],
+                         ['default'])
+
+    def test_dry_run_writes_nothing(self):
+        result = self.pin(dry_run=True)
+        self.assertEqual((result['status'], result['revision']), ('would_pin', self.git(self.repo, 'rev-parse', 'HEAD')))
+        self.assertTrue(self.plugin().is_symlink())
+        self.assertFalse((self.home/'maintenance/toolset-update/pinned').exists())
+
+    def test_pin_keeps_revision_and_saves_the_link(self):
+        head = self.git(self.repo, 'rev-parse', 'HEAD')
+        result = self.pin()
+        plugin = self.plugin()
+        self.assertFalse(plugin.is_symlink())
+        self.assertEqual(self.git(plugin, 'rev-parse', 'HEAD'), head)
+        self.assertEqual(self.git(plugin, 'status', '--porcelain'), '')
+        self.assertEqual(self.git(plugin, 'branch', '--show-current'), 'main')
+        backup = Path(result['backup'])
+        self.assertEqual(Path((backup/'link').readlink()), self.repo)
+        self.assertEqual(json.loads((backup/'record.json').read_text())['revision'], head)
+        # Unreleased work in the checkout no longer reaches the pinned profile.
+        (self.repo/'skills/demo/SKILL.md').write_text('unreleased\n')
+        self.git(self.repo, 'commit', '-qam', 'local')
+        self.assertEqual(self.git(plugin, 'rev-parse', 'HEAD'), head)
+        self.assertEqual((plugin/'skills/demo/SKILL.md').read_text(), 'old\n')
+
+    def test_update_advances_the_pinned_clone(self):
+        self.pin()
+        self.advance()
+        plan = self.plan()
+        self.assertEqual(len(plan['sources']), 2)
+        self.mod.apply(plan, self.home/'backups')
+        self.assertEqual(self.git(self.plugin(), 'rev-parse', 'HEAD'), self.git(self.remote, 'rev-parse', 'HEAD'))
+
+    def test_refuses_dirty_or_unreleased_checkout(self):
+        (self.repo/'skills/demo/SKILL.md').write_text('edited\n')
+        with self.assertRaisesRegex(ValueError, 'uncommitted'):
+            self.pin()
+        self.git(self.repo, 'commit', '-qam', 'local')
+        with self.assertRaisesRegex(ValueError, 'not on upstream main'):
+            self.pin(dry_run=True)
+        self.assertTrue(self.plugin().is_symlink())
+
+    def test_refuses_while_an_update_runs(self):
+        state = self.home/'maintenance/toolset-update'
+        state.mkdir(parents=True)
+        held = self.mod._try_update_lock(state)
+        self.addCleanup(held.close)
+        with self.assertRaisesRegex(ValueError, 'update is running'):
+            self.pin()
+        self.assertTrue(self.plugin().is_symlink())
+
+    def test_unpin_restores_the_link_and_keeps_the_clone(self):
+        self.pin()
+        self.assertEqual(self.unpin(dry_run=True)['status'], 'would_unpin')
+        self.assertFalse(self.plugin().is_symlink())
+        result = self.unpin()
+        self.assertEqual(Path(self.plugin().readlink()), self.repo)
+        self.assertTrue((Path(result['clone_kept_at'])/'.git').is_dir())
+        with self.assertRaisesRegex(ValueError, 'No saved link'):
+            self.unpin()
+
+    def test_unlinked_profile_and_cli_refusal(self):
+        self.pin()
+        self.assertEqual(self.pin()['status'], 'not_linked')
+        output = io.StringIO()
+        with patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), contextlib.redirect_stdout(output):
+            code = self.mod.main(['--hermes-home', str(self.home), '--pin-profile', 'missing', '--dry-run'])
+        self.assertEqual((code, json.loads(output.getvalue())['status']), (1, 'refused'))
+
+
 if __name__ == '__main__':
     unittest.main()

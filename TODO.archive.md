@@ -1515,3 +1515,20 @@ Source section: Next
 - Checks: Focused collector and correctness modules, same-receipt before/after replay, installed-consumer readback and independent review; `git diff --check`.
 - Dependencies: None.
 - Exclusions: No product writes, worker recovery, automatic pause/resume, runtime edits or publication.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-079 — Report linked profiles and offer pinned clones
+
+- [x] TOOLSET-079 — Report linked profiles and offer pinned clones
+- Status: done (2026-10-15). `linked_profiles()` reports each profile whose plugin is a link, with the checkout's revision, whether it is dirty and whether that revision is on upstream `main` as last fetched; `/toolset update status` (live, plus `linked_profiles` in the receipt) and `hermes toolset doctor` (`linked_profiles`, never a failure) list them. `hermes toolset pin --profile NAME [--dry-run]` clones the checkout at the linked revision under the update lock, saves the link and its record in `maintenance/toolset-update/pinned/`, and swaps the clone in; it refuses a dirty checkout, an unreleased revision or a running update. `--unpin` restores the link and keeps the clone. Twelve new regressions, including an update advancing the pinned clone while a later local commit does not reach it; a read-only live dry run listed 7 linked profiles (default, golf, charlie, india, juliet, sierra, bravo) and refused pinning while main is ahead of origin; `python3 scripts/check.py` 506/576 (1 skipped)/209/8; Pi 3 passed. Offline only; no live profile converted.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
+- Scope: Report which profiles load the plugin through a link to a working checkout (they go live with whatever that checkout contains on any restart) and offer an explicit, reversible conversion to a pinned clone that only an update advances.
+- Acceptance: Status and `/toolset` doctor list linked profiles; an opt-in conversion leaves the profile on the same revision, keeps a backup of the link and is covered by a dry run.
+- Checks: Regressions in `tests/test_update_bundle.py` and the doctor tests, then `python3 scripts/check.py`.
+- Dependencies: None.
+- Exclusions: No automatic conversion of live profiles; converting them is a separate, user-authorized live step.

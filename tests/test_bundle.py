@@ -239,6 +239,26 @@ class BundleTests(unittest.TestCase):
             result = self.bundle.update_status()
         self.assertIn('Update process stopped without a final receipt', result)
 
+    def test_status_lists_profiles_linked_to_a_working_checkout(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'up_to_date',
+                                                        'linked_profiles': [{'profile': 'stale', 'target': '/old'}]}))
+        rows = [{'profile': f'profile{i}', 'target': '/src/hermes-toolset', 'link': '/src/hermes-toolset',
+                 'revision': 'a' * 40, 'dirty': False, 'released': True} for i in range(8)]
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+                patch.object(self.bundle, 'linked_profiles', return_value=rows):
+            summary = self.bundle.update_status()
+            full = json.loads(self.bundle.update_status(full=True).strip('`json\n'))
+        self.assertIn('Linked to a working checkout (/src/hermes-toolset); any gateway restart loads its current files: '
+                      + ', '.join(r['profile'] for r in rows), summary)
+        self.assertIn('hermes toolset pin --profile NAME --dry-run', summary)
+        self.assertNotIn('stale', summary)
+        self.assertEqual(full['linked_profiles'][0], {'profile': 'profile0', 'target': '/src/hermes-toolset'})
+        self.assertLess(len(summary), 600)
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+                patch.object(self.bundle, 'linked_profiles', return_value=[]):
+            self.assertNotIn('Linked', self.bundle.update_status())
+
     def test_status_summary_fits_one_chat_message(self):
         home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
         names = [f'profile{i}' for i in range(10)]

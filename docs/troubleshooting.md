@@ -131,6 +131,13 @@ the durable result. If status says the process stopped without a receipt, inspec
 
 See [update all profiles](installation.md#update-all-profiles) for the full rules.
 
+### A restart rolled out changes no update released
+
+Profiles linked to a working checkout load its current files at every gateway
+restart. `/toolset update status` lists them; pin the ones that should change only
+through updates with `hermes toolset pin --profile NAME` (preview with `--dry-run`).
+See [linked profiles](installation.md#linked-profiles-and-pinned-clones).
+
 ### The bundle broke after moving or deleting its checkout
 
 Source installs link each profile to the checkout. Restore it at the same path,

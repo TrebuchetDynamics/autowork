@@ -363,7 +363,13 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-075..079 offline: python3 scripts/check.py (506/576/209/8 passed, 1 skipped) and node --test tests/portable_pi.test.mjs (3 passed); read-only pin dry run against the live home refused an unreleased revision as designed; live rollout not qualified (TOOLSET-084)",
+          "result": "pass"
+        }
+      ],
       "id": "GENTLE-UPDATE",
       "priority": 88,
       "source": "docs/project.md#gentler-update-rollout-2026-10-15",
@@ -373,7 +379,8 @@
         "TOOLSET-076",
         "TOOLSET-077",
         "TOOLSET-078",
-        "TOOLSET-079"
+        "TOOLSET-079",
+        "TOOLSET-084"
       ],
       "title": "Roll out updates without forcing gateway restarts"
     },
@@ -417,8 +424,6 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-075",
-      "TOOLSET-076",
       "TOOLSET-029",
       "TOOLSET-003",
       "TOOLSET-019",
@@ -428,9 +433,8 @@
       "TOOLSET-066",
       "TOOLSET-072",
       "TOOLSET-073",
-      "TOOLSET-077",
-      "TOOLSET-078",
-      "TOOLSET-079"
+      "TOOLSET-082",
+      "TOOLSET-084"
     ]
   },
   "tasks": [
@@ -516,19 +520,19 @@
     },
     {
       "depends_on": [],
-      "goal": "GENTLE-UPDATE",
-      "id": "TOOLSET-079",
-      "section": "Next",
-      "status": "open",
-      "title": "Report linked profiles and offer pinned clones"
-    },
-    {
-      "depends_on": [],
       "goal": "OMH-TRIM",
       "id": "TOOLSET-082",
       "section": "Next",
       "status": "open",
       "title": "Restore the OMH memory plugin on Hermes 0.22"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-084",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the gentler update rollout live"
     },
     {
       "depends_on": [],
@@ -981,6 +985,14 @@
       "section": "Done",
       "status": "done",
       "title": "Report a concurrent update clearly"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-079",
+      "section": "Done",
+      "status": "done",
+      "title": "Report linked profiles and offer pinned clones"
     },
     {
       "depends_on": [],
