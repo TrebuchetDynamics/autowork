@@ -296,7 +296,7 @@ def subreaper():
         raise OSError(ctypes.get_errno(), 'cannot establish command descendant cleanup')
 
 
-def reap_children():
+def reap_children(exclude=()):
     """Stop before walking each child's descendants; signal through stable pidfds."""
     terminated = []
     def reap(parent):
@@ -306,6 +306,8 @@ def reap_children():
         except FileNotFoundError:
             return
         for pid in children:
+            if parent == os.getpid() and pid in exclude:
+                continue
             try:
                 fd = os.pidfd_open(pid)
             except ProcessLookupError:
@@ -323,10 +325,14 @@ def reap_children():
     reap(os.getpid())
     # Reap adopted descendants as well as original direct children.
     while True:
-        try:
-            os.waitpid(-1, 0)
-        except ChildProcessError:
+        remaining = [pid for pid in child_pids(os.getpid()) if pid not in exclude]
+        if not remaining:
             break
+        for pid in remaining:
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                pass
     return terminated
 
 
@@ -480,8 +486,43 @@ def command(args, repo, state, common, task, lease, lock_fd):
     before = {name: digest(local_path(repo, name)) for name in dict.fromkeys(paths)}
     if any(value is None for value in before.values()):
         raise ValueError('--source-path must bind existing regular files, not directories or missing inputs')
+    run_id = uuid.uuid4().hex
+
+    def started(child):
+        save(common / 'active.json', dict(lease, owner=identity(child.pid), command_group=child.pid))
+
+    def finished(elapsed):
+        if budget:
+            budget['remaining'] = max(0, budget['remaining'] - elapsed)
+            budget['pending'] = False
+            save(budget_path, budget)
+        if args.owner_pid:
+            save(common / 'active.json', lease)
+        else:
+            (common / 'active.json').unlink(missing_ok=True)
+
+    def pending():
+        if budget:
+            save(budget_path, dict(budget, pending=run_id))
+
+    return bounded_command(args.run, repo, common, task['id'], timeout, before,
+                           on_start=started, on_finish=finished, on_pending=pending,
+                           pass_fds=(lock_fd,), run_id=run_id)
+
+
+def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
+                    on_start=None, on_finish=None, on_pending=None, pass_fds=(), run_id=None,
+                    receipt_context=None, receipt_writer=None):
+    """Bound a process tree in cwd ``repo`` and persist its source-bound receipt.
+
+    No leases or writer locks are acquired here. Sequential command supplies its
+    historical lifecycle callbacks; integration uses only the coordinator lease.
+    """
+    if not argv or not timeout or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError('bounded command requires argv and a positive finite timeout')
+    before = before if before is not None else {}
     # Resolve against the child working directory, including relative PATH entries.
-    executable = args.run[0]
+    executable = argv[0]
     search_path = os.pathsep.join(str((repo / part).resolve()) if not Path(part).is_absolute() else part
                                   for part in os.environ.get('PATH', os.defpath).split(os.pathsep))
     resolved = str(local_path(repo, executable)) if '/' in executable and not Path(executable).is_absolute() else executable
@@ -489,22 +530,23 @@ def command(args, repo, state, common, task, lease, lock_fd):
     if not resolved:
         raise ValueError('command executable not found')
     executable_before = digest(Path(resolved).resolve())
+    existing_children = set(child_pids(os.getpid()))
     subreaper()
-    run_id = uuid.uuid4().hex
+    run_id = run_id or uuid.uuid4().hex
     log = common / (run_id + '.log')
-    if budget:
-        save(budget_path, dict(budget, pending=run_id))
+    if on_pending:
+        on_pending()
     started = time.monotonic()
     timed_out = False
     terminated = []
     try:
         with os.fdopen(os.open(safe_path(log), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as stream:
             env = dict(os.environ, HERMES_TOOLSET_EXECUTION_COMMON=str(common.parent))
-            child = subprocess.Popen([resolved, *args.run[1:]], cwd=repo, env=env, stdout=stream, stderr=subprocess.STDOUT,
-                                     start_new_session=True, pass_fds=(lock_fd,))
-            running = dict(lease, owner=identity(child.pid), command_group=child.pid)
-            save(common / 'active.json', running)
+            child = subprocess.Popen([resolved, *argv[1:]], cwd=repo, env=env, stdout=stream, stderr=subprocess.STDOUT,
+                                     start_new_session=True, pass_fds=pass_fds)
             try:
+                if on_start:
+                    on_start(child)
                 code = child.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 timed_out = True
@@ -516,27 +558,23 @@ def command(args, repo, state, common, task, lease, lock_fd):
                     os.killpg(child.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
-                terminated = reap_children()
+                terminated = reap_children(exclude=existing_children)
     finally:
         elapsed = time.monotonic() - started
-        if budget:
-            budget['remaining'] = max(0, budget['remaining'] - elapsed)
-            budget['pending'] = False
-            save(budget_path, budget)
-        if args.owner_pid:
-            save(common / 'active.json', lease)
-        else:
-            (common / 'active.json').unlink(missing_ok=True)
+        if on_finish:
+            on_finish(elapsed)
     after = {name: digest(local_path(repo, name)) for name in before}
     inputs_match = before == after and executable_before == digest(Path(resolved).resolve())
     result = {'outcome': 'TIMED_OUT' if timed_out else 'CHILDREN_TERMINATED' if terminated else 'SOURCE_CHANGED' if not inputs_match else 'EXECUTED' if code == 0 else 'CHECK_FAILED',
-              'command_receipt': {'task_id': task['id'], 'workspace': str(repo), 'exit_code': code,
-                                  'argv': args.run, 'reusable_acceptance': False, 'terminated_descendants': terminated,
+              'command_receipt': {'task_id': task_id, 'workspace': str(repo), 'exit_code': code,
+                                  'argv': argv, 'reusable_acceptance': False, 'terminated_descendants': terminated,
                                   'elapsed_seconds': elapsed, 'timeout_seconds': timeout,
                                   'inputs_before': before, 'inputs_after': after, 'inputs_match': inputs_match,
                                   'executable': resolved, 'executable_sha256': executable_before,
                                   'log': str(log), 'receipt': str(common / (run_id + '.json'))}}
-    save(common / (run_id + '.json'), result)
+    if receipt_context:
+        result['context'] = receipt_context
+    (receipt_writer or save)(common / (run_id + '.json'), result)
     return result
 
 
@@ -619,10 +657,19 @@ def parallel_main(args):
     # Lazy import keeps the sequential CLI unchanged.
     import parallel_dispatch
     import parallel_state
+    import parallel_integrate
     try:
         if not args.owner_pid:
             raise ValueError('parallel mode requires --owner-pid of the persistent coordinator session')
-        if args.wait:
+        if sum(bool(v) for v in (args.wait, args.release, args.integrate, args.parallel_close)) > 1:
+            raise ValueError('choose one parallel operation: wait, release, integrate or close')
+        if args.integrate:
+            result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout)
+        elif args.parallel_close:
+            if args.run is not None or args.timeout is not None:
+                raise ValueError('--parallel-close does not accept --run or --timeout')
+            result = parallel_integrate.close(args.consumer, args.owner_pid, args.parallel_close)
+        elif args.wait:
             if args.timeout is None or args.timeout <= 0:
                 raise ValueError('--wait requires a positive --timeout')
             if args.parallel is None:
@@ -637,7 +684,7 @@ def parallel_main(args):
         else:
             if args.worker_timeout <= 0 or args.min_free_mem_mb < 0:
                 raise ValueError('--worker-timeout must be positive and --min-free-mem-mb not negative')
-            result = parallel_dispatch.dispatch(args)
+            result = parallel_integrate.dispatch_with_retries(args)
     except BlockingIOError:
         result = {'outcome': 'BUSY', 'reason': 'Repository execution lock is held by a live operation.'}
     except PriorityDriftError as exc:
@@ -646,7 +693,7 @@ def parallel_main(args):
         result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
     print(json.dumps(result, indent=2))
     return 0 if result['outcome'] in ('DISPATCHED', 'WAITING', 'IDLE', 'CHANGED', 'TIMEOUT',
-                                      'SEQUENTIAL_FALLBACK', 'RELEASED') else 1
+                                      'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED') else 1
 
 
 def main(argv=None):
@@ -681,8 +728,10 @@ def main(argv=None):
                           help='Start a worker only with this much MemAvailable per running worker plus one.')
     parallel.add_argument('--wait', action='store_true',
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
+    parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')
+    parallel.add_argument('--parallel-close', metavar='TASK', help='Close and archive an integrated task with passing validation; clean only its owned worktree.')
     args = parser.parse_args(argv)
-    if args.parallel is not None or args.wait:
+    if args.parallel is not None or args.wait or args.integrate or args.parallel_close:
         return parallel_main(args)
     if args.writers:
         try:
