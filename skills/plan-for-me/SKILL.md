@@ -53,6 +53,15 @@ request and the code instead of planning around it. Name new domain terms precis
 and record them, and give a decision its own ADR only when it is hard to reverse,
 surprising without context and a real trade-off.
 
+For aspirational requests such as "10/10" or "premium", preserve settled product
+positioning and turn the aspiration into observable quality gates. Mark the rubric,
+thresholds and lab conditions as planner calls; distinguish measured baselines from
+proposed targets and lab results from field performance or conversion evidence.
+Do not award a perfect score from green tests or an empty design-detector result.
+Inspect the current desktop and narrow localized render before proposing another
+rebuild; improve specific hierarchy, product-proof and layout defects while retaining
+verified imagery, brand commitments and already-qualified interactions.
+
 When a new requirement supersedes a completed slice's deliberate limitation,
 record the prospective override in the current spec and queue a successor; keep
 its completed ID, original acceptance and archived evidence intact. Separate the
@@ -79,7 +88,12 @@ failures, comparing the fix with the original worker contract. Reuse the origina
 task, candidate and cumulative accounting; never infer budget from displayed turn
 counts. Save findings in the existing task body; a conditional recovery recommendation
 is not an executable next task, and consumer eligibility does not prove a free lease
-or authorize redispatch.
+or authorize redispatch. Before proposing a "patch-only" security-remediation
+exception, compare the resolved versions, advisory fixed ranges, available releases
+and immediate parents' declared dependency ranges. Explicitly identify any required
+minor/major or transitive-range change; a narrow-sounding permission request must
+not promise a repair that its own scope excludes. Registry lookup is planning
+evidence, not compatibility proof or authorization to install or change the lockfile.
 
 For a concrete method gap or explicit protocol request, select one technique through
 [engineering](../engineering/SKILL.md); consult
