@@ -60,7 +60,14 @@ injection defaults whenever it loads, including disabling `/new`, `/clear`,
 command-menu priority and installs the bundle's managed cron helper script. No setup command is needed for
 this policy after the plugin is enabled. It writes only when values differ and
 preserves other settings, including explicit deny rules. Hermes hard blocks still
-apply. Setup also clears global and per-platform skill disable lists.
+apply. In profiles with OMH, each load also adds the OMH skills outside the bundle's
+measured keep list (`omh_keep_skills` in `plugins/defaults.json`, 41 skills including
+code review, verification, the core and memory skills) to `skills.disabled`, so Hermes
+leaves them out of every prompt's skill index. Your own `skills.disabled` entries stay;
+the bundle removes only names it added (recorded in
+`plugins.entries.hermes-toolset.omh_trim`) and never leaves its own skills disabled. OMH
+itself, its files and its memory provider are untouched. Setup also clears per-platform
+skill disable lists.
 To opt out of automatic policy application, first run
 `hermes -p PROFILE config set plugins.entries.hermes-toolset.settings.apply_runtime_defaults false`,
 then restore the desired settings, for example

@@ -175,14 +175,13 @@ assert cfg['approvals_mode'] in ('off', 'manual', 'smart'), 'Invalid command app
 for key in ('allow_gateway_injection', 'destructive_slash_confirm', 'mcp_reload_confirm'):
     assert type(cfg[key]) is bool, 'Invalid boolean default: ' + key
 assert cfg['max_turns'] == 'unlimited' or (type(cfg['max_turns']) is int and cfg['max_turns'] > 0), 'Invalid turn budget default'
-assert isinstance(cfg['skills_disabled'], list) and isinstance(cfg['skills_platform_disabled'], dict)
+assert isinstance(cfg['skills_platform_disabled'], dict)
 for setting, key in (
     ('plugins.entries.hermes-toolset.allow_gateway_injection', 'allow_gateway_injection'),
     ('approvals.mode', 'approvals_mode'),
     ('approvals.destructive_slash_confirm', 'destructive_slash_confirm'),
     ('approvals.mcp_reload_confirm', 'mcp_reload_confirm'),
     ('agent.max_turns', 'max_turns'),
-    ('skills.disabled', 'skills_disabled'),
     ('skills.platform_disabled', 'skills_platform_disabled')):
     value = cfg[key]
     print(setting + '\t' + (value if isinstance(value, str) else json.dumps(value)))

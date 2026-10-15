@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- In profiles with OMH, plugin load (and so `/toolset update`) adds the OMH skills
+  outside a measured keep list (`omh_keep_skills`, 41 of 142, including code review,
+  verification, core and memory skills) to `skills.disabled`, so Hermes stops listing them
+  in every prompt (TOOLSET-080). User entries stay, OMH and its memory provider are
+  untouched, and setup no longer empties `skills.disabled`.
 - Telegram's command menu now lists `/ui_taste`, `/beautify_github_readme`,
   `/impeccable`, `/lgtm`, `/engineering` and `/git_commit_push` after the five workflow
   commands. Hermes' default 60-entry menu was already full of built-ins, so they were

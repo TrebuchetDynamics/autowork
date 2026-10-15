@@ -1,5 +1,69 @@
 """Apply bundle policy and command visibility in Hermes' bound profile."""
+import json
 from pathlib import Path
+import re
+
+OMH_PACKAGE = 'oh-my-hermes'
+BUNDLE_SKILLS = Path(__file__).resolve().parent / 'skills'
+
+
+def _frontmatter_name(path):
+    try:
+        text = path.read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        return None
+    parts = text.split('---', 2)
+    if len(parts) < 3 or parts[0].strip():
+        return None
+    match = re.search(r'^name:\s*["\']?([^"\'\n]+?)["\']?\s*$', parts[1], re.M)
+    return match[1] if match else None
+
+
+def omh_skills(raw):
+    """Registered name -> OMH catalog name for skills in the profile's OMH skill folders.
+
+    OMH registers its managed skills folder in `skills.external_dirs`; the folder's
+    parent holds OMH's manifest. Registered names come from each SKILL.md, since
+    they do not always equal the catalog name (`context` registers as `ulw-context`).
+    """
+    skills_config = raw.get('skills') if isinstance(raw, dict) else None
+    folders = skills_config.get('external_dirs') if isinstance(skills_config, dict) else None
+    found = {}
+    for entry in folders if isinstance(folders, list) else []:
+        folder = Path(str(entry)).expanduser()
+        try:
+            manifest = json.loads((folder.parent / 'manifest.json').read_text(encoding='utf-8'))
+            root = folder.resolve()
+        except (OSError, ValueError, RuntimeError):
+            continue
+        if not isinstance(manifest, dict) or manifest.get('package') != OMH_PACKAGE:
+            continue
+        for skill in manifest.get('skills') or []:
+            if not isinstance(skill, dict) or not isinstance(skill.get('name'), str) or not isinstance(skill.get('path'), str):
+                continue
+            path = (folder / skill['path']).resolve()
+            if root not in path.parents:
+                continue
+            name = _frontmatter_name(path)
+            if name:
+                found[name] = skill['name']
+    return found
+
+
+def skills_patch(raw, keep, previous):
+    """`skills.disabled` keeping the user's entries, plus OMH skills outside the keep list.
+
+    Only names this bundle added before (`previous`) are ever removed, and bundled
+    toolset skills are never left disabled. Without a keep list nothing is trimmed.
+    """
+    skills_config = raw.get('skills') if isinstance(raw, dict) else None
+    current = skills_config.get('disabled') if isinstance(skills_config, dict) else None
+    current = [n for n in current if isinstance(n, str)] if isinstance(current, list) else []
+    trim = sorted(name for name, catalog in omh_skills(raw).items()
+                  if keep is not None and catalog not in keep and name not in keep)
+    bundled = {p.parent.name for p in BUNDLE_SKILLS.glob('*/SKILL.md')}
+    disabled = sorted((set(current) - set(previous) - bundled) | set(trim))
+    return disabled, trim
 
 
 def expected_settings(raw):
@@ -7,7 +71,8 @@ def expected_settings(raw):
     from .bundle import defaults
     from .telegram_menu_policy import menu_patch
 
-    wanted = defaults()['hermes']
+    settings = defaults()
+    wanted = settings['hermes']
     patch = {
         'approvals': {
             'mode': wanted['approvals_mode'],
@@ -21,6 +86,16 @@ def expected_settings(raw):
         }}},
     }
     patch.update(menu_patch(raw))
+    keep = settings.get('omh_keep_skills')
+    entry = (((raw.get('plugins') or {}).get('entries') or {}).get('hermes-toolset') or {}) if isinstance(raw, dict) else {}
+    previous = entry.get('omh_trim') if isinstance(entry, dict) and isinstance(entry.get('omh_trim'), list) else []
+    disabled, trim = skills_patch(raw, set(keep) if isinstance(keep, list) else None, previous)
+    current = (raw.get('skills') or {}).get('disabled') if isinstance(raw, dict) and isinstance(raw.get('skills'), dict) else None
+    # Write only what changes, so profiles without OMH gain no new keys.
+    if disabled != (current or []):
+        patch['skills'] = {'disabled': disabled}
+    if trim or previous:
+        patch['plugins']['entries']['hermes-toolset']['omh_trim'] = trim
     return patch
 
 

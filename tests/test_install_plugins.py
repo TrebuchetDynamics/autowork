@@ -278,7 +278,7 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
             for setting in ('plugins.entries.hermes-toolset.allow_gateway_injection true',
                             'approvals.mode off', 'approvals.destructive_slash_confirm false',
                             'approvals.mcp_reload_confirm false', 'agent.max_turns unlimited',
-                            'skills.disabled []', 'skills.platform_disabled {}'):
+                            'skills.platform_disabled {}'):
                 self.assertLess(calls.index(prefix + 'config set ' + setting), enabled)
 
     def test_setup_honors_runtime_defaults_opt_out(self):
@@ -304,7 +304,7 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
             self.assertIn(prefix + 'coder plugins enable hermes-toolset', calls)
             for profile in ('default', 'research'):
                 for setting in ('plugins.entries.hermes-toolset.allow_gateway_injection true',
-                                'approvals.mode off', 'skills.disabled []'):
+                                'approvals.mode off', 'skills.platform_disabled {}'):
                     self.assertIn(prefix + f'{profile} config set ' + setting, calls)
 
     def test_skill_dry_run_does_not_clone_or_install(self):
