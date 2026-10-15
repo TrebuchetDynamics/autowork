@@ -9,7 +9,7 @@ claim of a tagged release, completed installation or live workflow qualification
 
 - `/toolset update status` and `hermes toolset doctor` list profiles whose plugin links
   to a working checkout, which load its current files at any gateway restart.
-  `hermes toolset pin --profile NAME [--dry-run]` replaces one link with a clone at
+  `hermes toolset pin NAME [--dry-run]` replaces one link with a clone at
   the same revision that only updates advance, saving the link; `--unpin` restores it
   (TOOLSET-079). Nothing is converted automatically.
 - New task IDs end in a two-hex-digit hash after the number, such as `TOOLSET-084-a7`,

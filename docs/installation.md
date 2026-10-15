@@ -344,8 +344,8 @@ automatically.
 To pin one profile, preview it, then run it:
 
 ```sh
-hermes toolset pin --profile NAME --dry-run
-hermes toolset pin --profile NAME
+hermes toolset pin NAME --dry-run
+hermes toolset pin NAME
 ```
 
 Pinning clones the checkout at the revision the link resolves to now, saves the
@@ -354,7 +354,7 @@ place, so the profile stays on the same revision. It refuses, writing nothing, w
 the checkout has uncommitted changes (the profile would lose them on its next
 restart), when that revision is not yet on upstream `main` as last fetched (the next
 update could not advance the clone), or while an update runs. The gateway loads the
-clone at its next restart. `hermes toolset pin --unpin --profile NAME` restores the
+clone at its next restart. `hermes toolset pin --unpin NAME` restores the
 saved link and moves the clone beside it instead of deleting it; it also takes
 `--dry-run`.
 

@@ -173,16 +173,19 @@ cannot be guaranteed unique; do not invent a supported idempotency flag.
 Update a single matching job instead of creating a duplicate. Preserve its ID,
 history and unrelated settings. A user's `/cron_autowork` with a cadence for a
 paused matched job (for example `/cron_autowork 5m`) asks for that job to run on
-that cadence: save the cadence, resume the job and re-anchor a past `next_run_at`
-as below. It stays paused only when the request says so ("paused", "keep paused",
-"don't start"). Without a cadence or resume request, preserve paused/enabled state.
+that cadence: inspect overdue timing before enabling, save the cadence and resume
+the job under the catch-up safeguards below. It stays paused only when the request
+says so ("paused", "keep paused", "don't start"). Without a cadence or resume request, preserve paused/enabled state.
 This applies to the user's direct request only; a multi-profile refresh or repair
 never resumes a job.
 Prepare one final payload, compare it with captured scope, limits and settings,
 write once and read back the exact saved prompt. Avoid cosmetic rewrites of a
 healthy job; configuration churn completes no repository work.
-Do not run the job immediately unless requested. After a timeout or unclear write
-result, list/read back before retrying creation. If outcome remains uncertain,
+Do not run the job immediately unless requested. Distinguish a manual
+run from the scheduler automatically claiming an overdue occurrence after resume;
+a cadence request can resume a job without issuing a run-now command. Disclose any
+observed automatic catch-up rather than promising that no immediate run occurred.
+After a timeout or unclear write result, list/read back before retrying creation. If outcome remains uncertain,
 report it instead of creating another job. Required fields unsupported by this
 installation are a concrete setup limitation, not permission to silently omit them.
 
@@ -191,14 +194,21 @@ enabled state, skill/prompt, scope, limits, delivery and next run. Verify the fu
 saved prompt and failure-delivery field, not a truncated list preview. Check scheduler
 status read-only. Correct attributable mismatches through supported updates; never
 claim active scheduling when the scheduler is unavailable. Finish with those concise
-settings and what was actually verified. After an authorized resume, compare
-`next_run_at` with the live clock: an enabled job can keep a stale past occurrence.
-If no run owns the job and the interval is unchanged, re-anchor it with
-`hermes -p PROFILE cron edit JOB_ID --schedule INTERVAL`, read back a future
-occurrence with prompt, routes and history preserved, and disclose the new time;
-never trigger a manual run, recreate the job, or reset a wall-clock schedule without
-checking its timezone. Registration and job readback do not prove
-model execution, a completed task or message delivery.
+settings and what was actually verified. Before resuming a paused job, compare
+`next_run_at` with the live clock and inspect its fire claim: an overdue occurrence
+may be claimed on the next scheduler tick immediately after enabling. Do not assume
+`hermes -p PROFILE cron edit JOB_ID --schedule INTERVAL` re-anchors an unchanged
+interval; read back the timestamp, because re-saving the same cadence can preserve
+the overdue time. If the user requires a future-only start, establish and verify a
+future occurrence through a supported scheduling operation while still paused;
+if that cannot be established, ask about catch-up before enabling instead of
+inventing an offset or briefly changing cadence. Otherwise honor the authorized
+resume, then read back the claim, next occurrence and latest execution once. If the
+scheduler already claimed the overdue run, retain it and report automatic catch-up;
+do not race it with another edit, manual run, replacement job or cancellation.
+Preserve prompt, routes and history, disclose the actual next time, and check the
+timezone before changing a wall-clock schedule. Registration and job readback do
+not prove model execution, a completed task or message delivery.
 
 ## Confirm setup in Telegram
 

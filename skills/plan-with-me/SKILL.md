@@ -3,7 +3,7 @@ name: plan-with-me
 description: "Use to plan together through research and questions."
 license: MIT
 metadata:
-  version: 0.3.0
+  version: 0.3.1
   hermes:
     tags: [interview, requirements, documentation, planning]
 ---
@@ -113,6 +113,14 @@ questioning, including confirmation questions, and preserves answered progress w
 unresolved matters left open. Silence is neither an answer nor acceptance. In
 scheduled/noninteractive runs, report the single highest-value question and leave
 it pending; do not fabricate replies or poll.
+
+## Companion frontends and platform scope
+
+1. Establish the product boundary before discussing implementation: distinguish an existing website, a native companion app, an embedded website and an additional browser build of the companion. A second frontend for the same backend is not automatically a WebView or a second web application.
+2. Use concrete product names when asking about platforms. If a reply mentions keeping the existing website and adding the companion, clarify whether a separate Flutter browser build is also required; do not treat the word "web" as proof of that requirement or silently discard an earlier explicit platform choice.
+3. Inspect existing page loaders, public APIs, role gates and shared UI patterns before proposing parity. A generic list endpoint may omit the page's filters, summaries, history, position provenance or privacy projection. Prefer shared server read models over duplicating queries or scraping framework-internal page data.
+4. Settle frontend/platform scope before asking about hosting or designing cross-origin authentication. First-party cookie reuse, native session handling and cross-site browser access have different constraints; an unresolved deployment choice does not authorize a new token protocol, relaxed cookies or broad CORS access.
+5. Once native versus embedded and feature depth are settled, save those answers in the existing planning owner before another consequential round when continuity would otherwise be lost. Mark only unresolved choices Open; do not restart discovery or make understood product scope look undecided. Keep cloud session/state independent of local-device connection state when the requested module must work without that connection.
 
 ## Scope reductions and simpler test cleanup
 

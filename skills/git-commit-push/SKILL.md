@@ -1,7 +1,7 @@
 ---
 name: git-commit-push
 description: "Use to commit, push, pull or merge Git changes."
-version: 2.1.0
+version: 2.1.1
 license: MIT
 metadata:
   hermes:
@@ -110,6 +110,7 @@ Report the branch and sha it prints. Never point it at main/master or the checke
    - Read repo instructions (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING`), then run
      `git status --short --branch`, `git diff --stat`, `git diff --cached --stat`, and
      `git status --porcelain --untracked-files=all`. `git diff --stat` does not list untracked files.
+   - For authentication or browser-login blockers, follow [hosting authentication readiness](references/hosting-authentication.md) before repeating a login or diagnosing missing credentials. Check each required host separately; public fetch access does not prove authenticated push or CI/API access. Do not claim that a browser flow started until an authorization URL, device prompt or callback listener is actually observed.
    - Check upstream: `git rev-parse --abbrev-ref @{u}` and `git rev-list --left-right --count @{u}...HEAD`.
      The first number counts commits reachable from the first argument only, the second from the
      second only. Label them from the expression you typed, not from habit: `@{u}...HEAD` prints
@@ -152,6 +153,8 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      ask is specific. Depth: [shared-worktree-safety.md](references/shared-worktree-safety.md).
 
 2. **Separate eligible completed work from live or out-of-scope work.**
+   - Preserve scheduler state during shipping: inspect the latest explicit pause/resume decision and current run activity, but do not pause a recurring job merely to obtain a staging window or reapply an older stop superseded by a later resume. Shipping authority is not scheduling authority. Exclude actively owned paths and qualify an independent slice, or report the precise remaining conflict.
+   - For a partial research/document delivery, qualify the selected slice against a complete index export without relying on held narrative, review receipts or ledger transitions. Source-preserving tables can ship independently when their original inputs and coverage verify; leave review-status upgrades or completion claims local when their supporting evidence is still being written. Report a partial shipment, not a clean tree or completed parent task.
    - Check current ownership/continuation evidence and actual writer activity. Query
      Kanban only when this repository still uses it (`hermes kanban --board <board> list
      --status running --assignee <profile>`); an empty board or missing historical card
@@ -302,6 +305,15 @@ Report the branch and sha it prints. Never point it at main/master or the checke
    - Report suite counts from that exact candidate, not a broader dirty-tree run: excluded
      foreign tests can legitimately change the totals. Never import unrelated work merely
      to reproduce an earlier count.
+   - Reconcile a HEAD advance during gating before committing: compare the saved base
+     with fresh HEAD and inspect the intervening commits, real index and owned blobs.
+     Preserve the completed gate's immutable export; prepare a new complete export for
+     eligible newly committed work rather than treating it as a failed check or blindly
+     accepting the new tree. Rerun affected suites and guards; reuse an unaffected suite
+     only after checking its source, transitive imports, fixtures, tools and dependencies.
+     An unchanged component directory alone is insufficient when it imports changed code.
+     When qualification combines fresh affected-suite runs with reused unaffected
+     receipts, label that composition rather than calling it one fresh full-suite run.
    - Run guards **after** staging. Guards built on `git grep` cannot see untracked files, and a
      new file can turn them red the moment it is tracked.
    - If the gate may outlive the terminal timeout, run one tracked background process with
