@@ -76,6 +76,19 @@
     },
     {
       "depends_on": [],
+      "evidence": [],
+      "id": "OMH-TRIM",
+      "priority": 20,
+      "source": "docs/project.md#omh-catalog-trim-2026-10-15",
+      "status": "unmet",
+      "tasks": [
+        "TOOLSET-080",
+        "TOOLSET-081"
+      ],
+      "title": "Keep the OMH skills profiles use and drop the rest from every prompt"
+    },
+    {
+      "depends_on": [],
       "evidence": [
         {
           "kind": "executed",
@@ -528,6 +541,24 @@
       "section": "Next",
       "status": "open",
       "title": "Report linked profiles and offer pinned clones"
+    },
+    {
+      "depends_on": [],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-080",
+      "section": "Next",
+      "status": "open",
+      "title": "Disable unused OMH skills through a managed skills.disabled list"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-080"
+      ],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-081",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the OMH trim on one profile, then roll it out"
     },
     {
       "depends_on": [],

@@ -962,3 +962,56 @@ counts as busy.
 | TOOLSET-077 | Record the restart outcome and menu resends in the update status |
 | TOOLSET-078 | Report a concurrent update clearly instead of returning its record |
 | TOOLSET-079 | Report linked profiles and offer pinned clones so restarts deploy only released code |
+
+## OMH catalog trim (2026-10-15)
+
+Status: Accepted
+
+Request (user, 2026-10-15): after a fleet audit found OMH's review and verification
+guidance in real use but no demonstrated value from the rest of its catalog, keep OMH
+selectively and plan trimming its footprint.
+
+Findings:
+- Hermes Toolset installs OMH 3.0.0 with `omh setup --full` (`plugins/defaults.json`
+  `omh.full: true`), so 9 profiles register all 142 OMH skills. Hermes lists every
+  registered skill in each request's skill index; the audit sampled 11,832 characters of
+  OMH/ULW index entries per prompt.
+- Recorded `skill_view` loads across all profiles' session databases: 295 loads of 29
+  distinct OMH skills; 113 were never loaded. Top: `code-review` 126, `verification-gate`
+  58, `automation-blueprint` 22, `visual-qa` 12, `mobile-release` 12, `web-research` 7,
+  `release-cut` 6, `agent-instructions` 5, then 21 skills with 1–4 loads each.
+- `omh setup --core` keeps only five core skills (`agent-ops-review`, `cancel`, `doctor`,
+  `oh-my-hermes`, `skill`) and drops `code-review` and `verification-gate`.
+  `omh capability-policy disable <family>` only stops OMH recommending a family; it
+  writes `files_removed=False`, so the skills stay in Hermes' index and the context
+  cost is unchanged. Both used skills sit in `delegate_coding_and_ship` (37 skills).
+- Hermes' prompt builder omits skills named in `skills.disabled`
+  (`agent/prompt_builder.py`, `get_disabled_skill_names`). Hermes Toolset's setup
+  currently resets `skills.disabled` and `skills.platform_disabled` to empty in every
+  profile, so a trim made there would be undone by the next setup; plugin load and
+  `/toolset update` do not touch them.
+- Nine profiles use OMH as their memory provider; the provider is the OMH plugin, not
+  these skills.
+
+Planner's calls (reversible; reject any of them):
+- Trim through Hermes' `skills.disabled`, not by deleting OMH files or switching to
+  `--core`: it is per profile, reversible, leaves OMH's install, memory provider and
+  doctor checks intact, and keeps `--full` so OMH updates stay simple.
+- Keep list: every OMH skill loaded at least once (the 29 above), the five core skills
+  and the `retain_knowledge` family (`memory-new`, `memory-sync`, `decision-recall`,
+  `wiki`). Record it in `plugins/defaults.json` as `omh.keep_skills`; every other
+  OMH-managed skill is disabled. Re-measure usage before widening or shrinking it.
+- Hermes Toolset owns only the OMH entries it adds: setup and runtime defaults merge them
+  with the user's own `skills.disabled` entries instead of resetting the list, and drop
+  only managed entries that are no longer OMH skills or are now kept. The existing
+  runtime-defaults opt-out disables the trim.
+- Qualify on one profile with a paused cron first, then roll out with `/toolset update`.
+
+Anti-goals: uninstalling OMH, touching the memory provider or its stores, deleting OMH
+files, removing a user's own disabled-skill entries, or judging the trim by catalog
+size instead of the measured index and unchanged review/verification use.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-080 | Managed OMH trim through `skills.disabled`, applied by setup, plugin load and update |
+| TOOLSET-081 | Live qualification on one profile, then fleet rollout with before/after index size |

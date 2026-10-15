@@ -202,6 +202,32 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Exclusions: No automatic conversion of live profiles; converting them is a separate, user-authorized live step.
 
+### TOOLSET-080 — Disable unused OMH skills through a managed skills.disabled list
+
+- [ ] TOOLSET-080 — Disable unused OMH skills through a managed skills.disabled list
+- Status: open
+- Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
+- Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), [runtime defaults](runtime_defaults.py), [setup preflight](setup_preflight.py), [installer settings](install-plugins.sh), [bundle defaults](plugins/defaults.json).
+- Scope: Add `omh.keep_skills` to `plugins/defaults.json` with these 35 names: code-review, verification-gate, automation-blueprint, visual-qa, mobile-release, web-research, release-cut, agent-instructions, product-brief, agent-debug, design-quality-gate, frontend, failure-signal-audit, workflow-learning, agent-ops-review, git-workflow, agent-board, build-failure-triage, harness-session-inventory, todo-checklist, application-threat-model, deploy-and-monitor, doctor, gateway-intent-card, provider-profile-posture, model-setup, memory-sync, run-efficiency, workspace-audit, cancel, oh-my-hermes, skill, memory-new, decision-recall, wiki. In each profile with OMH installed, the OMH-managed skills are the `skills[].name` entries of `<store>/manifest.json`, with the store resolved exactly as `install-omh.py`'s `profile_plan` does (profile `.env` `OMH_HOME`, else `<home>/omh`, else `~/.omh` when OMH is the memory provider). First confirm the names Hermes registers for those skills (plain `code-review` or a prefixed form) and use those in `skills.disabled`. The managed trim is every OMH-managed skill not in the keep list. Runtime defaults (plugin load, so also `/toolset update`) set `skills.disabled` to the sorted union of the user's own entries and the managed trim, removing only names that were managed but are now kept or no longer OMH skills; setup (`install-plugins.sh`, `setup_preflight.py`) stops resetting `skills.disabled` to empty and applies the same merge. Leave `skills.platform_disabled` alone except for the existing setup behavior on non-OMH entries. Profiles without OMH get no entries. Honor the existing `apply_runtime_defaults: false` opt-out. Record which entries are managed so a later keep-list change can remove them (for example `plugins.entries.hermes-toolset.omh_trim` with the applied list). Document the trim, the keep list and how to undo it (opt out, or remove names) in docs/installation.md, docs/reference.md and the CHANGELOG.
+- Acceptance: A fixture profile with a fake OMH manifest of kept and unkept skills plus a user-disabled skill ends with exactly the user entry plus the unkept OMH names in `skills.disabled`; rerunning changes nothing; moving a skill into the keep list removes only that managed entry; an opted-out profile and a profile without OMH are unchanged; setup no longer empties a user's `skills.disabled`; no OMH file, store or memory setting is modified.
+- Checks: new regressions beside the existing runtime-defaults tests in `tests/test_telegram_menu_policy.py` (`SelfHealTests`, `RuntimePolicyOptOutTests`) and in `tests/test_install_plugins.py`; `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No `omh setup --core`, `omh skill-profile reconcile`, file deletion, OMH capability-policy change or memory change; no live profile edits (TOOLSET-081); no push.
+
+### TOOLSET-081 — Qualify the OMH trim on one profile, then roll it out
+
+- [ ] TOOLSET-081 — Qualify the OMH trim on one profile, then roll it out
+- Status: open; live qualification not run.
+- Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
+- Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15).
+- Scope: On one profile whose cron is paused (india or charlie), record before values: the OMH share of the skill index in a real request prompt (characters and skill count), `omh doctor --json` and the memory provider status. Apply TOOLSET-080 there (plugin reload or `/toolset update` scoped to that profile), then repeat the measurements, load `code-review` and `verification-gate` in a short questions-only chat, and ask OMH's router for a trimmed workflow to see how a disabled recommendation is handled. If all pass, run `/toolset update` for the fleet and record per-profile managed entry counts.
+- Acceptance: The trimmed profile's prompt skill index loses the unkept OMH entries (measured characters before and after); kept skills load; `omh doctor` and memory provider status are unchanged; a router recommendation of a disabled skill does not break the turn (or the keep list gains that skill with the reason recorded); fleet rollout lists managed entries per profile; results recorded with Hermes and OMH versions.
+- Checks: before/after prompt measurements, `omh doctor --json` before and after, the chat transcript, `/toolset update status`.
+- Dependencies: TOOLSET-080.
+- Environment prerequisite: A profile with OMH installed and its cron paused; owner availability for the short chat.
+- Exclusions: No memory-store changes, no OMH reinstall, no resumed cron jobs.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -213,6 +239,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PORTABLE: Align portable workflow discovery | met | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | met | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass; executed <code>uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only</code> → pass | — |
+| OMH-TRIM: Keep the OMH skills profiles use and drop the rest from every prompt | unmet | — | TOOLSET-080, TOOLSET-081 |
 | README-DESIGN: Vendor the README design skill and use it on this README | met | executed <code>TOOLSET-060/061 (b15bbc7, 5a9c044, ff7196f): python3 scripts/check.py 4/4 directories passed, node --test tests/portable_pi.test.mjs passed, docs.py check ok, vendored audit_readme.py passed with 2 local images; independent review of the vendoring; offline only</code> → pass | — |
 | TEST-SUITE: Optimize test suites without losing defect detection | unmet | — | TOOLSET-072, TOOLSET-073 |
 | PRIORITY: Make TODO.md order the enforced human priority | unmet | — | TOOLSET-029 |
