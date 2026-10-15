@@ -8,6 +8,47 @@ from audit_profiles import cron_responses
 
 
 class ResponseTailTests(unittest.TestCase):
+    def test_quoted_credentials_are_masked_before_field_delimiters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-11.md'
+            values = ('first,private-tail', 'first;private-tail', 'first\nprivate-tail',
+                      'first\\"private-tail', 'first\\\'private-tail')
+            for key in ('api_key', 'token', 'password', 'secret', 'authorization', 'cookie'):
+                for quote in ('"', "'"):
+                    for value in values:
+                        for closed in (True, False):
+                            with self.subTest(key=key, quote=quote, value=value, closed=closed):
+                                response = key + '=' + quote + value + (quote if closed else '')
+                                path.write_text('## Response\n\nstatus: held\n' + response)
+                                before = path.read_bytes()
+                                row = cron_responses(home, [{'id': 'j1'}], [])[0]
+                                self.assertNotIn('private-tail', row['payload'])
+                                self.assertIn('status: held', row['payload'])
+                                self.assertIn('[REDACTED]', row['payload'])
+                                self.assertEqual(path.read_bytes(), before)
+
+    def test_json_encoded_credentials_are_redacted_after_decoding(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-11.md'
+            cases = ({'password': 'first,private-tail', 'status': 'held'},
+                     {'message': 'password="first,private-tail"', 'status': 'held'},
+                     {'message': json.dumps({'password': 'first,private-tail'}), 'status': 'held'})
+            for case in cases:
+                with self.subTest(case=case):
+                    path.write_text('## Response\n\n' + json.dumps(case))
+                    before = path.read_bytes()
+                    row = cron_responses(home, [{'id': 'j1'}], [])[0]
+                    self.assertNotIn('private-tail', row['payload'])
+                    self.assertIn('held', row['payload'])
+                    self.assertEqual(path.read_bytes(), before)
+
     def test_ready_status_keeps_full_preparation_in_private_receipt(self):
         import legacy_owner_cycle as owner_cycle
         result = {'outcome': 'QUEUED', 'selected_task': {'id': 'T1'},

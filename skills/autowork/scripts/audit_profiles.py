@@ -155,6 +155,24 @@ def digest(value):
 
 def safe(value):
     text = str(value)
+
+    def scrub(item):
+        if isinstance(item, dict):
+            return {key: '[REDACTED]' if re.fullmatch(
+                        r'(?i)api[_-]?key|token|password|secret|authorization|cookie', key)
+                    else scrub(part) for key, part in item.items()}
+        if isinstance(item, list):
+            return [scrub(part) for part in item]
+        return safe(item) if isinstance(item, str) else item
+
+    try:
+        parsed = json.loads(text)
+    except (ValueError, RecursionError):
+        parsed = None
+    if isinstance(parsed, (dict, list, str)):
+        return json.dumps(scrub(parsed), ensure_ascii=False)
+    # Mask whole quoted values before delimiters can expose a credential suffix.
+    text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)(bearer\s+)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*[\"\']?\s*[:=]\s*)[^\n,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'https?://[^\s\"\'<>]+', '[URL REDACTED]', text)

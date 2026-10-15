@@ -26,6 +26,21 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
+### AUDIT-QUOTED-SECRET — Redact complete quoted credential values in fleet observations
+
+- [ ] AUDIT-QUOTED-SECRET — Redact complete quoted credential values in fleet observations
+- Status: in_progress; local implementation and offline qualification complete; canonical integration and installed adoption pending writer admission.
+- Verified implementation: Complete quoted values are masked before delimiter redaction; complete JSON documents are decoded and scrubbed before re-encoding. Initial regression reproduced 72 failures; independent review found two serialized-message cases, reproduced and repaired. Final independent review approved the source; its in-memory removal controls failed as expected.
+- Verification: 25 focused collector/response/analyzer tests passed. Full Python 3.12 offline check passed 506 / 578 / 209 / 8 tests, one skip and eight excluded modules. Same-input read-only response replay covered all discovered profiles/jobs, preserved source bytes and existing projections, and passed the synthetic RED/GREEN control. No second collector or worker ran.
+- Remaining action: Recheck canonical writers; integrate the reviewed candidate when the supported writer check is CLEAR, then verify installed helper hashes and the same read-only consumer. No push or schedule activation.
+- Goal: RECOVERY — Preserve credential boundaries during read-only fleet collection.
+- Sources: [collector](skills/autowork/scripts/audit_profiles.py), [response regressions](skills/autowork/scripts/test_response_tail.py), [testing contract](docs/testing.md).
+- Scope: Fix `safe()` masking of quoted credential values containing commas, semicolons, newlines, escapes or an omitted closing quote; cover the actual response consumer without changing collection cursors.
+- Acceptance: No quoted-value suffix survives in projected responses; ordinary diagnostics remain; source bytes and cursor history remain untouched. Independent review approves the exact candidate. Integration/deployment remain separate if canonical writers are active.
+- Checks: Failing-then-passing response regression, focused collector suites, Python 3.12 offline gate, same-input read-only consumer replay and `git diff --check`.
+- Dependencies: None.
+- Exclusions: No product, credential, runtime, sibling profile or schedule mutation; no push.
+
 ## Next
 
 ### TOOLSET-029 — Migrate fleet repositories to recorded TODO.md priority order

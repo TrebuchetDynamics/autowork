@@ -10,6 +10,13 @@ unavailable/not-consulted or explicitly reused with its original reply time and
 age. Never infer an answer from its old cron report. Native metadata and profile
 replies remain separate evidence.
 
+Before retaining collector projections, mask complete quoted credential values
+before comma/newline field splitting, and decode complete JSON envelopes before
+masking their string values. Test raw, escaped, unterminated and nested serialized
+values through the actual response consumer; a passing consultation redactor does
+not qualify the collector's separate masking path. Partial chunks and omitted
+history remain unknown, not proof that every secret representation was covered.
+
 Use the shared executable `scripts/profile-consult.py`, independent of optional
 cron tool schemas. Run it with the default root, a NEW private
 maintenance output directory, and a file containing the auditor's local default
