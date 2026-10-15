@@ -26,7 +26,7 @@ purpose and a useful bounded outcome are already clear.
 | Tests/build fail | Reproduce the failure, diagnose and fix with regression coverage; ordinary engineering failures are work. |
 | Task combines offline work and live qualification | Separate their acceptance; finish useful offline implementation/tests while preserving the live gate. |
 | Documentation proposal exists outside canonical checkout | Reconcile and integrate it through the actual owner; do not generate another competing backlog. |
-| Repeated blocker | Repair attributable inputs, follow through owner handoff, or execute independent accepted work. Escalate only the exact external input still missing. |
+| Held or blocked task | Run Plan For Me in the same run to fix it (reversible in-scope change, planner's call) or skip it (split the blocked acceptance into its own open task, continue with the next ready task). Escalate only a genuinely unavailable external input, once. |
 | Mature repo with no open task | Check one bounded source/test/user-flow seam against documented intent; implement a demonstrated gap, or report evidence that no useful authorized delta was found. |
 
 Use `hermes-toolset:plan-for-me` subcommand `plan` for unresolved discovery questions and

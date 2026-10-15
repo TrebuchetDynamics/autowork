@@ -106,6 +106,8 @@ Bind evidence to the actual TODO task/session, source and check receipt; changed
 scheduler success, task creation and documentation churn are not proof of product
 progress. A live worker is observed through its actual process identity, not replaced.
 
+A held or blocked selection goes to Plan For Me for a fix-or-skip decision in the
+same occurrence (see [ownership and limits](../SKILL.md#ownership-limits-and-continuation)).
 When consecutive completed runs repeat the same task/blocker/check/commit evidence,
 compare relevant inputs, then diagnose the earliest missing transition. Do not
 repeat broad docs passes or ask again for authority already granted. Apply the

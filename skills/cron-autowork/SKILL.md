@@ -137,6 +137,7 @@ Follow references/cron-autoheal.md: repair this exact job managed wiring with th
 installed scripts/heal-owner-cron.py and verified occurrence identity; read back.
 Fix attributable Toolset faults within existing authority before the next occurrence.
 Follow saved recovery outcomes; no repeated unchanged audits or planning-only loops.
+When held or blocked, run Plan For Me in this occurrence to fix or skip the blocker.
 Report task ID/title, implemented or integrated slice, checks, commit/publication,
 next task, and the exact unresolved operation/input. Separate parent-task completion
 from delivered slices. Unchanged observations are not new progress.

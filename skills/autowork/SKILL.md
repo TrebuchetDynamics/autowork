@@ -127,8 +127,14 @@ universal lifetime-task budget. Missing enforcement holds only an operation requ
 that explicit cap; independently authorized inspection, checks and local integration
 remain separate. A prompt or receipt cannot enforce spending.
 
-Two unchanged blocked observations require a different supported repair,
-independent authorized work or one exact unavailable external input. Ask only for
+A held or blocked task goes to [Plan For Me](../plan-for-me/SKILL.md) in the same
+run, before reporting, and Plan For Me must **fix or skip** it. Fix: choose a
+reversible change within the delegated scope, record it as the planner's call and
+implement it now. Skip: split the blocked acceptance into its own open task naming
+the exact missing input (never waived), then continue with the next ready task in
+scope. Report a blocker again only when it is a genuinely unavailable external input
+or authority (credentials, money, deployment, legal or owner approval), and only
+once; never repeat an unchanged held report. Ask only for
 material missing decisions or authority; never repeat a permission question already
 answered. Preserve actual pending-approval requests; do not bypass them through a
 new tool, session or credential.

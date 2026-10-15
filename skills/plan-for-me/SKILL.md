@@ -100,7 +100,13 @@ For a concrete method gap or explicit protocol request, select one technique thr
 [the engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
 Routine planning needs no experiment loop.
 When called by Autowork, investigate its named uncertainty and return to the
-current task. For backlog recovery, follow the
+current task. For a held or blocked task, return a **fix or skip** decision, never a
+restated blocker: fix with the smallest reversible change inside the delegated scope
+(for example a verified alternative state for a broken external link, or the
+in-scope part of a remediation), recorded as the planner's call; or skip by splitting
+the blocked acceptance into its own task that names the exact missing input, keeping
+it open, so Autowork continues with the next ready task. Only credentials, money,
+deployment, legal or explicit owner approval remain user inputs. For backlog recovery, follow the
 [bounded planning fallback](../autowork/references/backlog-planning.md).
 
 ## Save the plan and hand off
