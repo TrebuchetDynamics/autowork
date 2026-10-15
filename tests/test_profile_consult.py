@@ -693,6 +693,40 @@ class ConsultationTests(unittest.TestCase):
                     if wrapped != text:
                         self.assertTrue(json.loads(sanitized)['keep'])
 
+    def test_nested_json_redaction_fails_closed_without_aborting_evidence(self):
+        import sqlite3
+        m = self.load()
+        for depth in (600, 1200):
+            text = '[' * depth + '{"password":"synthetic-private-value"}' + ']' * depth
+            with self.subTest(depth=depth), tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+                root = Path(d)
+                db = self.history(root, 'one', [('original', 'cli', 'Project', None, None, 'one', None, 1)])
+                with sqlite3.connect(db) as connection:
+                    connection.execute('UPDATE messages SET content=?', (text,))
+                before = db.read_bytes()
+                evidence = m.original_evidence('one', root)
+                self.assertEqual(evidence['status'], 'available')
+                self.assertNotIn('synthetic-private-value', evidence['anchor_excerpt'])
+                if depth == 1200:
+                    self.assertEqual(evidence['anchor_excerpt'], '[NESTED JSON REDACTED]')
+                self.assertEqual(db.read_bytes(), before)
+
+    def test_json_keys_and_contextual_credential_values_are_redacted(self):
+        import json
+        m = self.load()
+        for key in ('ghp_SYNTHETIC_PRIVATE_KEY', 'password=synthetic-key-value'):
+            with self.subTest(key=key):
+                value = json.loads(m.redact(json.dumps({key: 'diagnostic', 'keep': True})))
+                self.assertTrue(value['keep'])
+                self.assertNotIn(key, value)
+                self.assertIn('diagnostic', value.values())
+        for key in ('access_token', 'client_secret', 'OPENAI_API_KEY', 'old_password'):
+            for value in ('synthetic-private-value', 123456789, ['synthetic-private-value']):
+                with self.subTest(key=key, value=value):
+                    actual = json.loads(m.redact(json.dumps({key: value, 'keep': True})))
+                    self.assertEqual(actual[key], '[REDACTED]')
+                    self.assertTrue(actual['keep'])
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))

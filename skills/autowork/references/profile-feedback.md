@@ -138,7 +138,12 @@ time and exact evidence pointers in default-owned maintenance storage. Redact
 JSON credential values after decoding escaped strings, including nested text in
 each stream-JSON envelope. Consume complete quoted assignment values before
 whitespace-delimited masking; otherwise multiword credential tails can survive.
-Plain-text regex masking alone can retain value tails.
+Plain-text regex masking alone can retain value tails. Scrub JSON keys as well as
+values; contextual fields such as `access_token` retain credential masking through
+decoding. Catch stack exhaustion during parsing and scrubbing and emit an explicit
+redacted sentinel instead of aborting original-evidence projection. Preserve valid
+shallow JSON because consultation consumers parse it. Test these paths through
+`original_evidence()` as well as the redactor without making another model call.
 This is bounded redaction, not a guarantee that arbitrary secret formats are found.
 Deduplicate
 suggestions by helper/seam plus failure signature; distinguish owner-reported
