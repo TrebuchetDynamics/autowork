@@ -509,14 +509,6 @@
     {
       "depends_on": [],
       "goal": "GENTLE-UPDATE",
-      "id": "TOOLSET-078",
-      "section": "Next",
-      "status": "open",
-      "title": "Report a concurrent update clearly"
-    },
-    {
-      "depends_on": [],
-      "goal": "GENTLE-UPDATE",
       "id": "TOOLSET-079",
       "section": "Next",
       "status": "open",
@@ -975,6 +967,14 @@
       "section": "Done",
       "status": "done",
       "title": "Record the restart outcome in the update status"
+    },
+    {
+      "depends_on": [],
+      "goal": "GENTLE-UPDATE",
+      "id": "TOOLSET-078",
+      "section": "Done",
+      "status": "done",
+      "title": "Report a concurrent update clearly"
     },
     {
       "depends_on": [],

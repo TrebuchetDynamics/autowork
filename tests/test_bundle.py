@@ -158,6 +158,21 @@ class BundleTests(unittest.TestCase):
         self.assertNotIn('done', summary)
         self.assertEqual(full['gateway_restart_result']['gateway_pid'], 4321)
 
+    def test_chat_update_while_another_runs_names_it_and_starts_nothing(self):
+        home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
+        owner = {'pid': 4321, 'mode': 'update', 'started': '2026-10-15T12:11:14'}
+        fake = type('Updater', (), {'running_update': staticmethod(lambda folder: owner)})
+        with patch.object(self.bundle, 'update_home', return_value=home), \
+             patch.object(self.bundle, '_updater', return_value=fake), \
+             patch.object(self.bundle.subprocess, 'Popen') as popen:
+            reply = self.bundle.start_update(check=True)
+        popen.assert_not_called()
+        self.assertFalse((folder / 'request.json').exists())
+        self.assertIn('4321', reply)
+        self.assertIn('update', reply)
+        self.assertIn('12:11:14', reply)
+        self.assertIn('Nothing was started', reply)
+
     def test_status_says_how_many_updates_one_restart_covers(self):
         home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
         (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'updated',

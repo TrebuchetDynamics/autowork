@@ -640,6 +640,37 @@ def finish_restart(root, folder):
     return outcome
 
 
+# A restart waiter holds the update lock only for a moment per check; wait this long
+# before treating the lock as held by another update.
+LOCK_WAIT_S = 10
+
+
+def _describe_runner(folder):
+    """Who holds the update lock: the running update's PID, mode and start, as far as recorded."""
+    try:
+        record = json.loads((folder / 'latest.json').read_text())
+    except (OSError, ValueError):
+        record = {}
+    if isinstance(record, dict) and record.get('status') == 'running':
+        started = record.get('started_ns')
+        return {'pid': record.get('pid'), 'mode': record.get('mode', 'update'),
+                'started': datetime.datetime.fromtimestamp(started / 1e9).isoformat(timespec='seconds')
+                if isinstance(started, int) else None}
+    marker = _read_marker(folder)
+    if marker.get('mode') == 'deferred':
+        return {'pid': marker.get('waiter_pid'), 'mode': 'restart_waiter', 'started': None}
+    return {'pid': None, 'mode': 'unknown', 'started': None}
+
+
+def running_update(folder):
+    """The update currently holding the lock, described, or None when none is running."""
+    lock = _try_update_lock(folder)
+    if lock is not None:
+        lock.close()
+        return None
+    return _describe_runner(folder)
+
+
 def _waiter_command(root, update_id, gateway):
     return [sys.executable, str(Path(__file__).resolve()), '--hermes-home', str(root),
             '--restart-when-quiet', str(update_id), '--gateway-pid', str(gateway)]
@@ -1141,12 +1172,22 @@ def main(argv=None):
     if lockpath.is_symlink():
         raise ValueError('Symlinked updater lock')
     with lockpath.open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print('An update is already running; use /toolset update status.')
-            return 1
-        result = {'status': 'running', 'pid': os.getpid(), 'started_ns': time.time_ns()}
+        deadline = time.monotonic() + LOCK_WAIT_S
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    # Report the owner; its receipt stays untouched.
+                    print(json.dumps({'status': 'busy', 'running': _describe_runner(state_dir),
+                                      'note': 'Another update holds the update lock. Nothing was changed and its '
+                                              'receipt was not replaced; use /toolset update status, then rerun '
+                                              'once it finishes.'}, indent=2))
+                    return 3
+                time.sleep(0.2)
+        result = {'status': 'running', 'pid': os.getpid(), 'started_ns': time.time_ns(),
+                  'mode': 'check' if args.check else 'update'}
         receipt = state_dir / 'latest.json'
         def save():
             temporary = state_dir / 'latest.tmp'

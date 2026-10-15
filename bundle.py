@@ -397,6 +397,14 @@ def start_update(*, check=False):
     log = folder / 'run.log'
     if log.is_symlink():
         return 'Update refused: symlinked update log.'
+    try:
+        owner = _updater().running_update(folder)
+    except (Exception, SystemExit):  # an unreadable lock or updater never blocks starting; the updater checks again
+        owner = None
+    if owner:
+        return (f"Another toolset {owner.get('mode') or 'update'} is running (PID {owner.get('pid') or '?'}"
+                + (f", started {owner['started']}" if owner.get('started') else '')
+                + '). Nothing was started; use /toolset update status, then rerun once it finishes.')
     argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
     if check:
         argv.append('--check')

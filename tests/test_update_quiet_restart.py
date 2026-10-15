@@ -371,5 +371,75 @@ class RestartOutcomeTests(unittest.TestCase):
         self.assertEqual(json.loads((self.state / 'restart.json').read_text())['gateway_pid'], os.getpid())
 
 
+class ConcurrentUpdateTests(unittest.TestCase):
+    """A second update or check reports the running one instead of returning or replacing its record (TOOLSET-078)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        self.state = self.home / 'maintenance/toolset-update'
+        self.state.mkdir(parents=True)
+        self.mod = load()
+        self.mod.LOCK_WAIT_S = 0.5
+        self.stub = ModuleType('setup_bundle')
+        self.stub.live_profiles = lambda root: []
+        self.runner = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+        self.addCleanup(self.runner.wait)
+        self.addCleanup(self.runner.kill)
+        self.receipt = json.dumps({'status': 'running', 'pid': self.runner.pid, 'started_ns': 1792087874000000000,
+                                   'mode': 'update'})
+        (self.state / 'latest.json').write_text(self.receipt)
+
+    def hold_lock(self, seconds=None):
+        import fcntl
+        import threading
+        lock = (self.state / 'lock').open('a')
+        self.addCleanup(lock.close)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if seconds is not None:
+            threading.Timer(seconds, lambda: fcntl.flock(lock, fcntl.LOCK_UN)).start()
+
+    def run_main(self, *extra):
+        out = io.StringIO()
+        with patch.dict('sys.modules', {'setup_bundle': self.stub}), contextlib.redirect_stdout(out):
+            code = self.mod.main(['--hermes-home', str(self.home), *extra])
+        return code, out.getvalue()
+
+    def test_busy_check_reports_the_running_update_and_leaves_its_record(self):
+        self.hold_lock()
+        for extra in ((), ('--check',)):
+            with self.subTest(extra=extra):
+                code, out = self.run_main(*extra)
+                self.assertEqual(code, 3)
+                report = json.loads(out)
+                self.assertEqual(report['status'], 'busy')
+                self.assertEqual(report['running']['pid'], self.runner.pid)
+                self.assertEqual(report['running']['mode'], 'update')
+                self.assertIn('started', report['running'])
+                self.assertEqual((self.state / 'latest.json').read_text(), self.receipt)
+
+    def test_a_momentary_lock_holder_is_not_reported_as_busy(self):
+        self.hold_lock(seconds=0.1)
+        with patch.object(self.mod, 'prepare', side_effect=ValueError('stop after the lock')):
+            code, out = self.run_main('--check')
+        self.assertNotIn('busy', out)
+        self.assertEqual(json.loads((self.state / 'latest.json').read_text())['status'], 'incomplete')
+
+    def test_running_record_names_its_mode(self):
+        seen = {}
+        def prepare(*_):
+            seen.update(json.loads((self.state / 'latest.json').read_text()))
+            raise ValueError('stop')
+        with patch.object(self.mod, 'prepare', side_effect=prepare):
+            self.run_main('--check')
+        self.assertEqual((seen['status'], seen['mode']), ('running', 'check'))
+
+    def test_running_update_is_none_when_no_update_holds_the_lock(self):
+        self.assertIsNone(self.mod.running_update(self.state))
+        self.hold_lock()
+        self.assertEqual(self.mod.running_update(self.state)['pid'], self.runner.pid)
+
+
 if __name__ == '__main__':
     unittest.main()

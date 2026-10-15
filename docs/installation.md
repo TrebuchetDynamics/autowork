@@ -270,6 +270,13 @@ hermes toolset update --check
 hermes toolset update
 ```
 
+Only one update or check runs at a time. A second one waits up to 10 seconds (a
+deferred-restart waiter holds the lock only briefly per check), then exits with
+code 3 and `{"status": "busy", "running": {...}}` naming the running update's PID,
+mode (`update` or `check`) and start time; it changes nothing and leaves that
+update's receipt in place. In chat, `/toolset update` says which update is running
+and starts nothing.
+
 A named-profile invocation still targets every existing live profile under the
 same Hermes root. The updater fetches the official Hermes Toolset `main` branch,
 checks each distinct installed Git checkout, and accepts only clean fast-forward

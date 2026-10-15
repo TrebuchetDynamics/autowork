@@ -133,7 +133,10 @@ claim of a tagged release, completed installation or live workflow qualification
   (`gateway_restart_covers`), and the waiter never restarts mid-update. After the
   restart, `/toolset update status` records `completed` with the new gateway PID,
   which Telegram bots resent their menus and any forced-drain interruptions, or
-  `restart_failed` if the old gateway is still running.
+  `restart_failed` if the old gateway is still running. A second update or check
+  started while one runs reports `busy` with that update's PID, mode and start
+  (exit code 3; in chat it starts nothing) instead of a bare "already running", and
+  no longer mistakes the waiter's brief lock for a running update.
 
 - `git-pull-merge` is merged into `git-commit-push` (2.0.0): `/git-commit-push pull`,
   `sync` or `merge <branch|PR n>` runs the former pull and merge procedure, now a reference

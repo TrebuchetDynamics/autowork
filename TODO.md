@@ -157,17 +157,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.
 
-### TOOLSET-078 — Report a concurrent update clearly
-
-- [ ] TOOLSET-078 — Report a concurrent update clearly
-- Status: open.
-- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
-- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
-- Scope: When another update is running, a new update or `--check` reports `busy` with that run's PID, start time and mode, and either waits for it or exits without overwriting its record.
-- Acceptance: A check started during a running update never returns the running record as its own result and never overwrites it.
-- Checks: Regressions in `tests/test_update_bundle.py`, then `python3 scripts/check.py`.
-- Dependencies: None.
-
 ### TOOLSET-079 — Report linked profiles and offer pinned clones
 
 - [ ] TOOLSET-079 — Report linked profiles and offer pinned clones
@@ -217,7 +206,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | UI-TASTE: Ship Uizze's UI Taste as a vendored bundled skill | met | executed <code>python3 scripts/check.py (440/575/209/8 offline tests, includes test_ui_taste_bundle and portable package tests) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
-| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-078, TOOLSET-079 |
+| GENTLE-UPDATE: Roll out updates without forcing gateway restarts | unmet | — | TOOLSET-079 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 
