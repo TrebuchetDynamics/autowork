@@ -130,6 +130,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `/toolset update` now removes skills retired from the bundle (such as
+  `git-pull-merge`) from profiles whose plugin is the shared checkout. It used to compare
+  only the checkout's before and after revisions, which match when the checkout had
+  already advanced, so retired copies stayed installed. Unedited copies and the folders
+  they leave empty are removed; edited ones stay and are reported as `kept_retired`.
 - `/toolset update` no longer looks like it skipped the gateway restart. A graceful
   restart waits for in-flight chat turns (up to 30 minutes by default); `/toolset
   update status` now shows `gateway_restart_progress` with the time left and the turns

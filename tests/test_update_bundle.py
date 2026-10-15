@@ -95,6 +95,31 @@ class UpdateTests(unittest.TestCase):
         # The shared checkout advances before profiles update, so old == new.
         self.git(self.repo, 'pull', '--ff-only')
 
+    def test_retired_skill_is_removed_even_when_the_shared_checkout_already_advanced(self):
+        gone = self.remote / 'skills/gone'
+        (gone / 'scripts').mkdir(parents=True)
+        (gone / 'SKILL.md').write_text('retired\n')
+        (gone / 'scripts/helper.sh').write_text('echo helper\n')
+        self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'add gone')
+        self.git(self.repo, 'pull', '--ff-only')
+        for _, home in self.profiles:
+            (home / 'skills/gone/scripts').mkdir(parents=True)
+            (home / 'skills/gone/SKILL.md').write_text('retired\n')
+            (home / 'skills/gone/scripts/helper.sh').write_text('echo helper\n')
+            (home / 'skills/gone/scripts/__pycache__').mkdir()
+        edited = self.profiles[1][1] / 'skills/gone/SKILL.md'
+        edited.write_text('retired\nlocal lesson\n')
+        self.git(self.remote, 'rm', '-rq', 'skills/gone'); self.git(self.remote, 'commit', '-m', 'retire gone')
+        self.git(self.repo, 'pull', '--ff-only')  # old == new: the deletion is only in history
+        plan = self.plan()
+        self.mod.apply(plan, self.root / 'backup')
+        self.assertFalse((self.home / 'skills/gone').exists())
+        work = self.profiles[1][1] / 'skills/gone'
+        self.assertEqual(edited.read_text(), 'retired\nlocal lesson\n')
+        self.assertFalse((work / 'scripts/helper.sh').exists())
+        self.assertEqual([(e['path'], e['action']) for e in plan['local_edits']], [(str(edited), 'kept_retired')])
+        self.assertEqual(self.plan()['writes'], [])
+
     def test_edit_to_an_older_installed_copy_merges_onto_the_release_and_is_reported(self):
         self.install_lines('a\nb\nc\nd\ne\n')
         path = self.home / 'skills/demo/SKILL.md'
@@ -186,9 +211,12 @@ class UpdateTests(unittest.TestCase):
         self.git(self.repo, 'pull', '--ff-only')
         with patch.object(self.mod, 'git', wraps=self.mod.git) as calls:
             self.plan()
-        history = [call for call in calls.call_args_list if call.args[1] == 'log']
+        logs = [call for call in calls.call_args_list if call.args[1] == 'log']
+        history = [call for call in logs if '--diff-filter=D' not in call.args]
         self.assertEqual(len(history), 1)
         self.assertIn('-100', history[0].args)
+        # One retired-path lookup per checkout, shared by both profiles.
+        self.assertEqual(len(logs) - len(history), 1)
 
     def test_older_copy_refreshes_when_checkout_and_upstream_also_differ(self):
         self.advance()

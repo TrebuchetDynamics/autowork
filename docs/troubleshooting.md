@@ -123,6 +123,8 @@ the durable result. If status says the process stopped without a receipt, inspec
 - **`local_edits`:** a profile edited its installed skill copy. The edit was merged
   onto the release (`merged`) or kept because it only adds to it (`kept`); the
   update still completed. Port lessons that should reach every profile.
+  `kept_retired` is an edited copy of a skill file the bundle removed; delete it once
+  nothing in it is still needed.
 - **`Local skill conflict`:** an installed edit disagrees with the release. Nothing
   was written; reconcile that file (its backup stays in place) and rerun.
 

@@ -7,6 +7,7 @@ import json
 import os
 import re
 from pathlib import Path
+import shutil
 import subprocess
 import stat
 import tempfile
@@ -202,8 +203,42 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
             mode = current_mode | (0o111 if relative in state['executables'] else 0)
             if merged != local or (merged is not None and mode != current_mode):
                 writes.append((path, local, merged, mode))
+        # A shared checkout that advanced before this update has old == new, so a
+        # skill removed from the bundle never shows up above. Remove installed copies
+        # of any path deleted in history once their bytes match a released version.
+        if 'retired' not in state:
+            deleted = git(repo, 'log', '--format=', '--name-only', '--diff-filter=D',
+                          '--no-renames', state['after'], '--', 'skills').decode().splitlines()
+            state['retired'] = sorted({r for r in deleted if r and r not in state['new']})
+        for relative in state['retired']:
+            if relative in state['old']:
+                continue
+            path = skill_destination(home, relative, skill_roots)
+            safe_path(path)
+            if not path.is_file():
+                continue
+            local = path.read_bytes()
+            if historical_copy(repo, state, relative, local):
+                writes.append((path, local, None, stat.S_IMODE(path.stat().st_mode)))
+            else:
+                local_edits.append({'profile': name, 'path': str(path), 'action': 'kept_retired', 'base': None})
     return {'sources': sources, 'writes': writes, 'drift': drift, 'local_edits': local_edits,
             'profiles': [n for n, _ in profiles]}
+
+
+def prune_empty_skill_dirs(folder):
+    """Remove folders a deletion emptied, up to the skills root; bytecode caches do not count."""
+    while folder.name != 'skills' and folder.parent.name != '' and not folder.is_symlink():
+        try:
+            entries = list(folder.iterdir())
+        except OSError:
+            return
+        if any(e.name != '__pycache__' or e.is_symlink() or not e.is_dir() for e in entries):
+            return
+        for cache in entries:
+            shutil.rmtree(cache)
+        folder.rmdir()
+        folder = folder.parent
 
 
 def apply(plan, backup):
@@ -231,6 +266,7 @@ def apply(plan, backup):
             raise ValueError(f'Destination changed since preflight: {path}; partial update, backups at {backup}')
         if new is None:
             path.unlink()
+            prune_empty_skill_dirs(path.parent)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:

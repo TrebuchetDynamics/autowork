@@ -265,7 +265,10 @@ like a conflict. Every such file is listed under
 every profile. A conflicting edit still stops the update before any write. Check mode
 reports the same `local_edits` without applying them. History
 outside the bounded window or unavailable in a shallow checkout may require manual
-reconciliation; files absent from both checkout revisions are not inventoried.
+reconciliation. A skill file removed from the bundle is deleted from profiles, together
+with folders that leaves empty, whenever its installed bytes match a released version,
+even when the shared checkout had already advanced; an edited copy stays and is listed
+as `kept_retired`.
 An exact byte match establishes historical content, not whether someone intended
 to pin it. There is no per-file pin setting in this updater: review intentional
 pins before invoking an update, and retain them outside the managed copy if needed.
