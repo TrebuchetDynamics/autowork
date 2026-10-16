@@ -393,11 +393,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.",
+          "result": "pass"
+        }
+      ],
       "id": "PARALLEL",
       "priority": 89,
       "source": "docs/project.md#parallel-autowork-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-085-1a",
         "TOOLSET-086-9f",
@@ -571,16 +577,6 @@
       "section": "Next",
       "status": "open",
       "title": "Restore the OMH memory plugin on Hermes 0.22"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-090-2d"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-091-00",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify parallel Autowork with real host workers"
     },
     {
       "depends_on": [
@@ -1160,6 +1156,16 @@
       "section": "Done",
       "status": "done",
       "title": "Document parallel Autowork and wire it into each host"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-090-2d"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-091-00",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify parallel Autowork with real host workers"
     },
     {
       "depends_on": [],

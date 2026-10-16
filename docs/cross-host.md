@@ -222,10 +222,11 @@ How it works:
   others only when it declares `Touches:` paths that do not overlap theirs, shares no
   `Resources:` and has its dependencies closed; anything else runs alone, and TODO.md
   priority decides order. An empty queue costs no model call, and nothing asks
-  Autowork to invent work. When tasks remain but none can start (dependencies, a task
-  another session marked `in_progress`, or a task without `Touches:` that must run
-  alone beside such work), the log says `No task can start now` with the reasons; the
-  runner keeps waiting, and `--once` or `--until-empty` exit 1 instead of 0. Each worker is `pi-autowork.sh --worker`: Pi with an
+  Autowork to invent work. A task another session marked `in_progress` is never
+  dispatched and holds back tasks that depend on it or declare overlapping `Touches:`,
+  but not unrelated ones. When tasks remain but none can start, the log says `No task
+  can start now` with the reasons; the runner keeps waiting, and `--once` or
+  `--until-empty` exit 1 instead of 0. Each worker is `pi-autowork.sh --worker`: Pi with an
   explicit provider and model, `--no-approve`, the engine's one-task prompt and a
   session per task attempt. Workers never pick tasks or edit `TODO.md`,
   `TODO.archive.md`, `goals.json` or `CHANGELOG.md`; only the coordinator does.

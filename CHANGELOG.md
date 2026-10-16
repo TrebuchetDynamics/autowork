@@ -197,6 +197,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
+  every other task: such a claim is not dispatched and still blocks its dependents and
+  declared overlaps, but unrelated tasks run. On sierra, 32 handed-off claims had left
+  the Pi runner with nothing it could start.
 - Parallel Autowork names the processes behind a "live or unknown external writer" hold
   (PID, name, checkouts touched, evidence), tells workers to report each check's final
   result only (a listed early failure held the task), and returns `SEQUENTIAL_FALLBACK`

@@ -89,8 +89,11 @@ A task runs beside others only when the planner can prove it is independent:
   prerequisites to close, and a higher-priority task that cannot start yet, or
   must run alone, stops lower-priority dispatch until it can run.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
-  overlapping tasks until closed, and an `in_progress` task blocks overlapping and
-  dependent ones. Only live workers count toward N.
+  overlapping tasks until closed. An `in_progress` task with no live slot is a claim:
+  it is never dispatched and blocks its dependents and tasks whose declared `Touches:`
+  or `Resources:` overlap it, but its own missing `Touches:` does not hold back
+  unrelated tasks (the coordinator holds the repository lease, so no sequential
+  Autowork run is executing it). Only live workers count toward N.
 
 The root files `TODO.md`, `TODO.archive.md`, `goals.json` and `CHANGELOG.md` are
 coordinator-owned: workers never edit them, and integration holds a commit that does.
@@ -102,7 +105,7 @@ process ancestry. Shipped templates add no approval or sandbox bypass:
 
 | Host | Worker command | Live qualification (TOOLSET-091-00) |
 | --- | --- | --- |
-| Hermes | `hermes chat --query-file PROMPT --oneshot --in WORKTREE --run-budget TIMEOUT -Q`, with `-p PROFILE` from `--worker-profile` | Not yet run: needs a disposable Hermes profile |
+| Hermes | `hermes chat --query-file PROMPT --oneshot --in WORKTREE --run-budget TIMEOUT -Q`, with `-p PROFILE` from `--worker-profile` | Not run, not required (owner decision 2026-10-15: Hermes plans tasks, Pi workers execute them); `/autowork --parallel` from Hermes remains unqualified |
 | Codex | `codex exec -C WORKTREE --sandbox workspace-write --add-dir GIT_COMMON_DIR -` (prompt on stdin) | Fails: Codex 0.162.1 workers edit and check but cannot commit, because the workspace-write sandbox keeps Git metadata read-only. Dispatch therefore returns `SEQUENTIAL_FALLBACK` for Codex unless you pass `--worker-command` |
 | Pi | `pi -p @PROMPT` | Qualified through [`pi-autowork.sh`](../../../docs/cross-host.md#run-autowork-continuously), whose `--worker` mode is passed as `--worker-command` (Pi 1.2.0, GPT-6.1 Sol): two workers overlapped, integration was sequential, a dependent task waited for its prerequisite, and a killed coordinator's restart adopted live workers without duplicates. The bare template has not been run live |
 | Claude Code | none: it chooses its workers' approval mode, so pass `--worker-command` | Not applicable |

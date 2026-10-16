@@ -115,26 +115,6 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Planner's call (2026-10-15 replan): `--plugin-dir` on a clean clone of the published commit replaces a marketplace install into a disposable configuration, which would need an interactive login; it loads the same files for one session and changes no settings.
 - Exclusions: No real user repositories, settings or credentials changed.
 
-### TOOLSET-091-00 — Qualify parallel Autowork with real host workers
-
-- [ ] TOOLSET-091-00 — Qualify parallel Autowork with real host workers
-- Status: open.
-- Evidence (2026-10-15): disposable repository (A, B independent with `Touches:`; C depends on A; combined `check.sh`; bare `origin`).
-  - **Pi qualified** (Pi 1.2.0, `openai-codex/gpt-6.1-sol`, workers through `pi-autowork.sh --worker` as `--worker-command`, Pi review as validation). Parallel run: A and B overlapped (peak 2 workers), A integrated while B ran, C dispatched only after A closed, sequential merge commits, combined check passed, 0 retries/conflicts, no push, wall 158 s (worker 162 s, integration 104 s). Sequential control (`--workers 1`): 240 s, one hold then a passing retry. Interruption: the coordinator was killed with SIGKILL while both workers ran; the restart adopted A's live worker (no second worker started), integrated B (finished meanwhile) and completed C after one held first attempt (its report listed an early failing check; the worker prompt now asks for final results only).
-  - **Codex fails** (codex-cli 0.162.1, scripted coordinator following the documented loop): two workers ran at once and passed their checks, but neither could commit, because the workspace-write sandbox keeps Git metadata read-only; dispatch now returns `SEQUENTIAL_FALLBACK` for Codex workers.
-  - **Hermes not run**: the scope excludes fleet profiles, and a disposable Hermes profile would be loaded by the live gateway; that needs the owner's go-ahead.
-  - Found and fixed on the way: restarted interrupted/released workers were held as `unexpected worker branch`; a killed coordinator's helper kept the runner lock (helpers no longer inherit it); writer holds now name their processes.
-- Remaining: Hermes coordinator and Hermes workers on a disposable profile, after the owner approves creating one.
-- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
-- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15).
-- Scope: On a disposable local repository (not a fleet project) with three small real tasks (A, B independent; C depends on A), run `/autowork --parallel 2` from a Hermes coordinator with Hermes workers, then repeat with Codex and Pi workers where installed. Record per run: worker overlap, integration order, C waiting for A, combined test result, wall time against a sequential run of the same tasks, worker and integration time, and any held or interrupted slot. Interrupt one run's coordinator mid-way and confirm a restart adopts live workers without duplicates.
-- Acceptance: Each qualified host shows two real workers overlapping in separate worktrees, sequential integration, C after A, a passing combined check and no push; the interruption test starts no duplicate worker; measured times recorded with host versions; any host that fails stays documented as sequential-only.
-- Checks: `--parallel-status --json` at each step, the journal, `git log --graph` of the disposable repository, and the recorded elapsed times.
-- Dependencies: TOOLSET-090-2d.
-- Environment prerequisite: Installed host CLIs with working model access; owner availability to observe the run.
-- Current evidence (2026-10-15): Hermes 0.22.0, Codex CLI 0.162.1 and Pi 1.2.0 are installed; model access and owner availability are not verified.
-- Exclusions: No fleet repositories or profiles, no push, no cron schedule.
-
 ### TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
 
 - [ ] TOOLSET-003 — Qualify automatic planning recovery with a real bounded workflow
@@ -251,7 +231,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | SKILL-REVIEW: Fix review findings in the newly vendored UI skills | unmet | — | TOOLSET-064 |
 | CLAUDE-CODE: Install the portable workflows in Claude Code | unmet | — | TOOLSET-066 |
 | GENTLE-UPDATE: Roll out updates without forcing gateway restarts | met | executed <code>TOOLSET-075..079 offline: python3 scripts/check.py (506/576/209/8 passed, 1 skipped) and node --test tests/portable_pi.test.mjs (3 passed); read-only pin dry run against the live home refused an unreleased revision as designed; live rollout not qualified (TOOLSET-084)</code> → pass; executed <code>TOOLSET-084 live 2026-10-15: hermes toolset update at afe1482 requested the restart with no chat turn in flight; /toolset update status showed gateway_restart completed, new PID 553964, menus resent 9/9; concurrent --check returned busy (exit 3) without touching the first receipt; earlier deferred restart waited for a chat turn that ended on its own (no forced chat drain); 7 linked profiles pinned to clean clones that only updates advance</code> → pass | — |
-| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | unmet | — | TOOLSET-091-00 |
+| PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
 | PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass | TOOLSET-096-7e, TOOLSET-097-41 |
