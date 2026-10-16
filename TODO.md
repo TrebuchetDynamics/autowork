@@ -69,6 +69,48 @@ settlement/cancellation checks when refining that existing design.
 
 ## Next
 
+### TOOLSET-116-c1 — Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures
+
+- [ ] TOOLSET-116-c1 — Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures
+- Status: open.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [research: stale-result protection](docs/research/pi-autowork-reference-architectures.md#stale-result-protection-agent-orchestrator--agwab), [adapter checks](docs/research/pi-autowork-reference-architectures.md#concrete-adapter-checks-added-by-this-wave), [design](docs/plans/2026-10-16-pi-autowork-coordinator.md).
+- Touches: skills/autowork/scripts/test_parallel_*.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, docs/research/pi-autowork-reference-architectures.md
+- Scope: Owner direction (2026-10-16): use the research's reuse findings. Reproduce, as offline fixtures with controlled subprocess workers, the adversarial cases from Agent Orchestrator (`ActivitySignal` expected revision/launch identity), AgwaB (`commitAttemptResultIfActive`), MinhDuyDEV (generation-fenced resource transfer), Gas Town (launch happened but receipt write failed) and Kyle Boas (old final text must not complete a new assignment): late report from a superseded attempt, cancellation during spawn, out-of-order completion, report written after a runner restart, receipt-write failure after launch. Port scenarios and invariants only, not code; record which upstream case each fixture mirrors. Fix only gaps the fixtures expose, against the existing slot identity and attempt guards.
+- Acceptance: Each listed scenario has a fixture that passes against the engine, or a fix that makes it pass; a superseded attempt can never move a slot or reach integration; the research doc records which scenarios were already covered.
+- Checks: engine tests in `skills/autowork/scripts`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No upstream code copied (MIT notices would apply); no live Pi or fleet runs; avoid editing `pi-autowork.sh` while TOOLSET-115-bf phase 5 is active.
+
+### TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+
+- [ ] TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
+- Status: open; spike only, adoption is a separate owner decision.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [research: runtime adapter](docs/research/pi-autowork-reference-architectures.md#runtime-adapter-overstory--agwab), [Kyle Boas live workers](docs/research/pi-autowork-reference-architectures.md#kyle-boas-reusable-live-rpc-workers), [follow-up boundaries](docs/research/pi-autowork-reference-architectures.md#proposed-follow-up-boundaries).
+- Touches: pi-autowork/, docs/research/pi-autowork-reference-architectures.md
+- Scope: Define the small worker-runtime boundary the research proposes (after Overstory's `AgentRuntime`): `launch`, `observe`, `stop`, `resume`, a capability record (live-process reuse, persistent transcripts, reload survival, crash/restart adoption) and normalized events. Implement it for the current Pi CLI path and, in a spike, for AgwaB's `runSubagent` headless backend with a Toolset-owned worktree as its CWD. Run both against the same fixtures: cancellation, restart adoption, stale results, out-of-order completion, combined-tree verification, cleanup retention, process-group TERM-to-KILL. Qualify `agent_end`/`agent_settled` against the pinned Pi version.
+- Acceptance: A written comparison with measured results per fixture and a recommendation; compatibility failures are recorded, not worked around by weakening the contract; the CLI path stays the default.
+- Checks: `python3 scripts/check.py`; the comparison fixtures.
+- Dependencies: TOOLSET-115-bf.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No dependency installed into services or the fleet; no change to the default worker; adoption needs an owner decision.
+
+### TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
+
+- [ ] TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
+- Status: open.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [research: budgets and shutdown](docs/research/pi-autowork-reference-architectures.md#budgets-and-shutdown-pi-rukas), [engine](skills/autowork/references/parallel-workers.md).
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/references/parallel-workers.md, docs/cross-host.md
+- Scope: Today `resource_gate` checks one flat MemAvailable-per-worker figure and the load average. Following pi-rukas (`readHostResources`/`budgetFor`, `killProcessTree`): read cgroup memory and CPU limits when present, budget model-worker slots separately from expensive test runs, and stop a timed-out worker's whole process tree with TERM then KILL. Report the binding limit in the waiting reason.
+- Acceptance: Inside a cgroup-limited fixture the gate uses the cgroup limit; a worker's heavy test run cannot push the host past its budget unnoticed; a timed-out worker's grandchildren are gone after escalation.
+- Checks: engine tests in `skills/autowork/scripts`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-115-bf.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: Cgroup detection is not proof of enforced spend or memory limits; no money or model-cost budgets here.
+
 ### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
 
 - [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
@@ -222,6 +264,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass | TOOLSET-096-7e, TOOLSET-099-87 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-116-c1, TOOLSET-117-cb, TOOLSET-118-68 |
 
 <!-- goals:coverage:end -->

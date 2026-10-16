@@ -582,7 +582,10 @@
         "TOOLSET-098-4c",
         "TOOLSET-099-87",
         "TOOLSET-111-b3",
-        "TOOLSET-115-bf"
+        "TOOLSET-115-bf",
+        "TOOLSET-116-c1",
+        "TOOLSET-117-cb",
+        "TOOLSET-118-68"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -591,6 +594,10 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
+      "TOOLSET-115-bf",
+      "TOOLSET-116-c1",
+      "TOOLSET-117-cb",
+      "TOOLSET-118-68",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -598,7 +605,6 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-114-c4",
       "TOOLSET-101-f6"
     ]
   },
@@ -686,6 +692,34 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-116-c1",
+      "section": "Next",
+      "status": "open",
+      "title": "Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-115-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-117-cb",
+      "section": "Next",
+      "status": "open",
+      "title": "Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-115-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-118-68",
+      "section": "Next",
+      "status": "open",
+      "title": "Separate worker, test and memory budgets in the parallel resource gate"
     },
     {
       "depends_on": [
