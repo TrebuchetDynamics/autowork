@@ -52,8 +52,30 @@ drift, interpreter replacement, caller mutation, legacy/ZIP/symlink metadata and
 unreadable search directories. Python 3.12 focused receipt/delivery measurements
 on October 16, 2026 were 72.477/75.685/74.835 seconds before and
 33.928/34.628/34.930 seconds after (three runs each; nine added regressions).
-This is not a full-suite speedup claim. Required serial full-gate and directory
-measurements remain pending under TOOLSET-072; an interrupted baseline is unqualified.
+Those focused final-pair receipts used a pre-commit candidate whose recorded
+inputs match integrated `9f84355`; baseline inputs match `20cbcc5`.
+
+The remaining TOOLSET-072 measurements completed on October 16, 2026 with Python
+3.12.14 on the same Linux x86_64 machine. Three interleaved runs of each exact
+commit used `/usr/bin/time python3 scripts/check.py --jobs 1` in clean detached
+worktrees. Serial full-gate wall seconds were 495.42/468.81/446.33 before and
+423.98/420.92/416.30 after: medians 468.81 → 420.92 seconds (10.2% lower).
+Autowork **unittest suite elapsed**, extracted from its own directory summary, was
+190.695/189.849/183.746 before and 140.612/143.317/135.945 after: medians
+189.849 → 140.612 seconds (25.9% lower). This directory metric excludes interpreter
+startup and test import; neither result measures the default parallel gate. Shared
+host timing varies, so the raw three-run samples accompany the medians.
+
+All six serial gates passed: before 558/689/212/8 tests and after 558/698/212/8
+across the four maintained directories, each with one skip and eight excluded
+modules. All tracked inputs matched their recorded commit and stayed unchanged.
+The interpreter/package snapshot captured during the first baseline matched after
+the sixth run; it is not a retroactive launch fingerprint. Private raw logs and
+source-bound receipts were retained. Independent method review prompted separate
+validation of all six zero exits, exact directory inventories and terminal summaries,
+including a negative parser check that prevents attribution across CHECK blocks.
+The earlier interrupted baseline remains unqualified; it is not one of these six
+measurements. No model/native/live qualification is implied.
 
 Current Autowork executes repository tasks in the current session without Kanban
 setup or native-card transitions. Its direct-execution, recovery and isolated

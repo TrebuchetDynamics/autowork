@@ -121,7 +121,13 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-072: 20cbcc5 vs 9f84355, /usr/bin/time python3 scripts/check.py --jobs 1, three interleaved runs each; all six passed 558/689-or-698/212/8 tests, one skip/eight excluded; serial wall medians 468.81 to 420.92 s, Autowork unittest medians 189.849 to 140.612 s; recorded inputs match commits; offline only",
+          "result": "pass"
+        }
+      ],
       "id": "TEST-SUITE",
       "priority": 20,
       "source": "docs/project.md#test-suite-optimization-method-2026-10-15",
@@ -571,14 +577,6 @@
     {
       "depends_on": [],
       "goal": "TEST-SUITE",
-      "id": "TOOLSET-072",
-      "section": "Next",
-      "status": "open",
-      "title": "Cache the check receipt runtime inventory without losing drift detection"
-    },
-    {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
       "id": "TOOLSET-073",
       "section": "Next",
       "status": "open",
@@ -1019,6 +1017,14 @@
       "section": "Done",
       "status": "done",
       "title": "Advertise Impeccable and LGTM in the Telegram menu"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-072",
+      "section": "Done",
+      "status": "done",
+      "title": "Cache the check receipt runtime inventory without losing drift detection"
     },
     {
       "depends_on": [],
