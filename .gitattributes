@@ -1,0 +1,3 @@
+# Every change adds its entry at the top of the same CHANGELOG section, so two
+# sessions committing in parallel always collided there. Keep both sides' lines.
+CHANGELOG.md merge=union
