@@ -65,6 +65,10 @@ explicit read-only runs write nothing.
    the repository's conventions; do not manufacture a Hermes card or receipt. Follow
    repository integration policy and existing authority. Push/deploy requires its
    own authorization; never override host approvals or actual live-safety gates.
+   Finish [worktree closeout](../../../skills/autowork/references/worktree-closeout.md):
+   verify integration on the canonical `main` or `master`, then remove finished owned
+   task/integration worktrees. Preserve active, dirty, unmerged and recovery-bearing
+   worktrees; report integration/cleanup pending until the remaining steps succeed.
 5. Reconcile task status and evidence in TODO.md and any existing goals.json. Do not
    close a whole feature from a partial slice. Report completed task, checks, commit,
    next task and exact remaining blocker. Default is one completed slice; continue

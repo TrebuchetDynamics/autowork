@@ -1033,6 +1033,18 @@ results one at a time, and marks a task done only after the integrated result pa
 validation. Sequential Autowork must keep working as it does today. Core principle:
 parallelize independent implementation, not repository authority.
 
+Owner addition: task worktrees are temporary. Verified results must reach the
+canonical default branch (`main` or `master` as actually configured), followed by
+removal of finished owned task and integration worktrees. Many active worktrees
+are acceptable; abandoned finished worktrees are not the desired steady state.
+Preserve active, dirty, locked, unmerged and recovery-bearing worktrees, and report
+integration or cleanup pending rather than falsely claiming full closeout. Apply
+the [worktree closeout contract](../skills/autowork/references/worktree-closeout.md)
+to sequential and parallel work. This adds no push authority or bulk deletion of
+historical worktrees. TOOLSET-088-a7 owns remaining automated parallel integration/
+cleanup; TOOLSET-090-2d owns its host documentation. Their existing statuses and
+runtime qualification remain unchanged by this instruction update.
+
 Findings (source as of `89549d2`):
 - `goals.py eligible()` already returns every eligible task in priority order
   (focus, section, recorded TODO order, goal priority), but it keeps `in_progress`
