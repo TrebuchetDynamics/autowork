@@ -757,6 +757,15 @@ close_task() {  # archive an integrated task and commit the coordinator files
     SETTLED=1
   else
     result=$(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")
+    # Its TODO entry was rewritten after the merge: the merge stays in main and the
+    # new entry is new work, so retire the slot instead of blocking on it forever.
+    if [[ $result == 'task contract changed since integration; no close' ]] &&
+        [[ $(owned --parallel-set-aside "$id" | jq -r .outcome 2>/dev/null) == SET_ASIDE ]]; then
+      say "$id: its TODO entry changed after integration; the merged work stays in main and the task is queued again under its new entry"
+      SEEN[$id]=pending
+      SETTLED=1
+      return
+    fi
     [[ ${SEEN["close-$id"]:-} == "$result" ]] || say "$id: could not close: $result"
     SEEN["close-$id"]=$result
   fi

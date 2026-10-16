@@ -304,14 +304,18 @@ def dispatch_locked(args, repo, common, count, template, host):
     closed = retired(repo)
     occupying = [s for s in current if s['state'] in OCCUPYING
                  and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
-    running = [by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}}) for s in occupying]
+    contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
+    # A second failure gets no further attempt: it waits for a person, not the pool.
+    parked = [s for s in occupying if state.exhausted(s)]
+    running = [contract(s) for s in occupying if s not in parked]
     live = [s for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s)]
     restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released')
                    and (s['attempt'] == 1 or s.get('paused'))}
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
-                                  or t['id'] in restartable], running, all_tasks=everything)
+                                  or t['id'] in restartable], running, all_tasks=everything,
+                                 parked=[contract(s) for s in parked])
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

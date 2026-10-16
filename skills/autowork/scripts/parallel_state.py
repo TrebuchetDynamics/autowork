@@ -251,6 +251,11 @@ def readoptable(slot):
             and str(first.get('reason', '')).startswith(SCOPE_HOLD))
 
 
+def exhausted(slot):
+    """A held slot with no attempt left: it waits for a person, not for the pool."""
+    return slot['state'] == 'held' and slot['attempt'] >= 2 and not readoptable(slot)
+
+
 def readopt(common, old):
     """Offer a first attempt's held commit to integration once more.
 

@@ -89,7 +89,8 @@ def verify_scope(repo, common, slot, contracts, files):
     task = contracts[slot['task_id']]
     others: list[list[str]] = [list(dispatch.COORDINATOR_FILES)]
     for other in state.slots(common):
-        if other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed'):
+        # An exhausted hold waits for a person; the planner already lets overlap past it.
+        if other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed') or state.exhausted(other):
             continue
         if other.get('commit'):
             others.append(changed(repo, other['baseline'], other['commit']))
@@ -326,9 +327,11 @@ def require_task_contract(items, expected, *, archived=False):
     if len(items) != 1:
         raise ValueError('task contract provenance missing or ambiguous; no close')
     body, mark, _ = items[0]
+    # A live body may already read `Status: done` with its box unchecked: an earlier
+    # close that wrote the status but missed a bold `**ID**` checkbox.
     if ((archived and mark.lower() != 'x') or body.strip() not in
-            ({expected, closed} if mark.lower() == 'x' else {expected})):
-        raise ValueError('task contract changed since integration; no close')
+            ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
+        raise ValueError(CONTRACT_CHANGED)
 
 
 def close(repo, owner_pid, task):
@@ -387,6 +390,76 @@ def close(repo, owner_pid, task):
         require_task_contract(archived.get(task, []), expected_contract, archived=True)
         slot = state.change(common, slot, 'closed', {})
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
+
+
+CONTRACT_CHANGED = 'task contract changed since integration; no close'
+
+
+def set_aside(repo, owner_pid, task):
+    """Retire a slot that can never finish, so its task can dispatch fresh.
+
+    Only for a held slot with no attempt left, or an integrated one whose TODO
+    entry was rewritten after validation (its merge stays in main; the new entry
+    is new work). Every attempt's worktree and branch is kept, renamed with a
+    ``-set-aside-N`` suffix, and the slot record and its data move to
+    ``slot-history/TASK/N``; the next refill treats the task as never dispatched.
+    """
+    repo, common = context(repo, owner_pid)
+    with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'), \
+            execution.lock(common / 'writer.lock'):
+        state.require_owner(common, owner_pid)
+        slot = slot_for(common, task)
+        if slot is None or state.worker_live(slot):
+            raise ValueError('set-aside needs an existing slot with no live worker')
+        if slot['state'] == 'integrated':
+            current = execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(task, [])
+            try:
+                require_task_contract(current, (slot.get('integration') or {}).get('task_contract', ''))
+            except ValueError as exc:
+                if str(exc) != CONTRACT_CHANGED:
+                    raise
+            else:
+                raise ValueError('integrated task still matches its contract; close it instead')
+        elif not state.exhausted(slot):
+            raise ValueError('set-aside is only for a held slot with no attempt left or an integrated '
+                             'task whose TODO entry changed')
+        history = execution.safe_path(common / 'slot-history' / task)
+        number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
+        target = history / str(number)
+        pairs = []
+        for attempt in [*slot.get('previous_attempts', []), slot]:
+            pair = (attempt.get('worktree'), attempt.get('branch'))
+            if pair[1] and pair not in pairs:
+                pairs.append(pair)
+        moved = []
+        try:
+            for worktree, branch in pairs:
+                suffix = f'-set-aside-{number}'
+                record = {'worktree': worktree, 'branch': branch}
+                if worktree and Path(worktree).is_dir():
+                    record['worktree_now'] = worktree + suffix
+                    git(repo, 'worktree', 'move', worktree, record['worktree_now'])
+                if git(repo, 'branch', '--list', branch):
+                    record['branch_now'] = branch + suffix
+                    git(repo, 'branch', '-m', branch, record['branch_now'])
+                moved.append(record)
+        except ValueError:
+            for record in reversed(moved):  # Leave names as they were; nothing else changed yet.
+                if 'branch_now' in record:
+                    git(repo, 'branch', '-m', record['branch_now'], record['branch'])
+                if 'worktree_now' in record:
+                    git(repo, 'worktree', 'move', record['worktree_now'], record['worktree'])
+            raise
+        target.mkdir(parents=True, mode=0o700)
+        data = common / 'slot-data' / task
+        if data.exists():
+            data.rename(target / 'slot-data')
+        execution.save(target / 'slot.json', dict(slot, set_aside={'renamed': moved}))
+        state.slot_path(common, task).unlink()
+        state.event(common, 'slot_set_aside', task_id=task, state=slot['state'], renamed=moved,
+                    history=str(target))
+        return {'outcome': 'SET_ASIDE', 'task': task, 'previous_state': slot['state'],
+                'renamed': moved, 'history': str(target)}
 
 
 def cleanup_worker(repo, common, slot):

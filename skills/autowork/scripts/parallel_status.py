@@ -10,6 +10,7 @@ from pathlib import Path
 import time
 
 import parallel_dispatch as dispatch
+import parallel_plan
 import parallel_state as state
 import task_execution as execution
 
@@ -113,9 +114,8 @@ def pending_tasks(repo, known=()):
         if task in done or section not in ('Now', 'Next'):
             continue
         fields = goals.task_fields(body)
-        deps = fields.get('Dependencies', 'None.').strip().strip('.')
-        unresolved = [] if re.split(r';|\.\s', deps)[0].lower() in ('none', 'none required', '—', '-', '') else [
-            dep for dep in re.findall(r'[A-Za-z0-9][A-Za-z0-9_-]*', deps) if dep not in done]
+        ids = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), set(bodies) | set(indexed))
+        unresolved = sorted(ids - done)
         running = fields.get('Status', indexed.get(task, {}).get('status', '')).startswith('in_progress')
         reason = ('sequential task in progress' if running else 'dependency: ' + ', '.join(unresolved)
                   if unresolved else 'awaiting dispatch')
