@@ -83,6 +83,20 @@ settlement/cancellation checks when refining that existing design.
 
 ## Next
 
+### TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
+
+- [ ] TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
+- Status: open; owner decision (2026-10-16): the new repository name is `autowork`.
+- Goal: PORTABLE — Align portable workflow discovery.
+- Sources: [README host table](README.md), [cross-host adapters](docs/cross-host.md), [project contract](docs/project.md).
+- Touches: README.md, CHANGELOG.md, AGENTS.md, plugin.yaml, package.json, .claude-plugin/, adapters/, update_bundle.py, update_bundle_native.py, setup_runtime.py, setup_preflight.py, install.sh, install-plugins.sh, install-skills.sh, install_skills.py, scripts/, skills/, tmux/, pi-autowork/, docs/, tests/
+- Scope: Planning happens in any host (Hermes, Claude Code, Codex, Pi); pi-autowork builds the queued work, so the name should not name one host. Rename the project, the plugin and the command namespace to `autowork` in every manifest (`plugin.yaml`, `package.json`, `.claude-plugin/plugin.json` and `marketplace.json`, the Codex and Pi adapters), the upstream URL in `update_bundle.py`, install scripts, docs and tests (about 78 files reference `hermes-toolset`; inventory them with `rg -l hermes-toolset` first). Keep host-specific parts named for their host: the Hermes plugin's fleet, scheduler and Telegram features are documented as Hermes-only. Compatibility for one release: an installation or profile that still carries `hermes-toolset` (plugin name, source in `setup_runtime.py`'s inventory check, hook name, `/hermes-toolset:*` and `$hermes-toolset:*` invocations, install paths) keeps working or is migrated by the supported update path with a clear notice; nothing a running profile holds is renamed out from under it. Record the rename and the alias removal release in CHANGELOG.md.
+- Acceptance: `rg hermes-toolset` returns only the deliberate compatibility aliases, CHANGELOG/history and archived task text; each host's registration test finds the plugin as `autowork`; a fixture of an existing `hermes-toolset` installation passes `setup_runtime.py` checks and updates without losing profile state; README and the logo/hero text use the new name.
+- Checks: `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`; adapter registration tests; `docs.py check`. Registration checks do not prove live installs on the hosts.
+- Dependencies: none.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: The GitHub repository rename, the local checkout directory rename, marketplace republication and updating installed profiles are owner/live steps, not done by this task; record them as a pending live follow-up. No push; no direct edits in fleet repositories; preserve per-profile job state and existing `~/.config/pi-autowork/` settings.
+
 ### TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
 
 - [ ] TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
@@ -229,20 +243,6 @@ settlement/cancellation checks when refining that existing design.
 - Ownership: Coordinator with that access; no active claim.
 - Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
 - Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
-
-### TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
-
-- [ ] TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
-- Status: open; owner decision (2026-10-16): the new repository name is `autowork`.
-- Goal: PORTABLE — Align portable workflow discovery.
-- Sources: [README host table](README.md), [cross-host adapters](docs/cross-host.md), [project contract](docs/project.md).
-- Touches: README.md, CHANGELOG.md, AGENTS.md, plugin.yaml, package.json, .claude-plugin/, adapters/, update_bundle.py, update_bundle_native.py, setup_runtime.py, setup_preflight.py, install.sh, install-plugins.sh, install-skills.sh, install_skills.py, scripts/, skills/, tmux/, pi-autowork/, docs/, tests/
-- Scope: Planning happens in any host (Hermes, Claude Code, Codex, Pi); pi-autowork builds the queued work, so the name should not name one host. Rename the project, the plugin and the command namespace to `autowork` in every manifest (`plugin.yaml`, `package.json`, `.claude-plugin/plugin.json` and `marketplace.json`, the Codex and Pi adapters), the upstream URL in `update_bundle.py`, install scripts, docs and tests (about 78 files reference `hermes-toolset`; inventory them with `rg -l hermes-toolset` first). Keep host-specific parts named for their host: the Hermes plugin's fleet, scheduler and Telegram features are documented as Hermes-only. Compatibility for one release: an installation or profile that still carries `hermes-toolset` (plugin name, source in `setup_runtime.py`'s inventory check, hook name, `/hermes-toolset:*` and `$hermes-toolset:*` invocations, install paths) keeps working or is migrated by the supported update path with a clear notice; nothing a running profile holds is renamed out from under it. Record the rename and the alias removal release in CHANGELOG.md.
-- Acceptance: `rg hermes-toolset` returns only the deliberate compatibility aliases, CHANGELOG/history and archived task text; each host's registration test finds the plugin as `autowork`; a fixture of an existing `hermes-toolset` installation passes `setup_runtime.py` checks and updates without losing profile state; README and the logo/hero text use the new name.
-- Checks: `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`; adapter registration tests; `docs.py check`. Registration checks do not prove live installs on the hosts.
-- Dependencies: none.
-- Ownership: Toolset coordinator under the owner's request.
-- Exclusions: The GitHub repository rename, the local checkout directory rename, marketplace republication and updating installed profiles are owner/live steps, not done by this task; record them as a pending live follow-up. No push; no direct edits in fleet repositories; preserve per-profile job state and existing `~/.config/pi-autowork/` settings.
 
 ## Needs decision
 
