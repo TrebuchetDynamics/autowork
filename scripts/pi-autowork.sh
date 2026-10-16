@@ -820,13 +820,13 @@ infer_touches() {
     # A task judged unboundable is asked again after a day, not every cycle.
     jq -e --arg id "$id" --arg now "$(date +%s)" '.[$id] // 0 | . > ($now | tonumber)' "$STATE/touches.json" >/dev/null 2>&1 && continue
     pi_job touches "$id" "$INTEG" \
-      "Plan the file scope of task $id in $INTEG so it can run beside other tasks. Read its entry in TODO.md and the repository layout. List the repository-relative files, directories (ending in /) or globs this task will need to change, including its tests, as narrowly as possible but completely; prefer a component's directory over guessing single files. Never list TODO.md, TODO.archive.md, goals.json or CHANGELOG.md. If the task needs live, manual or device access, or its scope cannot be bounded, answer NONE. Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or PI_AUTOWORK_TOUCHES: NONE" \
+      "Plan the file scope of task $id in $INTEG so it can run beside other tasks. Read its entry in TODO.md, then the files and directories its Sources, Scope and acceptance name, and the repository layout around them. List the repository-relative files, directories (ending in /) or globs the task's change will edit, including its tests and docs; prefer a component's directory over guessing single files, and when unsure widen to the owning directories rather than give up: a worker that edits outside the list is only held and retried alone. Scope is about which files change, not how the result is checked: a task verified on a device, emulator, screenshot harness or live service still lists the code and test files it edits. Never list TODO.md, TODO.archive.md, goals.json or CHANGELOG.md. Answer NONE only when the task edits no repository file (purely live, manual or device operation) or would edit files across most of the repository, and give the reason. Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or PI_AUTOWORK_TOUCHES: NONE - reason" \
       "pi-autowork-touches-$(safe_name "$id")-$(date +%Y%m%d%H%M%S)" 900 --tools read,grep,find,ls
     if [[ -n $(dirty "$INTEG") ]]; then  # a planning pass must not change the session
       git -C "$INTEG" reset -q --hard HEAD && git -C "$INTEG" clean -qfd
     fi
     answer=$(grep -m1 '^PI_AUTOWORK_TOUCHES:' <<<"$JOB_TEXT" | sed 's/^PI_AUTOWORK_TOUCHES:[[:space:]]*//')
-    if ((JOB_OK)) && [[ -n $answer && $answer != NONE ]] &&
+    if ((JOB_OK)) && [[ -n $answer && ! $answer =~ ^NONE([^[:alnum:]_./]|$) ]] &&
        recorded=$(python3 "$TOUCHES_HELPER" apply "$INTEG" "$TOOLSET" "$id" "$answer" 2>>"$STATE/engine.err"); then
       git -C "$INTEG" add -- TODO.md
       git -C "$INTEG" commit -q -m "docs(tasks): declare Touches for $id (pi-autowork)" -m "Proposed by a read-only planning pass; the engine holds any change outside it."

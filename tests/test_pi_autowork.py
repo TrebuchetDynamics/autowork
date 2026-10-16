@@ -98,7 +98,7 @@ def work():
     report(git('rev-parse', 'HEAD').stdout.strip())
 emit({'type': 'session', 'version': 3, 'id': opts.get('--session-id'), 'cwd': os.getcwd()})
 if role == 'touches':
-    finish(text='PI_AUTOWORK_TOUCHES: ' + ('NONE' if behavior == 'none' else task + '.txt'))
+    finish(text='PI_AUTOWORK_TOUCHES: ' + ('NONE - only a live device operation' if behavior == 'none' else task + '.txt'))
 elif role == 'verify':
     if behavior == 'tamper':
         open('tampered.txt', 'w').write('x\n')
@@ -469,6 +469,10 @@ class EngineTests(Fixture):
         self.assertIn('  Touches: A.txt', (self.repo / 'TODO.md').read_text()
                       + ((self.repo / 'TODO.archive.md').read_text() if (self.repo / 'TODO.archive.md').exists() else ''))
         self.assertTrue(all(r['tools'] == 'read,grep,find,ls' for r in self.runs('touches')))
+        # Device- or screenshot-verified work still has a bounded edit scope (TASK-013 answered NONE).
+        prompt = self.runs('touches')[0]['message']
+        self.assertIn('not how the result is checked', prompt)
+        self.assertIn('NONE - reason', prompt)
 
     def test_an_unboundable_task_runs_alone_and_is_not_asked_again(self):
         text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
@@ -477,8 +481,9 @@ class EngineTests(Fixture):
         self.plan({'touches:A': ['none']})
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: runs alone (no Touches proposed: NONE)', result.stdout)
+        self.assertIn('A: runs alone (no Touches proposed: NONE - only a live device operation)', result.stdout)
         self.assertEqual(len(self.runs('touches')), 1)
+        self.assertNotIn('Touches: NONE', (self.repo / 'TODO.md').read_text())
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_budget_persists_across_restarts(self):

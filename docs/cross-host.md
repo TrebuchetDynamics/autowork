@@ -232,8 +232,10 @@ How it works:
   but not unrelated ones. So that most tasks can run in parallel, the runner asks a
   read-only Pi pass to plan the file scope of each runnable task that lacks
   `Touches:` and records the paths it proposes in the session branch; the engine then
-  holds any change outside them. A task answered `NONE` (live, manual or unbounded
-  work) runs alone and is asked again after 24 hours. A task without `Touches:` may
+  holds any change outside them. Scope means the files a task edits, so device- or
+  screenshot-verified work still gets paths. A task answered `NONE` (it edits no
+  repository file, or files across most of the repository; the log shows the reason)
+  runs alone and is asked again after 24 hours. A task without `Touches:` may
   change any file except the coordinator's and other slots'. When tasks remain but none can start, the log says `No task
   can start now` with the reasons; the runner keeps waiting, and `--once` or
   `--until-empty` exit 1 instead of 0. Each worker is `pi-autowork.sh --worker`: Pi with an
