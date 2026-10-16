@@ -61,8 +61,10 @@ class ProjectStatusTests(unittest.TestCase):
 
     def test_live_qualification_stays_open_and_separate(self):
         states = {task["id"]: task["status"] for task in json.loads((ROOT / "goals.json").read_text())["tasks"]}
-        for task in ("TOOLSET-003", "TOOLSET-011", "TOOLSET-013"):
+        for task in ("TOOLSET-003", "TOOLSET-011"):
             self.assertEqual(states[task], "open", task)
+        # Superseded by real-host timing (2026-10-15 replan); never closed as passed.
+        self.assertEqual(states["TOOLSET-013"], "superseded")
         self.assertIn("Measured native qualification remains pending", PROJECT_TEXT)
         self.assertIn("externally enforced spending/descendant limits", PROJECT_TEXT)
         self.assertIn("not actual model startup or universal latency", PROJECT_TEXT)

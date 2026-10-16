@@ -99,6 +99,14 @@ def entries(text, prose, known_ids):
     return sorted(combined), headings
 
 
+def navigation(text, prose, known_ids):
+    """Prose outside task bodies; task sources cannot designate the archive owner."""
+    chars = list(prose)
+    for start, end, _, _ in entries(text, prose, known_ids)[0]:
+        chars[start:end] = re.sub(r'[^\r\n]', ' ', prose[start:end])
+    return ''.join(chars)
+
+
 def rebased_references(repo, owner, block):
     """Keep original source bytes and add navigable links for a nested archive."""
     if owner.parent == Path('.'):

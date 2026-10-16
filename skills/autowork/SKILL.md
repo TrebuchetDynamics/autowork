@@ -44,7 +44,9 @@ review step. Keep Hermes Agent unchanged.
    `goals.py next <repo> --json` and `goals.py focus <repo> --json` from Docs Sync;
    reconcile inconsistent source evidence without inventing acceptance or ownership.
    Do not run a docs-sync prepass for a usable backlog task. Named --tasks/--plan
-   scope stays exact. Do not create a second board or require goals.json for a
+   scope stays exact. A task Autowork records or repairs includes `Touches:` from the
+   inspected seam ([TODO rules](../shared/TODO-WORKCENTER.md)), so parallel workers can
+   run it beside others. Do not create a second board or require goals.json for a
    TODO-only contributor.
 3. **Prepare only missing inputs, then implement.** Derive a short contract from
    the task's objective, scope/exclusions, acceptance/checks, dependencies and sources.
@@ -77,18 +79,34 @@ review step. Keep Hermes Agent unchanged.
    independent review where required and source freshness still apply. Reuse checks
    only for matching inputs when policy allows; rerun changed-input and mandatory
    gates. A missing required review holds completion, not unrelated authorized work.
-   When aggregate acceptance is blocked, recover independently useful in-scope fixes
-   from an idle candidate instead of repeating the blocker report. Verify provenance
-   and current writer inactivity, compare adopted bytes, rerun affected checks and
-   obtain required review. Integrate a partial slice only when repository policy
-   permits it; record its commit and remaining failed gates under the original TODO
-   ID. Never call focused passes a full-suite pass, waive a gate, close the parent
-   task, or infer dependency/upstream/publication authority from partial delivery.
+   Before another partial delivery, compare it with the exact acceptance criterion
+   still preventing closure: name the positive capability it delivers or the required
+   gate it removes. Do not keep selecting adjacent parser, cancellation or refusal
+   controls while the same missing trust input or runtime capability stays untouched;
+   growing commit/test counts can conceal an unchanged critical path. Repair genuine
+   security or data-loss defects, but do not use incidental hardening as a substitute
+   for finishing the selected outcome. If the remaining capability is unavailable,
+   make the existing fix-or-skip disposition and advance dependency-ready independent
+   work within scope; never imply that refusal-only tests supply the positive path.
+   Recover independently useful fixes from an idle candidate only after verifying
+   provenance and current writer inactivity; compare adopted bytes, rerun affected
+   checks and obtain required review. Prefer one coherent final candidate and the
+   union of mandatory affected checks over a full rebuild/review for each tiny guard.
+   Reuse a sanitized cache/target and check receipts only when their bound inputs
+   match; retain required mutations, independent review and integration checks.
+   Integrate a partial slice only when repository policy permits it; record its
+   commit and exact remaining gates under the original TODO ID. Never call focused
+   passes a full-suite pass, waive a gate, close the parent, or infer dependency,
+   publication or upstream authority from partial delivery.
 5. **Close out.** Commit attributable verified paths locally unless forbidden.
    Use ordinary Git, repository review and integration policy. Inspect fresh target
    state and serialize canonical writes; preserve unrelated dirty work. Never push,
    deploy, publish, spend money, place trades or broaden live authority without its
    explicit scoped authorization. Report actual commit/review/integration separately.
+   For worktree-backed work, finish [worktree closeout](references/worktree-closeout.md):
+   verify integration on the canonical `main` or `master`, then remove finished owned
+   task/integration worktrees. Preserve active, dirty, unmerged or recovery-bearing
+   worktrees; report integration/cleanup pending instead of claiming full closeout.
    Reconcile TODO and any existing goals.json only after verified acceptance, then
    archive completed bodies to `TODO.archive.md` (or the established archive) with
    `goals.py archive <repo>` (without an index use `--verified-tasks ID1,ID2`).
@@ -158,6 +176,17 @@ Named-only jobs cannot widen scope. Empty queues, green tests or unchanged HEAD
 are not proof of exhaustion; record `work_search` evidence and rejected candidates.
 This policy is not a runtime guarantee of progress. No fabricated busywork.
 
+## Parallel workers (opt-in)
+
+Only when the caller asks for parallel work, run `owner_cycle.py REPO --apply
+--parallel [N] --owner-pid PID`: it starts headless host workers, one task each in
+its own worktree, for tasks whose `Touches:` and `Resources:` prove independence.
+Then loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
+--timeout S --run CHECK...` (`--run` last), `--parallel-close TASK`, commit the
+coordinator files, and refill with `--apply --parallel`; release only after no slot
+is left to integrate or close. Workers never select, merge, close or push. `SEQUENTIAL_FALLBACK` means run the returned contract the
+ordinary way. Follow [parallel workers](references/parallel-workers.md).
+
 ## Scheduled work and reporting
 
 Autowork does not create schedules. Existing jobs use [scheduled policy](references/scheduled-policy.md)
@@ -192,7 +221,8 @@ references/owner-cycle.md, references/scheduled-policy.md, references/cron-autoh
 references/repository-maintenance.md, references/dispatch-and-reporting.md,
 references/delivery-batches.md, references/accepted-plan-execution.md,
 references/whole-spec-execution.md, references/backlog-planning.md,
-references/ponytail.md, references/discovery.md, references/profile-feedback.md.
+references/parallel-workers.md, references/ponytail.md, references/discovery.md,
+references/profile-feedback.md.
 
 The following retained material documents historical native execution and evidence.
 Its card-specific commands, gates and transitions are not instructions for current

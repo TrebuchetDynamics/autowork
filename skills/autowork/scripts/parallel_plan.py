@@ -138,15 +138,23 @@ def plan(tasks, running=(), *, all_tasks=()):
     repository contract via ``all_tasks``: this supplies transitive dependency
     edges and in_progress tasks which are not in the runnable list. No capacity
     limit is applied here; the dispatcher consumes the returned ordered prefix.
+
+    An in_progress task without a live slot is a claim, not running work: the
+    dispatcher only plans while it holds the repository lease, which excludes a
+    live sequential Autowork owner. A claim is never dispatched and still blocks
+    its dependents and tasks whose declared Touches or Resources overlap it, but
+    its missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
+    32 handed-off claims without Touches blocked every task).
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
     """
     tasks, running, all_tasks = list(tasks), list(running), list(all_tasks)
     known = {t['id']: t for t in [*all_tasks, *tasks, *running]}
     active = {t['id']: t for t in running}
+    claims = {}
     for t in known.values():
         status = re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0]
-        if status == 'in_progress':
-            active.setdefault(t['id'], t)
+        if status == 'in_progress' and t['id'] not in active:
+            claims[t['id']] = t
 
     def depends(a, b):
         pending, seen = list(_dependencies(a)), set()
@@ -160,9 +168,15 @@ def plan(tasks, running=(), *, all_tasks=()):
                     pending.extend(_dependencies(known[tid]))
         return False
 
-    def conflict(a, b):
+    def conflict(a, b, claim=False):
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
+        if claim:  # idle claim: only declared overlap matters
+            if _shared(_touches(a), _touches(b)):
+                return 'overlapping paths with in_progress ' + b['id']
+            if _resources(a) & _resources(b):
+                return 'shared resource with in_progress ' + b['id']
+            return ''
         solo = _solo(a) or _solo(b)
         if solo:
             return solo + ' (beside ' + b['id'] + ')'
@@ -175,11 +189,12 @@ def plan(tasks, running=(), *, all_tasks=()):
     dispatch, waiting, stopped = [], [], ''
     for task in tasks:
         tid = task['id']
-        if tid in active:
+        if tid in active or tid in claims:
             waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress'})
             continue
         reason = stopped or next((r for other in [*active.values(), *dispatch]
-                                  if (r := conflict(task, other))), '')
+                                  if (r := conflict(task, other))), '') \
+            or next((r for other in claims.values() if (r := conflict(task, other, claim=True))), '')
         if reason:
             stopped = 'priority waits for ' + tid if not stopped else stopped
             waiting.append({'id': tid, 'reason': reason})

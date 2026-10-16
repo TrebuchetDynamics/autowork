@@ -29,7 +29,7 @@ Save explicit answers in existing requirement/spec documents when permitted. At
 finish, summarize scope, non-goals, acceptance and open questions. Ask for approval
 only if your synthesis adds material unaccepted intent. Reconcile accepted decisions
 through [Docs Sync](../docs-sync/SKILL.md): full TODO.md tasks, priorities,
-dependencies and checks. Run the planning craft's builder check on the saved tasks
+dependencies, checks and `Touches:`. Run the planning craft's builder check on the saved tasks
 before reporting them ready. Do not start implementation merely because a plan exists.
 
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):

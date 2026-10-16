@@ -365,8 +365,13 @@ key separate because the consumer checker matches field labels exactly. List act
 prerequisite IDs there, or explicitly declare `None`; the consumer expects the task's
 `depends_on` plus its goal's `depends_on`, and treats any known ID on that line as a
 prerequisite. Put coordination, history, prior evidence and self-references in
-separate fields. Keep each field label unique: a duplicated label (e.g. a second
-`Acceptance:`) makes the consumer drop the field. Only top-level checkbox entries
+separate fields. Add `Touches:` to every executable task you create or rewrite, and
+`Resources:` where needed, per the [shared TODO rules](../shared/TODO-WORKCENTER.md):
+widen to owning directories when unsure, or record `Resources: exclusive` with a
+reason when no path can be bounded. Parallel Autowork admits a task beside others
+only from these fields. Keep each field label
+unique: a duplicated label (e.g. a second `Acceptance:`) makes the consumer drop
+the field. Only top-level checkbox entries
 are bodies: when repairing a heading-only queue, keep each `### ID — Title` heading
 for anchors and add one `- [ ] ID — Title` marker below it. Under a combined
 `## Now / Next` heading, give each body one `Section: Now.` or `Section: Next.`

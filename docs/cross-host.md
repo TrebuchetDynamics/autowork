@@ -142,12 +142,199 @@ without a warning. Check `/` completions rather than assuming this package repla
 Use Pi's package controls (`pi list`, `pi update --extensions`, `pi remove <source>`)
 for management. Removing the package leaves repository documents and commits intact.
 
+### Run Autowork continuously
+
+[`scripts/pi-autowork.sh`](../scripts/pi-autowork.sh) keeps Autowork running through
+Pi until you stop it. It drives the toolset's own
+[Parallel Autowork engine](../skills/autowork/references/parallel-workers.md): the
+engine picks independent, dependency-ready tasks, runs each in its own Git worktree,
+integrates results one at a time and closes a task only after it is verified. The
+script supplies Pi workers, model choice and fallback, an independent review,
+budgets, a session branch merged into the main branch, locking and a service.
+`TODO.md` (and `goals.json` when present) stay the source of truth.
+
+Prerequisites: Pi with this package installed (above), Node 22, `git`, `jq`,
+`python3`, `flock` and `timeout`, Linux (the engine identifies workers through
+`/proc`), and Pi credentials for both models.
+`pi auth check --provider openai-codex --model gpt-6.1-sol` and
+`pi auth check --provider openrouter --model deepseek/deepseek-v4.1-flash` should
+print `ready`; set `OPENROUTER_API_KEY` or sign in through Pi. The script never
+reads, prints or changes credentials.
+
+Run it from the checkout of the repository's main branch (`main`, `master` or
+`origin/HEAD`'s branch), or name that checkout; it refuses any other branch:
+
+```sh
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --dry-run
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --status
+```
+
+It uses the hermes-toolset package Pi has installed (found with `pi list`) for the
+engine and skills; the banner shows that package's path and revision. Install it from
+the Git source (`pi install git:github.com/TrebuchetDynamics/hermes-toolset`) and
+advance it with `pi update`: a local-path install loads whatever your working
+checkout holds, unreleased commits included.
+
+| Option | Effect |
+| --- | --- |
+| (none) | Run until stopped; when no task is runnable, wait and check again |
+| `--once` | Run one task |
+| `--until-empty` | Exit when no runnable task remains |
+| `--workers N` | Most tasks run at once, 1 to 8 (default 8); free memory and load decide how many start |
+| `--dry-run`, `--status` | Show the repository, models, budget, session and each task's state; change nothing |
+| `--repo PATH` | Work on the repository at `PATH` |
+| `--interval SECONDS` | Idle check interval (default 60) |
+| `--max-cycles N` | Start at most N workers, then finish |
+| `--no-fallback` | Never use the fallback model |
+| `--allow-hermes` | Run beside a Hermes Autowork cron job on the same repository |
+| `--install-service`, `--remove-service` | Run it as a systemd user service (below) |
+
+Environment variables tune the rest (`--help` lists them): the models, worker and
+review timeouts (90 and 30 minutes), `PI_AUTOWORK_VALIDATE` (a command that must pass
+on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
+review), retries, the failure limit, the fallback cooldown, total runtime,
+`PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24), the
+free memory each worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000) and
+`PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
+
+To keep it running in the background, let the script install a systemd user service
+for the repository (run it from that repository, or add `--repo PATH`):
+
+```sh
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
+journalctl --user -u pi-autowork@my-project -f
+systemctl --user stop pi-autowork@my-project
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --remove-service
+```
+
+Each repository gets `pi-autowork@<repository name>.service`, for example
+`pi-autowork@my-project` for `~/git/my-project`. The script writes one template unit,
+`~/.config/systemd/user/pi-autowork@.service`, and `~/.config/pi-autowork/<name>.env`
+holding the repository path, the installing shell's `PATH`, `--workers`,
+`--allow-hermes`, `--no-fallback` and any `PI_AUTOWORK_*` settings, then enables and
+starts the unit. It refuses a name another repository's service already uses, and
+replaces a unit an earlier release named after the escaped path.
+Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
+minute; the runner's own exits (failures, another runner, needs attention) do not.
+Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
+Reinstall after changing settings. The runner keeps itself current: while no task is
+in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
+turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
+across repositories. When the toolset revision changed, by that or any other update,
+a running runner restarts itself on the new release at its next cycle and resumes its
+session; an update whose script does not parse is logged and the running code kept.
+Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
+them, so a changed prompt asks those tasks again, and a pass that gave no answer is
+retried within the hour.
+
+How it works:
+
+- **Tasks and workers.** Each cycle the engine plans the queue: a task runs beside
+  others only when it declares `Touches:` paths that do not overlap theirs, shares no
+  `Resources:` and has its dependencies closed; anything else runs alone, and TODO.md
+  priority decides order. An empty queue costs no model call, and nothing asks
+  Autowork to invent work. A task another session marked `in_progress` is never
+  dispatched and holds back tasks that depend on it or declare overlapping `Touches:`,
+  but not unrelated ones. So that most tasks can run in parallel, the runner asks a
+  read-only Pi pass to plan the file scope of each runnable task that lacks
+  `Touches:` and records the paths it proposes in the session branch; the engine then
+  holds any change outside them. Scope means the files a task edits, so device- or
+  screenshot-verified work still gets paths. A task answered `NONE` (it edits no
+  repository file, or files across most of the repository; the log shows the reason)
+  runs alone and is asked again after 24 hours. A task without `Touches:` may
+  change any file except the coordinator's and other slots'. When tasks remain but none can start, the log says `No task
+  can start now` with the reasons; the runner keeps waiting, and `--once` or
+  `--until-empty` exit 1 instead of 0. Each worker is `pi-autowork.sh --worker`: Pi with an
+  explicit provider and model, `--no-approve`, the engine's one-task prompt and a
+  session per task attempt. Workers never pick tasks or edit `TODO.md`,
+  `TODO.archive.md`, `goals.json` or `CHANGELOG.md`; only the coordinator does.
+- **Verified integration.** A worker's commit and report are claims. The engine
+  merges each reported task into the session branch one at a time and runs
+  `pi-autowork.sh --verify`: `PI_AUTOWORK_VALIDATE` if set, then a separate read-only
+  Pi review that runs the task's checks against its acceptance; a reviewer that
+  changes any file fails. Only then is the task closed and its TODO update committed.
+  A failed review, a conflict or a file outside `Touches:` holds the task; it keeps
+  its worktree and gets one fresh retry, and a second failure stays held. If the
+  retry of a scope hold makes no commit, the first commit is verified once more.
+- **Task states.** `--status` and the log show each task as `pending`, `running`,
+  `implemented` (reported), `verifying`, `integrated`, `done` or `failed` (held,
+  interrupted or released, with the reason), mapped from the engine's slot states;
+  the TODO.md and `goals.json` contracts do not change.
+- **Session, merged at the end.** The engine works on an integration branch
+  `pi-autowork/<session>` in a worktree under the state directory. When the queue
+  drains or the runner stops, the main branch is merged into it, the main checkout
+  fast-forwards, and the session's worktree and branch are removed. If `main` moved
+  and conflicts, Pi resolves the merge once per session with Git Commit Push;
+  otherwise, or when your uncommitted changes in the main checkout would be
+  overwritten, the runner reports `Merge pending` and keeps the branch for the next
+  end. Nothing is pushed.
+- **Models.** `openai-codex/gpt-6.1-sol` first; the script switches to
+  `openrouter/deepseek/deepseek-v4.1-flash` for 30 minutes when the primary is
+  unauthenticated or a run ends on a provider error (read from Pi's JSON events, even
+  when Pi exits 0), never because a test failed. The fallback resumes the same Pi
+  session, so partial work is reconciled rather than redone. All workers share the
+  cooldown.
+- **Budget.** `runs.jsonl` records every Pi run (workers, reviews and merges, from
+  every process). `PI_AUTOWORK_MAX_COST` limits the reported cost within the last
+  `PI_AUTOWORK_COST_WINDOW` hours, so a restart does not reset it; at the limit no new
+  worker or Pi run starts and running workers finish.
+- **Hermes.** By default the runner refuses a repository that a Hermes Autowork cron
+  job also works on. With `--allow-hermes`, the two share the engine's repository
+  lease: while Pi's coordinator holds it, Hermes Autowork's claim returns `BUSY`, and
+  while Hermes holds a task the runner waits. They never own the same task or write
+  the ledger at once; ledger edits also go through `goals.py`'s repository lock. A
+  Hermes job that commits or merges outside Autowork can still move `main`, which
+  the end-of-session merge handles as above.
+- **Safety.** One runner per repository (a `flock` lock); a second one exits with
+  status 3. Your uncommitted changes in the main checkout are never touched. Pushes
+  from the runner's and workers' Git commands are blocked; this is a guard, not a
+  security boundary, and does not cover other tools such as `gh`. Pi runs with
+  `--no-approve`, so a repository's own Pi extensions do not load; its `AGENTS.md`
+  still does.
+- **Stopping and recovery.** Ctrl+C (and a service stop or restart) first marks the
+  running workers paused, then interrupts their process groups, merges finished work
+  into the main branch and exits 130 within seconds. On the next start the engine
+  reconciles: a paused worker resumes in its worktree on the same attempt, so a stop
+  never spends a task's retry or holds its second attempt; other interrupted or
+  released tasks restart once in the same worktree, a dead worker with a commit is
+  integrated, and live workers are adopted rather than duplicated.
+
+State lives outside the repository, in
+`${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`: `runner.log`,
+`runs.jsonl` (one record per Pi run: role, task, provider, model, seconds, retries,
+fallback reason, tokens, reported cost, redacted error), Pi sessions, `session.json`
+and `worktrees/` (the session's integration worktree and the engine's task
+worktrees). The engine's slots and journal live under `.git/autowork-execution/`.
+Raw Pi output, which contains prompts and code, is not kept. Reported cost uses Pi's
+catalog prices; for a subscription provider such as `openai-codex` it is an
+estimate, not a bill.
+
+Exit status: 0 done, 1 stopped on a failure or blocker, 2 setup error, 3 another
+runner is active, 4 needs attention (merge pending, repository busy, priority drift,
+an engine refusal or a Hermes job), 130 stopped.
+
 ## Behavior and verification
 
 The adapters ask native questions, inspect files, maintain TODO.md, and execute
 through available host tools. Autowork coordinates a useful slice in the current
 session; it does not create timers or promise background workers after the session
-ends. Existing goals.json is synchronized through bundled helpers when applicable.
+ends.
+
+Opt-in [parallel workers](../skills/autowork/references/parallel-workers.md)
+(`--parallel N`) start one headless worker per independent task. Linux only:
+
+| Coordinator host | Parallel workers | Worker command |
+| --- | --- | --- |
+| Hermes | Yes, built-in template | `hermes chat --query-file … --oneshot --in WORKTREE --run-budget …` |
+| Codex | Yes, built-in template | `codex exec -C WORKTREE --sandbox workspace-write --add-dir GIT_COMMON_DIR -` |
+| Pi | Yes, built-in template | `pi -p @PROMPT` |
+| Claude Code | Only with `--worker-command` | none built in; otherwise `SEQUENTIAL_FALLBACK` |
+| Other or undetected | Only with `--worker-host` or `--worker-command` | otherwise `SEQUENTIAL_FALLBACK` |
+
+Templates add no approval or sandbox bypass flags, and a missing worker CLI also
+falls back to sequential execution. These templates are checked against each CLI's
+`--help` and with fake workers offline; real model workers are not yet qualified. Existing goals.json is synchronized through bundled helpers when applicable.
 Python 3 is needed for those helpers; a questions-only interview needs no Python.
 
 No package installs external integrations, modifies approval policies, copies

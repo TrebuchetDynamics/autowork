@@ -29,6 +29,11 @@ TEMPLATES = {
               '--add-dir', '{git_common_dir}', '-'],
     'pi': ['pi', '-p', '@{prompt_file}'],
 }
+# Live qualification (TOOLSET-091-00, 2026-10-15): Codex 0.162.1 workers edit and check
+# the task but cannot commit, because the workspace-write sandbox keeps Git metadata
+# read-only. Without an approval bypass (never added here) they stay sequential-only.
+UNQUALIFIED = {'codex': 'Codex workers cannot commit: its workspace-write sandbox keeps Git metadata read-only '
+                        '(qualified 2026-10-15); pass --worker-command to supply your own worker'}
 HOST_NAMES = {'hermes': 'hermes', 'hermes_cli': 'hermes', 'codex': 'codex', 'pi': 'pi', 'claude': 'claude'}
 OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', 'held', 'interrupted')
 
@@ -78,6 +83,8 @@ def worker_command(args, owner_pid):
         template[1:1] = ['-p', args.worker_profile]
     if shutil.which(template[0]) is None:
         return None, f'worker CLI {template[0]!r} is not installed'
+    if host in UNQUALIFIED:
+        return None, UNQUALIFIED[host]
     return template, host
 
 
@@ -104,7 +111,8 @@ def resource_gate(running, min_free_mb):
 
 
 def data_dir(common, slot):
-    return execution.safe_path(common / 'slot-data' / slot['task_id'] / f'attempt-{slot["attempt"]}')
+    # A readopted slot keeps the first attempt's report and logs.
+    return execution.safe_path(common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}')
 
 
 def meta(common, slot):
@@ -130,7 +138,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False):
         f'- Work only inside {worktree}; change only paths within Touches: {touches}',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
         '  Put a one-line CHANGELOG proposal in the report instead.',
-        '- Run the task\'s relevant offline checks. Use $TMPDIR for temporary files and only',
+        '- Run the task\'s relevant offline checks. Report each check once, with its final result',
+        '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
+        '  holds the task). Use $TMPDIR for temporary files and only',
         '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
         f'- When done, commit once on {branch}. Never push, merge, rebase, switch branches, or touch',
         '  another worktree. A finished commit is not task completion; the coordinator integrates.',
@@ -245,6 +255,24 @@ def fallback(repo, args, reason):
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
 
 
+def retired(repo):
+    """Task IDs closed since their slot stopped: done or superseded in goals.json, or
+    checked off in TODO.md or its archive. A held or interrupted slot of such a task is
+    history and occupies nothing; Plan For Me's supersession of a held second attempt
+    otherwise left a must-run-alone successor waiting beside it for ever."""
+    goals = execution.goals_module()
+    ids = set()
+    if (repo / 'goals.json').is_file():
+        ids.update(t['id'] for t in goals.load(repo).get('tasks', [])
+                   if t.get('status') in ('done', 'superseded'))
+    for name in ('TODO.md', 'TODO.archive.md', 'todo.archive.md'):
+        path = repo / name
+        if path.is_file():
+            ids.update(key for key, items in goals.task_bodies(path.read_text()).items()
+                       if items and items[0][1].lower() == 'x')
+    return ids
+
+
 def contracts(repo, requested=None, plan=None):
     try:
         return execution.select_all(repo, requested, plan)
@@ -273,10 +301,13 @@ def dispatch_locked(args, repo, common, count, template, host):
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
-    occupying = [s for s in current if s['state'] in OCCUPYING]
+    closed = retired(repo)
+    occupying = [s for s in current if s['state'] in OCCUPYING
+                 and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
     running = [by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}}) for s in occupying]
     live = [s for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s)]
-    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released') and s['attempt'] == 1}
+    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released')
+                   and (s['attempt'] == 1 or s.get('paused'))}
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
@@ -300,10 +331,12 @@ def dispatch_locked(args, repo, common, count, template, host):
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
                               baseline=base)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
-        attempt = slot['attempt'] + (1 if previous else 0)
+        attempt = slot['attempt'] + (1 if previous and not previous.get('paused') else 0)
         data = execution.safe_path(common / 'slot-data' / task['id'] / f'attempt-{attempt}')
         data.mkdir(parents=True, exist_ok=True, mode=0o700)
         report = data / 'report.json'
+        if previous and previous.get('paused'):
+            report.unlink(missing_ok=True)  # a resumed attempt reports afresh
         prompt_file = data / 'prompt.md'
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous)))
         index = next(i for i in range(1, HARD_LIMIT + 1) if i not in used)
@@ -331,6 +364,13 @@ def dispatch_locked(args, repo, common, count, template, host):
     slots = [summary(common, s) for s in state.slots(common)]
     active = sum(1 for s in state.slots(common) if s['state'] in ('dispatched', 'running') and state.worker_live(s))
     outcome = 'DISPATCHED' if started else ('WAITING' if active else 'IDLE')
+    with execution.lock(common / 'writer.lock'):
+        state.require_owner(common, args.owner_pid)
+        from parallel_status import pending_tasks
+        pending_ids = {v['id'] for v in waiting}
+        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)})
+                             if v['id'] not in pending_ids]
+        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
             'active_workers': active, 'dispatched': started, 'waiting': waiting,
             'timed_out': [s['task_id'] for s in timeouts], 'slots': slots,
