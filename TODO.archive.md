@@ -1731,3 +1731,21 @@ Source section: Next
 - Dependencies: TOOLSET-088-a7.
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No live host workers (TOOLSET-091-00); no change to sequential output.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-097-57 — Install the Pi runner as a per-repository systemd user service
+
+- [x] TOOLSET-097-57 — Install the Pi runner as a per-repository systemd user service
+- Status: done (2026-10-15). Owner decision: background runners are set up from hermes-toolset, not by hand. `pi-autowork.sh --install-service [--repo PATH] [--allow-hermes]` writes the template unit `pi-autowork@.service` (working directory from the instance, `KillMode=mixed`, `KillSignal=SIGINT`, `SuccessExitStatus=130`, `Restart=on-abnormal`) and a 0600 environment file with the installer's `PATH` and `PI_AUTOWORK_*` settings, then reloads, enables and restarts `pi-autowork@<escaped path>`; it refuses a Hermes Autowork job on the repository without `--allow-hermes` and warns when lingering is off. `--remove-service` disables and stops the instance and removes its environment file. Two tests with a fake `systemctl` cover both; 27 runner tests and ShellCheck pass.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: Service install/remove in the runner, tests and guide; no change to how a run behaves.
+- Acceptance: One command installs and starts a repository's service; stopping it is the runner's graceful stop; deliberate exits do not restart it.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-095-48.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No system-wide units; no automatic installation.

@@ -27,6 +27,9 @@ Options:
   --interval SECONDS   Idle polling interval (default 60)
   --max-cycles N       Stop after N Pi runs
   --no-fallback        Never switch to the fallback model
+  --allow-hermes       Run although a Hermes Autowork cron job targets this repository
+  --install-service    Install and start a systemd user service running this for the repository
+  --remove-service     Stop and remove the repository's service
   --help               Show this help
 
 Environment (optional):
@@ -49,7 +52,7 @@ Exit status: 0 done, 1 stopped on a failure or blocker, 2 setup error,
 EOF
 }
 
-MODE=continuous DRY_RUN=0 REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 FALLBACK_ENABLED=1
+MODE=continuous DRY_RUN=0 REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 FALLBACK_ENABLED=1 SERVICE=''
 while (($#)); do
   case $1 in
     --once) MODE=once ;;
@@ -59,6 +62,9 @@ while (($#)); do
     --interval) INTERVAL=${2:?--interval needs seconds}; shift ;;
     --max-cycles) MAX_CYCLES=${2:?--max-cycles needs a number}; shift ;;
     --no-fallback) FALLBACK_ENABLED=0 ;;
+    --allow-hermes) export PI_AUTOWORK_ALLOW_HERMES=1 ;;
+    --install-service) SERVICE=install ;;
+    --remove-service) SERVICE=remove ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -199,6 +205,70 @@ for path in files:
 PY
 }
 HERMES_JOBS=$(hermes_jobs)
+
+# --- Service ------------------------------------------------------------------
+# One systemd user template serves every repository: pi-autowork@<escaped path>.service.
+# SIGINT is the runner's Ctrl+C: the current Pi run ends, finished work merges, and the
+# next start resumes. Deliberate exits (1, 3, 4) do not restart; crashes and kills do.
+if [[ -n $SERVICE ]]; then
+  ((DRY_RUN)) && die 2 "--dry-run cannot be combined with --install-service or --remove-service"
+  SYSTEMCTL=${PI_AUTOWORK_SYSTEMCTL:-systemctl}
+  UNIT_DIR=${PI_AUTOWORK_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}
+  ENV_DIR=${PI_AUTOWORK_ENV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-autowork}
+  INSTANCE=$(systemd-escape --path "$REPO") || die 2 "systemd-escape is not available"
+  UNIT="pi-autowork@$INSTANCE.service"
+  if [[ $SERVICE == remove ]]; then
+    "$SYSTEMCTL" --user disable --now "$UNIT" || die 1 "Could not stop $UNIT"
+    rm -f "$ENV_DIR/$INSTANCE.env"
+    echo "Removed $UNIT. Its state, kept worktrees and any unmerged session stay in ${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-autowork}."
+    exit 0
+  fi
+  [[ -n $HERMES_JOBS && ${PI_AUTOWORK_ALLOW_HERMES:-0} != 1 ]] &&
+    die 4 "$(printf 'A Hermes Autowork cron job already works on this repository:\n%s\nPause it, or install with --allow-hermes.' "$HERMES_JOBS")"
+  mkdir -p "$UNIT_DIR" "$ENV_DIR" || die 2 "Cannot create $UNIT_DIR or $ENV_DIR"
+  cat >"$UNIT_DIR/pi-autowork@.service.tmp" <<UNIT
+[Unit]
+Description=pi-autowork for %I
+Documentation=https://github.com/TrebuchetDynamics/hermes-toolset/blob/main/docs/cross-host.md#run-autowork-continuously
+After=network-online.target
+
+[Service]
+WorkingDirectory=%I
+EnvironmentFile=-$ENV_DIR/%i.env
+ExecStart=/bin/bash $SCRIPT
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=120
+SuccessExitStatus=130
+Restart=on-abnormal
+RestartSec=60
+
+[Install]
+WantedBy=default.target
+UNIT
+  mv "$UNIT_DIR/pi-autowork@.service.tmp" "$UNIT_DIR/pi-autowork@.service"
+  # The service sees this login's PATH (Pi, Node, Flutter and other tools); credentials stay in Pi.
+  umask 077
+  {
+    printf 'PATH=%s\n' "$PATH"
+    [[ ${PI_AUTOWORK_ALLOW_HERMES:-0} == 1 ]] && echo 'PI_AUTOWORK_ALLOW_HERMES=1'
+    for name in PI_AUTOWORK_PRIMARY PI_AUTOWORK_FALLBACK PI_AUTOWORK_TASK_TIMEOUT PI_AUTOWORK_MAX_RETRIES \
+                PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME \
+                PI_AUTOWORK_MAX_COST PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET; do
+      [[ -n ${!name:-} ]] && printf '%s=%s\n' "$name" "${!name}"
+    done
+  } >"$ENV_DIR/$INSTANCE.env"
+  "$SYSTEMCTL" --user daemon-reload || die 1 "systemctl --user daemon-reload failed"
+  "$SYSTEMCTL" --user enable "$UNIT" >/dev/null 2>&1 || die 1 "Could not enable $UNIT"
+  "$SYSTEMCTL" --user restart "$UNIT" || die 1 "Could not start $UNIT"
+  echo "Installed and started $UNIT for $REPO (merges into $BASE)."
+  echo "Runs: $SCRIPT"
+  echo "Logs: journalctl --user -u '$UNIT' -f"
+  echo "Stop: systemctl --user stop '$UNIT' (finishes the current step and merges); remove: $0 --remove-service --repo $REPO"
+  linger=$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)
+  [[ $linger == yes ]] || echo "Note: user lingering is off, so the service stops at logout; enable it with: loginctl enable-linger $USER"
+  exit 0
+fi
 
 # --- State --------------------------------------------------------------------
 STATE_ROOT=${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-autowork}

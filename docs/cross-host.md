@@ -191,6 +191,26 @@ Environment variables tune the rest, listed by `--help`: the models
 retries (3), consecutive failures before exiting (3), fallback cooldown
 (30 minutes), total runtime and reported cost.
 
+To keep it running in the background, let the script install a systemd user service
+for the repository (run it from that repository, or add `--repo PATH`):
+
+```sh
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
+journalctl --user -u 'pi-autowork@*' -f
+systemctl --user stop 'pi-autowork@<escaped path>.service'
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --remove-service
+```
+
+It writes one template unit, `~/.config/systemd/user/pi-autowork@.service`, and a
+per-repository environment file in `~/.config/pi-autowork/` holding the installing
+shell's `PATH` and any `PI_AUTOWORK_*` settings (add `--allow-hermes` to keep running
+beside a Hermes Autowork job), then enables and starts `pi-autowork@<escaped path>`.
+Stopping sends SIGINT, the runner's Ctrl+C: the current Pi run ends, finished tasks
+merge, and the next start resumes the interrupted one. Crashes and kills restart
+after a minute; the runner's own exits (failures, another runner, needs attention)
+do not. Without user lingering (`loginctl enable-linger $USER`) the service stops at
+logout. Reinstall after changing settings; `pi update` updates the script it runs.
+
 How it works:
 
 - **Queue.** Before each run it asks `goals.py next` for the next runnable task, so

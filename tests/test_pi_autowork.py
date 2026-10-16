@@ -502,5 +502,58 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertIn('Complete the next ready task', self.runs()[0]['prompt'])
 
 
+class ServiceTests(unittest.TestCase):
+    """--install-service and --remove-service write a template unit and a per-repository env file."""
+    make_repo, git, set_plan, runs, run_runner = (PiAutoworkTests.make_repo, PiAutoworkTests.git,
+        PiAutoworkTests.set_plan, PiAutoworkTests.runs, PiAutoworkTests.run_runner)
+
+    def setUp(self):
+        PiAutoworkTests.setUp(self)
+        self.calls = self.root / 'systemctl.log'
+        (self.bin / 'systemctl').write_text('#!/bin/sh\necho "$@" >> ' + str(self.calls) + '\n')
+        (self.bin / 'systemctl').chmod(0o755)
+        self.units, self.envs = self.root / 'units', self.root / 'envs'
+        self.env.update(PI_AUTOWORK_UNIT_DIR=str(self.units), PI_AUTOWORK_ENV_DIR=str(self.envs),
+                        PI_AUTOWORK_TASK_TIMEOUT='600')
+
+    def instance(self):
+        return subprocess.run(['systemd-escape', '--path', str(self.repo)], capture_output=True, text=True).stdout.strip()
+
+    def test_install_writes_the_unit_and_starts_the_instance(self):
+        result = self.run_runner('--install-service', '--allow-hermes')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        unit = (self.units / 'pi-autowork@.service').read_text()
+        for line in ('WorkingDirectory=%I', f'ExecStart=/bin/bash {RUNNER}', 'KillSignal=SIGINT', 'KillMode=mixed',
+                     'SuccessExitStatus=130', 'Restart=on-abnormal', f'EnvironmentFile=-{self.envs}/%i.env'):
+            self.assertIn(line, unit)
+        env = (self.envs / f'{self.instance()}.env')
+        lines = env.read_text().splitlines()
+        self.assertIn('PI_AUTOWORK_ALLOW_HERMES=1', lines)
+        self.assertIn('PI_AUTOWORK_TASK_TIMEOUT=600', lines)
+        self.assertTrue(any(l.startswith('PATH=') and str(self.bin) in l for l in lines))
+        self.assertEqual(env.stat().st_mode & 0o777, 0o600)
+        unit_name = f'pi-autowork@{self.instance()}.service'
+        self.assertEqual(self.calls.read_text().splitlines(),
+                         ['--user daemon-reload', f'--user enable {unit_name}', f'--user restart {unit_name}'])
+        self.assertIn(f"journalctl --user -u '{unit_name}'", result.stdout)
+        self.assertEqual(self.runs(), [])  # installing runs no task
+
+    def test_install_refuses_a_hermes_job_without_allow_and_remove_cleans_up(self):
+        jobs = self.root / 'hermes/profiles/work/cron'
+        jobs.mkdir(parents=True)
+        (jobs / 'jobs.json').write_text(json.dumps({'jobs': [
+            {'id': 'a1', 'name': 'Work Autowork', 'workdir': str(self.repo), 'skills': ['hermes-toolset:autowork']}]}))
+        result = self.run_runner('--install-service')
+        self.assertEqual(result.returncode, 4)
+        self.assertIn('--allow-hermes', result.stderr)
+        self.assertFalse(self.units.exists())
+        self.assertEqual(self.run_runner('--install-service', '--allow-hermes').returncode, 0)
+        result = self.run_runner('--remove-service')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.envs / f'{self.instance()}.env').exists())
+        self.assertIn(f'--user disable --now pi-autowork@{self.instance()}.service', self.calls.read_text())
+        self.assertEqual(self.run_runner('--install-service', '--dry-run').returncode, 2)
+
+
 if __name__ == '__main__':
     unittest.main()

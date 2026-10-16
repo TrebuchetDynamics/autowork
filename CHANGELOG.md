@@ -14,7 +14,8 @@ claim of a tagged release, completed installation or live workflow qualification
   lock per repository and blocks pushes. It runs from the main branch, gives each task
   its own worktree off a session integration branch, and merges the session into the
   main branch when the queue empties or it stops (Pi resolves a conflicting merge once;
-  otherwise the merge is reported pending). See
+  otherwise the merge is reported pending). `--install-service` runs it as a systemd
+  user service per repository (`pi-autowork@<path>`), stopped gracefully with SIGINT. See
   [continuous Autowork](docs/cross-host.md#run-autowork-continuously).
 - Parallel Autowork progress via `owner_cycle.py --parallel-status [--json]`,
   with journal-derived elapsed/worker/integration/waiting metrics and a controlled
