@@ -118,8 +118,16 @@ class PlanTests(unittest.TestCase):
         result = plan(tasks, all_tasks=[claim, *tasks])
         self.assertEqual([t['id'] for t in result['dispatch']], ['T3'])
         self.assertEqual(result['waiting'][1], {'id': 'T7', 'reason': 'overlapping paths with T1'})
-        # A waiting task that must run alone still stops everything below it.
+        # A task that must run alone and waits on running work stops everything below it
+        # so the pool drains; a waiting T1 does not keep it from running alone now.
         result = plan([task('S', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
+        self.assertEqual(result['dispatch'], [])
+        tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
+        result = plan(tasks, all_tasks=[claim, *tasks])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
+        self.assertEqual([w['id'] for w in result['waiting']], ['T1', 'T3'])
+        # Once T1 runs, S waits on running work and stops lower dispatch until the pool drains.
+        result = plan([task('S', 'package.json'), task('T3', 'free.py')], [tasks[0]])
         self.assertEqual(result['dispatch'], [])
 
     def test_transitive_dependencies_include_nonrunnable_contracts(self):

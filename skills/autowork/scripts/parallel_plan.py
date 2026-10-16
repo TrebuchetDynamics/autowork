@@ -168,14 +168,15 @@ def plan(tasks, running=(), *, all_tasks=()):
                     pending.extend(_dependencies(known[tid]))
         return False
 
-    def conflict(a, b, claim=False):
+    def conflict(a, b, claim=False, reserved=False):
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
-        if claim:  # idle claim: only declared overlap matters
+        if claim or reserved:  # idle claim or waiting task: only declared overlap matters
+            other = ('in_progress ' if claim else '') + b['id']
             if _shared(_touches(a), _touches(b)):
-                return 'overlapping paths with in_progress ' + b['id']
+                return 'overlapping paths with ' + other
             if _resources(a) & _resources(b):
-                return 'shared resource with in_progress ' + b['id']
+                return 'shared resource with ' + other
             return ''
         solo = _solo(a) or _solo(b)
         if solo:
@@ -188,20 +189,21 @@ def plan(tasks, running=(), *, all_tasks=()):
 
     # Backfill: a task may start past a waiting higher-priority one only when it shares
     # nothing with it (paths, resources, dependencies), so priority still decides every
-    # overlap. A waiting task that must run alone stops all lower dispatch, or backfill
-    # would keep the pool from draining for it.
+    # overlap. A task that must run alone and waits on running or just-dispatched work
+    # stops all lower dispatch, or backfill would keep the pool from draining for it;
+    # one waiting only on a claim or another waiting task gains nothing from a stop.
     dispatch, waiting, stopped, reserved = [], [], '', []
     for task in tasks:
         tid = task['id']
         if tid in active or tid in claims:
             waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress'})
             continue
-        reason = stopped or next((r for other in [*active.values(), *dispatch]
-                                  if (r := conflict(task, other))), '') \
+        busy = next((r for other in [*active.values(), *dispatch] if (r := conflict(task, other))), '')
+        reason = stopped or busy \
             or next((r for other in claims.values() if (r := conflict(task, other, claim=True))), '') \
-            or next((r for other in reserved if (r := conflict(task, other))), '')
+            or next((r for other in reserved if (r := conflict(task, other, reserved=True))), '')
         if reason:
-            if not stopped and _solo(task):
+            if not stopped and busy and _solo(task):
                 stopped = 'priority waits for ' + tid
             reserved.append(task)
             waiting.append({'id': tid, 'reason': reason})

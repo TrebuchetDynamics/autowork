@@ -89,8 +89,8 @@ A task runs beside others only when the planner can prove it is independent:
 - Dependencies and TODO.md priority still apply: a task waits for its
   prerequisites to close. A lower-priority task starts past a higher-priority one
   that cannot start yet only when it shares no path, resource or dependency with it,
-  so priority still decides every overlap; a waiting task that must run alone stops
-  all lower-priority dispatch until it can run.
+  so priority still decides every overlap. A task that must run alone and waits on
+  running work stops all lower-priority dispatch so the pool drains for it.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
   overlapping tasks until closed. An `in_progress` task with no live slot is a claim:
   it is never dispatched and blocks its dependents and tasks whose declared `Touches:`
