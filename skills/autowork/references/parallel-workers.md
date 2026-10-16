@@ -82,8 +82,8 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 `--parallel-status [--json]` is read-only at any point and needs no owner: workers
 active out of the maximum, one row per task (state, slot, elapsed, blocked reason and
 `blocked_by`: the task IDs or outside condition holding it), `roots` (where each waiting
-chain ends: `held`, `claim`, `outside`, `cycle`, or moving work, with how many tasks
-it holds),
+chain ends: `held`, `claim`, `contract` (a TODO entry the engine will not run, with its
+reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 

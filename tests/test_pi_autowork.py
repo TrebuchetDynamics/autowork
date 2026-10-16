@@ -170,6 +170,14 @@ elif behavior == 'extra':  # also changes a file its Touches did not foresee
                    'changed_files': [task + '-extra.txt', task + '.txt'], 'checks': [], 'blockers': [],
                    'changelog': ''}, out)
     finish(text='done')
+elif behavior == 'live':  # offline work done; a device check is left for a live task
+    work()
+    with open(field('Report file')) as stream:
+        data = json.load(stream)
+    data['pending_live'] = ['MediaStore read-back on a physical Android device']
+    with open(field('Report file'), 'w') as stream:
+        json.dump(data, stream)
+    finish(text='done')
 elif behavior == 'needs_file':  # needs a file outside its Touches: stops and asks for it
     open(task + '.txt', 'w').write('half ' + task + '\n')
     open(task + '-extra.txt', 'w').write('helper\n')
@@ -810,6 +818,17 @@ class EngineTests(Fixture):
         out, _ = runner.communicate(timeout=120)
         self.assertEqual(runner.returncode, 4, out)
         self.assertRegex(out, r'Merge pending: main in .* could not take pi-autowork/[0-9-]+: .*TODO\.md')
+
+    def test_the_reviewer_is_told_which_live_checks_the_worker_left_pending(self):
+        """flutter TASK-006: offline checks passed; the review failed for want of a device."""
+        self.plan({'worker:A': ['live']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        reviews = {r['task']: r['message'] for r in self.runs('verify')}
+        self.assertIn('MediaStore read-back on a physical Android device', reviews['A'])
+        self.assertIn('Do not fail for those', reviews['A'])
+        self.assertIn('recorded no pending live checks', reviews['B'])  # strict when nothing was recorded
+        self.assertIn('A: done offline; its live checks are recorded as A-LIVE', result.stdout)
 
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
