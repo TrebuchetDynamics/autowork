@@ -461,10 +461,12 @@
       "id": "PI-RUNNER",
       "priority": 96,
       "source": "docs/project.md#continuous-pi-runner-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-093-01",
-        "TOOLSET-094-65"
+        "TOOLSET-094-65",
+        "TOOLSET-095-48",
+        "TOOLSET-096-7e"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -472,7 +474,6 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-088-a7",
       "TOOLSET-089-72",
       "TOOLSET-090-2d",
       "TOOLSET-091-00",
@@ -486,7 +487,7 @@
       "TOOLSET-072",
       "TOOLSET-073",
       "TOOLSET-082",
-      "TOOLSET-094-65"
+      "TOOLSET-096-7e"
     ]
   },
   "tasks": [
@@ -607,6 +608,16 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify parallel Autowork with real host workers"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-095-48"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-096-7e",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify the worktree runner live on sierra"
     },
     {
       "depends_on": [],
@@ -1164,6 +1175,14 @@
       "section": "Done",
       "status": "done",
       "title": "Qualify the Pi runner's fallback and a multi-task run live"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-095-48",
+      "section": "Done",
+      "status": "done",
+      "title": "Run Pi Autowork from the main branch with per-task worktrees merged at the end"
     },
     {
       "depends_on": [],

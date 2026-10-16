@@ -156,7 +156,8 @@ Prerequisites: Pi with this package installed (above), Node 22, `git`, `jq`,
 print `ready`; set `OPENROUTER_API_KEY` or sign in through Pi. The script never
 reads, prints or changes credentials.
 
-Run it from inside the repository you want worked on, or name it:
+Run it from the checkout of the repository's main branch (`main`, `master` or
+`origin/HEAD`'s branch), or name that checkout; it refuses any other branch:
 
 ```sh
 /path/to/hermes-toolset/scripts/pi-autowork.sh --dry-run
@@ -164,8 +165,7 @@ Run it from inside the repository you want worked on, or name it:
 /path/to/hermes-toolset/scripts/pi-autowork.sh --repo ~/git/my-project --until-empty
 ```
 
-A copy placed in another repository works on that repository from any directory
-and is ignored when the script checks for uncommitted changes.
+A copy placed in another repository works on that repository from any directory.
 
 The runner uses the hermes-toolset package Pi has installed (found with `pi list`)
 for both Autowork and its queue helper, so each run loads the same skills Pi does;
@@ -198,10 +198,22 @@ How it works:
   Continuous and `--until-empty` runs need `goals.json`; in a TODO-only repository
   only `--once` works, and Autowork picks the task. A changed TODO.md order
   (priority drift) or an unreadable ledger is reported, not treated as an empty queue.
-- **One task per run.** Pi is told to execute exactly that task, commit locally
-  and close it. A task counts as done only when `goals.json` says so. A run that
-  commits but leaves the task open continues it next time; a run with no commit
-  skips the task until `TODO.md` or `goals.json` changes.
+- **Worktrees, merged at the end.** A session starts an integration branch
+  `pi-autowork/<session>` from the main branch, in its own worktree under the state
+  directory, and reads the queue there. Each task runs in a fresh worktree branched
+  from it; Pi is told to commit there and not merge. A finished task (or a partial
+  one with commits) joins the integration branch, so its dependents become runnable.
+  When the queue empties or the runner stops, the main branch is merged into the
+  integration branch, then the main branch fast-forwards to it and the worktrees and
+  branches are removed. If that merge conflicts (another writer committed to main),
+  Pi resolves it once per session with Git Commit Push; otherwise, or when your
+  uncommitted changes in the main checkout would be overwritten, the runner reports
+  `Merge pending`, keeps the branch and retries at the next end. Nothing is pushed.
+- **One task per run.** Pi is told to execute exactly that task, commit and close
+  it. A task counts as done only when its `goals.json` says so. A run that commits
+  but leaves the task open continues it next time; a run with no commit skips the
+  task until `TODO.md` or `goals.json` changes. Unfinished work stays in its task
+  worktree for review while the runner moves on to other tasks.
 - **Models.** Every run names the provider and model: `openai-codex/gpt-6.1-sol`
   first. The script switches to `openrouter/deepseek/deepseek-v4.1-flash` for
   30 minutes when the primary is unauthenticated or a run ends on a provider error
@@ -209,26 +221,29 @@ How it works:
   The fallback resumes the same task in the same Pi session, so partial work is
   reconciled rather than redone.
 - **Safety.** One runner per repository (a `flock` lock); a second one exits with
-  status 3. It will not start over uncommitted changes it did not make, during a
-  merge or rebase, or while a Hermes Autowork cron job targets the same repository
+  status 3. Your uncommitted changes in the main checkout are never touched; tasks
+  run in worktrees. It will not start while a Hermes Autowork cron job targets the
+  same repository
   (set `PI_AUTOWORK_ALLOW_HERMES=1` to override). Pushes from Pi's Git commands are
   blocked for the run; this is a guard, not a security boundary, and does not cover
   other tools such as `gh`. Pi runs with `--no-approve`, so a repository's own Pi
   extensions do not load; its `AGENTS.md` still does.
 - **Stopping.** Ctrl+C lets the current Pi run end (a second Ctrl+C forces it),
-  keeps partial work and exits 130; the next start resumes that task first.
+  merges finished tasks into the main branch, keeps the interrupted task's worktree
+  and exits 130; the next start resumes that task in the same worktree and session.
 
 State lives outside the repository, in
 `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`: `runner.log`,
 `runs.jsonl` (one record per run: task, provider, model, seconds, commits, retries,
 fallback reason, tokens, reported cost, redacted error), Pi sessions, and
-`inflight.json` while a task is unfinished. Raw Pi output, which contains prompts
+`session.json` for an unmerged session, `worktrees/` (the integration worktree and
+any kept task worktrees), and `inflight.json` while a task is unfinished. Raw Pi output, which contains prompts
 and code, is not kept. Reported cost uses Pi's catalog prices; for a subscription
 provider such as `openai-codex` it is an estimate, not a bill.
 
 Exit status: 0 done, 1 stopped on a failure or blocker, 2 setup error, 3 another
-runner is active, 4 needs attention (uncommitted changes, Git operation, priority
-drift, ledger error or Hermes job), 130 stopped.
+runner is active, 4 needs attention (merge pending, priority drift, ledger error or
+Hermes job), 130 stopped.
 
 ## Behavior and verification
 

@@ -80,6 +80,19 @@ if behavior == 'complete':
     subprocess.run([sys.executable, os.environ['FAKE_GOALS'], 'task', '.', task, 'done'], capture_output=True)
     commit(f'{task}.txt')
     finish(text=f'Done.\nPI_AUTOWORK_RESULT: completed {task} finished')
+elif behavior == 'complete_and_move_main':  # another writer commits to main meanwhile
+    subprocess.run([sys.executable, os.environ['FAKE_GOALS'], 'task', '.', task, 'done'], capture_output=True)
+    commit(f'{task}.txt')
+    main = os.environ['FAKE_MAIN_REPO']
+    open(os.path.join(main, f'{task}.txt'), 'w').write('from main\n')
+    subprocess.run(['git', '-C', main, 'add', '-A'], capture_output=True)
+    subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'], capture_output=True)
+    finish()
+elif behavior == 'resolve':  # keep this branch's side of every conflict and conclude the merge
+    git('checkout', '--ours', '.')
+    git('add', '-A')
+    git('-c', 'user.email=fake@example.invalid', '-c', 'user.name=Fake', 'commit', '-q', '--no-edit')
+    finish(text='PI_AUTOWORK_RESULT: completed merge resolved')
 elif behavior == 'progress':
     commit(f'{task}-part.txt')
     finish(text='PI_AUTOWORK_RESULT: partial first slice')
@@ -126,6 +139,7 @@ class PiAutoworkTests(unittest.TestCase):
         self.plan = self.root / 'plan.json'
         self.state = self.root / 'state'
         self.env = {**os.environ, 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
+                    'FAKE_MAIN_REPO': str(self.repo),
                     'FAKE_PI_PLAN': str(self.plan), 'FAKE_GOALS': str(GOALS),
                     'FAKE_PI_PUSH': str(self.root / 'push.rc'),
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
@@ -153,6 +167,13 @@ class PiAutoworkTests(unittest.TestCase):
 
     def set_plan(self, plan):
         self.plan.write_text(json.dumps(plan))
+
+    def worktrees(self):
+        return [line for line in self.git(self.repo, 'worktree', 'list', '--porcelain').splitlines()
+                if line.startswith('worktree ')]
+
+    def branches(self):
+        return self.git(self.repo, 'branch', '--format=%(refname:short)').splitlines()
 
     def runs(self):
         if not self.log.exists():
@@ -187,9 +208,12 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f'Repository: {self.repo}', result.stdout)
         run, = self.runs()
-        self.assertEqual((run['task'], Path(run['cwd'])), ('T1', self.repo))
+        self.assertEqual(run['task'], 'T1')
+        self.assertTrue(run['cwd'].startswith(str(self.state)), run['cwd'])  # a task worktree
         self.assertIsNone(run['skill'])  # installed package: no explicit --skill
-        self.assertIn('T1.txt', self.git(self.repo, 'show', '--name-only', '--format=', 'HEAD'))
+        self.assertTrue((self.repo / 'T1.txt').exists())  # merged into main at the end
+        self.assertEqual(self.git(self.repo, 'branch', '--show-current'), 'main')
+        self.assertEqual((len(self.worktrees()), self.branches()), (1, ['main']))
 
     def test_shipped_script_targets_the_current_or_named_repository(self):
         other = self.make_repo(self.root / 'other')
@@ -211,7 +235,7 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertIsNone(self.runs()[0]['skill'])  # Pi loads its own installed skills
         self.env.pop('FAKE_PI_TOOLSET')
         result = self.run_runner('--dry-run')
-        self.assertIn('not a Pi package; Autowork loaded with --skill', result.stdout)
+        self.assertIn('not a Pi package; skills loaded with --skill', result.stdout)
         self.assertIn('hermes-toolset is not installed in Pi', result.stderr)
 
     # 3
@@ -247,10 +271,15 @@ class PiAutoworkTests(unittest.TestCase):
         for run in runs:
             self.assertEqual((run['provider'], run['model']), ('openai-codex', 'gpt-6.1-sol'))
             self.assertTrue(run['no_approve'])
-            self.assertEqual(run['skill'], str(ROOT / 'adapters/skills/autowork'))
+            self.assertEqual(run['skill'], str(ROOT / 'adapters/skills/git-commit-push'))  # last of two
             self.assertTrue(run['prompt'].startswith('/skill:autowork Execute exactly task'))
         self.assertEqual([r['outcome'] for r in self.records()], ['completed', 'completed'])
         self.assertIn('Queue empty', result.stdout)
+        self.assertNotEqual(runs[0]['cwd'], runs[1]['cwd'])  # one worktree per task
+        self.assertIn('Merged pi-autowork/', result.stdout)
+        self.assertTrue((self.repo / 'T1.txt').exists() and (self.repo / 'T2.txt').exists())
+        self.assertEqual((len(self.worktrees()), self.branches()), (1, ['main']))
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
     # 6, 12, 14: a JSON-mode provider error with exit 0 switches models and resumes the same task.
     def test_provider_outage_falls_back_and_resumes_the_task(self):
@@ -283,7 +312,10 @@ class PiAutoworkTests(unittest.TestCase):
         result = self.run_runner('--once', '--no-fallback')
         self.assertEqual(result.returncode, 1)
         self.assertEqual({r['provider'] for r in self.runs()}, {'openai-codex'})
-        self.assertIn('left uncommitted work', result.stdout)
+        self.assertIn('unfinished work kept in', result.stdout)
+        kept = Path(self.runs()[0]['cwd'])
+        self.assertTrue((kept / 'partial.txt').exists())
+        self.assertFalse((self.repo / 'partial.txt').exists())
 
     def test_unauthenticated_primary_uses_the_fallback(self):
         self.env['FAKE_PI_UNAUTH'] = 'openai-codex'
@@ -351,12 +383,15 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertEqual(first.returncode, 130, out)
         self.assertIn({'signal': 'INT'}, [json.loads(l) for l in self.log.read_text().splitlines()])
         self.assertEqual(self.records()[-1]['outcome'], 'interrupted')
-        self.assertTrue((self.repo / 'partial.txt').exists())  # partial work kept
+        worktree = Path(self.runs()[0]['cwd'])
+        self.assertTrue((worktree / 'partial.txt').exists())  # partial work kept in its worktree
+        self.assertFalse((self.repo / 'partial.txt').exists())
         Path(str(self.log) + '.ready').unlink()
         result = self.run_runner('--once')  # the lock was released; resumes T1
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         interrupted, resumed = self.runs()
-        self.assertEqual(resumed['session'], interrupted['session'])
+        self.assertEqual((resumed['session'], resumed['cwd']), (interrupted['session'], interrupted['cwd']))
+        self.assertTrue((self.repo / 'T1.txt').exists())
         self.assertIn('previous run of this task was interrupted', resumed['prompt'])
 
     def test_task_timeout_stops_with_partial_work(self):
@@ -364,7 +399,8 @@ class PiAutoworkTests(unittest.TestCase):
         self.env['PI_AUTOWORK_TASK_TIMEOUT'] = '2'
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 1)
-        self.assertIn('timed out with uncommitted partial work', result.stdout)
+        self.assertIn('exceeded PI_AUTOWORK_TASK_TIMEOUT', result.stdout)
+        self.assertIn('unfinished work kept in', result.stdout)
         self.assertEqual(self.records()[0]['outcome'], 'timeout')
 
     # 13
@@ -391,17 +427,48 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertFalse(self.state.exists())
         self.assertEqual(self.runs(), [])
 
-    def test_user_changes_and_git_operations_stop_the_runner(self):
-        (self.repo / 'mine.txt').write_text('mine\n')
+    def test_only_the_main_branch_is_accepted(self):
+        self.git(self.repo, 'switch', '-q', '-c', 'feature')
         result = self.run_runner('--once')
-        self.assertEqual(result.returncode, 4)
-        self.assertIn('?? mine.txt', result.stdout)
-        (self.repo / 'mine.txt').unlink()
-        (Path(self.git(self.repo, 'rev-parse', '--absolute-git-dir')) / 'MERGE_HEAD').write_text('0' * 40 + '\n')
-        result = self.run_runner('--once')
-        self.assertEqual(result.returncode, 4)
-        self.assertIn('A Git MERGE_HEAD is in progress', result.stdout)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('is on branch feature', result.stderr)
         self.assertEqual(self.runs(), [])
+
+    def test_user_changes_in_main_block_only_the_final_merge(self):
+        (self.repo / 'T1.txt').write_text('my note\n')  # untracked; the merge would overwrite it
+        self.set_plan(['complete'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        self.assertIn('Merge pending', result.stdout)
+        self.assertEqual((self.repo / 'T1.txt').read_text(), 'my note\n')  # untouched
+        session, = [b for b in self.branches() if b.startswith('pi-autowork/')]
+        self.assertIn('T1.txt', self.git(self.repo, 'show', '--name-only', '--format=', session))
+        (self.repo / 'T1.txt').unlink()
+        self.set_plan(['complete'])  # T2 runs on the kept session, then everything merges
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.repo / 'T1.txt').exists() and (self.repo / 'T2.txt').exists())
+        self.assertEqual(self.branches(), ['main'])
+
+    def test_main_moving_meanwhile_is_merged_with_pi_resolving_conflicts(self):
+        self.set_plan(['complete_and_move_main', 'resolve'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('asking Pi to resolve the merge', result.stdout)
+        resolution = self.runs()[1]
+        self.assertTrue(resolution['prompt'].startswith('/skill:git-commit-push'))
+        self.assertIn('main moved', self.git(self.repo, 'log', '--format=%s'))
+        self.assertEqual((self.repo / 'T1.txt').read_text(), 'T1.txt\n')
+        self.assertEqual(self.branches(), ['main'])
+
+    def test_an_unresolved_conflict_keeps_the_session(self):
+        self.set_plan(['complete_and_move_main', 'no_progress'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        self.assertIn('Merge pending', result.stdout)
+        self.assertEqual((self.repo / 'T1.txt').read_text(), 'from main\n')
+        self.assertEqual(len([b for b in self.branches() if b.startswith('pi-autowork/')]), 1)
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
     def test_hermes_autowork_job_on_the_same_repository_refuses(self):
         jobs = self.root / 'hermes/profiles/work/cron'

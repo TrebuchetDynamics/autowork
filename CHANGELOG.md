@@ -11,7 +11,10 @@ claim of a tagged release, completed installation or live workflow qualification
   until stopped: it takes the next task from `goals.py next` (an empty queue costs no
   model call), runs Pi on GPT-6.1 Sol and falls back to DeepSeek V4.1 Flash on provider
   errors, confirms completion from `goals.json`, resumes interrupted tasks, holds one
-  lock per repository and blocks pushes. See
+  lock per repository and blocks pushes. It runs from the main branch, gives each task
+  its own worktree off a session integration branch, and merges the session into the
+  main branch when the queue empties or it stops (Pi resolves a conflicting merge once;
+  otherwise the merge is reported pending). See
   [continuous Autowork](docs/cross-host.md#run-autowork-continuously).
 - `/toolset update status` and `hermes toolset doctor` list profiles whose plugin links
   to a working checkout, which load its current files at any gateway restart.

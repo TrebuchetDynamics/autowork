@@ -212,6 +212,19 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No memory-store migration or deletion; no provider switch without the owner.
 
+### TOOLSET-096-7e — Qualify the worktree runner live on sierra
+
+- [ ] TOOLSET-096-7e — Qualify the worktree runner live on sierra
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: Run the released runner on `~/git/sierra` alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
+- Acceptance: `runs.jsonl` and sierra's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; sierra's uncommitted changes untouched.
+- Checks: `runs.jsonl`, runner output, `git -C ~/git/sierra log` and `worktree list`.
+- Dependencies: TOOLSET-095-48.
+- Ownership: Toolset coordinator on the owner's request.
+- Exclusions: No push; no change to sierra's Hermes jobs.
+
 ## Goal coverage
 
 <!-- goals:coverage:begin -->
@@ -240,6 +253,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | unmet | — | TOOLSET-089-72, TOOLSET-090-2d, TOOLSET-091-00 |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | met | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass | — |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass | TOOLSET-096-7e |
 
 <!-- goals:coverage:end -->

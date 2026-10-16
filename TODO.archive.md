@@ -1696,3 +1696,21 @@ Source section: Next
 - Dependencies: TOOLSET-093-01.
 - Ownership: Toolset coordinator; spends OpenRouter credit, so run it on the owner's request.
 - Exclusions: No run against a real project repository.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-095-48 — Run Pi Autowork from the main branch with per-task worktrees merged at the end
+
+- [x] TOOLSET-095-48 — Run Pi Autowork from the main branch with per-task worktrees merged at the end
+- Status: done (2026-10-15). Owner request: the runner works from the main branch, uses worktrees and merges everything at the end. `scripts/pi-autowork.sh` now refuses any branch but the main branch; each session creates `pi-autowork/<session>` from it in a worktree under the state directory and reads the queue there; each task runs in a fresh worktree branched from that tip, told to commit there and not merge; finished or partial work joins the integration branch; unfinished work stays in its worktree for review while other tasks continue; when the queue empties or the runner stops, the main branch is merged into the integration branch (Pi resolves conflicts once per session with Git Commit Push), the main checkout fast-forwards, and worktrees and branches are removed; uncommitted changes in the main checkout block only that last step and are reported as `Merge pending`. 25 fake-Pi tests pass four times in a row, including merge resolution, an unresolved conflict, a blocked fast-forward and a non-main branch; ShellCheck clean. Offline only; live run in TOOLSET-096-7e.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously), [plan](docs/project.md#continuous-pi-runner-2026-10-15).
+- Scope: Worktree isolation and end-of-session merge in the runner, its tests and guide.
+- Acceptance: Work lands on the main branch only through the end-of-session merge; the main checkout's uncommitted changes are never touched; a conflicting merge is resolved or reported pending with the branch kept.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-094-65.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push by the runner.
