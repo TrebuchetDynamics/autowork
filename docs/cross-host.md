@@ -224,7 +224,8 @@ live, run it in tmux instead with `tx autowork` from [`tmux/`](../tmux/README.md
 `tx autowork .` starts the same script the service runs in session
 `pi-autowork-<repository name>` (or attaches to it), `tx autowork ls` lists tmux and
 service runners together, and `tx autowork stop <name>` interrupts it like Ctrl+C.
-It refuses while that repository's service is enabled or active; the per-repository
+For a repository its service runs, `tx pi-autowork-<name>` opens a session that
+follows the service journal instead of starting a second runner; the per-repository
 runner lock keeps two runners off one repository in any case.
 Reinstall after changing settings. The runner keeps itself current: while no task is
 in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`

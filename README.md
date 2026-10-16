@@ -236,14 +236,15 @@ service or tmux, and a way to run one in tmux to watch or debug it live:
 ```sh
 tx autowork ls                # every runner: state, workers, and what a stalled one waits on
 tx autowork status india       # tasks, workers and what blocks them
-tx autowork logs -f sierra     # follow a runner's output
+tx pi-autowork-sierra          # open sierra's session: its service journal, live
 tx autowork .                 # run this repository in tmux session pi-autowork-<name>
 tx autowork stop my-project   # Ctrl+C: workers pause and resume later on the same attempt
 ```
 
-A target is a runner name, a repository path or `.`. Starting in tmux refuses while
-that repository's service is enabled, and the runner's per-repository lock keeps two
-runners off one repository in any case. Install `tx` with `sh tmux/install.sh`.
+A target is a runner name, a repository path or `.`. For a repository its service
+runs, the session follows the service journal instead of starting a second runner,
+and the runner's per-repository lock keeps two runners off one repository in any
+case. Install `tx` with `sh tmux/install.sh`.
 
 ## What you can do
 

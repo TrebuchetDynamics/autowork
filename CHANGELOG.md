@@ -146,6 +146,10 @@ claim of a tagged release, completed installation or live workflow qualification
   workers running, waiting and held, the held task IDs, and for a blocked or stalled
   runner the tasks or conditions it waits on (`19 wait on TASK-036: ...`). Lines fit
   the terminal width; `--brief` keeps one line per runner.
+- Every pi-autowork runner opens with `tx pi-autowork-<name>`. A tmux runner attaches;
+  for a service runner the session follows its journal instead of being refused, and
+  closing it leaves the service running. `tx autowork ls` shows that command per
+  runner instead of the repository path.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),

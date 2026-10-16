@@ -32,6 +32,7 @@ esac
 '''
 JOURNALCTL = '''#!/usr/bin/env bash
 echo "journal $*"
+if [[ " $* " == *" -f "* ]]; then sleep "${FAKE_JOURNAL_FOLLOW:-60}"; fi
 '''
 
 
@@ -92,14 +93,48 @@ class TxAutoworkTests(unittest.TestCase):
         time.sleep(0.5)
         self.assertEqual(len(self.log.read_text().splitlines()), 1)  # attached, not started twice
 
-    def test_an_enabled_service_owns_the_repository(self):
+    def option(self, name):
+        return subprocess.run([str(self.tmux), 'show-options', '-qv', '-t', '=pi-autowork-my-repo:', name],
+                              capture_output=True, text=True).stdout.strip()
+
+    def pane(self):
+        return subprocess.run([str(self.tmux), 'capture-pane', '-p', '-t', '=pi-autowork-my-repo:'],
+                              capture_output=True, text=True).stdout
+
+    def test_a_service_runner_gets_a_session_that_follows_its_journal(self):
         for state in ('active', 'enabled'):
             with self.subTest(state=state):
-                result = self.tx('autowork', str(self.repo), env={'FAKE_SERVICE_STATE': state})
-                self.assertEqual(result.returncode, 1)
-                self.assertIn(f'pi-autowork@my-repo.service is {state}', result.stderr)
-                self.assertIn('systemctl --user disable --now pi-autowork@my-repo', result.stderr)
+                service = {'FAKE_SERVICE_STATE': state}
+                result = self.tx('autowork', str(self.repo), env=service)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('follows pi-autowork@my-repo.service', result.stderr)
+                self.assertEqual((self.sessions(), self.option('@pi_autowork_mode')), (['pi-autowork-my-repo'], 'journal'))
+                deadline = time.monotonic() + 10
+                while 'journal --user -u pi-autowork@my-repo.service -n 200 -f -o cat' not in self.pane():
+                    self.assertLess(time.monotonic(), deadline, self.pane())
+                    time.sleep(0.05)
+                self.assertEqual(self.log.read_text(), '')  # no second runner beside the service
+                closed = self.tx('autowork', 'stop', 'my-repo', env=service)
+                self.assertIn('pi-autowork@my-repo.service keeps running', closed.stderr)
                 self.assertEqual(self.sessions(), [])
+
+    def test_a_journal_view_becomes_a_runner_once_the_service_is_gone(self):
+        self.tx('autowork', str(self.repo), env={'FAKE_SERVICE_STATE': 'active'})
+        result = self.tx('autowork', str(self.repo))
+        self.assertIn('replacing the journal view with a runner', result.stderr)
+        self.assertEqual(self.runner_lines(1), [f'--repo {self.repo}'])
+        self.assertEqual(self.option('@pi_autowork_mode'), 'runner')
+
+    def test_tx_session_name_opens_the_runner(self):
+        result = self.tx('pi-autowork-my-repo', cwd=self.repo)  # unknown name, no repository yet
+        self.assertIn('no runner named my-repo', result.stderr)
+        self.service_env('my-repo')
+        result = self.tx('pi-autowork-my-repo')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.runner_lines(1), [f'--repo {self.repo}'])
+        (self.base / 'tx.config').write_text(f'pi-autowork-alias={self.base}\n')
+        aliased = self.tx('pi-autowork-alias')  # an alias of that name still wins
+        self.assertNotIn('no runner named', aliased.stderr)
 
     def test_ls_shows_tmux_runners_and_services(self):
         self.tx('autowork', str(self.repo))
@@ -110,8 +145,8 @@ class TxAutoworkTests(unittest.TestCase):
         self.assertEqual(rows, {'my-repo': 'tmux', 'svc': 'service'})
         self.assertIn('pi-autowork runners: 2 (2 unknown)', result.stdout)
         full = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active'}).stdout
-        self.assertIn('my-repo  tmux detached', full)
-        self.assertIn('no status yet  ~/', full.replace(str(Path.home()), '~'))
+        self.assertIn('my-repo  tmux  unknown\n  tx pi-autowork-my-repo  no status yet\n', full)
+        self.assertNotIn(str(self.repo), full)  # names, not paths
         empty = self.tx('autowork', 'ls', env={'TX_TMUX': '/nonexistent'})
         self.assertIn('pi-autowork runners: none', empty.stdout)
 
@@ -151,8 +186,9 @@ class TxAutoworkTests(unittest.TestCase):
 
     def test_a_runner_name_finds_its_repository(self):
         self.service_env('svc')  # a service's name resolves through its settings file
-        refused = self.tx('autowork', 'svc', env={'FAKE_SERVICE_STATE': 'active'})
-        self.assertIn(f'pi-autowork@my-repo.service is active and owns {self.repo}', refused.stderr)
+        viewed = self.tx('autowork', 'svc', env={'FAKE_SERVICE_STATE': 'active'})
+        self.assertIn('pi-autowork-my-repo follows pi-autowork@my-repo.service', viewed.stderr)
+        self.tx('autowork', 'stop', 'my-repo', env={'FAKE_SERVICE_STATE': 'active'})
         self.tx('autowork', str(self.repo))
         self.runner_lines(1)
         status = self.tx('autowork', 'status', 'my-repo')  # a tmux session's name, too
@@ -175,7 +211,7 @@ class TxAutoworkTests(unittest.TestCase):
         self.service_env('my-repo')
         journal = self.tx('autowork', 'logs', 'my-repo', env={'FAKE_SERVICE_STATE': 'active'})
         self.assertEqual(journal.stdout.strip(), 'journal --user -u pi-autowork@my-repo.service -n 200 --no-pager -o cat')
-        follow = self.tx('autowork', 'logs', '-f', str(self.repo), env={'FAKE_SERVICE_STATE': 'active'})
+        follow = self.tx('autowork', 'logs', '-f', str(self.repo), env={'FAKE_SERVICE_STATE': 'active', 'FAKE_JOURNAL_FOLLOW': '0'})
         self.assertIn('-f -o cat', follow.stdout)
         self.assertIn('no tmux session or service', self.tx('autowork', 'logs', str(self.repo)).stderr)
 
@@ -189,14 +225,16 @@ class TxAutoworkTests(unittest.TestCase):
         service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo'}
         listing = self.tx('autowork', 'ls', env=service).stdout
         self.assertIn('pi-autowork runners: 1 (1 working)', listing)
-        self.assertRegex(listing, r'my-repo  service running  working for [45] min\n  2 running, 5 waiting  ')
+        self.assertRegex(listing, r'my-repo  service  working for [45] min\n  tx pi-autowork-my-repo  2 running, 5 waiting\n')
         self.assertRegex(self.tx('autowork', 'ls', '--brief', env=service).stdout,
                          r'my-repo\s+service\s+working [45]m\s+2 running, 5 waiting')
         (state / 'runner.json').write_text(json.dumps({'pid': 999999999, 'repo': str(self.repo)}))
-        self.assertIn('not running\n  2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
+        self.assertIn('not running\n  tx pi-autowork-my-repo  2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
+        self.tx('autowork', 'my-repo', env=service)  # its journal view is not a second runner
+        self.assertIn('pi-autowork runners: 1 ', self.tx('autowork', 'ls', env=service).stdout)
         unknown = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'other'})
         self.assertEqual(unknown.returncode, 0, unknown.stderr)  # a service without settings has no status
-        self.assertIn('other  service running  unknown\n  no status yet', unknown.stdout)
+        self.assertIn('other  service  unknown\n  tx pi-autowork-other  no status yet', unknown.stdout)
 
     def test_ls_says_what_blocks_a_stalled_runner_and_lists_held_tasks(self):
         state = self.base / 'state' / 'key'
@@ -233,7 +271,7 @@ class TxPackageTests(unittest.TestCase):
         self.assertEqual(package['bin'], {'tx': 'tmux/tx'})
         self.assertIn('tmux/', package['files'])
         self.assertTrue(os.access(TX, os.X_OK))
-        self.assertIn('tx autowork <name|repo|.>', subprocess.run(['bash', str(TX), 'help'], capture_output=True,
+        self.assertIn('tx pi-autowork-<name>', subprocess.run(['bash', str(TX), 'help'], capture_output=True,
                                                                text=True).stdout)
 
 

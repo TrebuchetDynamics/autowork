@@ -17,7 +17,7 @@ gives one place to see every runner, whichever way it runs.
 
 | Command | What it does |
 |---|---|
-| `tx autowork <name\|repo\|.>` | Start the repository's runner in tmux session `pi-autowork-<repo-name>`, or attach to it |
+| `tx pi-autowork-<name>` or `tx autowork <name\|repo\|.>` | Open the runner's session `pi-autowork-<name>`: attach, or start a tmux runner; for a service runner the session follows its journal |
 | `tx autowork ls [--brief]` | Every runner, tmux and service: its state and for how long, workers running, waiting and held, and what a blocked or stalled runner waits on; `--brief` is one line each |
 | `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
 | `tx autowork logs [-f] [name\|repo\|.]` | Recent output: the service journal, or the tmux pane; `-f` follows the journal or attaches |
@@ -25,25 +25,28 @@ gives one place to see every runner, whichever way it runs.
 
 ```sh
 tx autowork ls                # what is running, and how it is doing
+tx pi-autowork-sierra          # sierra's session: its service journal, live
 tx autowork status india       # why india is stalled
-tx autowork logs -f sierra     # follow a service runner's journal
 tx autowork .                 # run this repository in tmux (no service installed)
 tx autowork stop my-project
 ```
 
 - A target is a runner name (`sierra`), a repository path, or `.`. A name is found
   through its tmux session or its service settings (`~/.config/pi-autowork/<name>.env`).
-- The session is `pi-autowork-<repository name>`, the same name the service uses
-  (`pi-autowork@<repository name>`); `.` and `:` become `_`. An existing session is
-  attached, not started again; a session holding another repository is refused.
+- Every runner has session `pi-autowork-<repository name>`, the name its service
+  uses too (`pi-autowork@<repository name>`); `.` and `:` become `_`. `ls` prints the
+  `tx pi-autowork-<name>` command for each. An existing session is attached, not
+  started again; a session holding another repository is refused. A configured `tx`
+  alias of the same name wins over the session.
 - It runs the script the systemd unit runs (`ExecStart` of
   `~/.config/systemd/user/pi-autowork@.service`), else `../scripts/pi-autowork.sh`
   next to `tx`; `PI_AUTOWORK_SCRIPT` overrides both.
-- Starting refuses while `pi-autowork@<name>` is enabled or active and says how to
-  follow it (`tx autowork logs -f <name>`) or hand the repository to tmux
-  (`systemctl --user disable --now ...`); `stop` points a service runner to
-  `systemctl --user stop`. The runner's own per-repository lock keeps two runners off
-  one repository regardless.
+- When `pi-autowork@<name>` is enabled or active, the service runs the repository,
+  so the session follows its journal (`journalctl --user -fu ...`) instead of
+  starting a second runner; `stop` closes that view and leaves the service running
+  (stop the service with `systemctl --user stop`). Once the service is disabled, the
+  next `tx autowork <name>` replaces the view with a tmux runner. The runner's own
+  per-repository lock keeps two runners off one repository regardless.
 - `stop` sends Ctrl+C: the runner pauses live workers so they resume on the same
   attempt, merges finished work and exits; `tx` waits for it (up to
   `TX_AUTOWORK_STOP_TIMEOUT` seconds, default 300) before closing the session. The
@@ -55,13 +58,13 @@ tx autowork stop my-project
   ```text
   pi-autowork runners: 4 (2 working, 2 stalled)
 
-  india  service running  stalled for 272 min
-    0 running, 23 waiting  ~/git/games/india
+  india  service  stalled for 275 min
+    tx pi-autowork-india  0 running, 23 waiting
     19 wait on TASK-036: outside condition or task not in Now/Next
     5 wait on TASK-035: outside condition or task not in Now/Next
 
-  sierra  service running  working for 39 min
-    1 running, 40 waiting, 5 held  ~/git/sierra
+  sierra  service  working for 39 min
+    tx pi-autowork-sierra  1 running, 40 waiting, 5 held
     held: TASK-027, TASK-023, TASK-022, TASK-021, TASK-020
   ```
 
