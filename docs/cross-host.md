@@ -218,7 +218,8 @@ replaces a unit an earlier release named after the escaped path.
 Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
-Reinstall after changing settings; `pi update` updates the script it runs.
+Reinstall after changing settings; `pi update` updates the script it runs, and a
+running runner restarts itself on the new release at its next cycle.
 
 How it works:
 

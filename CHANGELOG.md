@@ -214,6 +214,9 @@ claim of a tagged release, completed installation or live workflow qualification
   commit, now has its first commit verified once more (`READOPTED`) instead of
   staying held: such retries usually decline to redo work the hold called out of
   scope, which stranded completed work after the scope rule was fixed.
+- A continuous `pi-autowork.sh` restarts itself when its toolset is updated, instead
+  of running the old script against the new engine (which exited on an engine
+  outcome the old script did not know).
 
 - Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
   every other task: such a claim is not dispatched and still blocks its dependents and

@@ -421,6 +421,39 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
 
+    def test_a_running_runner_restarts_on_an_updated_toolset(self):
+        """A `pi update` under a live runner mixed the old script with the new engine."""
+        toolset = self.root / 'toolset'
+        shutil.copytree(ROOT, toolset, ignore=shutil.ignore_patterns('.git', '.claude', '__pycache__'))
+        for args in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                                                     'commit', '-qm', 'release']):
+            self.git(toolset, *args)
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
+        self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
+        env = {**self.env, 'PI_AUTOWORK_TOOLSET': str(toolset)}
+        runner = subprocess.Popen(['bash', str(toolset / 'scripts/pi-autowork.sh'), '--interval', '1'], cwd=self.repo,
+                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 30
+        while 'No task can start now' not in log():
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.2)
+        (toolset / 'NEW').write_text('update\n')
+        self.git(toolset, 'add', 'NEW')
+        self.git(toolset, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'update')
+        rev = self.git(toolset, 'rev-parse', '--short', 'HEAD')
+        deadline = time.monotonic() + 30
+        while log().count('Started (PID') < 2:
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        self.assertIn(f'Toolset updated to {rev}; restarting on it', log())
+        self.assertIsNone(runner.poll())
+        runner.send_signal(signal.SIGINT)
+        out, err = runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130, out + err)
+        self.assertIn(f'at {rev}', out)
+
     def test_tasks_without_touches_get_proposed_ones_and_run_in_parallel(self):
         """sierra: no task declared Touches, so everything ran one at a time."""
         text = (self.repo / 'TODO.md').read_text()

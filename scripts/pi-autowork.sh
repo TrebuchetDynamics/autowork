@@ -301,6 +301,7 @@ if [[ ${1:-} == --worker || ${1:-} == --verify ]]; then
 fi
 
 # --- Options ------------------------------------------------------------------
+ORIGINAL_ARGS=("$@")
 MODE=continuous REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 SERVICE='' STATUS=0
 WORKERS=${PI_AUTOWORK_WORKERS:-8}
 while (($#)); do
@@ -846,6 +847,18 @@ while :; do
     for _ in 1 2 3 4; do owned --parallel "$WORKERS" --max-workers 8 --wait --timeout 5 >/dev/null; done
     settle
     finish 130 "Stopped. Unfinished tasks keep their worktrees and resume on the next start."
+  fi
+  # `pi update` replaces the script and the engine under a running runner, and the
+  # engine is loaded afresh on every call: continue on the new release instead of
+  # mixing the two. State is durable and a restart adopts live workers.
+  if [[ $MODE == continuous && $TOOLSET_REV != unknown ]] &&
+     rev=$(git -C "$TOOLSET" rev-parse --short HEAD 2>/dev/null) && [[ $rev != "$TOOLSET_REV" ]]; then
+    say "Toolset updated to $rev; restarting on it"
+    stop_helpers
+    trap - EXIT INT TERM
+    rm -f "$STATE/runner.json"
+    exec 9>&-
+    exec /bin/bash "$SCRIPT" "${ORIGINAL_ARGS[@]}"
   fi
   ensure_session
   # While nothing is in flight the session follows the main branch (fast-forward, or a
