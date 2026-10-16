@@ -17,6 +17,7 @@ gives one place to see every runner, whichever way it runs.
 
 | Command | What it does |
 |---|---|
+| `tx autowork` | The live TUI (on a terminal): every runner with its state, blockers, held tasks and log; keys open a session, start or stop a runner, install or remove its service, set aside a held task (`x`) and answer blockers (`b`, `/autowork blockers` in `TX_AUTOWORK_AGENT`, else `claude` or `pi`). Stop, remove and set-aside ask first |
 | `tx pi-autowork-<name>` or `tx autowork <name\|repo\|.>` | Open the runner's session `pi-autowork-<name>`: attach, or start a tmux runner; for a service runner the session follows its journal |
 | `tx autowork ls [--long]` | One colored line per runner, tmux and service: state and for how long, workers running, waiting and held; `--long` adds its `tx pi-autowork-<name>` command and what it waits on |
 | `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
@@ -24,6 +25,7 @@ gives one place to see every runner, whichever way it runs.
 | `tx autowork stop <name\|repo\|.>` | Ctrl+C a tmux runner, wait for it to stop cleanly, close the session |
 
 ```sh
+tx autowork                   # the live TUI
 tx autowork ls                # what is running, and how it is doing
 tx pi-autowork-sierra          # sierra's session: its service journal, live
 tx autowork status india       # why india is stalled
@@ -31,6 +33,10 @@ tx autowork .                 # run this repository in tmux (no service installe
 tx autowork stop my-project
 ```
 
+- The TUI runs through `uv run --with textual==8.2.8` (Textual is fetched into uv's
+  cache once, nothing is installed globally) from the runner's own release, reads the
+  same state as `ls` every few seconds and calls no model. Without a terminal, `uv` or a
+  release that has it, and with `TX_AUTOWORK_TUI=0`, `tx autowork` prints its help.
 - A target is a runner name (`sierra`), a repository path, or `.`. A name is found
   through its tmux session or its service settings (`~/.config/pi-autowork/<name>.env`).
 - Every runner has session `pi-autowork-<repository name>`, the name its service

@@ -18,6 +18,8 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
 | `pi_autowork/touches_inference.py` | Finds tasks without Touches, records proposed lists, and widens a list the runner inferred (`scripts/pi_autowork_touches.py` remains as a compatibility entry point) |
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
+| `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |
+| `pi_autowork/tui.py` | The `tx autowork` TUI (Textual, run through `uv`): live runners, blockers and log, with keys that run those commands |
 | `pi_autowork/release.py` | Safe-checkpoint test before a self-update: fleet idle, and the new release reads current state |
 
 Design: [coordinator redesign](../docs/plans/2026-10-16-pi-autowork-coordinator.md),

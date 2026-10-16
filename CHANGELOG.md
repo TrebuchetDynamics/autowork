@@ -142,6 +142,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `tx autowork` opens a live TUI on a terminal: every pi-autowork runner (tmux and
+  service) with its state, blockers, held tasks and log, and keys to open a session,
+  start or stop a runner, install or remove its service, set aside a held task and
+  answer blockers. Stop, remove and set-aside ask first. Every key runs an existing
+  command; nothing calls a model. It uses Textual 8.2.8 through `uv`, so pi-autowork
+  itself stays standard-library Python. `tx autowork ls` also shows `entry changed`
+  blockers (the engine's `contract` kind).
+
 - `/autowork blockers [repo|name]`: an interview that resolves what blocks a
   repository's queue with the owner, one question at a time, easiest first (effort from
   the blocker's kind: quick, decision, input, investigate; then most tasks unblocked).

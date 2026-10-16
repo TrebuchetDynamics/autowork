@@ -1041,7 +1041,7 @@ autowork_health() {
     jq -rs --arg now "$(date +%s)" --arg alive "$([[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && echo 1)" '
       def short: tostring | gsub("\\s+"; " ")
         | if length > 32 then (.[0:32] | sub(" [^ ]*$"; "")) + "..." else . end;
-      def kinds: {runner: "runner", held: "held", claim: "claimed elsewhere",
+      def kinds: {runner: "runner", held: "held", contract: "entry changed", claim: "claimed elsewhere",
                   outside: "outside Now/Next", cycle: "dependency cycle"};
       def causes: {blocker: "blocker", scope: "outside Touches", scope_request: "needs files",
                    overlap: "overlap", report: "bad report", conflict: "conflict", validation: "validation",
@@ -1053,8 +1053,8 @@ autowork_health() {
          (if $alive != "1" then "not running" else ($s.state // "starting") end),
          (if $s.since and $alive == "1" then ((($now | tonumber) - $s.since) / 60 | floor | tostring) else "-" end),
          ($s.active_workers // 0 | tostring), ($s.waiting // 0 | tostring), (($s.held // []) | length | tostring),
-         ([($s.roots // [])[] | select(.kind | IN("runner", "held", "claim", "outside", "cycle"))]
-          | group_by(.kind) | sort_by(.[0].kind | {runner: 0, cycle: 1, held: 2, claim: 3, outside: 4}[.])
+         ([($s.roots // [])[] | select(.kind | IN("runner", "held", "contract", "claim", "outside", "cycle"))]
+          | group_by(.kind) | sort_by(.[0].kind | {runner: 0, cycle: 1, held: 2, contract: 3, claim: 4, outside: 5}[.])
           | map((kinds[.[0].kind] // .[0].kind) + ": "
                 + (map((.id | short) + (if .kind == "held" then (.cause | cause) else "" end)
                        + " (\(.blocks // 0))") | join(", ")))
@@ -1295,7 +1295,11 @@ name (sierra), a repository path, or . for the current repository.
                              the service journal and leaves the service running
   tx autowork stop <target>  Ctrl+C a tmux runner (workers resume later on the same
                              attempt) and close its session; closes a journal view
-  tx autowork help           This help (also: tx autowork with no command)
+  tx autowork                The live TUI on a terminal: every runner, its blockers and
+                             log, with keys to open, start, stop, install or remove a
+                             service, set aside a held task and answer blockers
+                             (needs uv; TX_AUTOWORK_TUI=0 prints this help instead)
+  tx autowork help           This help
 
 Examples:
   tx autowork ls
@@ -1305,9 +1309,32 @@ Examples:
 EOF
 }
 
+# Bare `tx autowork` on a terminal: the live TUI (pi-autowork/pi_autowork/tui.py in the
+# same release as the runner script), through uv so the runner stays stdlib-only.
+AUTOWORK_TEXTUAL=${TX_AUTOWORK_TEXTUAL:-textual==8.2.8}
+autowork_tui() {
+  local script root tui why=""
+  if [[ "${TX_AUTOWORK_TUI:-1}" == 0 || ! -t 0 || ! -t 1 ]]; then
+    return 1
+  fi
+  script=$(autowork_script 2>/dev/null) || why="pi-autowork.sh not found"
+  if [[ -z "$why" ]]; then
+    root=$(cd -P "$(dirname -- "$script")/.." && pwd)
+    tui="$root/pi-autowork/pi_autowork/tui.py"
+    [[ -f "$tui" ]] || why="this pi-autowork release ($root) has no TUI yet; update the package"
+  fi
+  [[ -n "$why" ]] || command -v uv >/dev/null 2>&1 || why="the TUI needs uv (https://docs.astral.sh/uv/)"
+  if [[ -n "$why" ]]; then
+    printf 'tx: no TUI: %s\n\n' "$why" >&2
+    return 1
+  fi
+  exec uv run --quiet --no-project --with "$AUTOWORK_TEXTUAL" python3 "$tui" \
+    --tx "$(script_dir)/$(basename -- "${BASH_SOURCE[0]}")" --script "$script"
+}
+
 autowork_main() {
   if [[ $# -eq 0 ]]; then
-    autowork_help
+    autowork_tui || autowork_help
     return 0
   fi
   case "$1" in

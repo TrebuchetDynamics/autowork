@@ -25,6 +25,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | Toolset engineering protocols (`skills/engineering/local/`) | Written and versioned in this repository; no upstream pin | `test-suite-optimization` adapts two criteria from Matt Pocock's MIT `tdd` skill in its own words; no text is copied. |
 | Addy agent-skills (25 protocols) | Vendored commit and hashes in [UPSTREAM.json](../skills/engineering/UPSTREAM.json) | Updated only through a reviewed Toolset change; shared references included. Two defensive examples are paraphrased, with original and adapted hashes recorded; a refresh restores upstream bytes, so re-apply them by hand. |
 | Graphify | Dedicated setup helper | Not covered by a unified bundle lockfile. |
+| Textual 8.2.8 (MIT), `tx autowork` TUI only | Pinned in [`tmux/tx`](../tmux/tx) (`TX_AUTOWORK_TEXTUAL`); fetched by `uv run --with` into uv's cache on first use | Not a runner dependency: pi-autowork itself stays standard-library Python, and `tx autowork` subcommands work without it. |
 
 Ordinary installation skips existing resources. `/toolset update` updates bundled
 content, including the pinned engineering pack, while preserving conflicts. External

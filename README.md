@@ -234,6 +234,7 @@ lingering), restarts after a crash and keeps itself current.
 service or tmux, and a way to run one in tmux to watch or debug it live:
 
 ```sh
+tx autowork                   # the live TUI: runners, blockers, logs, and keys to act
 tx autowork ls                # one colored line per runner; --long: what each waits on
 tx autowork status india       # tasks, workers and what blocks them
 tx pi-autowork-sierra          # open sierra's session: its service journal, live
