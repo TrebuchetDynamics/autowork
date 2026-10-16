@@ -83,7 +83,8 @@ class FleetApp(App):
     CSS = '''
     #runners { width: auto; max-width: 60%; }
     #side { width: 1fr; }
-    #detail { height: auto; max-height: 50%; padding: 0 1; border-bottom: solid $panel; }
+    #detail { height: auto; max-height: 40%; padding: 0 1; }
+    #lanes { height: auto; max-height: 12; border-top: solid $panel; border-bottom: solid $panel; }
     #log { height: 1fr; }
     '''
     BINDINGS = [
@@ -98,9 +99,12 @@ class FleetApp(App):
         Binding('q', 'quit', 'quit'),
     ]
 
+    CONTROL = {'run', 'set_aside'}
+
     def __init__(self, *, tx, script, state_root, env_dir, tmux='tmux', systemctl='systemctl',
-                 journalctl='journalctl', agent=None, runner_cmd=subprocess.run):
+                 journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False):
         super().__init__()
+        self.view_only = view_only
         self.tx, self.script = tx, script
         self.state_root, self.env_dir = state_root, env_dir
         self.tmux, self.systemctl, self.journalctl = tmux, systemctl, journalctl
@@ -109,6 +113,12 @@ class FleetApp(App):
         self.runners = []
         self.selected = None
 
+    def check_action(self, action, parameters):
+        """View-only (for example served to a browser on a shared network): no control keys."""
+        if self.view_only and action in self.CONTROL:
+            return False
+        return True
+
     # -- layout -----------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
@@ -116,12 +126,14 @@ class FleetApp(App):
             yield DataTable(id='runners', cursor_type='row', zebra_stripes=True)
             with Vertical(id='side'):
                 yield Static(id='detail')
+                yield DataTable(id='lanes', cursor_type='none', zebra_stripes=True)
                 yield RichLog(id='log', wrap=False, highlight=False, markup=False)
         yield Footer()
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
-        table.add_columns('Runner', 'Mode', 'State', 'For', 'Run', 'Wait', 'Held')
+        table.add_columns('Runner', 'Mode', 'State', 'For', 'Run', 'Wait', 'Held', 'Now')
+        self.query_one('#lanes', DataTable).add_columns('Task', 'Phase', 'Try', 'For', 'Last activity')
         self.action_refresh()
         self.set_interval(REFRESH, self.action_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
@@ -133,9 +145,12 @@ class FleetApp(App):
         keep = self.selected
         table.clear()
         for runner in self.runners:
+            now = ', '.join(f'{lane.task} {lane.phase}' for lane in runner.lanes[:2])
+            if len(runner.lanes) > 2:
+                now += f' +{len(runner.lanes) - 2}'
             table.add_row(runner.name, runner.mode or '-', Text(runner.state, style=f'bold {runner.color}'),
                           fleet_view.duration(runner.minutes), str(runner.running), str(runner.waiting),
-                          str(len(runner.held)), key=runner.name)
+                          str(len(runner.held)), fleet_view.short(now or '-', 40), key=runner.name)
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0
@@ -177,9 +192,24 @@ class FleetApp(App):
         if runner.held and runner.state == 'working':
             text.append('held: ', style='bold yellow')
             text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
-        keys = '  '.join(f'[{a.key}] {a.label}' for a in self.available(runner))
-        text.append(keys, style='dim')
+        if self.view_only:
+            text.append('view only', style='dim')
+        else:
+            text.append('  '.join(f'[{a.key}] {a.label}' for a in self.available(runner)), style='dim')
         detail.update(text)
+        self.show_lanes(runner)
+
+    def show_lanes(self, runner):
+        """One row per task in flight: phase, attempt, how long, and the worker's last action."""
+        table = self.query_one('#lanes', DataTable)
+        table.clear()
+        for lane in runner.lanes:
+            stale = lane.activity_age is not None and lane.activity_age > 1800
+            activity = Text(f'{lane.activity}  {fleet_view.ago(lane.activity_age)}'.strip() or '-',
+                            style='dim' if stale else '')
+            phase = Text(lane.phase, style='bold yellow' if lane.phase.startswith('waiting') else 'bold green')
+            table.add_row(lane.task, phase, str(lane.attempt), fleet_view.duration(lane.minutes), activity)
+        table.display = bool(runner.lanes)
 
     def refresh_log(self):
         log = self.query_one('#log', RichLog)
@@ -237,11 +267,12 @@ def main(argv=None):
     state = os.environ.get('XDG_STATE_HOME') or str(Path.home() / '.local' / 'state')
     parser.add_argument('--state-root', default=os.environ.get('PI_AUTOWORK_STATE_DIR') or f'{state}/pi-autowork')
     parser.add_argument('--env-dir', default=os.environ.get('PI_AUTOWORK_ENV_DIR') or f'{config}/pi-autowork')
+    parser.add_argument('--view-only', action='store_true', help='Show runners; disable every control key.')
     args = parser.parse_args(argv)
     FleetApp(tx=args.tx, script=args.script, state_root=args.state_root, env_dir=args.env_dir,
              tmux=os.environ.get('TX_TMUX', 'tmux'), systemctl=os.environ.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl'),
              journalctl=os.environ.get('TX_JOURNALCTL', 'journalctl'),
-             agent=fleet_view.blockers_agent()).run()
+             agent=fleet_view.blockers_agent(), view_only=args.view_only).run()
     return 0
 
 

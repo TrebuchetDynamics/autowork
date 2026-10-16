@@ -314,6 +314,15 @@ class TxAutoworkTests(unittest.TestCase):
                     self.assertIn(command, result.stdout)
                 self.assertEqual(self.sessions(), [])
 
+    def test_web_needs_a_release_with_the_tui(self):
+        old = self.base / 'old-release' / 'scripts'
+        old.mkdir(parents=True)
+        (old / 'pi-autowork.sh').write_text('#!/bin/sh\n')
+        result = self.tx('autowork', 'web', env={'PI_AUTOWORK_SCRIPT': str(old / 'pi-autowork.sh')})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('has no tui_web.py yet; update the package', result.stderr)
+        self.assertIn('tx autowork web [--port N] [--host H] [--view-only]', self.tx('autowork', 'help').stdout)
+
     def test_stop_points_a_service_runner_to_systemctl(self):
         self.service_env('my-repo')
         refused = self.tx('autowork', 'stop', 'my-repo', env={'FAKE_SERVICE_STATE': 'active'})

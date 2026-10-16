@@ -1303,6 +1303,9 @@ name (sierra), a repository path, or . for the current repository.
                              log, with keys to open, start, stop, install or remove a
                              service, set aside a held task and answer blockers
                              (needs uv; TX_AUTOWORK_TUI=0 prints this help instead)
+  tx autowork web [--port N] [--host H] [--view-only]
+                             The TUI in a web browser (default http://127.0.0.1:8765, this
+                             machine only); --view-only serves it without control keys
   tx autowork help           This help
 
 Examples:
@@ -1318,6 +1321,31 @@ EOF
 # Bare `tx autowork` on a terminal: the live TUI (pi-autowork/pi_autowork/tui.py in the
 # same release as the runner script), through uv so the runner stays stdlib-only.
 AUTOWORK_TEXTUAL=${TX_AUTOWORK_TEXTUAL:-textual==8.2.8}
+AUTOWORK_TEXTUAL_SERVE=${TX_AUTOWORK_TEXTUAL_SERVE:-textual-serve==1.1.3}
+
+# The release that holds the TUI: next to the runner script the service runs.
+autowork_tui_file() {  # $1 = file under pi-autowork/pi_autowork; prints its path or why not
+  local script root
+  script=$(autowork_script 2>/dev/null) || { echo "!pi-autowork.sh not found"; return; }
+  root=$(cd -P "$(dirname -- "$script")/.." && pwd)
+  if [[ -f "$root/pi-autowork/pi_autowork/$1" ]]; then
+    printf '%s\n%s\n' "$root/pi-autowork/pi_autowork/$1" "$script"
+  else
+    echo "!this pi-autowork release ($root) has no $1 yet; update the package"
+  fi
+}
+
+autowork_web() {
+  local found file script
+  found=$(autowork_tui_file tui_web.py)
+  [[ "$found" != '!'* ]] || die "autowork web: ${found#!}"
+  command -v uv >/dev/null 2>&1 || die "autowork web: needs uv (https://docs.astral.sh/uv/)"
+  file=$(sed -n 1p <<<"$found"); script=$(sed -n 2p <<<"$found")
+  printf 'tx: serving the pi-autowork TUI; open the URL below (Ctrl+C stops the server)\n' >&2
+  exec uv run --quiet --no-project --with "$AUTOWORK_TEXTUAL" --with "$AUTOWORK_TEXTUAL_SERVE" python3 "$file" \
+    --tx "$(script_dir)/$(basename -- "${BASH_SOURCE[0]}")" --script "$script" "$@"
+}
+
 autowork_tui() {
   local script root tui why=""
   if [[ "${TX_AUTOWORK_TUI:-1}" == 0 || ! -t 0 || ! -t 1 ]]; then
@@ -1346,6 +1374,7 @@ autowork_main() {
   case "$1" in
     help|-h|--help) autowork_help ;;
     ls|--list|-l) shift; autowork_list "$@" ;;
+    web) shift; autowork_web "$@" ;;
     status) shift; autowork_status "$@" ;;
     logs) shift; autowork_logs "$@" ;;
     start)
