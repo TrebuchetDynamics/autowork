@@ -122,27 +122,30 @@ if ((!HAS_LEDGER)) && [[ $MODE != once ]]; then
 fi
 
 # --- Hermes Toolset -----------------------------------------------------------
-find_toolset() {
-  local candidate line
-  if [[ -n ${PI_AUTOWORK_TOOLSET:-} ]]; then
-    is_toolset "$PI_AUTOWORK_TOOLSET" && { (cd "$PI_AUTOWORK_TOOLSET" && pwd); return 0; }
-    return 1
-  fi
-  candidate=$(cd "$(dirname "$SCRIPT")/.." && pwd)
-  is_toolset "$candidate" && { printf '%s' "$candidate"; return 0; }
+installed_toolset() {  # the hermes-toolset package Pi loads, from `pi list`
+  local line
   while IFS= read -r line; do
     line=${line#"${line%%[![:space:]]*}"}
-    [[ $line == /* ]] && is_toolset "$line" && { printf '%s' "$line"; return 0; }
+    [[ $line == /* ]] && is_toolset "$line" && { (cd "$line" && pwd); return 0; }
   done < <("$PI" list 2>/dev/null)
   return 1
 }
-TOOLSET=$(find_toolset) || die 2 "Hermes Toolset not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/hermes-toolset) or set PI_AUTOWORK_TOOLSET."
-GOALS=$TOOLSET/skills/docs-sync/scripts/goals.py
+# Prefer the package Pi has installed, so every run uses the skills Pi itself loads.
 SKILL_ARGS=()
-# Load the Autowork skill explicitly unless Pi already has this package installed.
-if ! "$PI" list 2>/dev/null | grep -qF -- "$TOOLSET"; then
+if [[ -n ${PI_AUTOWORK_TOOLSET:-} ]]; then
+  is_toolset "$PI_AUTOWORK_TOOLSET" || die 2 "PI_AUTOWORK_TOOLSET is not a hermes-toolset checkout: $PI_AUTOWORK_TOOLSET"
+  TOOLSET=$(cd "$PI_AUTOWORK_TOOLSET" && pwd)
+  installed_toolset | grep -qxF -- "$TOOLSET" || SKILL_ARGS=(--skill "$TOOLSET/adapters/skills/autowork")
+elif TOOLSET=$(installed_toolset); then
+  :
+elif TOOLSET=$(cd "$(dirname "$SCRIPT")/.." && pwd) && is_toolset "$TOOLSET"; then
   SKILL_ARGS=(--skill "$TOOLSET/adapters/skills/autowork")
+  printf 'pi-autowork: hermes-toolset is not installed in Pi; loading Autowork from %s. Install the package for its other skills: pi install git:github.com/TrebuchetDynamics/hermes-toolset\n' "$TOOLSET" >&2
+else
+  die 2 "Hermes Toolset not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/hermes-toolset) or set PI_AUTOWORK_TOOLSET."
 fi
+GOALS=$TOOLSET/skills/docs-sync/scripts/goals.py
+TOOLSET_REV=$(git -C "$TOOLSET" rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 # --- Models -------------------------------------------------------------------
 in_catalog() {
@@ -217,7 +220,11 @@ summarize() {
   primary_auth=$(auth_ready "$PRIMARY" && echo ready || echo 'not ready')
   echo "PI AUTOWORK"
   echo "Repository: $REPO"
-  echo "Toolset:    $TOOLSET"
+  if ((${#SKILL_ARGS[@]})); then
+    echo "Toolset:    $TOOLSET at $TOOLSET_REV (not a Pi package; Autowork loaded with --skill)"
+  else
+    echo "Toolset:    $TOOLSET at $TOOLSET_REV (Pi package)"
+  fi
   echo "Primary:    $PRIMARY ($primary_auth)"
   if ((FALLBACK_ENABLED)); then
     fallback_auth=$(auth_ready "$FALLBACK" && echo ready || echo 'not ready')

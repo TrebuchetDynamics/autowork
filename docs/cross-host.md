@@ -165,8 +165,15 @@ Run it from inside the repository you want worked on, or name it:
 ```
 
 A copy placed in another repository works on that repository from any directory
-and is ignored when the script checks for uncommitted changes; it finds this
-package through `pi list`.
+and is ignored when the script checks for uncommitted changes.
+
+The runner uses the hermes-toolset package Pi has installed (found with `pi list`)
+for both Autowork and its queue helper, so each run loads the same skills Pi does;
+the banner shows that package's path and revision. Install it from the Git source
+(`pi install git:github.com/TrebuchetDynamics/hermes-toolset`) and advance it with
+`pi update`: a local-path install (`pi install .`) loads whatever your working
+checkout holds, unreleased commits included. Without an installed package the runner
+loads Autowork from its own checkout with `--skill` and warns.
 
 | Option | Effect |
 | --- | --- |

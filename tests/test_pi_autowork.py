@@ -199,6 +199,21 @@ class PiAutoworkTests(unittest.TestCase):
         self.assertIn(f'Repository: {self.repo}', result.stdout)
         self.assertIn(f'Toolset:    {ROOT}', result.stdout)
 
+    def test_the_pi_installed_package_wins_over_the_scripts_checkout(self):
+        package = self.root / 'pi-package'
+        shutil.copytree(ROOT / 'skills/docs-sync', package / 'skills/docs-sync')
+        shutil.copytree(ROOT / 'adapters', package / 'adapters')
+        self.env['FAKE_PI_TOOLSET'] = str(package)
+        self.set_plan(['complete'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'Toolset:    {package} at unknown (Pi package)', result.stdout)
+        self.assertIsNone(self.runs()[0]['skill'])  # Pi loads its own installed skills
+        self.env.pop('FAKE_PI_TOOLSET')
+        result = self.run_runner('--dry-run')
+        self.assertIn('not a Pi package; Autowork loaded with --skill', result.stdout)
+        self.assertIn('hermes-toolset is not installed in Pi', result.stderr)
+
     # 3
     def test_missing_todo_fails_clearly(self):
         bare = self.root / 'bare'
