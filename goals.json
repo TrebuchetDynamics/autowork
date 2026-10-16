@@ -17,10 +17,11 @@
       "id": "PORTABLE",
       "priority": 10,
       "source": "docs/project.md#accepted-requirements",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-001",
-        "TOOLSET-035"
+        "TOOLSET-035",
+        "TOOLSET-121-3d"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -613,6 +614,7 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
+      "TOOLSET-121-3d",
       "TOOLSET-101-f6"
     ]
   },
@@ -738,6 +740,14 @@
       "section": "Next",
       "status": "open",
       "title": "Record intent before side effects in worktree creation and slot transitions"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-121-3d",
+      "section": "Next",
+      "status": "open",
+      "title": "Rename the repository and plugin from hermes-toolset to autowork"
     },
     {
       "depends_on": [
