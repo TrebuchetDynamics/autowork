@@ -159,6 +159,11 @@
       "evidence": [
         {
           "kind": "executed",
+          "ref": "4b79912: Python 3.12 scripts/check.py passed 562/709/212/8 tests, one skip/eight excluded; exact-tree independent review approved; same canonical read-only response/execution replay passed; installed adoption remains TOOLSET-101-f6",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "Shared TOOLSET-017/018/019 implementation integrated eb72be6; independent review findings repaired with failing-then-passing regressions; final Python 3.12 scripts/check.py passed 318/470/139/8 tests, two skips/eight excluded. Native recovery, deployment and model qualification remain incomplete.",
           "result": "pass"
         },
@@ -208,7 +213,8 @@
         "TOOLSET-027",
         "TOOLSET-083",
         "TOOLSET-092-18",
-        "TOOLSET-100-78"
+        "TOOLSET-100-78",
+        "TOOLSET-101-f6"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -505,10 +511,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "AUDIT-QUOTED-SECRET",
       "TOOLSET-099-87",
-      "TOOLSET-092-18",
-      "TOOLSET-100-78",
       "TOOLSET-073",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -516,18 +519,11 @@
       "TOOLSET-019",
       "TOOLSET-096-7e",
       "TOOLSET-029",
-      "TOOLSET-011"
+      "TOOLSET-011",
+      "TOOLSET-101-f6"
     ]
   },
   "tasks": [
-    {
-      "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "AUDIT-QUOTED-SECRET",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "Redact complete quoted credential values in fleet observations"
-    },
     {
       "depends_on": [
         "TOOLSET-098-4c"
@@ -593,14 +589,6 @@
       "title": "Measure subprocess coverage, then review identical and subset test groups"
     },
     {
-      "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-092-18",
-      "section": "Next",
-      "status": "open",
-      "title": "Reject in-profile output directory aliases during fleet collection"
-    },
-    {
       "depends_on": [
         "TOOLSET-095-48"
       ],
@@ -621,12 +609,24 @@
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
     },
     {
+      "depends_on": [
+        "AUDIT-QUOTED-SECRET",
+        "TOOLSET-092-18",
+        "TOOLSET-100-78"
+      ],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-101-f6",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Deploy reviewed fleet-audit helpers through the native scanned updater"
+    },
+    {
       "depends_on": [],
       "goal": "RECOVERY",
-      "id": "TOOLSET-100-78",
-      "section": "Next",
-      "status": "open",
-      "title": "Retain execution evidence for every existing profile job"
+      "id": "AUDIT-QUOTED-SECRET",
+      "section": "Done",
+      "status": "done",
+      "title": "Redact complete quoted credential values in fleet observations"
     },
     {
       "depends_on": [],
@@ -1215,6 +1215,14 @@
     },
     {
       "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-092-18",
+      "section": "Done",
+      "status": "done",
+      "title": "Reject in-profile output directory aliases during fleet collection"
+    },
+    {
+      "depends_on": [],
       "goal": "GENTLE-UPDATE",
       "id": "TOOLSET-092-f2",
       "section": "Done",
@@ -1270,6 +1278,14 @@
       "section": "Done",
       "status": "done",
       "title": "Drive pi-autowork through the Parallel Autowork engine"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-100-78",
+      "section": "Done",
+      "status": "done",
+      "title": "Retain execution evidence for every existing profile job"
     },
     {
       "depends_on": [
