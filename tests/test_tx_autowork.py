@@ -16,6 +16,8 @@ TX = ROOT / 'tmux' / 'tx'
 
 RUNNER = '''#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$FAKE_RUNNER_LOG"
+if [[ " $* " == *" --status "* ]]; then echo "STATUS $*"; exit 0; fi
+echo "runner output for $*"
 trap 'echo interrupted >> "$FAKE_RUNNER_LOG"; exit 130' INT
 while :; do sleep 0.1; done
 '''
@@ -25,8 +27,11 @@ case "$2" in
   is-active) [[ $state == active ]] ;;
   is-enabled) [[ $state == active || $state == enabled ]] ;;
   is-failed) echo inactive; exit 1 ;;
-  list-units) [[ $state == none ]] || echo "pi-autowork@svc.service loaded active running pi-autowork for svc" ;;
+  list-units) [[ $state == none ]] || echo "pi-autowork@${FAKE_SERVICE_NAME:-svc}.service loaded active running pi-autowork" ;;
 esac
+'''
+JOURNALCTL = '''#!/usr/bin/env bash
+echo "journal $*"
 '''
 
 
@@ -40,10 +45,11 @@ class TxAutoworkTests(unittest.TestCase):
         tmux = self.base / 'tmux'
         tmux.write_text(f'#!/bin/sh\nexec tmux -S {socket} -f /dev/null "$@"\n')
         self.addCleanup(subprocess.run, [str(tmux), 'kill-server'], capture_output=True)
-        runner, systemctl = self.base / 'pi-autowork.sh', self.base / 'systemctl'
+        runner, systemctl, journal = self.base / 'pi-autowork.sh', self.base / 'systemctl', self.base / 'journalctl'
         runner.write_text(RUNNER)
         systemctl.write_text(SYSTEMCTL)
-        for path in (tmux, runner, systemctl):
+        journal.write_text(JOURNALCTL)
+        for path in (tmux, runner, systemctl, journal):
             path.chmod(0o755)
         self.log = self.base / 'runner.log'
         self.log.touch()
@@ -54,7 +60,8 @@ class TxAutoworkTests(unittest.TestCase):
         self.env.update(TX_TMUX=str(tmux), PI_AUTOWORK_SCRIPT=str(runner), PI_AUTOWORK_SYSTEMCTL=str(systemctl),
                         FAKE_RUNNER_LOG=str(self.log), TX_NO_ATTACH='1', SHELL='/bin/bash',
                         TX_CONFIG=str(self.base / 'tx.config'), XDG_CONFIG_HOME=str(self.base / 'config'),
-                        TX_COLOR='never', TX_AUTOWORK_STOP_TIMEOUT='20')
+                        TX_COLOR='never', TX_AUTOWORK_STOP_TIMEOUT='20', TX_JOURNALCTL=str(journal),
+                        PI_AUTOWORK_STATE_DIR=str(self.base / 'state'))
         self.tmux = tmux
 
     def tx(self, *args, cwd=None, env=None):
@@ -134,6 +141,63 @@ class TxAutoworkTests(unittest.TestCase):
         plain.mkdir()
         self.assertIn('not inside a Git repository', self.tx('autowork', str(plain)).stderr)
 
+    def service_env(self, name='svc', repo=None):
+        env_dir = self.base / 'config' / 'pi-autowork'
+        env_dir.mkdir(parents=True, exist_ok=True)
+        (env_dir / f'{name}.env').write_text(f'PI_AUTOWORK_REPO={repo or self.repo}\n')
+
+    def test_a_runner_name_finds_its_repository(self):
+        self.service_env('svc')  # a service's name resolves through its settings file
+        refused = self.tx('autowork', 'svc', env={'FAKE_SERVICE_STATE': 'active'})
+        self.assertIn(f'pi-autowork@my-repo.service is active and owns {self.repo}', refused.stderr)
+        self.tx('autowork', str(self.repo))
+        self.runner_lines(1)
+        status = self.tx('autowork', 'status', 'my-repo')  # a tmux session's name, too
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertEqual(status.stdout.strip(), f'STATUS --repo {self.repo} --status')
+        self.assertIn('no runner named nothing', self.tx('autowork', 'status', 'nothing').stderr)
+
+    def test_status_defaults_to_the_current_repository(self):
+        status = self.tx('autowork', 'status', cwd=self.repo / 'sub')
+        self.assertEqual(status.stdout.strip(), f'STATUS --repo {self.repo} --status')
+
+    def test_logs_read_the_tmux_pane_or_the_service_journal(self):
+        self.tx('autowork', str(self.repo))
+        self.runner_lines(1)
+        deadline = time.monotonic() + 10
+        while 'runner output' not in self.tx('autowork', 'logs', 'my-repo').stdout:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.1)
+        self.tx('autowork', 'stop', 'my-repo')
+        self.service_env('my-repo')
+        journal = self.tx('autowork', 'logs', 'my-repo', env={'FAKE_SERVICE_STATE': 'active'})
+        self.assertEqual(journal.stdout.strip(), 'journal --user -u pi-autowork@my-repo.service -n 200 --no-pager -o cat')
+        follow = self.tx('autowork', 'logs', '-f', str(self.repo), env={'FAKE_SERVICE_STATE': 'active'})
+        self.assertIn('-f -o cat', follow.stdout)
+        self.assertIn('no tmux session or service', self.tx('autowork', 'logs', str(self.repo)).stderr)
+
+    def test_ls_shows_health_from_the_runner_status(self):
+        state = self.base / 'state' / 'key'
+        state.mkdir(parents=True)
+        (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(self.repo)}))
+        (state / 'status.json').write_text(json.dumps({'state': 'working', 'since': time.time() - 300,
+                                                       'active_workers': 2, 'waiting': 5}))
+        self.service_env('my-repo')
+        service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo'}
+        listing = self.tx('autowork', 'ls', env=service).stdout
+        self.assertIn('Health', listing)
+        self.assertRegex(listing, r'working [45]m; 2 running, 5 waiting')
+        (state / 'runner.json').write_text(json.dumps({'pid': 999999999, 'repo': str(self.repo)}))
+        self.assertIn('not running; 2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
+        unknown = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'other'})
+        self.assertEqual(unknown.returncode, 0, unknown.stderr)  # a service without settings has no health
+        self.assertRegex(unknown.stdout, r'other\s+service\s+running\s+-')
+
+    def test_stop_points_a_service_runner_to_systemctl(self):
+        self.service_env('my-repo')
+        refused = self.tx('autowork', 'stop', 'my-repo', env={'FAKE_SERVICE_STATE': 'active'})
+        self.assertIn('systemctl --user stop pi-autowork@my-repo', refused.stderr)
+
 
 class TxPackageTests(unittest.TestCase):
     def test_the_package_installs_this_tx(self):
@@ -142,7 +206,7 @@ class TxPackageTests(unittest.TestCase):
         self.assertEqual(package['bin'], {'tx': 'tmux/tx'})
         self.assertIn('tmux/', package['files'])
         self.assertTrue(os.access(TX, os.X_OK))
-        self.assertIn('tx autowork <repo|.>', subprocess.run(['bash', str(TX), 'help'], capture_output=True,
+        self.assertIn('tx autowork <name|repo|.>', subprocess.run(['bash', str(TX), 'help'], capture_output=True,
                                                                text=True).stdout)
 
 

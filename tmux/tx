@@ -101,12 +101,18 @@ Usage:
   tx doctor --install     Install/repair tmux assets, then verify installed paths.
   tx kill <alias>         Kill the tmux session for <alias>.
   tx kill-all             Kill all running configured tx sessions.
-  tx autowork <repo|.>    Run pi-autowork for a Git repository in tmux session
+  tx autowork <name|repo|.>
+                          Run pi-autowork for a repository in tmux session
                           pi-autowork-<repo-name>, or attach to it. Refused while
                           the pi-autowork@<repo-name> systemd service is enabled
                           or active: the service is the primary way to run it.
-  tx autowork ls          List pi-autowork runners: tmux sessions and services.
-  tx autowork stop <name|repo>
+  tx autowork ls          List pi-autowork runners (tmux and services) with health.
+  tx autowork status [name|repo|.]
+                          The runner's full status: tasks, workers, blockers.
+  tx autowork logs [-f] [name|repo|.]
+                          Recent runner output: the service journal or the tmux pane;
+                          -f follows the journal or attaches to the session.
+  tx autowork stop <name|repo|.>
                           Interrupt a tmux runner (Ctrl-C: a deliberate pause, its
                           workers resume on the same attempt), then close it.
   tx help                 Show this help.
@@ -137,6 +143,8 @@ Environment:
   PI_AUTOWORK_SCRIPT                pi-autowork.sh for tx autowork (default: the one
                                     the systemd unit runs, else ../scripts next to tx).
   PI_AUTOWORK_SYSTEMCTL             systemctl for tx autowork service checks.
+  PI_AUTOWORK_STATE_DIR             pi-autowork state root read for ls health.
+  TX_JOURNALCTL                     journalctl for tx autowork logs.
 EOF
 }
 
@@ -885,8 +893,12 @@ attach_session() {
 # systemd (pi-autowork.sh --install-service) is the primary way to run pi-autowork;
 # a tmux session is for watching or debugging one runner live. Both use the same
 # per-repository runner lock, so they never work on a repository at once.
+# Every command takes a runner name (sierra), a repository path, or `.`.
 AUTOWORK_PREFIX=pi-autowork-
 SYSTEMCTL_BIN=${PI_AUTOWORK_SYSTEMCTL:-systemctl}
+JOURNALCTL_BIN=${TX_JOURNALCTL:-journalctl}
+AUTOWORK_ENV_DIR=${PI_AUTOWORK_ENV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-autowork}
+AUTOWORK_STATE_ROOT=${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-autowork}
 
 autowork_script() {
   if [[ -n "${PI_AUTOWORK_SCRIPT:-}" ]]; then
@@ -928,6 +940,26 @@ autowork_repo() {
   printf '%s\n' "$root"
 }
 
+# A path (or .) names its repository; a bare name finds the repository of that
+# runner's tmux session or service.
+autowork_resolve() {
+  local target=$1 repo="" session
+  if [[ "$target" == */* || "$target" == . || "$target" == .. || -d "$target" ]]; then
+    autowork_repo "$target"
+    return 0
+  fi
+  target=${target#"$AUTOWORK_PREFIX"}
+  session=$(autowork_session "$target")
+  if command -v "$TMUX_BIN" >/dev/null 2>&1; then
+    repo=$("$TMUX_BIN" show-options -qv -t "=$session:" @pi_autowork_repo 2>/dev/null || true)
+  fi
+  if [[ -z "$repo" && -f "$AUTOWORK_ENV_DIR/$target.env" ]]; then
+    repo=$(sed -n 's/^PI_AUTOWORK_REPO=//p' "$AUTOWORK_ENV_DIR/$target.env" | head -n 1)
+  fi
+  [[ -n "$repo" ]] || die "autowork: no runner named $target; pass a repository path, or see: tx autowork ls"
+  printf '%s\n' "$repo"
+}
+
 autowork_service_state() {
   local unit="pi-autowork@$1.service" state
   command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1 || { printf 'none\n'; return 0; }
@@ -942,10 +974,10 @@ autowork_service_state() {
 }
 
 autowork_start() {
-  [[ $# -eq 1 ]] || die "autowork: expected exactly one repository path (or .)"
+  [[ $# -eq 1 ]] || die "autowork: expected exactly one runner name, repository path, or ."
   require_tmux
   local root instance session script service
-  root=$(autowork_repo "$1")
+  root=$(autowork_resolve "$1")
   instance=$(autowork_instance "$root")
   session=$(autowork_session "$instance")
   if "$TMUX_BIN" has-session -t "=$session" 2>/dev/null; then
@@ -957,7 +989,7 @@ autowork_start() {
     service=$(autowork_service_state "$instance")
     case "$service" in
       active|enabled)
-        die "autowork: pi-autowork@$instance.service is $service and owns $root. Watch it with: journalctl --user -fu pi-autowork@$instance; to run it in tmux instead: systemctl --user disable --now pi-autowork@$instance" ;;
+        die "autowork: pi-autowork@$instance.service is $service and owns $root. Watch it with: tx autowork logs -f $instance; to run it in tmux instead: systemctl --user disable --now pi-autowork@$instance" ;;
     esac
     script=$(autowork_script)
     local shell_path=${SHELL:-/bin/bash} command
@@ -976,10 +1008,27 @@ autowork_start() {
   exec "$TMUX_BIN" attach-session -t "=$session"
 }
 
+# One line of health per repository, from the runner's own status.json (written
+# every cycle; the same source as pi-autowork.sh --fleet). Prints repo<TAB>health.
+autowork_health() {
+  command -v jq >/dev/null 2>&1 || return 0
+  local folder pid
+  for folder in "$AUTOWORK_STATE_ROOT"/*/; do
+    [[ -f "$folder/status.json" || -f "$folder/runner.json" ]] || continue
+    pid=$(jq -r '.pid // empty' "$folder/runner.json" 2>/dev/null || true)
+    jq -rs --arg now "$(date +%s)" --arg alive "$([[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && echo 1)" '
+      (.[0] // {}) as $s | (.[1] // {}) as $r | ($s.repo // $r.repo) as $repo | select($repo)
+      | (if $alive != "1" then "not running" else ($s.state // "starting") end) as $state
+      | (if $s.since and $alive == "1" then " \((($now | tonumber) - $s.since) / 60 | floor)m" else "" end) as $for
+      | "\($repo)\t\($state)\($for); \($s.active_workers // 0) running, \($s.waiting // 0) waiting"' \
+      "$folder/status.json" "$folder/runner.json" 2>/dev/null || true
+  done
+}
+
 autowork_list() {
   [[ $# -eq 0 ]] || die "autowork ls: takes no arguments"
-  local -A mode=() repo=() state=()
-  local name path attached unit sub
+  local -A mode=() repo=() state=() health=()
+  local name path attached unit sub line
   if command -v "$TMUX_BIN" >/dev/null 2>&1; then
     while IFS=$'\t' read -r name path attached; do
       [[ "$name" == "$AUTOWORK_PREFIX"* ]] || continue
@@ -992,7 +1041,7 @@ autowork_list() {
     while read -r unit _ _ sub _; do
       [[ "$unit" == pi-autowork@*.service ]] || continue
       name=${unit#pi-autowork@}; name=${name%.service}
-      path=$(sed -n 's/^PI_AUTOWORK_REPO=//p' "${XDG_CONFIG_HOME:-$HOME/.config}/pi-autowork/$name.env" 2>/dev/null || true)
+      path=$(sed -n 's/^PI_AUTOWORK_REPO=//p' "$AUTOWORK_ENV_DIR/$name.env" 2>/dev/null || true)
       if [[ -n "${mode[$name]+x}" ]]; then
         mode[$name]="tmux+service"; state[$name]+=", service $sub"
       else
@@ -1005,30 +1054,79 @@ autowork_list() {
     printf '  (none)  start one with: tx autowork <repo>   or   pi-autowork.sh --install-service --repo <repo>\n'
     return 0
   fi
-  local name_w=4 mode_w=4 state_w=5
+  local -A by_repo=()
+  while IFS=$'\t' read -r path line; do
+    [[ -n "$path" ]] && by_repo[$path]=$line
+  done < <(autowork_health)
+  local key
+  for name in "${!mode[@]}"; do
+    key=${repo[$name]:-}
+    health[$name]=-
+    [[ -n "$key" && -n "${by_repo[$key]+x}" ]] && health[$name]=${by_repo[$key]}
+  done
+  local name_w=4 mode_w=4 state_w=5 health_w=6
   for name in "${!mode[@]}"; do
     (( ${#name} > name_w )) && name_w=${#name}
     (( ${#mode[$name]} > mode_w )) && mode_w=${#mode[$name]}
     (( ${#state[$name]} > state_w )) && state_w=${#state[$name]}
+    (( ${#health[$name]} > health_w )) && health_w=${#health[$name]}
   done
-  printf '  %-*s  %-*s  %-*s  %s\n' "$name_w" Name "$mode_w" Mode "$state_w" State Repository
+  printf '  %-*s  %-*s  %-*s  %-*s  %s\n' "$name_w" Name "$mode_w" Mode "$state_w" State "$health_w" Health Repository
   while read -r name; do
-    printf '  %-*s  %-*s  %-*s  %s\n' "$name_w" "$name" "$mode_w" "${mode[$name]}" "$state_w" "${state[$name]}" \
-      "$(display_path "${repo[$name]:-?}")"
+    printf '  %-*s  %-*s  %-*s  %-*s  %s\n' "$name_w" "$name" "$mode_w" "${mode[$name]}" "$state_w" "${state[$name]}" \
+      "$health_w" "${health[$name]}" "$(display_path "${repo[$name]:-?}")"
   done < <(printf '%s\n' "${!mode[@]}" | sort)
-  printf '\nHealth for one runner: pi-autowork.sh --repo <repo> --status; all: pi-autowork.sh --fleet\n'
+  printf '\nDetails: tx autowork status <name>   Output: tx autowork logs [-f] <name>\n'
+}
+
+autowork_status() {
+  [[ $# -le 1 ]] || die "autowork status: expected at most one runner name, repository path, or ."
+  local root script
+  root=$(autowork_resolve "${1:-.}")
+  script=$(autowork_script)
+  exec bash "$script" --repo "$root" --status
+}
+
+autowork_logs() {
+  local follow=0
+  if [[ "${1:-}" == -f || "${1:-}" == --follow ]]; then
+    follow=1
+    shift
+  fi
+  [[ $# -le 1 ]] || die "autowork logs: expected [-f] and at most one runner name, repository path, or ."
+  local root instance session lines=${TX_AUTOWORK_LOG_LINES:-200}
+  root=$(autowork_resolve "${1:-.}")
+  instance=$(autowork_instance "$root")
+  session=$(autowork_session "$instance")
+  if command -v "$TMUX_BIN" >/dev/null 2>&1 && "$TMUX_BIN" has-session -t "=$session" 2>/dev/null; then
+    if (( follow )); then
+      TX_NO_ATTACH=0 autowork_start "$root"
+    fi
+    "$TMUX_BIN" capture-pane -p -J -S "-$lines" -t "=$session:"
+    return 0
+  fi
+  case "$(autowork_service_state "$instance")" in
+    none) die "autowork logs: no tmux session or service runs $root" ;;
+  esac
+  if (( follow )); then
+    exec "$JOURNALCTL_BIN" --user -u "pi-autowork@$instance.service" -n "$lines" -f -o cat
+  fi
+  exec "$JOURNALCTL_BIN" --user -u "pi-autowork@$instance.service" -n "$lines" --no-pager -o cat
 }
 
 autowork_stop() {
-  [[ $# -eq 1 ]] || die "autowork stop: expected exactly one runner name or repository path"
+  [[ $# -eq 1 ]] || die "autowork stop: expected exactly one runner name, repository path, or ."
   require_tmux
-  local target=$1 session
-  if [[ -d "$target" ]]; then
-    session=$(autowork_session "$(autowork_instance "$(autowork_repo "$target")")")
-  else
-    session=$(autowork_session "${target#"$AUTOWORK_PREFIX"}")
+  local root session instance
+  root=$(autowork_resolve "$1")
+  instance=$(autowork_instance "$root")
+  session=$(autowork_session "$instance")
+  if ! "$TMUX_BIN" has-session -t "=$session" 2>/dev/null; then
+    case "$(autowork_service_state "$instance")" in
+      active|enabled) die "autowork stop: $instance runs as a service; stop it with: systemctl --user stop pi-autowork@$instance" ;;
+    esac
+    die "autowork stop: no tmux session $session"
   fi
-  "$TMUX_BIN" has-session -t "=$session" 2>/dev/null || die "autowork stop: no tmux session $session"
   local pane_pid
   pane_pid=$("$TMUX_BIN" display-message -p -t "=$session:" '#{pane_pid}')
   # Ctrl-C reaches the runner as SIGINT: it pauses live workers and stops cleanly.
@@ -1036,7 +1134,7 @@ autowork_stop() {
   local deadline=$((SECONDS + ${TX_AUTOWORK_STOP_TIMEOUT:-300}))
   while pgrep -P "$pane_pid" -f 'pi-autowork\.sh' >/dev/null 2>&1; do
     if (( SECONDS >= deadline )); then
-      die "autowork stop: the runner in $session is still stopping; check it with: tx autowork $target"
+      die "autowork stop: the runner in $session is still stopping; check it with: tx autowork logs $instance"
     fi
     sleep 1
   done
@@ -1047,9 +1145,11 @@ autowork_stop() {
 }
 
 autowork_main() {
-  [[ $# -ge 1 ]] || die "autowork: expected a repository path, ls, or stop <name> (try 'tx help')"
+  [[ $# -ge 1 ]] || die "autowork: expected a runner name, repository path, ., or ls/status/logs/stop (try 'tx help')"
   case "$1" in
     ls|--list|-l) shift; autowork_list "$@" ;;
+    status) shift; autowork_status "$@" ;;
+    logs) shift; autowork_logs "$@" ;;
     stop) shift; autowork_stop "$@" ;;
     *) autowork_start "$@" ;;
   esac

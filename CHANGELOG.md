@@ -144,6 +144,9 @@ claim of a tagged release, completed installation or live workflow qualification
   runs and refuses while that repository's service is enabled; the service stays the
   primary way to run pi-autowork. This `tx` is now the maintained one, installed as
   the package's `tx` command; pi-toolset's `tx` is deprecated in its favor.
+- `tx autowork` takes a runner name as well as a path, shows each runner's health in
+  `ls`, and adds `status` (the runner's full status) and `logs [-f]` (the service
+  journal or the tmux pane) for tmux and service runners alike.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),

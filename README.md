@@ -10,7 +10,7 @@ Hermes Toolset connects planning, documentation and verified repository work aro
 one shared queue: `TODO.md`. Use it in **Hermes, Claude Code, Codex or Pi**.
 
 [Install](#install) · [First use](#first-use-in-your-project) ·
-[Commands](#what-you-can-do) · [Safety](#read-before-installing) ·
+[Pi pipeline](#pi-autowork-pipeline) · [Commands](#what-you-can-do) · [Safety](#read-before-installing) ·
 [Documentation](#documentation)
 
 **Hermes CLI**, after installation (illustrative, not a run receipt):
@@ -178,6 +178,73 @@ may discover useful work, record a justified task **and implement it in the same
 invocation**. With task-limited authority, it must stay in that scope. It does not
 invent busywork or treat an empty queue as permission to expand its authority.
 
+## Pi Autowork pipeline
+
+**Keep Pi working through the accepted queue, with parallel workers and checked integration.**
+The Linux runner is separate from a one-shot skill invocation: you start it explicitly;
+installing the Pi package does not start workers, a service or a Hermes cron job.
+
+```text
+TODO.md (+ goals.json)
+                 ↓
+Dependency / scope / resource gates
+                 ↓
+Pi workers in isolated worktrees
+                 ↓
+Verify + integrate into session
+                 ↓
+main/master or Merge pending
+```
+
+- **Parallel where safe.** Independent tasks run together; overlapping file scopes,
+  shared resources and dependencies constrain admission. An empty queue waits
+  without a model call rather than inventing tasks.
+- **Evidence before closure.** Worker commits and reports are claims. Project checks
+  and, by default, a separate Pi review gate integration and task closure.
+- **Delivery stays explicit.** A task closed on the session branch is not yet on
+  `main`/`master`. The runner delivers the session when it drains or stops, cleans
+  up the completed session, or reports `Merge pending` and retains it. Nothing is pushed.
+
+From your project's main-branch checkout, after the Pi installation above:
+
+```sh
+# Preview only: no workers or repository changes.
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --dry-run
+# Run until no task can start, with up to two workers.
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --until-empty --workers 2
+```
+
+Starting the second command makes model calls and local commits. Configure project
+checks and cost/runtime limits before unattended use. See the
+[runner guide](docs/cross-host.md#run-autowork-continuously) for Linux prerequisites,
+continuous/service mode, model fallback, status, stop and recovery controls, and the
+[Pi component](pi-autowork/README.md) for code ownership and migration status.
+
+### Run and watch runners
+
+Run each repository's runner as a **systemd user service**: it survives logout (with
+lingering), restarts after a crash and keeps itself current.
+
+```sh
+# From the project's main-branch checkout; the service is pi-autowork@<repository name>.
+~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
+```
+
+`tx autowork` from [`tmux/`](tmux/README.md) is the day-to-day view of every runner,
+service or tmux, and a way to run one in tmux to watch or debug it live:
+
+```sh
+tx autowork ls                # every runner with its health: working, blocked, stalled
+tx autowork status india       # tasks, workers and what blocks them
+tx autowork logs -f sierra     # follow a runner's output
+tx autowork .                 # run this repository in tmux session pi-autowork-<name>
+tx autowork stop my-project   # Ctrl+C: workers pause and resume later on the same attempt
+```
+
+A target is a runner name, a repository path or `.`. Starting in tmux refuses while
+that repository's service is enabled, and the runner's per-repository lock keeps two
+runners off one repository in any case. Install `tx` with `sh tmux/install.sh`.
+
 ## What you can do
 
 Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes above.
@@ -321,6 +388,7 @@ output quality, Git delivery or live Telegram execution.
 - [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
 - [Memory capture, inspection and existing stores](docs/memory.md)
 - [Speech-to-text: faster-whisper medium setup notes](docs/FASTER-WHISPER-MEDIUM-SETUP.md)
+- [`tx` and `tx autowork`: tmux sessions and pi-autowork runners](tmux/README.md)
 - [Removal and recovery](docs/uninstall.md)
 - [Dependencies, reproducibility and licensing](docs/dependencies.md)
 - [Adding skills](docs/contributing.md) · [Testing and compatibility](docs/testing.md)
