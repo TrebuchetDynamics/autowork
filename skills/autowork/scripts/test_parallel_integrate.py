@@ -484,6 +484,47 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('outside.txt', result['reason'])
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
+    def retry_args(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, profile='', parallel=2,
+            max_workers=None, worker_command=json.dumps([sys.executable, '-c', 'pass']), worker_host='auto',
+            worker_profile=None, worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
+
+    def widen(self, touches):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: ' + touches, 1))
+        self.git('commit', '-qam', 'widen A')
+
+    def test_a_scope_hold_records_its_cause_and_outside_files(self):
+        self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n'})
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((result['cause'], result['outside']), ('scope', ['extra.py']))
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['cause'], slot['outside']), ('scope', ['extra.py']))
+
+    def test_a_widened_scope_reverifies_the_same_commit_once(self):
+        _, commit = self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n'})
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        self.widen('A.txt, extra.py')
+        result = module.retry_held(self.retry_args())
+        self.assertEqual(result, {'outcome': 'RESCOPED', 'task': 'A', 'commit': commit, 'touches': 'A.txt, extra.py'})
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_rescoping_needs_full_coverage_and_happens_once(self):
+        self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n', 'other.py': 'y\n'})
+        module = self.module()
+        module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['cause']), ('held', 'scope'))
+        self.assertFalse(state.rescopable(slot, 'A.txt, extra.py'))  # other.py still outside
+        self.assertTrue(state.rescopable(slot, 'A.txt, extra.py, other.py'))
+        self.assertFalse(state.rescopable(dict(slot, rescoped=True), 'A.txt, extra.py, other.py'))  # once only
+        self.widen('A.txt, extra.py')
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RETRIED')  # the ordinary path
+
     def test_coordinator_file_is_held_even_if_declared(self):
         todo = self.repo / 'TODO.md'
         todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, CHANGELOG.md'))

@@ -850,10 +850,7 @@ settle() {
     [[ $id == "$ONCE_TASK" && $state == held ]] && DRAINING=1
     # Only a failure this run watched happen counts toward the streak; holds found at
     # start (say after a self-restart) were counted, if at all, by the run that saw them.
-    if [[ $state == held && -n $before && $before != failed && ${SEEN["counted-$id"]:-} != 1 ]]; then
-      SEEN["counted-$id"]=1
-      FAILURES=$((FAILURES + 1))
-    fi
+    [[ $state == held && -n $before && $before != failed ]] && count_failure "$id"
   done < <(jq -r '.tasks[]? | [.task, .state, (.reason // "")] | @tsv' <<<"$snapshot")
   ((STOP)) && return 0
   # Integrated but not closed (a close that failed earlier, or a restart in between).
@@ -874,7 +871,12 @@ settle() {
         close_task "$id" ;;
       HELD)
         SETTLED=1
+        if [[ $(jq -r '.cause // ""' <<<"$result") == scope ]] &&
+           widen_inferred "$id" "$(jq -r '(.outside // []) | join(", ")' <<<"$result")"; then
+          continue  # the next refill verifies the same commit again (RESCOPED)
+        fi
         note_state "$id" held "$reason"
+        count_failure "$id"
         [[ $id == "$ONCE_TASK" ]] && DRAINING=1 ;;
       *)
         [[ $reason == *highest-priority* ]] && continue  # another reported task goes first
@@ -944,6 +946,37 @@ health_update() {
     PI_AUTOWORK_HEALTH_BLOCKER=$RUNNER_BLOCKER \
     python3 "$HEALTH" update "$STATE" 2>>"$STATE/engine.err") || return 0
   [[ -n $line ]] && warn "$line"
+  return 0
+}
+
+count_failure() {
+  [[ ${SEEN["counted-$1"]:-} == 1 ]] && return 0
+  SEEN["counted-$1"]=1
+  FAILURES=$((FAILURES + 1))
+}
+
+# --- Scope ----------------------------------------------------------------------
+# Touches this runner inferred are a guess. When a worker's commit is held only for
+# changing files outside them, widen the guess to those files once and let the engine
+# verify the same commit again (RESCOPED); every other check still applies. Touches a
+# person wrote, or edited since, are never changed: the helper refuses.
+remember_inferred() {  # $1 task, $2 recorded Touches
+  local merged
+  merged=$(jq -c --arg id "$1" --arg t "$2" '.[$id] = $t' "$TOUCHES_INFERRED" 2>/dev/null || jq -cn --arg id "$1" --arg t "$2" '{($id): $t}')
+  printf '%s\n' "$merged" >"$TOUCHES_INFERRED.tmp" && mv "$TOUCHES_INFERRED.tmp" "$TOUCHES_INFERRED"
+}
+widen_inferred() {  # $1 task, $2 comma-separated files outside its Touches
+  local recorded widened
+  recorded=$(jq -r --arg id "$1" '.[$id] // empty' "$TOUCHES_INFERRED" 2>/dev/null)
+  [[ -n $recorded && -n $2 && -z $(dirty "$INTEG") ]] || return 1
+  [[ ${SEEN["widened-$1"]:-} == 1 ]] && return 1  # once per task in this run
+  widened=$(python3 "$TOUCHES_HELPER" widen "$INTEG" "$TOOLSET" "$1" "$recorded" "$2" 2>>"$STATE/engine.err") || return 1
+  git -C "$INTEG" add -- TODO.md
+  git -C "$INTEG" commit -q -m "docs(tasks): widen inferred Touches for $1 (pi-autowork)" \
+    -m "The worker's commit changed $2, outside the inferred Touches; the engine verifies it again."
+  remember_inferred "$1" "$widened"
+  SEEN["widened-$1"]=1
+  say "$1: its commit changed files outside the inferred Touches ($2); widened them and verifying again"
   return 0
 }
 
@@ -1020,8 +1053,10 @@ drop_scratch() {
 # time. For the top runnable tasks lacking it, a read-only Pi pass proposes the paths
 # and the runner records them in the session branch. The engine enforces them: a
 # worker that changes files outside its Touches is held, never silently merged.
-TOUCHES_HELPER=$TOOLSET/scripts/pi_autowork_touches.py
-[[ -f $TOUCHES_HELPER ]] || TOUCHES_HELPER=$(dirname "$SCRIPT")/pi_autowork_touches.py
+TOUCHES_HELPER=$TOOLSET/pi-autowork/pi_autowork/touches_inference.py
+[[ -f $TOUCHES_HELPER ]] || TOUCHES_HELPER=$(dirname "$SCRIPT")/../pi-autowork/pi_autowork/touches_inference.py
+# Touches this runner recorded itself, per task: only those may be widened later.
+TOUCHES_INFERRED=$STATE/touches-inferred.json
 declare -A TOUCHES_TRIED=()
 touches_prompt() {  # $1 task, $2 checkout
   printf '%s' "Plan the file scope of task $1 in $2 so it can run beside other tasks. Read its entry in TODO.md, then the files and directories its Sources, Scope and acceptance name, and the repository layout around them. List the repository-relative files, directories (ending in /) or globs the task's change will edit, including its tests and docs; prefer a component's directory over guessing single files, and when unsure widen to the owning directories rather than give up: a worker that edits outside the list is only held and retried alone. Scope is about which files change, not how the result is checked: a task verified on a device, emulator, screenshot harness or live service still lists the code and test files it edits. Never list TODO.md, TODO.archive.md, goals.json or CHANGELOG.md. Answer NONE only when the task edits no repository file (purely live, manual or device operation) or would edit files across most of the repository, and give the reason. Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or PI_AUTOWORK_TOUCHES: NONE - reason"
@@ -1054,6 +1089,7 @@ infer_touches() {
        recorded=$(python3 "$TOUCHES_HELPER" apply "$INTEG" "$TOOLSET" "$id" "$answer" 2>>"$STATE/engine.err"); then
       git -C "$INTEG" add -- TODO.md
       git -C "$INTEG" commit -q -m "docs(tasks): declare Touches for $id (pi-autowork)" -m "Proposed by a read-only planning pass; the engine holds any change outside it."
+      remember_inferred "$id" "$recorded"
       say "$id: can run beside others; Touches: $recorded"
     elif ((!JOB_OK)) || [[ -z $answer ]]; then
       # No answer (provider failure, timeout, missing result line) is not a judgment.
@@ -1163,6 +1199,9 @@ while :; do
       id=$(jq -r .task <<<"$result")
       SEEN[$id]=''
       say "$id: the retry made no change; re-verifying the first attempt's commit" ;;
+    RESCOPED)
+      id=$(jq -r .task <<<"$result")
+      SEEN[$id]='' ;;
     WAITING)
       waiting=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | (.[:4] | join("; ")) + (if length > 4 then " (+\(length - 4) more; see --status)" else "" end)' <<<"$result" 2>/dev/null)
       [[ $waiting != "$LAST_WAITING" && -n $waiting ]] && say "Waiting: $waiting"

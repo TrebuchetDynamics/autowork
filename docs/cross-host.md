@@ -230,6 +230,11 @@ Remembered `NONE` answers from the `Touches:` pass belong to the prompt that pro
 them, so a changed prompt asks those tasks again, and a pass that gave no answer is
 retried within the hour.
 
+Touches the runner inferred are a guess. When a worker's commit is held only for
+changing files outside them, the runner widens its own guess to those files once and
+the engine verifies the same commit again; Touches a person wrote or edited are never
+widened, and the hold then waits for a person with its cause shown by `--fleet`.
+
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
 the task's entry, branches or worktrees and no live agent working there. The runner

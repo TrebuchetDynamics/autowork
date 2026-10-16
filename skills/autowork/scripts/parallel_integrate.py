@@ -43,13 +43,28 @@ def slot_for(common, task):
     return next((s for s in state.slots(common) if s['task_id'] == task), None)
 
 
-class ReportedBlocker(ValueError):
+class Hold(ValueError):
+    """A check that holds the slot, with a machine-readable cause and details.
+
+    Causes: scope (changed files outside Touches; ``outside`` lists them), overlap
+    (another slot's or a coordinator file), report, conflict, validation,
+    contract_changed, moved (canonical HEAD moved twice), blocker.
+    """
+    def __init__(self, cause, reason, **details):
+        super().__init__(reason)
+        self.cause, self.details = cause, details
+
+
+class ReportedBlocker(Hold):
     """The worker's own report names work it could not finish."""
+    def __init__(self, reason):
+        super().__init__('blocker', reason)
 
 
 def hold(common, slot, reason, **updates):
     slot = state.change(common, slot, 'held', dict(updates, reason=reason))
-    return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason}
+    return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason,
+            **{k: updates[k] for k in ('cause', 'outside') if k in updates}}
 
 
 def expected_branch(slot):
@@ -91,7 +106,7 @@ def verify(repo, common, slot, contracts):
             or sorted(report['changed_files']) != sorted(files)
             or report.get('blockers') != [] or not isinstance(report.get('checks'), list)
             or any(not isinstance(c, dict) or c.get('result') != 'pass' for c in report['checks'])):
-        raise ValueError('report.json does not match worker commit/files or reports failure')
+        raise Hold('report', 'report.json does not match worker commit/files or reports failure')
     verify_scope(repo, common, slot, contracts, files)
     return files, report
 
@@ -113,7 +128,10 @@ def verify_scope(repo, common, slot, contracts, files):
     # held every such task: it could never integrate.)
     overlap = plan.overlap(files, declared or files, others)
     if overlap['outside'] or overlap['conflicts']:
-        raise ValueError('changed files violate Touches or coordinator/other-slot ownership: ' + str(overlap))
+        message = 'changed files violate Touches or coordinator/other-slot ownership: ' + str(overlap)
+        if overlap['conflicts']:
+            raise Hold('overlap', message)
+        raise Hold('scope', message, outside=overlap['outside'])
 
 
 def require_no_writers(repo):
@@ -204,8 +222,8 @@ def integrate(repo, owner_pid, task, argv, timeout):
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
                         return recovered
-            except ReportedBlocker as exc:
-                return hold(common, slot, str(exc), cause='blocker')
+            except Hold as exc:
+                return hold(common, slot, str(exc), cause=exc.cause, **exc.details)
             except (ValueError, OSError) as exc:
                 return hold(common, slot, str(exc))
             if slot['state'] == 'reported':
@@ -232,7 +250,7 @@ def integrate(repo, owner_pid, task, argv, timeout):
                         git(root, 'merge', '--no-ff', '--no-edit', slot['commit'])
                     except ValueError:
                         git(root, 'merge', '--abort')
-                        raise ValueError('merge conflict; worker and canonical checkout preserved')
+                        raise Hold('conflict', 'merge conflict; worker and canonical checkout preserved')
                     merge = git(root, 'rev-parse', 'HEAD')
                     if git(repo, 'rev-list', '--parents', '-n', '1', merge).split()[1:] != [baseline, slot['commit']]:
                         raise ValueError('integration candidate must have canonical and worker parents')
@@ -250,7 +268,7 @@ def integrate(repo, owner_pid, task, argv, timeout):
                             receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
                 if (check['outcome'] != 'EXECUTED' or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
-                    raise ValueError('integration validation failed or changed the integration tree')
+                    raise Hold('validation', 'integration validation failed or changed the integration tree')
                 with execution.lock(common / 'writer.lock'):
                     state.require_owner(common, owner_pid)
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.
@@ -258,7 +276,7 @@ def integrate(repo, owner_pid, task, argv, timeout):
                     verify(repo, common, slot, fresh_contracts)
                     verify_scope(repo, common, slot, fresh_contracts, changed(repo, baseline, merge))
                     if fresh_contracts[task]['contract'] != contracts[task]['contract']:
-                        raise ValueError('task contract changed during validation')
+                        raise Hold('contract_changed', 'task contract changed during validation')
                     require_no_writers(repo)
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
                         raise ValueError('canonical branch changed during validation')
@@ -266,7 +284,7 @@ def integrate(repo, owner_pid, task, argv, timeout):
                         state.event(common, 'integration_head_moved', task_id=task, attempt=attempt + 1)
                         if attempt == 0:
                             continue
-                        raise ValueError('canonical HEAD moved twice; fresh integration required')
+                        raise Hold('moved', 'canonical HEAD moved twice; fresh integration required')
                     # This is the only canonical history-changing command. Git protects dirty files.
                     git(repo, 'merge', '--ff-only', merge)
                     if git(repo, 'rev-parse', 'HEAD') != merge:
@@ -276,7 +294,8 @@ def integrate(repo, owner_pid, task, argv, timeout):
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             with execution.lock(common / 'writer.lock'):
                 state.require_owner(common, owner_pid)
-                return hold(common, slot, str(exc), **({'checks': check} if check is not None else {}))
+                details = {'cause': exc.cause, **exc.details} if isinstance(exc, Hold) else {}
+                return hold(common, slot, str(exc), **details, **({'checks': check} if check is not None else {}))
 
 
 def validated_receipt(repo, common, slot):
@@ -583,6 +602,17 @@ def retry_held(args):
             current = state.slots(common)
             # A retry that produced nothing (often because it judged the first hold
             # binding) gets the first attempt's commit re-verified once instead.
+            # A commit held only for files outside Touches the coordinator has since widened
+            # (it had inferred them) is verified again once, before any fresh retry.
+            scoped = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope']
+            if scoped:
+                touches = {t['id']: t['fields'].get('Touches', '') for t in dispatch.contracts(repo, args.tasks, args.plan)}
+                widened = next((s for s in scoped if s['task_id'] in touches
+                                and state.rescopable(s, touches[s['task_id']])), None)
+                if widened is not None:
+                    slot = state.rescope(common, widened, touches[widened['task_id']])
+                    return {'outcome': 'RESCOPED', 'task': slot['task_id'], 'commit': slot['commit'],
+                            'touches': slot['touches']}
             again = [s for s in current if state.readoptable(s)]
             eligible = {t['id'] for t in dispatch.contracts(repo, args.tasks, args.plan)} if again else set()
             again = next((s for s in again if s['task_id'] in eligible), None)
@@ -630,7 +660,7 @@ def retry_held(args):
                 worker = dispatch.launch(argv, root, data, 1, prompt)
                 slot = state.change(common, slot, 'running', {'worker': worker, 'log_path': str(data / 'worker.log')})
             except (ValueError, OSError) as exc:
-                return hold(common, slot, 'fresh retry launch failed: ' + str(exc))
+                return hold(common, slot, 'fresh retry launch failed: ' + str(exc), cause='launch')
             return {'outcome': 'RETRIED', 'task': task['id'], 'slot': slot}
 
 

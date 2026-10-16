@@ -7,6 +7,8 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A hold during integration counts toward `PI_AUTOWORK_MAX_FAILURES` again; since
+  the failure-streak fix only worker-side holds were counted.
 - Git Commit Push never pushes a branch that is behind its push target, including a
   `HEAD:main` refspec push from a worktree, and fast-forwards the canonical checkout's
   local `main` after pushing the default branch from elsewhere (or reports **local
@@ -96,6 +98,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
+  `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),
+  shown in `--fleet` and stall announcements. A commit held only for files outside
+  Touches the runner had inferred is re-verified once after the runner widens its own
+  guess (`RESCOPED`), instead of a fresh retry; Touches a person wrote are never
+  widened. Touches inference moved into the `pi-autowork/` component
+  (`touches_inference.py`); the old script path still works. TOOLSET-115-bf phase 5.
 - `PI_AUTOWORK_LINK_PATHS` links gitignored dependencies (say a vendored source
   tree) from the main checkout into each task and review worktree, only where Git
   ignores the path, and verifies the link shows up as no change; directories become

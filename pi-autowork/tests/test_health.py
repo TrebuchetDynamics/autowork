@@ -33,7 +33,8 @@ class HealthTests(unittest.TestCase):
         self.assertIsNone(health.update(self.state, snapshot(), now=1000 + 1799))
         line = health.update(self.state, snapshot(), now=1000 + 1800)
         self.assertEqual(line, 'STALLED for 30 min: no task can run. Root blockers: '
-                               'T-9 (held for a person, holds 4). See pi-autowork.sh --status.')
+                               'T-9 (held for a person: its worker reported a blocker, holds 4). '
+                               'See pi-autowork.sh --status.')
         self.assertEqual(self.status()['state'], 'stalled')
         self.assertIsNone(health.update(self.state, snapshot(), now=1000 + 4000))  # not again
         self.assertEqual(self.status()['since'], 1000)
@@ -89,7 +90,7 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(rows['silent']['state'], 'not cycling')
         text = health.render(list(rows.values()), now=1000)
         self.assertIn('dead                     service active    not running', text)
-        self.assertIn('    blocked by T-9 (held for a person, holds 4)', text)
+        self.assertIn('    blocked by T-9 (held for a person: its worker reported a blocker, holds 4)', text)
 
 
 if __name__ == '__main__':

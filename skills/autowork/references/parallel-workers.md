@@ -163,6 +163,16 @@ nothing parallel was claimed or started.
   it reruns fresh from the code of that time, never merges as is, so overlapping
   work proceeds. A worker-reported blocker holds the same way at once. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
+- **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
+  `outside`, the changed files outside Touches), `overlap`, `report`, `conflict`,
+  `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice) or
+  `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+- **Rescope:** when a commit was held only for `scope` and the task's current
+  `Touches:` now cover every `outside` file, the next refill returns `RESCOPED` and
+  sets that commit back to `reported`, once, before any fresh retry. Integration
+  repeats every check, including other slots' files and coordinator files. Only a
+  coordinator that inferred those Touches itself should widen them (pi-autowork
+  does, and never touches a list a person wrote).
 - **Set aside:** `--parallel-set-aside TASK` retires a held slot with no attempt
   left, or an integrated one whose TODO entry was rewritten after validation (its
   merge stays in the main branch; the new entry is new work). Every attempt's

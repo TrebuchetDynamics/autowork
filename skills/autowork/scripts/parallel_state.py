@@ -27,7 +27,8 @@ TRANSITIONS = {
 # reads a new release's STATE_SCHEMA_READS before updating to it (pi-autowork.sh).
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
-FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause'}
+FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
+          'outside'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs.
 NEEDS_PERSON = ('blocker',)
 
@@ -235,6 +236,7 @@ def change(common, old, target, updates):
         execution.active_owner({'owner': updates['worker']})
     if target in ('interrupted', 'released') and old['attempt'] == 2 and not updates.get('paused', old.get('paused')):
         target = 'held'
+        updates.setdefault('cause', 'crash')
     value.update(updates)
     value['state'] = target
     return write_slot(common, value, old)
@@ -255,6 +257,28 @@ def readoptable(slot):
             and not slot.get('readopted') and not worker_live(slot)
             and first.get('state') == 'held' and bool(first.get('commit'))
             and str(first.get('reason', '')).startswith(SCOPE_HOLD))
+
+
+def rescopable(slot, touches):
+    """A first commit held only for files outside Touches that ``touches`` now covers.
+
+    Used once per slot (``rescoped``): the coordinator widened Touches it had
+    inferred itself, so the same commit may be verified again; integration still
+    checks every other slot's files and coordinator files.
+    """
+    import parallel_plan
+    outside = slot.get('outside') or []
+    declared = parallel_plan.paths(touches) if touches.strip() else []
+    return (slot['state'] == 'held' and slot.get('cause') == 'scope' and bool(slot.get('commit'))
+            and not slot.get('rescoped') and not worker_live(slot) and bool(outside) and bool(declared)
+            and not parallel_plan.overlap(outside, declared, [])['outside'])
+
+
+def rescope(common, old, touches):
+    """Return a scope-held commit to ``reported``, judged by ``touches``. Caller holds writer.lock."""
+    value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'outside')}
+    value.update(state='reported', rescoped=True, touches=touches)
+    return write_slot(common, value, old)
 
 
 def exhausted(slot):

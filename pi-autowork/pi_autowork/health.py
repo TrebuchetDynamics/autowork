@@ -33,6 +33,13 @@ def classify(snapshot, *, paused=False):
     return 'blocked' if waiting else 'idle'
 
 
+CAUSES = {'blocker': 'its worker reported a blocker', 'scope': 'changed files outside Touches',
+          'overlap': "changed another task's files", 'report': 'report did not match its commit',
+          'conflict': 'merge conflict', 'validation': 'validation failed', 'crash': 'worker died twice',
+          'launch': 'worker could not start', 'contract_changed': 'its TODO entry changed',
+          'moved': 'main kept moving during validation'}
+
+
 def label(root):
     text = ' '.join(str(root['id']).split())
     return (text[:60] + '…') if len(text) > 60 else text
@@ -42,7 +49,10 @@ def describe(root):
     what = {'runner': 'the runner cannot dispatch', 'held': 'held for a person', 'claim': 'claimed by another session',
             'outside': 'outside condition or task not in Now/Next', 'cycle': 'dependency cycle',
             'running': 'running', 'integrating': 'being integrated', 'restarting': 'restarting'}
-    return f"{label(root)} ({what.get(root['kind'], root['kind'])}, holds {root['blocks']})"
+    kind = what.get(root['kind'], root['kind'])
+    if root['kind'] == 'held' and root.get('cause'):
+        kind += ': ' + CAUSES.get(root['cause'], root['cause'])
+    return f"{label(root)} ({kind}, holds {root['blocks']})"
 
 
 def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTER):

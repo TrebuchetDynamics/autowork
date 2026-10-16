@@ -160,6 +160,16 @@ elif behavior == 'push':
 elif behavior == 'blocked':
     report(None, ['needs a device'])
     finish(text='blocked')
+elif behavior == 'extra':  # also changes a file its Touches did not foresee
+    open(task + '.txt', 'w').write('done ' + task + '\n')
+    open(task + '-extra.txt', 'w').write('helper\n')
+    git('add', '-A')
+    git('commit', '-qm', 'worker ' + task)
+    with open(field('Report file'), 'w') as out:
+        json.dump({'task': task, 'commit': git('rev-parse', 'HEAD').stdout.strip(),
+                   'changed_files': [task + '-extra.txt', task + '.txt'], 'checks': [], 'blockers': [],
+                   'changelog': ''}, out)
+    finish(text='done')
 elif behavior == 'needs_vendor':  # builds only with the ignored vendor/ tree of the main checkout
     if os.path.exists('vendor/sdk.txt'):
         work(); finish(text='done')
@@ -602,13 +612,13 @@ class EngineTests(Fixture):
             time.sleep(0.2)
         time.sleep(4)  # several more cycles: still announced only once
         self.assertEqual(log().count('STALLED'), 1, log())
-        self.assertIn('Root blockers: A (held for a person, holds 1)', log())
+        self.assertIn('Root blockers: A (held for a person: its worker reported a blocker, holds 1)', log())
         fleet = subprocess.run(['bash', str(RUNNER), '--fleet'], cwd=self.root, env=self.env,
                                capture_output=True, text=True, timeout=60)
         self.assertEqual(fleet.returncode, 0, fleet.stderr)
         self.assertIn(f'{self.repo.name}', fleet.stdout)
         self.assertIn('stalled for 0 min; 0 running, 1 waiting', fleet.stdout)
-        self.assertIn('    blocked by A (held for a person, holds 1)', fleet.stdout)
+        self.assertIn('    blocked by A (held for a person: its worker reported a blocker, holds 1)', fleet.stdout)
         status = self.run_runner('--status')
         self.assertIn('Health:     stalled since', status.stdout)
         runner.send_signal(signal.SIGINT)
@@ -700,6 +710,25 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr + logs)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')  # nothing linked is committed
+
+    def test_a_commit_outside_inferred_touches_is_reverified_after_widening(self):
+        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        self.plan({'worker:A': ['extra']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its commit changed files outside the inferred Touches (A-extra.txt); widened them', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # same commit, no rerun
+        self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
+
+    def test_authored_touches_are_never_widened(self):
+        self.plan({'worker:A': ['extra', 'extra']})
+        result = self.run_runner('--until-empty')
+        self.assertNotIn('widened them', result.stdout)
+        self.assertIn('A: failed', result.stdout)
+        self.assertFalse((self.repo / 'A-extra.txt').exists())
 
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""

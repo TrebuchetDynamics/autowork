@@ -381,6 +381,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         except (OSError, ValueError) as exc:
             # A launch failure is not an interrupted attempt: hold it with the cause.
             slot = state.transition(repo, args.owner_pid, task['id'], 'held', reason='worker launch failed: ' + str(exc),
+                                    cause='launch',
                                     log_path=str(data / 'worker.log'))
             waiting.append({'id': task['id'], 'reason': slot['reason']})
             used.discard(index)

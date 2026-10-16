@@ -195,7 +195,7 @@ class DispatchTests(unittest.TestCase):
             _, first = self.apply()
             self.assertEqual([d['task'] for d in first['dispatched']], ['A'])  # S must run alone
             self.wait_until_idle()
-        self.assertEqual(state.slots(self.common)[0]['state'], 'held')
+        self.assertEqual((state.slots(self.common)[0]['state'], state.slots(self.common)[0]['cause']), ('held', 'crash'))
         # An exhausted hold waits for a person, not the pool: S starts at once, and
         # closing A meanwhile keeps it out of the way too.
         _, freed = self.apply()
