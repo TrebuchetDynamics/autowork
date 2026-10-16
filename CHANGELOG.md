@@ -217,6 +217,12 @@ claim of a tagged release, completed installation or live workflow qualification
 - A continuous `pi-autowork.sh` restarts itself when its toolset is updated, instead
   of running the old script against the new engine (which exited on an engine
   outcome the old script did not know).
+- A continuous `pi-autowork.sh` also keeps itself current: while idle, at most hourly
+  (`PI_AUTOWORK_UPDATE_INTERVAL`), it runs `pi update` for its toolset package, one
+  runner at a time, and skips a restart onto a script that does not parse. Its
+  `Touches:` pass no longer answers `NONE` for tasks that are verified on a device or
+  screenshot harness, asks again after a prompt change, and retries a pass that gave no
+  answer within the hour instead of a day.
 
 - Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
   every other task: such a claim is not dispatched and still blocks its dependents and

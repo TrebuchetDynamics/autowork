@@ -43,6 +43,8 @@ Environment (optional):
   PI_AUTOWORK_FALLBACK      provider/model (default openrouter/deepseek/deepseek-v4.1-flash)
   PI_AUTOWORK_WORKERS       default for --workers (default 8)
   PI_AUTOWORK_INFER_TOUCHES 0 to stop proposing Touches: for tasks that lack them
+  PI_AUTOWORK_UPDATE_INTERVAL seconds between idle `pi update` runs of the toolset package;
+                            new toolset code restarts the runner (default 3600; 0 off)
   PI_AUTOWORK_TASK_TIMEOUT  seconds per worker (default 5400)
   PI_AUTOWORK_VERIFY_TIMEOUT seconds for verifying one task (default 1800)
   PI_AUTOWORK_VALIDATE      command run before the Pi reviewer on every integrated task
@@ -498,7 +500,7 @@ UNIT
                 PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES \
                 PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME PI_AUTOWORK_MAX_COST \
                 PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET \
-                PI_AUTOWORK_INFER_TOUCHES; do
+                PI_AUTOWORK_INFER_TOUCHES PI_AUTOWORK_UPDATE_INTERVAL; do
       [[ -n ${!name:-} ]] && printf '%s=%s\n' "$name" "${!name}"
     done
   } >"$ENV_DIR/$INSTANCE.env"
@@ -801,6 +803,24 @@ finish() {
   exit "$code"
 }
 
+# --- Self-update ----------------------------------------------------------------
+# A long-running service would otherwise keep the release it started with until someone
+# runs `pi update`. While nothing is in flight, update the hermes-toolset package Pi
+# loads, at most once per interval and one runner at a time across repositories; the
+# main loop then restarts on the new release.
+UPDATE_INTERVAL=${PI_AUTOWORK_UPDATE_INTERVAL:-3600}
+LAST_UPDATE=$SECONDS
+update_toolset() {
+  local source
+  [[ $MODE == continuous && $UPDATE_INTERVAL != 0 ]] || return 0
+  ((SECONDS - LAST_UPDATE >= UPDATE_INTERVAL)) || return 0
+  LAST_UPDATE=$SECONDS
+  ((${#SKILL_ARGS[@]})) && return 0  # not the package Pi loads: a checkout is updated by its owner
+  source=$(git -C "$TOOLSET" remote get-url origin 2>/dev/null) || return 0
+  flock -w 600 "$STATE_ROOT/toolset-update.lock" timeout 300 "$PI" update "$source" \
+    >>"$STATE/engine.err" 2>&1 9>&- || say "Toolset update failed (see $STATE/engine.err); keeping $TOOLSET_REV"
+}
+
 # --- Touches ------------------------------------------------------------------
 # A task without Touches: must run alone, so most backlogs would run one task at a
 # time. For the top runnable tasks lacking it, a read-only Pi pass proposes the paths
@@ -809,6 +829,16 @@ finish() {
 TOUCHES_HELPER=$TOOLSET/scripts/pi_autowork_touches.py
 [[ -f $TOUCHES_HELPER ]] || TOUCHES_HELPER=$(dirname "$SCRIPT")/pi_autowork_touches.py
 declare -A TOUCHES_TRIED=()
+touches_prompt() {  # $1 task, $2 checkout
+  printf '%s' "Plan the file scope of task $1 in $2 so it can run beside other tasks. Read its entry in TODO.md, then the files and directories its Sources, Scope and acceptance name, and the repository layout around them. List the repository-relative files, directories (ending in /) or globs the task's change will edit, including its tests and docs; prefer a component's directory over guessing single files, and when unsure widen to the owning directories rather than give up: a worker that edits outside the list is only held and retried alone. Scope is about which files change, not how the result is checked: a task verified on a device, emulator, screenshot harness or live service still lists the code and test files it edits. Never list TODO.md, TODO.archive.md, goals.json or CHANGELOG.md. Answer NONE only when the task edits no repository file (purely live, manual or device operation) or would edit files across most of the repository, and give the reason. Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or PI_AUTOWORK_TOUCHES: NONE - reason"
+}
+# Answers are remembered per prompt version: a changed prompt asks every task again.
+TOUCHES_CACHE=touches-$(touches_prompt TASK DIR | sha256sum | cut -c1-12).json
+touches_hold() {  # $1 task, $2 seconds before it is asked again
+  local cache=$STATE/$TOUCHES_CACHE
+  jq -n --slurpfile old <(cat "$cache" 2>/dev/null || echo '{}') --arg id "$1" --argjson until "$(($(date +%s) + $2))" \
+    '($old[0] // {}) + {($id): $until}' >"$cache.$$" && mv "$cache.$$" "$cache"
+}
 infer_touches() {
   local list id answer recorded
   [[ ${PI_AUTOWORK_INFER_TOUCHES:-1} == 0 || ! -f $TOUCHES_HELPER ]] && return 0
@@ -818,9 +848,8 @@ infer_touches() {
     [[ -n ${TOUCHES_TRIED[$id]:-} ]] && continue
     TOUCHES_TRIED[$id]=1
     # A task judged unboundable is asked again after a day, not every cycle.
-    jq -e --arg id "$id" --arg now "$(date +%s)" '.[$id] // 0 | . > ($now | tonumber)' "$STATE/touches.json" >/dev/null 2>&1 && continue
-    pi_job touches "$id" "$INTEG" \
-      "Plan the file scope of task $id in $INTEG so it can run beside other tasks. Read its entry in TODO.md, then the files and directories its Sources, Scope and acceptance name, and the repository layout around them. List the repository-relative files, directories (ending in /) or globs the task's change will edit, including its tests and docs; prefer a component's directory over guessing single files, and when unsure widen to the owning directories rather than give up: a worker that edits outside the list is only held and retried alone. Scope is about which files change, not how the result is checked: a task verified on a device, emulator, screenshot harness or live service still lists the code and test files it edits. Never list TODO.md, TODO.archive.md, goals.json or CHANGELOG.md. Answer NONE only when the task edits no repository file (purely live, manual or device operation) or would edit files across most of the repository, and give the reason. Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or PI_AUTOWORK_TOUCHES: NONE - reason" \
+    jq -e --arg id "$id" --arg now "$(date +%s)" '.[$id] // 0 | . > ($now | tonumber)' "$STATE/$TOUCHES_CACHE" >/dev/null 2>&1 && continue
+    pi_job touches "$id" "$INTEG" "$(touches_prompt "$id" "$INTEG")" \
       "pi-autowork-touches-$(safe_name "$id")-$(date +%Y%m%d%H%M%S)" 900 --tools read,grep,find,ls
     if [[ -n $(dirty "$INTEG") ]]; then  # a planning pass must not change the session
       git -C "$INTEG" reset -q --hard HEAD && git -C "$INTEG" clean -qfd
@@ -831,10 +860,14 @@ infer_touches() {
       git -C "$INTEG" add -- TODO.md
       git -C "$INTEG" commit -q -m "docs(tasks): declare Touches for $id (pi-autowork)" -m "Proposed by a read-only planning pass; the engine holds any change outside it."
       say "$id: can run beside others; Touches: $recorded"
+    elif ((!JOB_OK)) || [[ -z $answer ]]; then
+      # No answer (provider failure, timeout, missing result line) is not a judgment.
+      touches_hold "$id" 3600
+      unset "TOUCHES_TRIED[$id]"
+      say "$id: runs alone for now (the Touches pass gave no answer; asking again within the hour)"
     else
-      jq -n --slurpfile old <(cat "$STATE/touches.json" 2>/dev/null || echo '{}') --arg id "$id" --argjson until "$(($(date +%s) + 86400))" \
-        '($old[0] // {}) + {($id): $until}' >"$STATE/touches.json.$$" && mv "$STATE/touches.json.$$" "$STATE/touches.json"
-      say "$id: runs alone (no Touches proposed${answer:+: $answer})"
+      touches_hold "$id" 86400
+      say "$id: runs alone (no Touches proposed: $answer)"
     fi
   done
 }
@@ -848,17 +881,25 @@ while :; do
     settle
     finish 130 "Stopped. Unfinished tasks keep their worktrees and resume on the next start."
   fi
+  # Idle: let `pi update` bring in a newer toolset (rate-limited, one runner at a time).
+  if ((!DRAINING)) && ! status_json | jq -e '.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))' >/dev/null 2>&1; then
+    update_toolset
+  fi
   # `pi update` replaces the script and the engine under a running runner, and the
   # engine is loaded afresh on every call: continue on the new release instead of
   # mixing the two. State is durable and a restart adopts live workers.
   if [[ $MODE == continuous && $TOOLSET_REV != unknown ]] &&
      rev=$(git -C "$TOOLSET" rev-parse --short HEAD 2>/dev/null) && [[ $rev != "$TOOLSET_REV" ]]; then
-    say "Toolset updated to $rev; restarting on it"
-    stop_helpers
-    trap - EXIT INT TERM
-    rm -f "$STATE/runner.json"
-    exec 9>&-
-    exec /bin/bash "$SCRIPT" "${ORIGINAL_ARGS[@]}"
+    if bash -n "$SCRIPT" 2>>"$STATE/engine.err"; then
+      say "Toolset updated to $rev; restarting on it"
+      stop_helpers
+      trap - EXIT INT TERM
+      rm -f "$STATE/runner.json"
+      exec 9>&-
+      exec /bin/bash "$SCRIPT" "${ORIGINAL_ARGS[@]}"
+    fi
+    say "Toolset changed to $rev, but $SCRIPT does not parse; keeping the running $TOOLSET_REV"
+    TOOLSET_REV=$rev
   fi
   ensure_session
   # While nothing is in flight the session follows the main branch (fast-forward, or a
