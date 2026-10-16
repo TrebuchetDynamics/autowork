@@ -237,6 +237,19 @@ class StatusTests(unittest.TestCase):
         self.assertNotIn('A', found)
         self.assertEqual({found[t][0] for t in ('X', 'Y')}, {'cycle'})  # each member of the cycle is named
 
+    def test_a_task_the_engine_will_not_run_is_a_contract_root(self):
+        """flutter TASK-003 showed "awaiting dispatch" though its entry lacked Checks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            (repo / 'TODO.md').write_text('# TODO\n\n## Next\n\n- [ ] X — Missing checks\n  Scope: x\n'
+                                          '  Dependencies: None.\n  Status: open\n')
+            rows = status.pending_tasks(repo)
+            self.assertEqual(rows[0]['reason'], 'not runnable: needs unique Scope, Acceptance and Checks fields')
+            found = status.roots([dict(task=r['id'], state='waiting', blocked_by=r['blocked_by'],
+                                       root_kind=r.get('root_kind')) for r in rows])
+            self.assertEqual([(r['id'], r['kind']) for r in found], [('X', 'contract')])
+
     def test_status_uses_latest_dispatch_capacity(self):
         with ABCWorkload(workers=1, delay=1) as fixture:
             fixture.dispatch()

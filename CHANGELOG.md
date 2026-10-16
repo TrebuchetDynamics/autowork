@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The pi-autowork reviewer is told which device, hardware, production or human checks
+  the worker recorded as `pending_live` (they become the `TASK-LIVE` follow-up) and judges
+  everything else offline; a required live check nobody recorded still fails. It used to
+  fail offline-complete work for want of a device (flutter TASK-006).
+- A task the engine will not run (for example an entry missing its Scope, Acceptance or
+  Checks) shows the engine's reason instead of "awaiting dispatch" and is a `contract`
+  root blocker in health and `--fleet` (flutter TASK-003).
 - `PI_AUTOWORK_LINK_PATHS` dependencies are mirrored with real directories and hard-linked
   files (a copy across filesystems) instead of a directory of symlinks: `find` does not
   descend into a symlinked directory, so a repository's own self-test saw an empty

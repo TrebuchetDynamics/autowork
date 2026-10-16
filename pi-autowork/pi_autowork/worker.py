@@ -7,6 +7,7 @@ The engine starts each in its own process group; a stop sent to the group reache
 Pi too. Exit 0 means a finished worker with a report, or a passing review.
 """
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import re
@@ -23,6 +24,14 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
           'against the acceptance criteria. Do not edit, create or delete files, commit, push or change branches; '
           'temporary files go in $TMPDIR only. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
+# Offline completion is separate from live qualification (AGENTS.md): checks recorded as
+# pending live become their own TASK-LIVE follow-up, so they must not fail the review.
+LIVE = (' Checks that need a physical device, hardware, production or live services, or a person cannot run '
+        'here. The worker recorded these as pending live checks, which become a separate live follow-up task: '
+        '{items}. Do not fail for those; judge everything that can be checked offline. A live check the task '
+        'requires that is not in that list is a failure: it would be lost.')
+NO_LIVE = (' The worker recorded no pending live checks: a device, hardware, production or human check the '
+           'task requires and that cannot run here is a failure, because nothing would record it.')
 
 
 def link_ignored(checkout):
@@ -44,6 +53,22 @@ def worker(state, worktree, prompt_file, report, limit):
     return 0 if result['ok'] and Path(report).is_file() else 1
 
 
+def pending_live(checkout, task):
+    """The pending live checks the worker's report recorded, from the engine's slot data."""
+    common = git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if not common:
+        return []
+    execution = Path(common) / 'autowork-execution'
+    try:
+        slot = json.loads((execution / 'slots' / f'{task}.json').read_text())
+        attempt = slot.get('data_attempt', slot['attempt'])
+        report = json.loads((execution / 'slot-data' / task / f'attempt-{attempt}' / 'report.json').read_text())
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    items = report.get('pending_live') if isinstance(report, dict) else None
+    return [' '.join(i.split()) for i in items if isinstance(i, str) and i.strip()] if isinstance(items, list) else []
+
+
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
@@ -55,7 +80,8 @@ def verify(state, task):
         return 0
     head_before = git(checkout, 'rev-parse', 'HEAD')
     result = pi_runtime.job(pi_runtime.Settings(state), 'verify', task, checkout,
-                            REVIEW.format(task=task, checkout=checkout),
+                            REVIEW.format(task=task, checkout=checkout) + (
+                                LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
                             os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800'),
                             ['--tools', 'read,bash,grep,find,ls'])

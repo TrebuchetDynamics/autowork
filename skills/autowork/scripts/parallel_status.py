@@ -119,8 +119,19 @@ def pending_tasks(repo, known=()):
         running = fields.get('Status', indexed.get(task, {}).get('status', '')).startswith('in_progress')
         reason = ('sequential task in progress' if running else 'dependency: ' + ', '.join(unresolved)
                   if unresolved else 'awaiting dispatch')
+        row = dict(id=task, reason=reason, blocked_by=[task] if running else unresolved)
+        if reason == 'awaiting dispatch':
+            # Nothing visible holds it: ask the engine whether it would run it at all
+            # (flutter TASK-003 lacked its Scope/Acceptance/Checks fields).
+            try:
+                execution.select(repo, task, None)
+            except execution.NoEligibleTask as exc:
+                why = str(exc).split(f'{task}: ', 1)[-1]
+                row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
+            except (ValueError, OSError):
+                pass
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
-        result.append(dict(id=task, reason=reason, blocked_by=[task] if running else unresolved))
+        result.append(row)
     return result
 
 
@@ -132,7 +143,8 @@ ROOT_KINDS = {'held': 'held', 'interrupted': 'restarting', 'released': 'restarti
 def roots(rows):
     """What ultimately holds waiting tasks: follow ``blocked_by`` to its end.
 
-    Kinds: ``held`` (needs a person), ``claim`` (in_progress elsewhere), ``outside``
+    Kinds: ``held`` (needs a person), ``claim`` (in_progress elsewhere), ``contract`` (its
+    TODO entry is not runnable as written), ``outside``
     (a dependency that is no Now/Next task: an outside condition, or a task held in
     Needs decision), ``cycle`` (tasks waiting on each other), ``running``/``integrating``/``restarting`` (moving work). Each
     root counts the waiting tasks it holds, most first.
@@ -152,13 +164,16 @@ def roots(rows):
 
     counts = {}
     for row in rows:
+        if row['state'] == 'waiting' and row.get('root_kind') == 'contract':
+            counts[row['task']] = counts.get(row['task'], 0) + 1  # stuck work of its own, not someone else's
         if row['state'] == 'waiting' and row.get('blocked_by') and row['blocked_by'] != [row['task']]:
             for root in ends(row['task'], {row['task']}):
                 counts[root] = counts.get(root, 0) + 1
     result = []
     for tid, count in counts.items():
         row = by_id.get(tid)
-        kind = ('outside' if row is None else 'claim' if row.get('blocked_by') == [tid]
+        kind = ('outside' if row is None else row['root_kind'] if row.get('root_kind')
+                else 'claim' if row.get('blocked_by') == [tid]
                 else 'cycle' if row['state'] == 'waiting' else ROOT_KINDS.get(row['state'], row['state']))
         result.append(dict(id=tid, kind=kind, blocks=count, cause=(row or {}).get('cause'),
                            reason=(row or {}).get('reason') or ''))
@@ -197,12 +212,13 @@ def _snapshot(repo, common, now):
         # A dependency reason, then or now, is always taken from TODO.md as it is now.
         dependency = (item['blocked_by'] and item['blocked_by'] != [task]) \
             or pending.get(task, {}).get('reason', '').startswith('dependency:')
-        source = item if dependency or task not in pending else pending[task]
+        source = item if dependency or item.get('root_kind') or task not in pending else pending[task]
         rows.append(dict(task=task, state='waiting', slot=None,
                          elapsed_seconds=max(0, now - observations[0]) if observations else 0,
                          reason=source['reason'], worktree=None, checks=None,
                          commit=None, integration=None, attempt=0, worker_live=False,
-                         blocked_by=list(source.get('blocked_by', item['blocked_by']))))
+                         blocked_by=list(source.get('blocked_by', item['blocked_by'])),
+                         **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
     return dict(outcome='PARALLEL_STATUS', workspace=str(repo), active_workers=active, max_workers=capacity,
                 tasks=rows, roots=roots(rows), completed=sum(r['state'] == 'closed' for r in rows),
                 failed=sum(r['state'] in ('held', 'interrupted', 'released') for r in rows),

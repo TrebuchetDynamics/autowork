@@ -20,7 +20,7 @@ STALL_AFTER = 1800      # seconds with nothing running while work waits
 STALE_AFTER = 600       # a status this old means the runner is not cycling
 MOVING = ('running', 'integrating', 'restarting')
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  # unsafe to update under
-NEEDS_PERSON = ('runner', 'held', 'claim', 'outside', 'cycle')
+NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
 
 
 def classify(snapshot, *, paused=False):
@@ -47,7 +47,8 @@ def label(root):
 
 
 def describe(root):
-    what = {'runner': 'the runner cannot dispatch', 'held': 'held for a person', 'claim': 'claimed by another session',
+    what = {'runner': 'the runner cannot dispatch', 'held': 'held for a person',
+            'contract': 'its TODO entry is not runnable as written', 'claim': 'claimed by another session',
             'outside': 'outside condition or task not in Now/Next', 'cycle': 'dependency cycle',
             'running': 'running', 'integrating': 'being integrated', 'restarting': 'restarting'}
     kind = what.get(root['kind'], root['kind'])
