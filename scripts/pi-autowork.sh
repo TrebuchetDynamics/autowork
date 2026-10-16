@@ -709,7 +709,7 @@ note_state() {  # log each task's lifecycle change once
 }
 
 close_task() {  # archive an integrated task and commit the coordinator files
-  local id=$1 result file followup
+  local id=$1 result file followup aside
   result=$(owned --parallel-close "$id")
   if [[ $(jq -r .outcome <<<"$result" 2>/dev/null) == CLOSED ]]; then
     # Exactly the files the close wrote (TODO.md, goals.json, the archive it chose).
@@ -729,8 +729,12 @@ close_task() {  # archive an integrated task and commit the coordinator files
     # Its TODO entry was rewritten after the merge: the merge stays in main and the
     # new entry is new work, so retire the slot instead of blocking on it forever.
     if [[ $result == 'task contract changed since integration; no close' ]] &&
-        [[ $(owned --parallel-set-aside "$id" | jq -r .outcome 2>/dev/null) == SET_ASIDE ]]; then
-      say "$id: its TODO entry changed after integration; the merged work stays in main and the task is queued again under its new entry"
+        aside=$(owned --parallel-set-aside "$id") && [[ $(jq -r .outcome <<<"$aside" 2>/dev/null) == SET_ASIDE ]]; then
+      if [[ $(jq -r '.requeued' <<<"$aside") == false ]]; then
+        say "$id: its TODO entry was archived or removed by someone else after integration; the merged work stays in main"
+      else
+        say "$id: its TODO entry changed after integration; the merged work stays in main and the task is queued again under its new entry"
+      fi
       SEEN[$id]=pending
       SETTLED=1
       return

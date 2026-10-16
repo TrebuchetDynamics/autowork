@@ -12,6 +12,9 @@ claim of a tagged release, completed installation or live workflow qualification
   `refs/archive/worktrees/` (restore with `git worktree add DIR REF`) before the
   worktree is removed. sierra had 99 worktrees, 97 of which ordinary cleanup must keep.
 
+- A merged task whose TODO entry someone else archived or removed afterwards is
+  set aside automatically (its merge stays; nothing is queued again) instead of
+  retrying its close every cycle (bravo TASK-001).
 - A parallel Autowork worker can no longer get a second writer beside it in its own
   worktree (TOOLSET-116-c1). Workers carry `AUTOWORK_WORKTREE`; a worker whose launch
   was never recorded, or a child that left its process group, now keeps the slot

@@ -493,9 +493,9 @@ CONTRACT_CHANGED = 'task contract changed since integration; no close'
 def set_aside(repo, owner_pid, task):
     """Retire a slot that can never finish, so its task can dispatch fresh.
 
-    Only for a held slot with no attempt left, or an integrated one whose TODO
+    Only for a held slot no attempt can finish, or an integrated one whose TODO
     entry was rewritten after validation (its merge stays in main; the new entry
-    is new work). Every attempt's worktree and branch is kept, renamed with a
+    is new work) or was archived or removed by someone else (``requeued`` false). Every attempt's worktree and branch is kept, renamed with a
     ``-set-aside-N`` suffix, and the slot record and its data move to
     ``slot-history/TASK/N``; the next refill treats the task as never dispatched.
     """
@@ -506,15 +506,21 @@ def set_aside(repo, owner_pid, task):
         slot = slot_for(common, task)
         if slot is None or state.worker_live(slot):
             raise ValueError('set-aside needs an existing slot with no live worker')
+        requeued = True
         if slot['state'] == 'integrated':
             current = execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(task, [])
-            try:
-                require_task_contract(current, (slot.get('integration') or {}).get('task_contract', ''))
-            except ValueError as exc:
-                if str(exc) != CONTRACT_CHANGED:
-                    raise
+            if not current:
+                # Someone else archived or removed the entry after the merge (bravo
+                # TASK-001): the merge stays and nothing is queued again.
+                requeued = False
             else:
-                raise ValueError('integrated task still matches its contract; close it instead')
+                try:
+                    require_task_contract(current, (slot.get('integration') or {}).get('task_contract', ''))
+                except ValueError as exc:
+                    if str(exc) != CONTRACT_CHANGED:
+                        raise
+                else:
+                    raise ValueError('integrated task still matches its contract; close it instead')
         elif not state.exhausted(slot):
             raise ValueError('set-aside is only for a held slot with no attempt left or an integrated '
                              'task whose TODO entry changed')
@@ -554,7 +560,7 @@ def set_aside(repo, owner_pid, task):
         state.event(common, 'slot_set_aside', task_id=task, state=slot['state'], renamed=moved,
                     history=str(target))
         return {'outcome': 'SET_ASIDE', 'task': task, 'previous_state': slot['state'],
-                'renamed': moved, 'history': str(target)}
+                'renamed': moved, 'history': str(target), 'requeued': requeued}
 
 
 def cleanup_worker(repo, common, slot):
