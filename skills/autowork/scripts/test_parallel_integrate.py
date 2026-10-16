@@ -392,6 +392,19 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('- [x] **A — Task A**', (self.repo / 'TODO.archive.md').read_text())
         self.assertEqual(module.archive_path(self.repo), self.repo / 'TODO.archive.md')
 
+    def test_a_half_closed_task_still_closes(self):
+        """sierra: an earlier close wrote Status: done but left the box unchecked."""
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        text = todo.read_text()
+        a = text.index('- [ ] A')
+        todo.write_text(text[:a] + text[a:].replace('Status: open', 'Status: done', 1))
+        result = module.close(self.repo, self.owner, 'A')
+        self.assertEqual(result['outcome'], 'CLOSED', result)
+        self.assertIn('- [x] A — Task A', (self.repo / 'TODO.archive.md').read_text())
+
     def test_closed_slot_releases_ownership_for_followup_task(self):
         self.worker()
         module = self.module()

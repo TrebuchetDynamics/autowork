@@ -326,8 +326,10 @@ def require_task_contract(items, expected, *, archived=False):
     if len(items) != 1:
         raise ValueError('task contract provenance missing or ambiguous; no close')
     body, mark, _ = items[0]
+    # A live body may already read `Status: done` with its box unchecked: an earlier
+    # close that wrote the status but missed a bold `**ID**` checkbox.
     if ((archived and mark.lower() != 'x') or body.strip() not in
-            ({expected, closed} if mark.lower() == 'x' else {expected})):
+            ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
         raise ValueError('task contract changed since integration; no close')
 
 

@@ -223,6 +223,8 @@ claim of a tagged release, completed installation or live workflow qualification
   "history" link), for closing and for dependencies on archived tasks.
 - `pi-autowork.sh` retries closing an integrated task on later cycles and commits a
   linked archive with the close; a failed close no longer blocks the queue.
+- Closing accepts a live task an earlier close left half-closed (`Status: done`, box
+  unchecked) instead of refusing it as a changed contract.
 - A continuous `pi-autowork.sh` also keeps itself current: while idle, at most hourly
   (`PI_AUTOWORK_UPDATE_INTERVAL`), it runs `pi update` for its toolset package, one
   runner at a time, and skips a restart onto a script that does not parse. Its
