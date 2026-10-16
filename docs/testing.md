@@ -20,6 +20,11 @@ claiming or starting anything.
 
 ## Verify
 
+Document-anchor CLI fixtures cover numeric-suffix collisions in both heading orders
+and chains of occupied suffixes (TOOLSET-109-f1). They check valid local links and
+role-mapping fragments and reject nonexistent suffixes; this is offline checker
+coverage, not a claim of full Markdown-renderer compatibility.
+
 Document-anchor regressions exclude HTML-commented ATX/Setext headings and explicit
 HTML anchors, including unclosed comments, from both local-link and role-mapping
 checks (TOOLSET-107-93). Commented headings do not consume visible duplicate suffixes;

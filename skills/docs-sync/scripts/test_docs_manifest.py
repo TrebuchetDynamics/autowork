@@ -54,6 +54,29 @@ class DocsManifestTests(unittest.TestCase):
         self.assertEqual(self.cli('check').strip(), 'ok')
         self.assertEqual(before, {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
 
+    def test_heading_suffix_collisions_remain_unique(self):
+        design = self.repo / 'docs/design.md'
+        original = design.read_text()
+        for headings, expected, missing in (
+                ('## Repeat\n## Repeat-1\n## Repeat\n',
+                 ('repeat', 'repeat-1', 'repeat-2'), 'repeat-3'),
+                ('## Repeat\n## Repeat\n## Repeat-1\n## Repeat-1\n',
+                 ('repeat', 'repeat-1', 'repeat-1-1', 'repeat-1-2'), 'repeat-2'),
+                ('## Repeat\n## Repeat-1\n## Repeat-2\n## Repeat\n',
+                 ('repeat', 'repeat-1', 'repeat-2', 'repeat-3'), 'repeat-4')):
+            with self.subTest(headings=headings):
+                design.write_text(original + '\n' + headings)
+                changelog = self.repo / 'CHANGELOG.md'
+                changelog.write_text('# Changelog\n' + ''.join(
+                    f'[target](docs/design.md#{anchor})\n' for anchor in expected))
+                self.roles['architecture']['path'] = f'docs/design.md#{expected[-1]}'
+                self.write()
+                self.cli('check')
+                changelog.write_text(changelog.read_text() +
+                                    f'[absent](docs/design.md#{missing})\n')
+                self.assertIn(f'missing anchor docs/design.md#{missing}',
+                              self.cli('check', expected=1))
+
     def test_commented_anchors_are_not_link_targets(self):
         design = self.repo / 'docs/design.md'
         original = design.read_text()

@@ -2167,3 +2167,23 @@ Source section: Next
 - Touches: skills/autowork/scripts/audit_profiles.py, skills/autowork/scripts/test_response_tail.py, skills/autowork/references/profile-feedback.md
 - Exclusions: No product writes, publication, schedule changes, worker launch or native scan override. Installed adoption remains TOOLSET-101-f6.
 - Planner's call: Skip the already-separated native installation gate and excluded live backlog; deliver this independently useful evidence-consumer fix without claiming worker recovery.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-109-f1 — Keep generated document anchors unique across suffix collisions
+
+- [x] TOOLSET-109-f1 — Keep generated document anchors unique across suffix collisions
+- Status: done
+- Goal: DOCS-COMPLETENESS
+- Sources: [accepted document checks](docs/project.md#checkable-core-document-completeness), [checker](skills/docs-sync/scripts/docs.py).
+- Scope: Resolve heading slug collisions against all previously generated heading IDs; retain explicit HTML anchor handling, comments and fenced-code behavior. No new dependency or live operation.
+- Acceptance: Repeated headings after an explicitly suffixed heading get distinct IDs; links and mapped manifest fragments to those generated IDs validate; nonexistent suffixes still fail.
+- Checks: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_docs_manifest.py`; `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current Autowork coordinator.
+- Evidence: Three collision scenarios failed before repair; all 23 focused CLI tests passed after repair. Python 3.12 `python3 scripts/check.py` passed 563/715/216/8 tests, one skip/eight excluded modules. Independent exact-source review approved; docs check and whitespace check passed. Offline only; no deployment.
+- Touches: skills/docs-sync/scripts/docs.py, skills/docs-sync/scripts/test_docs_manifest.py, skills/docs-sync/references/document-scaffold.md
+- Planner's call: Small independent maintenance fix under repository authority. TOOLSET-099-87 remains open with live qualification already separated into TOOLSET-096-7e; other queued tasks require excluded model/live/deployment or cross-repository actions. Skip those operations, not their acceptance. Reuse the current checker and standard-library sets; do not introduce a Markdown parser.

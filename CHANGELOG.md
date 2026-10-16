@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Docs Sync heading anchors remain unique across numeric-suffix collisions
+  (TOOLSET-109-f1). Valid links and manifest fragments to later duplicate headings
+  no longer fail when an earlier heading already uses their candidate suffix.
+
 - Docs Sync anchor checks ignore HTML-commented headings and explicit anchors,
   including unclosed comments (TOOLSET-107-93). Hidden headings no longer consume
   visible duplicate suffixes or validate links to nonexistent rendered targets.

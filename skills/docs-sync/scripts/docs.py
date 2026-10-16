@@ -121,9 +121,12 @@ def anchors(text):
     seen, result = {}, {name.lower() for name in HTML_ANCHOR.findall(prose)}
     for atx, setext in HEADING.findall(prose):
         base = slug(atx or setext)
-        count = seen.get(base, 0)
-        seen[base] = count + 1
-        result.add(base if count == 0 else f'{base}-{count}')
+        candidate = base
+        while candidate in seen:
+            seen[base] += 1
+            candidate = f'{base}-{seen[base]}'
+        seen[candidate] = 0
+        result.add(candidate)
     return result
 
 

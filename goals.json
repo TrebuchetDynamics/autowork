@@ -364,6 +364,11 @@
         },
         {
           "kind": "executed",
+          "ref": "TOOLSET-109-f1: 23 focused CLI tests; exact-source independent review approved; Python 3.12 scripts/check.py passed 563/715/216/8 tests, one skip/eight excluded; docs.py check and git diff --check passed; offline only",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)",
           "result": "pass"
         }
@@ -376,7 +381,8 @@
         "TOOLSET-030",
         "TOOLSET-031",
         "TOOLSET-032",
-        "TOOLSET-107-93"
+        "TOOLSET-107-93",
+        "TOOLSET-109-f1"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -558,6 +564,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-109-f1",
       "TOOLSET-099-87",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -566,7 +573,6 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-108-21",
       "TOOLSET-101-f6"
     ]
   },
@@ -1389,6 +1395,14 @@
       "section": "Done",
       "status": "done",
       "title": "Retain two readable cron responses across a damaged newest output"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-109-f1",
+      "section": "Done",
+      "status": "done",
+      "title": "Keep generated document anchors unique across suffix collisions"
     },
     {
       "depends_on": [

@@ -43,7 +43,12 @@ integrity are checked by the bundled `scripts/docs.py`, not only by reading:
 }}
 ```
 
-Statuses are the role outcomes reported by the parent skill. Mapped roles need a
+Statuses are the role outcomes reported by the parent skill. Heading anchors are
+allocated in document order and remain unique even when a heading already ends in
+a numeric suffix: `Repeat`, `Repeat-1`, `Repeat` yields `repeat`, `repeat-1`,
+`repeat-2`. Explicit HTML anchors remain separate link targets.
+
+Mapped roles need a
 repository-relative `path` (optionally `#anchor`); not-applicable roles need a
 `reason` and no path. `covers` lists source paths the role documents and
 `verified_at` the commit at which it was last verified. Run `docs.py validate <repo>`
