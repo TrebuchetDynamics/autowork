@@ -421,7 +421,8 @@ for path in files:
             continue
         text = ' '.join([str(job.get('skill') or ''), *map(str, job.get('skills') or []), str(job.get('prompt') or '')])
         if 'autowork' in text.lower():
-            profile = path.split('/profiles/')[1].split('/')[0] if '/profiles/' in path else 'default'
+            relative = os.path.relpath(path, home).split(os.sep)
+            profile = relative[1] if relative[0] == 'profiles' else 'default'
             print(f"{profile}: {job.get('name') or job.get('id')}")
 PY
 }

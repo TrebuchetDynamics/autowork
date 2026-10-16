@@ -734,6 +734,28 @@ class SetupTests(Fixture):
         self.assertNotIn('Paused', result.stderr)
         self.assertEqual(self.run_runner('--once', '--allow-hermes').returncode, 0)
 
+    def test_hermes_profile_labels_ignore_profiles_in_installation_ancestors(self):
+        home = self.root / 'profiles/outer/installation'
+        self.env['PI_AUTOWORK_HERMES_HOME'] = str(home)
+        for profile, relative in [('default', 'cron'), ('work', 'profiles/work/cron')]:
+            with self.subTest(profile=profile):
+                jobs = home / relative
+                jobs.mkdir(parents=True)
+                store = jobs / 'jobs.json'
+                store.write_text(json.dumps({'jobs': [
+                    {'id': 'active', 'name': 'Active Autowork', 'workdir': str(self.repo),
+                     'enabled': True, 'skills': ['hermes-toolset:autowork']},
+                    {'id': 'paused', 'name': 'Paused Autowork', 'workdir': str(self.repo),
+                     'enabled': True, 'state': 'paused', 'skills': ['hermes-toolset:autowork']}]}))
+                before = store.read_bytes()
+                result = self.run_runner('--once')
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                self.assertIn(f'{profile}: Active Autowork', result.stderr)
+                self.assertNotIn('outer: Active Autowork', result.stderr)
+                self.assertNotIn('Paused Autowork', result.stderr)
+                self.assertEqual(store.read_bytes(), before)
+                store.unlink()
+
 
 class ServiceTests(Fixture):
     """--install-service and --remove-service: pi-autowork@<repository name>.service."""
