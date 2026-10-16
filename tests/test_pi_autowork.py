@@ -160,6 +160,12 @@ elif behavior == 'push':
 elif behavior == 'blocked':
     report(None, ['needs a device'])
     finish(text='blocked')
+elif behavior == 'needs_vendor':  # builds only with the ignored vendor/ tree of the main checkout
+    if os.path.exists('vendor/sdk.txt'):
+        work(); finish(text='done')
+    else:
+        report(None, ['missing ignored dependency vendor/sdk.txt'])
+        finish(text='blocked')
 elif behavior == 'sleep':
     def stopped(*_):
         signal.signal(signal.SIGINT, signal.SIG_IGN)  # repeats arrive from the group and timeout
@@ -622,6 +628,79 @@ class EngineTests(Fixture):
         self.assertIn('A: running — worker started; adopted an idle claim', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def ledger_with_recorded_order(self):
+        goals = str(ROOT / 'skills/docs-sync/scripts/goals.py')
+        # Z waits in Needs decision, so the goal keeps an open task after A, B and C close.
+        data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md', 'status': 'partial',
+                                          'tasks': ['A', 'B', 'C', 'Z'], 'priority': 1, 'depends_on': []}],
+                'tasks': [{'id': t, 'title': 'Task ' + t, 'goal': 'G', 'status': 'open',
+                           'section': 'Needs decision' if t == 'Z' else 'Next',
+                           'depends_on': ['A'] if t == 'C' else []} for t in 'ABCZ']}
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        with (self.repo / 'TODO.md').open('a') as todo_file:
+            todo_file.write('\n## Needs decision\n\n- [ ] Z — Task Z\n  Scope: Z\n  Acceptance: a person decides\n'
+                            '  Checks: manual\n  Dependencies: None.\n  Status: open\n')
+        dry = json.loads(subprocess.run([sys.executable, goals, 'bootstrap-order', str(self.repo), '--dry-run'],
+                                        check=True, capture_output=True, text=True).stdout)
+        subprocess.run([sys.executable, goals, 'bootstrap-order', str(self.repo), '--expected-revision',
+                        dry['revision']], check=True, capture_output=True, text=True)
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'ledger with recorded order')
+
+    def test_a_changed_todo_order_is_recorded_once_and_work_continues(self):
+        """flutter: the runner said "run goals.py reorder" and waited; scheduled runs record it."""
+        self.ledger_with_recorded_order()
+        text = (self.repo / 'TODO.md').read_text()
+        a, b = text.index('- [ ] A'), text.index('- [ ] B')
+        c = text.index('- [ ] C')
+        (self.repo / 'TODO.md').write_text(text[:a] + text[b:c] + text[a:b] + text[c:])  # a person puts B first
+        self.git(self.repo, 'commit', '-qam', 'B first')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count('recorded the new order'), 1, result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('docs(tasks): record TODO.md priority order (pi-autowork)',
+                      self.git(self.repo, 'log', '--format=%s'))
+
+    def test_a_service_stays_up_and_reports_when_the_engine_needs_attention(self):
+        """An invalid ledger made the runner exit, and systemd does not restart a deliberate exit."""
+        (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
+        self.git(self.repo, 'add', 'goals.json')
+        self.git(self.repo, 'commit', '-qm', 'broken ledger')
+        env = {**self.env, 'PI_AUTOWORK_STALL_AFTER': '1'}
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'STALLED' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertEqual(log().count('The engine needs attention'), 1, log())
+        self.assertIn('the engine needs attention: invalid goals.json', log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130)
+
+    def test_listed_ignored_dependencies_are_linked_into_task_worktrees(self):
+        """sierra TASK-022: a gitignored source tree in the main checkout was missing in worktrees."""
+        (self.repo / '.gitignore').write_text('vendor/\n')
+        self.git(self.repo, 'add', '.gitignore')
+        self.git(self.repo, 'commit', '-qm', 'ignore vendor')
+        (self.repo / 'vendor').mkdir()
+        (self.repo / 'vendor' / 'sdk.txt').write_text('sdk\n')
+        self.plan({'worker:A': ['needs_vendor']})
+        without = self.run_runner('--once')
+        self.assertIn('A: failed — worker reported a blocker: missing ignored dependency', without.stdout)
+        self.run_runner('--set-aside', 'A')
+        self.plan({'worker:A': ['needs_vendor']})
+        self.env['PI_AUTOWORK_LINK_PATHS'] = 'vendor'
+        result = self.run_runner('--until-empty')
+        logs = ''.join(p.read_text() for p in Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).glob('autowork-execution/slot-data/A/attempt-*/worker.log'))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr + logs)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')  # nothing linked is committed
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
@@ -880,6 +959,29 @@ class SetupTests(Fixture):
         self.assertEqual({pid for _, pid in starts}, {str(runner.pid)}, out)  # exec keeps the PID
         updates = [json.loads(l) for l in self.log.read_text().splitlines() if '"update"' in l]
         self.assertEqual(updates[0]['update'], ['https://example.invalid/hermes-toolset'])
+
+    def test_a_release_that_cannot_read_current_state_is_never_installed(self):
+        package = self.installed_package()
+        shutil.copytree(ROOT / 'pi-autowork', package / 'pi-autowork', ignore=shutil.ignore_patterns('__pycache__'))
+        self.git(package, 'add', '-A')
+        self.git(package, 'commit', '-qm', 'with component')
+        origin = self.root / 'origin.git'
+        self.git(self.root, 'clone', '-q', '--bare', str(package), str(origin))
+        self.git(package, 'remote', 'set-url', 'origin', str(origin))
+        newer = self.root / 'newer'
+        self.git(self.root, 'clone', '-q', str(origin), str(newer))
+        state = newer / 'skills/autowork/scripts/parallel_state.py'
+        state.write_text(state.read_text().replace('STATE_SCHEMA_READS = (1,)', 'STATE_SCHEMA_READS = (2,)'))
+        self.git(newer, 'commit', '-qam', 'reads only schema 2')
+        self.git(newer, 'push', '-q', 'origin', 'HEAD:main')
+        runner = self.run_until(package / 'scripts/pi-autowork.sh', 'Toolset update deferred')
+        time.sleep(3)
+        runner.send_signal(signal.SIGINT)
+        out, _ = runner.communicate(timeout=60)
+        self.assertIn('Toolset update deferred: release', out)
+        self.assertIn('cannot read this state (schema 1; it reads [2])', out)
+        self.assertEqual(out.count('Toolset update deferred'), 1, out)  # said once, not every interval
+        self.assertFalse([l for l in self.log.read_text().splitlines() if '"update"' in l])  # pi update never ran
 
     def test_a_broken_toolset_update_keeps_the_running_code(self):
         package = self.installed_package()

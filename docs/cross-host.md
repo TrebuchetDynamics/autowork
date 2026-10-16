@@ -221,7 +221,9 @@ Without user lingering (`loginctl enable-linger $USER`) the service stops at log
 Reinstall after changing settings. The runner keeps itself current: while no task is
 in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
 turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
-across repositories. When the toolset revision changed, by that or any other update,
+across repositories. It updates only when no runner on the machine has work in flight
+and the new release, read from Git first, declares it can read the current
+execution state; otherwise it logs why once and keeps the running release. When the toolset revision changed, by that or any other update,
 a running runner restarts itself on the new release at its next cycle and resumes its
 session; an update whose script does not parse is logged and the running code kept.
 Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
@@ -233,6 +235,18 @@ idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change
 the task's entry, branches or worktrees and no live agent working there. The runner
 then takes the task over, logs `adopted an idle claim`, and its worker is pointed at
 any earlier work to reuse, which it never modifies.
+
+When TODO.md's order changed since goals.json recorded it, a runner records the new
+order in its session (`goals.py reorder` with the expected revision, committing only
+goals.json) and selects again; if that is refused it reports why and waits. In
+service mode an engine error never ends the runner: it is reported once, shown by
+`--fleet`, and checked again each interval.
+
+A fresh task worktree has none of the main checkout's gitignored files. List any a
+task needs (comma-separated, repository-relative) in `PI_AUTOWORK_LINK_PATHS` in the
+service environment: before a worker or reviewer starts, each is linked from the main
+checkout, but only where Git ignores it and the link shows up as no change. Links
+are cooperative, not write-protected, so list only what tasks read.
 
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not

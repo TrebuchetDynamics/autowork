@@ -17,6 +17,14 @@ claim of a tagged release, completed installation or live workflow qualification
   Every `owner_cycle.py --apply` task claim runs it and reports `worktree_cleanup`;
   closeout runs it for the task's own worktree.
 
+- A `pi-autowork` service records a changed TODO.md order itself (guarded
+  `goals.py reorder`, committing only goals.json) and selects again, as scheduled
+  Autowork runs are documented to do; before, it asked a person and waited. A refusal
+  is reported once and never retried in a loop. Closing a task with a live follow-up
+  now records the follow-up's place in the priority order; it used to leave a drift
+  that stopped all dispatch (charlie, TASK-008). An engine error
+  no longer ends a service: it is reported once, shown in health, and retried each
+  interval, because systemd does not restart a deliberate exit.
 - A `pi-autowork` service no longer quits on a failure streak. Holds that already
   existed when the runner started (for example after a self-restart) no longer count
   toward `PI_AUTOWORK_MAX_FAILURES`; three restarts re-counted the same old holds and
@@ -78,6 +86,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `PI_AUTOWORK_LINK_PATHS` links gitignored dependencies (say a vendored source
+  tree) from the main checkout into each task and review worktree, only where Git
+  ignores the path, and verifies the link shows up as no change; directories become
+  real directories of links because Git does not treat a symlink as a directory. The
+  link is cooperative, not write-protected. sierra TASK-022 stopped twice on a missing
+  ignored source tree.
+- Self-update waits for a safe checkpoint: no runner on the machine has work in flight,
+  and the new release, read from Git before installing, declares it can read the
+  current execution state (`STATE_SCHEMA_READS` in the engine). Otherwise the update
+  is deferred with the reason, logged once, and the running release stays.
 - Parallel Autowork can adopt another session's `in_progress` claim once it is
   verifiably idle (`--adopt-idle-claims SECONDS`): its TODO/ledger entry, any branch
   or worktree named for the task and any agent process there all show no activity

@@ -19,6 +19,7 @@ SCHEMA = 1
 STALL_AFTER = 1800      # seconds with nothing running while work waits
 STALE_AFTER = 600       # a status this old means the runner is not cycling
 MOVING = ('running', 'integrating', 'restarting')
+IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  # unsafe to update under
 NEEDS_PERSON = ('runner', 'held', 'claim', 'outside', 'cycle')
 
 
@@ -77,6 +78,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                     + '. See pi-autowork.sh --status.')
     value = dict(schema=SCHEMA, updated_at=now, state=state, since=since,
                  active_workers=snapshot.get('active_workers', 0),
+                 in_flight=sum(t.get('state') in IN_FLIGHT for t in snapshot.get('tasks', [])),
                  waiting=sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])),
                  held=[dict(task=t['task'], cause=t.get('cause'), reason=t.get('reason'))
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],

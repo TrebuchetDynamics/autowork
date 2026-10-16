@@ -23,6 +23,10 @@ TRANSITIONS = {
     'interrupted': {'dispatched', 'held'},
     'released': {'dispatched'},
 }
+# Execution state format this release writes, and every format it can read. A runner
+# reads a new release's STATE_SCHEMA_READS before updating to it (pi-autowork.sh).
+STATE_SCHEMA = 1
+STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs.
 NEEDS_PERSON = ('blocker',)

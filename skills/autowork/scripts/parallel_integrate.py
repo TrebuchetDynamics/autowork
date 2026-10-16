@@ -377,6 +377,14 @@ def live_followup(repo, task, items, indexed):
                     + ('\n' + text[at:] if coverage else ''))
         require_no_writers(repo)
         goals.atomic_write(todo, text, expected_bytes=before)
+    if indexed:
+        # Record the follow-up's place in the priority order, or the ledger reports drift
+        # and stops all dispatch (flutter, TASK-008). Only when it is the sole
+        # difference: someone else's unrecorded reordering is not this close's to accept.
+        status = goals.priority_status(goals.normalize(goals.load(repo)), (repo / 'TODO.md').read_text())
+        if (status['state'] == 'drift' and status['added'] == [followup]
+                and not (status['moved'] or status['missing'] or status['duplicates'])):
+            goals_command(repo, 'reorder', '--expected-revision', goals_command(repo, 'revision').strip())
     return followup
 
 

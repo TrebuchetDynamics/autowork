@@ -9,6 +9,8 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | Module | Role |
 | --- | --- |
 | `pi_autowork/health.py` | Per-runner `status.json`, one stall announcement per episode with its root blockers, and the `--fleet` view |
+| `pi_autowork/workspaces.py` | Links `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees |
+| `pi_autowork/release.py` | Safe-checkpoint test before a self-update: fleet idle, and the new release reads current state |
 
 Design: [coordinator redesign](../docs/plans/2026-10-16-pi-autowork-coordinator.md),
 [component layout](../docs/plans/pi-autowork-component-layout.md). Tests run from
