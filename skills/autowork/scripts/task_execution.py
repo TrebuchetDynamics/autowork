@@ -41,6 +41,34 @@ def goals_module():
     return module
 
 
+def archive_file(repo):
+    """The TODO history owner as Docs Sync chooses it: a linked archive such as
+    docs/TODO-archive.md, else TODO.archive.md. Task sources never select it."""
+    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/todo_archive.py'
+    spec = importlib.util.spec_from_file_location('todo_archive_owner', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    goals = goals_module()
+    text = (Path(repo) / 'TODO.md').read_text()
+    try:
+        return Path(repo) / module.archive_owner(Path(repo), module.navigation(
+            text, goals.markdown_prose(text), set(goals.task_bodies(text))))
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def archived_done(repo):
+    """IDs closed in the TODO archive; an ambiguous archive closes nothing."""
+    try:
+        archive = archive_file(repo)
+    except ValueError:
+        return set()
+    if not archive.is_file():
+        return set()
+    return {key for key, items in goals_module().task_bodies(archive.read_text()).items()
+            if len(items) == 1 and items[0][1].lower() == 'x'}
+
+
 def unique(pairs):
     result = {}
     for key, value in pairs:
@@ -421,10 +449,7 @@ def _contracts(repo, requested, plan, *, parallel=False):
             ids = re.findall(r'`?([A-Za-z0-9][A-Za-z0-9_-]*)`?', deps)
             # Dependencies must be explicit IDs; unknown prose is not evidence of completion.
             done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'}
-            archive = repo / 'TODO.archive.md'
-            if archive.is_file():
-                done.update(key for key, items in goals.task_bodies(archive.read_text()).items()
-                            if len(items) == 1 and items[0][1].lower() == 'x')
+            done.update(archived_done(repo))
             done.update(key for key, task in indexed.items() if task['status'] == 'done')
             if any(item not in done for item in ids):
                 reasons.append(f'{tid}: unresolved dependency {deps}')

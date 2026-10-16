@@ -97,10 +97,7 @@ def pending_tasks(repo, known=()):
     goals = execution.goals_module()
     bodies = goals.task_bodies(todo.read_text())
     done = {task for task, items in bodies.items() if len(items) == 1 and items[0][1].lower() == 'x'}
-    archive = repo / 'TODO.archive.md'
-    if archive.exists():
-        done.update(task for task, items in goals.task_bodies(archive.read_text()).items()
-                    if len(items) == 1 and items[0][1].lower() == 'x')
+    done.update(execution.archived_done(repo))
     indexed = {}
     if (repo / 'goals.json').exists():
         indexed = {t['id']: t for t in goals.normalize(goals.load(repo))['tasks']}

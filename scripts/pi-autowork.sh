@@ -738,6 +738,28 @@ note_state() {  # log each task's lifecycle change once
   say "$id: $word${reason:+ — $reason}"
 }
 
+close_task() {  # archive an integrated task and commit the coordinator files
+  local id=$1 result file
+  result=$(owned --parallel-close "$id")
+  if [[ $(jq -r .outcome <<<"$result" 2>/dev/null) == CLOSED ]]; then
+    for file in TODO.md TODO.archive.md goals.json CHANGELOG.md; do
+      [[ -e $INTEG/$file || -n $(git -C "$INTEG" ls-files -- "$file") ]] && git -C "$INTEG" add -A -- "$file"
+    done
+    # A linked archive (say docs/TODO-archive.md) changes too.
+    git -C "$INTEG" add -u -- '*.md'
+    git -C "$INTEG" diff --cached --quiet ||
+      git -C "$INTEG" commit -q -m "docs(tasks): close $id (pi-autowork)" -m "Integrated, verified and closed by the Parallel Autowork engine."
+    note_state "$id" closed ''
+    FAILURES=0
+    [[ $id == "$ONCE_TASK" ]] && ONCE_DONE=1
+    SETTLED=1
+  else
+    result=$(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")
+    [[ ${SEEN["close-$id"]:-} == "$result" ]] || say "$id: could not close: $result"
+    SEEN["close-$id"]=$result
+  fi
+}
+
 # Integrates, verifies and closes every reported task, in the engine's priority order.
 settle() {
   local snapshot id result outcome reason
@@ -755,6 +777,11 @@ settle() {
     esac
   done < <(jq -r '.tasks[]? | [.task, .state, (.reason // "")] | @tsv' <<<"$snapshot")
   ((STOP)) && return 0
+  # Integrated but not closed (a close that failed earlier, or a restart in between).
+  for id in $(jq -r '.tasks[]? | select(.state == "integrated") | .task' <<<"$snapshot"); do
+    ((STOP)) && return 0
+    close_task "$id"
+  done
   for id in $(jq -r '.tasks[]? | select(.state == "reported" or .state == "integrating") | .task' <<<"$snapshot"); do
     ((STOP)) && return 0
     note_state "$id" integrating ''
@@ -765,19 +792,7 @@ settle() {
       INTEGRATED)
         SETTLED=1
         note_state "$id" integrated ''
-        result=$(owned --parallel-close "$id")
-        if [[ $(jq -r .outcome <<<"$result") == CLOSED ]]; then
-          for file in TODO.md TODO.archive.md goals.json CHANGELOG.md; do
-            [[ -e $INTEG/$file || -n $(git -C "$INTEG" ls-files -- "$file") ]] && git -C "$INTEG" add -A -- "$file"
-          done
-          git -C "$INTEG" diff --cached --quiet ||
-            git -C "$INTEG" commit -q -m "docs(tasks): close $id (pi-autowork)" -m "Integrated, verified and closed by the Parallel Autowork engine."
-          note_state "$id" closed ''
-          FAILURES=0
-          [[ $id == "$ONCE_TASK" ]] && ONCE_DONE=1
-        else
-          say "$id: could not close: $(jq -r '.reason // .outcome' <<<"$result")"
-        fi ;;
+        close_task "$id" ;;
       HELD)
         SETTLED=1
         note_state "$id" held "$reason"

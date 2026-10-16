@@ -217,6 +217,12 @@ claim of a tagged release, completed installation or live workflow qualification
 - A continuous `pi-autowork.sh` restarts itself when its toolset is updated, instead
   of running the old script against the new engine (which exited on an engine
   outcome the old script did not know).
+- Parallel Autowork closes tasks whose ID is bold or code (`- [ ] **T-1 — …**`): the
+  checkbox stayed unchecked, so the task never archived. The engine also resolves the
+  TODO archive as Docs Sync does (a linked `docs/TODO-archive.md`, never a task's own
+  "history" link), for closing and for dependencies on archived tasks.
+- `pi-autowork.sh` retries closing an integrated task on later cycles and commits a
+  linked archive with the close; a failed close no longer blocks the queue.
 - A continuous `pi-autowork.sh` also keeps itself current: while idle, at most hourly
   (`PI_AUTOWORK_UPDATE_INTERVAL`), it runs `pi update` for its toolset package, one
   runner at a time, and skips a restart onto a script that does not parse. Its
