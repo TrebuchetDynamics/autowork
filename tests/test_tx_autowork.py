@@ -268,6 +268,17 @@ class TxAutoworkTests(unittest.TestCase):
         (state / 'status.json').write_text(json.dumps(status))
         self.assertIn('  held: T-9 blocker\n', self.tx('autowork', 'ls', env=service).stdout)
 
+    def test_help_is_a_command_not_a_runner_name(self):
+        for args in (('autowork', 'help'), ('autowork', '-h'), ('autowork', '--help'), ('autowork',)):
+            with self.subTest(args=args):
+                result = self.tx(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(result.stdout.startswith('Usage: tx autowork <command>'), result.stdout)
+                for command in ('ls [--brief]', 'status [target]', 'logs [-f] [target]', 'tx pi-autowork-<name>',
+                                'stop <target>'):
+                    self.assertIn(command, result.stdout)
+                self.assertEqual(self.sessions(), [])
+
     def test_stop_points_a_service_runner_to_systemctl(self):
         self.service_env('my-repo')
         refused = self.tx('autowork', 'stop', 'my-repo', env={'FAKE_SERVICE_STATE': 'active'})

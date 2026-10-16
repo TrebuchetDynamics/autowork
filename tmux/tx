@@ -1259,9 +1259,42 @@ autowork_stop() {
   printf 'tx: stopped %s\n' "$session" >&2
 }
 
+autowork_help() {
+  cat <<'EOF'
+Usage: tx autowork <command>
+
+pi-autowork runs each repository's TODO.md queue with Pi workers; a systemd service
+(pi-autowork.sh --install-service) is the usual way to run it. A target is a runner
+name (sierra), a repository path, or . for the current repository.
+
+  tx autowork ls [--brief]   Every runner: state, workers, and what a stalled one
+                             waits on; (n) = waiting tasks that depend on a blocker
+  tx autowork status [target]
+                             One runner's full status: tasks, workers, blockers
+  tx autowork logs [-f] [target]
+                             Recent output (service journal or tmux pane); -f follows
+  tx autowork <target>       Open the runner's tmux session pi-autowork-<name>: attach,
+  tx pi-autowork-<name>      or start a tmux runner; for a service runner it follows
+                             the service journal and leaves the service running
+  tx autowork stop <target>  Ctrl+C a tmux runner (workers resume later on the same
+                             attempt) and close its session; closes a journal view
+  tx autowork help           This help (also: tx autowork with no command)
+
+Examples:
+  tx autowork ls
+  tx autowork status india
+  tx pi-autowork-sierra
+  tx autowork .
+EOF
+}
+
 autowork_main() {
-  [[ $# -ge 1 ]] || die "autowork: expected a runner name, repository path, ., or ls/status/logs/stop (try 'tx help')"
+  if [[ $# -eq 0 ]]; then
+    autowork_help
+    return 0
+  fi
   case "$1" in
+    help|-h|--help) autowork_help ;;
     ls|--list|-l) shift; autowork_list "$@" ;;
     status) shift; autowork_status "$@" ;;
     logs) shift; autowork_logs "$@" ;;

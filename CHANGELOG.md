@@ -167,6 +167,8 @@ claim of a tagged release, completed installation or live workflow qualification
   (`claimed elsewhere: TASK-028 (13), TASK-014 (4)`) with short IDs and held causes
   instead of one cut-off sentence per blocker, durations read `4h41m`, and the footer
   fits the terminal.
+- `tx autowork help` (or `-h`, `--help`, or no command) prints the `tx autowork`
+  commands; before, `help` was looked up as a runner name.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),
