@@ -128,7 +128,8 @@ nothing parallel was claimed or started.
   drains, refill returns `WAITING`. When the first commit was held only for scope
   (`changed files violate Touches`) and the retry made no commit, refill returns
   `READOPTED` and sets the first commit back to `reported`, once: scope can change
-  after a hold, and integration repeats every check. A second failure stays held:
+  after a hold, and integration repeats every check, judging scope by the `Touches:`
+  the worker was dispatched with (from its prompt), not by Touches recorded later. A second failure stays held:
   send it to Plan For Me to fix or skip. Closing a retried task leaves the first attempt's worktree
   and branch for manual cleanup.
 - **Interrupted or released workers** (timed out, or dead with uncommitted changes

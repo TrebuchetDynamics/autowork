@@ -245,6 +245,12 @@ def readopt(common, old):
     first = old['previous_attempts'][0]
     workspace(common, first['worktree'], first['branch'], first['baseline'])
     value = {k: v for k, v in first.items() if k not in ('reason', 'checks', 'integration', 'report')}
+    # Judge the commit by the scope its worker was given, not by Touches recorded
+    # after the hold; the dispatch prompt is that record.
+    prompt = common / 'slot-data' / old['task_id'] / f'attempt-{first["attempt"]}' / 'prompt.md'
+    given = re.search(r'(?m)change only paths within Touches: (.*)$', prompt.read_text()) if prompt.is_file() else None
+    if given:
+        value['touches'] = '' if given.group(1).strip() == '(none declared)' else given.group(1).strip()
     value.update(attempt=2, readopted=True, data_attempt=first['attempt'], state='reported',
                  previous_attempts=[first, {k: v for k, v in old.items() if k != 'previous_attempts'}])
     return write_slot(common, value, old)

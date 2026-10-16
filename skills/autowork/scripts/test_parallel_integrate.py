@@ -231,6 +231,20 @@ class IntegrationTests(unittest.TestCase):
         result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
 
+    def test_a_readopted_commit_is_judged_by_the_scope_it_was_dispatched_with(self):
+        args, _ = self.readopt_fixture()
+        prompt = self.common / 'slot-data' / 'A' / 'attempt-1' / 'prompt.md'
+        prompt.parent.mkdir(parents=True, exist_ok=True)
+        prompt.write_text('- Work only inside x; change only paths within Touches: (none declared)\n')
+        todo = self.repo / 'TODO.md'  # Touches recorded after the hold no longer cover A.txt
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: other.txt'))
+        self.git('commit', '-qam', 'later Touches')
+        module = self.module()
+        self.assertEqual(module.retry_held(args)['outcome'], 'READOPTED')
+        self.assertEqual(state.slots(self.common)[0]['touches'], '')
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+
     def test_a_readopted_commit_that_fails_again_stays_held(self):
         args, _ = self.readopt_fixture()
         module = self.module()
