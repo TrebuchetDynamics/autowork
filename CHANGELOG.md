@@ -117,6 +117,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `tmux/` (copied from pi-toolset) with `tx autowork`: run a repository's pi-autowork
+  runner in tmux session `pi-autowork-<repository name>` to watch or debug it,
+  `tx autowork ls` to list tmux and service runners together, and
+  `tx autowork stop` to interrupt one cleanly. It runs the script the systemd unit
+  runs and refuses while that repository's service is enabled; the service stays the
+  primary way to run pi-autowork.
+
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),
   shown in `--fleet` and stall announcements. A commit held only for files outside

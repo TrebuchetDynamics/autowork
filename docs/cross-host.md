@@ -218,6 +218,14 @@ replaces a unit an earlier release named after the escaped path.
 Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
+
+The service is the primary way to run pi-autowork. To watch or debug one runner
+live, run it in tmux instead with `tx autowork` from [`tmux/`](../tmux/README.md):
+`tx autowork .` starts the same script the service runs in session
+`pi-autowork-<repository name>` (or attaches to it), `tx autowork ls` lists tmux and
+service runners together, and `tx autowork stop <name>` interrupts it like Ctrl+C.
+It refuses while that repository's service is enabled or active; the per-repository
+runner lock keeps two runners off one repository in any case.
 Reinstall after changing settings. The runner keeps itself current: while no task is
 in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
 turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
