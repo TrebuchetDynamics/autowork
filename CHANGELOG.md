@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Profile consultations retain valid replies and subprocess exit verdicts when
+  stderr contains malformed UTF-8 diagnostics (TOOLSET-112-29). Protocol stdout
+  remains strict; malformed reply bytes are not accepted as repaired evidence.
+
 - Pi's proposed `Touches:` insertion preserves existing TODO.md bytes, including
   CRLF and mixed line endings, Unicode and trailing whitespace (TOOLSET-111-b3).
   The inserted field follows the target `Scope:` line's newline and spacing.

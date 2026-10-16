@@ -67,6 +67,11 @@ credentials and rules remain enabled. No resume, yolo, accept-hooks, ignore-rule
 config patches, implementation or worker dispatch. Only native session bookkeeping
 is permitted.
 
+Decode consultation stdout as strict UTF-8 protocol data, but decode stderr
+independently with replacement characters. A damaged diagnostic must not discard
+a valid reply or erase its subprocess exit code; damaged protocol bytes still
+fail closed. Retain timeout status and process-group cleanup before decoding.
+
 The native `file` and `skills` groups contain writes; empty `--toolsets` selects
 defaults. The verified narrow selection is `session_search`; deferred schema
 lookup adds read-only `tool_describe`. Budget ONE session search plus ONE schema

@@ -261,7 +261,8 @@
         "TOOLSET-101-f6",
         "TOOLSET-103-fe",
         "TOOLSET-106-5d",
-        "TOOLSET-108-21"
+        "TOOLSET-108-21",
+        "TOOLSET-112-29"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -577,7 +578,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
-      "TOOLSET-111-b3",
+      "TOOLSET-112-29",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -1431,6 +1432,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve TODO bytes when Pi proposes file scope"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-112-29",
+      "section": "Done",
+      "status": "done",
+      "title": "Preserve consultation replies across malformed diagnostic bytes"
     },
     {
       "depends_on": [

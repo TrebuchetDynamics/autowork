@@ -20,6 +20,13 @@ claiming or starting anything.
 
 ## Verify
 
+`python3 -m unittest discover -s tests -p test_profile_consult.py -v` includes
+real local subprocesses emitting valid stream-json replies and malformed stderr
+for zero and nonzero exit codes (TOOLSET-112-29). Diagnostics retain replacement
+characters without discarding replies or changing failure verdicts. Malformed
+stdout remains refused. These fixtures do not launch models or qualify native
+profile recovery, installed adoption or delivery.
+
 `python3 -m unittest discover -s tests -p test_pi_touches.py -v` exercises the
 Pi scope helper's public CLI with LF/CRLF target fields in mixed-newline documents,
 compact and blank-separated styles, Unicode and sibling tasks. Removing only the

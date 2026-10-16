@@ -2228,3 +2228,24 @@ Source section: Now
 - Exclusions: No live model runs, fleet edits, schedules, publication or deployment.
 - Planner's call: Use the existing parser and standard-library newline-preserving I/O, not a Markdown rewrite. Skip TOOLSET-099-87's already-separated live acceptance under TOOLSET-096-7e; neither parent is closed by this repair.
 - Evidence: Four byte-preservation subcases failed before the fix and pass after it; existing fake-Pi suite 40 passed; full offline check passed 565/715/216/8 tests (one skipped; eight native/model/integration modules excluded). Independent exact-source review approved; no live qualification.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-112-29 — Preserve consultation replies across malformed diagnostic bytes
+
+- [x] TOOLSET-112-29 — Preserve consultation replies across malformed diagnostic bytes
+- Status: done
+- Evidence: Baseline malformed-stderr regression failed for zero and nonzero subprocess exits. Corrected canonical source passed all 44 consultation tests; independent exact-source review approved and strict-stderr/permissive-stdout mutations failed as intended. Final `python3 scripts/check.py` passed 568/715/216/8 offline tests, one skip and eight excluded modules. Installed adoption remains separately unproved under TOOLSET-101-f6.
+- Goal: RECOVERY
+- Sources: [accepted requirements](docs/project.md#accepted-requirements), [consultation transport](scripts/profile-consult.py), [feedback contract](skills/autowork/references/profile-feedback.md).
+- Scope: Decode subprocess stderr independently from strict UTF-8 protocol stdout so malformed diagnostics do not erase valid replies and actual exit status. Preserve existing timeout cleanup and refusal of malformed protocol bytes.
+- Acceptance: Valid replies survive malformed stderr for successful subprocesses; nonzero subprocess exits remain failed with their diagnostics retained; malformed stdout remains refused; existing consultation and timeout tests pass.
+- Checks: `python3 -m unittest discover -s tests -p test_profile_consult.py -v`; strict-stderr and permissive-stdout negative controls; `python3 scripts/check.py`; independent exact-source review; documentation and whitespace checks.
+- Dependencies: None.
+- Ownership: Current shared-source maintenance coordinator under autonomous local authority.
+- Touches: scripts/profile-consult.py, tests/test_profile_consult.py, skills/autowork/references/profile-feedback.md, docs/testing.md, CHANGELOG.md
+- Planner's call: Preserve TOOLSET-101-f6's separate native confirmation gate; skip its unavailable deployment operation without another unchanged scan. Execute this reproduced independent source defect, not product or worker recovery.
+- Exclusions: No extra live consultation wave, profile/product edits, scan bypass, worker replacement, schedule activation, push or deployment.

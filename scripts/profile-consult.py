@@ -67,7 +67,7 @@ def redact(text):
 
 def execute(argv, env, cwd, seconds):
     proc = subprocess.Popen(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             start_new_session=True)
     timed_out = False
     try:
@@ -92,7 +92,9 @@ def execute(argv, env, cwd, seconds):
                 os.killpg(proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-    return {'stdout': stdout, 'stderr': stderr, 'returncode': proc.returncode, 'timed_out': timed_out}
+    # Protocol bytes stay strict; diagnostic damage must not erase the actual result.
+    return {'stdout': stdout.decode('utf-8'), 'stderr': stderr.decode('utf-8', 'replace'),
+            'returncode': proc.returncode, 'timed_out': timed_out}
 
 
 def discover(root, hermes):

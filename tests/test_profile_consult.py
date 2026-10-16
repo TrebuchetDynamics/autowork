@@ -559,6 +559,50 @@ class ConsultationTests(unittest.TestCase):
             self.assertTrue(result['timed_out'])
             self.assertNotIn('«redacted:sk-…»', m.redact(result['stdout']))
 
+    def test_malformed_stderr_preserves_protocol_and_exit_status(self):
+        import sys
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            for status in (0, 7):
+                with self.subTest(status=status):
+                    code = ('import os,sys; '
+                            'os.write(1, \'{"type":"result","exit_code":0,"text":"caf\\u00e9"}\\n\'.encode()); '
+                            'os.write(2, b"diagnostic: \\xff\\n"); '
+                            f'sys.exit({status})')
+                    result = m.execute([sys.executable, '-c', code], dict(os.environ), Path(d), 5)
+                    self.assertEqual(result['returncode'], status)
+                    self.assertFalse(result['timed_out'])
+                    self.assertIn('café', result['stdout'])
+                    self.assertEqual(result['stderr'], 'diagnostic: \ufffd\n')
+
+    def test_consult_retains_valid_reply_with_malformed_diagnostic(self):
+        import sys
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            (root / 'maintenance').mkdir()
+            cli = root / 'hermes'
+            for status in (0, 7):
+                with self.subTest(status=status):
+                    cli.write_text(f'#!{sys.executable}\nimport os,sys\n'
+                                   'os.write(1, b\'{"type":"result","exit_code":0,"text":"feedback"}\\n\')\n'
+                                   'os.write(2, b"diagnostic: \\xff\\n")\n'
+                                   f'sys.exit({status})\n')
+                    cli.chmod(0o700)
+                    result = m.consult('one', root, str(cli), 5)
+                    self.assertEqual(result['status'], 'replied' if status == 0 else 'failed')
+                    self.assertEqual(result['reply'], 'feedback')
+                    self.assertEqual(result['receipt']['returncode'], status)
+                    self.assertEqual(result['receipt']['stderr'], 'diagnostic: \ufffd\n')
+
+    def test_malformed_stdout_still_refuses_protocol(self):
+        import sys
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            with self.assertRaises(UnicodeDecodeError):
+                m.execute([sys.executable, '-c', 'import os; os.write(1, b"\\xff")'],
+                          dict(os.environ), Path(d), 5)
+
     def test_command_is_fresh_narrow_and_bounded(self):
         m = self.load()
         from unittest.mock import patch
