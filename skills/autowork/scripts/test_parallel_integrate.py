@@ -789,6 +789,45 @@ class IntegrationTests(unittest.TestCase):
         data = json.loads((self.repo / 'goals.json').read_text())
         self.assertEqual({t['id']: t['status'] for t in data['tasks']}, {'A': 'done', 'B': 'open'})
 
+    def record_order(self):
+        module = self.module()
+        dry = json.loads(module.goals_command(self.repo, 'bootstrap-order', '--dry-run'))
+        module.goals_command(self.repo, 'bootstrap-order', '--expected-revision', dry['revision'])
+        self.git('commit', '-qam', 'record order')
+
+    def test_a_live_followup_in_a_ledger_repository_keeps_priority_in_sync(self):
+        """flutter: closing TASK-013 added TASK-008 unrecorded; drift then stopped all dispatch."""
+        self.ledger()
+        module = self.module()
+        self.record_order()  # a recorded human order, as in fleet repositories
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker()
+        self.report(pending_live=['Device check'])
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['live_followup'], 'A-LIVE')
+        goals = execution.goals_module()
+        status = goals.priority_status(goals.normalize(goals.load(self.repo)), (self.repo / 'TODO.md').read_text())
+        self.assertEqual(status['state'], 'synced', status)
+        self.assertEqual([t['id'] for t in dispatch.contracts(self.repo)], ['B'])  # no PRIORITY_DRIFT
+
+    def test_a_close_never_records_someone_elses_reordering(self):
+        self.ledger()
+        module = self.module()
+        self.record_order()
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker()
+        self.report(pending_live=['Device check'])
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'  # a person adds C before B without recording the order
+        todo.write_text(todo.read_text().replace('- [ ] B', '- [ ] C — Task C\n  Scope: C\n  Acceptance: c\n'
+                                                 '  Checks: true\n  Dependencies: None.\n  Status: open\n- [ ] B'))
+        module.goals_command(self.repo, 'add-task', 'C', '--goal', 'G', '--title', 'Task C')
+        self.git('commit', '-qam', 'human adds C')
+        module.close(self.repo, self.owner, 'A')
+        goals = execution.goals_module()
+        status = goals.priority_status(goals.normalize(goals.load(self.repo)), todo.read_text())
+        self.assertEqual(status['state'], 'drift')  # left for the documented reorder, not blessed here
+
     def test_tampered_receipt_refuses_close_without_writes(self):
         self.worker()
         self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)

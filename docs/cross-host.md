@@ -234,6 +234,12 @@ the task's entry, branches or worktrees and no live agent working there. The run
 then takes the task over, logs `adopted an idle claim`, and its worker is pointed at
 any earlier work to reuse, which it never modifies.
 
+When TODO.md's order changed since goals.json recorded it, a runner records the new
+order in its session (`goals.py reorder` with the expected revision, committing only
+goals.json) and selects again; if that is refused it reports why and waits. In
+service mode an engine error never ends the runner: it is reported once, shown by
+`--fleet`, and checked again each interval.
+
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
 running`/`not cycling` when the process is gone or silent) and, when it cannot

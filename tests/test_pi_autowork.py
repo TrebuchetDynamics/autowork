@@ -622,6 +622,60 @@ class EngineTests(Fixture):
         self.assertIn('A: running — worker started; adopted an idle claim', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def ledger_with_recorded_order(self):
+        goals = str(ROOT / 'skills/docs-sync/scripts/goals.py')
+        # Z waits in Needs decision, so the goal keeps an open task after A, B and C close.
+        data = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md', 'status': 'partial',
+                                          'tasks': ['A', 'B', 'C', 'Z'], 'priority': 1, 'depends_on': []}],
+                'tasks': [{'id': t, 'title': 'Task ' + t, 'goal': 'G', 'status': 'open',
+                           'section': 'Needs decision' if t == 'Z' else 'Next',
+                           'depends_on': ['A'] if t == 'C' else []} for t in 'ABCZ']}
+        (self.repo / 'goals.json').write_text(json.dumps(data))
+        with (self.repo / 'TODO.md').open('a') as todo_file:
+            todo_file.write('\n## Needs decision\n\n- [ ] Z — Task Z\n  Scope: Z\n  Acceptance: a person decides\n'
+                            '  Checks: manual\n  Dependencies: None.\n  Status: open\n')
+        dry = json.loads(subprocess.run([sys.executable, goals, 'bootstrap-order', str(self.repo), '--dry-run'],
+                                        check=True, capture_output=True, text=True).stdout)
+        subprocess.run([sys.executable, goals, 'bootstrap-order', str(self.repo), '--expected-revision',
+                        dry['revision']], check=True, capture_output=True, text=True)
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'ledger with recorded order')
+
+    def test_a_changed_todo_order_is_recorded_once_and_work_continues(self):
+        """flutter: the runner said "run goals.py reorder" and waited; scheduled runs record it."""
+        self.ledger_with_recorded_order()
+        text = (self.repo / 'TODO.md').read_text()
+        a, b = text.index('- [ ] A'), text.index('- [ ] B')
+        c = text.index('- [ ] C')
+        (self.repo / 'TODO.md').write_text(text[:a] + text[b:c] + text[a:b] + text[c:])  # a person puts B first
+        self.git(self.repo, 'commit', '-qam', 'B first')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count('recorded the new order'), 1, result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('docs(tasks): record TODO.md priority order (pi-autowork)',
+                      self.git(self.repo, 'log', '--format=%s'))
+
+    def test_a_service_stays_up_and_reports_when_the_engine_needs_attention(self):
+        """An invalid ledger made the runner exit, and systemd does not restart a deliberate exit."""
+        (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
+        self.git(self.repo, 'add', 'goals.json')
+        self.git(self.repo, 'commit', '-qm', 'broken ledger')
+        env = {**self.env, 'PI_AUTOWORK_STALL_AFTER': '1'}
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'STALLED' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertEqual(log().count('The engine needs attention'), 1, log())
+        self.assertIn('the engine needs attention: invalid goals.json', log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

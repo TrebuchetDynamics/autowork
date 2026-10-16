@@ -87,6 +87,7 @@ VERIFY_TIMEOUT=${PI_AUTOWORK_VERIFY_TIMEOUT:-1800}
 MAX_RETRIES=${PI_AUTOWORK_MAX_RETRIES:-3}
 MAX_FAILURES=${PI_AUTOWORK_MAX_FAILURES:-3}
 FAILURE_PAUSE=${PI_AUTOWORK_FAILURE_PAUSE:-3600} PAUSE_UNTIL=0 RUNNER_BLOCKER=''
+DRIFT_TRIED='' DRIFT_LAST_REASON='' DRIFT_REASON=''
 CLAIM_IDLE=${PI_AUTOWORK_CLAIM_IDLE:-21600}
 COOLDOWN=${PI_AUTOWORK_COOLDOWN:-1800}
 BACKOFF=${PI_AUTOWORK_BACKOFF:-30}
@@ -915,6 +916,37 @@ health_update() {
   return 0
 }
 
+# --- Priority -------------------------------------------------------------------
+# TODO.md order is the human priority; goals.json records it. On drift, record the order
+# in the session with the documented guarded command, commit only goals.json, and select
+# again. One attempt per TODO.md revision; a refusal is reported, never retried blindly.
+reconcile_priority() {
+  local goals=$TOOLSET/skills/docs-sync/scripts/goals.py revision out
+  DRIFT_REASON=''
+  revision=$(python3 "$goals" revision "$INTEG" 2>>"$STATE/engine.err") || { DRIFT_REASON='no ledger revision'; return 1; }
+  if [[ $revision == "$DRIFT_TRIED" ]]; then
+    DRIFT_REASON=${DRIFT_LAST_REASON:-'drift remains after recording the order'}
+    return 1
+  fi
+  DRIFT_TRIED=$revision
+  if [[ -n $(dirty "$INTEG") ]]; then
+    DRIFT_REASON='the session checkout has uncommitted changes'
+  elif ! out=$(python3 "$goals" reorder "$INTEG" --expected-revision "$revision" 2>&1); then
+    DRIFT_REASON=$(printf '%s' "$out" | tail -n 3 | tr '\n' ' ' | cut -c1-300)
+  else
+    git -C "$INTEG" add -- goals.json
+    git -C "$INTEG" diff --cached --quiet ||
+      git -C "$INTEG" commit -q -m "docs(tasks): record TODO.md priority order (pi-autowork)" -m "TODO.md order is the human priority; recorded with goals.py reorder."
+    # Drift that survives the recording is not something another reorder fixes.
+    DRIFT_TRIED=$(python3 "$goals" revision "$INTEG" 2>/dev/null)
+    DRIFT_LAST_REASON='drift remains after recording the order (duplicate task IDs?)'
+    say "TODO.md priority changed; recorded the new order and selecting again"
+    return 0
+  fi
+  DRIFT_LAST_REASON=$DRIFT_REASON
+  return 1
+}
+
 # --- Requests -------------------------------------------------------------------
 # `pi-autowork.sh --set-aside TASK` leaves a request here; only this runner holds the
 # engine lease, so it performs the request and reports the engine's answer.
@@ -1129,16 +1161,29 @@ while :; do
       pause "$INTERVAL"
       continue ;;
     PRIORITY_DRIFT)
+      # Scheduled runs record the human order themselves (Autowork SKILL.md), once per change.
+      reconcile_priority && continue
       case $MODE in
-        once|until-empty) finish 4 "TODO.md priority changed since it was recorded; run goals.py reorder" ;;
+        once|until-empty) finish 4 "TODO.md priority changed and could not be recorded: $DRIFT_REASON" ;;
       esac
-      say "TODO.md priority changed since it was recorded; run goals.py reorder (see Autowork); checking again in ${INTERVAL}s"
-      RUNNER_BLOCKER="TODO.md priority changed; run goals.py reorder"
+      [[ $LAST_WAITING == "drift:$DRIFT_REASON" ]] ||
+        say "TODO.md priority changed and could not be recorded ($DRIFT_REASON); checking again in ${INTERVAL}s"
+      LAST_WAITING="drift:$DRIFT_REASON"
+      RUNNER_BLOCKER="TODO.md priority changed and goals.py reorder refused: $DRIFT_REASON"
       health_update
       pause "$INTERVAL"
       continue ;;
     *)
-      finish 4 "The engine needs attention: $(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")" ;;
+      reason=$(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")
+      [[ $MODE == continuous ]] || finish 4 "The engine needs attention: $reason"
+      # A service that exits here stops silently (deliberate exits are not restarted):
+      # report it once, keep it visible in health, and look again next interval.
+      [[ $LAST_WAITING == "engine:$reason" ]] || say "The engine needs attention: $reason; checking again in ${INTERVAL}s"
+      LAST_WAITING="engine:$reason"
+      RUNNER_BLOCKER="the engine needs attention: $reason"
+      health_update
+      pause "$INTERVAL"
+      continue ;;
   esac
   settle
   handle_requests

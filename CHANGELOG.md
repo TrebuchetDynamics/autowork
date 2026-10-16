@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A `pi-autowork` service records a changed TODO.md order itself (guarded
+  `goals.py reorder`, committing only goals.json) and selects again, as scheduled
+  Autowork runs are documented to do; before, it asked a person and waited. A refusal
+  is reported once and never retried in a loop. Closing a task with a live follow-up
+  now records the follow-up's place in the priority order; it used to leave a drift
+  that stopped all dispatch (charlie, TASK-008). An engine error
+  no longer ends a service: it is reported once, shown in health, and retried each
+  interval, because systemd does not restart a deliberate exit.
 - A `pi-autowork` service no longer quits on a failure streak. Holds that already
   existed when the runner started (for example after a self-restart) no longer count
   toward `PI_AUTOWORK_MAX_FAILURES`; three restarts re-counted the same old holds and
