@@ -752,7 +752,7 @@ def parallel_main(args):
     print(json.dumps(result, indent=2))
     return 0 if result['outcome'] in ('DISPATCHED', 'WAITING', 'IDLE', 'CHANGED', 'TIMEOUT',
                                       'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED',
-                                      'PAUSED', 'SET_ASIDE', 'READOPTED', 'RESCOPED', 'RESUMED', 'REVERIFY') else 1
+                                      'PAUSED', 'SET_ASIDE', 'READOPTED', 'RESCOPED', 'RESUMED', 'REVERIFY', 'REOFFERED') else 1
 
 
 def main(argv=None):
