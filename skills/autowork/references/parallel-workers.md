@@ -84,7 +84,8 @@ A task runs beside others only when the planner can prove it is independent:
   running together.
 - A task without `Touches:`, or one touching a serial path (dependency manifests
   and lock files, `migration(s)/` and `schema(s)/` directories, CI files such as
-  `.github/workflows/`), runs alone.
+  `.github/workflows/`), runs alone. Because it ran alone, a task without `Touches:`
+  may change any file except coordinator-owned ones when it integrates.
 - Dependencies and TODO.md priority still apply: a task waits for its
   prerequisites to close, and a higher-priority task that cannot start yet, or
   must run alone, stops lower-priority dispatch until it can run.

@@ -28,7 +28,8 @@ Options:
   --dry-run            Show what would run; change nothing
   --status             Show the session, budget and each task's state; change nothing
   --repo PATH          Use the repository at PATH
-  --workers N          Tasks run at once, 1-4 (default 2; PI_AUTOWORK_WORKERS)
+  --workers N          Tasks run at once, 1-8 (default 8; PI_AUTOWORK_WORKERS); the engine's
+                       memory and load gate starts fewer when the machine is busy
   --interval SECONDS   Idle polling interval (default 60)
   --max-cycles N       Start at most N Pi workers, then finish
   --no-fallback        Never switch to the fallback model
@@ -40,7 +41,8 @@ Options:
 Environment (optional):
   PI_AUTOWORK_PRIMARY       provider/model (default openai-codex/gpt-6.1-sol)
   PI_AUTOWORK_FALLBACK      provider/model (default openrouter/deepseek/deepseek-v4.1-flash)
-  PI_AUTOWORK_WORKERS       default for --workers (default 2)
+  PI_AUTOWORK_WORKERS       default for --workers (default 8)
+  PI_AUTOWORK_INFER_TOUCHES 0 to stop proposing Touches: for tasks that lack them
   PI_AUTOWORK_TASK_TIMEOUT  seconds per worker (default 5400)
   PI_AUTOWORK_VERIFY_TIMEOUT seconds for verifying one task (default 1800)
   PI_AUTOWORK_VALIDATE      command run before the Pi reviewer on every integrated task
@@ -52,7 +54,7 @@ Environment (optional):
   PI_AUTOWORK_MAX_RUNTIME   stop starting tasks after this many seconds (default 0, unlimited)
   PI_AUTOWORK_MAX_COST      USD limit on reported cost within the budget window (default 0, unlimited)
   PI_AUTOWORK_COST_WINDOW   budget window in hours, counted across restarts (default 24)
-  PI_AUTOWORK_MIN_FREE_MB   free memory each running worker needs (default 1500)
+  PI_AUTOWORK_MIN_FREE_MB   free memory each running worker needs (default 3000)
   PI_AUTOWORK_STATE_DIR     state root (default ${XDG_STATE_HOME:-~/.local/state}/pi-autowork)
   PI_AUTOWORK_TOOLSET       hermes-toolset checkout or Pi package path (default: auto)
   PI_AUTOWORK_ALLOW_HERMES  1 to run although a Hermes Autowork cron job targets this repository
@@ -76,7 +78,7 @@ BACKOFF=${PI_AUTOWORK_BACKOFF:-30}
 MAX_RUNTIME=${PI_AUTOWORK_MAX_RUNTIME:-0}
 MAX_COST=${PI_AUTOWORK_MAX_COST:-0}
 COST_WINDOW=${PI_AUTOWORK_COST_WINDOW:-24}
-MIN_FREE_MB=${PI_AUTOWORK_MIN_FREE_MB:-1500}
+MIN_FREE_MB=${PI_AUTOWORK_MIN_FREE_MB:-3000}
 SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
 STATE='' CHILD='' KILLER='' SLEEPER='' STOP=0 FALLBACK_ENABLED=1 DRY_RUN=0
 
@@ -300,7 +302,7 @@ fi
 
 # --- Options ------------------------------------------------------------------
 MODE=continuous REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 SERVICE='' STATUS=0
-WORKERS=${PI_AUTOWORK_WORKERS:-2}
+WORKERS=${PI_AUTOWORK_WORKERS:-8}
 while (($#)); do
   case $1 in
     --once) MODE=once ;;
@@ -323,7 +325,7 @@ done
 for value in "$INTERVAL" "$MAX_CYCLES" "$WORKERS"; do
   [[ $value =~ ^[0-9]+$ ]] || { echo "Expected a whole number, got: $value" >&2; exit 2; }
 done
-((WORKERS >= 1 && WORKERS <= 4)) || die 2 "--workers must be 1 to 4"
+((WORKERS >= 1 && WORKERS <= 8)) || die 2 "--workers must be 1 to 8"
 [[ $MODE == once ]] && WORKERS=1
 
 for tool in git jq python3 flock timeout systemd-escape; do
@@ -490,11 +492,12 @@ UNIT
     printf 'PATH=%s\n' "$PATH"
     [[ ${PI_AUTOWORK_ALLOW_HERMES:-0} == 1 ]] && echo 'PI_AUTOWORK_ALLOW_HERMES=1'
     [[ ${PI_AUTOWORK_NO_FALLBACK:-0} == 1 ]] && echo 'PI_AUTOWORK_NO_FALLBACK=1'
-    [[ $WORKERS != 2 ]] && echo "PI_AUTOWORK_WORKERS=$WORKERS"
+    [[ $WORKERS != 8 ]] && echo "PI_AUTOWORK_WORKERS=$WORKERS"
     for name in PI_AUTOWORK_PRIMARY PI_AUTOWORK_FALLBACK PI_AUTOWORK_TASK_TIMEOUT PI_AUTOWORK_VERIFY_TIMEOUT \
                 PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES \
                 PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME PI_AUTOWORK_MAX_COST \
-                PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET; do
+                PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET \
+                PI_AUTOWORK_INFER_TOUCHES; do
       [[ -n ${!name:-} ]] && printf '%s=%s\n' "$name" "${!name}"
     done
   } >"$ENV_DIR/$INSTANCE.env"
@@ -788,7 +791,7 @@ finish() {
   if [[ -n $INTEG ]]; then
     merge_main
     if [[ -z $MERGE_PENDING ]] && ! status_json | jq -e '.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))' >/dev/null 2>&1; then
-      owned --parallel "$WORKERS" --release >/dev/null
+      owned --parallel "$WORKERS" --max-workers 8 --release >/dev/null
       [[ $(git -C "$REPO" rev-list --count "$BASE..$INTEG_BRANCH" 2>/dev/null) == 0 ]] && end_session
     fi
   fi
@@ -797,23 +800,63 @@ finish() {
   exit "$code"
 }
 
+# --- Touches ------------------------------------------------------------------
+# A task without Touches: must run alone, so most backlogs would run one task at a
+# time. For the top runnable tasks lacking it, a read-only Pi pass proposes the paths
+# and the runner records them in the session branch. The engine enforces them: a
+# worker that changes files outside its Touches is held, never silently merged.
+TOUCHES_HELPER=$TOOLSET/scripts/pi_autowork_touches.py
+[[ -f $TOUCHES_HELPER ]] || TOUCHES_HELPER=$(dirname "$SCRIPT")/pi_autowork_touches.py
+declare -A TOUCHES_TRIED=()
+infer_touches() {
+  local list id answer recorded
+  [[ ${PI_AUTOWORK_INFER_TOUCHES:-1} == 0 || ! -f $TOUCHES_HELPER ]] && return 0
+  list=$(python3 "$TOUCHES_HELPER" missing "$INTEG" "$TOOLSET" "$WORKERS" 2>>"$STATE/engine.err") || return 0
+  for id in $(jq -r '.[].id' <<<"$list" 2>/dev/null); do
+    ((STOP)) && return 0
+    [[ -n ${TOUCHES_TRIED[$id]:-} ]] && continue
+    TOUCHES_TRIED[$id]=1
+    # A task judged unboundable is asked again after a day, not every cycle.
+    jq -e --arg id "$id" --arg now "$(date +%s)" '.[$id] // 0 | . > ($now | tonumber)' "$STATE/touches.json" >/dev/null 2>&1 && continue
+    pi_job touches "$id" "$INTEG" \
+      "Plan the file scope of task $id in $INTEG so it can run beside other tasks. Read its entry in TODO.md and the repository layout. List the repository-relative files, directories (ending in /) or globs this task will need to change, including its tests, as narrowly as possible but completely; prefer a component's directory over guessing single files. Never list TODO.md, TODO.archive.md, goals.json or CHANGELOG.md. If the task needs live, manual or device access, or its scope cannot be bounded, answer NONE. Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or PI_AUTOWORK_TOUCHES: NONE" \
+      "pi-autowork-touches-$(safe_name "$id")-$(date +%Y%m%d%H%M%S)" 900 --tools read,grep,find,ls
+    if [[ -n $(dirty "$INTEG") ]]; then  # a planning pass must not change the session
+      git -C "$INTEG" reset -q --hard HEAD && git -C "$INTEG" clean -qfd
+    fi
+    answer=$(grep -m1 '^PI_AUTOWORK_TOUCHES:' <<<"$JOB_TEXT" | sed 's/^PI_AUTOWORK_TOUCHES:[[:space:]]*//')
+    if ((JOB_OK)) && [[ -n $answer && $answer != NONE ]] &&
+       recorded=$(python3 "$TOUCHES_HELPER" apply "$INTEG" "$TOOLSET" "$id" "$answer" 2>>"$STATE/engine.err"); then
+      git -C "$INTEG" add -- TODO.md
+      git -C "$INTEG" commit -q -m "docs(tasks): declare Touches for $id (pi-autowork)" -m "Proposed by a read-only planning pass; the engine holds any change outside it."
+      say "$id: can run beside others; Touches: $recorded"
+    else
+      jq -n --slurpfile old <(cat "$STATE/touches.json" 2>/dev/null || echo '{}') --arg id "$id" --argjson until "$(($(date +%s) + 86400))" \
+        '($old[0] // {}) + {($id): $until}' >"$STATE/touches.json.$$" && mv "$STATE/touches.json.$$" "$STATE/touches.json"
+      say "$id: runs alone (no Touches proposed${answer:+: $answer})"
+    fi
+  done
+}
+
 summarize
 say "Started (PID $$). Stop with Ctrl+C."
 while :; do
   if ((STOP)); then
     # Interrupted workers stay in their worktrees; the next start resumes them.
-    for _ in 1 2 3 4; do owned --parallel "$WORKERS" --wait --timeout 5 >/dev/null; done
+    for _ in 1 2 3 4; do owned --parallel "$WORKERS" --max-workers 8 --wait --timeout 5 >/dev/null; done
     settle
     finish 130 "Stopped. Unfinished tasks keep their worktrees and resume on the next start."
   fi
   ensure_session
-  # A session with no work of its own follows the main branch, so new tasks committed
-  # while it waits are seen (india: tasks committed after the session began were missed).
+  # While nothing is in flight the session follows the main branch (fast-forward, or a
+  # merge once it has commits of its own), so tasks committed meanwhile are seen.
   # Only while nothing is in flight: moving the base under a running worker would make
   # its integration conflict.
-  if [[ -z $(git -C "$REPO" rev-list "$BASE..$INTEG_BRANCH" 2>/dev/null) && -z $(dirty "$INTEG") ]] &&
+  if [[ -n $(git -C "$REPO" rev-list "$INTEG_BRANCH..$BASE" 2>/dev/null) && -z $(dirty "$INTEG") ]] &&
      ! status_json | jq -e '.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))' >/dev/null 2>&1; then
-    git -C "$INTEG" merge -q --ff-only "$BASE" 2>/dev/null
+    if ! git -C "$INTEG" merge -q --no-edit "$BASE" >/dev/null 2>&1; then
+      git -C "$INTEG" merge --abort 2>/dev/null  # a conflicting main waits for the end-of-session merge
+    fi
   fi
   if ((!DRAINING)); then
     ((MAX_CYCLES && STARTED_WORKERS >= MAX_CYCLES)) && { DRAINING=1; say "Reached --max-cycles $MAX_CYCLES; finishing running tasks"; }
@@ -830,7 +873,8 @@ while :; do
     continue
   fi
   if ((!DRAINING)); then
-    result=$(owned --apply --parallel "$WORKERS" --worker-command "$WORKER_COMMAND" \
+    infer_touches
+    result=$(owned --apply --parallel "$WORKERS" --max-workers 8 --worker-command "$WORKER_COMMAND" \
       --worker-timeout "$TASK_TIMEOUT" --min-free-mem-mb "$MIN_FREE_MB")
     outcome=$(jq -r '.outcome // "ACTION_REQUIRED"' <<<"$result" 2>/dev/null || echo ACTION_REQUIRED)
   else
@@ -883,7 +927,7 @@ while :; do
   ((SETTLED)) && continue  # closing work can make dependents runnable: dispatch again first
   active=$(status_json | jq '[.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))] | length' 2>/dev/null || echo 0)
   if ((active > 0)); then
-    owned --parallel "$WORKERS" --wait --timeout 5 >/dev/null  # short: a stop is handled between waits
+    owned --parallel "$WORKERS" --max-workers 8 --wait --timeout 5 >/dev/null  # short: a stop is handled between waits
     continue
   fi
   if [[ $outcome == WAITING || $outcome == BLOCKED ]]; then
@@ -905,7 +949,7 @@ while :; do
   if [[ $outcome == IDLE ]]; then
     merge_main
     if [[ -z $MERGE_PENDING ]]; then
-      owned --parallel "$WORKERS" --release >/dev/null
+      owned --parallel "$WORKERS" --max-workers 8 --release >/dev/null
       end_session
     fi
     say "Queue empty; checking again in ${INTERVAL}s"

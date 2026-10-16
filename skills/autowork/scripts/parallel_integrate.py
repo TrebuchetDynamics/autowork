@@ -96,7 +96,11 @@ def verify_scope(repo, common, slot, contracts, files):
             others.append(changed(repo, other['baseline'], other['commit']))
         else:
             others.append(plan.paths(contracts.get(other['task_id'], {}).get('fields', {}).get('Touches', '')))
-    overlap = plan.overlap(files, plan.paths(task['fields'].get('Touches', '')), others)
+    declared = plan.paths(task['fields'].get('Touches', ''))
+    # A task without Touches was dispatched alone, so every file it changed is its own;
+    # coordinator files and other slots still conflict. (Requiring a declaration here
+    # held every such task: it could never integrate.)
+    overlap = plan.overlap(files, declared or files, others)
     if overlap['outside'] or overlap['conflicts']:
         raise ValueError('changed files violate Touches or coordinator/other-slot ownership: ' + str(overlap))
 
