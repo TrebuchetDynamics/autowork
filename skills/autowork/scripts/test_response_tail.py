@@ -71,6 +71,31 @@ class ResponseTailTests(unittest.TestCase):
             self.assertIn('RESPONSE TAIL OMITTED', row['payload'])
             self.assertIn('native response display truncated: j1', gaps)
 
+    def test_http_header_credentials_are_masked_through_line_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-16.md'
+            headers = ('Cookie: first=one; second=private-tail',
+                       'Authorization: Bearer first, custom=private-tail',
+                       'Set-Cookie: first=one; second=private-tail',
+                       'Proxy-Authorization: Digest first=one, second=private-tail',
+                       '\tCoOkIe:\tfirst=one; second=private-tail')
+            for header in headers:
+                response = 'status: held\n' + header + '\nchecks: pending'
+                for text in (self.native_output(response), '## Response\n\n' + response):
+                    with self.subTest(header=header.split(':')[0], native=text.startswith('# Cron')):
+                        path.write_text(text)
+                        before = path.read_bytes()
+                        gaps = []
+                        row = cron_responses(home, [{'id': 'j1'}], gaps)[0]
+                        self.assertNotIn('private-tail', row['payload'])
+                        self.assertIn('status: held', row['payload'])
+                        self.assertIn('checks: pending', row['payload'])
+                        self.assertEqual(gaps, [])
+                        self.assertEqual(path.read_bytes(), before)
+
     def test_quoted_credentials_are_masked_before_field_delimiters(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

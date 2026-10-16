@@ -219,6 +219,11 @@
           "kind": "executed",
           "ref": "TOOLSET-103-fe exact reviewed tree 23b46fb: Python 3.12 scripts/check.py retry passed 562/712/212/8 tests, one skip/eight exclusions; 20 exact-framed read-only response replays; installed adoption TOOLSET-101-f6 remains open",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-106-5d: python3 scripts/check.py passed 563/713/212/8 offline tests (one skip, eight excluded modules); 48 focused collector tests and identical synthetic header consumer passed; independent exact-source review approved; installed adoption remains TOOLSET-101-f6",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -243,7 +248,8 @@
         "TOOLSET-092-18",
         "TOOLSET-100-78",
         "TOOLSET-101-f6",
-        "TOOLSET-103-fe"
+        "TOOLSET-103-fe",
+        "TOOLSET-106-5d"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -548,7 +554,7 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-105-79",
+      "TOOLSET-106-5d",
       "TOOLSET-101-f6"
     ]
   },
@@ -1347,6 +1353,14 @@
       "section": "Done",
       "status": "done",
       "title": "Make the Pi restart PID assertion independent of log timestamps"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-106-5d",
+      "section": "Done",
+      "status": "done",
+      "title": "Mask complete credential-header lines in fleet collector evidence"
     },
     {
       "depends_on": [

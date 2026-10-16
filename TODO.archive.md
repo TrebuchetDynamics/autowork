@@ -2105,3 +2105,23 @@ Source section: Next
 - Touches: tests/test_pi_autowork.py, docs/testing.md, CHANGELOG.md.
 - Exclusions: No runner runtime change, live models, installed profile edits, push or deployment.
 - Planner's call: Small independent fixture correction. Skip TOOLSET-099-87's already separated live qualification under TOOLSET-096-7e; no permission for that excluded operation is inferred. Choose deterministic display-time variation rather than sleeps across a real minute boundary or weaker restart assertions.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-106-5d — Mask complete credential-header lines in fleet collector evidence
+
+- [x] TOOLSET-106-5d — Mask complete credential-header lines in fleet collector evidence
+- Status: done
+- Evidence: Ten native/legacy header regression cases fail before repair and pass after; 48 focused collector tests and the full Python 3.12 offline gate pass (563/713/212/8, one skip/eight exclusions). Independent exact-source review approved. Same read-only synthetic consumer passes; installed adoption remains TOOLSET-101-f6.
+- Goal: RECOVERY
+- Sources: [accepted requirements](docs/project.md#accepted-requirements), [collector](skills/autowork/scripts/audit_profiles.py), [response regressions](skills/autowork/scripts/test_response_tail.py), [verification](docs/testing.md).
+- Scope: Reuse the consultation helper's full-line HTTP credential-header masking in the fleet collector before generic delimiter masking. Preserve native/legacy response identity, surrounding diagnostics and read-only source bytes.
+- Acceptance: Cookie, Set-Cookie, Authorization and Proxy-Authorization credential tails after commas/semicolons are absent from collector response evidence; case/indentation variants pass in native and legacy consumers; unrelated status/check lines survive. Existing response/collector tests and the complete offline gate pass with independent exact-source review.
+- Checks: `python3 -m unittest discover -s skills/autowork/scripts -p test_response_tail.py`; focused collector union; `python3 scripts/check.py`; same read-only synthetic consumer before/after; `git diff --check`.
+- Dependencies: None.
+- Ownership: Shared-source maintenance coordinator under the existing audit repair authority.
+- Touches: skills/autowork/scripts/audit_profiles.py, skills/autowork/scripts/test_response_tail.py, docs/testing.md, CHANGELOG.md
+- Exclusions: No push, installed scan override, profile/job/product writes, worker replacement, schedule activation or comprehensive-redaction claim. Installed adoption stays open under TOOLSET-101-f6.

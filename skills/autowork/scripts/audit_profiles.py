@@ -207,6 +207,8 @@ def safe(value):
             return '[NESTED JSON REDACTED]'
     # Mask whole quoted values before delimiters can expose a credential suffix.
     text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
+    # Auth schemes and Cookie headers carry credentials beyond field delimiters.
+    text = re.sub(r'(?im)^([ \t]*(?:set-cookie|cookie|(?:proxy-)?authorization)[ \t]*:[ \t]*)[^\r\n]+', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)(bearer\s+)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*[\"\']?\s*[:=]\s*)[^\n,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'https?://[^\s\"\'<>]+', '[URL REDACTED]', text)

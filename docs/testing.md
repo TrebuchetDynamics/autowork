@@ -27,6 +27,13 @@ assertions. Timestamp variation is not a process-identity change (TOOLSET-105-79
 Only display times are replaced; scheduling clocks and ISO timestamps stay real.
 This is offline control-flow evidence, not live Pi/model qualification.
 
+Collector response regressions also mask complete Cookie, Set-Cookie,
+Authorization and Proxy-Authorization lines, including comma/semicolon tails,
+case and indentation variants, through native and legacy response consumers
+(TOOLSET-106-5d). They preserve surrounding status/check lines and source bytes.
+This covers actual header lines, not comprehensive secret redaction; installed
+adoption and product recovery remain separate.
+
 Native response framing regressions preserve complete answers containing embedded
 Response headings, Unicode and long prompts. The collector shares the consultation
 cache's character-count parser, reads native documents up to 256 KiB, and redacts

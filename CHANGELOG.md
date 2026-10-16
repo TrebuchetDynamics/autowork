@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Fleet collector evidence masks complete HTTP credential-header values before
+  comma/semicolon field masking (TOOLSET-106-5d), including Cookie, Set-Cookie,
+  Authorization and Proxy-Authorization tails. Native/legacy response diagnostics
+  and source bytes remain preserved. Installed adoption is a separate scanned gate.
+
 - The offline Pi idle-update regression compares runner PIDs rather than whole
   timestamped startup lines (TOOLSET-105-79). A deterministic display-minute change
   reproduces the former false failure without weakening restart identity checks.
