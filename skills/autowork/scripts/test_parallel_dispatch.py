@@ -58,7 +58,7 @@ class DispatchTests(unittest.TestCase):
     def stop_workers(self):
         for slot in state.slots(self.common) if (self.common / 'slots').exists() else ():
             if state.worker_live(slot):
-                dispatch.stop(slot['worker'])
+                dispatch.stop(slot['worker'], slot['worktree'])
 
     def git(self, *args, repo=None):
         return execution.git(repo or self.repo, *args)
@@ -256,7 +256,7 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(paused['outcome'], 'PAUSED')
         for slot in state.slots(self.common):
             if state.worker_live(slot):
-                dispatch.stop(slot['worker'])
+                dispatch.stop(slot['worker'], slot['worktree'])
         return paused['paused']
 
     def test_a_paused_worker_resumes_the_same_attempt(self):

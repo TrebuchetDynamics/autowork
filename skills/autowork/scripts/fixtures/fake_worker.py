@@ -3,9 +3,11 @@
 
 argv: PROMPT_FILE WORKTREE. Behavior per task comes from the JSON file named by
 FAKE_WORKER_SPEC: {"TASK": {"files": {"path": "text"}, "sleep": 0.5,
-"commit": true, "exit": 0, "blockers": [...], "pending_live": [...]}}.
-Without a commit, "blockers" still writes a report (a worker that stopped on
-purpose). Start and end times are appended to
+"commit": true, "exit": 0, "blockers": [...], "pending_live": [...],
+"report": true, "escape": 3.0}}. Without a commit, "blockers" still writes a report
+(a worker that stopped on purpose). "report": false commits without a report.
+"escape" leaves a child in its own session that ignores SIGTERM, outlives this
+leader by that many seconds and then writes escaped.txt in the worktree. Start and end times are appended to
 FAKE_WORKER_LOG so tests can prove overlapping lifetimes.
 """
 import json
@@ -38,6 +40,11 @@ if spec.get('orphan'):
     # A child that ignores SIGTERM and outlives this leader, in the same process group.
     subprocess.Popen([sys.executable, '-c', 'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); '
                       'time.sleep(60)'])
+if spec.get('escape'):
+    subprocess.Popen([sys.executable, '-c', 'import signal, sys, time; from pathlib import Path; '
+                      'signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(float(sys.argv[1])); '
+                      'Path(sys.argv[2], "escaped.txt").write_text("late")', str(spec['escape']), str(worktree)],
+                     start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 for name, text in spec.get('files', {}).items():
     path = worktree / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,9 +56,10 @@ if spec.get('commit', True) and spec.get('files'):
     subprocess.run(['git', '-C', str(worktree), 'commit', '-qm', 'fake work for ' + task], check=True)
     commit = subprocess.run(['git', '-C', str(worktree), 'rev-parse', 'HEAD'], check=True,
                             capture_output=True, text=True).stdout.strip()
-    report.write_text(json.dumps({'task': task, 'commit': commit, 'changed_files': sorted(spec['files']),
-                                  'checks': [], 'blockers': spec.get('blockers', []),
-                                  'pending_live': spec.get('pending_live', []), 'changelog': ''}))
+    if spec.get('report', True):
+        report.write_text(json.dumps({'task': task, 'commit': commit, 'changed_files': sorted(spec['files']),
+                                      'checks': [], 'blockers': spec.get('blockers', []),
+                                      'pending_live': spec.get('pending_live', []), 'changelog': ''}))
 elif spec.get('blockers'):  # stopped on purpose: no commit, says why
     report.write_text(json.dumps({'task': task, 'commit': None, 'changed_files': sorted(spec.get('files', {})),
                                   'checks': [], 'blockers': spec['blockers'], 'changelog': ''}))

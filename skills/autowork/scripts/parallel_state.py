@@ -155,12 +155,34 @@ def group_alive(pgid):
         return True
 
 
+# Every worker process and its descendants carry the worktree they work in. A
+# launch whose identity was never recorded, or a child that left the worker's
+# process group (its own session), is still found by this marker.
+WORKER_MARKER = 'AUTOWORK_WORKTREE'
+
+
+def strays(worktree):
+    """Live processes carrying this worktree's worker marker, from /proc."""
+    if not worktree:
+        return []
+    marker = f'{WORKER_MARKER}={worktree}'.encode()
+    found = []
+    for entry in Path('/proc').glob('[0-9]*'):
+        try:
+            if marker in (entry / 'environ').read_bytes().split(b'\0') and execution.identity(entry.name):
+                found.append(int(entry.name))
+        except (OSError, ValueError):
+            continue  # Exited, or another user's process.
+    return found
+
+
 def worker_live(slot):
-    """Workers lead their own process group; a surviving child keeps the slot live."""
+    """Workers lead their own process group; a surviving child keeps the slot live,
+    and so does any process still carrying the slot's worker marker."""
     worker = slot.get('worker')
-    if worker is None:
-        return False
-    return execution.active_owner({'owner': worker}) or group_alive(worker['pid'])
+    if worker is not None and (execution.active_owner({'owner': worker}) or group_alive(worker['pid'])):
+        return True
+    return bool(strays(slot.get('worktree')))
 
 
 def workspace(common, worktree, branch, baseline):

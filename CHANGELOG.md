@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A parallel Autowork worker can no longer get a second writer beside it in its own
+  worktree (TOOLSET-116-c1). Workers carry `AUTOWORK_WORKTREE`; a worker whose launch
+  was never recorded, or a child that left its process group, now keeps the slot
+  running and is stopped with the group. Before, the next pass started a duplicate
+  worker, and a slot was reported while a stray child still wrote. Seven adversarial
+  fixtures ported from the Pi orchestrator research cover these and four cases the
+  engine already handled.
+
 - A hold during integration counts toward `PI_AUTOWORK_MAX_FAILURES` again; since
   the failure-streak fix only worker-side holds were counted.
 - Git Commit Push never pushes a branch that is behind its push target, including a

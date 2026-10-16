@@ -88,7 +88,7 @@ class ABCWorkload:
             import parallel_state
             for slot in parallel_state.slots(self.common):
                 if slot.get('worker'):
-                    parallel_dispatch.stop(slot['worker'])
+                    parallel_dispatch.stop(slot['worker'], slot['worktree'])
         self.temp.cleanup()
 
     def git(self, *args):
