@@ -46,7 +46,8 @@ def git(repo, *argv, check=False):
         if check:
             raise RuntimeError(result.stderr.strip() or f'git {argv[0]} failed')
         return None
-    return result.stdout.strip()
+    # NUL-separated (-z) output keeps its leading spaces: they are part of status codes.
+    return result.stdout if '-z' in argv else result.stdout.strip()
 
 
 def git_ok(repo, *argv):
@@ -91,3 +92,25 @@ def summary_list(rows, label=lambda r: f"{r.get('id') or r.get('task')}: {r.get(
     if not items:
         return ''
     return '; '.join(items[:4]) + (f' (+{len(items) - 4} more; see --status)' if len(items) > 4 else '')
+
+
+def open_for_writing(paths):
+    """Those of ``paths`` some process holds open for writing (Linux /proc)."""
+    wanted = {str(Path(p).resolve()) for p in paths}
+    found = set()
+    for entry in Path('/proc').glob('[0-9]*'):
+        try:
+            fds = list((entry / 'fd').iterdir())
+        except OSError:
+            continue
+        for link in fds:
+            try:
+                target = os.readlink(link)
+                if target not in wanted:
+                    continue
+                flags = int(re.search(r'^flags:\s+([0-7]+)', (entry / 'fdinfo' / link.name).read_text(), re.M)[1], 8)
+            except (OSError, TypeError):
+                continue
+            if flags & os.O_ACCMODE:
+                found.add(target)
+    return found
