@@ -733,6 +733,10 @@ class ConsultationTests(unittest.TestCase):
         from unittest.mock import patch
         m = self.load()
         values = ('cookie=synthetic-private-cookie',
+                  'Cookie: session=public-prefix; refresh=synthetic-private-cookie\r\nStatus: keep',
+                  '  sEt-CoOkIe: session=public-prefix; refresh=synthetic-private-cookie\nStatus: keep',
+                  'Cookie: "session=public-prefix;\nrefresh=synthetic-private-cookie"\nStatus: keep',
+                  "Set-Cookie: 'session=public-prefix;\nrefresh=synthetic-private-cookie'\nStatus: keep",
                   'Cookie: "session=synthetic-private-cookie; other=value"',
                   json.dumps({'Cookie': 'session=synthetic-private-cookie; other=value', 'keep': True}),
                   json.dumps({'Set-Cookie': ['synthetic-private-cookie'], 'keep': True}))
@@ -756,6 +760,8 @@ class ConsultationTests(unittest.TestCase):
                 self.assertEqual(m.redact(sanitized), sanitized)
                 if text.startswith('{'):
                     self.assertTrue(json.loads(sanitized)['keep'])
+                if 'Status: keep' in text:
+                    self.assertIn('Status: keep', sanitized)
 
     def test_contextual_quoted_keys_in_partial_evidence_are_redacted(self):
         import json
