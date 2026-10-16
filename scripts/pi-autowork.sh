@@ -836,6 +836,11 @@ while :; do
     IDLE)
       # IDLE only means no worker is running: tasks may still be waiting on something.
       blocked=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | (.[:4] | join("; ")) + (if length > 4 then " (+\(length - 4) more; see --status)" else "" end)' <<<"$result" 2>/dev/null)
+      if [[ -z $blocked ]]; then
+        # Tasks that are not runnable contracts yet (dependencies, human input) still count.
+        blocked=$(status_json | jq -r '[.tasks[]? | select(.state == "waiting") | "\(.task): \(.reason // "waiting")"]
+          | if length == 0 then "" else (.[:4] | join("; ")) + (if length > 4 then " (+\(length - 4) more; see --status)" else "" end) end' 2>/dev/null)
+      fi
       if [[ -n $blocked ]]; then
         outcome=BLOCKED
         [[ $blocked != "$LAST_WAITING" ]] && say "No task can start now: $blocked"

@@ -383,6 +383,19 @@ class EngineTests(Fixture):
         self.assertEqual([r['task'] for r in self.runs('worker')], ['B'])
         self.assertTrue(self.done('B'))
 
+    def test_tasks_waiting_on_unfinished_dependencies_are_not_an_empty_queue(self):
+        """india: every open task waited on human input, and the runner said "Queue empty"."""
+        text = (self.repo / 'TODO.md').read_text().replace('Dependencies: None.', 'Dependencies: Z.')
+        (self.repo / 'TODO.md').write_text(text + '\n- [ ] Z — Needs a device\n  Scope: Hardware check\n'
+                                           '  Acceptance: A person confirms it\n  Checks: manual\n'
+                                           '  Dependencies: H.\n  Status: open\n')
+        self.git(self.repo, 'commit', '-qam', 'everything waits on Z, which waits on a human')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('No task can start now', result.stdout)
+        self.assertNotIn('Queue empty', result.stdout)
+        self.assertEqual(self.runs(), [])
+
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
         self.run_runner('--status')  # creates nothing
