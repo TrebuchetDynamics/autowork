@@ -163,6 +163,11 @@ claim of a tagged release, completed installation or live workflow qualification
   browser with textual-serve 1.1.3, on 127.0.0.1:8765 by default; `--view-only`
   disables every control key. Neither calls a model.
 
+- Planning never blocks delivery: a runner commits the main checkout's uncommitted
+  planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive) before its final
+  merge when nothing else is uncommitted, they have rested `PI_AUTOWORK_PLANNING_QUIET`
+  seconds and no process holds them open for writing. Otherwise the pending-merge message
+  says why they were left alone. TOOLSET-120-fc (4).
 - Answering a held task is editing its TODO.md entry: when the entry no longer matches
   the contract its attempt was dispatched with, the next cycle sets the slot aside and
   runs the task fresh (`REQUEUED`), its earlier work kept on `-set-aside-N` branches; a

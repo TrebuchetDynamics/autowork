@@ -21,7 +21,7 @@ import tempfile
 import time
 
 from . import health, pi_runtime, release, touches_inference
-from .common import LOG, dirty, git, git_ok, lifecycle, safe_name, summary_list
+from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
@@ -260,6 +260,7 @@ class Coordinator:
         ahead = self.ahead()
         if ahead == 0:
             return True
+        planning_note = self.commit_owner_planning()
         if not git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
             files = ' '.join((git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').split())
             if not self.stop and not self.resolved_once:
@@ -293,10 +294,57 @@ class Coordinator:
                     line = line.rstrip(':') + ': ' + shown
                 self.merge_pending = f'{self.base} in {self.repo} could not take {self.integ_branch}: {line}'
         if self.merge_pending:
+            if planning_note:
+                self.merge_pending += f' (uncommitted planning left alone: {planning_note})'
             LOG.say(f'Merge pending: {self.merge_pending}. Branch {self.integ_branch} is kept; the next run retries.')
             return False
         LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s), not pushed)')
         return True
+
+    def commit_owner_planning(self):
+        """Planning never blocks delivery: when the main checkout's only uncommitted changes
+        are planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive), quiet for
+        PI_AUTOWORK_PLANNING_QUIET seconds and open for writing nowhere, commit exactly those
+        before merging. Any other change keeps the merge pending (TOOLSET-120-fc 4).
+        Returns '' when committed or nothing was uncommitted, else why it was left alone."""
+        if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
+            return f'the main checkout is not on {self.base}'
+        listing = git(self.repo, 'status', '--porcelain', '-z', '--untracked-files=all')
+        entries = [e for e in (listing or '').split('\0') if e]
+        if not entries:
+            return ''
+        _, dispatch = touches_inference.modules(self.toolset)
+        try:
+            archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
+        except (ValueError, OSError):
+            archive = None
+        planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
+        paths = []
+        for entry in entries:
+            status, path = entry[:2], entry[3:]
+            if path not in planning:
+                return f'{path} is changed and is not planning'
+            if any(flag in status for flag in 'RCD'):
+                return f'{path} is renamed or deleted'
+            paths.append(path)
+        staged = set((git(self.repo, 'diff', '--cached', '--name-only') or '').split('\n')) - {''}
+        if not staged <= set(paths):
+            return 'other files are staged'
+        quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
+        files = [Path(self.repo) / p for p in paths]
+        recent = [p for p, f in zip(paths, files) if f.exists() and time.time() - f.stat().st_mtime < quiet]
+        if recent:
+            return f'{", ".join(recent)} changed in the last {int(quiet // 60)} min'
+        held = open_for_writing(files)
+        if held:
+            return f'{", ".join(sorted(os.path.relpath(h, self.repo) for h in held))} is open for writing'
+        git(self.repo, 'add', '--', *paths)
+        if not git_ok(self.repo, 'commit', '-q', '-m', 'docs(tasks): owner planning (pi-autowork)',
+                      '-m', 'Uncommitted planning in the main checkout, committed so finished work can merge.',
+                      '--', *paths):
+            return 'the planning commit failed'
+        LOG.say(f'Committed the owner\'s uncommitted planning in {self.repo} ({", ".join(paths)}) so the session can merge')
+        return ''
 
     def follow_base(self):
         """While nothing is in flight the session follows the main branch, so tasks

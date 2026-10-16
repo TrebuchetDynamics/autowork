@@ -282,6 +282,13 @@ Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 the service, `tx autowork` and a terminal; variables already set in the environment
 win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
 
+Planning never blocks delivery: when the main checkout's only uncommitted changes are
+planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive), untouched for
+`PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing nowhere, the runner
+commits exactly those as `docs(tasks): owner planning (pi-autowork)` before its merge.
+Any other uncommitted file keeps the merge pending, and the message says why the
+planning was left alone.
+
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
 running`/`not cycling` when the process is gone or silent) and, when it cannot
