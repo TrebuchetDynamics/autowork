@@ -548,6 +548,11 @@
           "kind": "executed",
           "ref": "TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only",
+          "result": "pass"
         }
       ],
       "id": "PI-RUNNER",
@@ -562,7 +567,8 @@
         "TOOLSET-097-41",
         "TOOLSET-097-57",
         "TOOLSET-098-4c",
-        "TOOLSET-099-87"
+        "TOOLSET-099-87",
+        "TOOLSET-111-b3"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -570,8 +576,8 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-110-61",
       "TOOLSET-099-87",
+      "TOOLSET-111-b3",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -1417,6 +1423,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve offline check results with non-UTF-8 subprocess diagnostics"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-111-b3",
+      "section": "Done",
+      "status": "done",
+      "title": "Preserve TODO bytes when Pi proposes file scope"
     },
     {
       "depends_on": [

@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Pi's proposed `Touches:` insertion preserves existing TODO.md bytes, including
+  CRLF and mixed line endings, Unicode and trailing whitespace (TOOLSET-111-b3).
+  The inserted field follows the target `Scope:` line's newline and spacing.
+
 - Offline test aggregation tolerates malformed UTF-8 subprocess diagnostics
   (TOOLSET-110-61). Replacement characters preserve readable output without losing
   passing/failing verdicts or sibling-directory summaries to a decoding exception.

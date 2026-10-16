@@ -45,7 +45,7 @@ def apply(repo, toolset, task, paths):
     goals, _ = modules(toolset)
     paths = clean(paths)
     todo = Path(repo) / 'TODO.md'
-    text = todo.read_text()
+    text = todo.read_bytes().decode('utf-8')
     entries = goals.task_bodies(text).get(task) or []
     if len(entries) != 1:
         raise ValueError(f'{task}: expected one TODO entry, found {len(entries)}')
@@ -58,14 +58,17 @@ def apply(repo, toolset, task, paths):
         raise ValueError(f'{task}: no Scope field to sit beside')
     prefix = scope.group(1)
     before = body[:scope.start()]
-    spaced = prefix.strip() == '' and before.endswith('\n\n')  # fields separated by blank lines
-    line = f'{prefix}Touches: {paths}\n' + ('\n' if spaced else '')
+    # Match this field's newline, not the first line in a mixed-style document.
+    end = body.find('\n', scope.end())
+    newline = '\r\n' if end > 0 and body[end - 1] == '\r' else '\n'
+    spaced = prefix.strip() == '' and before.endswith(newline * 2)
+    line = f'{prefix}Touches: {paths}{newline}' + (newline if spaced else '')
     new_body = before + line + body[scope.start():]
     new_text = text[:start] + new_body + text[start + len(body):]
     read = goals.task_bodies(new_text).get(task) or []
     if len(read) != 1 or goals.task_fields(read[0][0]).get('Touches', '').strip() != paths:
         raise ValueError(f'{task}: Touches did not read back')
-    todo.write_text(new_text)
+    todo.write_bytes(new_text.encode('utf-8'))
     print(paths)
 
 

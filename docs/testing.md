@@ -20,6 +20,13 @@ claiming or starting anything.
 
 ## Verify
 
+`python3 -m unittest discover -s tests -p test_pi_touches.py -v` exercises the
+Pi scope helper's public CLI with LF/CRLF target fields in mixed-newline documents,
+compact and blank-separated styles, Unicode and sibling tasks. Removing only the
+inserted `Touches:` bytes must recover the original TODO.md exactly (TOOLSET-111-b3).
+The helper's parsed-field readback remains required. This is offline preservation
+coverage, not live Pi/model or fleet qualification.
+
 Document-anchor CLI fixtures cover numeric-suffix collisions in both heading orders
 and chains of occupied suffixes (TOOLSET-109-f1). They check valid local links and
 role-mapping fragments and reject nonexistent suffixes; this is offline checker

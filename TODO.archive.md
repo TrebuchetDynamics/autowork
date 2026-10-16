@@ -2207,3 +2207,24 @@ Source section: Now
 - Ownership: Current Autowork coordinator.
 - Planner's call: Small independent reliability fix. TOOLSET-099-87's excluded live acceptance remains under TOOLSET-096-7e; skip that operation, not its acceptance. Reproduced malformed-output aggregation failure in both successful and failing unittest subprocesses.
 - Exclusions: No native/model/live checks, schedule changes or publication.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-111-b3 — Preserve TODO bytes when Pi proposes file scope
+
+- [x] TOOLSET-111-b3 — Preserve TODO bytes when Pi proposes file scope
+- Status: done
+- Goal: PI-RUNNER
+- Sources: [accepted requirements](docs/project.md#accepted-requirements), [scope helper](scripts/pi_autowork_touches.py), [runner tests](tests/test_pi_autowork.py).
+- Scope: Preserve unrelated TODO bytes while adding a proposed Touches field. Read and write UTF-8 without newline normalization and use the target Scope line ending for the insertion.
+- Acceptance: LF, CRLF and mixed-newline task documents gain exactly one parsed Touches field; removing only the inserted bytes recovers the original document, including sibling tasks, Unicode and trailing whitespace.
+- Checks: `python3 -m unittest discover -s tests -p test_pi_touches.py -v`; `python3 -m unittest discover -s tests -p test_pi_autowork.py`; `python3 scripts/check.py`; independent diff review; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current Toolset coordinator under autonomous local repository authority.
+- Touches: scripts/pi_autowork_touches.py, tests/test_pi_touches.py, docs/testing.md, CHANGELOG.md
+- Exclusions: No live model runs, fleet edits, schedules, publication or deployment.
+- Planner's call: Use the existing parser and standard-library newline-preserving I/O, not a Markdown rewrite. Skip TOOLSET-099-87's already-separated live acceptance under TOOLSET-096-7e; neither parent is closed by this repair.
+- Evidence: Four byte-preservation subcases failed before the fix and pass after it; existing fake-Pi suite 40 passed; full offline check passed 565/715/216/8 tests (one skipped; eight native/model/integration modules excluded). Independent exact-source review approved; no live qualification.
