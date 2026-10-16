@@ -137,7 +137,10 @@ under the existing default-maintenance lock, in a 0600 file capped at 1 MiB and
 paths disable reuse; they do not prevent fresh reporting.
 
 Read current boards, jobs and actual worker state every occurrence, including for
-subjects whose feedback was reused. Reuse cannot skip actionable work, recovery,
+subjects whose feedback was reused. Inspect execution evidence per exact job: a
+profile-wide recent window can contain only sync runs and omit a paused development
+job entirely. Recover its records read-only; missing rows are unknown, not exhaustion.
+Reuse cannot skip actionable work, recovery,
 acceptance checks or actual process/workspace reconciliation; it only avoids an unchanged
 advisory model request.
 

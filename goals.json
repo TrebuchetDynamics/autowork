@@ -196,7 +196,8 @@
         "TOOLSET-026",
         "TOOLSET-027",
         "TOOLSET-083",
-        "TOOLSET-092-18"
+        "TOOLSET-092-18",
+        "TOOLSET-100-78"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -489,6 +490,7 @@
     "tasks": [
       "AUDIT-QUOTED-SECRET",
       "TOOLSET-099-87",
+      "TOOLSET-100-78",
       "TOOLSET-092-18",
       "TOOLSET-064",
       "TOOLSET-082",
@@ -636,6 +638,14 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-100-78",
+      "section": "Next",
+      "status": "open",
+      "title": "Retain execution evidence for every existing profile job"
     },
     {
       "depends_on": [],

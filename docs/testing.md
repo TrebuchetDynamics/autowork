@@ -20,6 +20,13 @@ claiming or starting anything.
 
 ## Verify
 
+Fleet execution metadata is bounded to twelve recent records per existing job,
+not twelve across a profile: frequent sync occurrences must not hide paused
+or infrequent development jobs. Collector regressions cover cross-job starvation,
+removed/empty job sets, schema refusal and unchanged SQLite bytes. These metadata
+windows do not bind output files to executions or establish a no-progress streak;
+newest completed responses and original run identity still need separate verification.
+
 ```sh
 uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py
 python3 scripts/check.py --list

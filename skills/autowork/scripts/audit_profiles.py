@@ -220,7 +220,7 @@ def homes(root):
     return result
 
 
-def database(path, table, keys, order, gaps, limit=12):
+def database(path, table, keys, order, gaps, limit=12, job_ids=None):
     if not path.is_file():
         gaps.append(path.name + ': missing'); return []
     try:
@@ -231,9 +231,23 @@ def database(path, table, keys, order, gaps, limit=12):
             if not chosen or order not in columns:
                 gaps.append(table + ': unknown schema'); return []
             total = db.execute('SELECT count(*) FROM ' + table).fetchone()[0]
-            rows = db.execute('SELECT ' + ','.join(chosen) + ' FROM ' + table +
-                              ' ORDER BY ' + order + ' DESC LIMIT ?', (limit,)).fetchall()
-            if total > limit: gaps.append(table + ': older metadata omitted (' + str(total - limit) + ')')
+            fields = ','.join(chosen)
+            if job_ids is None:
+                rows = db.execute('SELECT ' + fields + ' FROM ' + table +
+                                  ' ORDER BY ' + order + ' DESC LIMIT ?', (limit,)).fetchall()
+            elif 'job_id' not in columns:
+                gaps.append(table + ': unknown job schema'); return []
+            elif not job_ids:
+                rows = []
+            else:
+                # A frequent sync job must not evict a paused development job's evidence.
+                marks = ','.join('?' for _ in job_ids)
+                rows = db.execute('SELECT ' + fields + ' FROM (SELECT ' + fields +
+                                  ',row_number() OVER (PARTITION BY job_id ORDER BY ' + order +
+                                  ' DESC) AS audit_rank FROM ' + table + ' WHERE job_id IN (' + marks +
+                                  ')) WHERE audit_rank <= ? ORDER BY ' + order + ' DESC',
+                                  (*job_ids, limit)).fetchall()
+            if total > len(rows): gaps.append(table + ': older metadata omitted (' + str(total - len(rows)) + ')')
             return [project(dict(zip(chosen, r)), chosen) for r in rows]
     except sqlite3.Error:
         gaps.append(path.name + ': SQLite read failed'); return []
@@ -297,6 +311,7 @@ def inspect_profile(name, home, launch):
     if not isinstance(jobs, list):
         if jobs is not None: gaps.append('jobs.json: unknown schema')
         jobs = []
+    job_ids = [j['id'] for j in jobs if isinstance(j, dict) and isinstance(j.get('id'), str)]
     jobs = [project(j, ('id', 'name', 'enabled', 'last_status', 'last_run_at', 'next_run_at', 'last_error',
                         'last_delivery_error', 'last_delivery_unverified', 'last_fire_error'))
             for j in jobs if isinstance(j, dict)]
@@ -306,7 +321,8 @@ def inspect_profile(name, home, launch):
                          'ended_at', 'end_reason', 'message_count', 'tool_call_count'), 'started_at', gaps)
     executions = database(home / 'cron/executions.db', 'executions',
                           ('id', 'job_id', 'pid', 'process_started_at', 'status', 'started_at',
-                           'finished_at', 'error', 'delivery_outcome'), 'started_at', gaps)
+                           'finished_at', 'error', 'delivery_outcome'), 'started_at', gaps,
+                          job_ids=job_ids)
     continuity = {}
     # reconcile.py consumes only goal-handoff.json, with top-level task precedence.
     # state.json is legacy evidence, never a replacement for a missing current handoff.

@@ -31,6 +31,66 @@ class CorrectnessTests(unittest.TestCase):
     def git(self, root, *args):
         subprocess.run(['git', '-C', str(root), *args], check=True, capture_output=True)
 
+    def test_busy_sync_does_not_hide_paused_development_executions(self):
+        import sqlite3
+        home = self.root / 'home'
+        (home / 'cron').mkdir(parents=True)
+        (home / 'cron/jobs.json').write_text(json.dumps({'jobs': [
+            {'id': 'development', 'enabled': False}, {'id': 'sync', 'enabled': True}]}))
+        path = home / 'cron/executions.db'
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE executions (id TEXT, job_id TEXT, status TEXT, '
+                       'started_at INTEGER, finished_at INTEGER, error TEXT)')
+            db.executemany('INSERT INTO executions VALUES (?, ?, ?, ?, ?, ?)',
+                           [(f'dev-{i}', 'development', 'completed', i, i + 1, None)
+                            for i in range(3)] +
+                           [(f'sync-{i}', 'sync', 'completed', i + 10, i + 11, None)
+                            for i in range(15)] +
+                           [('removed-run', 'removed', 'failed', 100, 101, 'token=private-value')])
+        before = path.read_bytes()
+        row = inspect_profile('one', home, None)
+        self.assertEqual([r['id'] for r in row['executions'] if r['job_id'] == 'development'],
+                         ['dev-2', 'dev-1', 'dev-0'])
+        self.assertEqual(len([r for r in row['executions'] if r['job_id'] == 'sync']), 12)
+        self.assertNotIn('removed-run', [r['id'] for r in row['executions']])
+        self.assertEqual([r['started_at'] for r in row['executions']],
+                         sorted((r['started_at'] for r in row['executions']), reverse=True))
+        self.assertIn('executions: older metadata omitted (4)', row['gaps'])
+        self.assertEqual(path.read_bytes(), before)
+        (home / 'cron/jobs.json').write_text('{"jobs": []}')
+        self.assertEqual(inspect_profile('one', home, None)['executions'], [])
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_job_execution_selection_rejects_unknown_job_schema(self):
+        import sqlite3
+        from audit_profiles import database
+        path = self.root / 'executions.db'
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE executions (id TEXT, started_at INTEGER)')
+            db.execute("INSERT INTO executions VALUES ('unattributed', 1)")
+        before = path.read_bytes()
+        gaps = []
+        self.assertEqual(database(path, 'executions', ('id', 'started_at'), 'started_at',
+                                  gaps, job_ids=['development']), [])
+        self.assertEqual(gaps, ['executions: unknown job schema'])
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_execution_lookup_uses_raw_identity_before_output_redaction(self):
+        import sqlite3
+        home = self.root / 'home'
+        (home / 'cron').mkdir(parents=True)
+        identifier = 'a' * 48
+        (home / 'cron/jobs.json').write_text(json.dumps({'jobs': [{'id': identifier}]}))
+        path = home / 'cron/executions.db'
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE executions (id TEXT, job_id TEXT, started_at INTEGER)')
+            db.execute('INSERT INTO executions VALUES (?, ?, ?)', ('run-long', identifier, 1))
+        before = path.read_bytes()
+        row = inspect_profile('one', home, None)
+        self.assertEqual([r['id'] for r in row['executions']], ['run-long'])
+        self.assertNotIn(identifier, json.dumps(row))
+        self.assertEqual(path.read_bytes(), before)
+
     def test_body_readiness_and_missing_scope_gate(self):
         root = self.repo()
         gaps = []

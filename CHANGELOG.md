@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Fleet collection retains up to twelve recent execution records per existing job,
+  so frequent sync runs cannot evict paused development-job evidence from a
+  profile-wide window. Removed jobs stay excluded; metadata remains read-only and
+  does not establish output/run association, stagnation or worker recovery.
+
 - `scripts/pi-autowork.sh` runs as many independent tasks as it can: `--workers`
   defaults to 8 (the engine limit) and free memory (3 GB per worker) and load decide
   how many start. For runnable tasks without `Touches:`, a read-only Pi pass proposes
