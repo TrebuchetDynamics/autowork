@@ -517,50 +517,76 @@ class SetupTests(Fixture):
 
 
 class ServiceTests(Fixture):
-    """--install-service and --remove-service write a template unit and a per-repository env file."""
+    """--install-service and --remove-service: pi-autowork@<repository name>.service."""
     def setUp(self):
         super().setUp()
         self.calls = self.root / 'systemctl.log'
-        (self.bin / 'systemctl').write_text('#!/bin/sh\necho "$@" >> ' + str(self.calls) + '\n')
+        self.enabled = self.root / 'enabled'  # units the fake reports as enabled
+        (self.bin / 'systemctl').write_text(
+            '#!/bin/sh\necho "$@" >> ' + str(self.calls) + '\n'
+            'if [ "$2" = is-enabled ]; then grep -qxF "$4" ' + str(self.enabled) + ' 2>/dev/null; exit $?; fi\n')
         (self.bin / 'systemctl').chmod(0o755)
         self.units, self.envs = self.root / 'units', self.root / 'envs'
         self.env.update(PI_AUTOWORK_UNIT_DIR=str(self.units), PI_AUTOWORK_ENV_DIR=str(self.envs),
                         PI_AUTOWORK_TASK_TIMEOUT='600')
 
-    def instance(self):
+    def legacy(self):
         return subprocess.run(['systemd-escape', '--path', str(self.repo)], capture_output=True, text=True).stdout.strip()
 
-    def test_install_writes_a_valid_unit_and_starts_the_instance(self):
+    def test_install_names_the_unit_after_the_repository(self):
         result = self.run_runner('--install-service', '--allow-hermes', '--workers', '3')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         unit = (self.units / 'pi-autowork@.service').read_text()
-        for line in ('WorkingDirectory=/%I', f'ExecStart=/bin/bash {RUNNER}', 'KillSignal=SIGINT', 'KillMode=mixed',
-                     'SuccessExitStatus=130', 'Restart=on-abnormal', f'EnvironmentFile=-{self.envs}/%i.env'):
+        for line in ('WorkingDirectory=~', f'ExecStart=/bin/bash {RUNNER} --repo ${{PI_AUTOWORK_REPO}}',
+                     'KillSignal=SIGINT', 'KillMode=mixed', 'SuccessExitStatus=130', 'Restart=on-abnormal',
+                     f'EnvironmentFile={self.envs}/%i.env', 'Description=pi-autowork for %i'):
             self.assertIn(line, unit)
-        env = self.envs / f'{self.instance()}.env'
+        env = self.envs / 'project.env'
         lines = env.read_text().splitlines()
-        for line in ('PI_AUTOWORK_ALLOW_HERMES=1', 'PI_AUTOWORK_TASK_TIMEOUT=600', 'PI_AUTOWORK_WORKERS=3'):
+        for line in (f'PI_AUTOWORK_REPO={self.repo}', 'PI_AUTOWORK_ALLOW_HERMES=1', 'PI_AUTOWORK_TASK_TIMEOUT=600',
+                     'PI_AUTOWORK_WORKERS=3'):
             self.assertIn(line, lines)
         self.assertTrue(any(l.startswith('PATH=') and str(self.bin) in l for l in lines))
         self.assertEqual(env.stat().st_mode & 0o777, 0o600)
-        unit_name = f'pi-autowork@{self.instance()}.service'
-        self.assertEqual(self.calls.read_text().splitlines(),
-                         ['--user daemon-reload', f'--user enable {unit_name}', f'--user restart {unit_name}'])
+        calls = self.calls.read_text().splitlines()
+        self.assertEqual([c for c in calls if 'is-enabled' not in c],
+                         ['--user daemon-reload', '--user enable pi-autowork@project.service',
+                          '--user restart pi-autowork@project.service'])
+        self.assertIn("journalctl --user -u 'pi-autowork@project.service'", result.stdout)
         self.assertEqual(self.runs(), [])
-        if shutil.which('systemd-analyze'):  # systemd itself must accept the unit for a real path
-            instance = self.root / 'verify' / unit_name
+        if shutil.which('systemd-analyze'):  # systemd itself must accept the unit
+            instance = self.root / 'verify' / 'pi-autowork@project.service'
             instance.parent.mkdir()
             instance.write_text(unit)
             check = subprocess.run(['systemd-analyze', '--user', 'verify', str(instance)], capture_output=True, text=True)
             self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
             self.assertNotIn('bad unit file setting', check.stdout + check.stderr)
 
+    def test_a_name_used_by_another_repository_is_refused(self):
+        self.envs.mkdir()
+        (self.envs / 'project.env').write_text('PI_AUTOWORK_REPO=/elsewhere/project\n')
+        result = self.run_runner('--install-service')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('already runs /elsewhere/project', result.stderr)
+        self.assertFalse(self.calls.exists())
+
+    def test_an_earlier_path_named_unit_is_replaced(self):
+        self.envs.mkdir()
+        (self.envs / f'{self.legacy()}.env').write_text('PATH=/usr/bin\n')
+        self.enabled.write_text(f'pi-autowork@{self.legacy()}.service\n')
+        result = self.run_runner('--install-service')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'--user disable --now pi-autowork@{self.legacy()}.service', self.calls.read_text())
+        self.assertFalse((self.envs / f'{self.legacy()}.env').exists())
+        self.assertTrue((self.envs / 'project.env').exists())
+        self.assertIn('Replaced the earlier unit', result.stdout)
+
     def test_remove_and_refusals(self):
         self.assertEqual(self.run_runner('--install-service').returncode, 0)
         result = self.run_runner('--remove-service')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse((self.envs / f'{self.instance()}.env').exists())
-        self.assertIn(f'--user disable --now pi-autowork@{self.instance()}.service', self.calls.read_text())
+        self.assertFalse((self.envs / 'project.env').exists())
+        self.assertIn('--user disable --now pi-autowork@project.service', self.calls.read_text())
         self.assertEqual(self.run_runner('--install-service', '--dry-run').returncode, 2)
 
 

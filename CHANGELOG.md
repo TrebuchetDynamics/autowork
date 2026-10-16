@@ -24,7 +24,7 @@ claim of a tagged release, completed installation or live workflow qualification
   its own worktree off a session integration branch, and merges the session into the
   main branch when the queue empties or it stops (Pi resolves a conflicting merge once;
   otherwise the merge is reported pending). `--install-service` runs it as a systemd
-  user service per repository (`pi-autowork@<path>`), stopped gracefully with SIGINT. See
+  user service per repository (`pi-autowork@<repository name>`), stopped gracefully with SIGINT. See
   [continuous Autowork](docs/cross-host.md#run-autowork-continuously).
 - Opt-in parallel Autowork (TOOLSET-085-1a to 090-2d): `/autowork --parallel N`
   runs independent tasks in headless Hermes, Codex or Pi workers, each in its own
@@ -170,6 +170,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `pi-autowork.sh --install-service` names units after the repository,
+  `pi-autowork@<name>.service` (for example `pi-autowork@sierra`), with the path kept in
+  its environment file; a unit named after the escaped path by an earlier release is
+  replaced, and a name already used by another repository is refused.
 - `/toolset update` no longer restarts the gateway in the middle of a chat turn. It
   restarts at once only when no chat or API turn is in flight; otherwise it reports
   `gateway_restart: deferred` and a detached waiter restarts at the first quiet

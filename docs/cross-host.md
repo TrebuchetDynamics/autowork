@@ -202,15 +202,18 @@ for the repository (run it from that repository, or add `--repo PATH`):
 
 ```sh
 ~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
-journalctl --user -u 'pi-autowork@*' -f
-systemctl --user stop 'pi-autowork@<escaped path>.service'
+journalctl --user -u pi-autowork@my-project -f
+systemctl --user stop pi-autowork@my-project
 ~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --remove-service
 ```
 
-It writes one template unit, `~/.config/systemd/user/pi-autowork@.service`, and a
-per-repository environment file in `~/.config/pi-autowork/` holding the installing
-shell's `PATH`, `--workers`, `--allow-hermes`, `--no-fallback` and any
-`PI_AUTOWORK_*` settings, then enables and starts `pi-autowork@<escaped path>`.
+Each repository gets `pi-autowork@<repository name>.service`, for example
+`pi-autowork@my-project` for `~/git/my-project`. The script writes one template unit,
+`~/.config/systemd/user/pi-autowork@.service`, and `~/.config/pi-autowork/<name>.env`
+holding the repository path, the installing shell's `PATH`, `--workers`,
+`--allow-hermes`, `--no-fallback` and any `PI_AUTOWORK_*` settings, then enables and
+starts the unit. It refuses a name another repository's service already uses, and
+replaces a unit an earlier release named after the escaped path.
 Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.

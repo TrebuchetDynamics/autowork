@@ -427,7 +427,8 @@ STATE_PATH=$STATE_ROOT/$REPO_KEY
 WT_ROOT=$STATE_PATH/worktrees
 
 # --- Service ------------------------------------------------------------------
-# One systemd user template serves every repository: pi-autowork@<escaped path>.service.
+# One systemd user template serves every repository: pi-autowork@<repository name>.service;
+# the instance's env file names the repository path.
 # SIGINT is the runner's Ctrl+C: workers are interrupted, finished work merges, and
 # the next start resumes. Deliberate exits (1, 3, 4) do not restart; crashes and kills do.
 if [[ -n $SERVICE ]]; then
@@ -435,11 +436,26 @@ if [[ -n $SERVICE ]]; then
   SYSTEMCTL=${PI_AUTOWORK_SYSTEMCTL:-systemctl}
   UNIT_DIR=${PI_AUTOWORK_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}
   ENV_DIR=${PI_AUTOWORK_ENV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pi-autowork}
-  INSTANCE=$(systemd-escape --path "$REPO")
+  INSTANCE=$(basename "$REPO")
+  [[ $INSTANCE =~ ^[A-Za-z0-9._-]+$ ]] || INSTANCE=$(systemd-escape "$INSTANCE")
   UNIT="pi-autowork@$INSTANCE.service"
+  OWNER=$(sed -n 's/^PI_AUTOWORK_REPO=//p' "$ENV_DIR/$INSTANCE.env" 2>/dev/null)
+  if [[ -n $OWNER && $OWNER != "$REPO" ]]; then
+    die 2 "$UNIT already runs $OWNER; two repositories cannot share the name $INSTANCE. Remove that service first."
+  fi
+  # Earlier releases named instances after the escaped path; replace such a unit.
+  LEGACY=$(systemd-escape --path "$REPO")
+  retire_legacy() {
+    if [[ -e $ENV_DIR/$LEGACY.env ]] || "$SYSTEMCTL" --user is-enabled --quiet "pi-autowork@$LEGACY.service" 2>/dev/null; then
+      "$SYSTEMCTL" --user disable --now "pi-autowork@$LEGACY.service" >/dev/null 2>&1
+      rm -f "$ENV_DIR/$LEGACY.env"
+      echo "Replaced the earlier unit pi-autowork@$LEGACY.service."
+    fi
+  }
   if [[ $SERVICE == remove ]]; then
     "$SYSTEMCTL" --user disable --now "$UNIT" || die 1 "Could not stop $UNIT"
     rm -f "$ENV_DIR/$INSTANCE.env"
+    retire_legacy
     echo "Removed $UNIT. Its state, kept worktrees and any unmerged session stay in $STATE_ROOT."
     exit 0
   fi
@@ -448,14 +464,14 @@ if [[ -n $SERVICE ]]; then
   mkdir -p "$UNIT_DIR" "$ENV_DIR" || die 2 "Cannot create $UNIT_DIR or $ENV_DIR"
   cat >"$UNIT_DIR/pi-autowork@.service.tmp" <<UNIT
 [Unit]
-Description=pi-autowork for /%I
+Description=pi-autowork for %i
 Documentation=https://github.com/TrebuchetDynamics/hermes-toolset/blob/main/docs/cross-host.md#run-autowork-continuously
 After=network-online.target
 
 [Service]
-WorkingDirectory=/%I
-EnvironmentFile=-$ENV_DIR/%i.env
-ExecStart=/bin/bash $SCRIPT
+WorkingDirectory=~
+EnvironmentFile=$ENV_DIR/%i.env
+ExecStart=/bin/bash $SCRIPT --repo \${PI_AUTOWORK_REPO}
 KillMode=mixed
 KillSignal=SIGINT
 TimeoutStopSec=150
@@ -470,6 +486,7 @@ UNIT
   # The service sees this login's PATH (Pi, Node, Flutter and other tools); credentials stay in Pi.
   umask 077
   {
+    printf 'PI_AUTOWORK_REPO=%s\n' "$REPO"
     printf 'PATH=%s\n' "$PATH"
     [[ ${PI_AUTOWORK_ALLOW_HERMES:-0} == 1 ]] && echo 'PI_AUTOWORK_ALLOW_HERMES=1'
     [[ ${PI_AUTOWORK_NO_FALLBACK:-0} == 1 ]] && echo 'PI_AUTOWORK_NO_FALLBACK=1'
@@ -482,6 +499,7 @@ UNIT
     done
   } >"$ENV_DIR/$INSTANCE.env"
   "$SYSTEMCTL" --user daemon-reload || die 1 "systemctl --user daemon-reload failed"
+  retire_legacy  # stops it gracefully: finished work merges, the new unit resumes the rest
   "$SYSTEMCTL" --user enable "$UNIT" >/dev/null 2>&1 || die 1 "Could not enable $UNIT"
   "$SYSTEMCTL" --user restart "$UNIT" || die 1 "Could not start $UNIT"
   echo "Installed and started $UNIT for $REPO (merges into $BASE)."
