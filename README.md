@@ -320,6 +320,7 @@ output quality, Git delivery or live Telegram execution.
 - [Commands, Autoresearch and the engineering workflow](docs/workflows.md)
 - [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
 - [Memory capture, inspection and existing stores](docs/memory.md)
+- [Speech-to-text: faster-whisper medium setup notes](docs/FASTER-WHISPER-MEDIUM-SETUP.md)
 - [Removal and recovery](docs/uninstall.md)
 - [Dependencies, reproducibility and licensing](docs/dependencies.md)
 - [Adding skills](docs/contributing.md) · [Testing and compatibility](docs/testing.md)
