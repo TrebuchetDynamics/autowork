@@ -166,10 +166,28 @@ class EndToEndTests(unittest.TestCase):
             workload.run()
             self.assertEqual({r['task'] for r in workload.initial['tasks']}, set('ABC'))
             self.assertEqual({r['slot'] for r in workload.initial['tasks'] if r['task'] in 'AB'}, {1, 2})
-            self.assertEqual(workload.initial['active_workers'], 2)
+            # Dispatch history proves peak concurrency even if both workers
+            # finish before this observation. run() verifies report-time overlap.
+            self.assertEqual(workload.initial['metrics']['peak_workers'], 2)
             c = next(r for r in workload.initial['tasks'] if r['task'] == 'C')
             self.assertEqual(c['state'], 'waiting')
             self.assertIn('dependency', c['reason'])
+
+    def test_abc_with_delayed_initial_observation(self):
+        from unittest.mock import patch
+        original = ABCWorkload.cli
+        observed = False
+
+        def delayed(workload, *args):
+            nonlocal observed
+            if args == ('--parallel-status', '--json') and not observed:
+                observed = True
+                time.sleep(1)
+            return original(workload, *args)
+
+        with patch.object(ABCWorkload, 'cli', delayed):
+            self.test_abc_real_cli()
+        self.assertTrue(observed)
 
     def test_serial_control(self):
         with ABCWorkload(workers=1, delay=.05) as workload:

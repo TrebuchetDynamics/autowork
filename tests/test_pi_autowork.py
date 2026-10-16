@@ -396,6 +396,27 @@ class EngineTests(Fixture):
         self.assertNotIn('Queue empty', result.stdout)
         self.assertEqual(self.runs(), [])
 
+    def test_a_waiting_runner_sees_tasks_committed_to_main_later(self):
+        """india: tasks committed to main while the runner waited were never dispatched."""
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
+        self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
+        runner = self.start_runner('--interval', '1')
+        deadline = time.monotonic() + 30
+        while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
+                                               if list(self.state.glob('*/runner.log')) else ''):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.2)
+        self.git(self.repo, 'checkout', '--', 'TODO.md')
+        (self.repo / 'TODO.md').write_text(text)  # A and B become runnable on main
+        self.git(self.repo, 'commit', '-qam', 'unblock')
+        deadline = time.monotonic() + 60
+        while not self.done('A'):
+            self.assertLess(time.monotonic(), deadline, 'runner never picked up the new tasks')
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
         self.run_runner('--status')  # creates nothing
@@ -429,6 +450,35 @@ class EngineTests(Fixture):
         self.assertEqual(len([b for b in self.branches() if b.startswith('pi-autowork/')]), 1)
         status = self.run_runner('--status')
         self.assertIn('not yet merged into main', status.stdout)
+
+    def stale_registration(self, name):
+        """A worktree someone else registered whose directory has since gone missing."""
+        path = self.root / name
+        self.git(self.repo, 'worktree', 'add', '-q', '-b', name, str(path))
+        shutil.rmtree(path)
+        return path
+
+    def registered(self, path):
+        return f'worktree {path}' in self.git(self.repo, 'worktree', 'list', '--porcelain').splitlines()
+
+    def test_other_stale_worktree_registrations_survive_a_session(self):
+        other = self.stale_registration('someone-else')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertTrue(self.registered(other))
+
+    def test_a_missing_session_worktree_is_restored_without_pruning_others(self):
+        self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
+        self.assertEqual(self.run_runner('--once').returncode, 4)
+        session = json.loads(next(self.state.glob('*/session.json')).read_text())
+        other = self.stale_registration('someone-else')
+        shutil.rmtree(session['path'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'Merged {session["branch"]}', result.stdout)
+        self.assertFalse(self.registered(session['path']))
+        self.assertTrue(self.registered(other))
 
     def test_user_changes_in_main_block_only_the_final_merge(self):
         (self.repo / 'A.txt').write_text('my note\n')  # uncommitted; the merge would overwrite it

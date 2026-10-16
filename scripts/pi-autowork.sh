@@ -537,13 +537,19 @@ status_json() {
   python3 "$ENGINE" "$dir" --parallel-status --json 2>/dev/null 9>&-
 }
 
+forget_missing_worktree() {  # drop only this path's stale registration; other worktrees are not ours to prune
+  [[ -e $1 ]] && return 0
+  git -C "$REPO" worktree list --porcelain | grep -qxF "worktree $1" || return 0
+  git -C "$REPO" worktree remove "$1"
+}
+
 load_session() {  # "ro" never recreates a missing worktree
   [[ -f $STATE_PATH/session.json ]] || return 1
   INTEG_BRANCH=$(jq -r .branch "$STATE_PATH/session.json") INTEG=$(jq -r .path "$STATE_PATH/session.json")
   git -C "$REPO" show-ref --verify -q "refs/heads/$INTEG_BRANCH" || { rm -f "$STATE_PATH/session.json"; INTEG='' INTEG_BRANCH=''; return 1; }
   if [[ ! -d $INTEG ]]; then
     [[ ${1:-} == ro ]] && return 1
-    git -C "$REPO" worktree prune
+    forget_missing_worktree "$INTEG"
     git -C "$REPO" worktree add -q "$INTEG" "$INTEG_BRANCH" || die 1 "Cannot restore the integration worktree for $INTEG_BRANCH"
   fi
   export PI_AUTOWORK_SESSION=$INTEG_BRANCH
@@ -655,7 +661,7 @@ ensure_session() {
   [[ -n $INTEG ]] && return 0
   load_session && return 0
   INTEG_BRANCH="pi-autowork/$(date +%Y%m%d-%H%M%S)" INTEG=$WT_ROOT/integration
-  git -C "$REPO" worktree prune
+  forget_missing_worktree "$INTEG"
   [[ -e $INTEG ]] && die 1 "$INTEG exists but belongs to no session; remove it after checking its contents."
   git -C "$REPO" worktree add -q -b "$INTEG_BRANCH" "$INTEG" "$BASE" || die 1 "Cannot create the integration worktree"
   jq -n --arg branch "$INTEG_BRANCH" --arg path "$INTEG" --arg base "$BASE" --arg started "$(date -Iseconds)" \
@@ -801,6 +807,14 @@ while :; do
     finish 130 "Stopped. Unfinished tasks keep their worktrees and resume on the next start."
   fi
   ensure_session
+  # A session with no work of its own follows the main branch, so new tasks committed
+  # while it waits are seen (india: tasks committed after the session began were missed).
+  # Only while nothing is in flight: moving the base under a running worker would make
+  # its integration conflict.
+  if [[ -z $(git -C "$REPO" rev-list "$BASE..$INTEG_BRANCH" 2>/dev/null) && -z $(dirty "$INTEG") ]] &&
+     ! status_json | jq -e '.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))' >/dev/null 2>&1; then
+    git -C "$INTEG" merge -q --ff-only "$BASE" 2>/dev/null
+  fi
   if ((!DRAINING)); then
     ((MAX_CYCLES && STARTED_WORKERS >= MAX_CYCLES)) && { DRAINING=1; say "Reached --max-cycles $MAX_CYCLES; finishing running tasks"; }
     ((MAX_RUNTIME && SECONDS - STARTED >= MAX_RUNTIME)) && { DRAINING=1; say "Reached PI_AUTOWORK_MAX_RUNTIME; finishing running tasks"; }
