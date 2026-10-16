@@ -557,6 +557,32 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertIn('autowork/A-set-aside-1', self.git(self.repo, 'branch', '--list', 'autowork/*'))
 
+    def test_holds_found_at_start_do_not_count_toward_the_failure_streak(self):
+        """flutter: three self-restarts re-counted the same old holds and the service quit."""
+        self.plan({'worker:A': ['blocked']})
+        self.run_runner('--until-empty')
+        self.env['PI_AUTOWORK_MAX_FAILURES'] = '1'
+        again = self.run_runner('--until-empty')
+        self.assertNotIn('failed tasks in a row', again.stdout)
+
+    def test_a_service_pauses_after_a_failure_streak_instead_of_exiting(self):
+        self.plan({'worker:A': ['blocked'], 'worker:B': ['blocked']})  # a success would end the streak
+        env = {**self.env, 'PI_AUTOWORK_MAX_FAILURES': '1', 'PI_AUTOWORK_FAILURE_PAUSE': '3600'}
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'pausing new tasks for 3600s' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        time.sleep(3)
+        self.assertIsNone(runner.poll(), log())  # still serving, not finished
+        self.assertNotIn('Finished.', log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

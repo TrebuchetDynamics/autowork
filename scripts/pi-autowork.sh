@@ -53,7 +53,8 @@ Environment (optional):
   PI_AUTOWORK_VALIDATE      command run before the Pi reviewer on every integrated task
   PI_AUTOWORK_REVIEW        0 to skip the Pi reviewer (PI_AUTOWORK_VALIDATE alone decides)
   PI_AUTOWORK_MAX_RETRIES   provider/crash retries per Pi run (default 3)
-  PI_AUTOWORK_MAX_FAILURES  consecutive failed tasks before stopping (default 3)
+  PI_AUTOWORK_MAX_FAILURES  consecutive failed tasks before stopping (default 3); a service
+                            pauses new tasks for PI_AUTOWORK_FAILURE_PAUSE seconds (3600) instead
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)
   PI_AUTOWORK_BACKOFF       first retry delay in seconds, doubling to 600 (default 30)
   PI_AUTOWORK_MAX_RUNTIME   stop starting tasks after this many seconds (default 0, unlimited)
@@ -78,6 +79,7 @@ TASK_TIMEOUT=${PI_AUTOWORK_TASK_TIMEOUT:-5400}
 VERIFY_TIMEOUT=${PI_AUTOWORK_VERIFY_TIMEOUT:-1800}
 MAX_RETRIES=${PI_AUTOWORK_MAX_RETRIES:-3}
 MAX_FAILURES=${PI_AUTOWORK_MAX_FAILURES:-3}
+FAILURE_PAUSE=${PI_AUTOWORK_FAILURE_PAUSE:-3600} PAUSE_UNTIL=0
 COOLDOWN=${PI_AUTOWORK_COOLDOWN:-1800}
 BACKOFF=${PI_AUTOWORK_BACKOFF:-30}
 MAX_RUNTIME=${PI_AUTOWORK_MAX_RUNTIME:-0}
@@ -512,7 +514,7 @@ UNIT
     [[ ${PI_AUTOWORK_NO_FALLBACK:-0} == 1 ]] && echo 'PI_AUTOWORK_NO_FALLBACK=1'
     [[ $WORKERS != 8 ]] && echo "PI_AUTOWORK_WORKERS=$WORKERS"
     for name in PI_AUTOWORK_PRIMARY PI_AUTOWORK_FALLBACK PI_AUTOWORK_TASK_TIMEOUT PI_AUTOWORK_VERIFY_TIMEOUT \
-                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES \
+                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE \
                 PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME PI_AUTOWORK_MAX_COST \
                 PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET \
                 PI_AUTOWORK_INFER_TOUCHES PI_AUTOWORK_UPDATE_INTERVAL; do
@@ -788,19 +790,19 @@ close_task() {  # archive an integrated task and commit the coordinator files
 
 # Integrates, verifies and closes every reported task, in the engine's priority order.
 settle() {
-  local snapshot id result outcome reason
+  local snapshot id result outcome reason before
   SETTLED=0
   snapshot=$(status_json) || return 0
   while IFS=$'\t' read -r id state reason; do
+    before=${SEEN[$id]:-}
     note_state "$id" "$state" "$reason"
     [[ $id == "$ONCE_TASK" && $state == held ]] && DRAINING=1
-    case $state in
-      held)
-        if [[ ${SEEN[$id]:-} == failed && ${SEEN["counted-$id"]:-} != 1 ]]; then
-          SEEN["counted-$id"]=1
-          FAILURES=$((FAILURES + 1))
-        fi ;;
-    esac
+    # Only a failure this run watched happen counts toward the streak; holds found at
+    # start (say after a self-restart) were counted, if at all, by the run that saw them.
+    if [[ $state == held && -n $before && $before != failed && ${SEEN["counted-$id"]:-} != 1 ]]; then
+      SEEN["counted-$id"]=1
+      FAILURES=$((FAILURES + 1))
+    fi
   done < <(jq -r '.tasks[]? | [.task, .state, (.reason // "")] | @tsv' <<<"$snapshot")
   ((STOP)) && return 0
   # Integrated but not closed (a close that failed earlier, or a restart in between).
@@ -1000,7 +1002,16 @@ while :; do
     ((MAX_CYCLES && STARTED_WORKERS >= MAX_CYCLES)) && { DRAINING=1; say "Reached --max-cycles $MAX_CYCLES; finishing running tasks"; }
     ((MAX_RUNTIME && SECONDS - STARTED >= MAX_RUNTIME)) && { DRAINING=1; say "Reached PI_AUTOWORK_MAX_RUNTIME; finishing running tasks"; }
     over_budget && { DRAINING=1; say "Budget reached (\$$(spent) of \$$MAX_COST in $COST_WINDOW h); finishing running tasks"; }
-    ((FAILURES >= MAX_FAILURES)) && { DRAINING=1; say "Stopping after $FAILURES failed tasks in a row; finishing running tasks"; }
+    if ((FAILURES >= MAX_FAILURES)); then
+      if [[ $MODE == continuous ]]; then
+        # A service that exits on its own is a silent stop; pause new work instead.
+        say "$FAILURES tasks failed in a row; pausing new tasks for ${FAILURE_PAUSE}s (running ones continue)"
+        FAILURES=0
+        PAUSE_UNTIL=$((SECONDS + FAILURE_PAUSE))
+      else
+        DRAINING=1; say "Stopping after $FAILURES failed tasks in a row; finishing running tasks"
+      fi
+    fi
   fi
   if ((!DRAINING)) && ! choose_model; then
     case $MODE in
@@ -1010,12 +1021,14 @@ while :; do
     pause "$INTERVAL"
     continue
   fi
-  if ((!DRAINING)); then
+  if ((!DRAINING && SECONDS < PAUSE_UNTIL)); then
+    outcome=PAUSED  # after a failure streak: settle running work, start nothing new
+  elif ((!DRAINING)); then
     infer_touches
     result=$(owned --apply --parallel "$WORKERS" --max-workers 8 --worker-command "$WORKER_COMMAND" \
       --worker-timeout "$TASK_TIMEOUT" --min-free-mem-mb "$MIN_FREE_MB")
     outcome=$(jq -r '.outcome // "ACTION_REQUIRED"' <<<"$result" 2>/dev/null || echo ACTION_REQUIRED)
-  else
+  elif ((DRAINING)); then
     outcome=DRAINING
   fi
   case $outcome in
@@ -1046,7 +1059,7 @@ while :; do
         [[ $blocked != "$LAST_WAITING" ]] && say "No task can start now: $blocked"
         LAST_WAITING=$blocked
       fi ;;
-    DRAINING) ;;
+    DRAINING|PAUSED) ;;
     BUSY)
       reason=$(jq -r '.reason // "busy"' <<<"$result")
       case $MODE in
@@ -1073,7 +1086,7 @@ while :; do
     owned --parallel "$WORKERS" --max-workers 8 --wait --timeout 5 >/dev/null  # short: a stop is handled between waits
     continue
   fi
-  if [[ $outcome == WAITING || $outcome == BLOCKED ]]; then
+  if [[ $outcome == WAITING || $outcome == BLOCKED || $outcome == PAUSED ]]; then
     # Tasks remain, but none can start now (held work, dependencies or the resource gate).
     [[ $MODE != continuous ]] && finish 1 "No runnable task can start: ${LAST_WAITING:-see --status}"
     pause "$INTERVAL"
