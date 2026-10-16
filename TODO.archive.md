@@ -1660,3 +1660,26 @@ Source section: Next
 - Delivery (2026-10-15): `parallel_integrate.py` plus `--integrate TASK --run ARGV... --timeout S` and `--parallel-close TASK` on `owner_cycle.py`; results `INTEGRATED`, `CLOSED`, `RETRIED`. Validation runs in the detached integration worktree through `bounded_command()`, factored out of the sequential `command()` (whose lease, budget and receipt output are unchanged); the canonical checkout is only fast-forwarded. Held slots get one fresh `autowork/<TASK>-r2` attempt once no worker runs (`dispatch_with_retries`). Close cleanup is retryable and follows Docs Sync's archive owner, including legacy and linked archives.
 - Implementation: by the toolset Autowork cron (b8ac329, review fixes 2927cca, archive-owner fix 0e2fa22, refreshed onto main as 1e5b97b), with the cron's independent review approving the final source. Canonical integration was held by the cron while other sessions were active in canonical main; the interactive coordinator took the released lease and integrated.
 - Checks run: `test_parallel_integrate.py` (48) with `test_parallel_dispatch.py` 65 passed together; every acceptance item has a named test (clean merge/close, close refusal and byte-identical ledger, conflict preserving dirty files and other slots, outside-Touches and coordinator-file holds, moved HEAD re-merged once then held, single `-r2` retry after drain, sequential output byte-identical, ff-only canonical updates); `python3 scripts/check.py` passed all four offline directories on the merge (510/664/212/8); `git diff --check` clean. Offline only; real workers remain TOOLSET-091-00.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-089-72 — Report parallel progress and metrics, with an end-to-end fixture and benchmark
+
+- [x] TOOLSET-089-72 — Report parallel progress and metrics, with an end-to-end fixture and benchmark
+- Status: done.
+- Delivery stage: Verified isolated local candidate; canonical integration remains pending while canonical sessions are active.
+- Evidence: Real CLI E2E/status suite passed five consecutive runs (9 tests per run). Combined integration/status suite passed 60 tests; independent corrective review approved. `python3 scripts/check.py` passed all four offline directories; eight native/model/integration modules excluded, with subprocess ResourceWarnings retained. `git diff --check` passed.
+- Benchmark: Linux 7.0.0-31-generic x86_64, 24 logical CPUs, Python 3.12.14; disposable Git A/B/C tasks with one-second fake-worker sleeps, commits, validation, sequential integration and closure. `python3 scripts/bench_parallel.py`: one slot 6.796823 s, two slots 5.651354 s; elapsed-minus-sleep-critical-path overhead 3.796823 s / 3.651354 s. These include CLI/Git/validation/wait costs, not isolated coordinator CPU time or LLM speedups.
+- Corrective review: Reproduced and fixed inherited TOOLSET-088-a7 timeout bypass and checked/archived contract-drift loopholes. Also fixed status capacity after changing refill concurrency. Required acceptance is unchanged; native/model/live qualification remains TOOLSET-091-00.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15); reads the journal from TOOLSET-086-9f.
+- Scope: Add `--parallel-status [--json]` printing the plan's table (header `AUTOWORK — PARALLEL`, `Workers: a/m active`, one row per task with state, worker slot, elapsed, blocked reason; then completed, failed and integration-queue counts) and, with `--json`, worktree, checks, commit and integration fields. Compute metrics from the journal: total wall time, worker time, integration time, waiting/blocked time, peak workers, conflict and retry counts. Add an end-to-end test with a disposable repository whose TODO has task A and B (independent, disjoint `Touches:`) and C (depends on A), driven through the real CLI with the fake worker: A and B overlap in time, C starts only after A is closed, and the final canonical checkout passes the fixture's own test. Add `scripts/bench_parallel.py` running the same controlled workload sequentially and with `--parallel 2`, printing elapsed times and coordinator overhead.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_e2e.py, scripts/bench_parallel.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Status output matches a golden snapshot for a fixed journal and stays under 25 lines for 4 workers; the A/B/C end-to-end test passes deterministically 5 times in a row; the benchmark's measured sequential and parallel times and overhead are recorded in this task's evidence with the machine and workload, without claiming LLM-worker speedups.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_e2e.py`; `python3 scripts/bench_parallel.py`; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-088-a7.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No live host workers (TOOLSET-091-00); no change to sequential output.

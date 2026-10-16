@@ -1,5 +1,18 @@
 # Verification and compatibility
 
+## Parallel offline acceptance
+
+`python3 -m unittest skills/autowork/scripts/test_parallel_e2e.py` exercises the
+real coordinator CLI and disposable Git worktrees with fake local workers. It
+checks A/B overlap, C starting only after A closes, merged-tree validation,
+cleanup, golden status text/JSON, journal metrics and capacity changes on refill.
+`python3 scripts/bench_parallel.py` compares that pipeline with one and two slots;
+its overhead is elapsed time minus the controlled sleep critical path, including
+process startup, Git, validation and waits, not isolated coordinator CPU time.
+Neither test nor benchmark qualifies model-worker throughput or live hosts.
+Integration regressions additionally refuse changed checked/archived contracts
+and enforce retry-worker deadlines before returning WAITING.
+
 ## Verify
 
 ```sh

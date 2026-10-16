@@ -331,6 +331,13 @@ def dispatch_locked(args, repo, common, count, template, host):
     slots = [summary(common, s) for s in state.slots(common)]
     active = sum(1 for s in state.slots(common) if s['state'] in ('dispatched', 'running') and state.worker_live(s))
     outcome = 'DISPATCHED' if started else ('WAITING' if active else 'IDLE')
+    with execution.lock(common / 'writer.lock'):
+        state.require_owner(common, args.owner_pid)
+        from parallel_status import pending_tasks
+        pending_ids = {v['id'] for v in waiting}
+        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)})
+                             if v['id'] not in pending_ids]
+        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
             'active_workers': active, 'dispatched': started, 'waiting': waiting,
             'timed_out': [s['task_id'] for s in timeouts], 'slots': slots,
