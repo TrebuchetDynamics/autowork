@@ -198,7 +198,12 @@ review), retries, the failure limit, the fallback cooldown, total runtime,
 free memory each worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000) and
 `PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
 
-To keep it running in the background, let the script install a systemd user service
+The default way to run pi-autowork is `tx`/tmux from [`tmux/`](../tmux/README.md).
+From the repository, `tx autowork start` starts its runner in session
+`pi-autowork-<repository name>` (or attaches to it). `tx autowork ls` lists runners,
+and `tx autowork stop <name>` interrupts the runner like Ctrl+C.
+
+For optional systemd supervision, let the script install a user service
 for the repository (run it from that repository, or add `--repo PATH`):
 
 ```sh
@@ -219,11 +224,7 @@ Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
 
-The service is the primary way to run pi-autowork. To watch or debug one runner
-live, run it in tmux instead with `tx autowork` from [`tmux/`](../tmux/README.md):
-`tx autowork .` starts the same script the service runs in session
-`pi-autowork-<repository name>` (or attaches to it), `tx autowork ls` lists tmux and
-service runners together, and `tx autowork stop <name>` interrupts it like Ctrl+C.
+`tx autowork ls` lists tmux and optional service runners together.
 For a repository its service runs, `tx pi-autowork-<name>` opens a session that
 follows the service journal instead of starting a second runner; the per-repository
 runner lock keeps two runners off one repository in any case.

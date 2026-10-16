@@ -93,6 +93,34 @@ class TxAutoworkTests(unittest.TestCase):
         time.sleep(0.5)
         self.assertEqual(len(self.log.read_text().splitlines()), 1)  # attached, not started twice
 
+    def test_start_defaults_to_the_current_repository_and_reuses_its_runner(self):
+        for cwd in (self.repo, self.repo / 'sub'):
+            with self.subTest(cwd=cwd):
+                result = self.tx('autowork', 'start', cwd=cwd)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.sessions(), ['pi-autowork-my-repo'])
+                self.assertEqual(self.runner_lines(1), [f'--repo {self.repo}'])
+        time.sleep(0.5)
+        self.assertEqual(len(self.log.read_text().splitlines()), 1)
+
+    def test_start_accepts_an_explicit_target(self):
+        self.service_env('my-repo')
+        for target in (str(self.repo), 'my-repo', '.'):
+            with self.subTest(target=target):
+                result = self.tx('autowork', 'start', target, cwd=self.repo)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.sessions(), ['pi-autowork-my-repo'])
+                self.assertEqual(self.runner_lines(1), [f'--repo {self.repo}'])
+
+    def test_start_rejects_extra_arguments_and_non_repository_cwd(self):
+        result = self.tx('autowork', 'start', str(self.repo), 'extra')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('autowork start: expected at most one', result.stderr)
+        result = self.tx('autowork', 'start')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('not inside a Git repository', result.stderr)
+        self.assertEqual(self.sessions(), [])
+
     def option(self, name):
         return subprocess.run([str(self.tmux), 'show-options', '-qv', '-t', '=pi-autowork-my-repo:', name],
                               capture_output=True, text=True).stdout.strip()
@@ -282,7 +310,7 @@ class TxAutoworkTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertTrue(result.stdout.startswith('Usage: tx autowork <command>'), result.stdout)
                 for command in ('ls [--long]', 'status [target]', 'logs [-f] [target]', 'tx pi-autowork-<name>',
-                                'stop <target>'):
+                                'start [target]', 'stop <target>'):
                     self.assertIn(command, result.stdout)
                 self.assertEqual(self.sessions(), [])
 
