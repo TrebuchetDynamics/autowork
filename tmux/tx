@@ -106,9 +106,9 @@ Usage:
                           a tmux runner, or start one. When the pi-autowork@<name>
                           systemd service runs the repository (the primary way), the
                           session follows its journal instead and leaves it running.
-  tx autowork ls [--brief]
-                          Every pi-autowork runner (tmux and services): state, workers,
-                          and what blocks a stalled one; --brief is one line each.
+  tx autowork ls [--long]
+                          One line per pi-autowork runner (tmux and services): state,
+                          for how long, workers; --long adds what blocks each one.
   tx autowork status [name|repo|.]
                           The runner's full status: tasks, workers, blockers.
   tx autowork logs [-f] [name|repo|.]
@@ -1081,12 +1081,21 @@ autowork_fit() {  # print $2 cut to width $1
   printf '%s\n' "$text"
 }
 
-autowork_list() {
-  local brief=0
-  case "${1:-}" in
-    --brief|-b) brief=1; shift ;;
+autowork_state_color() {  # ANSI color for a runner state
+  case "$1" in
+    working|idle) printf '32' ;;
+    blocked|paused|starting) printf '33' ;;
+    *) printf '31' ;;
   esac
-  [[ $# -eq 0 ]] || die "autowork ls: takes only --brief"
+}
+
+autowork_list() {
+  local brief=1
+  case "${1:-}" in
+    --brief|-b) shift ;;
+    --long|-v|--verbose) brief=0; shift ;;
+  esac
+  [[ $# -eq 0 ]] || die "autowork ls: takes only --long (or --brief, the default)"
   local -A mode=() repo=() state=()
   local name path attached kind unit sub
   if command -v "$TMUX_BIN" >/dev/null 2>&1; then
@@ -1139,21 +1148,32 @@ autowork_list() {
     st=${health[$key]:-unknown}
     tally[$st]=$(( ${tally[$st]:-0} + 1 ))
   done
+  local part
   for st in working idle paused blocked stalled "not running" "not cycling" starting unknown; do
-    [[ -n "${tally[$st]:-}" ]] && summary+="${summary:+, }${tally[$st]} $st"
+    [[ -n "${tally[$st]:-}" ]] || continue
+    part="${tally[$st]} $st"
+    (( TX_USE_COLOR )) && part=$'\033'"[$(autowork_state_color "$st")m$part"$'\033'"[0m"
+    summary+="${summary:+, }$part"
   done
   printf 'pi-autowork runners: %d (%s)\n' "${#names[@]}" "$summary"
 
   if (( brief )); then
-    local name_w=4
+    local name_w=4 row padded
     for name in "${names[@]}"; do (( ${#name} > name_w )) && name_w=${#name}; done
     for name in "${names[@]}"; do
       key=${repo[$name]:-'(no repository)'}
       st=${health[$key]:-unknown}
       label=$st
       [[ -n "${since[$key]:-}" ]] && label+=" $(autowork_duration "${since[$key]}")"
-      autowork_fit "$width" "$(printf '  %-*s  %-7s  %-14s  %s' "$name_w" "$name" "${mode[$name]}" "$label" "${counts[$key]:--}")"
+      printf -v padded '%-14s' "$label"
+      row=$(autowork_fit "$width" "$(printf '  %-*s  %-7s  %s  %s' "$name_w" "$name" "${mode[$name]}" "$padded" "${counts[$key]:--}")")
+      if (( TX_USE_COLOR )); then
+        # Pad first, then color, so escape codes never shift the columns.
+        row=${row/"  $padded  "/"  "$'\033'"[$(autowork_state_color "$st")m$padded"$'\033'"[0m  "}
+      fi
+      printf '%s\n' "$row"
     done
+    autowork_fit "$width" "More: tx autowork ls --long   tx autowork status <name>   tx pi-autowork-<name>"
     return 0
   fi
 
@@ -1161,11 +1181,7 @@ autowork_list() {
   for name in "${names[@]}"; do
     key=${repo[$name]:-'(no repository)'}
     st=${health[$key]:-unknown}
-    case "$st" in
-      working|idle) color=32 ;;
-      blocked|paused|starting) color=33 ;;
-      *) color=31 ;;
-    esac
+    color=$(autowork_state_color "$st")
     label=$st
     [[ -n "${since[$key]:-}" ]] && label+=" $(autowork_duration "${since[$key]}")"
     printf '\n'
@@ -1267,8 +1283,9 @@ pi-autowork runs each repository's TODO.md queue with Pi workers; a systemd serv
 (pi-autowork.sh --install-service) is the usual way to run it. A target is a runner
 name (sierra), a repository path, or . for the current repository.
 
-  tx autowork ls [--brief]   Every runner: state, workers, and what a stalled one
-                             waits on; (n) = waiting tasks that depend on a blocker
+  tx autowork ls [--long]    One line per runner: state, for how long, workers;
+                             --long adds the tx command and what each one waits on,
+                             (n) = waiting tasks that depend on a blocker
   tx autowork status [target]
                              One runner's full status: tasks, workers, blockers
   tx autowork logs [-f] [target]

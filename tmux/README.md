@@ -18,7 +18,7 @@ gives one place to see every runner, whichever way it runs.
 | Command | What it does |
 |---|---|
 | `tx pi-autowork-<name>` or `tx autowork <name\|repo\|.>` | Open the runner's session `pi-autowork-<name>`: attach, or start a tmux runner; for a service runner the session follows its journal |
-| `tx autowork ls [--brief]` | Every runner, tmux and service: its state and for how long, workers running, waiting and held, and what a blocked or stalled runner waits on; `--brief` is one line each |
+| `tx autowork ls [--long]` | One colored line per runner, tmux and service: state and for how long, workers running, waiting and held; `--long` adds its `tx pi-autowork-<name>` command and what it waits on |
 | `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
 | `tx autowork logs [-f] [name\|repo\|.]` | Recent output: the service journal, or the tmux pane; `-f` follows the journal or attaches |
 | `tx autowork stop <name\|repo\|.>` | Ctrl+C a tmux runner, wait for it to stop cleanly, close the session |
@@ -52,8 +52,20 @@ tx autowork stop my-project
   `TX_AUTOWORK_STOP_TIMEOUT` seconds, default 300) before closing the session. The
   pane stays open after the runner exits on its own, so its last lines remain.
 - `ls` reads each runner's `status.json` under `~/.local/state/pi-autowork` (the same
-  record as `pi-autowork.sh --fleet`), so it is instant; it needs `jq`. Lines are cut
+  record as `pi-autowork.sh --fleet`), so it is instant; it needs `jq`. States are
+  green (working), yellow (blocked, paused) or red (stalled, not running); lines are cut
   to the terminal width, so it reads on a phone:
+
+  ```text
+  pi-autowork runners: 4 (1 working, 3 stalled)
+    charlie  tmux     stalled 34m     0 running, 10 waiting, 5 held
+    bravo            tmux     stalled 1h17m   0 running, 53 waiting, 6 held
+    india                   tmux     stalled 5h16m   0 running, 23 waiting
+    sierra                  tmux     working 16m     1 running, 40 waiting, 5 held
+  More: tx autowork ls --long   tx autowork status <name>   tx pi-autowork-<name>
+  ```
+
+  `tx autowork ls --long` adds each runner's command and what it waits on:
 
   ```text
   pi-autowork runners: 4 (1 working, 1 blocked, 2 stalled)

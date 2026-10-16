@@ -169,6 +169,9 @@ claim of a tagged release, completed installation or live workflow qualification
   fits the terminal.
 - `tx autowork help` (or `-h`, `--help`, or no command) prints the `tx autowork`
   commands; before, `help` was looked up as a runner name.
+- `tx autowork ls` prints one colored line per runner by default (green working,
+  yellow blocked, red stalled or not running, also in the header counts);
+  `tx autowork ls --long` shows the blockers. `--brief` still works.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),
