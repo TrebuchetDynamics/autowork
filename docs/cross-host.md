@@ -228,6 +228,12 @@ Remembered `NONE` answers from the `Touches:` pass belong to the prompt that pro
 them, so a changed prompt asks those tasks again, and a pass that gave no answer is
 retried within the hour.
 
+A task a worker reported blockers for, or one held with no attempt left, waits for a
+person and blocks only its dependents and overlapping work. Once its cause is
+resolved, `pi-autowork.sh --repo PATH --set-aside TASK` asks that repository's
+running runner to retire the slot: its earlier work stays on `-set-aside-N`
+branches and worktrees, and the task runs fresh.
+
 How it works:
 
 - **Tasks and workers.** Each cycle the engine plans the queue: a task runs beside

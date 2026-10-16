@@ -27,6 +27,9 @@ Options:
   --until-empty        Exit when no runnable task remains
   --dry-run            Show what would run; change nothing
   --status             Show the session, budget and each task's state; change nothing
+  --set-aside TASK     Ask this repository's runner to retire TASK's stuck slot (held with
+                       no attempt left, or merged with a changed TODO entry); its work is
+                       kept under renamed branches and the task runs fresh
   --repo PATH          Use the repository at PATH
   --workers N          Tasks run at once, 1-8 (default 8; PI_AUTOWORK_WORKERS); the engine's
                        memory and load gate starts fewer when the machine is busy
@@ -305,7 +308,7 @@ fi
 
 # --- Options ------------------------------------------------------------------
 ORIGINAL_ARGS=("$@")
-MODE=continuous REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 SERVICE='' STATUS=0
+MODE=continuous REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 SERVICE='' STATUS=0 SET_ASIDE=''
 WORKERS=${PI_AUTOWORK_WORKERS:-8}
 while (($#)); do
   case $1 in
@@ -313,6 +316,7 @@ while (($#)); do
     --until-empty) MODE='until-empty' ;;
     --dry-run) DRY_RUN=1 ;;
     --status) STATUS=1 ;;
+    --set-aside) SET_ASIDE=${2:?--set-aside needs a task ID}; shift ;;
     --repo) REPO_ARG=${2:?--repo needs a path}; shift ;;
     --workers) WORKERS=${2:?--workers needs a number}; shift ;;
     --interval) INTERVAL=${2:?--interval needs seconds}; shift ;;
@@ -432,6 +436,15 @@ STATE_ROOT=${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-aut
 REPO_KEY=$(printf '%s' "$GIT_COMMON" | sha256sum | cut -c1-16)
 STATE_PATH=$STATE_ROOT/$REPO_KEY
 WT_ROOT=$STATE_PATH/worktrees
+# A request for the running runner, which owns the engine lease; it acts within one cycle
+# (or the next start) and logs the result. Nothing else is changed here.
+if [[ -n $SET_ASIDE ]]; then
+  [[ $SET_ASIDE =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die 2 "Not a task ID: $SET_ASIDE"
+  mkdir -p "$STATE_PATH/requests" || die 2 "Cannot create $STATE_PATH/requests"
+  : >"$STATE_PATH/requests/set-aside-$SET_ASIDE"
+  echo "Requested: set aside $SET_ASIDE. The runner for $REPO acts on it within one cycle; see its log."
+  exit 0
+fi
 
 # --- Service ------------------------------------------------------------------
 # One systemd user template serves every repository: pi-autowork@<repository name>.service;
@@ -849,6 +862,28 @@ update_toolset() {
     >>"$STATE/engine.err" 2>&1 9>&- || say "Toolset update failed (see $STATE/engine.err); keeping $TOOLSET_REV"
 }
 
+# --- Requests -------------------------------------------------------------------
+# `pi-autowork.sh --set-aside TASK` leaves a request here; only this runner holds the
+# engine lease, so it performs the request and reports the engine's answer.
+handle_requests() {
+  local request id result
+  for request in "$STATE"/requests/set-aside-*; do
+    [[ -e $request ]] || continue
+    id=${request##*/set-aside-}
+    result=$(owned --parallel-set-aside "$id")
+    # Before this runner's first dispatch it holds no lease yet: keep the request.
+    [[ $result == *'live parallel coordinator owner'* ]] && continue
+    rm -f -- "$request"
+    if [[ $(jq -r .outcome <<<"$result" 2>/dev/null) == SET_ASIDE ]]; then
+      SEEN[$id]=pending
+      SETTLED=1
+      say "$id: set aside on request; its earlier work is kept as $(jq -r '[.renamed[]? | .branch_now // empty] | join(", ")' <<<"$result"); the task will run fresh"
+    else
+      say "$id: could not set aside: $(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")"
+    fi
+  done
+}
+
 # --- Scratch checkouts -----------------------------------------------------------
 # Read-only passes get a detached worktree of the session HEAD under $STATE/scratch.
 # Only such a path, created here, is ever force-removed.
@@ -1031,6 +1066,7 @@ while :; do
       finish 4 "The engine needs attention: $(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")" ;;
   esac
   settle
+  handle_requests
   ((SETTLED)) && continue  # closing work can make dependents runnable: dispatch again first
   active=$(status_json | jq '[.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))] | length' 2>/dev/null || echo 0)
   if ((active > 0)); then

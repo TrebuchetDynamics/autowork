@@ -63,6 +63,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `pi-autowork.sh --set-aside TASK` asks the repository's running runner, which holds
+  the engine lease, to retire a stuck slot (`--parallel-set-aside`) within one cycle;
+  no service stop, so live workers are not interrupted.
 - Fleet collection retains up to twelve recent execution records per existing job,
   so frequent sync runs cannot evict paused development-job evidence from a
   profile-wide window. Removed jobs stay excluded; metadata remains read-only and

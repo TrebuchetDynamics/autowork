@@ -543,6 +543,20 @@ class EngineTests(Fixture):
         self.assertFalse(Path(cwd).exists())
         self.assertNotIn(cwd, self.git(self.repo, 'worktree', 'list'))
 
+    def test_a_set_aside_request_lets_a_blocked_task_run_fresh(self):
+        self.plan({'worker:A': ['blocked']})
+        first = self.run_runner('--until-empty')
+        self.assertIn('A: failed — worker reported a blocker', first.stdout)
+        self.assertTrue(self.done('B'))  # the blocked task stops nothing independent
+        request = self.run_runner('--set-aside', 'A')
+        self.assertEqual(request.returncode, 0, request.stdout + request.stderr)
+        self.assertIn('Requested: set aside A', request.stdout)
+        second = self.run_runner('--until-empty')
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertIn('A: set aside on request', second.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('autowork/A-set-aside-1', self.git(self.repo, 'branch', '--list', 'autowork/*'))
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
