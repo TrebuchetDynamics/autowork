@@ -1,4 +1,5 @@
 """Linking ignored dependencies never shadows tracked content or leaves the checkout."""
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -42,8 +43,20 @@ class LinkTests(unittest.TestCase):
         result = dict(workspaces.link_ignored(self.main, self.tree, 'vendor/sdk, build.cfg'))
         self.assertEqual(result, {'vendor/sdk': 'linked', 'build.cfg': 'linked'})
         self.assertEqual((self.tree / 'vendor/sdk/lib.c').read_text(), 'int x;\n')
-        self.assertTrue((self.tree / 'build.cfg').is_symlink())
+        self.assertEqual((self.tree / 'build.cfg').stat().st_ino, (self.main / 'build.cfg').stat().st_ino)  # hard link
         self.assertEqual(dict(workspaces.link_ignored(self.main, self.tree, 'build.cfg')), {'build.cfg': 'present'})
+
+    def test_a_mirrored_tree_is_ordinary_to_find_and_keeps_inner_symlinks(self):
+        """sierra TASK-026: a self-test ran `find` on a linked build directory and saw nothing."""
+        (self.main / 'vendor' / 'build').mkdir()
+        (self.main / 'vendor' / 'build' / 'srsenb').write_text('binary\n')
+        os.symlink('build/srsenb', self.main / 'vendor' / 'current')
+        self.assertEqual(dict(workspaces.link_ignored(self.main, self.tree, 'vendor')), {'vendor': 'linked'})
+        found = subprocess.run(['find', str(self.tree / 'vendor'), '-type', 'f'], capture_output=True, text=True).stdout
+        self.assertIn('vendor/build/srsenb', found)
+        self.assertIn('vendor/sdk/lib.c', found)
+        self.assertFalse((self.tree / 'vendor' / 'build').is_symlink())
+        self.assertEqual(os.readlink(self.tree / 'vendor' / 'current'), 'build/srsenb')
 
     def test_tracked_missing_or_escaping_paths_are_refused(self):
         (self.tree / 'src' / 'app.go').unlink()  # even if absent here, src/ is tracked content

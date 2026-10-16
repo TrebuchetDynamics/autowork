@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `PI_AUTOWORK_LINK_PATHS` dependencies are mirrored with real directories and hard-linked
+  files (a copy across filesystems) instead of a directory of symlinks: `find` does not
+  descend into a symlinked directory, so a repository's own self-test saw an empty
+  dependency build (sierra TASK-026). Mirroring 7,000 files takes a quarter second and no
+  extra disk.
 - A pending final merge names the files that block it (for example uncommitted
   `TODO.md` edits in the main checkout); the message used to stop at "would be
   overwritten by merge:".

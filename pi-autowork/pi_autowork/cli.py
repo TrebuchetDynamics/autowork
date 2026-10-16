@@ -73,9 +73,9 @@ Environment (optional):
   PI_AUTOWORK_CLAIM_IDLE    adopt another session's in_progress claim after this many seconds
                             with no task, branch or worktree change and no live agent
                             (default 21600; 0 never adopts)
-  PI_AUTOWORK_LINK_PATHS    comma-separated gitignored paths (say vendor/sdk) to link from the
-                            main checkout into each task and review worktree; only paths Git
-                            ignores there, and the link is cooperative, not write-protected
+  PI_AUTOWORK_LINK_PATHS    comma-separated gitignored paths (say vendor/sdk) to mirror from the
+                            main checkout into each task and review worktree with hard links;
+                            only paths Git ignores there; cooperative, not write-protected
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)

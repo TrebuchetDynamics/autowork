@@ -262,9 +262,11 @@ service mode an engine error never ends the runner: it is reported once, shown b
 
 A fresh task worktree has none of the main checkout's gitignored files. List any a
 task needs (comma-separated, repository-relative) in `PI_AUTOWORK_LINK_PATHS` in the
-service environment: before a worker or reviewer starts, each is linked from the main
-checkout, but only where Git ignores it and the link shows up as no change. Links
-are cooperative, not write-protected, so list only what tasks read.
+repository's settings: before a worker or reviewer starts, each is mirrored from the
+main checkout (real directories, hard-linked files, so tools such as `find` see an
+ordinary tree), but only where Git ignores it and the mirror shows up as no change.
+Hard links share file contents, so the copy is cooperative, not write-protected: a
+tool that edits a file in place edits the original. List only what tasks read.
 
 Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 (`PI_AUTOWORK_ENV_DIR`), the file `--install-service` writes. Every launcher reads it:

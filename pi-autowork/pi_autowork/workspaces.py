@@ -2,16 +2,18 @@
 
 A fresh worktree has no ignored files: vendored sources, generated SDKs or local
 toolchains that the main checkout has (sierra TASK-022 stopped on a missing ignored
-source tree). The service environment names such paths in
+source tree). The repository's settings name such paths in
 ``PI_AUTOWORK_LINK_PATHS`` (comma-separated, repository-relative). Each is
-symlinked into the worktree only when it exists in the canonical checkout, is
-absent in the worktree, and Git ignores it there, so a link never shadows
-tracked content. Read-only is cooperative: a symlink does not stop writes.
+mirrored into the worktree (real directories, hard-linked files) only when it
+exists in the canonical checkout, is absent in the worktree, and Git ignores it
+there, so it never shadows tracked content. Read-only is cooperative: hard links
+share contents, so a tool editing a file in place edits the original.
 
     workspaces.py link CANONICAL WORKTREE PATHS   # prints one line per path
 """
 from pathlib import Path, PurePosixPath
 import os
+import shutil
 import subprocess
 import sys
 
@@ -45,7 +47,7 @@ def link_ignored(canonical, worktree, paths):
             created = _link(source, target)
             if _shows_up(worktree, str(rel)):
                 for path in reversed(created):  # only what this call made
-                    path.unlink() if path.is_symlink() else path.rmdir()
+                    path.rmdir() if path.is_dir() and not path.is_symlink() else path.unlink()
                 results.append((raw, 'refused: the link would show up as a change in Git'))
             else:
                 results.append((raw, 'linked'))
@@ -53,25 +55,45 @@ def link_ignored(canonical, worktree, paths):
 
 
 def _link(source, target):
-    """Link source at target; return created paths (parents first).
+    """Mirror source at target; return created paths, parents first.
 
-    Git does not treat a symlink as a directory, so a `vendor/` rule would not
-    ignore a linked `vendor`: a directory becomes a real directory of links.
+    Directories are real and files are hard links (a copy across filesystems), so the
+    tree behaves like the original for every tool: `find` does not descend into a
+    symlinked directory (sierra TASK-026), and Git does not treat a symlink as a
+    directory, so a `vendor/` rule would not ignore a linked `vendor`. Hard links
+    share file contents: a tool that edits a file in place edits the original too.
     """
     created = []
     missing = [p for p in [target.parent, *target.parent.parents] if not p.exists()]
     for parent in reversed(missing):
         parent.mkdir()
         created.append(parent)
-    if source.is_dir():
-        target.mkdir()
-        created.append(target)
-        for child in sorted(source.iterdir()):
-            os.symlink(child, target / child.name, target_is_directory=child.is_dir())
-            created.append(target / child.name)
-    else:
-        os.symlink(source, target)
-        created.append(target)
+
+    def place(src, dst):
+        if src.is_symlink():
+            os.symlink(os.readlink(src), dst)
+        else:
+            try:
+                os.link(src, dst)
+            except OSError:  # another filesystem, or links not allowed: copy
+                shutil.copy2(src, dst)
+        created.append(dst)
+
+    if not source.is_dir() or source.is_symlink():
+        place(source, target)
+        return created
+    target.mkdir()
+    created.append(target)
+    for root, dirs, files in os.walk(source):  # does not follow symlinked directories
+        here = target / Path(root).relative_to(source)
+        for name in sorted(dirs):
+            if (Path(root) / name).is_symlink():
+                place(Path(root) / name, here / name)
+            else:
+                (here / name).mkdir()
+                created.append(here / name)
+        for name in sorted(files):
+            place(Path(root) / name, here / name)
     return created
 
 
