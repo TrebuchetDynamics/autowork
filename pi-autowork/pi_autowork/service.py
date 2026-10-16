@@ -1,0 +1,133 @@
+"""The systemd user service: pi-autowork@<repository name>.service.
+
+One template serves every repository; the instance's env file names the repository
+path. SIGINT is the runner's Ctrl+C: workers pause, finished work merges and the
+next start resumes. Deliberate exits (1, 3, 4) do not restart; crashes and kills do.
+"""
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+from .common import die
+
+ENV_NAMES = ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK', 'PI_AUTOWORK_TASK_TIMEOUT', 'PI_AUTOWORK_VERIFY_TIMEOUT',
+             'PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_REVIEW', 'PI_AUTOWORK_MAX_RETRIES', 'PI_AUTOWORK_MAX_FAILURES',
+             'PI_AUTOWORK_FAILURE_PAUSE', 'PI_AUTOWORK_STALL_AFTER', 'PI_AUTOWORK_CLAIM_IDLE', 'PI_AUTOWORK_LINK_PATHS',
+             'PI_AUTOWORK_COOLDOWN', 'PI_AUTOWORK_BACKOFF', 'PI_AUTOWORK_MAX_RUNTIME', 'PI_AUTOWORK_MAX_COST',
+             'PI_AUTOWORK_COST_WINDOW', 'PI_AUTOWORK_MIN_FREE_MB', 'PI_AUTOWORK_STATE_DIR', 'PI_AUTOWORK_TOOLSET',
+             'PI_AUTOWORK_INFER_TOUCHES', 'PI_AUTOWORK_UPDATE_INTERVAL')
+
+UNIT = """[Unit]
+Description=pi-autowork for %i
+Documentation=https://github.com/TrebuchetDynamics/hermes-toolset/blob/main/docs/cross-host.md#run-autowork-continuously
+After=network-online.target
+
+[Service]
+WorkingDirectory=~
+EnvironmentFile={env_dir}/%i.env
+ExecStart=/bin/bash {script} --repo ${{PI_AUTOWORK_REPO}}
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=150
+SuccessExitStatus=130
+Restart=on-abnormal
+RestartSec=60
+
+[Install]
+WantedBy=default.target
+"""
+
+
+def _escape(*args):
+    return subprocess.run(['systemd-escape', *args], capture_output=True, text=True).stdout.strip()
+
+
+def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
+    env = os.environ
+    config = env.get('XDG_CONFIG_HOME') or str(Path.home() / '.config')
+    systemctl = env.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl')
+    unit_dir = Path(env.get('PI_AUTOWORK_UNIT_DIR') or f'{config}/systemd/user')
+    env_dir = Path(env.get('PI_AUTOWORK_ENV_DIR') or f'{config}/pi-autowork')
+    instance = Path(repo).name
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', instance):
+        instance = _escape(instance)
+    unit = f'pi-autowork@{instance}.service'
+    env_file = env_dir / f'{instance}.env'
+    try:
+        owner = next((line.split('=', 1)[1] for line in env_file.read_text().splitlines()
+                      if line.startswith('PI_AUTOWORK_REPO=')), '')
+    except OSError:
+        owner = ''
+    if owner and owner != str(repo):
+        die(2, f'{unit} already runs {owner}; two repositories cannot share the name {instance}. Remove that service first.')
+    # Earlier releases named instances after the escaped path; replace such a unit.
+    legacy = _escape('--path', str(repo))
+
+    def ctl(*argv, quiet=False):
+        return subprocess.run([systemctl, '--user', *argv],
+                              stdout=subprocess.DEVNULL if quiet else None,
+                              stderr=subprocess.DEVNULL if quiet else None).returncode
+
+    def retire_legacy():
+        if (env_dir / f'{legacy}.env').exists() or ctl('is-enabled', '--quiet', f'pi-autowork@{legacy}.service', quiet=True) == 0:
+            ctl('disable', '--now', f'pi-autowork@{legacy}.service', quiet=True)
+            (env_dir / f'{legacy}.env').unlink(missing_ok=True)
+            print(f'Replaced the earlier unit pi-autowork@{legacy}.service.')
+
+    if action == 'remove':
+        if ctl('disable', '--now', unit):
+            die(1, f'Could not stop {unit}')
+        env_file.unlink(missing_ok=True)
+        retire_legacy()
+        print(f'Removed {unit}. Its state, kept worktrees and any unmerged session stay in {state_root}.')
+        return 0
+    if hermes_jobs and env.get('PI_AUTOWORK_ALLOW_HERMES', '0') != '1':
+        die(4, f'A Hermes Autowork cron job already works on this repository:\n{hermes_jobs}\n'
+               'Pause it, or install with --allow-hermes.')
+    try:
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        env_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        die(2, f'Cannot create {unit_dir} or {env_dir}')
+    tmp = unit_dir / 'pi-autowork@.service.tmp'
+    tmp.write_text(UNIT.format(env_dir=env_dir, script=script))
+    os.replace(tmp, unit_dir / 'pi-autowork@.service')
+    # The service sees this login's PATH (Pi, Node, Flutter and other tools); credentials stay in Pi.
+    lines = [f'PI_AUTOWORK_REPO={repo}', f'PATH={env.get("PATH", "")}']
+    if env.get('PI_AUTOWORK_ALLOW_HERMES', '0') == '1':
+        lines.append('PI_AUTOWORK_ALLOW_HERMES=1')
+    if env.get('PI_AUTOWORK_NO_FALLBACK', '0') == '1':
+        lines.append('PI_AUTOWORK_NO_FALLBACK=1')
+    if workers != 8:
+        lines.append(f'PI_AUTOWORK_WORKERS={workers}')
+    lines += [f'{name}={env[name]}' for name in ENV_NAMES if env.get(name)]
+    old = os.umask(0o077)
+    try:
+        env_file.write_text('\n'.join(lines) + '\n')
+    finally:
+        os.umask(old)
+    if ctl('daemon-reload'):
+        die(1, 'systemctl --user daemon-reload failed')
+    retire_legacy()  # stops it gracefully: finished work merges, the new unit resumes the rest
+    if ctl('enable', unit, quiet=True):
+        die(1, f'Could not enable {unit}')
+    if ctl('restart', unit):
+        die(1, f'Could not start {unit}')
+    print(f'Installed and started {unit} for {repo} (merges into {base}).')
+    print(f'Runs: {script}')
+    print(f"Logs: journalctl --user -u '{unit}' -f")
+    print(f"Stop: systemctl --user stop '{unit}' (interrupts workers and merges finished work); "
+          f'remove: {argv0} --remove-service --repo {repo}')
+    linger = subprocess.run(['loginctl', 'show-user', env.get('USER', ''), '-p', 'Linger', '--value'],
+                            capture_output=True, text=True).stdout.strip() if _has('loginctl') else ''
+    if linger != 'yes':
+        print('Note: user lingering is off, so the service stops at logout; enable it with: '
+              f'loginctl enable-linger {env.get("USER", "")}')
+    return 0
+
+
+def _has(command):
+    from shutil import which
+    return which(command) is not None

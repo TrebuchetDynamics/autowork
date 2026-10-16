@@ -56,7 +56,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
 
 - [ ] TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
-- Status: open; phases 1-4 done offline (report outcomes, Git safety, health, owner decisions); phase 5 next.
+- Status: open; phases 1-5 done offline (report outcomes, Git safety, health, owner decisions, component port); live fleet qualification remains with TOOLSET-096-7e.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [design](docs/plans/2026-10-16-pi-autowork-coordinator.md), [engine](skills/autowork/references/parallel-workers.md).
 - Touches: scripts/pi-autowork.sh, scripts/pi_autowork_touches.py, pi-autowork/, package.json, scripts/check.py, skills/autowork/scripts/parallel_*.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_*.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py, docs/cross-host.md, docs/plans/2026-10-16-pi-autowork-coordinator.md

@@ -163,6 +163,10 @@ def require_no_writers(repo):
                 break
         if not attributed:
             blocking.append(worker)
+    # A process that exited during these checks (a short tool run) writes nothing; only a
+    # writer still alive with the same birth identity blocks.
+    blocking = [w for w in blocking
+                if execution.identity(w['pid']) == {k: w.get(k) for k in ('pid', 'start_ticks', 'boot_id')}]
     if blocking:
         def describe(worker):
             name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'
