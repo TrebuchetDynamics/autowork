@@ -82,7 +82,13 @@ def runtime_check(repo, root, profiles, bundle_only):
         for r in roots:
             for facts in r.glob('installs/*/facts.json'):
                 data = json.loads(facts.read_text())
-                candidates.append(Path(data['packages']['venv']['environment']) / 'bin/python')
+                for key in ('packages', 'venv', 'environment'):
+                    if not isinstance(data, dict):
+                        raise ValueError('Invalid installation facts shape')
+                    data = data[key]
+                if not isinstance(data, str) or not data:
+                    raise ValueError('Invalid installation environment path')
+                candidates.append(Path(data) / 'bin/python')
         candidates.append(Path(sys.executable))
         for executable in dict.fromkeys(candidates):
             if not executable.is_file():

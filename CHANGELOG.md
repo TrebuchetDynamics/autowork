@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Setup preflight validates runtime installation-facts structures before selecting
+  an interpreter (TOOLSET-115-aa). Malformed mappings and non-string or empty
+  environment paths return the existing safe admission error instead of crashing
+  or interpreting an empty path relative to the working directory.
+
 - Docs Sync reports array/object role statuses as validation errors instead of
   crashing in set membership (TOOLSET-113-04). `validate`, `check` and `stale`
   retain role-specific diagnostics and continue reporting independent field errors.

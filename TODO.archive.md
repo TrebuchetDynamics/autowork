@@ -2291,3 +2291,24 @@ Source section: Next
 - Ownership: Current shared-source maintenance coordinator under existing local repair authority.
 - Planner's call: Skip installed adoption already isolated in TOOLSET-101-f6; native scan confirmation remains unavailable under this grant. Fix this reproduced disjoint transport defect without counting it as primary recovery.
 - Exclusions: No new consultation wave, model/product worker launch, profile mutation, scan bypass, deployment or push.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-115-aa — Report malformed runtime installation facts without crashing
+
+- [x] TOOLSET-115-aa — Report malformed runtime installation facts without crashing
+- Status: done
+- Evidence: 21 malformed-facts subcases reproduced the defect then passed; all 12 preflight tests passed, including interpreter selection and parser fallback. Independent exact-source review approved. Python 3.12 `python3 scripts/check.py` passed 571/715/217/8 tests (one skip; eight native/model/integration modules excluded). Offline implementation only; canonical integration remains subject to the writer gate.
+- Goal: RECOVERY
+- Sources: [accepted purpose](docs/project.md#accepted-requirements), [runtime preflight](setup_preflight.py), [fixtures](tests/test_preflight.py).
+- Scope: Validate the installation-facts shape consumed by runtime_check so malformed JSON structures produce the existing safe admission diagnostic, not an uncaught TypeError. Preserve valid interpreter selection and read-only preflight behavior.
+- Touches: setup_preflight.py, tests/test_preflight.py, docs/testing.md, CHANGELOG.md
+- Acceptance: Malformed root/packages/venv/environment shapes fail preflight without traceback or metadata disclosure; valid facts select their interpreter and preserve configuration validation verdicts; fixture files remain byte-identical.
+- Checks: `python3 -m unittest discover -s tests -p test_preflight.py -v`; `python3 scripts/check.py`; independent source review; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current isolated Autowork coordinator; canonical integration requires a clear writer gate.
+- Exclusions: No live setup, installed-profile writes, model runs, push or Hermes Agent changes.
+- Planner's call: Skip already separated live/fleet qualification under TOOLSET-096-7e and the other existing external-gate tasks; preserve their acceptance. Use the existing safe runtime diagnostic and explicit shape validation rather than swallowing arbitrary exceptions or silently ignoring corrupt facts.

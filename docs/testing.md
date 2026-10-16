@@ -20,6 +20,13 @@ claiming or starting anything.
 
 ## Verify
 
+`python3 -m unittest discover -s tests -p test_preflight.py -v` includes runtime
+installation-facts shape regressions (TOOLSET-115-aa). Malformed root, packages,
+venv and environment values return a generic safe error before any validator
+launch; valid facts retain interpreter selection, validation failure and missing
+parser fallback. Fixture metadata/configuration remain byte-identical. These are
+offline fixtures, not live setup or installed-profile qualification.
+
 Consultation stream-json regressions (TOOLSET-114-c4) exercise real local
 subprocesses with Unicode NEL, line separator and paragraph separator inside
 reply and tool-event JSON strings. LF-only framing must retain exact replies and

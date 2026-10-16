@@ -240,6 +240,11 @@
           "kind": "executed",
           "ref": "TOOLSET-114-c4: 12 Unicode stream subcases failed then passed; 45 focused consultation tests; independently reviewed exact source and two negative controls; native-emitter same-consumer replay failed to replied; Python 3.12 scripts/check.py passed 569/715/217/8 tests, one skip/eight excluded; source only, installed adoption remains TOOLSET-101-f6",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-115-aa: python3 scripts/check.py passed 571/715/217/8 offline tests, one skip/eight exclusions; 12 preflight tests and independent exact-source review approved; canonical integration pending writer gate",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -268,7 +273,8 @@
         "TOOLSET-106-5d",
         "TOOLSET-108-21",
         "TOOLSET-112-29",
-        "TOOLSET-114-c4"
+        "TOOLSET-114-c4",
+        "TOOLSET-115-aa"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -589,6 +595,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-115-aa",
       "TOOLSET-099-87",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -597,7 +604,6 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-114-c4",
       "TOOLSET-101-f6"
     ]
   },
@@ -1468,6 +1474,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve Unicode separators in consultation stream events"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-115-aa",
+      "section": "Done",
+      "status": "done",
+      "title": "Report malformed runtime installation facts without crashing"
     },
     {
       "depends_on": [
