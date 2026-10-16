@@ -476,7 +476,8 @@
         "TOOLSET-096-7e",
         "TOOLSET-097-41",
         "TOOLSET-097-57",
-        "TOOLSET-098-4c"
+        "TOOLSET-098-4c",
+        "TOOLSET-099-87"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -500,6 +501,16 @@
     ]
   },
   "tasks": [
+    {
+      "depends_on": [
+        "TOOLSET-098-4c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-099-87",
+      "section": "Now",
+      "status": "open",
+      "title": "Run as many independent tasks at once as possible"
+    },
     {
       "depends_on": [],
       "goal": "RECOVERY",

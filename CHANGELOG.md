@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `scripts/pi-autowork.sh` runs as many independent tasks as it can: `--workers`
+  defaults to 8 (the engine limit) and free memory (3 GB per worker) and load decide
+  how many start. For runnable tasks without `Touches:`, a read-only Pi pass proposes
+  file paths and the runner records them, so they can run beside others instead of
+  alone; `NONE` keeps a task solo for 24 hours. An idle session now merges the main
+  branch rather than only fast-forwarding.
 - `scripts/pi-autowork.sh` now drives the toolset's Parallel Autowork engine instead of
   picking tasks itself: up to `--workers N` (default 2, at most 4) Pi workers run
   independent tasks in their own worktrees, the engine merges each into the session
@@ -200,6 +206,10 @@ claim of a tagged release, completed installation or live workflow qualification
   push-first behavior; a pull with nothing to commit reports SYNCED.
 
 ### Fixed
+
+- Parallel Autowork no longer holds every task without `Touches:` at integration: a
+  task dispatched alone may change its own files (coordinator files and other
+  slots' files still conflict).
 
 - Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
   every other task: such a claim is not dispatched and still blocks its dependents and
