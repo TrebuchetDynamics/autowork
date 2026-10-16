@@ -87,8 +87,10 @@ A task runs beside others only when the planner can prove it is independent:
   `.github/workflows/`), runs alone. Because it ran alone, a task without `Touches:`
   may change any file except coordinator-owned ones when it integrates.
 - Dependencies and TODO.md priority still apply: a task waits for its
-  prerequisites to close, and a higher-priority task that cannot start yet, or
-  must run alone, stops lower-priority dispatch until it can run.
+  prerequisites to close. A lower-priority task starts past a higher-priority one
+  that cannot start yet only when it shares no path, resource or dependency with it,
+  so priority still decides every overlap; a waiting task that must run alone stops
+  all lower-priority dispatch until it can run.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
   overlapping tasks until closed. An `in_progress` task with no live slot is a claim:
   it is never dispatched and blocks its dependents and tasks whose declared `Touches:`

@@ -186,7 +186,11 @@ def plan(tasks, running=(), *, all_tasks=()):
             return 'shared resource with ' + b['id']
         return ''
 
-    dispatch, waiting, stopped = [], [], ''
+    # Backfill: a task may start past a waiting higher-priority one only when it shares
+    # nothing with it (paths, resources, dependencies), so priority still decides every
+    # overlap. A waiting task that must run alone stops all lower dispatch, or backfill
+    # would keep the pool from draining for it.
+    dispatch, waiting, stopped, reserved = [], [], '', []
     for task in tasks:
         tid = task['id']
         if tid in active or tid in claims:
@@ -194,9 +198,12 @@ def plan(tasks, running=(), *, all_tasks=()):
             continue
         reason = stopped or next((r for other in [*active.values(), *dispatch]
                                   if (r := conflict(task, other))), '') \
-            or next((r for other in claims.values() if (r := conflict(task, other, claim=True))), '')
+            or next((r for other in claims.values() if (r := conflict(task, other, claim=True))), '') \
+            or next((r for other in reserved if (r := conflict(task, other))), '')
         if reason:
-            stopped = 'priority waits for ' + tid if not stopped else stopped
+            if not stopped and _solo(task):
+                stopped = 'priority waits for ' + tid
+            reserved.append(task)
             waiting.append({'id': tid, 'reason': reason})
         else:
             dispatch.append(task)

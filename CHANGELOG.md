@@ -176,6 +176,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Parallel Autowork backfills: a lower-priority task starts past a higher-priority
+  one that cannot start yet when it shares no path, resource or dependency with it.
+  Before, one blocked task (on sierra, behind another session's `in_progress` claim)
+  held back every task below it. A waiting task that must run alone still stops all
+  lower-priority dispatch.
+
 - `pi-autowork.sh --install-service` names units after the repository,
   `pi-autowork@<name>.service` (for example `pi-autowork@sierra`), with the path kept in
   its environment file; a unit named after the escaped path by an earlier release is

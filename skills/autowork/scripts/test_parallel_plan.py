@@ -94,10 +94,33 @@ class PlanTests(unittest.TestCase):
         ]
         for a, b, reason in cases:
             with self.subTest(reason=reason, tasks=(a, b)):
+                from parallel_plan import _solo
                 result = plan([a, b, task('C', 'other/c.py')])
-                self.assertEqual([t['id'] for t in result['dispatch']], ['A'])
-                self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'])
+                # C shares nothing with A or the waiting B, so it does not wait behind B
+                # (unless A must run alone).
+                alone = bool(_solo(a))
+                self.assertEqual([t['id'] for t in result['dispatch']], ['A'] if alone else ['A', 'C'])
+                self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
+
+    def test_independent_work_backfills_past_a_waiting_task_but_never_takes_its_paths(self):
+        """sierra: one task blocked by another session's claim held back 33 independent tasks."""
+        from parallel_plan import plan
+        claim = task('CL', 'shared/', status='in_progress')
+        tasks = [task('T1', 'shared/x.py'), task('T2', 'shared/x.py'), task('T3', 'free.py'),
+                 task('T4', 'other.py', resources='db'), task('T5', 'more.py', resources='db')]
+        result = plan(tasks, all_tasks=[claim, *tasks])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T3', 'T4'])
+        self.assertEqual([w['id'] for w in result['waiting']], ['T1', 'T2', 'T5'])
+        self.assertIn('in_progress CL', result['waiting'][0]['reason'])
+        # Sharing a path only with the waiting T1 (not with the claim) still waits for T1.
+        tasks = [task('T1', 'shared/x.py, lib/y.py'), task('T7', 'lib/y.py'), task('T3', 'free.py')]
+        result = plan(tasks, all_tasks=[claim, *tasks])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T3'])
+        self.assertEqual(result['waiting'][1], {'id': 'T7', 'reason': 'overlapping paths with T1'})
+        # A waiting task that must run alone still stops everything below it.
+        result = plan([task('S', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
+        self.assertEqual(result['dispatch'], [])
 
     def test_transitive_dependencies_include_nonrunnable_contracts(self):
         from parallel_plan import plan
