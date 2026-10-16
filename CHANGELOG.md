@@ -158,6 +158,10 @@ claim of a tagged release, completed installation or live workflow qualification
   for a service runner the session follows its journal instead of being refused, and
   closing it leaves the service running. `tx autowork ls` shows that command per
   runner instead of the repository path.
+- `tx autowork ls` is shorter: blockers are grouped by kind on one line each
+  (`claimed elsewhere: TASK-028 (13), TASK-014 (4)`) with short IDs and held causes
+  instead of one cut-off sentence per blocker, durations read `4h41m`, and the footer
+  fits the terminal.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),
