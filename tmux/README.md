@@ -56,17 +56,24 @@ tx autowork stop my-project
   to the terminal width, so it reads on a phone:
 
   ```text
-  pi-autowork runners: 4 (2 working, 2 stalled)
+  pi-autowork runners: 4 (1 working, 1 blocked, 2 stalled)
 
-  india  service  stalled for 275 min
+  india  tmux  stalled 4h41m
     tx pi-autowork-india  0 running, 23 waiting
-    19 wait on TASK-036: outside condition or task not in Now/Next
-    5 wait on TASK-035: outside condition or task not in Now/Next
+    outside Now/Next: TASK-036 (19), TASK-035 (5)
 
-  sierra  service  working for 39 min
-    tx pi-autowork-sierra  1 running, 40 waiting, 5 held
-    held: TASK-027, TASK-023, TASK-022, TASK-021, TASK-020
+  sierra  tmux  blocked 5m
+    tx pi-autowork-sierra  0 running, 40 waiting, 6 held
+    held: TASK-023 blocker (2), TASK-021 blocker (2), TASK-026 blocker (1), TASK-020 blocker (1)
+    claimed elsewhere: TASK-028 (13), TASK-014 (4), TASK-038 (2), TASK-039 (1)
+
+  (n) = waiting tasks that depend on it. More: tx autowork status <name>
   ```
+
+  Blockers are grouped by kind: `held` (with its cause: `blocker`, `validation`,
+  `bad report`, ...), `claimed elsewhere` (another session's claim), `outside Now/Next`
+  (a decision or condition outside the queue) and `dependency cycle`. Long IDs are
+  shortened; `tx autowork status <name>` has the full reasons.
 
 ## Files
 

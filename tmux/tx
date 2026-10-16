@@ -1029,7 +1029,8 @@ autowork_start() {
 
 # Health per repository from the runner's own status.json (written every cycle; the
 # same record as pi-autowork.sh --fleet). One TSV row per runner:
-# repo, state, minutes in it, running, waiting, held, blockers (joined by \x1f), held IDs;
+# repo, state, minutes in it, running, waiting, held, blockers grouped by kind
+# (joined by \x1f; "ID (n)" means n waiting tasks depend on it), held IDs and causes;
 # "-" marks an empty field, since `read` would collapse two adjacent tabs.
 autowork_health() {
   command -v jq >/dev/null 2>&1 || return 0
@@ -1038,20 +1039,34 @@ autowork_health() {
     [[ -f "$folder/status.json" || -f "$folder/runner.json" ]] || continue
     pid=$(jq -r '.pid // empty' "$folder/runner.json" 2>/dev/null || true)
     jq -rs --arg now "$(date +%s)" --arg alive "$([[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && echo 1)" '
-      def what: {runner: "the runner cannot dispatch", held: "held for a person",
-                 claim: "claimed by another session", outside: "outside condition or task not in Now/Next",
-                 cycle: "dependency cycle"}[.kind] // .kind;
+      def short: tostring | gsub("\\s+"; " ")
+        | if length > 32 then (.[0:32] | sub(" [^ ]*$"; "")) + "..." else . end;
+      def kinds: {runner: "runner", held: "held", claim: "claimed elsewhere",
+                  outside: "outside Now/Next", cycle: "dependency cycle"};
+      def causes: {blocker: "blocker", scope: "outside Touches", scope_request: "needs files",
+                   overlap: "overlap", report: "bad report", conflict: "conflict", validation: "validation",
+                   crash: "crashed", launch: "launch failed", contract_changed: "entry changed", moved: "main moved"};
+      def cause: if . then " " + (causes[.] // .) else "" end;
+      def none: if . == "" then "-" else . end;
       (.[0] // {}) as $s | (.[1] // {}) as $r | ($s.repo // $r.repo) as $repo | select($repo)
       | [$repo,
          (if $alive != "1" then "not running" else ($s.state // "starting") end),
          (if $s.since and $alive == "1" then ((($now | tonumber) - $s.since) / 60 | floor | tostring) else "-" end),
          ($s.active_workers // 0 | tostring), ($s.waiting // 0 | tostring), (($s.held // []) | length | tostring),
-         ([($s.roots // [])[] | select(.kind | IN("runner", "held", "claim", "outside", "cycle"))
-           | "\(.blocks // 0) wait on \(.id | tostring | gsub("\\s+"; " ")): \(what)\(if .reason and .reason != "" and .kind != "outside" then " — \(.reason | gsub("\\s+"; " "))" else "" end)"]
-          | .[:3] | join("\u001f") | if . == "" then "-" else . end),
-         ([($s.held // [])[] | .task] | join(", ") | if . == "" then "-" else . end)]
+         ([($s.roots // [])[] | select(.kind | IN("runner", "held", "claim", "outside", "cycle"))]
+          | group_by(.kind) | sort_by(.[0].kind | {runner: 0, cycle: 1, held: 2, claim: 3, outside: 4}[.])
+          | map((kinds[.[0].kind] // .[0].kind) + ": "
+                + (map((.id | short) + (if .kind == "held" then (.cause | cause) else "" end)
+                       + " (\(.blocks // 0))") | join(", ")))
+          | join("\u001f") | none),
+         ([($s.held // [])[] | (.task | short) + (.cause | cause)] | join(", ") | none)]
       | @tsv' "$folder/status.json" "$folder/runner.json" 2>/dev/null || true
   done
+}
+
+autowork_duration() {  # minutes -> 45m, 4h40m
+  local m=$1
+  if (( m >= 60 )); then printf '%dh%02dm\n' $((m / 60)) $((m % 60)); else printf '%dm\n' "$m"; fi
 }
 
 autowork_width() {
@@ -1135,7 +1150,8 @@ autowork_list() {
     for name in "${names[@]}"; do
       key=${repo[$name]:-'(no repository)'}
       st=${health[$key]:-unknown}
-      label="$st${since[$key]:+ ${since[$key]}m}"
+      label=$st
+      [[ -n "${since[$key]:-}" ]] && label+=" $(autowork_duration "${since[$key]}")"
       autowork_fit "$width" "$(printf '  %-*s  %-7s  %-14s  %s' "$name_w" "$name" "${mode[$name]}" "$label" "${counts[$key]:--}")"
     done
     return 0
@@ -1150,7 +1166,8 @@ autowork_list() {
       blocked|paused|starting) color=33 ;;
       *) color=31 ;;
     esac
-    label="$st${since[$key]:+ for ${since[$key]} min}"
+    label=$st
+    [[ -n "${since[$key]:-}" ]] && label+=" $(autowork_duration "${since[$key]}")"
     printf '\n'
     line="$name  ${mode[$name]}  "
     if (( TX_USE_COLOR )); then
@@ -1167,7 +1184,8 @@ autowork_list() {
       autowork_fit "$width" "  held: ${held[$key]}"
     fi
   done
-  printf '\nDetails: tx autowork status <name>   Output: tx autowork logs [-f] <name>\n'
+  printf '\n'
+  autowork_fit "$width" "(n) = waiting tasks that depend on it. More: tx autowork status <name>"
 }
 
 autowork_status() {

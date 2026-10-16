@@ -225,9 +225,12 @@ class TxAutoworkTests(unittest.TestCase):
         service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo'}
         listing = self.tx('autowork', 'ls', env=service).stdout
         self.assertIn('pi-autowork runners: 1 (1 working)', listing)
-        self.assertRegex(listing, r'my-repo  service  working for [45] min\n  tx pi-autowork-my-repo  2 running, 5 waiting\n')
+        self.assertRegex(listing, r'my-repo  service  working [45]m\n  tx pi-autowork-my-repo  2 running, 5 waiting\n')
         self.assertRegex(self.tx('autowork', 'ls', '--brief', env=service).stdout,
                          r'my-repo\s+service\s+working [45]m\s+2 running, 5 waiting')
+        status = json.loads((state / 'status.json').read_text())
+        (state / 'status.json').write_text(json.dumps(dict(status, since=time.time() - 280 * 60 - 5)))
+        self.assertIn('working 4h40m', self.tx('autowork', 'ls', env=service).stdout)
         (state / 'runner.json').write_text(json.dumps({'pid': 999999999, 'repo': str(self.repo)}))
         self.assertIn('not running\n  tx pi-autowork-my-repo  2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
         self.tx('autowork', 'my-repo', env=service)  # its journal view is not a second runner
@@ -241,22 +244,29 @@ class TxAutoworkTests(unittest.TestCase):
         state.mkdir(parents=True)
         (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(self.repo)}))
         roots = [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19, 'reason': ''},
-                 {'id': 'T-9', 'kind': 'held', 'blocks': 2, 'reason': 'worker reported a blocker: needs a key'},
+                 {'id': 'approved physical target and capture consent; preparation proceeds',
+                  'kind': 'outside', 'blocks': 2, 'reason': ''},
+                 {'id': 'T-9', 'kind': 'held', 'blocks': 2, 'cause': 'blocker',
+                  'reason': 'worker reported a blocker: needs a key'},
+                 {'id': 'T-7', 'kind': 'claim', 'blocks': 13, 'reason': 'sequential task in progress'},
                  {'id': 'T-1', 'kind': 'running', 'blocks': 4, 'reason': ''}]
         status = {'state': 'stalled', 'since': time.time() - 600, 'waiting': 23, 'roots': roots,
-                  'held': [{'task': 'T-9'}]}
+                  'held': [{'task': 'T-9', 'cause': 'blocker'}]}
         (state / 'status.json').write_text(json.dumps(status))
         service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo', 'COLUMNS': '200'}
         self.service_env('my-repo')
         listing = self.tx('autowork', 'ls', env=service).stdout
-        self.assertIn('  19 wait on TASK-036: outside condition or task not in Now/Next\n', listing)
-        self.assertIn('  2 wait on T-9: held for a person — worker reported a blocker: needs a key\n', listing)
-        self.assertNotIn('T-1', listing)  # moving work is not a blocker
+        self.assertIn('  tx pi-autowork-my-repo  0 running, 23 waiting, 1 held\n', listing)
+        blockers = listing.split('1 held\n', 1)[1].split('\n\n')[0].splitlines()
+        self.assertEqual(blockers, ['  held: T-9 blocker (2)', '  claimed elsewhere: T-7 (13)',
+                                    '  outside Now/Next: TASK-036 (19), approved physical target and... (2)'])
+        self.assertNotIn('T-1 ', listing)  # moving work is not a blocker
+        self.assertIn('(n) = waiting tasks that depend on it', listing)
         narrow = self.tx('autowork', 'ls', env={**service, 'COLUMNS': '40'}).stdout
         self.assertTrue(all(len(line) <= 40 for line in narrow.splitlines()[:-1]), narrow)
         status.update(state='working', active_workers=1)
         (state / 'status.json').write_text(json.dumps(status))
-        self.assertIn('  held: T-9\n', self.tx('autowork', 'ls', env=service).stdout)
+        self.assertIn('  held: T-9 blocker\n', self.tx('autowork', 'ls', env=service).stdout)
 
     def test_stop_points_a_service_runner_to_systemctl(self):
         self.service_env('my-repo')
