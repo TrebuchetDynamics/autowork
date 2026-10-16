@@ -43,11 +43,28 @@ Adapter-local references linked below resolve relative to this SKILL.md.
   acceptance cases and implement the smallest complete correction.
 - **Compact means clearer, not smaller targets.** Prefer one heading, one obvious
   primary action, consistent gutters and fields grouped by purpose. Remove repeated
-  branding and explanatory walls before shrinking type. Put optional key metadata
-  and setup manuals behind clearly labeled disclosures; keep required credentials,
-  failures, recovery actions and security consent reachable. Keep installation
-  warnings before installation links/actions inside the same disclosure. Preserve
-  readable large text, touch targets and keyboard/Back operation.
+  branding and explanatory walls before shrinking type. Use matching native buttons
+  for peer navigation actions; do not turn a simple secondary action into a bulky
+  promotional card. Put optional key metadata and setup manuals behind clearly
+  labeled disclosures; keep required credentials, failures, recovery actions and
+  security consent reachable. Keep installation warnings before installation
+  links/actions inside the same disclosure. Preserve readable large text, touch
+  targets and keyboard/Back operation.
+- **Make connection screens connection-first.** Show the actual credential field
+  and explicit primary action without installed/running self-confirmation gates.
+  Keep manual setup and optional diagnostics secondary, not removed. Inspect nested
+  shared widgets too: an embedded desktop wizard can still bury the action after
+  the outer guide is simplified. Use help appropriate to the selected environment,
+  not computer/dashboard instructions on a phone-local path. Opening help or
+  confirming preparation must never imply an authenticated or ready runtime.
+- **Treat branding as an explicit source decision.** Existing assets are not proof
+  of owner approval. When the owner rejects a mark, stop carrying it into subsequent
+  refinements as accepted branding; remove it from the requested surface or clearly
+  isolate the unresolved replacement. When the owner supplies the actual logo,
+  preserve that artwork rather than inventing, tracing or recoloring a substitute.
+  Inspect the in-app mark and launcher resources separately because they can contain
+  different rejected images. Update the requested consumers from one approved
+  master, without treating source selection as licensing or device qualification.
 - **Read layout regressions before choosing the refinement.** Inspect existing
   responsive, density, accessibility and action tests alongside the screen. Treat
   meaningful bounds as design inputs: stacking every label above its value can
@@ -88,10 +105,13 @@ Adapter-local references linked below resolve relative to this SKILL.md.
    capture the production renderer and retain its untouched image and reproducible
    app state. Do not substitute an illustration, traced mark, external formula
    renderer, thumbnail enlargement or cropped UI screenshot as the master.
-2. **Choose the composition before packaging.** Show two or three clearly labeled
-   app-rendered drafts before regenerating platform resources or building a preview
-   package. If the owner rejects the appearance, change the relevant parameters,
-   framing or orientation—not just the palette—and show the revised images.
+2. **Choose the composition before packaging.** For a new composition, show two
+   or three clearly labeled app-rendered drafts before regenerating platform
+   resources or building a preview package. If the owner rejects the appearance,
+   change the relevant parameters, framing or orientation—not just the palette—and
+   show the revised images. An owner-supplied image explicitly designated as the
+   actual logo is already a source selection: do not restart logo exploration or
+   ask for the same approval again; derive resources without redesigning it.
 3. **Treat a selection as a source switch.** Once the owner selects another draft,
    regenerate every derivative, proof, saved preset and preview package from that
    draft. Check delivery pixels against the selected comparison image; otherwise a
@@ -105,8 +125,9 @@ Adapter-local references linked below resolve relative to this SKILL.md.
    replacement authority and publication gate distinct; neither green tests nor a
    built preview supplies those missing observations or permissions.
 
-For capture sizing, rotation/crop recipes, native-size proofs and package readback,
-use [app-derived artwork](references/app-derived-artwork.md).
+For supplied-logo preservation, platform resource derivation, capture sizing,
+rotation/crop recipes, native-size proofs and package readback, use
+[brand artwork](references/app-derived-artwork.md).
 
 For Flutter widget captures, disclosure regressions and Android test-APK handoffs,
 read [Flutter/Android validation](references/flutter-validation.md), a reference

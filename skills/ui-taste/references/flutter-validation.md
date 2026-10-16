@@ -21,13 +21,44 @@ providers rather than adding a parallel demo implementation.
 Change localization inputs and regenerate outputs with the project's normal
 generator; do not edit generated Dart copy by hand.
 
+For connection-first refinements, inspect the composed screen before choosing a
+fix. Remove redundant self-confirmation gates, then render again: nested shared
+checks can contain another expanded wizard and still push the primary action off
+screen. Keep optional checks and full manual/security guidance reachable after the
+primary form; suppress only context-inappropriate guidance, preserving defaults
+for other callers. Delete obsolete local step state and copy rather than retaining
+a hidden second flow.
+
+Test a fresh form with no saved configuration as well as a hydrated different
+origin. When a phone screen displays a fixed loopback address, bind enablement,
+explicit connection and optional diagnostic reads to that visible identity; a
+hidden empty URL can disable a valid form, while a hydrated remote URL can send a
+local token to the wrong host. Preserve credential-origin ownership checks rather
+than merely changing the displayed address. Require the initial token field and
+primary action to be reachable, enter a synthetic token and verify enablement,
+then prove opening help makes no connection/save and preserves the masked draft.
+Use wrapping helper widgets where fixed helper-line caps truncate security guidance
+at large text; keep the ordinary production theme for these assertions.
+
 ## 2. Update disclosure tests without losing assertions
 
 When content intentionally becomes collapsed, first assert it is absent from the
 visible tree. Activate the actual disclosure, then retain the prior warning,
 fingerprint, clipboard, failure and ownership assertions. Scroll the disclosure
-into view before pointer activation at small widths/large text. Keep keyboard
-activation coverage instead of invoking callbacks directly.
+header into view before pointer activation at small widths/large text. Target its
+visible title/header, not the center of an expanded ExpansionTile: the keyed root
+also includes the body, so a center tap may hit documentation or whitespace.
+Assert keyboard focus on the header's semantics rather than the composite expanded
+subtree, which may contain independently focusable links. Keep keyboard activation
+coverage instead of invoking callbacks directly.
+
+For idle forms, settle pending input-driven rebuilds before `ensureVisible`, then
+activate the settled target and assert hit-testability. Settling only after scrolling
+can let a deferred field reveal move the button offscreen. Keep this local to the
+idle fixture; held-stream tests need bounded pumps rather than `pumpAndSettle`.
+Do not suppress missed-tap warnings or call callbacks to hide this ordering error.
+Scope heading assertions to the AppBar/header: a legitimate primary button can
+share its text without being a duplicate heading.
 
 Use `TargetPlatformVariant.only(TargetPlatform.android)` for Android widget cases
 where available. Do not leave a global platform override set until ordinary suite

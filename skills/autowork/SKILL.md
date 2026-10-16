@@ -77,13 +77,25 @@ review step. Keep Hermes Agent unchanged.
    independent review where required and source freshness still apply. Reuse checks
    only for matching inputs when policy allows; rerun changed-input and mandatory
    gates. A missing required review holds completion, not unrelated authorized work.
-   When aggregate acceptance is blocked, recover independently useful in-scope fixes
-   from an idle candidate instead of repeating the blocker report. Verify provenance
-   and current writer inactivity, compare adopted bytes, rerun affected checks and
-   obtain required review. Integrate a partial slice only when repository policy
-   permits it; record its commit and remaining failed gates under the original TODO
-   ID. Never call focused passes a full-suite pass, waive a gate, close the parent
-   task, or infer dependency/upstream/publication authority from partial delivery.
+   Before another partial delivery, compare it with the exact acceptance criterion
+   still preventing closure: name the positive capability it delivers or the required
+   gate it removes. Do not keep selecting adjacent parser, cancellation or refusal
+   controls while the same missing trust input or runtime capability stays untouched;
+   growing commit/test counts can conceal an unchanged critical path. Repair genuine
+   security or data-loss defects, but do not use incidental hardening as a substitute
+   for finishing the selected outcome. If the remaining capability is unavailable,
+   make the existing fix-or-skip disposition and advance dependency-ready independent
+   work within scope; never imply that refusal-only tests supply the positive path.
+   Recover independently useful fixes from an idle candidate only after verifying
+   provenance and current writer inactivity; compare adopted bytes, rerun affected
+   checks and obtain required review. Prefer one coherent final candidate and the
+   union of mandatory affected checks over a full rebuild/review for each tiny guard.
+   Reuse a sanitized cache/target and check receipts only when their bound inputs
+   match; retain required mutations, independent review and integration checks.
+   Integrate a partial slice only when repository policy permits it; record its
+   commit and exact remaining gates under the original TODO ID. Never call focused
+   passes a full-suite pass, waive a gate, close the parent, or infer dependency,
+   publication or upstream authority from partial delivery.
 5. **Close out.** Commit attributable verified paths locally unless forbidden.
    Use ordinary Git, repository review and integration policy. Inspect fresh target
    state and serialize canonical writes; preserve unrelated dirty work. Never push,
