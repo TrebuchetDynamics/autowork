@@ -232,6 +232,24 @@ class DispatchTests(unittest.TestCase):
         self.wait_until_idle()
         self.assertEqual([e['task'] for e in self.events() if e['event'] == 'start'], ['A', 'S'])
 
+    def test_an_idle_claim_is_adopted_only_when_asked_and_names_its_prior_work(self):
+        """sierra: 28 of 36 tasks were in_progress claims of sessions idle for a day."""
+        self.write_todo(task('A', 'a.txt') + '- Status: in_progress\n')
+        self.git('commit', '-qam', 'A claimed elsewhere')
+        self.git('branch', 'agent/x/A-planning')
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}})
+        time.sleep(1.2)
+        _, plain = self.apply()
+        self.assertEqual(plain['dispatched'], [])
+        _, adopted = self.apply('--adopt-idle-claims', '1')
+        self.assertEqual([d['task'] for d in adopted['dispatched']], ['A'])
+        prompt = (dispatch.data_dir(self.common, state.slots(self.common)[0]) / 'prompt.md').read_text()
+        self.assertIn('marked in_progress by another session that has been idle', prompt)
+        self.assertIn('- branch agent/x/A-planning', prompt)
+        journal = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        self.assertEqual([e['task_id'] for e in journal if e['event'] == 'claim_adopted'], ['A'])
+        self.wait_until_idle()
+
     def pause_and_stop(self):
         """What a deliberate coordinator stop does: mark live workers, then interrupt them."""
         _, paused = self.run_cli('--parallel-pause', worker=False)

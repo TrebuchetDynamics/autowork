@@ -151,7 +151,7 @@ def _dependencies(task, known=()):
     return dependency_ids(task.get('fields', {}).get('Dependencies', 'None.'), known)
 
 
-def plan(tasks, running=(), *, all_tasks=(), parked=()):
+def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
     """Plan ordered runnable contracts against running contracts/live slots.
 
     ``running`` contains task contracts held by live slots. Also pass every
@@ -169,6 +169,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=()):
     waits for a person, not for the pool, so they block like a claim: dependents
     and declared overlap only (all four fleet repositories, 2026-10-16: one
     exhausted hold left every runner idle for seven hours).
+    ``adopted`` names in_progress claims verified idle (parallel_claims): they are
+    planned like open tasks.
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
     """
     tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
@@ -177,7 +179,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=()):
     claims = {}
     for t in known.values():
         status = re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0]
-        if status == 'in_progress' and t['id'] not in active:
+        if status == 'in_progress' and t['id'] not in active and t['id'] not in adopted:
             claims[t['id']] = t
     held = {t['id'] for t in parked}
     claims.update((t['id'], t) for t in parked)

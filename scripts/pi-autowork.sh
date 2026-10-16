@@ -57,6 +57,9 @@ Environment (optional):
   PI_AUTOWORK_MAX_RETRIES   provider/crash retries per Pi run (default 3)
   PI_AUTOWORK_MAX_FAILURES  consecutive failed tasks before stopping (default 3); a service
                             pauses new tasks for PI_AUTOWORK_FAILURE_PAUSE seconds (3600) instead
+  PI_AUTOWORK_CLAIM_IDLE    adopt another session's in_progress claim after this many seconds
+                            with no task, branch or worktree change and no live agent
+                            (default 21600; 0 never adopts)
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)
@@ -84,6 +87,7 @@ VERIFY_TIMEOUT=${PI_AUTOWORK_VERIFY_TIMEOUT:-1800}
 MAX_RETRIES=${PI_AUTOWORK_MAX_RETRIES:-3}
 MAX_FAILURES=${PI_AUTOWORK_MAX_FAILURES:-3}
 FAILURE_PAUSE=${PI_AUTOWORK_FAILURE_PAUSE:-3600} PAUSE_UNTIL=0 RUNNER_BLOCKER=''
+CLAIM_IDLE=${PI_AUTOWORK_CLAIM_IDLE:-21600}
 COOLDOWN=${PI_AUTOWORK_COOLDOWN:-1800}
 BACKOFF=${PI_AUTOWORK_BACKOFF:-30}
 MAX_RUNTIME=${PI_AUTOWORK_MAX_RUNTIME:-0}
@@ -347,7 +351,7 @@ while (($#)); do
   esac
   shift
 done
-for value in "$INTERVAL" "$MAX_CYCLES" "$WORKERS"; do
+for value in "$INTERVAL" "$MAX_CYCLES" "$WORKERS" "$CLAIM_IDLE"; do
   [[ $value =~ ^[0-9]+$ ]] || { echo "Expected a whole number, got: $value" >&2; exit 2; }
 done
 ((WORKERS >= 1 && WORKERS <= 8)) || die 2 "--workers must be 1 to 8"
@@ -539,7 +543,7 @@ UNIT
     [[ ${PI_AUTOWORK_NO_FALLBACK:-0} == 1 ]] && echo 'PI_AUTOWORK_NO_FALLBACK=1'
     [[ $WORKERS != 8 ]] && echo "PI_AUTOWORK_WORKERS=$WORKERS"
     for name in PI_AUTOWORK_PRIMARY PI_AUTOWORK_FALLBACK PI_AUTOWORK_TASK_TIMEOUT PI_AUTOWORK_VERIFY_TIMEOUT \
-                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE PI_AUTOWORK_STALL_AFTER \
+                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE PI_AUTOWORK_STALL_AFTER PI_AUTOWORK_CLAIM_IDLE \
                 PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME PI_AUTOWORK_MAX_COST \
                 PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET \
                 PI_AUTOWORK_INFER_TOUCHES PI_AUTOWORK_UPDATE_INTERVAL; do
@@ -1076,7 +1080,7 @@ while :; do
   elif ((!DRAINING)); then
     infer_touches
     result=$(owned --apply --parallel "$WORKERS" --max-workers 8 --worker-command "$WORKER_COMMAND" \
-      --worker-timeout "$TASK_TIMEOUT" --min-free-mem-mb "$MIN_FREE_MB")
+      --worker-timeout "$TASK_TIMEOUT" --min-free-mem-mb "$MIN_FREE_MB" --adopt-idle-claims "$CLAIM_IDLE")
     outcome=$(jq -r '.outcome // "ACTION_REQUIRED"' <<<"$result" 2>/dev/null || echo ACTION_REQUIRED)
   elif ((DRAINING)); then
     outcome=DRAINING
@@ -1086,7 +1090,11 @@ while :; do
       for id in $(jq -r '(.dispatched // [])[]?.task, (.retried // empty | .task? // empty)' <<<"$result" 2>/dev/null); do
         STARTED_WORKERS=$((STARTED_WORKERS + 1))
         [[ $MODE == once && -z $ONCE_TASK ]] && { ONCE_TASK=$id; DRAINING=1; }  # no second task
-        note_state "$id" running "worker started"
+        if jq -e --arg id "$id" '(.adopted // []) | index($id)' <<<"$result" >/dev/null 2>&1; then
+          note_state "$id" running "worker started; adopted an idle claim (no activity for $((CLAIM_IDLE / 3600)) h or more)"
+        else
+          note_state "$id" running "worker started"
+        fi
       done ;;
     READOPTED)
       id=$(jq -r .task <<<"$result")

@@ -68,6 +68,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Parallel Autowork can adopt another session's `in_progress` claim once it is
+  verifiably idle (`--adopt-idle-claims SECONDS`): its TODO/ledger entry, any branch
+  or worktree named for the task and any agent process there all show no activity
+  for that long, and no active session is in the canonical checkout. Prior work is
+  never changed; the worker's prompt names it for reuse and the journal records the
+  evidence (`claim_adopted`). `pi-autowork.sh` adopts after 6 hours
+  (`PI_AUTOWORK_CLAIM_IDLE`, `0` never). Before, claims left by handed-off sessions
+  blocked most of the sierra and bravo queues indefinitely.
 - Runner health (TOOLSET-115-bf phase 3): each `pi-autowork` runner keeps a
   `status.json`, announces a stall once at warning priority with its root blockers,
   and `pi-autowork.sh --fleet` lists every runner's service, health and blockers;

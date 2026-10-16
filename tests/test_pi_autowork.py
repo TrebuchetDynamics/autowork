@@ -608,6 +608,20 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
 
+    def test_a_claim_idle_long_enough_is_adopted_and_finished(self):
+        text = (self.repo / 'TODO.md').read_text()
+        text = text.replace('  Dependencies: None.\n  Status: open\n- [ ] B', '  Dependencies: None.\n  Status: in_progress\n- [ ] B', 1)
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A is claimed elsewhere')
+        self.run_runner('--until-empty')  # default: a fresh claim is never adopted
+        self.assertNotIn('A', [r['task'] for r in self.runs('worker')])
+        time.sleep(2)
+        self.env['PI_AUTOWORK_CLAIM_IDLE'] = '1'
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: running — worker started; adopted an idle claim', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

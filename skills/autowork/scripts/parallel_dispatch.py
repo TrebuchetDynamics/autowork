@@ -14,6 +14,7 @@ import signal
 import subprocess
 import time
 
+import parallel_claims
 import parallel_plan
 import parallel_state as state
 import task_execution as execution
@@ -119,7 +120,7 @@ def meta(common, slot):
     return execution.read(data_dir(common, slot) / 'meta.json') or {}
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None):
     touches = task['fields'].get('Touches', '(none declared)')
     lines = [
         'You are an Autowork worker for exactly one task.',
@@ -154,6 +155,14 @@ def prompt(task, worktree, branch, baseline, report, resume=False):
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
     ]
+    if adopted:
+        hours = adopted['idle_seconds'] // 3600
+        lines += ['', f'This task was marked in_progress by another session that has been idle for {hours} h',
+                  '(no task, branch or worktree change and no live agent). Earlier work may exist:']
+        lines += [f'- branch {w["branch"]}' + (f' (worktree {w["worktree"]})' if w['worktree'] else '')
+                  for w in adopted['prior_work']] or ['- none found']
+        lines += ['Inspect it and reuse attributable in-scope work in your own worktree; never modify',
+                  'those branches or worktrees.']
     if resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
@@ -319,9 +328,13 @@ def dispatch_locked(args, repo, common, count, template, host):
                    and (s['attempt'] == 1 or s.get('paused'))}
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
+    slotted = {s['task_id'] for s in current}
+    claimed = [t['id'] for t in candidates if t['id'] not in slotted
+               and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
+    idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
                                   or t['id'] in restartable], running, all_tasks=everything,
-                                 parked=[contract(s) for s in parked])
+                                 parked=[contract(s) for s in parked], adopted=set(idle))
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])
@@ -348,7 +361,11 @@ def dispatch_locked(args, repo, common, count, template, host):
         if previous and previous.get('paused'):
             report.unlink(missing_ok=True)  # a resumed attempt reports afresh
         prompt_file = data / 'prompt.md'
-        prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous)))
+        prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
+                                      adopted=idle.get(task['id'])))
+        if task['id'] in idle:
+            with execution.lock(common / 'writer.lock'):
+                state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])
         index = next(i for i in range(1, HARD_LIMIT + 1) if i not in used)
         used.add(index)
         argv = render(template, {'worktree': worktree, 'prompt_file': prompt_file, 'timeout': int(args.worker_timeout),
@@ -383,6 +400,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
             'active_workers': active, 'dispatched': started, 'waiting': waiting,
+            'adopted': [d['task'] for d in started if d['task'] in idle],
             'timed_out': [s['task_id'] for s in timeouts], 'slots': slots,
             'next': {'DISPATCHED': 'Run --wait to block until a worker finishes, then review its report.',
                      'WAITING': 'Run --wait; no other task can start beside the running workers.',

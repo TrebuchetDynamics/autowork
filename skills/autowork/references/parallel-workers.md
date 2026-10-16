@@ -117,7 +117,13 @@ A task runs beside others only when the planner can prove it is independent:
   it is never dispatched and blocks its dependents and tasks whose declared `Touches:`
   or `Resources:` overlap it, but its own missing `Touches:` does not hold back
   unrelated tasks (the coordinator holds the repository lease, so no sequential
-  Autowork run is executing it). Only live workers count toward N.
+  Autowork run is executing it). With `--adopt-idle-claims SECONDS` a claim idle that
+  long is planned like an open task: no change to its TODO/ledger entry, no commit on
+  a branch named for it, no file change in such a worktree and no live agent there,
+  and no active agent session in the canonical checkout (then nothing is adopted).
+  The worker's prompt names the earlier branches and worktrees to reuse; they are never
+  modified. The journal records `claim_adopted` with that evidence and the dispatch
+  result lists `adopted`. Only live workers count toward N.
 
 The root files `TODO.md`, `TODO.archive.md`, `goals.json` and `CHANGELOG.md` are
 coordinator-owned: workers never edit them, and integration holds a commit that does.

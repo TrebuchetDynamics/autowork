@@ -228,6 +228,12 @@ Remembered `NONE` answers from the `Touches:` pass belong to the prompt that pro
 them, so a changed prompt asks those tasks again, and a pass that gave no answer is
 retried within the hour.
 
+Tasks other sessions marked `in_progress` are left alone until they are verifiably
+idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
+the task's entry, branches or worktrees and no live agent working there. The runner
+then takes the task over, logs `adopted an idle claim`, and its worker is pointed at
+any earlier work to reuse, which it never modifies.
+
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
 running`/`not cycling` when the process is gone or silent) and, when it cannot

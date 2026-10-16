@@ -761,6 +761,9 @@ def main(argv=None):
                           help='Stop a worker after this many seconds (default 3600).')
     parallel.add_argument('--min-free-mem-mb', type=int, default=1500,
                           help='Start a worker only with this much MemAvailable per running worker plus one.')
+    parallel.add_argument('--adopt-idle-claims', type=float, default=0, metavar='SECONDS',
+                          help='Dispatch in_progress claims idle this long: no task, branch or worktree change '
+                               'and no live agent (0, the default, never adopts).')
     parallel.add_argument('--wait', action='store_true',
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
     parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')
