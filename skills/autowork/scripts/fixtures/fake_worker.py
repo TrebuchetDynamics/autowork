@@ -3,7 +3,9 @@
 
 argv: PROMPT_FILE WORKTREE. Behavior per task comes from the JSON file named by
 FAKE_WORKER_SPEC: {"TASK": {"files": {"path": "text"}, "sleep": 0.5,
-"commit": true, "exit": 0}}. Start and end times are appended to
+"commit": true, "exit": 0, "blockers": [...], "pending_live": [...]}}.
+Without a commit, "blockers" still writes a report (a worker that stopped on
+purpose). Start and end times are appended to
 FAKE_WORKER_LOG so tests can prove overlapping lifetimes.
 """
 import json
@@ -48,6 +50,10 @@ if spec.get('commit', True) and spec.get('files'):
     commit = subprocess.run(['git', '-C', str(worktree), 'rev-parse', 'HEAD'], check=True,
                             capture_output=True, text=True).stdout.strip()
     report.write_text(json.dumps({'task': task, 'commit': commit, 'changed_files': sorted(spec['files']),
-                                  'checks': [], 'blockers': [], 'changelog': ''}))
+                                  'checks': [], 'blockers': spec.get('blockers', []),
+                                  'pending_live': spec.get('pending_live', []), 'changelog': ''}))
+elif spec.get('blockers'):  # stopped on purpose: no commit, says why
+    report.write_text(json.dumps({'task': task, 'commit': None, 'changed_files': sorted(spec.get('files', {})),
+                                  'checks': [], 'blockers': spec['blockers'], 'changelog': ''}))
 note('end')
 sys.exit(spec.get('exit', 0))

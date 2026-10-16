@@ -316,6 +316,59 @@ class IntegrationTests(unittest.TestCase):
         result = self.module().integrate(self.repo, self.owner, 'B', ['true'], 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
 
+    def report(self, **fields):
+        path = dispatch.data_dir(self.common, state.slots(self.common)[0]) / 'report.json'
+        execution.save(path, dict(execution.read(path), **fields))
+
+    def test_a_commit_whose_report_has_blockers_is_held_for_a_person(self):
+        self.worker()
+        self.report(blockers=['Physical device check not run'])
+        module = self.module()
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'HELD')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['cause'], 'blocker')
+        self.assertTrue(state.exhausted(slot))
+        from types import SimpleNamespace
+        args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, profile='', parallel=2,
+            max_workers=None, worker_command='["true"]', worker_host='auto', worker_profile=None,
+            worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
+        self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
+
+    def test_pending_live_checks_integrate_and_close_into_one_live_followup(self):
+        """flutter TASK-013: offline work passed twice but was held for device checks."""
+        self.worker()
+        self.report(pending_live=['TalkBack scrolling on a physical phone', 'Hardware GPU frame rate'])
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        result = module.close(self.repo, self.owner, 'A')
+        self.assertEqual((result['outcome'], result['live_followup']), ('CLOSED', 'A-LIVE'))
+        todo = (self.repo / 'TODO.md').read_text()
+        self.assertIn('## Needs decision\n\n- [ ] A-LIVE — Live checks for A\n', todo)
+        self.assertIn('  - TalkBack scrolling on a physical phone\n', todo)
+        self.assertIn('  Dependencies: A.\n', todo)
+        self.assertNotIn('- [ ] A — Task A', todo)
+        tasks = execution.goals_module().task_bodies(todo)
+        self.assertEqual(list(tasks).count('A-LIVE'), 1)
+        # A live check is never dispatched to an offline worker.
+        self.assertNotIn('A-LIVE', [t['id'] for t in dispatch.contracts(self.repo)])
+
+    def test_a_retried_close_adds_no_second_live_followup(self):
+        self.worker()
+        self.report(pending_live=['Production smoke test'])
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        from unittest.mock import patch
+        real = module.goals_command
+        def archive_fails(repo, *argv):
+            if argv[0] == 'archive':
+                raise ValueError('injected archive failure')
+            return real(repo, *argv)
+        with patch.object(module, 'goals_command', archive_fails), self.assertRaises(ValueError):
+            module.close(self.repo, self.owner, 'A')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertEqual((self.repo / 'TODO.md').read_text().count('- [ ] A-LIVE'), 1)
+
     def test_retry_refill_enforces_running_retry_timeout(self):
         import time
         from types import SimpleNamespace

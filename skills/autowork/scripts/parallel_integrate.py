@@ -42,6 +42,10 @@ def slot_for(common, task):
     return next((s for s in state.slots(common) if s['task_id'] == task), None)
 
 
+class ReportedBlocker(ValueError):
+    """The worker's own report names work it could not finish."""
+
+
 def hold(common, slot, reason, **updates):
     slot = state.change(common, slot, 'held', dict(updates, reason=reason))
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason}
@@ -74,6 +78,12 @@ def verify(repo, common, slot, contracts):
         raise ValueError('reported commit/branch/lineage mismatch')
     report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
     files = changed(repo, slot['baseline'], commit)
+    blockers = state.report_blockers(common, slot) if isinstance(report, dict) else None
+    if blockers:
+        raise ReportedBlocker(state.blocker_reason(blockers))
+    live = report.get('pending_live', []) if isinstance(report, dict) else None
+    if not isinstance(live, list) or not all(isinstance(item, str) for item in live):
+        raise ValueError('report.json pending_live must be a list of strings')
     if (not isinstance(report, dict) or report.get('task') != slot['task_id']
             or report.get('commit') != commit or not isinstance(report.get('changed_files'), list)
             or not all(isinstance(p, str) for p in report['changed_files'])
@@ -184,6 +194,8 @@ def integrate(repo, owner_pid, task, argv, timeout):
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
                         return recovered
+            except ReportedBlocker as exc:
+                return hold(common, slot, str(exc), cause='blocker')
             except (ValueError, OSError) as exc:
                 return hold(common, slot, str(exc))
             if slot['state'] == 'reported':
@@ -316,6 +328,48 @@ def goals_command(repo, *argv):
     return result.stdout
 
 
+def live_followup(repo, task, items, indexed):
+    """Record a report's pending live checks as their own task, exactly once.
+
+    Offline completion never qualifies live behavior (AGENTS.md): the task closes and
+    `TASK-LIVE` waits in Needs decision, depending on it. A retried close finds the
+    follow-up already present and adds nothing.
+    """
+    goals = execution.goals_module()
+    followup = task + '-LIVE'
+    if indexed:
+        ledger = {t['id']: t for t in goals.normalize(goals.load(repo))['tasks']}
+        if followup not in ledger:
+            goals_command(repo, 'add-task', followup, '--goal', ledger[task]['goal'], '--title',
+                          'Live checks for ' + task, '--section', 'Needs decision', '--depends-on', task)
+    with goals.coordination(repo):
+        todo = repo / 'TODO.md'
+        before = todo.read_bytes()
+        text = before.decode()
+        if followup in goals.task_bodies(text):
+            return followup
+        body = (f'- [ ] {followup} — Live checks for {task}\n'
+                f'  Scope: Run the live checks the offline work for {task} left pending.\n'
+                '  Acceptance: Each check passes on the real target:\n'
+                + ''.join(f'  - {" ".join(item.split())}\n' for item in items) +
+                '  Checks: Live qualification by an authorized person; offline evidence does not count.\n'
+                f'  Dependencies: {task}.\n'
+                '  Status: open\n')
+        heading = re.search(r'^## Needs decision[ \t]*\r?\n', text, re.M)
+        if heading:
+            end = re.compile(r'^## ', re.M).search(text, heading.end())
+            at = end.start() if end else len(text)
+            text = text[:at].rstrip('\n') + '\n\n' + body + ('\n' + text[at:] if end else '')
+        else:
+            coverage = re.search(r'^## Goal coverage', text, re.M)
+            at = coverage.start() if coverage else len(text)
+            text = (text[:at].rstrip('\n') + '\n\n## Needs decision\n\n' + body
+                    + ('\n' + text[at:] if coverage else ''))
+        require_no_writers(repo)
+        goals.atomic_write(todo, text, expected_bytes=before)
+    return followup
+
+
 def archive_path(repo):
     """Reuse Docs Sync's history-owner rules, including legacy and linked archives."""
     return execution.archive_file(repo)
@@ -380,6 +434,8 @@ def close(repo, owner_pid, task):
                 body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
                 require_no_writers(repo)
                 goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
+        live = [item for item in (slot.get('report') or {}).get('pending_live', []) if item.strip()]
+        followup = live_followup(repo, task, live, indexed) if live else None
         require_no_writers(repo)
         archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
         # Read back exact target before journaling closure; archive can fail safely
@@ -389,7 +445,8 @@ def close(repo, owner_pid, task):
         archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
         require_task_contract(archived.get(task, []), expected_contract, archived=True)
         slot = state.change(common, slot, 'closed', {})
-        return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
+        return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
+                **({'live_followup': followup} if followup else {})}
 
 
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
@@ -513,12 +570,14 @@ def retry_held(args):
             if again is not None:
                 slot = state.readopt(common, again)
                 return {'outcome': 'READOPTED', 'task': slot['task_id'], 'commit': slot['commit']}
-            pending = any(s['state'] == 'held' and s['attempt'] == 1 for s in current)
+            # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
+            pending = any(s['state'] == 'held' and s['attempt'] == 1 and not state.exhausted(s) for s in current)
             if any(state.worker_live(s) for s in current):
                 if pending or any(s['attempt'] == 2 and state.worker_live(s) for s in current):
                     return {'outcome': 'WAITING', 'reason': 'held retries run alone after the worker pool drains'}
                 return {'outcome': 'IDLE'}
-            held = {s['task_id']: s for s in current if s['state'] == 'held' and s['attempt'] == 1}
+            held = {s['task_id']: s for s in current if s['state'] == 'held' and s['attempt'] == 1
+                    and not state.exhausted(s)}
             tasks = dispatch.contracts(repo, args.tasks, args.plan)
             task = next((t for t in tasks if t['id'] in held), None)
             if task is None:

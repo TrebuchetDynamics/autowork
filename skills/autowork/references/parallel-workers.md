@@ -33,8 +33,13 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    stopped and its slot becomes `interrupted`.
 3. **Review the report.** Read `report.json` at
    `<git-common-dir>/autowork-execution/slot-data/<TASK>/attempt-N/report.json`
-   (commit, changed files, checks, blockers, proposed CHANGELOG line) and the
-   commit itself. A report is a claim; integration verifies it.
+   (commit, changed files, checks, blockers, pending live checks, proposed
+   CHANGELOG line) and the commit itself. A report is a claim; integration verifies
+   it. `blockers` name offline work the worker could not finish and what a person
+   must decide; a worker that reports any is held with `cause: blocker`, with or
+   without a commit, and gets neither a resume nor a fresh attempt. `pending_live`
+   lists device, production, hardware or human checks the worker could not run;
+   they never hold the task.
 4. **Integrate.** `--integrate TASK --timeout S --run ARGV...`, where TASK is the
    highest-priority `reported` task (otherwise `ACTION_REQUIRED`). It merges the
    worker commit with `--no-ff` in the detached integration worktree
@@ -54,7 +59,11 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    passing validation receipt and its TODO contract still matches the validated
    one. It marks the task done, runs the Docs Sync archive (with goals.json this
    archives every verified completed body, not only TASK) and removes the current
-   attempt's worktree and branch if they are clean (`cleaned`). Result: `CLOSED`.
+   attempt's worktree and branch if they are clean (`cleaned`). When the report
+   listed `pending_live`, close also adds `TASK-LIVE` under Needs decision (in
+   goals.json too), depending on TASK and listing those checks, exactly once:
+   offline completion never qualifies live behavior. Result: `CLOSED`, with
+   `live_followup` when one was added.
 6. **Commit coordinator files.** Close edits TODO.md, the archive and goals.json in
    the canonical checkout without committing. Commit them, plus the CHANGELOG line
    from the report if it is accurate, as one coordinator metadata commit.

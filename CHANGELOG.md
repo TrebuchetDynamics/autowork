@@ -274,6 +274,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel Autowork reads a worker's report instead of guessing from its process. A
+  worker that stops with `blockers` is held for a person (`cause: blocker`) and is
+  neither resumed nor retried; before, a deliberate stop looked like a crash and
+  used up both attempts on the same wall (sierra TASK-022). Device, production,
+  hardware and human checks go in the report's new `pending_live` field, which no
+  longer holds offline work that passed (flutter TASK-013, held twice); closing
+  the task records them once as `TASK-LIVE` under Needs decision.
 - A held task with no attempt left no longer stalls the whole queue. It now blocks
   only its dependents and tasks whose declared `Touches:` or `Resources:` overlap it,
   like an `in_progress` claim, and its files no longer hold other work at

@@ -146,7 +146,13 @@ def prompt(task, worktree, branch, baseline, report, resume=False):
         '  another worktree. A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
-        '  "blockers": [...], "changelog": "..."}. If blocked, report commit null with blockers and stop.',
+        '  "blockers": [...], "pending_live": [...], "changelog": "..."}.',
+        '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
+        '  what a person must decide or provide (for example a path outside Touches you need, or a',
+        '  missing dependency). If blocked, report commit null with blockers and stop.',
+        '- "pending_live" lists checks you cannot run here: physical devices, production or live',
+        '  services, hardware, or human review. They become a separate live task and do not hold',
+        '  this one; never list them as blockers or as failed checks.',
     ]
     if resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',

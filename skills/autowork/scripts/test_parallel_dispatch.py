@@ -214,6 +214,24 @@ class DispatchTests(unittest.TestCase):
         _, freed = self.apply()
         self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
 
+    def test_a_worker_that_reports_a_blocker_is_held_for_a_person_not_resumed(self):
+        """sierra TASK-022: a worker stopped on purpose with blockers, was read as a crash,
+        resumed, and spent both attempts on the same wall."""
+        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
+                             'blockers': ['Needs src/other.go, outside Touches']},
+                       'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
+        self.apply()
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['cause'], slot['attempt']), ('held', 'blocker', 1))
+        self.assertEqual(slot['reason'], 'worker reported a blocker: Needs src/other.go, outside Touches')
+        self.assertEqual((Path(slot['worktree']) / 'a.txt').read_text(), 'partial')
+        _, refill = self.apply()  # no resume, no fresh retry; the must-run-alone S proceeds
+        self.assertEqual([d['task'] for d in refill['dispatched']], ['S'])
+        self.wait_until_idle()
+        self.assertEqual([e['task'] for e in self.events() if e['event'] == 'start'], ['A', 'S'])
+
     def pause_and_stop(self):
         """What a deliberate coordinator stop does: mark live workers, then interrupt them."""
         _, paused = self.run_cli('--parallel-pause', worker=False)

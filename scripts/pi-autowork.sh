@@ -741,7 +741,7 @@ note_state() {  # log each task's lifecycle change once
 }
 
 close_task() {  # archive an integrated task and commit the coordinator files
-  local id=$1 result file
+  local id=$1 result file followup
   result=$(owned --parallel-close "$id")
   if [[ $(jq -r .outcome <<<"$result" 2>/dev/null) == CLOSED ]]; then
     for file in TODO.md TODO.archive.md goals.json CHANGELOG.md; do
@@ -752,6 +752,8 @@ close_task() {  # archive an integrated task and commit the coordinator files
     git -C "$INTEG" diff --cached --quiet ||
       git -C "$INTEG" commit -q -m "docs(tasks): close $id (pi-autowork)" -m "Integrated, verified and closed by the Parallel Autowork engine."
     note_state "$id" closed ''
+    followup=$(jq -r '.live_followup // empty' <<<"$result" 2>/dev/null)
+    [[ -n $followup ]] && say "$id: done offline; its live checks are recorded as $followup (Needs decision)"
     FAILURES=0
     [[ $id == "$ONCE_TASK" ]] && ONCE_DONE=1
     SETTLED=1

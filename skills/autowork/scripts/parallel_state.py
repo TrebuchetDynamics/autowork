@@ -23,7 +23,9 @@ TRANSITIONS = {
     'interrupted': {'dispatched', 'held'},
     'released': {'dispatched'},
 }
-FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused'}
+FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause'}
+# Hold causes no fresh attempt can fix: the worker itself reported what it needs.
+NEEDS_PERSON = ('blocker',)
 
 
 def common_dir(repo):
@@ -252,8 +254,28 @@ def readoptable(slot):
 
 
 def exhausted(slot):
-    """A held slot with no attempt left: it waits for a person, not for the pool."""
-    return slot['state'] == 'held' and slot['attempt'] >= 2 and not readoptable(slot)
+    """A held slot no attempt can finish: it waits for a person, not for the pool."""
+    return (slot['state'] == 'held' and (slot['attempt'] >= 2 or slot.get('cause') in NEEDS_PERSON)
+            and not readoptable(slot))
+
+
+def report_blockers(common, slot):
+    """Blockers from this attempt's report.json, or None without a valid report."""
+    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+    try:
+        report = execution.read(execution.safe_path(data / 'report.json'))
+    except (ValueError, OSError):
+        return None
+    blockers = report.get('blockers') if isinstance(report, dict) and report.get('task') == slot['task_id'] else None
+    if not isinstance(blockers, list) or not all(isinstance(b, str) for b in blockers):
+        return None
+    return [b.strip() for b in blockers if b.strip()]
+
+
+def blocker_reason(blockers):
+    first = ' '.join(blockers[0].split())
+    more = f' (+{len(blockers) - 1} more in report.json)' if len(blockers) > 1 else ''
+    return 'worker reported a blocker: ' + (first[:400] + '…' if len(first) > 400 else first) + more
 
 
 def readopt(common, old):
@@ -317,6 +339,10 @@ def reconcile(repo, owner_pid):
                         target, updates = 'reported', {'commit': head}
                         if dirty:
                             updates['reason'] = 'commit retained; uncommitted work also preserved'
+                elif blockers := report_blockers(common, slot):
+                    # It stopped on purpose and said why; resuming would only repeat that
+                    # (sierra TASK-022 spent both attempts this way). Its changes stay put.
+                    target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
                 elif dirty:
                     target, updates = 'interrupted', {'reason': 'dead worker with uncommitted changes'}
                 else:
