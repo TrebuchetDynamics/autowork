@@ -127,6 +127,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- A runner reads its repository's settings file
+  (`~/.config/pi-autowork/<repository>.env`, the file `--install-service` writes) whichever
+  way it is started, so `tx autowork` in tmux keeps settings such as the model,
+  `PI_AUTOWORK_ALLOW_HERMES` and `PI_AUTOWORK_LINK_PATHS`. The environment still wins, and a
+  file naming another repository is ignored.
 - A worker blocked only by files outside `Touches:` lists them in `needs_touches`;
   when the runner had inferred those Touches it widens them and the engine resumes the
   worker in its own worktree on the same attempt (`RESUMED`), so the request is not a

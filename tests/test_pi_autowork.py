@@ -782,6 +782,19 @@ class EngineTests(Fixture):
         self.assertIn('A: failed — worker reported a blocker: A-extra.txt is outside Touches', result.stdout)
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
 
+    def test_the_repository_settings_file_applies_to_every_launcher(self):
+        """`tx autowork` runs in tmux without the service's environment: settings follow the repository."""
+        envs = self.root / 'envs'
+        envs.mkdir()
+        self.env['PI_AUTOWORK_ENV_DIR'] = str(envs)
+        (envs / 'project.env').write_text(f'PI_AUTOWORK_REPO={self.repo}\nPATH=/nowhere\nPI_AUTOWORK_WORKERS=3\n')
+        self.assertIn('up to 3 worker(s)', self.run_runner('--dry-run').stdout)
+        self.env['PI_AUTOWORK_WORKERS'] = '2'  # the environment wins
+        self.assertIn('up to 2 worker(s)', self.run_runner('--dry-run').stdout)
+        del self.env['PI_AUTOWORK_WORKERS']
+        (envs / 'project.env').write_text('PI_AUTOWORK_REPO=/elsewhere/project\nPI_AUTOWORK_WORKERS=3\n')
+        self.assertIn('up to 8 worker(s)', self.run_runner('--dry-run').stdout)  # another repository's file
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
