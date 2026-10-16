@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `worktree_closeout.py --archive` clears a backlog of old worktrees without losing
+  work: an unintegrated HEAD or uncommitted changes are saved as a commit under
+  `refs/archive/worktrees/` (restore with `git worktree add DIR REF`) before the
+  worktree is removed. sierra had 99 worktrees, 97 of which ordinary cleanup must keep.
+
 - A parallel Autowork worker can no longer get a second writer beside it in its own
   worktree (TOOLSET-116-c1). Workers carry `AUTOWORK_WORKTREE`; a worker whose launch
   was never recorded, or a child that left its process group, now keeps the slot
