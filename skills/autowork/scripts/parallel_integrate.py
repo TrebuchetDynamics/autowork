@@ -131,7 +131,12 @@ def require_no_writers(repo):
         if not attributed:
             blocking.append(worker)
     if blocking:
-        raise ValueError('live or unknown external writer/session; preserve canonical checkout')
+        def describe(worker):
+            name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'
+            return (f"pid {worker['pid']} {name} in {', '.join(worker.get('workspaces') or ['?'])}"
+                    f" ({worker.get('evidence') or worker.get('kind', '')})")
+        raise ValueError('live or unknown external writer/session; preserve canonical checkout: '
+                         + '; '.join(describe(w) for w in blocking[:3]))
 
 
 def integration_worktree(repo, common, baseline):

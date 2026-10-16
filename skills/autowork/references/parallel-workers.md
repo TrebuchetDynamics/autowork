@@ -100,12 +100,12 @@ coordinator-owned: workers never edit them, and integration holds a commit that 
 `--worker-host auto` (the default) uses the coordinator's own host, found from its
 process ancestry. Shipped templates add no approval or sandbox bypass:
 
-| Host | Worker command |
-| --- | --- |
-| Hermes | `hermes chat --query-file PROMPT --oneshot --in WORKTREE --run-budget TIMEOUT -Q`, with `-p PROFILE` from `--worker-profile` |
-| Codex | `codex exec -C WORKTREE --sandbox workspace-write --add-dir GIT_COMMON_DIR -` (prompt on stdin) |
-| Pi | `pi -p @PROMPT` |
-| Claude Code | none: it chooses its workers' approval mode, so pass `--worker-command` |
+| Host | Worker command | Live qualification (TOOLSET-091-00) |
+| --- | --- | --- |
+| Hermes | `hermes chat --query-file PROMPT --oneshot --in WORKTREE --run-budget TIMEOUT -Q`, with `-p PROFILE` from `--worker-profile` | Not yet run: needs a disposable Hermes profile |
+| Codex | `codex exec -C WORKTREE --sandbox workspace-write --add-dir GIT_COMMON_DIR -` (prompt on stdin) | Fails: Codex 0.162.1 workers edit and check but cannot commit, because the workspace-write sandbox keeps Git metadata read-only. Dispatch therefore returns `SEQUENTIAL_FALLBACK` for Codex unless you pass `--worker-command` |
+| Pi | `pi -p @PROMPT` | Qualified through [`pi-autowork.sh`](../../../docs/cross-host.md#run-autowork-continuously), whose `--worker` mode is passed as `--worker-command` (Pi 1.2.0, GPT-6.1 Sol): two workers overlapped, integration was sequential, a dependent task waited for its prerequisite, and a killed coordinator's restart adopted live workers without duplicates. The bare template has not been run live |
+| Claude Code | none: it chooses its workers' approval mode, so pass `--worker-command` | Not applicable |
 
 `--worker-command` takes a JSON argv list with `{worktree}`, `{prompt_file}`,
 `{report_file}`, `{git_common_dir}` and `{timeout}` placeholders, for any host. The

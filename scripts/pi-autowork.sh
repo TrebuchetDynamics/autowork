@@ -496,7 +496,8 @@ fi
 # --- Engine -------------------------------------------------------------------
 INTEG='' INTEG_BRANCH='' MERGE_PENDING='' RESOLVED_ONCE=0
 # Runs owner_cycle.py on the session checkout; prints its JSON result.
-engine() { python3 "$ENGINE" "$INTEG" "$@" 2>>"$STATE/engine.err"; }
+# Helpers never inherit the runner lock (fd 9), so a killed runner releases it at once.
+engine() { python3 "$ENGINE" "$INTEG" "$@" 2>>"$STATE/engine.err" 9>&-; }
 owned() { engine --owner-pid "$$" "$@"; }
 WORKER_COMMAND=$(jq -cn --arg script "$SCRIPT" --arg state "$STATE_PATH" \
   '["/bin/bash", $script, "--worker", $state, "{worktree}", "{prompt_file}", "{report_file}", "{timeout}"]')
@@ -515,7 +516,7 @@ lifecycle() {
 }
 status_json() {
   local dir=${1:-$INTEG}
-  python3 "$ENGINE" "$dir" --parallel-status --json 2>/dev/null
+  python3 "$ENGINE" "$dir" --parallel-status --json 2>/dev/null 9>&-
 }
 
 load_session() {  # "ro" never recreates a missing worktree
@@ -586,7 +587,8 @@ fi
 mkdir -p "$STATE_PATH/sessions" "$STATE_PATH/runs" "$WT_ROOT" || die 2 "Cannot create state directory $STATE_PATH"
 STATE=$STATE_PATH
 exec 9>>"$STATE/lock"
-if ! flock -n 9; then
+# A coordinator that was just killed can leave a helper holding the lock for a few seconds.
+if ! flock -w 15 9; then
   owner=$(jq -r '"PID \(.pid), started \(.started)"' "$STATE/runner.json" 2>/dev/null || echo 'unknown owner')
   die 3 "Another pi-autowork runner holds $REPO ($owner)."
 fi

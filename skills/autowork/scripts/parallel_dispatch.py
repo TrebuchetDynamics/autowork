@@ -29,6 +29,11 @@ TEMPLATES = {
               '--add-dir', '{git_common_dir}', '-'],
     'pi': ['pi', '-p', '@{prompt_file}'],
 }
+# Live qualification (TOOLSET-091-00, 2026-10-15): Codex 0.162.1 workers edit and check
+# the task but cannot commit, because the workspace-write sandbox keeps Git metadata
+# read-only. Without an approval bypass (never added here) they stay sequential-only.
+UNQUALIFIED = {'codex': 'Codex workers cannot commit: its workspace-write sandbox keeps Git metadata read-only '
+                        '(qualified 2026-10-15); pass --worker-command to supply your own worker'}
 HOST_NAMES = {'hermes': 'hermes', 'hermes_cli': 'hermes', 'codex': 'codex', 'pi': 'pi', 'claude': 'claude'}
 OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', 'held', 'interrupted')
 
@@ -78,6 +83,8 @@ def worker_command(args, owner_pid):
         template[1:1] = ['-p', args.worker_profile]
     if shutil.which(template[0]) is None:
         return None, f'worker CLI {template[0]!r} is not installed'
+    if host in UNQUALIFIED:
+        return None, UNQUALIFIED[host]
     return template, host
 
 
@@ -130,7 +137,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False):
         f'- Work only inside {worktree}; change only paths within Touches: {touches}',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
         '  Put a one-line CHANGELOG proposal in the report instead.',
-        '- Run the task\'s relevant offline checks. Use $TMPDIR for temporary files and only',
+        '- Run the task\'s relevant offline checks. Report each check once, with its final result',
+        '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
+        '  holds the task). Use $TMPDIR for temporary files and only',
         '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
         f'- When done, commit once on {branch}. Never push, merge, rebase, switch branches, or touch',
         '  another worktree. A finished commit is not task completion; the coordinator integrates.',

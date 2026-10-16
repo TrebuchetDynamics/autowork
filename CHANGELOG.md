@@ -197,6 +197,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel Autowork names the processes behind a "live or unknown external writer" hold
+  (PID, name, checkouts touched, evidence), tells workers to report each check's final
+  result only (a listed early failure held the task), and returns `SEQUENTIAL_FALLBACK`
+  for Codex workers, which live qualification showed cannot commit inside Codex's
+  workspace-write sandbox.
 - Parallel Autowork no longer holds a worker that was interrupted or released and then
   restarted: integration expected the `-r2` branch of a held retry, so every restarted
   task failed with `unexpected worker branch`. Found while qualifying `pi-autowork.sh`.

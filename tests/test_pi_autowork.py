@@ -107,6 +107,10 @@ elif role == 'merge':
     finish(text='PI_AUTOWORK_RESULT: completed')
 elif behavior == 'complete':
     work(); finish(text='done')
+elif behavior == 'slow':  # busy for a few seconds, then finishes normally
+    open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
+    subprocess.run(['sleep', '6'])  # a running tool command, as real Pi has: an active session
+    work(); finish(text='done')
 elif behavior == 'barrier':  # both A and B must be running at once
     mine = os.path.join(os.environ['FAKE_PI_ROOT'], 'ready-' + task)
     open(mine, 'w').write('ready')
@@ -343,6 +347,27 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.branches(), ['main'])
+
+    def test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers(self):
+        """Live qualification found a restart refused while a dead runner's helper held the lock."""
+        self.plan({'worker:A': ['slow']})
+        runner = self.start_runner('--workers', '1')
+        self.wait_for(self.root / 'busy-A')
+        runner.kill()
+        runner.wait()
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # adopted, not restarted
+        self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_a_task_integrates_while_another_worker_is_still_running(self):
+        """Live qualification: a running worker's prompt path under .git made the engine
+        treat it as a writer in the main checkout and hold every other integration."""
+        self.plan({'worker:B': ['slow']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('external writer', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
