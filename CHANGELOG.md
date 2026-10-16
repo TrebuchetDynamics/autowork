@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A task held for a person now blocks only the tasks that depend on it, not tasks
+  whose declared paths overlap its own: it reruns fresh from later code and never
+  merges as is. One held sierra task with wide inferred Touches held up 34 others.
 - A `pi-autowork` service records a changed TODO.md order itself (guarded
   `goals.py reorder`, committing only goals.json) and selects again, as scheduled
   Autowork runs are documented to do; before, it asked a person and waited. A refusal
