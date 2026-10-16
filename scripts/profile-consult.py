@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import fcntl
 import hashlib
+import importlib.util
 import math
 import json
 import os
@@ -230,22 +231,12 @@ def read_database(path):
     return db
 
 
-def response_body(data, job_id):
-    """Accept the native character-framed document, never guess at log delimiters."""
-    text = data.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
-    header = re.match(r'\A# Cron Job: [^\n]+\n\n\*\*Job ID:\*\* ([A-Za-z0-9_-]+)\n'
-                      r'\*\*Run Time:\*\* [^\n]+\n\*\*Schedule:\*\* [^\n]+\n\n'
-                      r'\*\*Prompt Characters:\*\* ([0-9]{1,6})\n## Prompt\n\n', text)
-    if not header or header[1] != job_id:
-        raise ValueError('unknown output envelope')
-    tail = text[header.end() + int(header[2]):]
-    frame = re.match(r'\n\n\*\*Response Characters:\*\* ([0-9]{1,6})\n## Response\n\n', tail)
-    if not frame:
-        raise ValueError('unknown response frame')
-    response = tail[frame.end():]
-    if not response.endswith('\n') or len(response) != int(frame[1]) + 1 or not response[:-1].strip():
-        raise ValueError('incomplete response frame')
-    return response[:-1]
+_output_spec = importlib.util.spec_from_file_location(
+    'cron_output', Path(__file__).resolve().parents[1] / 'skills/autowork/scripts/cron_output.py')
+assert _output_spec is not None and _output_spec.loader is not None
+_output = importlib.util.module_from_spec(_output_spec)
+_output_spec.loader.exec_module(_output)
+response_body = _output.response_body
 
 
 def reuse_fingerprint(name, root, hermes, seconds):

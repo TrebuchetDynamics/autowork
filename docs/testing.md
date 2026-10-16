@@ -20,6 +20,15 @@ claiming or starting anything.
 
 ## Verify
 
+Native response framing regressions preserve complete answers containing embedded
+Response headings, Unicode and long prompts. The collector shares the consultation
+cache's character-count parser, reads native documents up to 256 KiB, and redacts
+before capping display at 32,768 characters. Invalid or oversized frames produce
+explicit gaps; legacy compatibility tails retain their unknown-coverage boundary.
+`python3 -m unittest discover -s skills/autowork/scripts -p test_response_tail.py`
+and `python3 -m unittest discover -s tests -p test_profile_consult.py` cover both
+callers. Frame validity does not prove execution/file association or completion.
+
 Fleet execution metadata is bounded to twelve recent records per existing job,
 not twelve across a profile: frequent sync occurrences must not hide paused
 or infrequent development jobs. Collector regressions cover cross-job starvation,

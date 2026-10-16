@@ -23,6 +23,7 @@ from uuid import uuid4
 
 import yaml
 from candidate_identity import git_environment
+from cron_output import response_body
 from retry_selection import goals
 
 
@@ -126,27 +127,51 @@ def cron_responses(home, jobs, gaps):
                 try:
                     with path.open('rb') as handle:
                         size = os.fstat(handle.fileno()).st_size
-                        start = max(0, size - 32768)
-                        handle.seek(start)
-                        data = handle.read(32768)
+                        native = handle.read(64).startswith(b'# Cron Job: ')
+                        if native:
+                            if size > 256 * 1024:
+                                gaps.append('native response exceeds read bound: ' + identifier)
+                                continue
+                            handle.seek(0)
+                            data = handle.read(256 * 1024 + 1)
+                            start = 0
+                        else:
+                            start = max(0, size - 32768)
+                            handle.seek(start)
+                            data = handle.read(32768)
                 except OSError:
                     gaps.append('cron response unreadable: ' + identifier + ': ' + safe(path.name))
                     continue
-                truncated = start > 0
-                text = data.decode('utf-8', errors='replace')
-                if truncated:
-                    text = '[EARLIER OUTPUT OMITTED; PARTIAL FIRST LINE REDACTED]\n' + text.partition('\n')[2]
-                    gaps.append('cron response truncated: ' + identifier)
-                sections = re.split(r'^## Response\n\n', text, flags=re.M)
-                projection = 'Response delimiter absent from observed tail; compatibility tail only'
-                if len(sections) > 1:
-                    text = sections[-1]
-                    projection = 'text after last exact Response delimiter in observed tail'
+                if native:
+                    try:
+                        if len(data) != size:
+                            raise ValueError('output size changed')
+                        text = safe(response_body(data, identifier))
+                    except (ValueError, UnicodeError):
+                        gaps.append('native response frame invalid: ' + identifier)
+                        continue
+                    projection = 'validated native character frame; complete output read'
+                    if len(text) > 32768:
+                        text = text[:32768] + '\n[RESPONSE TAIL OMITTED]'
+                        gaps.append('native response display truncated: ' + identifier)
+                        projection += '; redacted response display truncated'
+                else:
+                    text = data.decode('utf-8', errors='replace')
+                    if start > 0:
+                        text = '[EARLIER OUTPUT OMITTED; PARTIAL FIRST LINE REDACTED]\n' + text.partition('\n')[2]
+                        gaps.append('cron response truncated: ' + identifier)
+                    sections = re.split(r'^## Response\n\n', text, flags=re.M)
+                    projection = 'Response delimiter absent from observed tail; compatibility tail only'
+                    if len(sections) > 1:
+                        text = sections[-1]
+                        projection = 'text after last exact Response delimiter in observed tail'
+                    text = safe(text)
+                    projection += '; full output coverage not proved'
                 rows.append({'job_id': identifier, 'path': str(path), 'start': start, 'bytes_observed': len(data),
                              'remaining_bytes': start + max(0, size - start - len(data)), 'sha256': digest(data),
-                             'payload': safe(text), 'analysis': 'not_analyzed',
+                             'payload': text, 'analysis': 'not_analyzed',
                              'output_rank': 1 if path == paths[-1] else 2, 'latest': path == paths[-1],
-                             'boundary': 'newest two output files by filename order; rank 1 is latest; exact execution association not proved; ' + projection + '; full output coverage not proved'})
+                             'boundary': 'newest two output files by filename order; rank 1 is latest; exact execution association not proved; ' + projection})
         except OSError:
             gaps.append('cron response unreadable: ' + identifier)
     return rows

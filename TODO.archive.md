@@ -2017,3 +2017,24 @@ Source section: Next
 - Prior work: TOOLSET-068 (done, archived).
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-103-fe — Preserve native cron response framing in fleet evidence
+
+- [x] TOOLSET-103-fe — Preserve native cron response framing in fleet evidence
+- Status: done
+- Evidence: Reviewed source tree 23b46fb938cd9cbe9bfcab014602880092f56569; original RED lost the opening blocker, corrected response tests and consultation tests pass. Full Python 3.12 offline retry passed 562/712/212/8 tests, one skip and eight excluded modules with no source drift. Initial full run's unrelated idle-runner log-line assertion failed; unchanged focused and complete reruns passed, with the original failure retained. Independent exact-tree source review approved. Read-only fleet replay validated 20 complete native answers, including 12 formerly tail-truncated files; source outputs stayed unchanged. Installed adoption remains open under TOOLSET-101-f6.
+- Goal: RECOVERY
+- Sources: [accepted maintenance scope](docs/project.md#accepted-requirements), [feedback contract](skills/autowork/references/profile-feedback.md).
+- Touches: skills/autowork/scripts/audit_profiles.py, skills/autowork/scripts/cron_output.py, scripts/profile-consult.py, skills/autowork/scripts/test_response_tail.py, skills/autowork/references/profile-feedback.md, docs/testing.md, CHANGELOG.md
+- Scope: The collector currently splits at the last Response heading, losing a native answer's opening blocker when that answer itself quotes the heading. Reuse the consultation helper's character-framed parser for bounded native outputs; retain explicitly unverified legacy tails. Preserve response redaction, exact job-directory checks and read-only source bytes.
+- Acceptance: A complete native answer survives embedded headings and Unicode; malformed or oversized framed outputs produce explicit gaps instead of a guessed response. Existing legacy-tail, confidentiality, ranking and consultation reuse regressions pass. The same read-only fleet response consumer returns exact framed bodies within its display bound, without product or job mutations.
+- Checks: RED/GREEN response-tail regression; python3 -m unittest discover -s skills/autowork/scripts -p test_response_tail.py; python3 -m unittest discover -s tests -p test_profile_consult.py; python3 scripts/check.py; exact-tree independent review; same-consumer read-only replay; git diff --check.
+- Dependencies: None.
+- Ownership: Default shared-source maintainer under existing audit repair authority.
+- Planner's call: Skip only TOOLSET-101-f6's already-separated installed adoption because its native scan approval remains unavailable. This independent reporting repair does not clear or reset that primary hold.
+- Exclusions: No scan bypass, installation, product/Agent edits, schedule changes, worker launch, push or live qualification.

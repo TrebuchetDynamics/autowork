@@ -8,6 +8,69 @@ from audit_profiles import cron_responses
 
 
 class ResponseTailTests(unittest.TestCase):
+    @staticmethod
+    def native_output(response, prompt='saved output\n## Response\n\nOLD RESULT'):
+        return ('# Cron Job: Fixture\n\n**Job ID:** j1\n**Run Time:** 2026-10-16 03:00:00\n'
+                '**Schedule:** every 15m\n\n**Prompt Characters:** ' + str(len(prompt)) +
+                '\n## Prompt\n\n' + prompt + '\n\n**Response Characters:** ' +
+                str(len(response)) + '\n## Response\n\n' + response + '\n')
+
+    def test_native_frame_preserves_opening_blocker_and_embedded_heading(self):
+        from audit_profiles import safe
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-16.md'
+            response = 'BLOCKED: aprobación pendiente 🚦\n\n## Response\n\nQuoted example\ntoken=private-value'
+            for prompt in ('small prompt', 'prompt 🚦\n' * 5000):
+                with self.subTest(large_prompt=len(prompt) > 32768):
+                    path.write_text(self.native_output(response, prompt))
+                    before = path.read_bytes()
+                    gaps = []
+                    row = cron_responses(home, [{'id': 'j1'}], gaps)[0]
+                    self.assertEqual(row['payload'], safe(response))
+                    self.assertEqual(row['bytes_observed'], len(before))
+                    self.assertEqual(row['remaining_bytes'], 0)
+                    self.assertIn('validated native character frame', row['boundary'])
+                    self.assertNotIn('private-value', row['payload'])
+                    self.assertEqual(gaps, [])
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_invalid_or_oversized_native_frame_never_guesses_a_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            path = output / '2026-10-16.md'
+            text = self.native_output('BLOCKED\n\n## Response\n\nQuoted example')
+            for value in (text[:-2], text.replace('**Job ID:** j1', '**Job ID:** other'),
+                          text.replace('**Prompt Characters:**', '**Unknown Characters:**'),
+                          text.replace('**Response Characters:** ' + str(len('BLOCKED\n\n## Response\n\nQuoted example')),
+                                       '**Response Characters:** 999'),
+                          self.native_output('result', 'x' * (256 * 1024))):
+                with self.subTest(size=len(value)):
+                    path.write_text(value)
+                    before = path.read_bytes()
+                    gaps = []
+                    self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
+                    self.assertTrue(any('native response' in gap for gap in gaps), gaps)
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_native_response_display_is_bounded_after_redaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            response = 'BLOCKED\n' + 'detail\n' * 6000
+            (output / '2026-10-16.md').write_text(self.native_output(response))
+            gaps = []
+            row = cron_responses(home, [{'id': 'j1'}], gaps)[0]
+            self.assertTrue(row['payload'].startswith('BLOCKED\n'))
+            self.assertLessEqual(len(row['payload']), 32850)
+            self.assertIn('RESPONSE TAIL OMITTED', row['payload'])
+            self.assertIn('native response display truncated: j1', gaps)
+
     def test_quoted_credentials_are_masked_before_field_delimiters(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

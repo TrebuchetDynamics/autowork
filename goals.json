@@ -197,6 +197,11 @@
           "kind": "executed",
           "ref": "TOOLSET-022 exact 816678e3 native independent review run406 approved; integration 5f49a2e0: Python 3.12 scripts/check.py on frozen integration candidate passed 332/510/139/8 offline tests, three skips/eight native-model-integration modules excluded; whitespace passed; native/model/live/startup unqualified",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-103-fe exact reviewed tree 23b46fb: Python 3.12 scripts/check.py retry passed 562/712/212/8 tests, one skip/eight exclusions; 20 exact-framed read-only response replays; installed adoption TOOLSET-101-f6 remains open",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -220,7 +225,8 @@
         "TOOLSET-083",
         "TOOLSET-092-18",
         "TOOLSET-100-78",
-        "TOOLSET-101-f6"
+        "TOOLSET-101-f6",
+        "TOOLSET-103-fe"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -518,7 +524,6 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
-      "TOOLSET-073",
       "TOOLSET-102-ea",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -527,6 +532,7 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
+      "TOOLSET-103-fe",
       "TOOLSET-101-f6"
     ]
   },
@@ -1301,6 +1307,14 @@
       "section": "Done",
       "status": "done",
       "title": "Retain execution evidence for every existing profile job"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-103-fe",
+      "section": "Done",
+      "status": "done",
+      "title": "Preserve native cron response framing in fleet evidence"
     },
     {
       "depends_on": [

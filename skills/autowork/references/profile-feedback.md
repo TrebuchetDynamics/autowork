@@ -33,6 +33,14 @@ alias must produce a gap, never another job's falsely attributed output. Keep
 healthy neighboring responses and test this through the actual collector; the
 path check is not a race-proof filesystem sandbox or execution-to-file binding.
 
+For native character-framed outputs, use the shared `cron_output.response_body`
+parser, not the last Markdown Response heading: an answer can quote that heading
+without starting a new result. Read at most 256 KiB, validate the job ID and both
+character counts, redact the complete answer, then cap its displayed prefix at
+32,768 characters with an explicit omission. Invalid or oversized framed outputs
+are gaps, never guessed answers. Legacy tails remain explicitly unverified;
+filename order and a valid frame do not bind a file to a completed execution.
+
 Use the shared executable `scripts/profile-consult.py`, independent of optional
 cron tool schemas. Run it with the default root, a NEW private
 maintenance output directory, and a file containing the auditor's local default

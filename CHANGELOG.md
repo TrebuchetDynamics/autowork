@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Fleet response evidence now validates native character-framed outputs, preserving
+  opening blockers when an answer quotes a Response heading (TOOLSET-103-fe).
+  The collector and consultation cache share the parser. Invalid/oversized native
+  frames produce gaps; bounded legacy tails remain explicitly unverified.
+  This source repair does not establish installation or worker recovery.
+
 - Autowork receipt generation caches package parsing and interpreter hashes within
   a process (TOOLSET-072), while detecting package additions, removals, metadata
   edits and executable replacement. Uninspectable search paths and custom metadata
