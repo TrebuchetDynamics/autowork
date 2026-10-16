@@ -1524,7 +1524,7 @@ Source section: Next
 ### TOOLSET-079 — Report linked profiles and offer pinned clones
 
 - [x] TOOLSET-079 — Report linked profiles and offer pinned clones
-- Status: done (2026-10-15). `linked_profiles()` reports each profile whose plugin is a link, with the checkout's revision, whether it is dirty and whether that revision is on upstream `main` as last fetched; `/toolset update status` (live, plus `linked_profiles` in the receipt) and `hermes toolset doctor` (`linked_profiles`, never a failure) list them. `hermes toolset pin --profile NAME [--dry-run]` clones the checkout at the linked revision under the update lock, saves the link and its record in `maintenance/toolset-update/pinned/`, and swaps the clone in; it refuses a dirty checkout, an unreleased revision or a running update. `--unpin` restores the link and keeps the clone. Twelve new regressions, including an update advancing the pinned clone while a later local commit does not reach it; a read-only live dry run listed 7 linked profiles (default, golf, charlie, india, juliet, sierra, bravo) and refused pinning while main is ahead of origin; `python3 scripts/check.py` 506/576 (1 skipped)/209/8; Pi 3 passed. Offline only; no live profile converted.
+- Status: done (2026-10-15). `linked_profiles()` reports each profile whose plugin is a link, with the checkout's revision, whether it is dirty and whether that revision is on upstream `main` as last fetched; `/toolset update status` (live, plus `linked_profiles` in the receipt) and `hermes toolset doctor` (`linked_profiles`, never a failure) list them. `hermes toolset pin --profile NAME [--dry-run]` clones the checkout at the linked revision under the update lock, saves the link and its record in `maintenance/toolset-update/pinned/`, and swaps the clone in; it refuses a dirty checkout, an unreleased revision or a running update. `--unpin` restores the link and keeps the clone. Twelve new regressions, including an update advancing the pinned clone while a later local commit does not reach it; a read-only live dry run listed 7 linked profiles and refused pinning while main is ahead of origin; `python3 scripts/check.py` 506/576 (1 skipped)/209/8; Pi 3 passed. Offline only; no live profile converted.
 - Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
 - Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [updater](update_bundle.py).
 - Scope: Report which profiles load the plugin through a link to a working checkout (they go live with whatever that checkout contains on any restart) and offer an explicit, reversible conversion to a pinned clone that only an update advances.
@@ -1600,3 +1600,63 @@ Source section: Next
 - Planner calls while implementing: the prompt arrives both as a file and on stdin; a slot whose clean worker died is retried once like an interrupted one; held slots are left to TOOLSET-088-a7; a `--worker-host auto` coordinator is identified from its process ancestry.
 - Independent review (2026-10-15) found and this task fixed: Hermes coordinators (`python3 -I -c '<hermes_cli>'`) were not auto-detected; the worker timeout came from each call instead of the worker's start; a child surviving its leader let a restart put a second writer in the worktree (liveness and stop now cover the whole process group, escalating to SIGKILL); a dispatch interrupted before its slot blocked the task forever (the journal-recorded worktree is now adopted); launch failures spent the retry (now held with the cause); malformed queues looked idle (`NoEligibleTask` now separates them); dispatch and wait passes are serialized by `dispatch.lock`.
 - Checks run: `test_parallel_dispatch.py` 17 passed (the 6 new regressions fail on the pre-fix commit `0a84fb2`), the first 10 passed 5 consecutive runs; `test_parallel_state.py` and `test_parallel_plan.py` pass; `python3 scripts/check.py` passed all four offline directories; `git diff --check` clean. The dispatch-lock race has no deterministic test.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-092-f2 — Keep the restart outcome when a later update replaces the receipt
+
+- [x] TOOLSET-092-f2 — Keep the restart outcome when a later update replaces the receipt
+- Status: done (2026-10-15). `finish_restart` stores the outcome in `restart.json` (`finished`, `outcome`), rereads the marker under the update lock so an update that joined meanwhile keeps its `covers`, and every update records a finished restart before it replaces the receipt. `/toolset update status` shows `Last gateway restart (requested …): completed, PID N, menus resent K of M` (`last_gateway_restart` in the full receipt) when the latest receipt does not cover that restart. Four new regressions failed on the previous code and pass; `python3 scripts/check.py` passed. Offline only; live confirmation stays in TOOLSET-084.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: TOOLSET-084 live evidence (receipts replaced at 15:52 and 15:53 on 2026-10-15), [updater](update_bundle.py), [status](bundle.py).
+- Scope: Keep a finished restart's outcome durable and visible even when a later update or check replaces the receipt it covers.
+- Acceptance: The outcome survives in `restart.json`; the next update records it before writing its own receipt; status shows it for a receipt that does not cover the restart; a concurrent join is not lost.
+- Checks: `tests/test_update_quiet_restart.py` RestartOutcomeTests, `tests/test_bundle.py`, `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No Hermes changes; no live restart in this task.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-084 — Qualify the gentler update rollout live
+
+- [x] TOOLSET-084 — Qualify the gentler update rollout live
+- Status: done (2026-10-15). Confirming run after TOOLSET-092-f2 (afe1482): `hermes toolset update` requested the restart at once with no chat turn in flight; the gateway restarted as PID 553964 at 16:49:53; `/toolset update status`, run through the pinned plugin's own code, showed `Gateway restart: completed, new gateway PID 553964` with menus resent for all nine Telegram profiles and none missing, and `restart.json` kept the same outcome. The only timeout logged was Hermes' 30 s cron drain; cron workers started 43 and 59 minutes earlier were still running afterwards. Earlier live evidence follows.
+- Evidence: Live evidence 2026-10-15. (1) The 15:33 restart was requested by the deferred waiter with no chat turn in flight; a Telegram turn that started at the same moment made Hermes wait, and it ended on its own at 15:37:26 with 1590 s left before any forced drain, and the gateway restarted at 15:38:24. (2) The 15:50 restart was requested at once (no chat turn) and completed as PID 3947525 at 15:51:05; all nine Telegram profiles logged a menu resend. Both restarts logged only the 30 s cron-drain timeout ("interrupting remaining work"); the three external cron workers of the 15:50 restart kept running. (3) Two concurrent `update_bundle.py --check` runs: the second waited 10 s, exited 3 with `busy`, the first run's PID/mode/start, and left its receipt untouched. (4) All seven linked profiles were pinned at the linked revision 02c017c; each is a clean clone and later updates advanced them (57ca912, then the other writer's 82c78a5) while the checkout's unreleased state no longer reaches them. Gap: two later updates (15:52, 15:53) replaced the 15:49 receipt before its outcome was recorded, so no receipt kept `completed`; fixed offline in TOOLSET-092-f2.
+- Goal: GENTLE-UPDATE — Roll out updates without forcing gateway restarts.
+- Sources: [rollout findings](docs/project.md#gentler-update-rollout-2026-10-15), [update guide](docs/installation.md#update-all-profiles), [linked profiles](docs/installation.md#linked-profiles-and-pinned-clones).
+- Scope: After the user publishes TOOLSET-075..079 and asks for an update, run `hermes toolset update` and confirm from the receipt and gateway log that the restart was requested only with no chat turn in flight (or deferred and later completed), that `/toolset update status` shows the new gateway PID and menu resends, and that a second update during the first reports `busy`. With the user's OK, pin one linked profile and confirm it loads the clone after the next restart.
+- Acceptance: A live receipt records `gateway_restart: completed` with `gateway_restart_result`, or a deferred restart that later completed; no forced drain appears in the gateway log for that restart; any pinned profile runs the same revision as before.
+- Checks: `/toolset update status full`; the gateway log around the restart; `git -C PROFILE/plugins/hermes-toolset rev-parse HEAD` for a pinned profile.
+- Dependencies: TOOLSET-092-f2.
+- Prior work: TOOLSET-079 (done, archived).
+- Ownership: Toolset coordinator; live steps need the user's request.
+- Exclusions: No push, update, restart or pinning without the user's request.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-088-a7 — Integrate finished workers one at a time and close tasks only after validation
+
+- [x] TOOLSET-088-a7 — Integrate finished workers one at a time and close tasks only after validation
+- Status: done
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [delivery verifier](skills/autowork/scripts/delivery_state.py), [bounded runner](skills/autowork/scripts/task_execution.py).
+- Scope: Add `skills/autowork/scripts/parallel_integrate.py` and flags `--integrate TASK --run ARGV... --timeout S` and `--parallel-close TASK`. Integrate in priority order among `reported` slots, under the writer lock: verify the commit descends from the slot baseline and matches `report.json`; compare `git diff --name-only baseline..commit` with the task's `Touches:`, coordinator-owned files and other slots' files (`parallel_plan.overlap`), holding the task on any mismatch; in the coordinator-owned integration worktree (`<parent>/<repo>-autowork-integration`, detached), check out canonical HEAD and run `git merge --no-ff autowork/<TASK>`, aborting and holding on conflict; run the validation argv in that worktree through the bounded process core factored out of `command()` (cwd parameter, no `active.json`, `writer.lock` only around state writes; sequential `command()` output byte-identical); then fast-forward the canonical checkout with `git merge --ff-only` only if its HEAD is unchanged (redo the merge once on a moved HEAD; hold after that). Record `integrated` with the merge commit and check receipt. `--parallel-close` refuses unless the slot is `integrated` with a passing validation receipt, then runs `goals.py task TASK done` (and `goals.py archive`), journals it, and removes the clean worker worktree and branch it created. Held and failed slots keep their worktrees. Once no worker is running, a held slot gets one fresh attempt on `autowork/<TASK>-r2` from the current canonical HEAD; a second failure stays held for Plan For Me's fix-or-skip.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Tests show: a clean worker branch merges and validates, then closes; `--parallel-close` before integration or after a failed validation is refused and the ledger is unchanged; a merge conflict leaves the canonical checkout, its dirty user files and the worker branch untouched and holds the task; a file outside `Touches:` or a coordinator-owned file holds integration; a moved canonical HEAD is re-merged once; a held task gets exactly one fresh `-r2` attempt after the pool drains, keeping the first attempt's branch; sequential `--run` output is unchanged; a failed worker never removes another slot's commit or worktree; the canonical checkout is only ever fast-forwarded.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_integrate.py` (new); `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-087-32.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No rebase, automatic conflict resolution, reset of the canonical checkout, push or remote integration.
+- Delivery (2026-10-15): `parallel_integrate.py` plus `--integrate TASK --run ARGV... --timeout S` and `--parallel-close TASK` on `owner_cycle.py`; results `INTEGRATED`, `CLOSED`, `RETRIED`. Validation runs in the detached integration worktree through `bounded_command()`, factored out of the sequential `command()` (whose lease, budget and receipt output are unchanged); the canonical checkout is only fast-forwarded. Held slots get one fresh `autowork/<TASK>-r2` attempt once no worker runs (`dispatch_with_retries`). Close cleanup is retryable and follows Docs Sync's archive owner, including legacy and linked archives.
+- Implementation: by the toolset Autowork cron (b8ac329, review fixes 2927cca, archive-owner fix 0e2fa22, refreshed onto main as 1e5b97b), with the cron's independent review approving the final source. Canonical integration was held by the cron while other sessions were active in canonical main; the interactive coordinator took the released lease and integrated.
+- Checks run: `test_parallel_integrate.py` (48) with `test_parallel_dispatch.py` 65 passed together; every acceptance item has a named test (clean merge/close, close refusal and byte-identical ledger, conflict preserving dirty files and other slots, outside-Touches and coordinator-file holds, moved HEAD re-merged once then held, single `-r2` retry after drain, sequential output byte-identical, ff-only canonical updates); `python3 scripts/check.py` passed all four offline directories on the merge (510/664/212/8); `git diff --check` clean. Offline only; real workers remain TOOLSET-091-00.

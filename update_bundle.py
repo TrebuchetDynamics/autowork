@@ -1,5 +1,6 @@
 """Explicit, fast-forward-only bundle updates across existing Hermes profiles."""
 import argparse
+import contextlib
 import datetime
 import fcntl
 import hashlib
@@ -598,12 +599,13 @@ def _telegram_profiles(root):
     return found
 
 
-def finish_restart(root, folder):
+def finish_restart(root, folder, *, locked=False):
     """Record the outcome of a requested restart that is no longer running, once.
 
     Returns the outcome fields, or None while the restart is still draining, the new
-    gateway has not started yet, or there is nothing to finish. The receipt is updated
-    only when it belongs to a covered update and no update is running.
+    gateway has not started yet, or there is nothing to finish. The outcome is kept in
+    the restart marker, so it outlives the receipt, and copied to the receipt when that
+    still belongs to a covered update. Pass locked=True when holding the update lock.
     """
     record = _read_marker(folder)
     if 'pid' not in record or record.get('finished') or pending_restart(folder) is not None:
@@ -631,12 +633,17 @@ def finish_restart(root, folder):
                    'gateway_restart_result': {'gateway_pid': now, 'gateway_started': started,
                                               'menus_resent': sorted(resent), 'menus_not_seen': sorted(not_seen),
                                               'interrupted': interrupted}}
-    lock = _try_update_lock(folder)
-    if lock is not None:
-        with lock:
-            fields = {k: v for k, v in outcome.items() if k != 'gateway_restart'}
-            _record_restart_outcome(folder, record.get('covers') or [], outcome['gateway_restart'], **fields)
-            _write_marker(folder, {**record, 'finished': outcome['gateway_restart']})
+    lock = None if locked else _try_update_lock(folder)
+    if not locked and lock is None:
+        return outcome  # an update is running; it records the outcome when it starts
+    with lock if lock is not None else contextlib.nullcontext():
+        # Reread under the lock: an update may have joined this restart since.
+        current = _read_marker(folder)
+        if current.get('requested_ns') != record.get('requested_ns') or current.get('finished'):
+            return outcome
+        fields = {k: v for k, v in outcome.items() if k != 'gateway_restart'}
+        _record_restart_outcome(folder, current.get('covers') or [], outcome['gateway_restart'], **fields)
+        _write_marker(folder, {**current, 'finished': outcome['gateway_restart'], 'outcome': outcome})
     return outcome
 
 
@@ -1339,6 +1346,11 @@ def main(argv=None):
                                               'once it finishes.'}, indent=2))
                     return 3
                 time.sleep(0.2)
+        try:
+            # Record a finished restart on the receipt it covers before this run replaces it.
+            finish_restart(root, state_dir, locked=True)
+        except (ValueError, OSError):
+            pass
         result = {'status': 'running', 'pid': os.getpid(), 'started_ns': time.time_ns(),
                   'mode': 'check' if args.check else 'update'}
         receipt = state_dir / 'latest.json'
