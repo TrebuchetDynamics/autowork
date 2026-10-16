@@ -306,6 +306,25 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'HEAD'), merged)
         self.assertIn('A', [t['id'] for t in execution.select_all(self.repo, None, None)])
 
+    def test_an_integrated_task_archived_by_someone_else_is_set_aside_not_requeued(self):
+        """bravo TASK-001: another writer archived the entry, edited, after the merge."""
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        text = todo.read_text()
+        start, end = text.index('- [ ] A'), text.index('- [ ] B')
+        (self.repo / 'TODO.archive.md').write_text('# Completed\n\n' + text[start:end].replace('- [ ] A', '- [x] A')
+                                                   .replace('offline fixture', 'edited while archiving'))
+        todo.write_text(text[:start] + text[end:])
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'someone archives A')
+        with self.assertRaisesRegex(ValueError, module.CONTRACT_CHANGED):
+            module.close(self.repo, self.owner, 'A')
+        result = module.set_aside(self.repo, self.owner, 'A')
+        self.assertEqual((result['outcome'], result['requeued']), ('SET_ASIDE', False))
+        self.assertNotIn('A', [t['id'] for t in dispatch.contracts(self.repo)])
+
     def test_an_exhausted_hold_does_not_hold_other_work_at_integration(self):
         self.exhaust('A')
         todo = self.repo / 'TODO.md'

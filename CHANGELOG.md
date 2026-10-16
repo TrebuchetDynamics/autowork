@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A merged task whose TODO entry someone else archived or removed afterwards is
+  set aside automatically (its merge stays; nothing is queued again) instead of
+  retrying its close every cycle (bravo TASK-001).
 - Runner health ignores a status read the engine could not answer (its state lock
   busy with a `--status` or `--fleet` reader). Such a read used to count as idle and
   restart the stall clock, so polling status could hold back a stall announcement.
