@@ -21,7 +21,8 @@
       "tasks": [
         "TOOLSET-001",
         "TOOLSET-035",
-        "TOOLSET-121-3d"
+        "TOOLSET-121-3d",
+        "TOOLSET-123-de"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -593,7 +594,8 @@
         "TOOLSET-117-cb",
         "TOOLSET-118-68",
         "TOOLSET-119-2b",
-        "TOOLSET-120-fc"
+        "TOOLSET-120-fc",
+        "TOOLSET-122-27"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -604,6 +606,8 @@
       "TOOLSET-099-87",
       "TOOLSET-115-bf",
       "TOOLSET-120-fc",
+      "TOOLSET-122-27",
+      "TOOLSET-123-de",
       "TOOLSET-121-3d",
       "TOOLSET-117-cb",
       "TOOLSET-118-68",
@@ -644,6 +648,24 @@
       "section": "Now",
       "status": "open",
       "title": "Hands-off runners: the owner only plans and answers questions"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-122-27",
+      "section": "Now",
+      "status": "open",
+      "title": "An autowork command: the TUI home, service runners by default, no tmux"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-122-27"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-123-de",
+      "section": "Now",
+      "status": "open",
+      "title": "One install.sh for every component, chosen with checkboxes"
     },
     {
       "depends_on": [],
