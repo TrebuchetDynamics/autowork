@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Docs Sync reports array/object role statuses as validation errors instead of
+  crashing in set membership (TOOLSET-113-04). `validate`, `check` and `stale`
+  retain role-specific diagnostics and continue reporting independent field errors.
+
 - Profile consultations retain valid replies and subprocess exit verdicts when
   stderr contains malformed UTF-8 diagnostics (TOOLSET-112-29). Protocol stdout
   remains strict; malformed reply bytes are not accepted as repaired evidence.

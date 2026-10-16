@@ -2249,3 +2249,24 @@ Source section: Now
 - Touches: scripts/profile-consult.py, tests/test_profile_consult.py, skills/autowork/references/profile-feedback.md, docs/testing.md, CHANGELOG.md
 - Planner's call: Preserve TOOLSET-101-f6's separate native confirmation gate; skip its unavailable deployment operation without another unchanged scan. Execute this reproduced independent source defect, not product or worker recovery.
 - Exclusions: No extra live consultation wave, profile/product edits, scan bypass, worker replacement, schedule activation, push or deployment.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-113-04 — Report malformed role statuses without crashing
+
+- [x] TOOLSET-113-04 — Report malformed role statuses without crashing
+- Status: done
+- Goal: DOCS-COMPLETENESS
+- Sources: [accepted requirements](docs/project.md#accepted-requirements), [manifest validator](skills/docs-sync/scripts/docs.py), [CLI regressions](skills/docs-sync/scripts/test_docs_manifest.py).
+- Scope: Validate role status types before set membership; report malformed JSON container statuses through the existing diagnostic path in validate, check and stale.
+- Acceptance: Array/object role statuses produce a role-specific unknown-status diagnostic and exit 1 without traceback or file changes; supported status values retain existing behavior and independent malformed fields are still reported.
+- Checks: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_docs_manifest.py -v`; `python3 scripts/check.py`; independent diff review; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current Toolset coordinator under autonomous local repository authority.
+- Touches: skills/docs-sync/scripts/docs.py, skills/docs-sync/scripts/test_docs_manifest.py, docs/testing.md, CHANGELOG.md
+- Exclusions: No installed-profile edits, live models, deployment, schedules or push.
+- Evidence: Twelve container-status/CLI subcases failed before the fix; all 24 manifest CLI tests passed afterward. Independent exact-source review approved. Python 3.12 `scripts/check.py` passed 568/715/217/8 tests across four directories, one skip and eight native/model/integration modules excluded. Offline only.
+- Planner's call: Reuse the existing validator and unknown-status diagnostic, adding only a string-type guard. Skip the already-separated fleet/model acceptance under TOOLSET-096-7e; other current tasks need excluded live or deployment access. Preserve their acceptance and priority.

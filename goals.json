@@ -376,6 +376,11 @@
         },
         {
           "kind": "executed",
+          "ref": "TOOLSET-113-04: 12 CLI container-status subcases failed then passed; 24 manifest CLI tests passed; independent exact-source review approved; Python 3.12 scripts/check.py passed 568/715/217/8 tests, one skip/eight excluded modules; offline only",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)",
           "result": "pass"
         }
@@ -389,7 +394,8 @@
         "TOOLSET-031",
         "TOOLSET-032",
         "TOOLSET-107-93",
-        "TOOLSET-109-f1"
+        "TOOLSET-109-f1",
+        "TOOLSET-113-04"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -578,7 +584,6 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
-      "TOOLSET-112-29",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -586,6 +591,7 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
+      "TOOLSET-113-04",
       "TOOLSET-101-f6"
     ]
   },
@@ -1440,6 +1446,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve consultation replies across malformed diagnostic bytes"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-113-04",
+      "section": "Done",
+      "status": "done",
+      "title": "Report malformed role statuses without crashing"
     },
     {
       "depends_on": [

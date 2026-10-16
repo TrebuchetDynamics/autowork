@@ -20,6 +20,12 @@ claiming or starting anything.
 
 ## Verify
 
+`python3 -m unittest discover -s skills/docs-sync/scripts -p test_docs_manifest.py -v`
+checks malformed array/object role statuses through `validate`, `check` and `stale`
+(TOOLSET-113-04). Each command must return exit 1 with a role-specific diagnostic,
+retain independent field errors, emit no traceback and leave fixture files unchanged.
+Supported status values retain the existing positive and negative CLI coverage.
+
 `python3 -m unittest discover -s tests -p test_profile_consult.py -v` includes
 real local subprocesses emitting valid stream-json replies and malformed stderr
 for zero and nonzero exit codes (TOOLSET-112-29). Diagnostics retain replacement

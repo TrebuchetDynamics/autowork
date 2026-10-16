@@ -187,6 +187,19 @@ class DocsManifestTests(unittest.TestCase):
                 self.assertIn('readme:', out)
                 self.assertIn(message, out)
 
+    def test_container_statuses_fail_cleanly_without_writing(self):
+        for status in ([], ['maintained'], {}, {'value': 'maintained'}):
+            self.roles['readme'] = {'status': status, 'covers': 'scripts'}
+            self.write()
+            before = {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
+            for command in ('validate', 'check', 'stale'):
+                with self.subTest(status=status, command=command):
+                    out = self.cli(command, expected=1)
+                    self.assertIn(f'readme: unknown status {status!r}', out)
+                    self.assertIn('readme: covers must be a list', out)
+                    self.assertEqual(before, {p: p.read_bytes() for p in
+                                              self.repo.rglob('*') if p.is_file()})
+
     def test_malformed_manifest_shapes_fail_cleanly(self):
         for data, message in (([], 'object'), ({'version': 2, 'roles': {}}, 'version'),
                               ({'version': 1, 'roles': []}, 'roles')):

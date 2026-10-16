@@ -79,13 +79,13 @@ def validate(data):
             continue
         errors += [f'{role}: unknown field {key}' for key in sorted(set(entry) - FIELDS)]
         status = entry.get('status')
-        if status in MAPPED:
+        if isinstance(status, str) and status in MAPPED:
             path = entry.get('path')
             if path is None:
                 errors.append(f'{role}: path is required for status {status}')
             elif relative(str(path).split('#', 1)[0] if isinstance(path, str) else path) is None:
                 errors.append(f'{role}: path {path!r} must stay inside the repository')
-        elif status in UNMAPPED:
+        elif isinstance(status, str) and status in UNMAPPED:
             if not isinstance(entry.get('reason'), str) or not entry['reason'].strip():
                 errors.append(f'{role}: reason is required for status {status}')
             if 'path' in entry:
