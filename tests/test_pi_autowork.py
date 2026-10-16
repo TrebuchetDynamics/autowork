@@ -920,6 +920,7 @@ class SetupTests(Fixture):
         package = self.root / 'pi-package'
         shutil.copytree(ROOT / 'skills', package / 'skills', ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copytree(ROOT / 'adapters', package / 'adapters')
+        shutil.copytree(ROOT / 'pi-autowork', package / 'pi-autowork', ignore=shutil.ignore_patterns('__pycache__'))
         self.env['FAKE_PI_TOOLSET'] = str(package)
         result = self.run_runner('--dry-run')
         self.assertIn(f'Toolset:    {package} at unknown (Pi package)', result.stdout)
@@ -928,17 +929,30 @@ class SetupTests(Fixture):
         self.assertIn('(not a Pi package)', result.stdout)
 
     def installed_package(self):
-        """A disposable hermes-toolset Pi package with a Git origin, so `pi update` applies."""
+        """A disposable hermes-toolset Pi package whose local origin holds one newer,
+        compatible release, so the update check passes and `pi update` applies."""
         package = self.root / 'pi-package'
-        for part in ('skills', 'adapters', 'scripts'):
+        for part in ('skills', 'adapters', 'scripts', 'pi-autowork'):
             shutil.copytree(ROOT / part, package / part, ignore=shutil.ignore_patterns('__pycache__'))
         (package / '.gitignore').write_text('.updated\n')
         self.git(package, 'init', '-q', '-b', 'main')
         self.git(package, 'add', '-A')
         self.git(package, 'commit', '-qm', 'package')
-        self.git(package, 'remote', 'add', 'origin', 'https://example.invalid/hermes-toolset')
+        self.origin = self.root / 'origin.git'
+        self.git(self.root, 'clone', '-q', '--bare', str(package), str(self.origin))
+        self.git(package, 'remote', 'add', 'origin', str(self.origin))
+        self.publish(lambda tree: (tree / 'RELEASE').write_text('2\n'), 'release 2')
         self.env.update(FAKE_PI_TOOLSET=str(package), PI_AUTOWORK_UPDATE_INTERVAL='1')
         return package
+
+    def publish(self, change, message):
+        """Push a new release to the package's origin, as upstream does."""
+        tree = self.root / ('release-' + str(len(list(self.root.glob('release-*')))))
+        self.git(self.root, 'clone', '-q', str(self.origin), str(tree))
+        change(tree)
+        self.git(tree, 'add', '-A')
+        self.git(tree, 'commit', '-qm', message)
+        self.git(tree, 'push', '-q', 'origin', 'HEAD:main')
 
     def run_until(self, script, text, timeout=60):
         runner = subprocess.Popen(['bash', str(script), '--interval', '1'], cwd=self.repo, env=self.env,
@@ -987,22 +1001,14 @@ class SetupTests(Fixture):
         self.assertEqual({stamp for stamp, _ in starts}, {'12:00', '12:01'}, out)
         self.assertEqual({pid for _, pid in starts}, {str(runner.pid)}, out)  # exec keeps the PID
         updates = [json.loads(l) for l in self.log.read_text().splitlines() if '"update"' in l]
-        self.assertEqual(updates[0]['update'], ['https://example.invalid/hermes-toolset'])
+        self.assertEqual(updates[0]['update'], [str(self.origin)])
 
     def test_a_release_that_cannot_read_current_state_is_never_installed(self):
         package = self.installed_package()
-        shutil.copytree(ROOT / 'pi-autowork', package / 'pi-autowork', ignore=shutil.ignore_patterns('__pycache__'))
-        self.git(package, 'add', '-A')
-        self.git(package, 'commit', '-qm', 'with component')
-        origin = self.root / 'origin.git'
-        self.git(self.root, 'clone', '-q', '--bare', str(package), str(origin))
-        self.git(package, 'remote', 'set-url', 'origin', str(origin))
-        newer = self.root / 'newer'
-        self.git(self.root, 'clone', '-q', str(origin), str(newer))
-        state = newer / 'skills/autowork/scripts/parallel_state.py'
-        state.write_text(state.read_text().replace('STATE_SCHEMA_READS = (1,)', 'STATE_SCHEMA_READS = (2,)'))
-        self.git(newer, 'commit', '-qam', 'reads only schema 2')
-        self.git(newer, 'push', '-q', 'origin', 'HEAD:main')
+        def schema_2_only(tree):
+            state = tree / 'skills/autowork/scripts/parallel_state.py'
+            state.write_text(state.read_text().replace('STATE_SCHEMA_READS = (1,)', 'STATE_SCHEMA_READS = (2,)'))
+        self.publish(schema_2_only, 'reads only schema 2')
         runner = self.run_until(package / 'scripts/pi-autowork.sh', 'Toolset update deferred')
         time.sleep(3)
         runner.send_signal(signal.SIGINT)

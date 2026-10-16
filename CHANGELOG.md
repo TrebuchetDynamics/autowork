@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Runner health ignores a status read the engine could not answer (its state lock
+  busy with a `--status` or `--fleet` reader). Such a read used to count as idle and
+  restart the stall clock, so polling status could hold back a stall announcement.
 - A hold during integration counts toward `PI_AUTOWORK_MAX_FAILURES` again; since
   the failure-streak fix only worker-side holds were counted.
 - Git Commit Push never pushes a branch that is behind its push target, including a
@@ -308,6 +311,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `pi-autowork.sh` runs Pi jobs through the component's `pi_runtime.py` instead of its own
+  Bash: the same model choice, fallback, retries, timeouts, budget and redacted records,
+  now unit-tested. The runner requires the component from the toolset release it
+  resolved and exports its path, so workers and copied launchers use the same code.
 - Parallel Autowork backfills: a lower-priority task starts past a higher-priority
   one that cannot start yet when it shares no path, resource or dependency with it.
   Before, one blocked task (on sierra, behind another session's `in_progress` claim)

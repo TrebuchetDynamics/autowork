@@ -15,7 +15,8 @@ HELD = {'id': 'T-9', 'kind': 'held', 'blocks': 4, 'cause': 'blocker', 'reason': 
 def snapshot(*, workers=0, queue=0, waiting=('A',), roots=(HELD,)):
     tasks = [{'task': t, 'state': 'waiting', 'blocked_by': ['T-9']} for t in waiting]
     tasks.append({'task': 'T-9', 'state': 'held', 'cause': 'blocker', 'reason': 'needs a device'})
-    return {'active_workers': workers, 'integration_queue': queue, 'tasks': tasks, 'roots': list(roots)}
+    return {'outcome': 'PARALLEL_STATUS', 'active_workers': workers, 'integration_queue': queue,
+            'tasks': tasks, 'roots': list(roots)}
 
 
 class HealthTests(unittest.TestCase):
@@ -38,6 +39,14 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.status()['state'], 'stalled')
         self.assertIsNone(health.update(self.state, snapshot(), now=1000 + 4000))  # not again
         self.assertEqual(self.status()['since'], 1000)
+
+    def test_an_unanswered_status_read_keeps_the_stall_clock(self):
+        """A --status reader holding the engine lock made the runner look idle and reset the clock."""
+        health.update(self.state, snapshot(), now=0)
+        busy = {'outcome': 'ACTION_REQUIRED', 'reason': 'Repository execution lock is held by a live operation.'}
+        self.assertIsNone(health.update(self.state, busy, now=1000))
+        self.assertEqual((self.status()['state'], self.status()['since']), ('blocked', 0))
+        self.assertIsNotNone(health.update(self.state, snapshot(), now=1800))
 
     def test_new_root_blockers_are_announced_again(self):
         health.update(self.state, snapshot(), now=0)
@@ -66,7 +75,8 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(health.classify(snapshot(queue=1)), 'working')
 
     def test_a_runner_that_cannot_dispatch_is_a_stall_too(self):
-        ready = {'active_workers': 0, 'tasks': [{'task': 'A', 'state': 'waiting', 'blocked_by': []}], 'roots': []}
+        ready = {'outcome': 'PARALLEL_STATUS', 'active_workers': 0,
+                 'tasks': [{'task': 'A', 'state': 'waiting', 'blocked_by': []}], 'roots': []}
         runner = {'blocker': 'no usable model: primary and fallback not ready'}
         health.update(self.state, ready, now=0, runner=runner)
         line = health.update(self.state, ready, now=1800, runner=runner)
