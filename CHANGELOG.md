@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A session in the main checkout blocks a runner's integration only when the merge
+  changes a file that session holds open for writing or has left uncommitted there;
+  unrelated sessions no longer hold verified work (sierra TASK-026 waited an hour).
+  Sessions inside another task's worktree, and integration into the main checkout
+  itself, keep the strict rule. TOOLSET-120-fc gap 6.
+- While a verified commit waits for such a session, the runner no longer logs
+  verifying/implemented every cycle, and health counts that wait as no progress: with
+  nothing else running it is a stall naming the session. The Touches pass no longer
+  logs a priority-drift refusal every cycle. (charlie.)
 - Another live agent session in the main checkout no longer holds a commit at
   integration: the engine answers `BUSY` and the commit stays reported (or its validated
   candidate is revalidated) until the session leaves, because a busy checkout is no

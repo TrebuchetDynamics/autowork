@@ -144,8 +144,31 @@ class WritersBusy(ValueError):
 WRITER_HOLD = 'live or unknown external writer'
 
 
-def require_no_writers(repo):
+def main_checkout(repo):
+    listing = git(repo, 'worktree', 'list', '--porcelain').splitlines()
+    return str(Path(listing[0][len('worktree '):]).resolve()) if listing else None
+
+
+def touches_none_of(worker, files, main):
+    """A session only in the main checkout that neither holds open nor has left uncommitted
+    any of ``files`` (sierra, 2026-10-16: TASK-026 waited an hour on an unrelated session)."""
+    if files is None or set(worker.get('workspaces') or []) != {main}:
+        return False
+    mine = {os.path.relpath(path, main) for path in worker.get('written') or []}
+    listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
+    dirty = {entry[3:] for entry in listing.split('\0') if entry} if listing else set()
+    return not (set(files) & (mine | dirty))
+
+
+def require_no_writers(repo, files=None):
+    """Refuse while another agent may be writing. Integrating outside the main checkout
+    (a runner's session worktree) with ``files`` (the paths the merge changes), a session
+    in the main checkout blocks only when it holds one of them open or has left one
+    uncommitted there; sessions elsewhere and Autowork commands block as before."""
     workers = execution.external_workers(repo)
+    main = main_checkout(repo)
+    if main and main != str(Path(repo).resolve()):  # integrating elsewhere (the runner's session)
+        workers = [w for w in workers if not (w['kind'] == 'session' and touches_none_of(w, files, main))]
     blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
     pool = state.slots(common)
@@ -230,8 +253,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
             if first != task:
                 raise ValueError('integrate the highest-priority reported task first')
             try:
-                require_no_writers(repo)
                 files, report = verify(repo, common, slot, contracts)
+                require_no_writers(repo, files)
                 if slot['state'] == 'integrating':
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
@@ -257,7 +280,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
             for attempt in range(2):
                 with execution.lock(common / 'writer.lock'):
                     state.require_owner(common, owner_pid)
-                    require_no_writers(repo)
+                    require_no_writers(repo, changed(repo, slot['baseline'], slot['commit']))
                     baseline = git(repo, 'rev-parse', 'HEAD')
                     if git(repo, 'merge-base', baseline, slot['commit']) == slot['commit']:
                         raise ValueError('worker commit already in canonical HEAD; no fresh two-parent integration')
@@ -294,7 +317,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                     verify_scope(repo, common, slot, fresh_contracts, changed(repo, baseline, merge))
                     if fresh_contracts[task]['contract'] != contracts[task]['contract']:
                         raise Hold('contract_changed', 'task contract changed during validation')
-                    require_no_writers(repo)
+                    require_no_writers(repo, changed(repo, baseline, merge))
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
                         raise ValueError('canonical branch changed during validation')
                     if git(repo, 'rev-parse', 'HEAD') != baseline:

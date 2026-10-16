@@ -410,11 +410,14 @@ class Coordinator:
         for task in [r['task'] for r in rows if r.get('state') in ('reported', 'integrating')]:
             if self.stop:
                 return
-            self.note_state(task, 'integrating')
+            if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
+                self.note_state(task, 'integrating')
             result = self.engine('--integrate', task, '--timeout', self.verify_timeout,
                                  '--reviewer-version', self.reviewer_version(), '--run', '/bin/bash',
                                  self.cfg['script'], '--verify', str(self.state), task)
             outcome, reason = result.get('outcome') or 'ACTION_REQUIRED', result.get('reason') or ''
+            if outcome != 'BUSY':
+                self.seen.pop('busy-' + task, None)
             if outcome == 'INTEGRATED':
                 self.settled = True
                 self.note_state(task, 'integrated')
@@ -661,8 +664,16 @@ class Coordinator:
     def health_update(self):
         snapshot = self.status()
         paused = int(time.time() + self.pause_until - time.monotonic()) if self.pause_until > time.monotonic() else 0
+        # Commits that only wait for another session to leave the main checkout are no progress.
+        waiting = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')
+                   and self.seen.get('busy-' + str(t.get('task')))]
+        blocker = self.runner_blocker
+        if waiting and not blocker:
+            blocker = (f'{len(waiting)} verified commit(s) wait for another session in the main checkout: '
+                       + self.seen['busy-' + waiting[0]['task']])
         runner = {'repo': str(self.repo), 'pid': str(os.getpid()), 'toolset_rev': self.toolset_rev,
-                  'mode': self.mode, 'paused_until': str(paused), 'blocker': self.runner_blocker}
+                  'mode': self.mode, 'paused_until': str(paused), 'blocker': blocker,
+                  'stuck_integrations': str(len(waiting))}
         try:
             line = health.update(self.state, snapshot, runner=runner, stall_after=int(self.stall_after))
         except (OSError, ValueError):

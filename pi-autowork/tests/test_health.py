@@ -80,8 +80,19 @@ class HealthTests(unittest.TestCase):
         runner = {'blocker': 'no usable model: primary and fallback not ready'}
         health.update(self.state, ready, now=0, runner=runner)
         line = health.update(self.state, ready, now=1800, runner=runner)
-        self.assertIn('no usable model: primary and fallback not ready (the runner cannot dispatch, holds 1)', line)
+        self.assertIn('no usable model: primary and fallback not ready (the runner cannot proceed, holds 1)', line)
         self.assertIsNone(health.update(self.state, ready, now=1900))  # ready again: not a stall
+
+    def test_integrations_waiting_on_another_session_are_a_stall_not_work(self):
+        """flutter: three verified commits waited on an owner session; health said working."""
+        snap = dict(snapshot(waiting=(), roots=()), integration_queue=3)
+        runner = {'stuck_integrations': '3', 'blocker': '3 verified commit(s) wait for another session '
+                                                        'in the main checkout: pid 2353411 pi'}
+        self.assertIsNone(health.update(self.state, snap, now=0, runner=runner))
+        self.assertEqual(self.status()['state'], 'blocked')
+        line = health.update(self.state, snap, now=1800, runner=runner)
+        self.assertIn('pid 2353411 pi (the runner cannot proceed, holds 3)', line)
+        self.assertEqual(health.classify(snap, stuck=2), 'working')  # one still progresses
 
     def test_fleet_flags_dead_and_silent_runners(self):
         def runner(key, repo, pid, updated, state='working'):
