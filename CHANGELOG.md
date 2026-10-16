@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Another live agent session in the main checkout no longer holds a commit at
+  integration: the engine answers `BUSY` and the commit stays reported (or its validated
+  candidate is revalidated) until the session leaves, because a busy checkout is no
+  verdict. Holding it used up the last attempt of three charlie commits;
+  commits held that way by earlier releases are offered again (`REOFFERED`).
 - The pi-autowork reviewer is told which device, hardware, production or human checks
   the worker recorded as `pending_live` (they become the `TASK-LIVE` follow-up) and judges
   everything else offline; a required live check nobody recorded still fails. It used to

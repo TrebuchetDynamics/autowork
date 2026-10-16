@@ -427,6 +427,10 @@ class Coordinator:
                 self.count_failure(task)
                 if task == self.once_task:
                     self.draining = True
+            elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
+                if self.seen.get('busy-' + task) != reason:
+                    LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
+                self.seen['busy-' + task] = reason
             elif 'highest-priority' not in reason:  # another reported task goes first
                 LOG.say(f'{task}: integration needs attention: {reason or outcome}')
 
@@ -810,7 +814,7 @@ class Coordinator:
         elif outcome == 'READOPTED':
             self.seen[result.get('task')] = ''
             LOG.say(f'{result.get("task")}: the retry made no change; re-verifying the first attempt\'s commit')
-        elif outcome in ('RESCOPED', 'RESUMED'):
+        elif outcome in ('RESCOPED', 'RESUMED', 'REOFFERED'):
             self.seen[result.get('task')] = ''
             self.seen.pop('awaiting-' + str(result.get('task')), None)
         elif outcome == 'WAITING':

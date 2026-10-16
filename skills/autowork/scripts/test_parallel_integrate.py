@@ -71,6 +71,7 @@ class IntegrationTests(unittest.TestCase):
         fake = Path(self.temp.name) / 'hermes'
         fake.write_text('import time; time.sleep(60)')
         proc = subprocess.Popen([sys.executable, str(fake)], cwd=cwd or self.repo, start_new_session=True)
+        self.sessions = getattr(self, 'sessions', []) + [proc]
         self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
         return proc
 
@@ -78,7 +79,8 @@ class IntegrationTests(unittest.TestCase):
         self.worker()
         self.agent_process()
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
+        self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
+        self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
         self.assertFalse((self.repo.parent / (self.repo.name + '-autowork-integration')).exists())
 
@@ -93,8 +95,22 @@ class IntegrationTests(unittest.TestCase):
             return result
         with patch.object(execution, 'bounded_command', side_effect=validate):
             result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
+        self.assertEqual(result['outcome'], 'BUSY', result)
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+        self.assertEqual(state.slots(self.common)[0]['state'], 'integrating')  # kept for revalidation
+        for proc in self.sessions:
+            proc.kill(); proc.wait()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_a_commit_an_earlier_release_held_for_a_live_session_is_offered_again(self):
+        """flutter: three commits were held while a person's pi session was in the main checkout."""
+        self.worker()
+        slot = state.slots(self.common)[0]
+        held = dict(slot, state='held', reason='live or unknown external writer/session; preserve canonical checkout: pid 1 pi')
+        execution.save(state.slot_path(self.common, 'A'), held)
+        result = self.module().retry_held(self.retry_args())
+        self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'A'))
+        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
     def test_fresh_session_blocks_close_without_task_writes(self):
         self.worker()
@@ -151,7 +167,8 @@ class IntegrationTests(unittest.TestCase):
         root, _ = self.worker('B')
         self.agent_process(root)
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
+        self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
+        self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
     def test_pool_identity_never_exempts_a_canonical_writer(self):
@@ -162,7 +179,8 @@ class IntegrationTests(unittest.TestCase):
         slot.update(worker=execution.identity(proc.pid), state='running')
         execution.save(state.slot_path(self.common, 'B'), slot)
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
+        self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
+        self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
     def test_clean_merge_validates_without_sequential_lease(self):

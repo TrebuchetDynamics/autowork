@@ -137,6 +137,13 @@ def verify_scope(repo, common, slot, contracts, files):
         raise Hold('scope', message, outside=overlap['outside'])
 
 
+class WritersBusy(ValueError):
+    """Another live agent session works in the canonical checkout: wait, it is no verdict."""
+
+
+WRITER_HOLD = 'live or unknown external writer'
+
+
 def require_no_writers(repo):
     workers = execution.external_workers(repo)
     blocking = execution.blocking_workers(workers, repo)
@@ -175,7 +182,7 @@ def require_no_writers(repo):
             name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'
             return (f"pid {worker['pid']} {name} in {', '.join(worker.get('workspaces') or ['?'])}"
                     f" ({worker.get('evidence') or worker.get('kind', '')})")
-        raise ValueError('live or unknown external writer/session; preserve canonical checkout: '
+        raise WritersBusy('live or unknown external writer/session; preserve canonical checkout: '
                          + '; '.join(describe(w) for w in blocking[:3]))
 
 
@@ -229,6 +236,9 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
                         return recovered
+            except WritersBusy as exc:
+                # The commit stays reported and integrates once that session is gone.
+                return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
             except Hold as exc:
                 return hold(common, slot, str(exc), cause=exc.cause, **exc.details)
             except (ValueError, OSError) as exc:
@@ -298,6 +308,9 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                         raise ValueError('canonical fast-forward readback mismatch')
                     state.change(common, slot, 'integrated', {'integration': integration, 'checks': check})
                     return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration}
+        except WritersBusy as exc:
+            # Not a verdict: an integrating candidate is revalidated on the next call.
+            return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
             with execution.lock(common / 'writer.lock'):
                 state.require_owner(common, owner_pid)
@@ -654,6 +667,15 @@ def retry_held(args):
             current = state.slots(common)
             # A retry that produced nothing (often because it judged the first hold
             # binding) gets the first attempt's commit re-verified once instead.
+            # Earlier releases held a commit when a live session was in the canonical checkout
+            # (flutter, 2026-10-16): that was no verdict, so offer such a commit again.
+            busy = next((s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
+                         and str(s.get('reason', '')).startswith(WRITER_HOLD)), None)
+            if busy is not None:
+                value = {k: v for k, v in busy.items() if k not in ('reason', 'cause', 'checks', 'integration')}
+                value['state'] = 'reported'
+                slot = state.write_slot(common, value, busy)
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A commit held only for files outside Touches the coordinator has since widened
             # (it had inferred them) is verified again once, before any fresh retry.
             scoped = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope']
