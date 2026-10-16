@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `scripts/pi-autowork.sh` now drives the toolset's Parallel Autowork engine instead of
+  picking tasks itself: up to `--workers N` (default 2, at most 4) Pi workers run
+  independent tasks in their own worktrees, the engine merges each into the session
+  branch, a separate read-only Pi review (after optional `PI_AUTOWORK_VALIDATE`) must
+  pass before a task closes, and the session merges into the main branch at the end.
+  `--status` shows each task as pending, running, implemented, verifying, integrated,
+  done or failed. `PI_AUTOWORK_MAX_COST` now counts a rolling window
+  (`PI_AUTOWORK_COST_WINDOW`, 24 h) across restarts and workers. With `--allow-hermes`
+  the engine's lease keeps Pi and Hermes Autowork from owning tasks at the same time.
 - `scripts/pi-autowork.sh` runs Autowork through the Pi coding agent one task at a time
   until stopped: it takes the next task from `goals.py next` (an empty queue costs no
   model call), runs Pi on GPT-6.1 Sol and falls back to DeepSeek V4.1 Flash on provider
@@ -188,6 +197,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel Autowork no longer holds a worker that was interrupted or released and then
+  restarted: integration expected the `-r2` branch of a held retry, so every restarted
+  task failed with `unexpected worker branch`. Found while qualifying `pi-autowork.sh`.
 - A gateway restart's outcome no longer disappears when another update runs before
   anyone reads the status: it is kept in `restart.json`, recorded by the next update
   before that replaces the receipt, and shown as `Last gateway restart` (TOOLSET-092-f2).

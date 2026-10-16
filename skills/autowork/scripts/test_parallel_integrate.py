@@ -749,5 +749,18 @@ class IntegrationTests(unittest.TestCase):
             worker.wait()
 
 
+
+class ExpectedBranchTests(unittest.TestCase):
+    """Found qualifying pi-autowork: a restarted worker was held as 'unexpected worker branch'."""
+    def test_restart_keeps_its_branch_and_a_held_retry_uses_r2(self):
+        first = {'task_id': 'A', 'attempt': 1}
+        restarted = {'task_id': 'A', 'attempt': 2, 'previous_attempts': [{'state': 'released'}]}
+        interrupted = {'task_id': 'A', 'attempt': 2, 'previous_attempts': [{'state': 'interrupted'}]}
+        retried = {'task_id': 'A', 'attempt': 2, 'previous_attempts': [{'state': 'held'}]}
+        integrate = importlib.import_module('parallel_integrate')
+        self.assertEqual([integrate.expected_branch(s) for s in (first, restarted, interrupted, retried)],
+                         ['autowork/A', 'autowork/A', 'autowork/A', 'autowork/A-r2'])
+
+
 if __name__ == '__main__':
     unittest.main()

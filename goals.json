@@ -469,7 +469,8 @@
         "TOOLSET-095-48",
         "TOOLSET-096-7e",
         "TOOLSET-097-41",
-        "TOOLSET-097-57"
+        "TOOLSET-097-57",
+        "TOOLSET-098-4c"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1201,6 +1202,14 @@
       "section": "Done",
       "status": "done",
       "title": "Install the Pi runner as a per-repository systemd user service"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-098-4c",
+      "section": "Done",
+      "status": "done",
+      "title": "Drive pi-autowork through the Parallel Autowork engine"
     },
     {
       "depends_on": [

@@ -48,6 +48,14 @@ def hold(common, slot, reason, **updates):
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason}
 
 
+def expected_branch(slot):
+    """A held task's retry runs on a fresh -r2 branch; an interrupted or released
+    worker restarts on its original branch, even though both count as attempt 2."""
+    previous = (slot.get('previous_attempts') or [{}])[-1]
+    retried = slot['attempt'] == 2 and previous.get('state') == 'held'
+    return 'autowork/' + slot['task_id'] + ('-r2' if retried else '')
+
+
 def verify(repo, common, slot, contracts):
     task = contracts.get(slot['task_id'])
     if task is None:
@@ -55,8 +63,7 @@ def verify(repo, common, slot, contracts):
     if state.worker_live(slot):
         raise ValueError('worker still running')
     state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
-    expected = 'autowork/' + slot['task_id'] + ('-r2' if slot['attempt'] == 2 else '')
-    if slot['branch'] != expected:
+    if slot['branch'] != expected_branch(slot):
         raise ValueError('unexpected worker branch')
     commit = slot.get('commit', '')
     try:

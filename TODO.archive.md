@@ -1792,3 +1792,21 @@ Original task and unchecked acceptance retained below.
 - Ownership: Authorized coordinator with that environment; no active claim.
 - Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
 - Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-098-4c — Drive pi-autowork through the Parallel Autowork engine
+
+- [x] TOOLSET-098-4c — Drive pi-autowork through the Parallel Autowork engine
+- Status: done (2026-10-15), offline. Owner decision: use the toolset's own engine, no third-party orchestrator. `scripts/pi-autowork.sh` no longer selects tasks: it drives `owner_cycle.py --parallel` (dispatch with `--worker-command`, `--wait`, `--integrate` with `--run pi-autowork.sh --verify`, `--parallel-close`, coordinator metadata commit, refill, `--release` after the session merges into the main branch). `--worker` runs Pi on the engine prompt with model choice, JSON-event provider fallback that resumes the session, the push guard re-applied (the engine strips `GIT_*`) and `timeout --foreground` so the engine's process-group stop reaches Pi. `--verify` runs `PI_AUTOWORK_VALIDATE` then a read-only Pi review that must print `PI_AUTOWORK_VERIFY: pass` and leave the checkout unchanged. `--workers` 1-4 (default 2); `--status` maps slot states to pending/running/implemented/verifying/integrated/done/failed; `PI_AUTOWORK_MAX_COST` counts a rolling `PI_AUTOWORK_COST_WINDOW` over `runs.jsonl` from all processes. With `--allow-hermes` the engine lease keeps Pi and Hermes Autowork from owning tasks at once (tested both ways). Fixed an engine bug: a restarted interrupted/released worker was held as `unexpected worker branch` (`parallel_integrate.expected_branch`, regression in `test_parallel_integrate.py`). 24 runner tests (parallel overlap barrier, C after A, verification failure, tampering reviewer, blocked worker, fallback, missing credentials, interrupt/resume, budget persistence, merge conflict resolved and pending, dirty main, Hermes lease both ways, push guard, status/dry run, setup, service) and 106 engine tests pass; `python3 scripts/check.py` passes. Live qualification in TOOLSET-091-00.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously), [engine](skills/autowork/references/parallel-workers.md), [parallel plan](docs/project.md#parallel-autowork-2026-10-15).
+- Scope: Replace the runner's own selection loop with the engine's coordinator loop; keep model selection, fallback, services, locks, shutdown, budgets and recovery.
+- Acceptance: No second scheduler; tasks close only after verified integration; budgets survive restarts; Hermes and Pi never own a task at once; existing options keep working.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; engine tests in `skills/autowork/scripts`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-097-57.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No third-party orchestration; no push by the runner.
