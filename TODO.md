@@ -70,7 +70,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-120-fc — Hands-off runners: the owner only plans and answers questions
 
 - [ ] TOOLSET-120-fc — Hands-off runners: the owner only plans and answers questions
-- Status: open.
+- Status: open; parts 1-4 and 6 done offline (answers re-queue held tasks, BLOCKERS.md questions, claim attribution by held files, planning auto-commit, main-checkout sessions block only their files); part 5 superseded by TOOLSET-122-27. Live fleet qualification remains with TOOLSET-096-7e.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner direction (2026-10-16), [design](docs/plans/2026-10-16-pi-autowork-coordinator.md), [runner guide](docs/cross-host.md#run-autowork-continuously), [tx autowork](tmux/README.md).
 - Touches: pi-autowork/, scripts/pi-autowork.sh, skills/autowork/scripts/parallel_*.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_*.py, tests/test_pi_autowork.py, tmux/tx, tests/test_tx_autowork.py, docs/cross-host.md, tmux/README.md, README.md

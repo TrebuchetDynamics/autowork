@@ -291,6 +291,13 @@ commits exactly those as `docs(tasks): owner planning (pi-autowork)` before its 
 Any other uncommitted file keeps the merge pending, and the message says why the
 planning was left alone.
 
+Questions for the owner live in the repository's `BLOCKERS.md`, in a block the runner
+maintains under `## Active` (between `<!-- pi-autowork:questions:start -->` and
+`<!-- pi-autowork:questions:end -->`), never in a chat. Each names the task, what it
+needs and exactly how to answer, easiest first; `/autowork blockers` walks through
+them. Answering is editing the task's TODO.md entry; the question leaves the block once
+its cause is gone. Writing the block costs no model call.
+
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
 running`/`not cycling` when the process is gone or silent) and, when it cannot

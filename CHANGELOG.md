@@ -160,6 +160,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- The runner keeps the owner's questions in the repository's `BLOCKERS.md`, under
+  `## Active` between `<!-- pi-autowork:questions:start -->` and `…:end -->`: one entry per
+  held task no attempt can finish, unadoptable claim, unrunnable entry, outside condition
+  or dependency cycle, with type, effort, how many tasks it unblocks, the worker's or
+  engine's words and the exact answer. Built without a model, committed alone on the
+  session branch only when it changes; text outside the markers is untouched.
+  `/autowork blockers` answers them. TOOLSET-120-fc (2).
 - The `tx autowork` TUI shows worker lanes: for the selected runner, one row per task
   in flight with its phase (from the runner's own log), attempt, time and the worker's
   last action from its Pi transcript (`bash: pytest -q`, `said: ...`, and how long

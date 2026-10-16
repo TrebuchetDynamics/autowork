@@ -905,6 +905,24 @@ class EngineTests(Fixture):
         self.assertNotIn('owner planning', self.git(self.repo, 'log', '--format=%s'))
         self.assertIn('?? BLOCKERS.md', self.git(self.repo, 'status', '--porcelain'))
 
+    def test_questions_for_the_owner_land_in_blockers_md_without_a_model(self):
+        """TOOLSET-120-fc (2): questions live in the repository; writing them costs no tokens."""
+        (self.repo / 'BLOCKERS.md').write_text('# BLOCKERS\n\n## Active\n\n### BLK-1 — Owner entry\n')
+        self.git(self.repo, 'add', 'BLOCKERS.md')
+        self.git(self.repo, 'commit', '-qm', 'owner blockers')
+        self.plan({'worker:A': ['blocked']})
+        result = self.run_runner('--until-empty')
+        self.assertIn('Questions for the owner in BLOCKERS.md: 1 open (easiest: A, input)', result.stdout)
+        text = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('### Q-A — USER_INPUT — effort input — unblocks 1', text)
+        self.assertIn('- Needs: worker reported a blocker: needs a device', text)
+        self.assertIn('### BLK-1 — Owner entry', text)  # the owner's own entries stay
+        runs = len(self.runs())
+        again = self.run_runner('--until-empty')  # nothing changed: no rewrite, no commit, no model call
+        self.assertNotIn('Questions for the owner', again.stdout)
+        self.assertEqual(len(self.runs()), runs)
+        self.assertEqual(self.git(self.repo, 'log', '--format=%s').count('questions for the owner'), 1)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

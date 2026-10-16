@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 
-from . import health, pi_runtime, release, touches_inference
+from . import health, pi_runtime, questions, release, touches_inference
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -728,6 +728,28 @@ class Coordinator:
             return
         if line:
             LOG.warn(line)
+        self.update_questions(snapshot)
+
+    def update_questions(self, snapshot):
+        """Keep the owner's questions in BLOCKERS.md (TOOLSET-120-fc 2): built without a model,
+        written only when they change, committed alone on the session branch."""
+        if not self.integ or snapshot.get('outcome') != 'PARALLEL_STATUS' or dirty(self.integ):
+            return
+        goals, _ = touches_inference.modules(self.toolset)
+        path = Path(self.integ) / 'BLOCKERS.md'
+        try:
+            old = path.read_text() if path.exists() else None
+            found = questions.build(snapshot, (Path(self.integ) / 'TODO.md').read_text(), goals)
+            new = questions.update(old, found)
+        except (OSError, ValueError):
+            return
+        if new is None or new == old:
+            return
+        path.write_text(new)
+        self.commit(['BLOCKERS.md'], 'docs(blockers): questions for the owner (pi-autowork)',
+                    'Built from the engine status without a model; /autowork blockers answers them.')
+        LOG.say(f'Questions for the owner in BLOCKERS.md: {len(found)} open'
+                + (f" (easiest: {found[0]['id']}, {found[0]['effort']})" if found else ''))
 
     def update_toolset(self):
         """While nothing is in flight, update the toolset package Pi loads, at most once per
