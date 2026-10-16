@@ -214,6 +214,27 @@ claim of a tagged release, completed installation or live workflow qualification
   commit, now has its first commit verified once more (`READOPTED`) instead of
   staying held: such retries usually decline to redo work the hold called out of
   scope, which stranded completed work after the scope rule was fixed.
+- A continuous `pi-autowork.sh` restarts itself when its toolset is updated, instead
+  of running the old script against the new engine (which exited on an engine
+  outcome the old script did not know).
+- Parallel Autowork closes tasks whose ID is bold or code (`- [ ] **T-1 — …**`): the
+  checkbox stayed unchecked, so the task never archived. The engine also resolves the
+  TODO archive as Docs Sync does (a linked `docs/TODO-archive.md`, never a task's own
+  "history" link), for closing and for dependencies on archived tasks.
+- `pi-autowork.sh` retries closing an integrated task on later cycles and commits a
+  linked archive with the close; a failed close no longer blocks the queue.
+- A deliberate stop or restart of Parallel Autowork (Ctrl+C, `systemctl stop` or
+  `restart`) no longer costs a task its retry: the coordinator marks live workers
+  paused (`--parallel-pause`) before interrupting them, and each resumes in its
+  worktree on the same attempt. Before, an interrupted second attempt was held for
+  good. A held or interrupted slot whose task is done or superseded no longer blocks a
+  must-run-alone successor.
+- A continuous `pi-autowork.sh` also keeps itself current: while idle, at most hourly
+  (`PI_AUTOWORK_UPDATE_INTERVAL`), it runs `pi update` for its toolset package, one
+  runner at a time, and skips a restart onto a script that does not parse. Its
+  `Touches:` pass no longer answers `NONE` for tasks that are verified on a device or
+  screenshot harness, asks again after a prompt change, and retries a pass that gave no
+  answer within the hour instead of a day.
 
 - Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
   every other task: such a claim is not dispatched and still blocks its dependents and

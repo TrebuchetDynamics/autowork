@@ -218,7 +218,15 @@ replaces a unit an earlier release named after the escaped path.
 Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
-Reinstall after changing settings; `pi update` updates the script it runs.
+Reinstall after changing settings. The runner keeps itself current: while no task is
+in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
+turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
+across repositories. When the toolset revision changed, by that or any other update,
+a running runner restarts itself on the new release at its next cycle and resumes its
+session; an update whose script does not parse is logged and the running code kept.
+Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
+them, so a changed prompt asks those tasks again, and a pass that gave no answer is
+retried within the hour.
 
 How it works:
 
@@ -284,11 +292,13 @@ How it works:
   security boundary, and does not cover other tools such as `gh`. Pi runs with
   `--no-approve`, so a repository's own Pi extensions do not load; its `AGENTS.md`
   still does.
-- **Stopping and recovery.** Ctrl+C interrupts running workers' process groups,
-  merges finished work into the main branch and exits 130 within seconds. On the next
-  start the engine reconciles: interrupted or released tasks restart once in the
-  same worktree, a dead worker with a commit is integrated, and live workers are
-  adopted rather than duplicated.
+- **Stopping and recovery.** Ctrl+C (and a service stop or restart) first marks the
+  running workers paused, then interrupts their process groups, merges finished work
+  into the main branch and exits 130 within seconds. On the next start the engine
+  reconciles: a paused worker resumes in its worktree on the same attempt, so a stop
+  never spends a task's retry or holds its second attempt; other interrupted or
+  released tasks restart once in the same worktree, a dead worker with a commit is
+  integrated, and live workers are adopted rather than duplicated.
 
 State lives outside the repository, in
 `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`: `runner.log`,

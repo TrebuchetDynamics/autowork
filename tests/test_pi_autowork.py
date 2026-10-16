@@ -4,6 +4,7 @@ with a fake Pi standing in for workers, the reviewer and merge resolution.
 These prove the runner's control flow only; they do not show that a real model
 executes tasks (docs/cross-host.md describes the live qualification).
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -41,6 +42,19 @@ def note(record):
 if args[:1] == ['list']:
     if os.environ.get('FAKE_PI_TOOLSET'):
         print('User packages:\n  ' + os.environ['FAKE_PI_TOOLSET'] + '\n    ' + os.environ['FAKE_PI_TOOLSET'])
+    sys.exit(0)
+if args[:1] == ['update']:  # a new toolset commit, as `pi update` brings in
+    note({'update': args[1:]})
+    package, kind = os.environ['FAKE_PI_TOOLSET'], os.environ.get('FAKE_PI_UPDATE', 'change')
+    if not os.path.exists(os.path.join(package, '.updated')):
+        open(os.path.join(package, '.updated'), 'w').write(kind)
+        script = os.path.join(package, 'scripts/pi-autowork.sh')
+        if kind == 'broken':
+            open(script, 'a').write('\nif then fi\n')
+        else:
+            open(script, 'a').write('\n# updated\n')
+        subprocess.run(['git', '-C', package, '-c', 'user.email=u@example.invalid', '-c', 'user.name=U',
+                        'commit', '-qam', 'update'], check=True)
     sys.exit(0)
 if args[:1] == ['--list-models']:
     print('provider      model                         context')
@@ -351,6 +365,10 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.branches(), ['main'])
+        # A deliberate stop pauses its workers: they resume the same attempt, retry intact.
+        sessions = [r['session'] for r in self.runs('worker') if r['task'] in ('A', 'B')]
+        self.assertEqual(len(sessions), 4, sessions)
+        self.assertTrue(all(s.endswith('-attempt-1') for s in sessions), sessions)
 
     def test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers(self):
         """Live qualification found a restart refused while a dead runner's helper held the lock."""
@@ -421,6 +439,56 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
 
+    def test_a_running_runner_restarts_on_an_updated_toolset(self):
+        """A `pi update` under a live runner mixed the old script with the new engine."""
+        toolset = self.root / 'toolset'
+        shutil.copytree(ROOT, toolset, ignore=shutil.ignore_patterns('.git', '.claude', '__pycache__'))
+        for args in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                                                     'commit', '-qm', 'release']):
+            self.git(toolset, *args)
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
+        self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
+        env = {**self.env, 'PI_AUTOWORK_TOOLSET': str(toolset)}
+        runner = subprocess.Popen(['bash', str(toolset / 'scripts/pi-autowork.sh'), '--interval', '1'], cwd=self.repo,
+                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 30
+        while 'No task can start now' not in log():
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.2)
+        (toolset / 'NEW').write_text('update\n')
+        self.git(toolset, 'add', 'NEW')
+        self.git(toolset, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'update')
+        rev = self.git(toolset, 'rev-parse', '--short', 'HEAD')
+        deadline = time.monotonic() + 30
+        while log().count('Started (PID') < 2:
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        self.assertIn(f'Toolset updated to {rev}; restarting on it', log())
+        self.assertIsNone(runner.poll())
+        runner.send_signal(signal.SIGINT)
+        out, err = runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130, out + err)
+        self.assertIn(f'at {rev}', out)
+
+    def test_bold_task_ids_close_into_a_linked_archive(self):
+        """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
+        text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
+        for t in 'ABC':
+            text = text.replace(f'- [ ] {t} — Task {t}', f'- [ ] **{t} — Task {t}**')
+        (self.repo / 'TODO.md').write_text(text)
+        (self.repo / 'docs').mkdir()
+        (self.repo / 'docs/TODO-archive.md').write_text('# History\n')
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'bold IDs, linked archive')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('- [x] **A — Task A**', (self.repo / 'docs/TODO-archive.md').read_text())
+        self.assertNotIn('Task A', (self.repo / 'TODO.md').read_text())
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
+
     def test_tasks_without_touches_get_proposed_ones_and_run_in_parallel(self):
         """sierra: no task declared Touches, so everything ran one at a time."""
         text = (self.repo / 'TODO.md').read_text()
@@ -451,6 +519,22 @@ class EngineTests(Fixture):
         self.assertIn('A: runs alone (no Touches proposed: NONE - only a live device operation)', result.stdout)
         self.assertEqual(len(self.runs('touches')), 1)
         self.assertNotIn('Touches: NONE', (self.repo / 'TODO.md').read_text())
+        caches = list(self.state.glob('*/touches-*.json'))
+        self.assertEqual(len(caches), 1)
+        self.assertIn('A', json.loads(caches[0].read_text()))
+
+    def test_answers_from_an_older_prompt_do_not_hold_a_task(self):
+        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+        state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+        state.mkdir(parents=True)
+        (state / 'touches.json').write_text(json.dumps({'A': int(time.time()) + 86400}))
+        (state / 'touches-000000000000.json').write_text(json.dumps({'A': int(time.time()) + 86400}))
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: can run beside others; Touches: A.txt', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_budget_persists_across_restarts(self):
@@ -584,6 +668,63 @@ class SetupTests(Fixture):
         self.env.pop('FAKE_PI_TOOLSET')
         result = self.run_runner('--dry-run')
         self.assertIn('(not a Pi package)', result.stdout)
+
+    def installed_package(self):
+        """A disposable hermes-toolset Pi package with a Git origin, so `pi update` applies."""
+        package = self.root / 'pi-package'
+        for part in ('skills', 'adapters', 'scripts'):
+            shutil.copytree(ROOT / part, package / part, ignore=shutil.ignore_patterns('__pycache__'))
+        (package / '.gitignore').write_text('.updated\n')
+        self.git(package, 'init', '-q', '-b', 'main')
+        self.git(package, 'add', '-A')
+        self.git(package, 'commit', '-qm', 'package')
+        self.git(package, 'remote', 'add', 'origin', 'https://example.invalid/hermes-toolset')
+        self.env.update(FAKE_PI_TOOLSET=str(package), PI_AUTOWORK_UPDATE_INTERVAL='1')
+        return package
+
+    def run_until(self, script, text, timeout=60):
+        runner = subprocess.Popen(['bash', str(script), '--interval', '1'], cwd=self.repo, env=self.env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        deadline = time.monotonic() + timeout
+        while not any(text in p.read_text() for p in self.state.glob('*/runner.log')):
+            if time.monotonic() > deadline or runner.poll() is not None:
+                runner.kill()
+                self.fail(f'{text!r} never logged: {runner.communicate()[0][-2000:]}')
+            time.sleep(0.2)
+        return runner
+
+    def test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code(self):
+        package = self.installed_package()
+        before = self.git(package, 'rev-parse', '--short', 'HEAD')
+        runner = self.run_until(package / 'scripts/pi-autowork.sh', 'restarting on it')
+        deadline = time.monotonic() + 30
+        while next(self.state.glob('*/runner.log')).read_text().count('Started (PID') < 2:
+            self.assertLess(time.monotonic(), deadline, 'the runner did not start again')
+            time.sleep(0.2)
+        while not self.done('A', 'B', 'C'):  # the restarted runner carries on with the queue
+            self.assertLess(time.monotonic(), deadline + 60, 'the restarted runner did not finish the queue')
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGINT)
+        out, _ = runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130, out)
+        after = self.git(package, 'rev-parse', '--short', 'HEAD')
+        self.assertIn(f'Toolset updated to {after}; restarting on it', out)
+        self.assertNotEqual(before, after)
+        self.assertEqual(len({line for line in out.splitlines() if 'Started (PID' in line}), 1)  # exec keeps the PID
+        updates = [json.loads(l) for l in self.log.read_text().splitlines() if '"update"' in l]
+        self.assertEqual(updates[0]['update'], ['https://example.invalid/hermes-toolset'])
+
+    def test_a_broken_toolset_update_keeps_the_running_code(self):
+        package = self.installed_package()
+        self.env['FAKE_PI_UPDATE'] = 'broken'
+        runner = self.run_until(package / 'scripts/pi-autowork.sh', 'does not parse')
+        time.sleep(3)  # later idle cycles neither restart nor repeat the warning
+        runner.send_signal(signal.SIGINT)
+        out, _ = runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130, out)
+        self.assertNotIn('restarting on it', out)
+        self.assertEqual(out.count('does not parse'), 1, out)
 
     def test_setup_errors(self):
         bare = self.root / 'bare'

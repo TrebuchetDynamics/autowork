@@ -23,7 +23,7 @@ TRANSITIONS = {
     'interrupted': {'dispatched', 'held'},
     'released': {'dispatched'},
 }
-FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path'}
+FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused'}
 
 
 def common_dir(repo):
@@ -88,6 +88,21 @@ def require_owner(common, owner_pid):
     if current is None or current['owner'] != owner:
         raise ValueError('operation requires the live parallel coordinator owner')
     return current
+
+
+def pause(repo, owner_pid):
+    """A deliberate coordinator stop (service stop or restart, Ctrl+C): mark live workers
+    before they are interrupted, so the next coordinator resumes each in its worktree on
+    the same attempt instead of spending the retry or holding a second attempt."""
+    common = common_dir(repo)
+    paused = []
+    with execution.lock(common / 'writer.lock'):
+        require_owner(common, owner_pid)
+        for slot in slots(common):
+            if slot['state'] in ('dispatched', 'running') and worker_live(slot) and not slot.get('paused'):
+                write_slot(common, dict(slot, paused=True), slot)
+                paused.append(slot['task_id'])
+    return {'outcome': 'PAUSED', 'paused': paused}
 
 
 def release(repo, owner_pid):
@@ -187,8 +202,10 @@ def change(common, old, target, updates):
     if extra:
         raise ValueError('unsupported slot fields: ' + ', '.join(sorted(extra)))
     value = dict(old)
+    # A worker stopped by a deliberate coordinator stop resumes the same attempt.
+    resume = bool(old.get('paused')) and old['state'] in ('interrupted', 'released')
     if retry:
-        if old['attempt'] >= 2:
+        if old['attempt'] >= 2 and not resume:
             raise ValueError('second failure stays held; no third attempt')
         if worker_live(old):
             raise ValueError('cannot restart a live worker')
@@ -207,10 +224,10 @@ def change(common, old, target, updates):
             {k: v for k, v in old.items() if k != 'previous_attempts'}]
         for key in FIELDS:
             value.pop(key, None)
-        value.update(attempt=2, worker=None, started_at=time.time())
+        value.update(attempt=old['attempt'] if resume else 2, worker=None, started_at=time.time())
     if updates.get('worker') is not None:
         execution.active_owner({'owner': updates['worker']})
-    if target in ('interrupted', 'released') and old['attempt'] == 2:
+    if target in ('interrupted', 'released') and old['attempt'] == 2 and not updates.get('paused', old.get('paused')):
         target = 'held'
     value.update(updates)
     value['state'] = target

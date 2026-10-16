@@ -90,7 +90,9 @@ A task runs beside others only when the planner can prove it is independent:
   prerequisites to close, and a higher-priority task that cannot start yet, or
   must run alone, stops lower-priority dispatch until it can run.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
-  overlapping tasks until closed. An `in_progress` task with no live slot is a claim:
+  overlapping tasks until closed. A `held` or `interrupted` slot whose task is now done
+  or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
+  nothing; its worktree and record stay for inspection. An `in_progress` task with no live slot is a claim:
   it is never dispatched and blocks its dependents and tasks whose declared `Touches:`
   or `Resources:` overlap it, but its own missing `Touches:` does not hold back
   unrelated tasks (the coordinator holds the repository lease, so no sequential
@@ -134,7 +136,10 @@ nothing parallel was claimed or started.
   and branch for manual cleanup.
 - **Interrupted or released workers** (timed out, or dead with uncommitted changes
   or with nothing) restart once in the same worktree with a resume note; a second
-  interruption is held. A failed first launch holds the task, which can still get
+  interruption is held. A deliberate coordinator stop first runs `--parallel-pause`
+  (with `--owner-pid`), which marks live workers `paused`; a paused
+  worker that dies resumes in its worktree on the same attempt, spending no retry
+  and never holding a second attempt. The flag clears when it is dispatched again. A failed first launch holds the task, which can still get
   the `-r2` attempt; a failed restart launch uses up its retry.
 - **A restarted coordinator** reclaims the lease and reconciles the slot records
   under `<git-common-dir>/autowork-execution/slots/`: live workers are adopted; a
