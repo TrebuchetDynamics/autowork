@@ -228,12 +228,12 @@ if [[ -n $SERVICE ]]; then
   mkdir -p "$UNIT_DIR" "$ENV_DIR" || die 2 "Cannot create $UNIT_DIR or $ENV_DIR"
   cat >"$UNIT_DIR/pi-autowork@.service.tmp" <<UNIT
 [Unit]
-Description=pi-autowork for %I
+Description=pi-autowork for /%I
 Documentation=https://github.com/TrebuchetDynamics/hermes-toolset/blob/main/docs/cross-host.md#run-autowork-continuously
 After=network-online.target
 
 [Service]
-WorkingDirectory=%I
+WorkingDirectory=/%I
 EnvironmentFile=-$ENV_DIR/%i.env
 ExecStart=/bin/bash $SCRIPT
 KillMode=mixed

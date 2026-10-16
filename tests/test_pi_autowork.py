@@ -523,7 +523,7 @@ class ServiceTests(unittest.TestCase):
         result = self.run_runner('--install-service', '--allow-hermes')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         unit = (self.units / 'pi-autowork@.service').read_text()
-        for line in ('WorkingDirectory=%I', f'ExecStart=/bin/bash {RUNNER}', 'KillSignal=SIGINT', 'KillMode=mixed',
+        for line in ('WorkingDirectory=/%I', f'ExecStart=/bin/bash {RUNNER}', 'KillSignal=SIGINT', 'KillMode=mixed',
                      'SuccessExitStatus=130', 'Restart=on-abnormal', f'EnvironmentFile=-{self.envs}/%i.env'):
             self.assertIn(line, unit)
         env = (self.envs / f'{self.instance()}.env')
@@ -537,6 +537,13 @@ class ServiceTests(unittest.TestCase):
                          ['--user daemon-reload', f'--user enable {unit_name}', f'--user restart {unit_name}'])
         self.assertIn(f"journalctl --user -u '{unit_name}'", result.stdout)
         self.assertEqual(self.runs(), [])  # installing runs no task
+        if shutil.which('systemd-analyze'):  # systemd itself must accept the unit for a real path
+            instance = self.root / 'verify' / unit_name
+            instance.parent.mkdir()
+            instance.write_text(unit)
+            check = subprocess.run(['systemd-analyze', '--user', 'verify', str(instance)], capture_output=True, text=True)
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+            self.assertNotIn('bad unit file setting', check.stdout + check.stderr)
 
     def test_install_refuses_a_hermes_job_without_allow_and_remove_cleans_up(self):
         jobs = self.root / 'hermes/profiles/work/cron'
