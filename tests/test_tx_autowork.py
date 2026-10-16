@@ -141,10 +141,11 @@ class TxAutoworkTests(unittest.TestCase):
         self.runner_lines(1)
         result = self.tx('autowork', 'ls', '--brief', env={'FAKE_SERVICE_STATE': 'active'})
         self.assertEqual(result.returncode, 0, result.stderr)
-        rows = {line.split()[0]: line.split()[1] for line in result.stdout.splitlines()[1:]}
+        rows = {line.split()[0]: line.split()[1] for line in result.stdout.splitlines()[1:] if line.startswith('  ')}
+        self.assertIn('More: tx autowork ls --long', result.stdout)
         self.assertEqual(rows, {'my-repo': 'tmux', 'svc': 'service'})
         self.assertIn('pi-autowork runners: 2 (2 unknown)', result.stdout)
-        full = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active'}).stdout
+        full = self.tx('autowork', 'ls', '--long', env={'FAKE_SERVICE_STATE': 'active'}).stdout
         self.assertIn('my-repo  tmux  unknown\n  tx pi-autowork-my-repo  no status yet\n', full)
         self.assertNotIn(str(self.repo), full)  # names, not paths
         empty = self.tx('autowork', 'ls', env={'TX_TMUX': '/nonexistent'})
@@ -223,19 +224,25 @@ class TxAutoworkTests(unittest.TestCase):
                                                        'active_workers': 2, 'waiting': 5}))
         self.service_env('my-repo')
         service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo'}
-        listing = self.tx('autowork', 'ls', env=service).stdout
+        listing = self.tx('autowork', 'ls', '--long', env=service).stdout
         self.assertIn('pi-autowork runners: 1 (1 working)', listing)
         self.assertRegex(listing, r'my-repo  service  working [45]m\n  tx pi-autowork-my-repo  2 running, 5 waiting\n')
         self.assertRegex(self.tx('autowork', 'ls', '--brief', env=service).stdout,
                          r'my-repo\s+service\s+working [45]m\s+2 running, 5 waiting')
+        self.assertEqual(self.tx('autowork', 'ls', env=service).stdout,  # one line per runner is the default
+                         self.tx('autowork', 'ls', '--brief', env=service).stdout)
+        colored = self.tx('autowork', 'ls', env={**service, 'TX_COLOR': 'always'}).stdout
+        self.assertRegex(colored, '\x1b\\[32mworking [45]m +\x1b\\[0m  2 running, 5 waiting')
+        self.assertIn('\x1b[32m1 working\x1b[0m', colored)
+        self.assertNotIn('\x1b', self.tx('autowork', 'ls', env={**service, 'TX_COLOR': 'never'}).stdout)
         status = json.loads((state / 'status.json').read_text())
         (state / 'status.json').write_text(json.dumps(dict(status, since=time.time() - 280 * 60 - 5)))
-        self.assertIn('working 4h40m', self.tx('autowork', 'ls', env=service).stdout)
+        self.assertIn('working 4h40m', self.tx('autowork', 'ls', '--long', env=service).stdout)
         (state / 'runner.json').write_text(json.dumps({'pid': 999999999, 'repo': str(self.repo)}))
-        self.assertIn('not running\n  tx pi-autowork-my-repo  2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
+        self.assertIn('not running\n  tx pi-autowork-my-repo  2 running, 5 waiting', self.tx('autowork', 'ls', '--long', env=service).stdout)
         self.tx('autowork', 'my-repo', env=service)  # its journal view is not a second runner
-        self.assertIn('pi-autowork runners: 1 ', self.tx('autowork', 'ls', env=service).stdout)
-        unknown = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'other'})
+        self.assertIn('pi-autowork runners: 1 ', self.tx('autowork', 'ls', '--long', env=service).stdout)
+        unknown = self.tx('autowork', 'ls', '--long', env={'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'other'})
         self.assertEqual(unknown.returncode, 0, unknown.stderr)  # a service without settings has no status
         self.assertIn('other  service  unknown\n  tx pi-autowork-other  no status yet', unknown.stdout)
 
@@ -255,18 +262,29 @@ class TxAutoworkTests(unittest.TestCase):
         (state / 'status.json').write_text(json.dumps(status))
         service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo', 'COLUMNS': '200'}
         self.service_env('my-repo')
-        listing = self.tx('autowork', 'ls', env=service).stdout
+        listing = self.tx('autowork', 'ls', '--long', env=service).stdout
         self.assertIn('  tx pi-autowork-my-repo  0 running, 23 waiting, 1 held\n', listing)
         blockers = listing.split('1 held\n', 1)[1].split('\n\n')[0].splitlines()
         self.assertEqual(blockers, ['  held: T-9 blocker (2)', '  claimed elsewhere: T-7 (13)',
                                     '  outside Now/Next: TASK-036 (19), approved physical target and... (2)'])
         self.assertNotIn('T-1 ', listing)  # moving work is not a blocker
         self.assertIn('(n) = waiting tasks that depend on it', listing)
-        narrow = self.tx('autowork', 'ls', env={**service, 'COLUMNS': '40'}).stdout
+        narrow = self.tx('autowork', 'ls', '--long', env={**service, 'COLUMNS': '40'}).stdout
         self.assertTrue(all(len(line) <= 40 for line in narrow.splitlines()[:-1]), narrow)
         status.update(state='working', active_workers=1)
         (state / 'status.json').write_text(json.dumps(status))
-        self.assertIn('  held: T-9 blocker\n', self.tx('autowork', 'ls', env=service).stdout)
+        self.assertIn('  held: T-9 blocker\n', self.tx('autowork', 'ls', '--long', env=service).stdout)
+
+    def test_help_is_a_command_not_a_runner_name(self):
+        for args in (('autowork', 'help'), ('autowork', '-h'), ('autowork', '--help'), ('autowork',)):
+            with self.subTest(args=args):
+                result = self.tx(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(result.stdout.startswith('Usage: tx autowork <command>'), result.stdout)
+                for command in ('ls [--long]', 'status [target]', 'logs [-f] [target]', 'tx pi-autowork-<name>',
+                                'stop <target>'):
+                    self.assertIn(command, result.stdout)
+                self.assertEqual(self.sessions(), [])
 
     def test_stop_points_a_service_runner_to_systemctl(self):
         self.service_env('my-repo')

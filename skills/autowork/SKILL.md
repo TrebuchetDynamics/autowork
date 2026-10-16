@@ -189,6 +189,12 @@ coordinator files, and refill with `--apply --parallel`; release only after no s
 is left to integrate or close. Workers never select, merge, close or push. `SEQUENTIAL_FALLBACK` means run the returned contract the
 ordinary way. Follow [parallel workers](references/parallel-workers.md).
 
+## Owner blockers
+
+`/autowork blockers [repo|name]` walks the owner through queue blockers, easiest
+first; answers become planning: [owner blockers](references/owner-blockers.md).
+Tasks may read runners (`tx autowork ls|status`), never start, stop or reconfigure them.
+
 ## Scheduled work and reporting
 
 Autowork does not create schedules. Existing jobs use [scheduled policy](references/scheduled-policy.md)
@@ -213,8 +219,7 @@ of repeated messages. After a user asks to continue tool work, return a visible 
 or precise remaining blocker, never an empty response. Coalesce delayed completion
 notices into the current task report: a late failure from an already-repaired attempt
 is not a fresh regression, and an already-reported pass is not another completed task.
-Keep exact run/source bindings in receipts instead of narrating every old notification
-to the user.
+Keep run/source bindings in receipts, not in user-facing narration.
 
 ## Reference map
 
@@ -226,9 +231,7 @@ references/whole-spec-execution.md, references/backlog-planning.md,
 references/parallel-workers.md, references/ponytail.md, references/discovery.md,
 references/profile-feedback.md.
 
-The following retained material documents historical native execution and evidence.
-Its card-specific commands, gates and transitions are not instructions for current
-Autowork, and must not be loaded to create a default execution prerequisite:
+Historical native-card evidence, not instructions or prerequisites:
 references/blocker-recovery.md
 references/blockers-and-history.md
 references/budget-controller-proof.md

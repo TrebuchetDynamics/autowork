@@ -147,6 +147,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/autowork blockers [repo|name]`: an interview that resolves what blocks a
+  repository's queue with the owner, one question at a time, easiest first (effort from
+  the blocker's kind: quick, decision, input, investigate; then most tasks unblocked).
+  It reads the runner's BLOCKERS.md block or the engine's status, records each answer
+  as TODO.md planning, commits only planning files and never manages runners.
+
 - A commit held because review failed is reviewed again, once, whenever the runner's
   reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW`), by the runner
   itself and even with no attempt left (`--parallel-reverify`, `reviewed_by`). The same
@@ -184,6 +190,11 @@ claim of a tagged release, completed installation or live workflow qualification
   (`claimed elsewhere: TASK-028 (13), TASK-014 (4)`) with short IDs and held causes
   instead of one cut-off sentence per blocker, durations read `4h41m`, and the footer
   fits the terminal.
+- `tx autowork help` (or `-h`, `--help`, or no command) prints the `tx autowork`
+  commands; before, `help` was looked up as a runner name.
+- `tx autowork ls` prints one colored line per runner by default (green working,
+  yellow blocked, red stalled or not running, also in the header counts);
+  `tx autowork ls --long` shows the blockers. `--brief` still works.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),

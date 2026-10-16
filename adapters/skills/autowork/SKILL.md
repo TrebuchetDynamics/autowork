@@ -75,6 +75,12 @@ explicit read-only runs write nothing.
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
 
+`/autowork blockers [repo|name]` is the owner's interview on what blocks the queue,
+easiest first, one question at a time; answers become TODO.md planning. Follow
+[owner blockers](../../../skills/autowork/references/owner-blockers.md). A task may
+read runner state (`tx autowork ls`, `tx autowork status NAME`); it never starts,
+stops or reconfigures runners.
+
 Parallel workers are opt-in: only when the user asks, run the bundled
 `owner_cycle.py REPO --apply --parallel [N] --owner-pid PID` and follow
 [parallel workers](../../../skills/autowork/references/parallel-workers.md). Codex
