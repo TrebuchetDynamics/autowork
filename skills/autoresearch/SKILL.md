@@ -1,6 +1,6 @@
 ---
 name: autoresearch
-description: "Run the pinned Autoresearch protocols for repository research and bounded experiments; not required for a ready implementation task."
+description: "Use for repository research and bounded experiments."
 version: 0.2.0
 license: MIT
 ---

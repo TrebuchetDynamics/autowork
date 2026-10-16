@@ -1,6 +1,6 @@
 ---
 name: git-commit-push
-description: "Use when committing, pushing, pulling or merging Git changes; ships sync with upstream by default."
+description: "Use to commit, push, pull or merge Git changes."
 version: 2.1.1
 license: MIT
 metadata:

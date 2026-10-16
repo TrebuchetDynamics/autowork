@@ -1,6 +1,6 @@
 ---
 name: plan-for-me
-description: "Use when the user wants you to investigate a repository, choose a supported approach, and save a plan and actionable tasks without an interview."
+description: "Use to research and save a plan without an interview."
 license: MIT
 metadata:
   version: 0.3.0

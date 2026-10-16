@@ -53,8 +53,9 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Checks: A regression over `skills/*/SKILL.md`, then `python3 scripts/check.py`.
 - Dependencies: None.
 - Exclusions: No vendored-file edits.
-- Candidate: `autowork/TOOLSET-064` (049405e, 3 commits) rewrites the eight descriptions with a length regression; the cron reported independent review approval and a passing full offline gate on 2026-10-15 before main moved 21 commits.
-- Next action: Merge the candidate onto current main, rerun its regression, `python3 scripts/check.py` and `git diff --check`, then close. Re-review only files that conflict.
+- Candidate: `autowork/TOOLSET-064` at `2e3ef49` combines the retained reviewed descriptions with main `7882845` and the reviewed TOOLSET-097-41 repair. The conflict-free refresh preserves every owned skill body against that pinned main. The description regression and all 40 Pi tests pass; the fresh full offline gate passes 556/689/212/8 tests across four directories (one skipped test; eight excluded modules). Bash syntax, docs/index validation and whitespace checks pass. The earlier Hermes linter result remains zero description-length warnings for the unchanged descriptions; no new independent review is claimed. The first combined gate failure remains retained, not relabeled passed.
+- Planner's call: Preserve the reviewed combined implementation and refresh it against pinned main in the idle isolated candidate rather than overlapping canonical writers. The refresh merged without conflicts; the original independent approvals remain historical evidence, and this occurrence adds fresh offline qualification, not a new review. Main still matched `7882845` at final admission, but two active canonical sessions prevent integration. Keep both tasks open.
+- Next action: When canonical writers clear, reconcile this combined candidate with fresh main, rerun changed-input checks and review any new conflicts, integrate locally, then close and archive verified tasks. No push or deployment.
 
 ### TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
 
@@ -84,6 +85,8 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Ownership: Next Autowork coordinator. Before starting, check the `pi-par` worktree under `.claude/worktrees/`, which held uncommitted edits to both touched files on 2026-10-15; adopt or wait for that writer instead of duplicating it.
 - Touches: scripts/pi-autowork.sh, tests/test_pi_autowork.py
+- Candidate: `autowork/pi-profile-reconcile` adopts only the implementation and regression from retained candidate `9625a6e` onto `73c6f7e`, preserving the newer parallel runner and service/worktree fixes. All 33 Pi tests, the full offline gate (four directories), Bash syntax, goals validation and whitespace checks passed; independent read-only review approved the two-file diff. Test subprocess/stream ResourceWarnings remain, and one offline test was skipped.
+- Planner's call: Canonical writers prevent integration, not verification in an isolated candidate. Keep this task open until the reviewed candidate is integrated; do not import the old candidate's stale archive/index changes. Next action: integrate this branch only after the canonical writer gate clears, recheck changed inputs, then archive this task.
 - Current evidence: Found by the toolset cron on 2026-10-15: the full offline gate fails one Pi test when the checkout path contains `/profiles/` (as in profile cron runs) and passes elsewhere.
 - Exclusions: No job mutation, provider execution, push or deployment; no change to coexistence refusal policy.
 

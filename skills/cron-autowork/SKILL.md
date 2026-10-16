@@ -1,6 +1,6 @@
 ---
 name: cron-autowork
-description: "Create or update a recurring Autowork job for a repository, with explicit scope, continuation, delivery and budget settings. Use for scheduling, not for executing a development task now."
+description: "Use to schedule recurring repository work, not run it."
 license: MIT
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: beautify-github-readme
-description: "Redesign or audit a GitHub README, or create project-native SVG assets for it (hero, section headers, workflow diagrams, badges). Use when asked to beautify, redesign, visually refresh or audit a README; not for routine documentation edits."
+description: "Use to redesign or audit README visuals and SVG assets."
 version: 0.1.1
 license: MIT
 ---

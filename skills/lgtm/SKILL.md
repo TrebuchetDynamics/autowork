@@ -1,6 +1,6 @@
 ---
 name: lgtm
-description: "Use when the user says lgtm, looks good, approved or go ahead to continue the proposed work without another approval round."
+description: "Use after approval to continue the proposed work."
 version: 0.4.0
 metadata:
   hermes:

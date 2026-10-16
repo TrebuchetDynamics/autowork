@@ -1,6 +1,6 @@
 ---
 name: autowork
-description: "Execute authorized repository tasks directly: select, implement, verify and close out using TODO.md."
+description: "Use to implement and verify ready repository tasks."
 version: 0.28.1
 author: Hermes Agent
 platforms: [linux, macos]
