@@ -435,3 +435,42 @@ regression, zero subsequent fake-model calls, output, isolation and stale-state
 semantics. Require same-machine before/after timing, unchanged touched line/branch
 coverage, focused and full normal checks. No speedup is claimed until executed.
 No deletion or wrapper-only consolidation task is justified by this audit.
+
+## Completed-session fixture result (TOOLSET-102-ea)
+
+Measured on the same machine with Python 3.12.14 and coverage.py 7.13.5,
+starting at `7024f6a`. The named empty-queue test now builds a fresh completed
+A/B/C repository and archive, closed worker slots, the released coordinator's
+journal and a detached engine integration worktree containing stale open tasks.
+No old session file or live lease is seeded. Historical worker reports and Pi
+usage logs are not consulted by this uncapped empty rerun and are not reproduced.
+The unchanged sibling parallel-and-merge test retains the actual worker/reviewer,
+dependency, merge and archival journey. No test or original assertion was removed.
+The changed test also checks real `--status` before dispatch: successful exit and
+`0 running; 3 done`. This caught a review gap where a malformed historical claim
+could otherwise be masked by the next runner's valid claim.
+
+- Ordinary focused wall times before: **5.497 / 5.390 / 5.287 s**, median
+  **5.390 s**. After: **0.730 / 0.709 / 0.703 s**, median **0.709 s**:
+  **86.8% lower**, or **7.60 times faster** for this test, not the whole suite.
+- Same-config subprocess-attributed coverage runs select the exact changed test
+  **and** `test_independent_tasks_run_in_parallel_and_merge_verified_into_main`.
+  The pair covers **1,536 owned Python lines / 403 branch arcs before and after**,
+  with no previously executed line or arc lost in any file. Caller test IDs are
+  inherited by children through a scratch startup hook. This is the pair's union,
+  not a claim that the empty test alone still executes worker/reviewer setup.
+  Shell/Git commands, sanitized environments and hard-killed children remain
+  coverage blind spots. Raw shards/configs/logs remain private scratch artifacts.
+- Final normal module: `python3 -m unittest discover -s tests -p
+  test_pi_autowork.py`: **40 tests passed**. Final `python3 scripts/check.py`:
+  **562/712/212/8 tests passed**, one skip and eight native/model/integration
+  modules excluded. Independent review approved after the journal correction.
+- Retained failed attempts: an initial focused module-name invocation failed to
+  import the non-package `tests` directory; corrected to unittest discovery.
+  An instrumented whole-module attempt exceeded the tool's 420-second window and
+  did not finish; it is not a passing full-coverage run. Initial synthetic slots
+  omitted required metadata and failed before correction. The first paired
+  candidate lost the historical coordinator-release branch; seeding the consumed
+  journal restored it, then review required a complete historical claim payload.
+- Mutation score **not measured**; no dependency or mutation tool was added.
+  Offline fixture evidence does not qualify a live model, fleet run or delivery.

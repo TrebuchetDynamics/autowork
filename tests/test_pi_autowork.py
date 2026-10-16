@@ -288,8 +288,44 @@ class EngineTests(Fixture):
         self.assertEqual((self.repo / 'B.txt').read_text(), '')
 
     def test_empty_queue_calls_no_model(self):
-        self.run_runner('--until-empty')
-        self.log.unlink()
+        # Seed the consumed artifacts of a completed A/B/C session, not another
+        # worker/reviewer journey (covered by the parallel-and-merge test above).
+        # A finished session has archived tasks, closed slots and no session.json;
+        # the engine's detached integration worktree can still contain old tasks.
+        archived = '# Completed tasks\n'
+        for task, dependency in [('A', None), ('B', None), ('C', 'A')]:
+            body = todo([(task, dependency)]).split('## Next\n\n', 1)[1]
+            archived += ('\n\n<!-- archived from TODO.md -->\n\nSource section: Next\n\n'
+                         + body.replace('- [ ]', '- [x]').replace('Status: open', 'Status: done'))
+            (self.repo / f'{task}.txt').write_text(f'done {task}\n')
+        (self.repo / 'TODO.md').write_text('# TODO\n\n[Completed tasks](TODO.archive.md)\n\n\n## Next\n\n\n')
+        (self.repo / 'TODO.archive.md').write_text(archived)
+        self.git(self.repo, 'add', 'TODO.md', 'TODO.archive.md', 'A.txt', 'B.txt', 'C.txt')
+        self.git(self.repo, 'commit', '-qm', 'completed session fixture')
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        state = self.state / hashlib.sha256(str(common).encode()).hexdigest()[:16]
+        stale = state / 'worktrees/integration-autowork-integration'
+        stale.parent.mkdir(parents=True)
+        self.git(self.repo, 'worktree', 'add', '-q', '--detach', str(stale), 'HEAD^')
+        slots = common / 'autowork-execution/slots'
+        slots.mkdir(parents=True)
+        for task in 'ABC':
+            (slots / f'{task}.json').write_text(json.dumps({
+                'task_id': task, 'state': 'closed', 'attempt': 1,
+                'worktree': str(state / f'worktrees/integration-autowork-{task}'),
+                'branch': f'autowork/{task}', 'baseline': self.git(self.repo, 'rev-parse', 'HEAD^'),
+                'started_at': 0,
+            }))
+        # The status consumer replays the prior coordinator's release as well as
+        # the closed slots; no old lease or resumable Pi session remains.
+        (common / 'autowork-execution/journal.jsonl').write_text(
+            json.dumps({'timestamp': 0, 'event': 'coordinator_claimed',
+                        'coordinator': {'max_workers': 2}}) + '\n'
+            + json.dumps({'timestamp': 1, 'event': 'coordinator_released',
+                          'coordinator': {'max_workers': 2}}) + '\n')
+        status = self.run_runner('--status')
+        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
+        self.assertIn('0 running; 3 done', status.stdout)
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Queue empty', result.stdout)

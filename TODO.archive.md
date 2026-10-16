@@ -2038,3 +2038,27 @@ Source section: Next
 - Ownership: Default shared-source maintainer under existing audit repair authority.
 - Planner's call: Skip only TOOLSET-101-f6's already-separated installed adoption because its native scan approval remains unavailable. This independent reporting repair does not clear or reset that primary hold.
 - Exclusions: No scan bypass, installation, product/Agent edits, schedule changes, worker launch, push or live qualification.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-102-ea — Replace the empty-queue Pi test warm-up with equivalent completed-session setup
+
+- [x] TOOLSET-102-ea — Replace the empty-queue Pi test warm-up with equivalent completed-session setup
+- Status: done
+- Delivery evidence: [Measured fixture result](docs/test-suite-audit.md#completed-session-fixture-result-toolset-102-ea): focused wall median 5.390 to 0.709 s (86.8% lower); the changed test plus unchanged composed sibling retain all 1,536 owned Python lines and 403 branch arcs in paired subprocess-attributed runs. Normal module 40 passed; final offline gate 562/712/212/8 passed, one skip/eight exclusions. Independent review approved after correcting historical coordinator payloads and adding a pre-dispatch real status assertion. Mutation score not measured; no runtime/model/live change.
+- Method: Bundled Ponytail fallback reused the existing task-text fixture and real shell runner; omitted duplicate worker/reviewer warm-up. The test-suite-optimization protocol kept assertions and composed coverage, measured ordinary timing separately, and retained failed/incomplete harness evidence in the linked result.
+- Goal: TEST-SUITE
+- Payoff: Reduce real Git/fake-worker fixture cost without reducing defect detection.
+- Sources: [audit decision](docs/project.md#subprocess-coverage-audit-toolset-073-2026-10-16), [assertion review](docs/test-suite-audit.md#bounded-follow-up), [protocol](skills/engineering/local/test-suite-optimization/PROTOCOL.md).
+- Touches: tests/test_pi_autowork.py
+- Scope: Optimize only `EngineTests.test_empty_queue_calls_no_model` and the smallest needed fixture helper. Replace its full A/B/C warm-up with equivalent completed-session setup; first inspect the warm-up's actual task/archive/session artifacts, then preserve every artifact relevant to the second invocation. Keep its named test, real shell-runner entrypoint, fresh mutable fixture and complete empty-rerun assertions. Baseline at de0f3ac: three ordinary wall times 5.158/5.003/5.187 s (median 5.158 s); instrumented 19.433 s is not the baseline.
+- Acceptance: The empty rerun still exits successfully, reports `Queue empty` and records zero fake-model calls; no stale session causes dispatch. Existing task/archive/session semantics and all assertions remain. The changed test and full normal offline gate pass; touched owned-source line and branch coverage do not drop in same-config before/after runs with subprocess attribution. Report same-machine three-run wall medians even if no speedup. Mutation score remains not measured unless a tool is already available; no new dependency.
+- Checks: `python3 -m unittest discover -s tests -p test_pi_autowork.py`; `python3 scripts/check.py`; three focused ordinary timings and paired scratch subprocess line/branch coverage of the exact test; `git diff --check`.
+- Dependencies: None.
+- Prior work: TOOLSET-073 (audit and measured baseline delivered before this task).
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Planner's call: Prefer this measured fixture-cost seam to unmeasured thin-wrapper parametrization; no test removal or new model/live operation is authorized.
+- Exclusions: No weakened assertions, no runner/source changes, no live model or fleet repository, no coverage plugin dependency, no push.

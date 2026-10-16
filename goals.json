@@ -131,12 +131,17 @@
           "kind": "executed",
           "ref": "TOOLSET-073 at de0f3ac: scratch subprocess coverage 1278/1491 contexts; 31 large groups and five slow subsets assertion-reviewed; normal python3 scripts/check.py passed 562/709/212/8, one skip/eight excluded; instrumented cache failure retained and focused harness-repair rerun passed; docs/test-suite-audit.md; offline only",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-102-ea: python3 scripts/check.py passed 562/712/212/8, one skip/eight exclusions; Pi module 40 passed; focused median 5.390 to 0.709 s; paired changed+composed-sibling subprocess coverage 1536 lines/403 arcs unchanged; independent review approved; docs/test-suite-audit.md",
+          "result": "pass"
         }
       ],
       "id": "TEST-SUITE",
       "priority": 20,
       "source": "docs/project.md#test-suite-optimization-method-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-067",
         "TOOLSET-068",
@@ -612,14 +617,6 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
-    },
-    {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-102-ea",
-      "section": "Next",
-      "status": "open",
-      "title": "Replace the empty-queue Pi test warm-up with equivalent completed-session setup"
     },
     {
       "depends_on": [
@@ -1307,6 +1304,14 @@
       "section": "Done",
       "status": "done",
       "title": "Retain execution evidence for every existing profile job"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-102-ea",
+      "section": "Done",
+      "status": "done",
+      "title": "Replace the empty-queue Pi test warm-up with equivalent completed-session setup"
     },
     {
       "depends_on": [],
