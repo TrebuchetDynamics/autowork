@@ -1288,9 +1288,8 @@ from the repository, candidate branches and the installed hosts:
 - TOOLSET-066 can run now: `claude --plugin-dir` on a clean clone of the published
   commit loads the plugin for one session without a marketplace install or settings
   change. It still needs owner approval for the short model run.
-- TOOLSET-003 keeps its requirement of an externally capped model endpoint; an
-  owner-observed host session with a run budget is proposed as an alternative but
-  needs owner approval.
+- TOOLSET-003 no longer needs an externally capped model endpoint: the owner
+  accepted an owner-observed host session bounded by the host's run budget.
 - Unchanged and waiting on the owner or an external environment: TOOLSET-091-00
   (owner-observed real workers), TOOLSET-096-7e (owner picks a fleet repository),
   TOOLSET-029 (stop-all instruction), TOOLSET-011 (original host and profile gone).
