@@ -119,9 +119,6 @@ warn() {
   return 0
 }
 die() { local code=$1; shift; printf 'pi-autowork: %s\n' "$*" >&2; exit "$code"; }
-redact() {
-  sed -E 's/(sk-[A-Za-z0-9_-]{8,}|Bearer [A-Za-z0-9._~+\/=-]+|[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD)[A-Za-z0-9_]*=[^[:space:]]+)/[redacted]/g'
-}
 provider_of() { printf '%s' "${1%%/*}"; }
 model_of() { printf '%s' "${1#*/}"; }
 safe_name() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-'; }
@@ -133,156 +130,55 @@ push_guard() {
   export GIT_CONFIG_KEY_1=protocol.pi-autowork-push-disabled.allow GIT_CONFIG_VALUE_1=never
 }
 
-auth_ready() {  # 0 ready; never prints credentials
-  local refresh=()
-  ((DRY_RUN)) && refresh=(--no-refresh)
-  "$PI" auth check --provider "$(provider_of "$1")" --model "$(model_of "$1")" "${refresh[@]}" >/dev/null 2>&1
+# Pi jobs, model choice and budgets live in the pi-autowork component (pi_runtime.py),
+# from the same release as the engine; workers inherit its path.
+PI_RUNTIME=${PI_AUTOWORK_COMPONENT:-$(dirname "$SCRIPT")/../pi-autowork}/pi_autowork/pi_runtime.py
+runtime_env() {
+  export PI_BIN=$PI PI_AUTOWORK_PRIMARY=$PRIMARY PI_AUTOWORK_FALLBACK=$FALLBACK \
+    PI_AUTOWORK_COOLDOWN=$COOLDOWN PI_AUTOWORK_BACKOFF=$BACKOFF PI_AUTOWORK_MAX_RETRIES=$MAX_RETRIES \
+    PI_AUTOWORK_MAX_COST=$MAX_COST PI_AUTOWORK_COST_WINDOW=$COST_WINDOW PI_AUTOWORK_DRY_RUN=$DRY_RUN
+  ((FALLBACK_ENABLED)) || export PI_AUTOWORK_NO_FALLBACK=1
 }
-primary_cooling() {
-  local until
-  until=$(jq -r '.primary_unavailable_until // 0' "$STATE/provider.json" 2>/dev/null || echo 0)
-  (($(date +%s) < until))
-}
-cool_primary() {
-  jq -n --argjson until "$(($(date +%s) + COOLDOWN))" --arg reason "$1" \
-    '{primary_unavailable_until: $until, reason: $reason}' >"$STATE/provider.json.$$" && mv "$STATE/provider.json.$$" "$STATE/provider.json"
-}
+auth_ready() { runtime_env; python3 "$PI_RUNTIME" ready "${STATE:-$STATE_PATH}" "$1" 9>&-; }
 # Sets CHOSEN and FALLBACK_REASON; returns 1 when no model is usable.
 choose_model() {
-  FALLBACK_REASON=''
-  if ((!FALLBACK_ENABLED)); then  # nothing to switch to: the primary when ready, else nothing
-    auth_ready "$PRIMARY" && { CHOSEN=$PRIMARY; return 0; }
-    FALLBACK_REASON='primary not authenticated and the fallback is disabled'
-    return 1
-  fi
-  if ! primary_cooling; then
-    if auth_ready "$PRIMARY"; then CHOSEN=$PRIMARY; return 0; fi
-    FALLBACK_REASON='primary not authenticated'
-    cool_primary "$FALLBACK_REASON"
-  else
-    FALLBACK_REASON=$(jq -r '.reason // "primary cooling down"' "$STATE/provider.json")
-  fi
-  auth_ready "$FALLBACK" && { CHOSEN=$FALLBACK; return 0; }
-  return 1
+  local out
+  runtime_env
+  out=$(python3 "$PI_RUNTIME" choose "$STATE" 9>&-)
+  CHOSEN=$(jq -r '.chosen // empty' <<<"$out" 2>/dev/null)
+  FALLBACK_REASON=$(jq -r '.reason // empty' <<<"$out" 2>/dev/null)
+  [[ -n $CHOSEN ]]
 }
-label() { if [[ $1 == "$PRIMARY" ]]; then printf 'primary %s' "$1"; else printf 'fallback %s' "$1"; fi; }
-
 # Spending within the budget window, from every run recorded by any process.
-spent() {
-  local since
-  since=$(date -d "-$COST_WINDOW hours" -Iseconds)
-  jq -rs --arg since "$since" '[.[] | select(.time >= $since) | .cost_usd // 0] | add // 0' "${STATE:-$STATE_PATH}/runs.jsonl" 2>/dev/null || echo 0
-}
-over_budget() {
-  [[ $MAX_COST != 0 ]] && awk -v s="$(spent)" -v m="$MAX_COST" 'BEGIN { exit !(s >= m) }'
-}
+spent() { runtime_env; python3 "$PI_RUNTIME" spent "${STATE:-$STATE_PATH}" 9>&-; }
+over_budget() { runtime_env; python3 "$PI_RUNTIME" over-budget "${STATE:-$STATE_PATH}" 9>&-; }
 
-# Runs Pi in directory $1 with message $2 (and extra Pi arguments after $4);
-# sets RUN_* globals describing what Pi reported.
-run_pi() {
-  local dir=$1 message=$2 session=$3 target=$4 limit=$5 raw err rc analysis
-  shift 5
-  raw=$(mktemp "$STATE/runs/run.XXXXXX") err=$raw.err
-  RUN_START=$SECONDS
-  # --foreground keeps Pi and its tools in the worker's process group, which the engine stops as a whole.
-  (cd "$dir" && exec timeout --foreground -s INT -k 120 "$limit" \
-    "$PI" --mode json --provider "$(provider_of "$target")" --model "$(model_of "$target")" \
-    --session-dir "$STATE/sessions" --session-id "$session" --no-approve "${SKILL_ARGS[@]}" "$@" -- "$message") \
-    </dev/null >"$raw" 2>"$err" &
-  CHILD=$!
+# Runs one Pi job with provider fallback and bounded retries, resuming the same
+# session after a failure. Sets JOB_OK (1 when Pi finished normally) and JOB_TEXT.
+pi_job() {  # role task dir message session limit [extra pi args...]
+  local role=$1 task=$2 dir=$3 message=$4 session=$5 limit=$6 out rc note
+  shift 6
+  JOB_OK=0 JOB_TEXT=''
+  runtime_env
+  out=$(mktemp "$STATE/runs/job.XXXXXX")
+  PI_AUTOWORK_SESSION=${INTEG_BRANCH:-${PI_AUTOWORK_SESSION:-}} PI_AUTOWORK_SKILL_ARGS="${SKILL_ARGS[*]}" \
+    python3 "$PI_RUNTIME" job "$STATE" "$role" "$task" "$dir" "$session" "$limit" "$message" "$@" \
+    >"$out" 9>&- &
+  CHILD=$!  # a second Ctrl+C escalates to it (on_signal)
   while :; do
     wait "$CHILD"; rc=$?
     kill -0 "$CHILD" 2>/dev/null || break
   done
   CHILD=''
-  RUN_RC=$rc RUN_SECONDS=$((SECONDS - RUN_START))
-  analysis=$(jq -R -s -c '
-    [split("\n")[] | fromjson? | select(type == "object")] as $e
-    | ($e | map(select(.type == "agent_settled")) | last) as $settled
-    | ($e | map(select(.type == "message_end" and .message.role == "assistant") | .message)) as $msgs
-    | ($msgs | last) as $last
-    | ($e | map(select(.type == "auto_retry_end" and .success == false)) | last) as $gaveup
-    | {settled: ($settled != null), aborted: ($settled.aborted // false),
-       stop: ($last.stopReason // null),
-       error: ($last.errorMessage // $gaveup.finalError // null),
-       retries: ($e | map(select(.type == "auto_retry_start")) | length),
-       tokens: ($msgs | map(.usage.totalTokens // 0) | add // 0),
-       cost: ($msgs | map(.usage.cost.total // 0) | add // 0),
-       text: ([$last.content[]? | select(.type == "text") | .text] | join("\n"))}' "$raw")
-  [[ -n $analysis ]] || analysis='{"settled":false,"aborted":false,"stop":null,"error":null,"retries":0,"tokens":0,"cost":0,"text":""}'
-  RUN_SETTLED=$(jq -r .settled <<<"$analysis")
-  RUN_ABORTED=$(jq -r .aborted <<<"$analysis")
-  RUN_STOP=$(jq -r '.stop // ""' <<<"$analysis")
-  RUN_ERROR=$(jq -r '.error // ""' <<<"$analysis" | redact | cut -c1-300)
-  RUN_TOKENS=$(jq -r .tokens <<<"$analysis")
-  RUN_COST=$(jq -r .cost <<<"$analysis")
-  RUN_RETRIES=$(jq -r .retries <<<"$analysis")
-  RUN_TEXT=$(jq -r .text <<<"$analysis")
-  if [[ -z $RUN_ERROR && $RUN_RC -ne 0 ]]; then
-    RUN_ERROR=$(tail -n 5 "$err" | tr '\n' ' ' | redact | cut -c1-300)
+  if ((rc == 0)); then
+    [[ $(jq -r '.ok' "$out" 2>/dev/null) == true ]] && JOB_OK=1
+    JOB_TEXT=$(jq -r '.text // ""' "$out" 2>/dev/null)
+    while IFS= read -r note; do
+      [[ -n $note ]] && say "$note"
+    done < <(jq -r '.notes[]?' "$out" 2>/dev/null)
   fi
-  # Keep only the compact record; the raw stream holds prompts, code and tool output.
-  rm -f "$raw" "$err"
-}
-is_provider_failure() {
-  [[ $RUN_STOP == error ]] && return 0
-  [[ $RUN_SETTLED != true ]] && grep -qiE '429|rate.?limit|quota|usage limit|overloaded|5[0-9]{2}|unavailable|timed? ?out|ECONN|ENOTFOUND|EAI_AGAIN|network|fetch failed|401|403|unauthori[sz]ed|forbidden|credential|api key|not logged in|/login|oauth|expired|no such model|model .*not (found|available)' <<<"$RUN_ERROR"
-}
-# One line per Pi run in runs.jsonl (appends are atomic): role, task, outcome, model, cost.
-record() {  # role task outcome model fallback_reason [result]
-  jq -cn --arg time "$(date -Iseconds)" --arg role "$1" --arg task "$2" --arg outcome "$3" --arg model "$4" \
-    --arg fallback "$5" --arg result "$(redact <<<"${6:-}" | cut -c1-300)" --arg error "$RUN_ERROR" \
-    --arg session "${INTEG_BRANCH:-${PI_AUTOWORK_SESSION:-}}" \
-    --argjson seconds "${RUN_SECONDS:-0}" --argjson tokens "${RUN_TOKENS:-0}" --argjson cost "${RUN_COST:-0}" \
-    --argjson retries "${RUN_RETRIES:-0}" \
-    '{time: $time, role: $role, task: $task, outcome: $outcome, provider: ($model | split("/")[0]),
-      model: ($model | split("/")[1:] | join("/")), seconds: $seconds, session: $session,
-      pi_retries: $retries, fallback_reason: (if $fallback == "" then null else $fallback end),
-      tokens: $tokens, cost_usd: $cost, error: (if $error == "" then null else $error end),
-      result: (if $result == "" then null else $result end)}' >>"$STATE/runs.jsonl"
-}
-
-# Runs one Pi job with provider fallback and bounded retries, resuming the same
-# session after a failure. Sets JOB_OK (1 when Pi finished normally) and JOB_TEXT.
-pi_job() {  # role task dir message session limit [extra pi args...]
-  local role=$1 task=$2 dir=$3 message=$4 session=$5 limit=$6 attempt=0 kind delay note=''
-  shift 6
-  JOB_OK=0 JOB_TEXT=''
-  while :; do
-    if over_budget; then
-      say "$role $task: budget reached (\$$(spent) of \$$MAX_COST in ${COST_WINDOW} h); not starting Pi"
-      return 0
-    fi
-    if ! choose_model; then
-      RUN_SECONDS=0 RUN_TOKENS=0 RUN_COST=0 RUN_RETRIES=0 RUN_ERROR="${FALLBACK_REASON:-no model ready}"
-      record "$role" "$task" no_model "$PRIMARY" "$FALLBACK_REASON"
-      return 0
-    fi
-    run_pi "$dir" "$message$note" "$session" "$CHOSEN" "$limit" "$@"
-    ((STOP)) && { record "$role" "$task" interrupted "$CHOSEN" "$FALLBACK_REASON"; return 0; }
-    if ((RUN_RC == 124)); then
-      record "$role" "$task" timeout "$CHOSEN" "$FALLBACK_REASON"
-      return 0
-    fi
-    if is_provider_failure || [[ $RUN_SETTLED != true || $RUN_ABORTED == true ]]; then
-      kind=crash
-      is_provider_failure && kind=provider
-      attempt=$((attempt + 1))
-      record "$role" "$task" "${kind}_failure" "$CHOSEN" "$FALLBACK_REASON"
-      ((attempt > MAX_RETRIES)) && return 0
-      if [[ $kind == provider && $CHOSEN == "$PRIMARY" ]] && ((FALLBACK_ENABLED)); then
-        cool_primary "${RUN_ERROR:-provider failure}"
-      else
-        delay=$((BACKOFF * (1 << (attempt - 1)))); ((delay > 600)) && delay=600
-        sleep "$delay"
-      fi
-      note=' A previous attempt in this session was interrupted by a model or provider failure: first reconcile its partial work, then continue.'
-      continue
-    fi
-    JOB_OK=1 JOB_TEXT=$RUN_TEXT
-    record "$role" "$task" finished "$CHOSEN" "$FALLBACK_REASON" "$(grep -m1 -E '^PI_AUTOWORK_(RESULT|VERIFY):' <<<"$RUN_TEXT")"
-    return 0
-  done
+  rm -f "$out"
+  return 0
 }
 
 # --- Worker and verifier (started by the engine) -------------------------------
@@ -437,6 +333,11 @@ export PI_AUTOWORK_SKILL_ARGS="${SKILL_ARGS[*]}"
 # Workers and the reviewer link gitignored dependencies from here (PI_AUTOWORK_LINK_PATHS).
 export PI_AUTOWORK_REPO=$REPO
 ENGINE=$TOOLSET/skills/autowork/scripts/owner_cycle.py
+# The component ships with the engine; workers and copied launchers use this release's copy.
+[[ -f $TOOLSET/pi-autowork/pi_autowork/pi_runtime.py ]] ||
+  die 2 "$TOOLSET has no pi-autowork component; update the toolset (pi update git:github.com/TrebuchetDynamics/hermes-toolset)"
+export PI_AUTOWORK_COMPONENT=$TOOLSET/pi-autowork
+PI_RUNTIME=$PI_AUTOWORK_COMPONENT/pi_autowork/pi_runtime.py
 # Health comes from the same release as the engine.
 [[ -f $TOOLSET/pi-autowork/pi_autowork/health.py ]] && HEALTH=$TOOLSET/pi-autowork/pi_autowork/health.py
 TOOLSET_REV=$(git -C "$TOOLSET" rev-parse --short HEAD 2>/dev/null || echo unknown)

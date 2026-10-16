@@ -68,6 +68,10 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         previous = json.loads(path.read_text())
     except (OSError, ValueError):
         previous = {}
+    if snapshot.get('outcome') != 'PARALLEL_STATUS' or not isinstance(snapshot.get('tasks'), list):
+        # The engine could not answer (say its state lock was busy with a --status
+        # reader): that is no observation, so keep the record and its stall clock.
+        return None
     paused = float(runner.get('paused_until') or 0) > now
     state = classify(snapshot, paused=paused)
     since = previous.get('since', now) if previous.get('state', '').replace('stalled', 'blocked') == state else now
