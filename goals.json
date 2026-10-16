@@ -146,6 +146,11 @@
           "kind": "executed",
           "ref": "TOOLSET-105-79: deterministic old assertion failed; repaired Pi module 40 passed; changed-PID/missing-start negative probes rejected; independent exact-source review approved; python3 scripts/check.py passed 563/712/212/8, one skip/eight excluded; offline only",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-110-61: python3 scripts/check.py passed 564/715/216/8 tests, one skip/eight excluded modules; 12 focused checker tests passed; independent exact-source review approved; offline only",
+          "result": "pass"
         }
       ],
       "id": "TEST-SUITE",
@@ -160,7 +165,8 @@
         "TOOLSET-073",
         "TOOLSET-102-ea",
         "TOOLSET-104-cc",
-        "TOOLSET-105-79"
+        "TOOLSET-105-79",
+        "TOOLSET-110-61"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -564,7 +570,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-109-f1",
+      "TOOLSET-110-61",
       "TOOLSET-099-87",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -1403,6 +1409,14 @@
       "section": "Done",
       "status": "done",
       "title": "Keep generated document anchors unique across suffix collisions"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-110-61",
+      "section": "Done",
+      "status": "done",
+      "title": "Preserve offline check results with non-UTF-8 subprocess diagnostics"
     },
     {
       "depends_on": [

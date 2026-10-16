@@ -148,6 +148,23 @@ class Check(unittest.TestCase):
                 self.assertIn('--timeout must be positive', result.stderr)
                 self.assertNotIn('CHECK', result.stdout)
 
+    def test_invalid_output_bytes_preserve_results_and_other_directories(self):
+        for fails in (False, True):
+            with self.subTest(fails=fails):
+                self.write('tests/test_bytes.py',
+                           'import os, unittest\nclass Check(unittest.TestCase):\n'
+                           '    def test_bytes(self):\n'
+                           '        os.write(1, b"diagnostic-\\xff\\n")\n'
+                           f'        self.assertFalse({fails!r}, "deliberate failure")\n')
+                self.sleeper('skills/docs-sync/scripts/test_control.py', 0, 'control')
+                result = self.run_check()
+                self.assertEqual(result.returncode, int(fails), result.stdout + result.stderr)
+                self.assertIn('diagnostic-\ufffd', result.stdout)
+                self.assertIn('OUTPUT-control', result.stdout)
+                self.assertIn(f'{2 - int(fails)} test directories passed; {int(fails)} failed',
+                              result.stdout)
+                self.assertNotIn('UnicodeDecodeError', result.stderr)
+
     def test_timeout_is_a_failure_not_a_skip(self):
         self.write('tests/test_hang.py', 'import time; time.sleep(3)\n')
         result = self.run_check('--timeout', '0.1')

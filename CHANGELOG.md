@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Offline test aggregation tolerates malformed UTF-8 subprocess diagnostics
+  (TOOLSET-110-61). Replacement characters preserve readable output without losing
+  passing/failing verdicts or sibling-directory summaries to a decoding exception.
+
 - Docs Sync heading anchors remain unique across numeric-suffix collisions
   (TOOLSET-109-f1). Valid links and manifest fragments to later duplicate headings
   no longer fail when an earlier heading already uses their candidate suffix.

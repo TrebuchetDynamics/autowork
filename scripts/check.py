@@ -59,6 +59,7 @@ def run_directory(directory, tests, env, timeout):
     never interleave."""
     command = [sys.executable, '-m', 'unittest', *[path.stem for path in tests]]
     with subprocess.Popen(command, cwd=directory, env=env, text=True,
+                          encoding='utf-8', errors='replace',
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           start_new_session=os.name == 'posix') as process:
         try:

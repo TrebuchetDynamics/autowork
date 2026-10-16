@@ -68,6 +68,11 @@ python -m py_compile __init__.py bundle.py install-omh.py install-graphify.py
 node --test tests/portable_pi.test.mjs
 ```
 
+The checker decodes captured diagnostics as UTF-8 with replacement for malformed
+bytes. Real subprocess fixtures cover successful and failing unittest runs emitting
+invalid bytes, retaining their exit verdicts, sibling output and aggregate summary
+(TOOLSET-110-61). Replacement is display recovery, not byte-exact log preservation.
+
 The checker runs top-level and maintained bundled workflow tests in separate
 Python processes, with a 600-second timeout per directory (the Autowork suite
 alone takes about 150 seconds on an idle machine). The directories run at the same

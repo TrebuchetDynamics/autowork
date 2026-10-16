@@ -2187,3 +2187,23 @@ Source section: Now
 - Evidence: Three collision scenarios failed before repair; all 23 focused CLI tests passed after repair. Python 3.12 `python3 scripts/check.py` passed 563/715/216/8 tests, one skip/eight excluded modules. Independent exact-source review approved; docs check and whitespace check passed. Offline only; no deployment.
 - Touches: skills/docs-sync/scripts/docs.py, skills/docs-sync/scripts/test_docs_manifest.py, skills/docs-sync/references/document-scaffold.md
 - Planner's call: Small independent maintenance fix under repository authority. TOOLSET-099-87 remains open with live qualification already separated into TOOLSET-096-7e; other queued tasks require excluded model/live/deployment or cross-repository actions. Skip those operations, not their acceptance. Reuse the current checker and standard-library sets; do not introduce a Markdown parser.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-110-61 — Preserve offline check results with non-UTF-8 subprocess diagnostics
+
+- [x] TOOLSET-110-61 — Preserve offline check results with non-UTF-8 subprocess diagnostics
+- Status: done
+- Goal: TEST-SUITE
+- Sources: [offline gate](docs/testing.md#verify), scripts/check.py, tests/test_check.py.
+- Scope: Decode captured unittest diagnostics as UTF-8 with replacement for malformed bytes, retaining process exit verdicts and ordered sibling-directory output.
+- Touches: scripts/check.py, tests/test_check.py, docs/testing.md, CHANGELOG.md
+- Acceptance: Invalid diagnostic bytes do not crash aggregation; successful and failing suites retain their verdicts and sibling output appears in the final summary.
+- Checks: `python3 -m unittest discover -s tests -p test_check.py`; `python3 scripts/check.py`; independent review; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current Autowork coordinator.
+- Planner's call: Small independent reliability fix. TOOLSET-099-87's excluded live acceptance remains under TOOLSET-096-7e; skip that operation, not its acceptance. Reproduced malformed-output aggregation failure in both successful and failing unittest subprocesses.
+- Exclusions: No native/model/live checks, schedule changes or publication.
