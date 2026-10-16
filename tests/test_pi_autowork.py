@@ -848,6 +848,25 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(reviews(), 3)
 
+    def test_editing_a_held_tasks_entry_answers_it_and_the_runner_reruns_it(self):
+        """TOOLSET-120-fc: the owner only answers; no --set-aside, no restart."""
+        self.plan({'worker:A': ['blocked']})
+        first = self.run_runner('--until-empty')
+        self.assertIn('A: failed — worker reported a blocker: needs a device', first.stdout)
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
+        again = self.run_runner('--until-empty')  # no answer yet: nothing reruns
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('  Acceptance: A.txt says done\n',
+                                                        '  Acceptance: A.txt says done; the emulator is enough\n', 1))
+        self.git(self.repo, 'commit', '-qam', 'owner answers A')
+        self.plan({})
+        answered = self.run_runner('--until-empty')
+        self.assertEqual(answered.returncode, 0, answered.stdout + answered.stderr)
+        self.assertIn("A: its TODO entry changed while it was held; running it fresh (earlier work kept as "
+                      "autowork/A-set-aside-1)", answered.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

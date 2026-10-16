@@ -279,6 +279,47 @@ class DispatchTests(unittest.TestCase):
         prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
         self.assertIn('change only paths within Touches: a.txt, b.txt', prompt)
 
+    def test_an_answered_question_requeues_the_held_task_once(self):
+        """TOOLSET-120-fc: the owner answers by editing the task's entry; nobody runs a command."""
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'A and B')
+        self.set_spec({'A': {'files': {'a.txt': 'half'}, 'sleep': 0.1, 'commit': False,
+                             'blockers': ['Which unit should the output use?'],
+                             'then': {'files': {'a.txt': 'done'}, 'sleep': 0.1}},
+                       'B': {'files': {'b.txt': 'half'}, 'sleep': 0.1, 'commit': False,
+                             'blockers': ['Needs a decision too']}})
+        self.apply()
+        self.wait_until_idle()
+        self.assertEqual({s['task_id']: s['cause'] for s in state.slots(self.common)}, {'A': 'blocker', 'B': 'blocker'})
+        _, unchanged = self.apply()
+        self.assertEqual(unchanged['outcome'], 'IDLE')  # no answer yet: both stay held
+        self.write_todo(task('A', 'a.txt').replace('- Acceptance: changed.', '- Acceptance: changed, in metres.'),
+                        task('B', 'b.txt'))
+        self.git('commit', '-qam', 'owner answers A')
+        _, requeued = self.apply()
+        self.assertEqual((requeued['outcome'], requeued['task'], requeued['requeued']), ('REQUEUED', 'A', True))
+        self.assertIn('autowork/A-set-aside-1', self.git('branch', '--list', 'autowork/*'))
+        _, fresh = self.apply()
+        self.assertEqual([d['task'] for d in fresh['dispatched']], ['A'])
+        self.wait_until_idle()
+        slots = {s['task_id']: s for s in state.slots(self.common)}
+        self.assertEqual((slots['A']['state'], slots['A']['attempt']), ('reported', 1))
+        self.assertEqual(slots['B']['state'], 'held')  # unchanged entry: still waiting for its answer
+
+    def test_a_held_task_whose_entry_is_removed_is_set_aside_without_requeue(self):
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'A and B')
+        self.set_spec({'A': {'files': {'a.txt': 'half'}, 'sleep': 0.1, 'commit': False, 'blockers': ['Drop this?']}})
+        self.apply()
+        self.wait_until_idle()
+        self.write_todo(task('B', 'b.txt'))
+        self.git('commit', '-qam', 'owner drops A')
+        _, result = self.apply()
+        self.assertEqual((result['outcome'], result['task'], result['requeued']), ('REQUEUED', 'A', False))
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
+
     def pause_and_stop(self):
         """What a deliberate coordinator stop does: mark live workers, then interrupt them."""
         _, paused = self.run_cli('--parallel-pause', worker=False)

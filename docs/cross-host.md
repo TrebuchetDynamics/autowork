@@ -252,6 +252,10 @@ When the reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVI
 runner sends every commit an earlier reviewer held back for review once, by itself,
 even a task with no attempt left; the same reviewer never reviews a commit twice.
 
+A held task is answered by editing its TODO.md entry (scope, Touches, acceptance,
+dependencies or a decision line): the runner notices the changed entry and runs the
+task fresh, keeping its earlier work on `-set-aside-N` branches. No command is needed.
+
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
 the task's entry, branches or worktrees and no live agent working there. The runner

@@ -516,6 +516,77 @@ def close(repo, owner_pid, task):
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
 
 
+def dispatched_contract(common, slot):
+    """The TODO contract this slot's current attempt was given: its contract.txt, or for
+    attempts dispatched before that record, the contract section of its prompt."""
+    data = dispatch.data_dir(common, slot)
+    try:
+        return (data / 'contract.txt').read_text().strip()
+    except OSError:
+        pass
+    try:
+        text = (data / 'prompt.md').read_text()
+    except (OSError, ValueError):
+        return None
+    marker = '\nTask contract from TODO.md:\n\n'
+    if marker not in text:
+        return None
+    return text.split(marker, 1)[1].split('\nFresh retry after a held integration.', 1)[0].strip()
+
+
+def entry_changed(repo, common, slot):
+    """Whether the task's TODO entry differs from the contract its attempt was dispatched with."""
+    dispatched = dispatched_contract(common, slot)
+    if dispatched is None:
+        return False  # no record to compare with: never guess
+    items = execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
+    return len(items) != 1 or items[0][0].strip() != dispatched
+
+
+def _retire(repo, common, slot, requeued):
+    """Keep every attempt's work under -set-aside-N names and move the slot to history.
+
+    Caller holds dispatch.lock, integration.lock and writer.lock."""
+    task = slot['task_id']
+    history = execution.safe_path(common / 'slot-history' / task)
+    number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
+    target = history / str(number)
+    pairs = []
+    for attempt in [*slot.get('previous_attempts', []), slot]:
+        pair = (attempt.get('worktree'), attempt.get('branch'))
+        if pair[1] and pair not in pairs:
+            pairs.append(pair)
+    moved = []
+    try:
+        for worktree, branch in pairs:
+            suffix = f'-set-aside-{number}'
+            record = {'worktree': worktree, 'branch': branch}
+            if worktree and Path(worktree).is_dir():
+                record['worktree_now'] = worktree + suffix
+                git(repo, 'worktree', 'move', worktree, record['worktree_now'])
+            if git(repo, 'branch', '--list', branch):
+                record['branch_now'] = branch + suffix
+                git(repo, 'branch', '-m', branch, record['branch_now'])
+            moved.append(record)
+    except ValueError:
+        for record in reversed(moved):  # Leave names as they were; nothing else changed yet.
+            if 'branch_now' in record:
+                git(repo, 'branch', '-m', record['branch_now'], record['branch'])
+            if 'worktree_now' in record:
+                git(repo, 'worktree', 'move', record['worktree_now'], record['worktree'])
+        raise
+    target.mkdir(parents=True, mode=0o700)
+    data = common / 'slot-data' / task
+    if data.exists():
+        data.rename(target / 'slot-data')
+    execution.save(target / 'slot.json', dict(slot, set_aside={'renamed': moved}))
+    state.slot_path(common, task).unlink()
+    state.event(common, 'slot_set_aside', task_id=task, state=slot['state'], renamed=moved,
+                history=str(target))
+    return {'outcome': 'SET_ASIDE', 'task': task, 'previous_state': slot['state'],
+            'renamed': moved, 'history': str(target), 'requeued': requeued}
+
+
 def set_aside(repo, owner_pid, task):
     """Retire a slot that can never finish, so its task can dispatch fresh.
 
@@ -550,43 +621,7 @@ def set_aside(repo, owner_pid, task):
         elif not state.exhausted(slot):
             raise ValueError('set-aside is only for a held slot with no attempt left or an integrated '
                              'task whose TODO entry changed')
-        history = execution.safe_path(common / 'slot-history' / task)
-        number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
-        target = history / str(number)
-        pairs = []
-        for attempt in [*slot.get('previous_attempts', []), slot]:
-            pair = (attempt.get('worktree'), attempt.get('branch'))
-            if pair[1] and pair not in pairs:
-                pairs.append(pair)
-        moved = []
-        try:
-            for worktree, branch in pairs:
-                suffix = f'-set-aside-{number}'
-                record = {'worktree': worktree, 'branch': branch}
-                if worktree and Path(worktree).is_dir():
-                    record['worktree_now'] = worktree + suffix
-                    git(repo, 'worktree', 'move', worktree, record['worktree_now'])
-                if git(repo, 'branch', '--list', branch):
-                    record['branch_now'] = branch + suffix
-                    git(repo, 'branch', '-m', branch, record['branch_now'])
-                moved.append(record)
-        except ValueError:
-            for record in reversed(moved):  # Leave names as they were; nothing else changed yet.
-                if 'branch_now' in record:
-                    git(repo, 'branch', '-m', record['branch_now'], record['branch'])
-                if 'worktree_now' in record:
-                    git(repo, 'worktree', 'move', record['worktree_now'], record['worktree'])
-            raise
-        target.mkdir(parents=True, mode=0o700)
-        data = common / 'slot-data' / task
-        if data.exists():
-            data.rename(target / 'slot-data')
-        execution.save(target / 'slot.json', dict(slot, set_aside={'renamed': moved}))
-        state.slot_path(common, task).unlink()
-        state.event(common, 'slot_set_aside', task_id=task, state=slot['state'], renamed=moved,
-                    history=str(target))
-        return {'outcome': 'SET_ASIDE', 'task': task, 'previous_state': slot['state'],
-                'renamed': moved, 'history': str(target), 'requeued': requeued}
+        return _retire(repo, common, slot, requeued)
 
 
 VALIDATION_HOLD = 'integration validation failed'
@@ -704,6 +739,16 @@ def retry_held(args):
             if again is not None:
                 slot = state.readopt(common, again)
                 return {'outcome': 'READOPTED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # An answered question (after the one-time readopt above, which keeps a commit): a
+            # held task whose TODO entry changed since its attempt was dispatched runs fresh,
+            # its earlier work kept on -set-aside-N names; an entry that disappeared was
+            # closed or removed by a person, so nothing is queued again.
+            changed = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
+                            and entry_changed(repo, common, s)), None)
+            if changed is not None:
+                present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed['task_id']))
+                result = _retire(repo, common, changed, present)
+                return dict(result, outcome='REQUEUED')
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
             pending = any(s['state'] == 'held' and s['attempt'] == 1 and not state.exhausted(s) for s in current)
             if any(state.worker_live(s) for s in current):
@@ -735,6 +780,7 @@ def retry_held(args):
             data.mkdir(parents=True, exist_ok=True, mode=0o700)
             prompt = data / 'prompt.md'
             report = data / 'report.json'
+            (data / 'contract.txt').write_text(task['contract'].strip() + '\n')
             prompt.write_text(dispatch.prompt(task, root, branch, baseline, report) +
                               '\nFresh retry after a held integration. Inspect prior failure: ' + old.get('reason', '') + '\n')
             argv = dispatch.render(template, {'worktree': root, 'prompt_file': prompt, 'timeout': int(args.worker_timeout),
@@ -754,8 +800,16 @@ def dispatch_with_retries(args):
     # Only try retries when this invocation already owns an existing lease.
     common = state.common_dir(Path(args.consumer).resolve())
     live = state.live_coordinator(common)
-    if live and live['owner'] == execution.owner_identity(args.owner_pid):
-        result = retry_held(args)
-        if result['outcome'] != 'IDLE':
-            return result
+    if not (live and live['owner'] == execution.owner_identity(args.owner_pid)):
+        if dispatch.worker_command(args, args.owner_pid)[0] is None:
+            return dispatch.dispatch(args)  # no worker host: the sequential fallback claims nothing
+        # A new coordinator claims the lease first (dispatch would), so its held slots are
+        # handled in this same call rather than a cycle later: a one-shot run sees them too.
+        claimed = state.claim(Path(args.consumer).resolve(), args.owner_pid, profile=args.profile,
+                              max_workers=dispatch.capacity(args))
+        if claimed['outcome'] != 'CLAIMED':
+            return dispatch.dispatch(args)  # reports the BUSY owner as before
+    result = retry_held(args)
+    if result['outcome'] != 'IDLE':
+        return result
     return dispatch.dispatch(args)
