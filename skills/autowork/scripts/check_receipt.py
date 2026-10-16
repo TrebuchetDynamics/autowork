@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import importlib.metadata
+import importlib.machinery
 import json
 import os
 from pathlib import Path
@@ -199,6 +200,89 @@ def check_environment(environment=None):
     return values
 
 
+_packages_cache = None
+
+
+def runtime_packages():
+    """Fall back to discovery when filesystem stamps cannot be inspected."""
+    global _packages_cache
+    try:
+        return _runtime_packages()
+    except OSError:
+        # Discovery may ignore unreadable entries that our conservative stamp
+        # cannot inspect. Preserve its behavior rather than inventing an error
+        # or reusing inventory whose freshness could not be established.
+        _packages_cache = None
+        return sorted([d.metadata['Name'] or '', d.version]
+                      for d in importlib.metadata.distributions())
+
+
+def _runtime_packages():
+    """Cache parsing, not receipt values; additions/removals invalidate the stamp."""
+    global _packages_cache
+    # Custom providers may expose non-filesystem inventory with no stat token.
+    finders = tuple(finder for finder in sys.meta_path
+                    if getattr(finder, 'find_distributions', None) is not None)
+    cacheable = all(finder in (importlib.machinery.PathFinder,
+                              importlib.metadata.MetadataPathFinder)
+                    for finder in finders)
+    stamp = []
+    for entry in sys.path:
+        # Discovery interprets the alias spelling (not its symlink target).
+        path = Path(entry or '.').absolute()
+        stamp.append((entry, str(path)))
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            stamp.append((str(path), None))
+            continue
+        except NotADirectoryError:
+            # Archive subpaths are understood by importlib, not by Path.stat.
+            cacheable = False
+            continue
+        stamp.append((str(path), stat.st_dev, stat.st_ino, stat.st_size,
+                      stat.st_mtime_ns, stat.st_ctime_ns))
+        if path.is_dir():
+            # In-place upgrades need not touch the site directory's mtime.
+            # importlib.metadata reads METADATA, falling back to PKG-INFO;
+            # legacy egg-info can itself be a regular metadata file.
+            for info in sorted(path.iterdir()):
+                if (info.name.lower().endswith(('.dist-info', '.egg-info'))
+                        or (path.suffix.lower() == '.egg' and info.name.lower() == 'egg-info')):
+                    for metadata in (info, info / 'METADATA', info / 'PKG-INFO'):
+                        try:
+                            value = metadata.stat()
+                        except (FileNotFoundError, NotADirectoryError):
+                            stamp.append((str(metadata), None))
+                        else:
+                            stamp.append((str(metadata), value.st_dev, value.st_ino,
+                                          value.st_size, value.st_mtime_ns, value.st_ctime_ns))
+    stamp = (finders, tuple(stamp))
+    cached = _packages_cache
+    if not cacheable or cached is None or cached[0] != stamp:
+        packages = sorted([d.metadata['Name'] or '', d.version]
+                          for d in importlib.metadata.distributions())
+        cached = (stamp, tuple(tuple(row) for row in packages))
+        _packages_cache = cached if cacheable else None
+    return [list(row) for row in cached[1]]
+
+
+_executable_cache = None
+
+
+def runtime_executable_hash():
+    global _executable_cache
+    path = Path(sys.executable).resolve()
+    stat = path.stat()
+    stamp = (str(path), stat.st_dev, stat.st_ino, stat.st_size,
+             stat.st_mtime_ns, stat.st_ctime_ns)
+    cached = _executable_cache
+    if cached is None or cached[0] != stamp:
+        cached = (stamp, hashlib.sha256(path.read_bytes()).hexdigest())
+        _executable_cache = cached
+    return cached[1]
+
+
 def runtime(command=None, root=None, execution_env=None, *, normalize_checkout=None):
     # Hash values only: backend/environment changes invalidate without recording secrets.
     import shutil
@@ -233,9 +317,8 @@ def runtime(command=None, root=None, execution_env=None, *, normalize_checkout=N
             'command_resolution_policy': 'execution-cwd-v1',
             'command_executable_sha256': executable,
             'execution_environment_sha256': actual_environment_hash,
-            'executable_sha256': hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
-            'packages': sorted([d.metadata['Name'] or '', d.version]
-                               for d in importlib.metadata.distributions()),
+            'executable_sha256': runtime_executable_hash(),
+            'packages': runtime_packages(),
             'environment_sha256': hashlib.sha256(json.dumps(environment, sort_keys=True).encode()).hexdigest()}
 
 

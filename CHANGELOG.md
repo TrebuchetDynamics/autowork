@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Autowork receipt generation caches package parsing and interpreter hashes within
+  a process (TOOLSET-072), while detecting package additions, removals, metadata
+  edits and executable replacement. Uninspectable search paths and custom metadata
+  providers use uncached discovery. Full serial performance qualification remains open.
+
 - Fresh OMH installs pin v3.0.2, whose plugin manifest no longer excludes
   Hermes 0.22 (TOOLSET-082). Existing OMH executables and installed plugins are
   not upgraded automatically; native registration and existing-store verification

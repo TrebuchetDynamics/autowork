@@ -77,6 +77,180 @@ class ReceiptTests(unittest.TestCase):
             with patch.dict(os.environ, HERMES_KANBAN_TASK='different', PWD=str(root)):
                 self.assertFalse(module.reusable(receipt, root, command))
 
+    def test_runtime_inventory_preserves_unreadable_search_path_behavior(self):
+        import os
+        from unittest.mock import patch
+        module = self.load()
+        if os.geteuid() == 0:
+            self.skipTest('root can read mode-000 directories')
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Path(tmp) / 'unreadable'
+            site.mkdir()
+            site.chmod(0)
+            try:
+                with patch.object(sys, 'path', [str(site), *sys.path]):
+                    expected = sorted([d.metadata['Name'] or '', d.version]
+                                      for d in module.importlib.metadata.distributions())
+                    self.assertEqual(module.runtime()['packages'], expected)
+                    self.assertEqual(module.runtime()['packages'], expected)
+            finally:
+                site.chmod(0o700)
+
+    def test_runtime_reuses_inventory_without_sharing_mutable_receipt_values(self):
+        from unittest.mock import patch
+        module = self.load()
+        expected = sorted([d.metadata['Name'] or '', d.version]
+                          for d in module.importlib.metadata.distributions())
+        with patch.object(module.importlib.metadata, 'distributions',
+                          wraps=module.importlib.metadata.distributions) as scan:
+            first = module.runtime()
+            second = module.runtime()
+            self.assertEqual(first, second)
+            self.assertEqual(second['packages'], expected)
+            self.assertEqual(scan.call_count, 1)
+            first['packages'].append(['not-installed', '0'])
+            second['packages'][0][0] = 'caller-mutated'
+            self.assertEqual(module.runtime()['packages'], expected)
+
+    def test_runtime_cache_keeps_distribution_drift_visible_during_checks(self):
+        from unittest.mock import patch
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            site = root / 'site'
+            site.mkdir()
+            (root / 'input').write_text('unchanged')
+            info = site / 'receipt_cache_fixture-1.dist-info'
+            for mode in ('add', 'edit', 'remove'):
+                with self.subTest(mode=mode), patch.object(sys, 'path', [str(site), *sys.path]):
+                    if mode == 'remove':
+                        code = f'import shutil; shutil.rmtree({str(info)!r})'
+                    else:
+                        version = '1' if mode == 'add' else '2'
+                        code = (f'from pathlib import Path; p=Path({str(info)!r}); '
+                                f'p.mkdir(exist_ok=True); (p/"METADATA").write_text('
+                                f'"Name: receipt-cache-fixture\\nVersion: {version}\\n")')
+                    receipt = module.execute(root, ['input'], [sys.executable, '-c', code], 5,
+                                             resource_lock=root / 'lock')
+                    self.assertEqual(receipt['outcome'], 'environment_changed')
+                    self.assertEqual(receipt['before'], receipt['after'])
+                    self.assertNotEqual(receipt['runtime']['packages'],
+                                        receipt['runtime_after']['packages'])
+
+    def test_runtime_reuses_interpreter_hash_until_file_replacement(self):
+        import hashlib
+        from unittest.mock import patch
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            executable = Path(tmp) / 'python'
+            executable.write_bytes(b'first interpreter')
+            original = Path.read_bytes
+            reads = []
+            def read(path):
+                if path == executable:
+                    reads.append(path)
+                return original(path)
+            with patch.object(sys, 'executable', str(executable)), patch.object(Path, 'read_bytes', read):
+                first = module.runtime()['executable_sha256']
+                self.assertEqual(module.runtime()['executable_sha256'], first)
+                self.assertEqual(len(reads), 1)
+                replacement = executable.with_suffix('.new')
+                replacement.write_bytes(b'other interpreter')
+                replacement.replace(executable)
+                second = module.runtime()['executable_sha256']
+                self.assertEqual(first, hashlib.sha256(b'first interpreter').hexdigest())
+                self.assertEqual(second, hashlib.sha256(b'other interpreter').hexdigest())
+                self.assertNotEqual(first, second)
+                self.assertEqual(len(reads), 2)
+
+    def test_runtime_inventory_tracks_custom_distribution_providers(self):
+        from unittest.mock import patch
+        from importlib.metadata import Distribution, DistributionFinder
+        module = self.load()
+        class DynamicDistribution(Distribution):
+            version_text = '1'
+            def read_text(self, filename):
+                if filename == 'METADATA':
+                    return f'Name: dynamic-receipt-fixture\nVersion: {self.version_text}\n'
+            def locate_file(self, path):
+                return Path(path)
+        distribution = DynamicDistribution()
+        class Finder(DistributionFinder):
+            def find_distributions(self, context=None):
+                return [distribution]
+        with patch.object(sys, 'meta_path', [*sys.meta_path, Finder()]):
+            self.assertIn(['dynamic-receipt-fixture', '1'], module.runtime()['packages'])
+            distribution.version_text = '2'
+            self.assertIn(['dynamic-receipt-fixture', '2'], module.runtime()['packages'])
+        self.assertNotIn(['dynamic-receipt-fixture', '2'], module.runtime()['packages'])
+
+    def test_runtime_inventory_tracks_legacy_egg_and_archive_subpaths(self):
+        import zipfile
+        from unittest.mock import patch
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            egg = root / 'fixture-1.egg'
+            info = egg / 'EGG-INFO'
+            info.mkdir(parents=True)
+            metadata = info / 'PKG-INFO'
+            metadata.write_text('Name: legacy-receipt-fixture\nVersion: 1\n')
+            with patch.object(sys, 'path', [str(egg), *sys.path]):
+                self.assertIn(['legacy-receipt-fixture', '1'], module.runtime()['packages'])
+                metadata.write_text('Name: legacy-receipt-fixture\nVersion: 2\n')
+                self.assertIn(['legacy-receipt-fixture', '2'], module.runtime()['packages'])
+            archive = root / 'fixture.zip'
+            with zipfile.ZipFile(archive, 'w') as output:
+                output.writestr('inside/file', 'fixture')
+            with patch.object(sys, 'path', [str(archive / 'inside'), *sys.path]):
+                expected = sorted([d.metadata['Name'] or '', d.version]
+                                  for d in module.importlib.metadata.distributions())
+                self.assertEqual(module.runtime()['packages'], expected)
+
+    def test_runtime_inventory_invalidates_when_standard_finders_are_removed(self):
+        from unittest.mock import patch
+        module = self.load()
+        self.assertTrue(module.runtime()['packages'])
+        finders = [finder for finder in sys.meta_path
+                   if not getattr(finder, 'find_distributions', None)]
+        with patch.object(sys, 'meta_path', finders):
+            self.assertEqual(module.runtime()['packages'], [])
+        self.assertTrue(module.runtime()['packages'])
+
+    def test_runtime_inventory_tracks_case_insensitive_egg_metadata(self):
+        from unittest.mock import patch
+        module = self.load()
+        for egg_name, info_name in (('fixture.EGG', 'EGG-INFO'), ('fixture.egg', 'egg-info')):
+            with self.subTest(egg=egg_name, info=info_name), tempfile.TemporaryDirectory() as tmp:
+                egg = Path(tmp) / egg_name
+                info = egg / info_name
+                info.mkdir(parents=True)
+                metadata = info / 'PKG-INFO'
+                metadata.write_text('Name: case-receipt-fixture\nVersion: 1\n')
+                with patch.object(sys, 'path', [str(egg), *sys.path]):
+                    self.assertIn(['case-receipt-fixture', '1'], module.runtime()['packages'])
+                    metadata.write_text('Name: case-receipt-fixture\nVersion: 2\n')
+                    self.assertIn(['case-receipt-fixture', '2'], module.runtime()['packages'])
+
+    def test_runtime_inventory_preserves_symlink_egg_alias_semantics(self):
+        from unittest.mock import patch
+        module = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / 'unpacked'
+            info = target / 'EGG-INFO'
+            info.mkdir(parents=True)
+            alias = root / 'fixture.egg'
+            alias.symlink_to(target, target_is_directory=True)
+            metadata = info / 'PKG-INFO'
+            metadata.write_text('Name: alias-receipt-fixture\nVersion: 1\n')
+            with patch.object(sys, 'path', [str(alias), *sys.path]):
+                self.assertIn(['alias-receipt-fixture', '1'], module.runtime()['packages'])
+                metadata.write_text('Name: alias-receipt-fixture\nVersion: 2\n')
+                self.assertIn(['alias-receipt-fixture', '2'], module.runtime()['packages'])
+            with patch.object(sys, 'path', [str(target), *sys.path]):
+                self.assertNotIn(['alias-receipt-fixture', '2'], module.runtime()['packages'])
+
     def test_runtime_fingerprints_actual_execution_environment(self):
         module = self.load()
         import os

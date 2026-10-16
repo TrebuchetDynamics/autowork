@@ -44,6 +44,17 @@ entries. Receipts created before the `execution-cwd-v1` resolution policy cannot
 be reused; preserve them and run the check with a new receipt path. An unresolved
 executable also prevents reuse.
 
+TOOLSET-072 caches package metadata parsing and the interpreter hash within each
+process, without changing receipt fields or reuse rules. Filesystem stamps include
+metadata files to detect in-place upgrades; unsupported providers or uninspectable
+paths fall back to original discovery. Offline regressions cover add/edit/remove
+drift, interpreter replacement, caller mutation, legacy/ZIP/symlink metadata and
+unreadable search directories. Python 3.12 focused receipt/delivery measurements
+on October 16, 2026 were 72.477/75.685/74.835 seconds before and
+33.928/34.628/34.930 seconds after (three runs each; nine added regressions).
+This is not a full-suite speedup claim. Required serial full-gate and directory
+measurements remain pending under TOOLSET-072; an interrupted baseline is unqualified.
+
 Current Autowork executes repository tasks in the current session without Kanban
 setup or native-card transitions. Its direct-execution, recovery and isolated
 no-agent qualification are described in the
