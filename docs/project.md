@@ -1033,6 +1033,18 @@ results one at a time, and marks a task done only after the integrated result pa
 validation. Sequential Autowork must keep working as it does today. Core principle:
 parallelize independent implementation, not repository authority.
 
+Owner addition: task worktrees are temporary. Verified results must reach the
+canonical default branch (`main` or `master` as actually configured), followed by
+removal of finished owned task and integration worktrees. Many active worktrees
+are acceptable; abandoned finished worktrees are not the desired steady state.
+Preserve active, dirty, locked, unmerged and recovery-bearing worktrees, and report
+integration or cleanup pending rather than falsely claiming full closeout. Apply
+the [worktree closeout contract](../skills/autowork/references/worktree-closeout.md)
+to sequential and parallel work. This adds no push authority or bulk deletion of
+historical worktrees. TOOLSET-088-a7 owns remaining automated parallel integration/
+cleanup; TOOLSET-090-2d owns its host documentation. Their existing statuses and
+runtime qualification remain unchanged by this instruction update.
+
 Findings (source as of `89549d2`):
 - `goals.py eligible()` already returns every eligible task in priority order
   (focus, section, recorded TODO order, goal priority), but it keeps `in_progress`
@@ -1234,3 +1246,69 @@ verified stay out of the default list.
 | TOOLSET-089-72 | Status table and metrics, end-to-end A/B/C fixture, sequential-versus-parallel benchmark |
 | TOOLSET-090-2d | Skill, adapter, README and workflow/cross-host/testing docs; compatibility and fallback tests |
 | TOOLSET-091-00 | Live qualification with real host workers on a disposable repository |
+
+## Continuous Pi runner (2026-10-15)
+
+Status: Accepted
+
+Request (user, 2026-10-15): a copyable script that runs Autowork continuously
+through the Pi coding agent, one bounded Pi run per task, with GPT-6.1 Sol
+(`openai-codex`) as the primary model and DeepSeek V4.1 Flash (`openrouter`) as the
+fallback, idling without model calls when no task is runnable.
+
+Review findings that shaped it: Autowork's portable instructions look for new work
+when nothing is ready, so the runner selects the task itself with `goals.py next`
+and names it; Pi's JSON mode exits 0 on a failed model response, so the runner reads
+the events; extension commands queue their prompt, so the runner uses the documented
+`/skill:autowork`; local locks do not coordinate with Hermes Autowork cron jobs.
+
+Owner's decisions: ship the script in this package and target the caller's
+repository (a copy still targets its own repository); TODO-only repositories get
+`--once` only; refuse when a Hermes Autowork cron job targets the same repository;
+the fallback has the same authority as the primary, and each run records its model.
+
+| Task | Outcome |
+| --- | --- |
+| TOOLSET-093-01 | `scripts/pi-autowork.sh`, fake-Pi tests and the usage guide |
+| TOOLSET-094-65 | Qualify fallback switching and a multi-task continuous run live |
+
+## Backlog replan (2026-10-15)
+
+Status: Accepted
+
+Every change below is the planner's call; the owner may reject any of them.
+
+The owner asked to list the pending tasks and replan them where needed. Findings
+from the repository, candidate branches and the installed hosts:
+
+- Two tasks already have reviewed candidates that only need integration:
+  TOOLSET-064 (`autowork/TOOLSET-064`, eight trigger-first descriptions) and
+  TOOLSET-082 (`autowork/TOOLSET-082`, the Hermes 0.22-compatible OMH pin). Both
+  moved to the top of Next.
+- TOOLSET-082 mixed an offline pin with a live refresh of installed profiles. The
+  refresh is split into TOOLSET-098-5d, which needs owner approval to change
+  installed plugins. A newly created profile shows the cost of waiting: its
+  old OMH plugin makes Hermes refuse to enable the Toolset there.
+- TOOLSET-097-41 records a Pi runner defect the toolset cron found: one Pi test
+  fails when the checkout path contains `/profiles/`. Another session's `pi-par`
+  worktree has uncommitted edits to the same files, so the task tells the next
+  coordinator to check that writer first.
+- TOOLSET-013 measured the native `start_goal` admission path, which Autowork no
+  longer uses; it is superseded by TOOLSET-091-00, which times real host runs.
+- TOOLSET-019's deployment outcome was met by fleet-wide `/toolset update` runs;
+  only the selected-profile updater mode remains to qualify once.
+- TOOLSET-066 can run now: `claude --plugin-dir` on a clean clone of the published
+  commit loads the plugin for one session without a marketplace install or settings
+  change. It still needs owner approval for the short model run.
+- TOOLSET-003 no longer needs an externally capped model endpoint: the owner
+  accepted an owner-observed host session bounded by the host's run budget.
+- Unchanged and waiting on the owner or an external environment: TOOLSET-091-00
+  (owner-observed real workers), TOOLSET-096-7e (owner picks a fleet repository),
+  TOOLSET-029 (stop-all instruction), TOOLSET-011 (original host and profile gone).
+- Not planned: the profile-local skill edits kept by `/toolset update` are
+  agent-learned lessons; the one in the toolset profile is already being ported by
+  another session.
+
+New priority order: 064, 082, 097-41, 072, 073, 066, 091-00, 003, 098-5d, 019,
+096-7e, 029, 011. The first five are offline work Autowork can do without new
+authority.

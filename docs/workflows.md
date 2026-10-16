@@ -222,6 +222,22 @@ messaged. For an active one the helper returns `BUSY` with an `isolate` branch a
 --writers` (read-only; `CLEAR`, `BUSY` or `ACTION_REQUIRED`, exit 1 unless `CLEAR`)
 gates merging the branch back.
 
+### Parallel workers
+
+Parallel mode is opt-in (`/autowork --parallel 2`, or `owner_cycle.py REPO --apply
+--parallel 2 --owner-pid PID`). The coordinator session starts headless host workers,
+one task each in its own worktree `<repo>-autowork-<TASK>` on branch
+`autowork/<TASK>`, for tasks whose `Touches:` and `Resources:` fields prove them
+independent; dependencies and TODO.md priority still apply. `--wait` blocks inside
+the helper until a worker finishes. The coordinator reviews each worker's report,
+`--integrate TASK --timeout S --run CHECK...` merges and validates one branch at a
+time in a separate integration worktree and only fast-forwards the canonical checkout, and `--parallel-close`
+closes a task only after that validation passed. `--parallel-status` shows progress
+and timing at any point. A host without a worker template returns
+`SEQUENTIAL_FALLBACK` and runs the task the ordinary way. The full loop, admission
+rules and recovery are in
+[parallel workers](../skills/autowork/references/parallel-workers.md).
+
 ### Delivery batches and partial completion
 
 Autowork executes one coherent outcome in the current session: connected consumers,

@@ -127,10 +127,20 @@ class PlanTests(unittest.TestCase):
         self.assertIn('in_progress', result['waiting'][0]['reason'])
         self.assertEqual(plan([task('A', 'a.py')], [task('A', 'a.py')])['dispatch'], [])
         self.assertEqual(plan([running, task('B', 'a.py')])['dispatch'], [])
+        # An idle in_progress claim without Touches no longer blocks unrelated work
+        # (it is not running); it still blocks dependents and declared overlap.
         running['fields']['Touches'] = ''
         result = plan([running, task('B', 'b.py')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B'])
+        self.assertEqual(plan([running, task('C', '')])['dispatch'][0]['id'], 'C')  # solo task runs alone
+        self.assertEqual(plan([running, task('D', 'd.py', deps='A')])['dispatch'], [])
+        running['fields']['Touches'] = 'a.py'
+        self.assertEqual(plan([running, task('E', 'a.py', status='open')])['dispatch'], [])
+        # A live slot is still running work: missing Touches keeps everything else waiting.
+        live = task('L', '')
+        result = plan([task('B', 'b.py')], [live])
         self.assertEqual(result['dispatch'], [])
-        self.assertIn('Touches', result['waiting'][-1]['reason'])
+        self.assertIn('Touches', result['waiting'][0]['reason'])
 
 
 class OverlapTests(unittest.TestCase):

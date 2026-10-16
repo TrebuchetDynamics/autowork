@@ -168,6 +168,7 @@ The application must start successfully; verify startup with the project test.
   Scope: Add the startup check; no deployment or runtime configuration changes.
   Acceptance: The project's startup test passes; record its exact command/result.
   Dependencies: None
+  Touches: tests/
   Ownership: Project maintainer
   Status: open
 ```

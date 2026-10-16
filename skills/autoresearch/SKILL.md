@@ -154,7 +154,7 @@ for affected owners; do not start a whole-repository bootstrap implicitly.
 3. For accepted unmet work, have docs-sync reconcile canonical `goals.json` and
    full **TODO.md** bodies: Goal/payoff, Sources (research receipt plus graph/source
    evidence), bounded Scope/exclusions, measurable Acceptance/checks,
-   `Dependencies:` and `Ownership:`. Order **Now/Next** with actual ledger priority
+   `Dependencies:`, `Ownership:` and `Touches:` (plus `Resources:` where needed). Order **Now/Next** with actual ledger priority
    and dependencies. Use one discriminating investigation only for a blocking
    unknown; produce implementation plus verification slices for known gaps.
    Keep speculative product ideas Proposed/Needs decision unless the user's

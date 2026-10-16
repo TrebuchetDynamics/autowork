@@ -166,7 +166,9 @@ an unseen mockup or added requirements.
 In writable mode, run a narrow docs-sync Maintain pass for the affected owners,
 applying its canonical ledger and concurrency rules. Default invocation already
 requests this persistence, so do not ask again whether to save. Accepted intent
-becomes bounded Now/Next tasks with dependencies, acceptance and verification.
+becomes bounded Now/Next tasks with dependencies, acceptance, verification and
+`Touches:` (plus `Resources:` where needed) per the
+[TODO work center](../shared/TODO-WORKCENTER.md).
 Unanswered product choices remain outside executable work. Run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff) on the
 saved tasks and fold its answers in. Validate changed docs and ledger, then run the

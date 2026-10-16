@@ -7,8 +7,8 @@ disable-model-invocation: true
 # Autowork
 
 Read the [host contract](../COMMON.md). Use this host's native tools for execution.
-Do not launch Hermes workers, require Hermes profiles, or depend on a native Kanban
-card. Run in the current session; delegate only when available and appropriate under
+Do not launch Hermes workers (opt-in parallel workers below use this host's own
+CLI), require Hermes profiles, or depend on a native Kanban card. Run in the current session; delegate only when available and appropriate under
 the user's instructions. Use a separate worktree when real concurrent writes need
 isolation, and preserve all unrelated edits.
 
@@ -28,7 +28,8 @@ explicit read-only runs write nothing.
    for a useful bug, test, UI, documentation or refactoring improvement. Use
    [Plan For Me](../plan-for-me/SKILL.md) only when planning/research is needed;
    an obvious repair needs no extra ceremony. Record a complete TODO task via
-   [Docs Sync](../docs-sync/SKILL.md), then execute within the user's scope.
+   [Docs Sync](../docs-sync/SKILL.md), including `Touches:` for the paths the inspected
+   seam may change, then execute within the user's scope.
    For a ready task, compose reconciliation, accepted body, explicit bounded
    code/docs/tests/dependency sources and a short execution contract in one host-native
    preparation step. Retain objective/scope, acceptance/checks, source/base,
@@ -65,10 +66,22 @@ explicit read-only runs write nothing.
    the repository's conventions; do not manufacture a Hermes card or receipt. Follow
    repository integration policy and existing authority. Push/deploy requires its
    own authorization; never override host approvals or actual live-safety gates.
+   Finish [worktree closeout](../../../skills/autowork/references/worktree-closeout.md):
+   verify integration on the canonical `main` or `master`, then remove finished owned
+   task/integration worktrees. Preserve active, dirty, unmerged and recovery-bearing
+   worktrees; report integration/cleanup pending until the remaining steps succeed.
 5. Reconcile task status and evidence in TODO.md and any existing goals.json. Do not
    close a whole feature from a partial slice. Report completed task, checks, commit,
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
+
+Parallel workers are opt-in: only when the user asks, run the bundled
+`owner_cycle.py REPO --apply --parallel [N] --owner-pid PID` and follow
+[parallel workers](../../../skills/autowork/references/parallel-workers.md). Codex
+and Pi coordinators get Codex or Pi workers from built-in templates. Claude Code has
+no template because it chooses its workers' approval mode: pass `--worker-command`
+with an explicit worker argv, or the helper returns `SEQUENTIAL_FALLBACK` and the
+task runs in this session as usual. Never add approval or sandbox bypass flags.
 
 Caller scope and saved stop/batch limits control continuation.
 Default interactive execution completes one slice, including authorized recovery

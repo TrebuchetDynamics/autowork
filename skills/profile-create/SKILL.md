@@ -45,6 +45,14 @@ separate approval. Creation does not authorize repository changes, commits or pu
    existing/deleted-name conflicts instead of force-replacing or resurrecting them.
    Resolve the active Hermes home and canonical root with native profile/config
    output; do not assume the caller is the default profile.
+   When asked to study the project first, finish a bounded read-only orientation
+   before creation: current README/instructions, package metadata, architecture
+   and active task owners, then the source seams needed to distinguish current
+   behavior from historical claims. Use an existing graph when available; do not
+   build one or run broad tests merely to personalize a profile. Carry the
+   project's purpose, working style and authority boundaries into a concise
+   description/identity; link its governing docs instead of copying its backlog
+   or historical metrics into permanent profile instructions.
 
 2. **Create and bind.** Use the native commands through `terminal`, stopping on
    any failed prerequisite:
@@ -53,12 +61,18 @@ separate approval. Creation does not authorize repository changes, commits or pu
    hermes -p "<name>" config set terminal.cwd "<absolute repository root>"
    ```
    Do not use `--clone`, `--clone-all`, `--clone-channels`, or switch the default.
-   Read the new profile's `SOUL.md`; change only its generic opening identity to
-   the requested assistant name, otherwise the uppercase profile name. Preserve
-   Hermes/Nous attribution and existing safety rules.
+   Read the new profile's `SOUL.md`; change its generic opening identity to
+   the requested assistant name, otherwise the uppercase profile name. When
+   project tailoring was requested, add the concise orientation established in
+   step 1 without duplicating shared workflow policy. Preserve Hermes/Nous
+   attribution and existing safety rules.
 
-3. **Install hermes-toolset, not copied prompt policy.** Inspect
-   `hermes plugins install --help`. The local bundle can be installed through
+3. **Install hermes-toolset, not copied prompt policy.** Inventory the new
+   profile immediately after native creation with targeted `plugins show NAME`
+   calls and resolved plugin paths; creation may already provision shared links.
+   Preserve a discovered installation and use supported enablement rather than
+   deleting its link or attempting a second install merely because it is disabled.
+   Inspect `hermes plugins install --help`. The local bundle can be installed through
    the native `file://` source route, preserving native scanning and dependency
    consent; derive its URI from the resolved bundle directory, safely encoding
    spaces. Do not hand-copy or symlink around a blocked security scan.
@@ -76,8 +90,11 @@ separate approval. Creation does not authorize repository changes, commits or pu
    the native installer's documented override. Consent for one plugin does not
    cover its dependencies. Never disable scanning globally, copy around it, or
    invoke a fleet-wide installer to configure one profile. Keep large scan output
-   in a scratch log and show a bounded summary. Inspect the dependency result even
-   on exit zero: `--yes-deps` is Python consent, not proof that declared Node
+   in a scratch log and show a bounded summary. Inspect the dependency and
+   enablement result even on exit zero: a successful download can leave a plugin
+   disabled after compatibility resolution. Read back each required plugin's
+   status; do not treat install banners or a later successful command as baseline
+   completion. `--yes-deps` is Python consent, not proof that declared Node
    dependencies installed; report affected features unverified. If a dependency or
    source is missing, report incomplete setup. Refresh native-file inventory after
    enablement, since registration may already provision bundled copies, and
