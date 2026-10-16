@@ -222,23 +222,16 @@ continuous/service mode, model fallback, status, stop and recovery controls, and
 
 ### Run and watch runners
 
-Run each repository's runner as a **systemd user service**: it survives logout (with
-lingering), restarts after a crash and keeps itself current.
-
-```sh
-# From the project's main-branch checkout; the service is pi-autowork@<repository name>.
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
-```
-
-`tx autowork` from [`tmux/`](tmux/README.md) is the day-to-day view of every runner,
-service or tmux, and a way to run one in tmux to watch or debug it live:
+Run pi-autowork with **`tx`/tmux by default**. From the project's main-branch
+checkout, `tx autowork start` starts or attaches to its runner. See
+[`tmux/`](tmux/README.md) for installation and command details:
 
 ```sh
 tx autowork                   # the live TUI: runners, blockers, logs, and keys to act
+tx autowork start             # run this repository in tmux session pi-autowork-<name>
 tx autowork ls                # one colored line per runner; --long: what each waits on
 tx autowork status india       # tasks, workers and what blocks them
-tx pi-autowork-sierra          # open sierra's session: its service journal, live
-tx autowork .                 # run this repository in tmux session pi-autowork-<name>
+tx pi-autowork-sierra          # open sierra's runner session
 tx autowork stop my-project   # Ctrl+C: workers pause and resume later on the same attempt
 ```
 
@@ -246,6 +239,10 @@ A target is a runner name, a repository path or `.`. For a repository its servic
 runs, the session follows the service journal instead of starting a second runner,
 and the runner's per-repository lock keeps two runners off one repository in any
 case. Install `tx` with `sh tmux/install.sh`.
+
+A **systemd user service** is optional when you want service supervision and
+restart after a crash. See the [service setup](docs/cross-host.md#run-autowork-continuously)
+for installation and logout behavior.
 
 ## What you can do
 

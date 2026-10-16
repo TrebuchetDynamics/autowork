@@ -200,7 +200,7 @@ def actions(runner, *, tx, script, systemctl='systemctl', agent=None, task=None)
         if runner.has_service:
             out.append(Action('a', 'start service', [systemctl, '--user', 'start', f'pi-autowork@{runner.name}.service']))
         else:
-            out.append(Action('a', 'start in tmux', [tx, 'autowork', repo], env={'TX_NO_ATTACH': '1'}))
+            out.append(Action('a', 'start in tmux', [tx, 'autowork', 'start', repo], env={'TX_NO_ATTACH': '1'}))
     if repo and not runner.has_service:
         out.append(Action('i', 'install service', [script, '--install-service', '--repo', repo],
                           confirm=f'Install and start pi-autowork@{runner.name} for {repo}?'))

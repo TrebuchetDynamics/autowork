@@ -160,7 +160,7 @@ class FleetApp(App):
         detail = self.query_one('#detail', Static)
         runner = self.current()
         if runner is None:
-            detail.update('No pi-autowork runners. Start one with: tx autowork <repo>, or install a service (i).')
+            detail.update('No pi-autowork runners. Start one with: tx autowork start <repo> (or q, then run it from the repository).')
             return
         text = Text()
         text.append(runner.name, style='bold')

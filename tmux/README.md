@@ -10,14 +10,15 @@ favor. Installing this one (`./install.sh`, or the package's `tx` command) repla
 
 ## `tx autowork`: pi-autowork in tmux
 
-pi-autowork normally runs as a systemd user service
+`tx`/tmux is the default way to run pi-autowork. Run `tx autowork start` from
+the repository to start or attach to its runner. `tx autowork` also gives one
+place to see every runner. A systemd user service is an optional alternative
 (`pi-autowork.sh --install-service`; see [cross-host](../docs/cross-host.md#run-autowork-continuously)).
-`tx autowork` runs one repository's runner in tmux instead, to watch or debug it, and
-gives one place to see every runner, whichever way it runs.
 
 | Command | What it does |
 |---|---|
 | `tx autowork` | The live TUI (on a terminal): every runner with its state, blockers, held tasks and log; keys open a session, start or stop a runner, install or remove its service, set aside a held task (`x`) and answer blockers (`b`, `/autowork blockers` in `TX_AUTOWORK_AGENT`, else `claude` or `pi`). Stop, remove and set-aside ask first |
+| `tx autowork start [name\|repo\|.]` | Open/start the runner; defaults to the current Git repository, including from a subdirectory; follows the journal if a service owns it |
 | `tx pi-autowork-<name>` or `tx autowork <name\|repo\|.>` | Open the runner's session `pi-autowork-<name>`: attach, or start a tmux runner; for a service runner the session follows its journal |
 | `tx autowork ls [--long]` | One colored line per runner, tmux and service: state and for how long, workers running, waiting and held; `--long` adds its `tx pi-autowork-<name>` command and what it waits on |
 | `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
@@ -27,9 +28,9 @@ gives one place to see every runner, whichever way it runs.
 ```sh
 tx autowork                   # the live TUI
 tx autowork ls                # what is running, and how it is doing
-tx pi-autowork-sierra          # sierra's session: its service journal, live
+tx pi-autowork-sierra          # open sierra's runner session
 tx autowork status india       # why india is stalled
-tx autowork .                 # run this repository in tmux (no service installed)
+tx autowork start             # run this repository in tmux (also: tx autowork .)
 tx autowork stop my-project
 ```
 

@@ -99,7 +99,7 @@ class FleetViewTests(unittest.TestCase):
         stopped = keys(fleet_view.Runner(name='sierra', repo='/git/sierra', mode='service', service='dead'))
         self.assertEqual(stopped['a'].argv, ['systemctl', '--user', 'start', 'pi-autowork@sierra.service'])
         idle = keys(fleet_view.Runner(name='new', repo='/git/new'))
-        self.assertEqual((idle['a'].argv, idle['a'].env), (['tx', 'autowork', '/git/new'], {'TX_NO_ATTACH': '1'}))
+        self.assertEqual((idle['a'].argv, idle['a'].env), (['tx', 'autowork', 'start', '/git/new'], {'TX_NO_ATTACH': '1'}))
         self.assertFalse(any(a.confirm for a in (idle['a'], tmux['enter'])))  # only changes that stop or remove ask
 
     def test_agent_for_blockers(self):
