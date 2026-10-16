@@ -241,7 +241,10 @@ retried within the hour.
 Touches the runner inferred are a guess. When a worker's commit is held only for
 changing files outside them, the runner widens its own guess to those files once and
 the engine verifies the same commit again; Touches a person wrote or edited are never
-widened, and the hold then waits for a person with its cause shown by `--fleet`.
+widened, and the hold then waits for a person with its cause shown by `--fleet`. The
+same applies when a worker stops to ask for files outside its inferred Touches: the
+runner widens them and the worker resumes in its worktree with its changes intact.
+Touches inferred by older runs are recognized from the runner's own commits.
 
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to

@@ -34,6 +34,7 @@ def classify(snapshot, *, paused=False):
 
 
 CAUSES = {'blocker': 'its worker reported a blocker', 'scope': 'changed files outside Touches',
+          'scope_request': 'its worker needs files outside Touches',
           'overlap': "changed another task's files", 'report': 'report did not match its commit',
           'conflict': 'merge conflict', 'validation': 'validation failed', 'crash': 'worker died twice',
           'launch': 'worker could not start', 'contract_changed': 'its TODO entry changed',

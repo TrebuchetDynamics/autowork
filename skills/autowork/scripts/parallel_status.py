@@ -185,7 +185,8 @@ def _snapshot(repo, common, now):
                          elapsed_seconds=max(0, end - (changes[0]['timestamp'] if changes else slot['started_at'])),
                          reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
-                         worker_live=live, cause=slot.get('cause'), blocked_by=[]))
+                         worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
+                         paused=bool(slot.get('paused')), blocked_by=[]))
         pending.pop(task, None)
     # Include dependencies and pre-existing sequential claims that have no slot.
     for item in pending_tasks(repo, {r['task'] for r in rows}):

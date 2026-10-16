@@ -250,6 +250,35 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual([e['task_id'] for e in journal if e['event'] == 'claim_adopted'], ['A'])
         self.wait_until_idle()
 
+    def test_a_worker_asking_for_more_files_resumes_in_place_once_touches_cover_them(self):
+        """sierra TASK-024: a worker needed one test file outside Touches and could only stop."""
+        self.write_todo(task('A', 'a.txt'))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'A')
+        self.set_spec({'A': {'files': {'a.txt': 'half', 'b.txt': 'needed'}, 'sleep': 0.1, 'commit': False,
+                             'blockers': ['b.txt is outside Touches'], 'needs_touches': ['b.txt'],
+                             'then': {'files': {'a.txt': 'done', 'b.txt': 'done'}, 'sleep': 0.1}}})
+        self.apply()
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['cause'], slot['requested']), ('held', 'scope_request', ['b.txt']))
+        _, again = self.apply()
+        self.assertEqual(again['outcome'], 'IDLE')  # not covered yet: waits for a person or the runner
+        self.write_todo(task('A', 'a.txt, b.txt'))
+        self.git('commit', '-qam', 'widen A')
+        _, resumed = self.apply()
+        self.assertEqual(resumed['outcome'], 'RESUMED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot.get('paused')), ('interrupted', 1, True))
+        self.assertEqual((Path(slot['worktree']) / 'b.txt').read_text(), 'needed')  # its work is intact
+        _, dispatched = self.apply()
+        self.assertEqual([d['task'] for d in dispatched['dispatched']], ['A'])
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt']), ('reported', 1))  # same attempt, now committed
+        prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
+        self.assertIn('change only paths within Touches: a.txt, b.txt', prompt)
+
     def pause_and_stop(self):
         """What a deliberate coordinator stop does: mark live workers, then interrupt them."""
         _, paused = self.run_cli('--parallel-pause', worker=False)

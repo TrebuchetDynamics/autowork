@@ -378,6 +378,16 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
+            # A worker that asked for files outside Touches this runner inferred: widen the
+            # guess and the engine resumes it in its worktree (not counted as a failure).
+            if state == 'interrupted' and row.get('paused'):
+                state = 'resuming'  # a deliberate stop or a granted request, not a failure
+            if state == 'held' and row.get('cause') == 'scope_request':
+                if self.seen.get('awaiting-' + task):
+                    continue  # widened already: the next refill resumes it
+                if not self.stop and self.widen_inferred(task, ', '.join(row.get('requested') or []), requested=True):
+                    self.settled = True
+                    continue
             self.note_state(task, state, reason)
             if task == self.once_task and state == 'held':
                 self.draining = True
@@ -434,21 +444,47 @@ class Coordinator:
                                     stderr=err, text=True)
         return result.stdout.strip() if result.returncode == 0 else None
 
-    def widen_inferred(self, task, outside):
-        """Touches this runner inferred are a guess: widen them once to the files a held
-        commit changed, and let the engine verify the same commit again. Touches a person
-        wrote, or edited since, are never changed: the helper refuses."""
+    def recorded_touches(self, task):
+        """Touches this runner recorded for the task: from its record, or for older runs from
+        its own `declare Touches` commit (the helper still refuses if they changed since)."""
         recorded = self.inferred().get(task)
+        if recorded:
+            return recorded
+        commit = git(self.integ, 'log', '-1', '--format=%H', '--fixed-strings',
+                     f'--grep=docs(tasks): declare Touches for {task} (pi-autowork)')
+        text = git(self.integ, 'show', f'{commit}:TODO.md') if commit else None
+        if not text:
+            return None
+        goals, _ = touches_inference.modules(self.toolset)
+        bodies = goals.task_bodies(text).get(task) or []
+        value = goals.task_fields(bodies[0][0]).get('Touches', '').strip() if len(bodies) == 1 else ''
+        return value or None
+
+    def widen_inferred(self, task, outside, requested=False):
+        """Touches this runner inferred are a guess: widen them once to the files a held
+        commit changed (the engine verifies it again) or a worker asked for (the engine
+        resumes it in place). Touches a person wrote, or edited since, are never changed:
+        the helper refuses."""
+        recorded = self.recorded_touches(task)
         if not recorded or not outside or dirty(self.integ) or self.seen.get('widened-' + task):
             return False
         widened = self.helper('widen', self.integ, self.toolset, task, recorded, outside)
         if widened is None:
             return False
-        self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
-                    f"The worker's commit changed {outside}, outside the inferred Touches; the engine verifies it again.")
+        if requested:
+            self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
+                        f'Its worker needs {outside}, outside the inferred Touches; it resumes in its worktree.')
+        else:
+            self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
+                        f"The worker's commit changed {outside}, outside the inferred Touches; the engine verifies it again.")
         self.remember_inferred(task, widened)
         self.seen['widened-' + task] = True
-        LOG.say(f'{task}: its commit changed files outside the inferred Touches ({outside}); widened them and verifying again')
+        if requested:
+            self.seen['awaiting-' + task] = True
+            LOG.say(f'{task}: its worker needs files outside the inferred Touches ({outside}); widened them and '
+                    'resuming it in its worktree')
+        else:
+            LOG.say(f'{task}: its commit changed files outside the inferred Touches ({outside}); widened them and verifying again')
         return True
 
     # --- Touches proposals ------------------------------------------------------------
@@ -741,8 +777,9 @@ class Coordinator:
         elif outcome == 'READOPTED':
             self.seen[result.get('task')] = ''
             LOG.say(f'{result.get("task")}: the retry made no change; re-verifying the first attempt\'s commit')
-        elif outcome == 'RESCOPED':
+        elif outcome in ('RESCOPED', 'RESUMED'):
             self.seen[result.get('task')] = ''
+            self.seen.pop('awaiting-' + str(result.get('task')), None)
         elif outcome == 'WAITING':
             waiting = summary_list(result.get('waiting') or [])
             if waiting and waiting != self.last_waiting:
