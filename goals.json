@@ -90,7 +90,8 @@
       "tasks": [
         "TOOLSET-080",
         "TOOLSET-081",
-        "TOOLSET-082"
+        "TOOLSET-082",
+        "TOOLSET-098-5d"
       ],
       "title": "Keep the OMH skills profiles use and drop the rest from every prompt"
     },
@@ -467,6 +468,7 @@
         "TOOLSET-094-65",
         "TOOLSET-095-48",
         "TOOLSET-096-7e",
+        "TOOLSET-097-41",
         "TOOLSET-097-57"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
@@ -475,20 +477,19 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-089-72",
-      "TOOLSET-090-2d",
-      "TOOLSET-091-00",
-      "TOOLSET-029",
-      "TOOLSET-003",
-      "TOOLSET-019",
-      "TOOLSET-011",
-      "TOOLSET-013",
       "TOOLSET-064",
-      "TOOLSET-066",
+      "TOOLSET-082",
+      "TOOLSET-097-41",
       "TOOLSET-072",
       "TOOLSET-073",
-      "TOOLSET-082",
-      "TOOLSET-096-7e"
+      "TOOLSET-066",
+      "TOOLSET-091-00",
+      "TOOLSET-003",
+      "TOOLSET-098-5d",
+      "TOOLSET-019",
+      "TOOLSET-096-7e",
+      "TOOLSET-029",
+      "TOOLSET-011"
     ]
   },
   "tasks": [
@@ -509,16 +510,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the updated reporting workflow on the affected profile"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-012"
-      ],
-      "goal": "STARTUP",
-      "id": "TOOLSET-013",
-      "section": "Next",
-      "status": "open",
-      "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
       "depends_on": [],
@@ -599,6 +590,24 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the worktree runner live on a fleet repository"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-097-41",
+      "section": "Next",
+      "status": "open",
+      "title": "Report the correct Hermes profile from nested installation paths"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-082"
+      ],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-098-5d",
+      "section": "Next",
+      "status": "open",
+      "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
     },
     {
       "depends_on": [],
@@ -1192,6 +1201,20 @@
       "section": "Done",
       "status": "done",
       "title": "Install the Pi runner as a per-repository systemd user service"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-012"
+      ],
+      "goal": "STARTUP",
+      "id": "TOOLSET-013",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-091-00"
+      ],
+      "supersession_reason": "The measured startup path (native start_goal admission) is retired historical execution; current startup is owner_cycle selection, whose real-host timing TOOLSET-091-00 records. Planner's call in the 2026-10-15 replan.",
+      "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
       "depends_on": [],

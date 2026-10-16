@@ -1766,3 +1766,29 @@ Source section: Next
 - Delivery (2026-10-15): `skills/autowork/references/parallel-workers.md` (coordinator loop with exact outcomes, `--run` last, Touches/Resources admission, coordinator-owned root files, host templates and every fallback condition, held `-r2` retries, restart reconciliation, resource gate, release semantics); an opt-in section in `skills/autowork/SKILL.md` and `adapters/skills/autowork/SKILL.md` (Claude Code: sequential unless `--worker-command`; Codex and Pi: built-in templates); Touches/Resources authoring in the shared TODO rules and Docs Sync; the stale worktree line in `accepted-plan-execution.md` fixed; README, docs/workflows.md, docs/cross-host.md (host table), docs/testing.md and CHANGELOG updated.
 - Checks run: every flag named in the new docs matches `owner_cycle.py --help` or the worker templates (`--no-ff` is the `git merge` flag integration uses); `test_parallel_compat.py` 5 passed, and its two golden tests also pass when run against the pre-parallel tree `b5092b3` (sequential output byte-identical with and without goals.json); fallback tests cover Claude Code without `--worker-command` and missing Hermes/Codex/Pi CLIs with no journal, slots, coordinator lease, worktrees or branches; `docs.py check` ok; `node --test tests/portable_pi.test.mjs` 3 passed; skill-policy, workflow-cycle, portable-package and update-bundle tests pass; `python3 scripts/check.py` passed all four offline directories; `git diff --check` clean.
 - Independent review (2026-10-15) found and this task fixed: the documented `--integrate ... --run ... --timeout` order could not work (`--run` takes the rest of the line); `IDLE` was described as queue completion; missing outcomes, hold reasons, retry/restart/launch-failure rules, reconcile states, name-collision behavior, close's archive and cleanup scope, root-only coordinator files, undetected-host fallback and the release caveat; the test gained a goals.json golden, a clean `GIT_*` environment and a coordinator-lease assertion. Not changed: the `--worker-profile` help text (task_execution.py is outside this task's Touches).
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-091-00
+Reason: The measured startup path (native start_goal admission) is retired historical execution; current startup is owner_cycle selection, whose real-host timing TOOLSET-091-00 records. Planner's call in the 2026-10-15 replan.
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
+
+- [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
+- Status: open; TOOLSET-012 is integrated; isolated bounded environment still required.
+- Goal: STARTUP — Verify lower preparation overhead without weaker startup safety.
+- Sources: [accepted measurement contract](docs/project.md#faster-ready-task-startup), TOOLSET-012, [admission](skills/autowork/scripts/start_goal.py), [reporting boundaries](skills/autowork/references/dispatch-and-reporting.md).
+- Scope: Compare manual and composed startup on the same disposable accepted task, source, model/environment and cold/warm conditions. Separate request-to-handoff, queue wait, admission and first useful test/reproduction/edit after the guard. Count coordinator tool/model round trips and routine messages.
+- Acceptance: Fewer preparation round trips/messages with no observed comparable startup regression; preserve stale/ownership/dependency refusals. A heartbeat/queued card is not useful action; offline fixtures cannot close native qualification. Investigate contradictory timing.
+- Checks: Run both routes with source-bound implementation commands; retain exact argv, dependency/interpreter/model identity, enforced limits, timestamps, native admission/run evidence and failures. Harness/baseline runs are not yet executed.
+- Exclusions: No production repositories/messages, fabricated measurements, absolute latency/minimum-version promises, budget reset, protection bypass, push/deployment or live schedule/profile edits.
+- Dependencies: TOOLSET-012.
+- Environment prerequisite: Isolated configured native/model environment with external spending/descendant limits; unknown usage is not zero.
+- Ownership: Authorized coordinator with that environment; no active claim.
+- Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
+- Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
