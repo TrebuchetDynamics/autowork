@@ -2146,3 +2146,24 @@ Source section: Next
 - Touches: skills/docs-sync/scripts/docs.py, skills/docs-sync/scripts/test_docs_manifest.py, docs/testing.md
 - Exclusions: No external fetching, renderer replacement, installed-profile updates or live qualification.
 - Planner's call: TOOLSET-099-87's excluded live acceptance remains separately tracked by TOOLSET-096-7e; skip it without waiver. Fix this independently reproduced docs-checker defect rather than repeat a live hold or add another Pi refusal guard.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-108-21 — Retain two readable cron responses across a damaged newest output
+
+- [x] TOOLSET-108-21 — Retain two readable cron responses across a damaged newest output
+- Status: done.
+- Evidence: Reproduced one-versus-two response loss; all 22 response tests and 12 audit tests pass. Independent exact-source review approved, including a discriminating private mutation. Complete Python 3.12 offline gate passed 563/715/215/8 tests, one skip/eight excluded modules. Identical read-only replay retains two prior frames with ranks 3/2 and both latest=false. Source integrated locally; installation remains gated under TOOLSET-101-f6.
+- Goal: RECOVERY
+- Sources: [maintenance contract](skills/autowork/references/profile-feedback.md), [response consumer](skills/autowork/scripts/audit_profiles.py), [regressions](skills/autowork/scripts/test_response_tail.py).
+- Scope: The response consumer currently slices the newest two filenames before validation; one damaged frame drops the preceding healthy comparison. Inspect at most twelve newest regular output files until two readable responses are retained. Preserve invalid-file gaps, literal filename ranks, latest-file identity, source bytes and the unproved execution-binding boundary.
+- Acceptance: With two healthy native frames followed by a damaged frame, return both healthy responses in chronological filename order, ranks 3 and 2, neither labeled latest; report the damaged frame. Stop after two readable outputs or twelve candidates, reporting any uninspected older history.
+- Checks: Failing-then-passing response-consumer regression, focused audit/consultation tests, Python 3.12 `scripts/check.py`, independent exact-source review and identical read-only consumer replay.
+- Dependencies: None.
+- Ownership: Current authorized shared-source maintenance coordinator.
+- Touches: skills/autowork/scripts/audit_profiles.py, skills/autowork/scripts/test_response_tail.py, skills/autowork/references/profile-feedback.md
+- Exclusions: No product writes, publication, schedule changes, worker launch or native scan override. Installed adoption remains TOOLSET-101-f6.
+- Planner's call: Skip the already-separated native installation gate and excluded live backlog; deliver this independently useful evidence-consumer fix without claiming worker recovery.

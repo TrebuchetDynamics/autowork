@@ -57,6 +57,45 @@ class ResponseTailTests(unittest.TestCase):
                     self.assertTrue(any('native response' in gap for gap in gaps), gaps)
                     self.assertEqual(path.read_bytes(), before)
 
+    def test_damaged_newest_frame_keeps_two_prior_responses_and_actual_ranks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            for day in (10, 11):
+                (output / f'2026-10-{day}.md').write_text(self.native_output(f'result {day}'))
+            (output / '2026-10-12.md').write_text(self.native_output('interrupted')[:-2])
+            before = {p: p.read_bytes() for p in output.iterdir()}
+            gaps = []
+            rows = cron_responses(home, [{'id': 'j1'}], gaps)
+            self.assertEqual([r['payload'] for r in rows], ['result 10', 'result 11'])
+            self.assertEqual([r['output_rank'] for r in rows], [3, 2])
+            self.assertEqual([r['latest'] for r in rows], [False, False])
+            self.assertEqual(gaps, ['native response frame invalid: j1'])
+            self.assertEqual(before, {p: p.read_bytes() for p in output.iterdir()})
+
+    def test_response_lookback_stops_at_twelve_candidates(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            output = home / 'cron/output/j1'
+            output.mkdir(parents=True)
+            oldest = output / '2026-10-01.md'
+            oldest.write_text(self.native_output('outside bound'))
+            for day in range(2, 14):
+                (output / f'2026-10-{day:02}.md').write_text('# Cron Job: interrupted\n')
+            opened = []
+            original_open = Path.open
+            def open_output(path, *args, **kwargs):
+                opened.append(path)
+                return original_open(path, *args, **kwargs)
+            gaps = []
+            with patch.object(Path, 'open', open_output):
+                self.assertEqual(cron_responses(home, [{'id': 'j1'}], gaps), [])
+            self.assertEqual(len(opened), 12)
+            self.assertNotIn(oldest, opened)
+            self.assertIn('cron response lookback exhausted: j1; older files uninspected', gaps)
+
     def test_native_response_display_is_bounded_after_redaction(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
@@ -250,11 +289,11 @@ class ResponseTailTests(unittest.TestCase):
                     gaps = []
                     with patch.object(Path, 'open', open_output):
                         rows = cron_responses(home, [{'id': 'j1'}], gaps)
-                    self.assertEqual([row['path'] for row in rows], [str(healthy)])
-                    self.assertEqual(rows[0]['output_rank'], rank)
-                    self.assertEqual(rows[0]['latest'], rank == 1)
-                    self.assertEqual(rows[0]['payload'], healthy.name + '\n')
-                    self.assertIn('exact execution association not proved', rows[0]['boundary'])
+                    self.assertEqual([row['path'] for row in rows], [str(paths[0]), str(healthy)])
+                    self.assertEqual([row['output_rank'] for row in rows], [3, rank])
+                    self.assertEqual(rows[1]['latest'], rank == 1)
+                    self.assertEqual(rows[1]['payload'], healthy.name + '\n')
+                    self.assertIn('exact execution association not proved', rows[1]['boundary'])
                     self.assertEqual(gaps, ['cron response unreadable: j1: ' + failed.name])
             self.assertEqual(before, {path: path.read_bytes() for path in paths})
 

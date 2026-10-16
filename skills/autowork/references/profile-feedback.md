@@ -40,6 +40,10 @@ character counts, redact the complete answer, then cap its displayed prefix at
 32,768 characters with an explicit omission. Invalid or oversized framed outputs
 are gaps, never guessed answers. Legacy tails remain explicitly unverified;
 filename order and a valid frame do not bind a file to a completed execution.
+If a newest output is unreadable, oversized or malformed, retain its gap and look
+back through at most twelve regular files for two readable responses. Preserve
+each response's actual filename rank: older evidence must never be relabeled as
+the latest file. Report uninspected older history when the lookback is exhausted.
 
 Use the shared executable `scripts/profile-consult.py`, independent of optional
 cron tool schemas. Run it with the default root, a NEW private

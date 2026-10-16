@@ -123,7 +123,8 @@ def cron_responses(home, jobs, gaps):
             paths = sorted(p for p in directory.glob('*.md') if p.is_file() and not p.is_symlink())
             if not paths:
                 gaps.append('cron response missing: ' + identifier); continue
-            for path in paths[-2:]:
+            first_row = len(rows)
+            for rank, path in enumerate(reversed(paths[-12:]), 1):
                 try:
                     with path.open('rb') as handle:
                         size = os.fstat(handle.fileno()).st_size
@@ -170,8 +171,13 @@ def cron_responses(home, jobs, gaps):
                 rows.append({'job_id': identifier, 'path': str(path), 'start': start, 'bytes_observed': len(data),
                              'remaining_bytes': start + max(0, size - start - len(data)), 'sha256': digest(data),
                              'payload': text, 'analysis': 'not_analyzed',
-                             'output_rank': 1 if path == paths[-1] else 2, 'latest': path == paths[-1],
-                             'boundary': 'newest two output files by filename order; rank 1 is latest; exact execution association not proved; ' + projection})
+                             'output_rank': rank, 'latest': rank == 1,
+                             'boundary': 'up to two readable outputs from newest twelve files by filename order; rank 1 is latest file; exact execution association not proved; ' + projection})
+                if len(rows) - first_row == 2:
+                    break
+            if len(rows) - first_row < 2 and len(paths) > 12:
+                gaps.append('cron response lookback exhausted: ' + identifier + '; older files uninspected')
+            rows[first_row:] = reversed(rows[first_row:])
         except OSError:
             gaps.append('cron response unreadable: ' + identifier)
     return rows

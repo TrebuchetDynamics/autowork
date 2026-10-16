@@ -224,6 +224,11 @@
           "kind": "executed",
           "ref": "TOOLSET-106-5d: python3 scripts/check.py passed 563/713/212/8 offline tests (one skip, eight excluded modules); 48 focused collector tests and identical synthetic header consumer passed; independent exact-source review approved; installed adoption remains TOOLSET-101-f6",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-108-21: response regression RED then 22 focused passes; independent exact-source review approved; Python 3.12 scripts/check.py 563/715/215/8 passed, one skip/eight exclusions; identical read-only consumer restores two prior frames with actual ranks, installed adoption remains TOOLSET-101-f6",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -249,7 +254,8 @@
         "TOOLSET-100-78",
         "TOOLSET-101-f6",
         "TOOLSET-103-fe",
-        "TOOLSET-106-5d"
+        "TOOLSET-106-5d",
+        "TOOLSET-108-21"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -553,7 +559,6 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
-      "TOOLSET-107-93",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -561,6 +566,7 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
+      "TOOLSET-108-21",
       "TOOLSET-101-f6"
     ]
   },
@@ -1375,6 +1381,14 @@
       "section": "Done",
       "status": "done",
       "title": "Ignore commented-out document anchors"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-108-21",
+      "section": "Done",
+      "status": "done",
+      "title": "Retain two readable cron responses across a damaged newest output"
     },
     {
       "depends_on": [
