@@ -423,6 +423,20 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('timeout', slot['reason'])
         self.assertFalse(state.worker_live(slot))
 
+    def test_a_close_works_when_history_already_holds_an_older_entry_for_the_id(self):
+        """sierra TASK-029: an older, unchecked TASK-029 sat in the archive; every close read two."""
+        (self.repo / 'TODO.archive.md').write_text('# Completed\n\n- [ ] A — An older A\n  Scope: earlier\n'
+                                                   '  Status: superseded\n')
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'history with an older A')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')  # a retried close too
+        self.assertIn('An older A', (self.repo / 'TODO.archive.md').read_text())  # history kept
+
     def test_archived_task_cannot_close_changed_acceptance(self):
         root, _ = self.worker()
         module = self.module()

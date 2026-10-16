@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Closing a task works when the archive already holds an older entry with the same ID;
+  the closed entry matching the validated contract is judged. sierra TASK-029 closed but
+  then read two archived entries and retried its close every cycle.
 - Integration and close no longer refuse because of a process that exited during the
   writer check (a worker's short tool run seen by the scan and gone by the attribution
   step): only a writer still alive with the same identity blocks.
