@@ -75,6 +75,43 @@ class IdleClaimTests(unittest.TestCase):
         self.assertEqual(self.idle('TASK-038', workers=[session]), {})
         self.assertEqual(set(self.idle('TASK-038', workers=[dict(session, active=False)])), {'TASK-038'})
 
+    def note(self, text):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text() + text)
+        self.git('add', '.')
+        self.commit('note', when=1000)
+
+    def test_a_planner_note_elsewhere_holds_the_claim(self):
+        """sierra: "retain TASK-030/TASK-029/TASK-014 open for that exact missing authority"; TASK-029 was adopted."""
+        self.note('\n## Notes\n\n- Planner decision: retain TASK-030/TASK-038/TASK-014 open for that exact missing authority.\n')
+        self.assertEqual(self.idle('TASK-038'), {})
+        self.assertEqual(set(self.idle('T-96')), {'T-96'})  # T-96 is not named
+
+    def test_a_hold_in_its_own_entry_holds_the_claim(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] T-96 — Other\n',
+                                                 '- [ ] T-96 — Other\n  Ownership: unassigned. No worker dispatched by this entry.\n'))
+        self.git('add', '.')
+        self.commit('own note', when=1000)
+        self.assertEqual(self.idle('T-96'), {})
+
+    def test_a_plain_mention_does_not_hold_a_claim(self):
+        self.note('\n- [ ] T-5 — Later\n  Dependencies: TASK-038.\n  Status: open\n')
+        self.assertEqual(set(self.idle('TASK-038')), {'TASK-038'})
+
+    def test_hold_note_wordings(self):
+        for line in ('Keep T-7 open until the owner decides', 'T-7 is on hold', 'Do not dispatch T-7',
+                     'T-7 needs explicit authorization first', 'T-7 awaiting owner approval'):
+            with self.subTest(line=line):
+                self.assertTrue(claims.hold_note(line + '\n', 'T-7'))
+        self.assertIsNone(claims.hold_note('T-7 extends the parser; see T-8 for the format\n', 'T-7'))
+        for line in ('T-7 adds the authorized schema amendment', 'T-7 preserves Agent authorization',
+                     '| G-1 | T-7 held evidence | partial |', 'T-7 awaiting device access',
+                     'T-7: with one post held by a synthetic event, flush returns False',
+                     'T-7 shows fleet 403, pending approval, network outage'):
+            with self.subTest(line=line):
+                self.assertIsNone(claims.hold_note(line + '\n', 'T-7'))  # vocabulary, a table row, a condition
+
     def test_an_active_session_in_the_canonical_checkout_adopts_nothing(self):
         canonical = {'kind': 'session', 'active': True, 'workspaces': [str(self.repo.resolve())]}
         self.assertEqual(self.idle('TASK-038', workers=[canonical]), {})

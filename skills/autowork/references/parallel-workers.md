@@ -121,6 +121,10 @@ A task runs beside others only when the planner can prove it is independent:
   long is planned like an open task: no change to its TODO/ledger entry, no commit on
   a branch named for it, no file change in such a worktree and no live agent there,
   and no active agent session in the canonical checkout (then nothing is adopted).
+  A claim a note holds is never adopted: its own entry, or any TODO.md line naming
+  it (table rows aside), says to keep it open or in progress, forbids dispatch
+  ("do not dispatch", "no worker dispatched"), puts it on hold, or says it requires
+  or is missing an authority, authorization, approval or owner decision.
   The worker's prompt names the earlier branches and worktrees to reuse; they are never
   modified. The journal records `claim_adopted` with that evidence and the dispatch
   result lists `adopted`. Only live workers count toward N.

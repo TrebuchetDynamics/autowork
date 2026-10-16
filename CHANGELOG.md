@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- An idle `in_progress` claim is never adopted when a TODO.md note holds it: its own
+  entry, or any line naming it, says to keep it open, forbids dispatch, puts it on hold,
+  or says it requires or is missing an authority or approval. sierra TASK-029 was adopted
+  and merged although a planner note retained it open for a missing authority.
 - Closing a task works when the archive already holds an older entry with the same ID;
   the closed entry matching the validated contract is judged. sierra TASK-029 closed but
   then read two archived entries and retried its close every cycle.

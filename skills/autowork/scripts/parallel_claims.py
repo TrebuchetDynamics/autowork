@@ -9,7 +9,9 @@ only when every check passes:
 - no branch named for the task has a commit, and no worktree on such a branch has
   a file change, within that time;
 - no live agent process works in such a worktree, and no active agent session is
-  in the canonical checkout (its task cannot be attributed, so nothing is adopted).
+  in the canonical checkout (its task cannot be attributed, so nothing is adopted);
+- no note holds it: its own TODO entry, or any TODO.md line naming it, says to keep
+  it open, holds it, forbids dispatch, or names a missing authority or approval.
 
 Prior work is never modified: adoption only lets a fresh worker start, and its
 prompt names the branches and worktrees to inspect and reuse.
@@ -74,6 +76,34 @@ def prior_work(repo, task, worktrees=None):
     return found
 
 
+# A person's or planner's note that a claim must stay as it is (sierra, 2026-10-16: "retain
+# TASK-030/TASK-029/TASK-014 open for that exact missing authority", and TASK-029 was adopted).
+HOLD_NOTE = re.compile(
+    r'\b(retain|keep|leave)\b[^.;\n]{0,80}\b(open|in[_ ]progress|claimed)\b'
+    r'|\bon hold\b|\bheld open\b|\bhold (it|this|the task|open)\b'
+    r'|\bdo not (adopt|dispatch|execute|run|start|integrate|merge|take over)\b'
+    r'|\bno worker (is )?dispatched\b|\bmust not be dispatched\b'
+    r'|\b(requires?|needs?|missing|without|until|awaiting)\b[^.;\n]{0,40}'
+    r'\b(authority|authori[sz]ation|approval|owner decision)\b', re.I)
+
+
+def hold_note(text, task):
+    """The first note holding ``task``: in its own TODO entry, or on any line naming it."""
+    try:
+        bodies = execution.goals_module().task_bodies(text).get(task) or []
+    except (ValueError, AttributeError):
+        bodies = []
+    own = [line for body in bodies for line in body[0].splitlines()]
+    pattern = re.compile(_token(task))
+    # Table rows (Goal coverage) summarize evidence; they are not notes about the task.
+    named = [line for line in text.splitlines() if pattern.search(line) and not line.lstrip().startswith('|')]
+    for line in own + named:
+        match = HOLD_NOTE.search(line)
+        if match:
+            return ' '.join(line[max(0, match.start() - 80):match.end() + 80].split())
+    return None
+
+
 def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
     """{task: evidence} for the claims in ``claims`` (task IDs) that are idle."""
     if not claims or idle_after <= 0:
@@ -88,8 +118,14 @@ def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
         return {}  # an active session in the canonical or session checkout: its task is unknown
     busy = {path for w in live for path in w.get('workspaces', [])}
     worktrees = _worktrees(repo)
+    try:
+        todo = (repo / 'TODO.md').read_text()
+    except OSError:
+        return {}  # without the backlog, no note can be ruled out
     result = {}
     for task in claims:
+        if hold_note(todo, task):
+            continue  # someone said to keep this claim as it is
         changed = _last_change(repo, task)
         if changed is None or now - changed < idle_after:
             continue

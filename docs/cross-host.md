@@ -238,7 +238,8 @@ widened, and the hold then waits for a person with its cause shown by `--fleet`.
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
 the task's entry, branches or worktrees and no live agent working there. The runner
-then takes the task over, logs `adopted an idle claim`, and its worker is pointed at
+then takes the task over (never one a TODO.md note holds: kept open, on hold, not to be
+dispatched, or awaiting an authority or approval), logs `adopted an idle claim`, and its worker is pointed at
 any earlier work to reuse, which it never modifies.
 
 When TODO.md's order changed since goals.json recorded it, a runner records the new
