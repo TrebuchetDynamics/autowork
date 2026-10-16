@@ -28,7 +28,8 @@ explicit read-only runs write nothing.
    for a useful bug, test, UI, documentation or refactoring improvement. Use
    [Plan For Me](../plan-for-me/SKILL.md) only when planning/research is needed;
    an obvious repair needs no extra ceremony. Record a complete TODO task via
-   [Docs Sync](../docs-sync/SKILL.md), then execute within the user's scope.
+   [Docs Sync](../docs-sync/SKILL.md), including `Touches:` for the paths the inspected
+   seam may change, then execute within the user's scope.
    For a ready task, compose reconciliation, accepted body, explicit bounded
    code/docs/tests/dependency sources and a short execution contract in one host-native
    preparation step. Retain objective/scope, acceptance/checks, source/base,

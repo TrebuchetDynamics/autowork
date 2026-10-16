@@ -181,7 +181,7 @@ checkout holds, unreleased commits included.
 | (none) | Run until stopped; when no task is runnable, wait and check again |
 | `--once` | Run one task |
 | `--until-empty` | Exit when no runnable task remains |
-| `--workers N` | Tasks run at once, 1 to 4 (default 2) |
+| `--workers N` | Most tasks run at once, 1 to 8 (default 8); free memory and load decide how many start |
 | `--dry-run`, `--status` | Show the repository, models, budget, session and each task's state; change nothing |
 | `--repo PATH` | Work on the repository at `PATH` |
 | `--interval SECONDS` | Idle check interval (default 60) |
@@ -194,8 +194,9 @@ Environment variables tune the rest (`--help` lists them): the models, worker an
 review timeouts (90 and 30 minutes), `PI_AUTOWORK_VALIDATE` (a command that must pass
 on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
 review), retries, the failure limit, the fallback cooldown, total runtime,
-`PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24) and the
-free memory each worker needs.
+`PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24), the
+free memory each worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000) and
+`PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
 
 To keep it running in the background, let the script install a systemd user service
 for the repository (run it from that repository, or add `--repo PATH`):
@@ -227,7 +228,14 @@ How it works:
   priority decides order. An empty queue costs no model call, and nothing asks
   Autowork to invent work. A task another session marked `in_progress` is never
   dispatched and holds back tasks that depend on it or declare overlapping `Touches:`,
-  but not unrelated ones. When tasks remain but none can start, the log says `No task
+  but not unrelated ones. So that most tasks can run in parallel, the runner asks a
+  read-only Pi pass to plan the file scope of each runnable task that lacks
+  `Touches:` and records the paths it proposes in the session branch; the engine then
+  holds any change outside them. Scope means the files a task edits, so device- or
+  screenshot-verified work still gets paths. A task answered `NONE` (it edits no
+  repository file, or files across most of the repository; the log shows the reason)
+  runs alone and is asked again after 24 hours. A task without `Touches:` may
+  change any file except the coordinator's and other slots'. When tasks remain but none can start, the log says `No task
   can start now` with the reasons; the runner keeps waiting, and `--once` or
   `--until-empty` exit 1 instead of 0. Each worker is `pi-autowork.sh --worker`: Pi with an
   explicit provider and model, `--no-approve`, the engine's one-task prompt and a
@@ -239,7 +247,8 @@ How it works:
   Pi review that runs the task's checks against its acceptance; a reviewer that
   changes any file fails. Only then is the task closed and its TODO update committed.
   A failed review, a conflict or a file outside `Touches:` holds the task; it keeps
-  its worktree and gets one fresh retry, and a second failure stays held.
+  its worktree and gets one fresh retry, and a second failure stays held. If the
+  retry of a scope hold makes no commit, the first commit is verified once more.
 - **Task states.** `--status` and the log show each task as `pending`, `running`,
   `implemented` (reported), `verifying`, `integrated`, `done` or `failed` (held,
   interrupted or released, with the reason), mapped from the engine's slot states;

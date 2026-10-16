@@ -57,6 +57,8 @@ prompt = open(files[0]).read() if files else ''
 field = lambda name: (re.search(rf'^{name}: (.+)$', prompt, re.M) or [None, None])[1]
 if 'PI_AUTOWORK_VERIFY' in message:
     role, task = 'verify', re.search(r'verifying task (\S+) ', message)[1]
+elif message.startswith('Plan the file scope of task'):
+    role, task = 'touches', re.search(r'of task (\S+) ', message)[1]
 elif message.startswith('/skill:git-commit-push'):
     role, task = 'merge', None
 else:
@@ -66,7 +68,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
     fcntl.flock(stream, fcntl.LOCK_EX)
     plan = json.load(stream)
     queue = plan.get(key) or []
-    behavior = queue.pop(0) if queue else {'worker': 'complete', 'verify': 'pass', 'merge': 'resolve'}[role]
+    behavior = queue.pop(0) if queue else {'worker': 'complete', 'verify': 'pass', 'merge': 'resolve', 'touches': 'own'}[role]
     plan[key] = queue
     stream.seek(0); stream.truncate(); json.dump(plan, stream)
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
@@ -95,7 +97,9 @@ def work():
     git('commit', '-qm', 'worker ' + task)
     report(git('rev-parse', 'HEAD').stdout.strip())
 emit({'type': 'session', 'version': 3, 'id': opts.get('--session-id'), 'cwd': os.getcwd()})
-if role == 'verify':
+if role == 'touches':
+    finish(text='PI_AUTOWORK_TOUCHES: ' + ('NONE - only a live device operation' if behavior == 'none' else task + '.txt'))
+elif role == 'verify':
     if behavior == 'tamper':
         open('tampered.txt', 'w').write('x\n')
     finish(text='Checked.\nPI_AUTOWORK_VERIFY: ' + ('fail acceptance not met' if behavior == 'fail' else 'pass all checks'))
@@ -417,6 +421,38 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
 
+    def test_tasks_without_touches_get_proposed_ones_and_run_in_parallel(self):
+        """sierra: no task declared Touches, so everything ran one at a time."""
+        text = (self.repo / 'TODO.md').read_text()
+        for t in 'ABC':
+            text = text.replace(f'  Touches: {t}.txt\n', '')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'no Touches anywhere')
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})  # both must run at once
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: can run beside others; Touches: A.txt', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('  Touches: A.txt', (self.repo / 'TODO.md').read_text()
+                      + ((self.repo / 'TODO.archive.md').read_text() if (self.repo / 'TODO.archive.md').exists() else ''))
+        self.assertTrue(all(r['tools'] == 'read,grep,find,ls' for r in self.runs('touches')))
+        # Device- or screenshot-verified work still has a bounded edit scope (TASK-013 answered NONE).
+        prompt = self.runs('touches')[0]['message']
+        self.assertIn('not how the result is checked', prompt)
+        self.assertIn('NONE - reason', prompt)
+
+    def test_an_unboundable_task_runs_alone_and_is_not_asked_again(self):
+        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        self.plan({'touches:A': ['none']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: runs alone (no Touches proposed: NONE - only a live device operation)', result.stdout)
+        self.assertEqual(len(self.runs('touches')), 1)
+        self.assertNotIn('Touches: NONE', (self.repo / 'TODO.md').read_text())
+        self.assertTrue(self.done('A', 'B', 'C'))
+
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
         self.run_runner('--status')  # creates nothing
@@ -520,7 +556,7 @@ class EngineTests(Fixture):
         for option in ('--dry-run', '--status'):
             result = self.run_runner(option)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('Engine:     Parallel Autowork, up to 2 worker(s)', result.stdout)
+            self.assertIn('Engine:     Parallel Autowork, up to 8 worker(s)', result.stdout)
             self.assertIn('Runner:     not running', result.stdout)
         self.assertEqual(self.git(self.repo, 'status', '--porcelain', '--untracked-files=all'), before)
         self.assertFalse(self.state.exists())
@@ -558,7 +594,7 @@ class SetupTests(Fixture):
         self.env['PI_AUTOWORK_PRIMARY'] = 'openai-codex/gpt-nope'
         self.assertIn('not in Pi', self.run_runner('--once').stderr)
         self.env.pop('PI_AUTOWORK_PRIMARY')
-        self.assertIn('--workers must be 1 to 4', self.run_runner('--workers', '5').stderr)
+        self.assertIn('--workers must be 1 to 8', self.run_runner('--workers', '9').stderr)
         self.git(self.repo, 'switch', '-q', '-c', 'feature')
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 2)

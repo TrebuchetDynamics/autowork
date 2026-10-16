@@ -182,6 +182,7 @@
       "source": "docs/project.md#accepted-requirements",
       "status": "unverified",
       "tasks": [
+        "AUDIT-QUOTED-SECRET",
         "TOOLSET-003",
         "TOOLSET-015",
         "TOOLSET-016",
@@ -195,7 +196,6 @@
         "TOOLSET-026",
         "TOOLSET-027",
         "TOOLSET-083",
-        "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18"
       ],
       "title": "Qualify bounded automatic planning recovery"
@@ -478,7 +478,8 @@
         "TOOLSET-096-7e",
         "TOOLSET-097-41",
         "TOOLSET-097-57",
-        "TOOLSET-098-4c"
+        "TOOLSET-098-4c",
+        "TOOLSET-099-87"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -487,6 +488,7 @@
     "schema": 1,
     "tasks": [
       "AUDIT-QUOTED-SECRET",
+      "TOOLSET-099-87",
       "TOOLSET-092-18",
       "TOOLSET-064",
       "TOOLSET-082",
@@ -494,7 +496,6 @@
       "TOOLSET-072",
       "TOOLSET-073",
       "TOOLSET-066",
-      "TOOLSET-091-00",
       "TOOLSET-003",
       "TOOLSET-098-5d",
       "TOOLSET-019",
@@ -513,12 +514,14 @@
       "title": "Redact complete quoted credential values in fleet observations"
     },
     {
-      "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-092-18",
-      "section": "Next",
+      "depends_on": [
+        "TOOLSET-098-4c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-099-87",
+      "section": "Now",
       "status": "open",
-      "title": "Reject in-profile output directory aliases during fleet collection"
+      "title": "Run as many independent tasks at once as possible"
     },
     {
       "depends_on": [],
@@ -597,6 +600,14 @@
       "section": "Next",
       "status": "open",
       "title": "Restore the OMH memory plugin on Hermes 0.22"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-092-18",
+      "section": "Next",
+      "status": "open",
+      "title": "Reject in-profile output directory aliases during fleet collection"
     },
     {
       "depends_on": [
