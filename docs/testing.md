@@ -12,6 +12,11 @@ process startup, Git, validation and waits, not isolated coordinator CPU time.
 Neither test nor benchmark qualifies model-worker throughput or live hosts.
 Integration regressions additionally refuse changed checked/archived contracts
 and enforce retry-worker deadlines before returning WAITING.
+`python3 -m unittest skills/autowork/scripts/test_parallel_compat.py` compares
+sequential `owner_cycle.py` output, byte for byte, with a snapshot captured before
+any parallel code, and checks that a Claude Code coordinator without
+`--worker-command` or a missing worker CLI returns `SEQUENTIAL_FALLBACK` without
+claiming or starting anything.
 
 ## Verify
 

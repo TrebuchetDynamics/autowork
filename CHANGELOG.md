@@ -16,6 +16,16 @@ claim of a tagged release, completed installation or live workflow qualification
   main branch when the queue empties or it stops (Pi resolves a conflicting merge once;
   otherwise the merge is reported pending). See
   [continuous Autowork](docs/cross-host.md#run-autowork-continuously).
+- Opt-in parallel Autowork (TOOLSET-085-1a to 090-2d): `/autowork --parallel N`
+  runs independent tasks in headless Hermes, Codex or Pi workers, each in its own
+  worktree, admitted by the tasks' new `Touches:` and `Resources:` fields. The
+  coordinator merges and validates one worker branch at a time, only fast-forwards
+  the canonical checkout, and closes a task only after validation. Claude Code
+  coordinators need `--worker-command`; otherwise, and when a worker CLI is
+  missing, Autowork runs the task sequentially as before. Sequential output is
+  unchanged. Documented in
+  [parallel workers](skills/autowork/references/parallel-workers.md); real model
+  workers are not yet qualified (TOOLSET-091-00).
 - Parallel Autowork progress via `owner_cycle.py --parallel-status [--json]`,
   with journal-derived elapsed/worker/integration/waiting metrics and a controlled
   fake-worker ABC benchmark (`scripts/bench_parallel.py`). Offline regressions
