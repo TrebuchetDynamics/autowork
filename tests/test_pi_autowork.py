@@ -209,6 +209,13 @@ class Fixture(unittest.TestCase):
         for name in ('GIT_CONFIG_COUNT', 'PI_AUTOWORK_TOOLSET', 'PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK',
                      'PI_AUTOWORK_WORKERS', 'PI_AUTOWORK_MAX_COST'):
             self.env.pop(name, None)
+        # The engine's load gate reads the real host: under a busy fleet it rightly starts
+        # nothing and these runner scenarios fail for the wrong reason. As the engine's own
+        # dispatch tests do, report an idle host to the engine processes the runner starts.
+        shim = self.root / 'idle-host'
+        shim.mkdir()
+        (shim / 'sitecustomize.py').write_text('import os\nos.getloadavg = lambda: (0.0, 0.0, 0.0)\n')
+        self.env['PYTHONPATH'] = os.pathsep.join(filter(None, [str(shim), os.environ.get('PYTHONPATH')]))
         self.plan({})
         self.addCleanup(self.stop_workers)
 
