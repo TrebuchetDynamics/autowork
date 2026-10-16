@@ -451,6 +451,35 @@ class EngineTests(Fixture):
         status = self.run_runner('--status')
         self.assertIn('not yet merged into main', status.stdout)
 
+    def stale_registration(self, name):
+        """A worktree someone else registered whose directory has since gone missing."""
+        path = self.root / name
+        self.git(self.repo, 'worktree', 'add', '-q', '-b', name, str(path))
+        shutil.rmtree(path)
+        return path
+
+    def registered(self, path):
+        return f'worktree {path}' in self.git(self.repo, 'worktree', 'list', '--porcelain').splitlines()
+
+    def test_other_stale_worktree_registrations_survive_a_session(self):
+        other = self.stale_registration('someone-else')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertTrue(self.registered(other))
+
+    def test_a_missing_session_worktree_is_restored_without_pruning_others(self):
+        self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
+        self.assertEqual(self.run_runner('--once').returncode, 4)
+        session = json.loads(next(self.state.glob('*/session.json')).read_text())
+        other = self.stale_registration('someone-else')
+        shutil.rmtree(session['path'])
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f'Merged {session["branch"]}', result.stdout)
+        self.assertFalse(self.registered(session['path']))
+        self.assertTrue(self.registered(other))
+
     def test_user_changes_in_main_block_only_the_final_merge(self):
         (self.repo / 'A.txt').write_text('my note\n')  # uncommitted; the merge would overwrite it
         result = self.run_runner('--once')

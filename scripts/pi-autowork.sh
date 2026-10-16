@@ -537,13 +537,19 @@ status_json() {
   python3 "$ENGINE" "$dir" --parallel-status --json 2>/dev/null 9>&-
 }
 
+forget_missing_worktree() {  # drop only this path's stale registration; other worktrees are not ours to prune
+  [[ -e $1 ]] && return 0
+  git -C "$REPO" worktree list --porcelain | grep -qxF "worktree $1" || return 0
+  git -C "$REPO" worktree remove "$1"
+}
+
 load_session() {  # "ro" never recreates a missing worktree
   [[ -f $STATE_PATH/session.json ]] || return 1
   INTEG_BRANCH=$(jq -r .branch "$STATE_PATH/session.json") INTEG=$(jq -r .path "$STATE_PATH/session.json")
   git -C "$REPO" show-ref --verify -q "refs/heads/$INTEG_BRANCH" || { rm -f "$STATE_PATH/session.json"; INTEG='' INTEG_BRANCH=''; return 1; }
   if [[ ! -d $INTEG ]]; then
     [[ ${1:-} == ro ]] && return 1
-    git -C "$REPO" worktree prune
+    forget_missing_worktree "$INTEG"
     git -C "$REPO" worktree add -q "$INTEG" "$INTEG_BRANCH" || die 1 "Cannot restore the integration worktree for $INTEG_BRANCH"
   fi
   export PI_AUTOWORK_SESSION=$INTEG_BRANCH
@@ -655,7 +661,7 @@ ensure_session() {
   [[ -n $INTEG ]] && return 0
   load_session && return 0
   INTEG_BRANCH="pi-autowork/$(date +%Y%m%d-%H%M%S)" INTEG=$WT_ROOT/integration
-  git -C "$REPO" worktree prune
+  forget_missing_worktree "$INTEG"
   [[ -e $INTEG ]] && die 1 "$INTEG exists but belongs to no session; remove it after checking its contents."
   git -C "$REPO" worktree add -q -b "$INTEG_BRANCH" "$INTEG" "$BASE" || die 1 "Cannot create the integration worktree"
   jq -n --arg branch "$INTEG_BRANCH" --arg path "$INTEG" --arg base "$BASE" --arg started "$(date -Iseconds)" \
