@@ -198,18 +198,18 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No memory-store migration or deletion; no provider switch without the owner.
 
-### TOOLSET-096-7e — Qualify the worktree runner live on sierra
+### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
 
-- [ ] TOOLSET-096-7e — Qualify the worktree runner live on sierra
+- [ ] TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [usage](docs/cross-host.md#run-autowork-continuously).
-- Scope: Run the released runner on `~/git/sierra` alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
-- Acceptance: `runs.jsonl` and sierra's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; sierra's uncommitted changes untouched.
-- Checks: `runs.jsonl`, runner output, `git -C ~/git/sierra log` and `worktree list`.
+- Scope: Run the released runner on a fleet repository alongside its Hermes jobs (owner's choice) until it ends a session, and record what it completed and how the end-of-session merge went.
+- Acceptance: `runs.jsonl` and the repository's main branch show completed tasks merged at the end of a session, or a `Merge pending` with the exact reason and the branch kept; no push by the runner; the repository's uncommitted changes untouched.
+- Checks: `runs.jsonl`, runner output, `git -C <fleet-repo> log` and `worktree list`.
 - Dependencies: TOOLSET-095-48.
 - Ownership: Toolset coordinator on the owner's request.
-- Exclusions: No push; no change to sierra's Hermes jobs.
+- Exclusions: No push; no change to the repository's Hermes jobs.
 
 ## Goal coverage
 

@@ -607,7 +607,7 @@
       "id": "TOOLSET-096-7e",
       "section": "Next",
       "status": "open",
-      "title": "Qualify the worktree runner live on sierra"
+      "title": "Qualify the worktree runner live on a fleet repository"
     },
     {
       "depends_on": [],
