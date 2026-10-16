@@ -28,7 +28,7 @@ TRANSITIONS = {
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
-          'outside', 'requested'}
+          'outside', 'requested', 'reviewed_by'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 NEEDS_PERSON = ('blocker', 'scope_request')

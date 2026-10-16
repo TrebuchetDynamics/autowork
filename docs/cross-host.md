@@ -247,6 +247,10 @@ same applies when a worker stops to ask for files outside its inferred Touches: 
 runner widens them and the worker resumes in its worktree with its changes intact.
 Touches inferred by older runs are recognized from the runner's own commits.
 
+When the reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW`), the
+runner sends every commit an earlier reviewer held back for review once, by itself,
+even a task with no attempt left; the same reviewer never reviews a commit twice.
+
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
 the task's entry, branches or worktrees and no live agent working there. The runner

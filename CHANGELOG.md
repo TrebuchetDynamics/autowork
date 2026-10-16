@@ -142,6 +142,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- A commit held because review failed is reviewed again, once, whenever the runner's
+  reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW`), by the runner
+  itself and even with no attempt left (`--parallel-reverify`, `reviewed_by`). The same
+  reviewer never gets a second try. Three charlie commits the old reviewer
+  failed for want of a device are re-examined without anyone asking.
 - A runner reads its repository's settings file
   (`~/.config/pi-autowork/<repository>.env`, the file `--install-service` writes) whichever
   way it is started, so `tx autowork` in tmux keeps settings such as the model,

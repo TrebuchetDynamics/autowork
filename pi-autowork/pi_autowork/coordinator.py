@@ -402,6 +402,7 @@ class Coordinator:
                 self.count_failure(task)
         if self.stop:
             return
+        self.reverify_held(rows)
         for task in [r['task'] for r in rows if r.get('state') == 'integrated']:
             if self.stop:
                 return
@@ -410,7 +411,8 @@ class Coordinator:
             if self.stop:
                 return
             self.note_state(task, 'integrating')
-            result = self.engine('--integrate', task, '--timeout', self.verify_timeout, '--run', '/bin/bash',
+            result = self.engine('--integrate', task, '--timeout', self.verify_timeout,
+                                 '--reviewer-version', self.reviewer_version(), '--run', '/bin/bash',
                                  self.cfg['script'], '--verify', str(self.state), task)
             outcome, reason = result.get('outcome') or 'ACTION_REQUIRED', result.get('reason') or ''
             if outcome == 'INTEGRATED':
@@ -427,6 +429,32 @@ class Coordinator:
                     self.draining = True
             elif 'highest-priority' not in reason:  # another reported task goes first
                 LOG.say(f'{task}: integration needs attention: {reason or outcome}')
+
+    def reviewer_version(self):
+        """Fingerprint of this runner's validation: the reviewer's code and prompts plus the
+        settings that change what validation runs."""
+        digest = hashlib.sha256(Path(__file__).with_name('worker.py').read_bytes())
+        for name in ('PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_REVIEW'):
+            digest.update(f'{name}={os.environ.get(name, "")}'.encode())
+        return 'review-' + digest.hexdigest()[:12]
+
+    def reverify_held(self, rows):
+        """A commit an earlier reviewer held is reviewed again, once, by a changed reviewer
+        (flutter TASK-006: held for want of a device before the reviewer knew
+        about pending live checks). The engine refuses a second try under the same version."""
+        version = self.reviewer_version()
+        for row in rows:
+            task = row.get('task')
+            held_by_validation = row.get('state') == 'held' and (
+                row.get('cause') == 'validation'
+                or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
+            if not held_by_validation or self.seen.get('reverify-' + task) == version or self.stop:
+                continue
+            self.seen['reverify-' + task] = version
+            if self.engine('--parallel-reverify', task, '--reviewer-version', version).get('outcome') == 'REVERIFY':
+                self.seen[task] = ''
+                self.settled = True
+                LOG.say(f'{task}: the reviewer changed since this commit was held; verifying it again')
 
     # --- Scope: widening Touches this runner inferred ------------------------------
     def inferred(self):

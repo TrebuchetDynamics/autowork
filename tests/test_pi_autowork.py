@@ -830,6 +830,24 @@ class EngineTests(Fixture):
         self.assertIn('recorded no pending live checks', reviews['B'])  # strict when nothing was recorded
         self.assertIn('A: done offline; its live checks are recorded as A-LIVE', result.stdout)
 
+    def test_a_changed_reviewer_reviews_held_commits_again_by_itself(self):
+        """flutter: three commits sat held after an older reviewer failed them; nobody should have to ask."""
+        self.plan({'verify:A': ['fail', 'fail']})
+        first = self.run_runner('--until-empty')
+        self.assertIn('A: failed', first.stdout)
+        reviews = lambda: len([r for r in self.runs('verify') if r['task'] == 'A'])
+        self.assertEqual(reviews(), 2)  # the first attempt and its fresh retry
+        same = self.run_runner('--until-empty')  # the same reviewer: nothing reviewed again
+        self.assertNotIn('verifying it again', same.stdout)
+        self.assertEqual(reviews(), 2)
+        self.env['PI_AUTOWORK_VALIDATE'] = 'true'  # validation changed: a new reviewer version
+        self.plan({'verify:A': ['pass']})
+        changed = self.run_runner('--until-empty')
+        self.assertEqual(changed.returncode, 0, changed.stdout + changed.stderr)
+        self.assertIn('A: the reviewer changed since this commit was held; verifying it again', changed.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(reviews(), 3)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
