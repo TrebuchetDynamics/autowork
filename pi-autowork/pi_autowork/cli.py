@@ -198,6 +198,30 @@ def hermes_jobs(repo):
     return '\n'.join(found)
 
 
+def settings_file(repo):
+    """The repository's settings: the env file `--install-service` writes, read by every
+    launcher (systemd, `tx autowork`, a terminal), so settings follow the repository."""
+    config = os.environ.get('XDG_CONFIG_HOME') or str(Path.home() / '.config')
+    name = Path(repo).name
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', name):
+        name = subprocess.run(['systemd-escape', name], capture_output=True, text=True).stdout.strip()
+    return Path(os.environ.get('PI_AUTOWORK_ENV_DIR') or f'{config}/pi-autowork') / f'{name}.env'
+
+
+def load_repo_settings(repo):
+    """PI_AUTOWORK_* settings from the repository's settings file; the environment wins."""
+    try:
+        lines = settings_file(repo).read_text().splitlines()
+    except OSError:
+        return
+    values = dict(line.split('=', 1) for line in lines if '=' in line and not line.startswith('#'))
+    if values.get('PI_AUTOWORK_REPO') and values['PI_AUTOWORK_REPO'] != str(repo):
+        return  # another repository with the same name owns this file
+    for key, value in values.items():
+        if key.startswith('PI_AUTOWORK_') and key != 'PI_AUTOWORK_REPO' and key not in os.environ:
+            os.environ[key] = value
+
+
 def in_catalog(pi, model):
     try:
         out = subprocess.run([pi, '--list-models', model_of(model)], capture_output=True, text=True, timeout=120).stdout
@@ -241,6 +265,20 @@ def main(argv):
         die(2, f'{repo} is on branch {base}. Run the runner from the checkout of the main branch'
                f'{f" ({default})" if default else ""}; task work happens in worktrees and is merged back there.')
     git_common = git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    load_repo_settings(repo)
+    # Settings read while parsing options, before the repository was known.
+    for key, name in (('workers', 'PI_AUTOWORK_WORKERS'), ('claim_idle', 'PI_AUTOWORK_CLAIM_IDLE')):
+        if key == 'workers' and '--workers' in argv:
+            continue
+        value = os.environ.get(name)
+        if value is not None:
+            if not re.fullmatch(r'[0-9]+', value):
+                die(2, f'Expected a whole number, got: {value}')
+            opts[key] = int(value)
+    if not 1 <= opts['workers'] <= 8:
+        die(2, '--workers must be 1 to 8')
+    if opts['mode'] == 'once':
+        opts['workers'] = 1
 
     # Toolset: prefer the package Pi has installed, so every run uses what Pi loads.
     skill_args = []

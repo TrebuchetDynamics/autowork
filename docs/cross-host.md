@@ -265,6 +265,11 @@ service environment: before a worker or reviewer starts, each is linked from the
 checkout, but only where Git ignores it and the link shows up as no change. Links
 are cooperative, not write-protected, so list only what tasks read.
 
+Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
+(`PI_AUTOWORK_ENV_DIR`), the file `--install-service` writes. Every launcher reads it:
+the service, `tx autowork` and a terminal; variables already set in the environment
+win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
+
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
 running`/`not cycling` when the process is gone or silent) and, when it cannot
