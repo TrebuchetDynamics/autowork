@@ -107,12 +107,17 @@
           "kind": "executed",
           "ref": "TOOLSET-060/061 (b15bbc7, 5a9c044, ff7196f): python3 scripts/check.py 4/4 directories passed, node --test tests/portable_pi.test.mjs passed, docs.py check ok, vendored audit_readme.py passed with 2 local images; independent review of the vendoring; offline only",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-116-fc: python3 scripts/check.py passed 575/715/217/8 tests (one skip/eight excluded modules); all 12 focused README-audit tests and exact-source independent review approved; mixed-text single-line examples and adjacent-image preservation verified offline",
+          "result": "pass"
         }
       ],
       "id": "README-DESIGN",
       "priority": 20,
       "source": "docs/project.md#readme-design-skill-2026-10-15",
-      "status": "partial",
+      "status": "met",
       "tasks": [
         "TOOLSET-060",
         "TOOLSET-061",
@@ -618,14 +623,6 @@
       "section": "Now",
       "status": "open",
       "title": "Run as many independent tasks at once as possible"
-    },
-    {
-      "depends_on": [],
-      "goal": "README-DESIGN",
-      "id": "TOOLSET-116-fc",
-      "section": "Now",
-      "status": "open",
-      "title": "Ignore inline code examples in README image audits"
     },
     {
       "depends_on": [],
@@ -1491,6 +1488,14 @@
       "section": "Done",
       "status": "done",
       "title": "Report malformed runtime installation facts without crashing"
+    },
+    {
+      "depends_on": [],
+      "goal": "README-DESIGN",
+      "id": "TOOLSET-116-fc",
+      "section": "Done",
+      "status": "done",
+      "title": "Ignore inline code examples in README image audits"
     },
     {
       "depends_on": [

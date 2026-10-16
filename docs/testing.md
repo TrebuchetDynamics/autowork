@@ -20,14 +20,15 @@ claiming or starting anything.
 
 ## Verify
 
-README-audit fixtures (partial TOOLSET-116-fc) exclude complete Markdown/HTML image
-examples in single-line backtick spans. They retain real image checks beside
-unmatched/escaped runs, across block boundaries, and in literal-backtick link/image
-destinations, HTML and autolinks. Large unmatched-delimiter, backslash, bracket and
-angle-prefix fixtures have five-second subprocess bounds; fixture bytes must remain
-unchanged. Mixed-text and multiline code spans retain conservative auditing; this
-partial delivery does not close the task or establish full CommonMark/hosted GitHub
-rendering compatibility.
+README-audit fixtures (TOOLSET-116-fc) exclude Markdown/HTML image examples in
+single-line backtick spans, including mixed prose and literal shorter backtick runs.
+They retain real image checks beside unmatched/escaped runs, across block boundaries,
+and in literal-backtick link/image destinations, HTML and autolinks. Quoted titles,
+angle destinations and continuation-line link titles have adjacent missing-image
+regressions. Large unmatched-delimiter, backslash, bracket and angle-prefix fixtures
+have five-second subprocess bounds; fixture bytes must remain unchanged. Multiline
+code spans and ambiguous markup retain conservative auditing; these offline checks
+do not establish full CommonMark/hosted GitHub rendering compatibility.
 
 `python3 -m unittest discover -s tests -p test_preflight.py -v` includes runtime
 installation-facts shape regressions (TOOLSET-115-aa). Malformed root, packages,

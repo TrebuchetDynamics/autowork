@@ -102,6 +102,26 @@ class BeautifyReadmeVendorTests(unittest.TestCase):
                 self.assertEqual(code, 0, output)
                 self.assertIn('Local images checked: 1', output)
 
+    def test_toolset_audit_ignores_mixed_text_code_spans(self):
+        for example in (
+            '`Use ![example](missing.png) here`',
+            '``Use ![example](missing.png) with `literal` ticks``',
+            '``![example](missing.png) and `literal` ``',
+            '``literal \\` and ![example](missing.png)``',
+            '`Use ![undefined][example] here`',
+            '`Use <img src="missing.png"> here`',
+            '`Use <source srcset="missing.png 1x"> here`',
+            '[`Use ![example](missing.png) here`](https://example.org)',
+        ):
+            with self.subTest(example=example):
+                code, output = audit(example + ' ![visible](../assets/ok.svg)\n')
+                self.assertEqual(code, 0, output)
+                self.assertIn('Local images checked: 1', output)
+                code, output = audit(example + ' ![visible](real-missing.png)\n')
+                self.assertEqual(code, 1, output)
+                self.assertIn('missing image: real-missing.png', output)
+                self.assertNotIn('missing image: missing.png', output)
+
     def test_toolset_audit_retains_visible_images_around_literal_backticks(self):
         cases = (
             '`![actual](missing.png)',
@@ -110,8 +130,6 @@ class BeautifyReadmeVendorTests(unittest.TestCase):
             '`example` ![actual](missing.png)',
             '`unclosed\n\n![actual](missing.png)\n\n`later`',
             '`first line\n![actual](missing.png)`',
-            '``![actual](missing.png) and `literal` ``',
-            '``literal \\` and ![actual](missing.png)``',
             '<https://x`foo> ![actual](missing.png) `later`',
             '<foo`bar@example.com> ![actual](missing.png) `later`',
             '[a](foo(bar`baz)qux) ![actual](missing.png) `later`',
@@ -162,6 +180,15 @@ class BeautifyReadmeVendorTests(unittest.TestCase):
         code, output = audit('[link](has`tick.svg) ![actual](missing.png) `later`')
         self.assertEqual(code, 1, output)
         self.assertIn('missing image: missing.png', output)
+        for link in (
+            '[a](foo "title) `")',
+            '[a](<foo)bar`baz>)',
+            '[a](foo\n "title `")',
+        ):
+            with self.subTest(link=link):
+                code, output = audit(link + ' ![actual](missing.png) `later`')
+                self.assertEqual(code, 1, output)
+                self.assertIn('missing image: missing.png', output)
         for tag in ('<img\n src="../assets/has`tick`.svg" alt="actual">',
                     '<source\n srcset="../assets/has`tick`.svg 1x">'):
             with self.subTest(tag=tag):

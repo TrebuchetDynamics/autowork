@@ -127,11 +127,12 @@ python3 "<beautify-github-readme-skill-dir>/scripts/audit_readme.py" /path/to/RE
 It applies the protocol's SVG checks and also follows GitHub's resolution: dark-mode
 `<picture><source srcset>` variants, reference-style images, root-relative paths
 from the repository root and `<…>` destinations; images in fenced code and confirmed
-single-line backtick spans containing a complete image example are skipped. Mixed-text
-and multiline spans remain conservatively audited because this lightweight checker
-does not implement a complete Markdown parser. This is partial inline-code support,
-not full CommonMark compatibility. Literal backticks in image/link destinations and
-HTML remain unchanged.
+single-line backtick spans are skipped, including image examples embedded in text.
+Multiline spans and ambiguous markup remain conservatively audited because this
+lightweight checker does not implement a complete Markdown parser. Literal backticks
+in HTML, autolinks and link/image destinations or titles do not open code spans.
+Delimiter lookup is indexed; destination scanning tracks quotes, angle delimiters
+and balanced parentheses, including continuation lines.
 When changing the audit parser, retain visible-image negative checks across block
 boundaries and unmatched delimiters; a literal-example fix must not hide real images.
 

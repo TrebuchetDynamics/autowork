@@ -7,11 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
-- README image audits skip complete image examples in single-line backtick spans
-  (partial TOOLSET-116-fc), preserving genuine image paths, exact delimiter runs and
-  escaped backticks. Mixed-text and multiline spans retain conservative auditing;
-  the broader task stays open. Delimiter lookup indexes exact runs rather than
-  repeatedly scanning unmatched suffixes.
+- README image audits skip image examples in confirmed single-line backtick spans,
+  including mixed prose (TOOLSET-116-fc). Literal backticks in HTML, autolinks,
+  destinations and quoted or multiline link titles cannot hide adjacent images.
+  Indexed delimiter lookup and a single-pass literal-region scanner preserve
+  conservative auditing for multiline code and ambiguous markup; this is not full
+  CommonMark compatibility.
 
 - Setup preflight validates runtime installation-facts structures before selecting
   an interpreter (TOOLSET-115-aa). Malformed mappings and non-string or empty
