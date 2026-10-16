@@ -26,6 +26,20 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 
 ## Now
 
+### TOOLSET-099-87 — Run as many independent tasks at once as possible
+
+- [ ] TOOLSET-099-87 — Run as many independent tasks at once as possible
+- Status: open; offline implementation complete, awaiting archive after live use on a fleet repository (TOOLSET-096-7e).
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously), [engine](skills/autowork/references/parallel-workers.md).
+- Touches: scripts/pi-autowork.sh, scripts/pi_autowork_touches.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: Owner direction: run every task that is independent and achievable at once. `--workers` 1-8, default 8 (engine limit); 3 GB free memory per worker. A read-only Pi pass proposes `Touches:` for runnable tasks lacking it (`scripts/pi_autowork_touches.py` records them in the TODO's own field style); `NONE` keeps a task solo for 24 h. Idle sessions merge the main branch. Engine fix: a task without `Touches:` is no longer held at integration for changing its own files. A scope-held first commit whose retry made no commit is re-verified once (`READOPTED`), recovering work held by the old rule.
+- Acceptance: Tasks without `Touches:` gain proposed paths and run in parallel; an unboundable task runs alone and is not re-asked; solo tasks integrate.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py` (34 pass); engine tests in `skills/autowork/scripts`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-098-4c.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push by the runner; no direct edits in fleet repositories.
+
 ## Next
 
 ### TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index

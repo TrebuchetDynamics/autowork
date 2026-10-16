@@ -23,7 +23,7 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    current canonical HEAD, its own process group, `TMPDIR`, `AUTOWORK_SLOT` and a
    100-port range from `AUTOWORK_PORT_BASE`. Results: `DISPATCHED` (started slots,
    each with its worker command and log), `WAITING` (each held-back task with its
-   reason), `RETRIED` (a held task's fresh attempt, below), `IDLE`,
+   reason), `RETRIED` (a held task's fresh attempt, below), `READOPTED` (below), `IDLE`,
    `SEQUENTIAL_FALLBACK`, or `BUSY`, `PRIORITY_DRIFT` and `ACTION_REQUIRED` as in
    sequential Autowork. `IDLE` only means no worker started and none is running.
 2. **Wait.** `--wait --timeout S` blocks inside the helper until a worker exits or
@@ -84,7 +84,8 @@ A task runs beside others only when the planner can prove it is independent:
   running together.
 - A task without `Touches:`, or one touching a serial path (dependency manifests
   and lock files, `migration(s)/` and `schema(s)/` directories, CI files such as
-  `.github/workflows/`), runs alone.
+  `.github/workflows/`), runs alone. Because it ran alone, a task without `Touches:`
+  may change any file except coordinator-owned ones when it integrates.
 - Dependencies and TODO.md priority still apply: a task waits for its
   prerequisites to close, and a higher-priority task that cannot start yet, or
   must run alone, stops lower-priority dispatch until it can run.
@@ -124,8 +125,11 @@ nothing parallel was claimed or started.
   `--apply --parallel` after no worker is running gives one held task a fresh
   attempt alone (`RETRIED`) on `autowork/<TASK>-r2` in `<repo>-autowork-<TASK>-r2`
   from the current canonical HEAD, keeping the first branch; until the pool
-  drains, refill returns `WAITING`. A second failure stays held: send it to Plan For
-  Me to fix or skip. Closing a retried task leaves the first attempt's worktree
+  drains, refill returns `WAITING`. When the first commit was held only for scope
+  (`changed files violate Touches`) and the retry made no commit, refill returns
+  `READOPTED` and sets the first commit back to `reported`, once: scope can change
+  after a hold, and integration repeats every check. A second failure stays held:
+  send it to Plan For Me to fix or skip. Closing a retried task leaves the first attempt's worktree
   and branch for manual cleanup.
 - **Interrupted or released workers** (timed out, or dead with uncommitted changes
   or with nothing) restart once in the same worktree with a resume note; a second

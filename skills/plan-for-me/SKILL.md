@@ -139,7 +139,9 @@ existing document owners and actionable tasks in TODO.md, synchronized with
 goals.json. Include acceptance criteria, dependencies, verification and Now/Next
 ordering; distinguish proposed decisions from accepted scope. Save observable
 criteria under `Acceptance:` and exact verification commands under a separate,
-unique `Checks:` field. Inspect the current execution consumer's required fields
+unique `Checks:` field. Give each executable task `Touches:` (and `Resources:` where
+needed) from the paths your investigation found, per the TODO work center, so
+parallel Autowork can run independent tasks together. Inspect the current execution consumer's required fields
 before calling a handoff executable: ledger/backlog readiness alone may not check
 its contract shape. Do not claim a task or launch execution just to validate a
 planning handoff. Reconcile one affected batch and reuse input-bound checks when

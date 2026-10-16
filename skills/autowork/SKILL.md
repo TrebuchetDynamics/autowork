@@ -44,7 +44,9 @@ review step. Keep Hermes Agent unchanged.
    `goals.py next <repo> --json` and `goals.py focus <repo> --json` from Docs Sync;
    reconcile inconsistent source evidence without inventing acceptance or ownership.
    Do not run a docs-sync prepass for a usable backlog task. Named --tasks/--plan
-   scope stays exact. Do not create a second board or require goals.json for a
+   scope stays exact. A task Autowork records or repairs includes `Touches:` from the
+   inspected seam ([TODO rules](../shared/TODO-WORKCENTER.md)), so parallel workers can
+   run it beside others. Do not create a second board or require goals.json for a
    TODO-only contributor.
 3. **Prepare only missing inputs, then implement.** Derive a short contract from
    the task's objective, scope/exclusions, acceptance/checks, dependencies and sources.

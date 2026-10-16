@@ -17,7 +17,8 @@ Separate current architecture from planned changes. Maintain README, requirement
 architecture/spec, test plan, runbook and changelog as applicable; add conditional
 roles only when useful. Fix supported doc issues now. Turn remaining accepted gaps
 into bounded TODO.md tasks with ID, outcome, sources, scope/exclusions, acceptance,
-dependencies and ownership. Keep Now/Next/Needs decision distinct. Preserve existing
+dependencies, ownership and `Touches:` (the paths each may change; widen when unsure,
+or `Resources: exclusive` with a reason) so parallel Autowork can run them together. Keep Now/Next/Needs decision distinct. Preserve existing
 IDs, completed work, active writers and priorities; never manufacture work.
 
 Automatically move verified completed bodies out of TODO.md into `TODO.archive.md`
