@@ -911,6 +911,42 @@ in-check drift detection) and TOOLSET-073 (measure subprocess coverage, then rev
 the identical and subset groups). No consolidation task is recorded until that
 evidence exists.
 
+### Subprocess coverage audit (TOOLSET-073, 2026-10-16)
+
+The [complete assertion audit](test-suite-audit.md) records every classified group
+and slow subset, including exact test identifiers and retention reasons. Source
+`de0f3ac`, Python 3.12.14/coverage.py 7.13.5, the same offline inventory exclusions:
+
+- Inventory now contains 1,491 tests (562/709/212/8). Parent and inherited child
+  contexts provide owned-source records for **1,278 (85.7%)**, above the accepted
+  minimum of 1,150. The 213 residual tests include text/shell checks and copied or
+  isolated child sources; no-record tests are not removal candidates.
+- Owned Python coverage: 10,277/11,806 lines (87.05%) and 3,980/5,020 branches
+  (79.28%); combined 84.73%. Mutation score remains unmeasured. Different source
+  and inventory mean these numbers do not prove improvement over TOOLSET-068.
+- Recomputed 89 identical line-set groups (252 tests) and 366 same-class strict
+  subsets. Read every group of at least three (31 groups / 136 IDs) and all five
+  subset cases among the corrected run's 30 slowest tests, plus all their proposed
+  supersets. **26 groups are distinct contracts; five permit case-preserving
+  parametrization for clarity; none supports removal.** All five slow subsets
+  assert distinct concurrency, no-model, data-preservation or capacity behavior.
+- Instrumented directories passed except one Autowork inventory-cache test
+  (709 run, one failure/one skip). Coverage shard writes in the startup-hook
+  `sys.path` directory invalidated the cache's search-root identity. The exact test
+  passed uninstrumented and again instrumented with output moved off `sys.path`;
+  the complete instrumented run was not repeated or relabelled green. The protocol
+  now includes inherited caller contexts, recursive source scope, combine/export,
+  blind spots and output-directory isolation. No test or source code changed.
+- One measured follow-up: **TOOLSET-102-ea**, equivalent completed-session setup
+  for `test_pi_autowork.EngineTests.test_empty_queue_calls_no_model`, whose three
+  ordinary wall times are 5.158/5.003/5.187 s (median 5.158 s). Preserve all named
+  assertions and session semantics; compare touched line/branch coverage and real
+  before/after timings. No speedup or consolidation is claimed by this audit.
+
+Planner's call: spend the next slice on measured fixture cost, not on wrapper-only
+parametrization or deleting protected regressions. This audit is offline evidence,
+not installed adoption, model execution or live qualification.
+
 ## Gentler update rollout (2026-10-15)
 
 Status: Accepted

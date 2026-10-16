@@ -1997,3 +1997,23 @@ Source section: Next
 - Progress: The starvation regression fails before repair. Independent review found lookup used redacted IDs; a new RED regression reproduced that omission and raw IDs now remain SQL-only inputs. All 44 focused tests pass. Read-only replay restores twelve paused-development records while retaining twelve sync records, with unchanged database bytes. Canonical inclusion and managed deployment remain pending; final review/gate evidence is retained privately.
 - Exclusions: No product, schedule, sibling profile, credentials, live-service or Agent edits; no push.
 - Local closeout: Integrated as 4b79912 after independent exact-tree review and the complete Python 3.12 offline gate (562/709/212/8 tests, one skip, eight excluded modules). Same canonical read-only consumer passes; original output and database bytes are preserved during replay. Installed adoption remains open under TOOLSET-101-f6; no deployment or recovered product worker is claimed.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-073 — Measure subprocess coverage, then review identical and subset test groups
+
+- [x] TOOLSET-073 — Measure subprocess coverage, then review identical and subset test groups
+- Status: done
+- Evidence: Source de0f3ac; scratch subprocess measurement recorded 1,278/1,491 test contexts. All 31 large groups and five slow subset cases classified in [the assertion audit](docs/test-suite-audit.md); no removals, one measured fixture-cost successor TOOLSET-102-ea. Protocol updated, no tests/source changed. Required goal/docs/whitespace checks passed; ordinary `python3 scripts/check.py` passed 562/709/212/8 tests, one skip/eight excluded. Retained instrumented cache failure passed after harness output isolation; no full instrumented green claim.
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [audit](docs/project.md#baseline-audit-toolset-068-2026-10-15), [protocol](skills/engineering/local/test-suite-optimization/PROTOCOL.md).
+- Scope: In a scratch directory, rerun per-test coverage with subprocess measurement (coverage.py `COVERAGE_PROCESS_START` with a scratch `sitecustomize.py` or `.pth`, `parallel = True`, then `coverage combine`), so the 493 tests without records gain them. Recompute identical and strict-subset groups. Read every group of 3 or more and every subset case among the 30 slowest tests; classify each as distinct contract, parametrize candidate or removal candidate under the protocol's Keep rules. Add the subprocess-coverage recipe to the protocol's "Measure first" section. Record results in the audit section and up to three follow-up tasks with exact tests and measured before values.
+- Acceptance: Per-test records exist for at least 1,150 of the 1,253 tests or the shortfall is explained; every group read has a recorded classification with its reason; removal candidates name the remaining test that covers their behavior; no test or source file outside the protocol changes.
+- Checks: `python3 skills/docs-sync/scripts/goals.py validate .`; `python3 skills/docs-sync/scripts/docs.py check .`; `git diff --stat`; `git diff --check`.
+- Dependencies: None.
+- Prior work: TOOLSET-068 (done, archived).
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No test removal or consolidation in this task; no repository dependency on coverage plugins; no push.

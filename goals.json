@@ -126,6 +126,11 @@
           "kind": "executed",
           "ref": "TOOLSET-072: 20cbcc5 vs 9f84355, /usr/bin/time python3 scripts/check.py --jobs 1, three interleaved runs each; all six passed 558/689-or-698/212/8 tests, one skip/eight excluded; serial wall medians 468.81 to 420.92 s, Autowork unittest medians 189.849 to 140.612 s; recorded inputs match commits; offline only",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-073 at de0f3ac: scratch subprocess coverage 1278/1491 contexts; 31 large groups and five slow subsets assertion-reviewed; normal python3 scripts/check.py passed 562/709/212/8, one skip/eight excluded; instrumented cache failure retained and focused harness-repair rerun passed; docs/test-suite-audit.md; offline only",
+          "result": "pass"
         }
       ],
       "id": "TEST-SUITE",
@@ -137,7 +142,8 @@
         "TOOLSET-068",
         "TOOLSET-069",
         "TOOLSET-072",
-        "TOOLSET-073"
+        "TOOLSET-073",
+        "TOOLSET-102-ea"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -513,6 +519,7 @@
     "tasks": [
       "TOOLSET-099-87",
       "TOOLSET-073",
+      "TOOLSET-102-ea",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -581,14 +588,6 @@
       "title": "Qualify the Claude Code plugin with a live questions-only workflow"
     },
     {
-      "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-073",
-      "section": "Next",
-      "status": "open",
-      "title": "Measure subprocess coverage, then review identical and subset test groups"
-    },
-    {
       "depends_on": [
         "TOOLSET-095-48"
       ],
@@ -607,6 +606,14 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-102-ea",
+      "section": "Next",
+      "status": "open",
+      "title": "Replace the empty-queue Pi test warm-up with equivalent completed-session setup"
     },
     {
       "depends_on": [
@@ -1051,6 +1058,14 @@
       "section": "Done",
       "status": "done",
       "title": "Cache the check receipt runtime inventory without losing drift detection"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-073",
+      "section": "Done",
+      "status": "done",
+      "title": "Measure subprocess coverage, then review identical and subset test groups"
     },
     {
       "depends_on": [],

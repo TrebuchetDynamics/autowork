@@ -21,7 +21,30 @@ Record a baseline on one named commit and machine before judging anything:
   contexts, so each covered line records which tests reach it (coverage.py:
   `coverage run --branch --context=test` with `dynamic_context = test_function`, then
   `coverage json --show-contexts`). Use the repository's existing coverage tool when
-  it has one.
+  it has one. For subprocess-heavy suites, also measure children: put
+  `import coverage; coverage.process_startup()` in a scratch `sitecustomize.py`,
+  prepend that directory to `PYTHONPATH`, and set `COVERAGE_PROCESS_START` to an
+  absolute scratch config with `[run] branch = True`, `parallel = True` and an
+  absolute `data_file`. Restrict measurement to owned sources and omit tests and
+  vendored code. In the runner's `startTest`, call `Coverage.current().switch_context(test.id())`
+  and export that same ID in a dedicated environment variable; the startup hook
+  must switch the child's context to that inherited ID. Dynamic test-function
+  contexts alone do not identify a child process's calling test. Reset the context
+  between tests, retain per-test timings and outcomes, and run `coverage combine`
+  with the same config after all children exit, then `coverage json --show-contexts`.
+  Verify a child-only smoke test has its caller's context before the full run,
+  including a nested source file. Prefer `source = /absolute/repository` with
+  explicit omissions: a root-only include glob can silently omit nested modules.
+  Record blind spots explicitly: sanitized environments, isolated Python (`-I`),
+  other interpreters, hard-killed children and non-Python commands may not produce
+  records. Equal line sets do not imply equal branches, assertions or contracts.
+  Keep the data/output directory off `sys.path` (separate it from the startup-hook
+  directory); coverage shard creation can otherwise invalidate metadata caches
+  during the very tests being measured. Retain instrumentation-induced failures
+  and rerun the exact affected test after repairing the harness, separately from
+  an ordinary uninstrumented run.
+  Keep instrumentation and raw data outside the repository; do not alter tests or
+  add a coverage dependency merely to audit them.
 - **Mutation score (optional):** only when a mutation tool is available, run from a
   disposable environment outside the repository, and only on the modules with
   candidates. Record "not measured" otherwise; never add the tool as a dependency.
