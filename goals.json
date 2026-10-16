@@ -79,6 +79,11 @@
       "evidence": [
         {
           "kind": "executed",
+          "ref": "Integrated 9f84355: python3 scripts/check.py passed, including OMH pin/keep-list fixtures; live installed-profile refresh TOOLSET-098-5d remains open",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "TOOLSET-080/081: python3 scripts/check.py passed; one-profile qualification cut OMH skill-index entries from 12,349 to 3,522 characters with code-review and verification-gate loading and omh doctor unchanged; fleet rollout 101 managed entries in each of 9 OMH profiles",
           "result": "pass"
         }
@@ -334,11 +339,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "Integrated 9f84355: python3 scripts/check.py passed 558/698/212/8 tests, one skip and eight excluded modules; retained description regression and original zero-warning linter evidence; offline only",
+          "result": "pass"
+        }
+      ],
       "id": "SKILL-REVIEW",
       "priority": 86,
       "source": "docs/project.md#new-skill-review-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-062",
         "TOOLSET-063",
@@ -548,14 +559,6 @@
       "title": "Migrate fleet repositories to recorded TODO.md priority order"
     },
     {
-      "depends_on": [],
-      "goal": "SKILL-REVIEW",
-      "id": "TOOLSET-064",
-      "section": "Next",
-      "status": "open",
-      "title": "Give bundled skills trigger-first descriptions within Hermes' 60-character index"
-    },
-    {
       "depends_on": [
         "TOOLSET-065"
       ],
@@ -582,14 +585,6 @@
       "title": "Measure subprocess coverage, then review identical and subset test groups"
     },
     {
-      "depends_on": [],
-      "goal": "OMH-TRIM",
-      "id": "TOOLSET-082",
-      "section": "Next",
-      "status": "in_progress",
-      "title": "Restore the OMH memory plugin on Hermes 0.22"
-    },
-    {
       "depends_on": [
         "TOOLSET-095-48"
       ],
@@ -598,14 +593,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the worktree runner live on a fleet repository"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-097-41",
-      "section": "Next",
-      "status": "open",
-      "title": "Report the correct Hermes profile from nested installation paths"
     },
     {
       "depends_on": [
@@ -977,6 +964,14 @@
     },
     {
       "depends_on": [],
+      "goal": "SKILL-REVIEW",
+      "id": "TOOLSET-064",
+      "section": "Done",
+      "status": "done",
+      "title": "Give bundled skills trigger-first descriptions within Hermes' 60-character index"
+    },
+    {
+      "depends_on": [],
       "goal": "CLAUDE-CODE",
       "id": "TOOLSET-065",
       "section": "Done",
@@ -1097,6 +1092,14 @@
     },
     {
       "depends_on": [],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-082",
+      "section": "Done",
+      "status": "done",
+      "title": "Restore the OMH memory plugin on Hermes 0.22"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-083",
       "section": "Done",
@@ -1211,6 +1214,14 @@
       "section": "Done",
       "status": "done",
       "title": "Run Pi Autowork from the main branch with per-task worktrees merged at the end"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-097-41",
+      "section": "Done",
+      "status": "done",
+      "title": "Report the correct Hermes profile from nested installation paths"
     },
     {
       "depends_on": [],

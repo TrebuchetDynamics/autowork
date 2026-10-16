@@ -1835,3 +1835,70 @@ Source section: Next
 - Environment prerequisite: Installed host CLIs with working model access; owner availability to observe the run.
 - Current evidence (2026-10-15): Hermes 0.22.0, Codex CLI 0.162.1 and Pi 1.2.0 are installed; model access and owner availability are not verified.
 - Exclusions: No fleet repositories or profiles, no push, no cron schedule.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index
+
+- [x] TOOLSET-064 — Give bundled skills trigger-first descriptions within Hermes' 60-character index
+- Status: done
+- Goal: SKILL-REVIEW — Fix review findings in the newly vendored UI skills.
+- Sources: [review findings](docs/project.md#new-skill-review-2026-10-15), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Scope: Rewrite toolset-owned `description` fields over 60 characters (autoresearch, autowork, beautify-github-readme, cron-autowork, engineering, lgtm, plan-for-me, plan-with-me) to one trigger-first sentence; vendored Impeccable stays unchanged.
+- Acceptance: Hermes' skill linter reports no `description-length` warning for toolset-owned skills, and a test enforces the limit.
+- Checks: A regression over `skills/*/SKILL.md`, then `python3 scripts/check.py`.
+- Dependencies: None.
+- Exclusions: No vendored-file edits.
+- Candidate: `autowork/TOOLSET-064` at `2e3ef49` combines the retained reviewed descriptions with main `7882845` and the reviewed TOOLSET-097-41 repair. The conflict-free refresh preserves every owned skill body against that pinned main. The description regression and all 40 Pi tests pass; the fresh full offline gate passes 556/689/212/8 tests across four directories (one skipped test; eight excluded modules). Bash syntax, docs/index validation and whitespace checks pass. The earlier Hermes linter result remains zero description-length warnings for the unchanged descriptions; no new independent review is claimed. The first combined gate failure remains retained, not relabeled passed.
+- Planner's call: Preserve the reviewed combined implementation and refresh it against pinned main in the idle isolated candidate rather than overlapping canonical writers. The refresh merged without conflicts; the original independent approvals remain historical evidence, and this occurrence adds fresh offline qualification, not a new review. Main still matched `7882845` at final admission, but two active canonical sessions prevent integration. Keep both tasks open.
+- Completion: Integrated locally by conflict-free fast-forward to 9f84355 after canonical writer admission cleared. Fresh combined full gate passed 558/698/212/8 tests (one skip, eight excluded modules); retained review and linter evidence applies to unchanged skill descriptions. No push or deployment.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
+
+- [x] TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
+- Status: done
+- Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
+- Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), [bundle defaults](plugins/defaults.json), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Scope: On Hermes 0.22.0, loading OMH 3.0.0 logs "Plugin 'omh' skipped: requires hermes >=0.21.1,<0.22.0, running 0.22.0", and `hermes memory status` in a profile whose `memory.provider` is `omh` reports the plugin as not installed, so OMH memory is likely inactive fleet-wide. Confirm across profiles, find the OMH release or pin that supports Hermes 0.22, and update `plugins/defaults.json`'s pinned `omh.source` (or document the incompatibility and the safe interim provider) without changing memory stores.
+- Acceptance: `plugins/defaults.json` pins an OMH release whose plugin manifest admits Hermes 0.22 and whose skill names cover the trim's keep list; a fresh-install preview uses that pin; docs/memory.md records the incompatibility and the interim handling for profiles still on the old release; OMH stores and existing memories are untouched. Refreshing already installed profiles is TOOLSET-098-5d.
+- Checks: `python3 -m unittest discover -s tests -p test_install_omh.py`; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No memory-store migration or deletion; no provider switch without the owner.
+- Candidate: `autowork/TOOLSET-082` (bdc34d3) retains the reviewed official OMH v3.0.2 pin (manifest `>=0.21.1`), all 41 kept-name mappings, offline tests and interim guidance from c4644bb; refreshed against main 7882845. Independent review approved the TODO merge resolution; original pin/docs/tests are unchanged.
+- Planner's call (2026-10-15 replan): split the live refresh of installed profiles into TOOLSET-098-5d so the reviewed offline pin can close; the live checks moved there unchanged.
+- Planner's call (2026-10-16 recovery): while canonical admission is busy, qualify this retained candidate rather than repeat the TOOLSET-064 hold. The first full gate exposed the already-fixed nested-profile diagnostic; merge the reviewed TOOLSET-064/097-41 candidate instead of duplicating its fix. Preserve all three original task IDs and keep integration pending, with no live profile changes.
+- Checks (2026-10-16): combined full offline gate passed 558/689/212/8 tests (one skip; eight modules excluded); focused OMH 28, Pi 40 and skill-description 1 passed; Bash syntax, docs/index validation and whitespace passed. The original failing gate remains failure evidence, not a pass.
+- Recovery qualification (2026-10-16): reconciled this task's TODO status with its existing `in_progress` index entry; isolated owner admission now returns `EXECUTE`. A fresh standalone Pi run passes all 40 tests in 166.821 seconds, resolving the prior combined-command timeout without changing runner code; the interrupted run remains incomplete evidence. Fresh OMH 28 and description 1 tests, goals/docs validation, Bash syntax and whitespace checks pass. Canonical main still matches 7882845; one active canonical session prevents integration. No new full offline gate or independent review is claimed.
+- Completion: Integrated locally by conflict-free fast-forward to 9f84355 after canonical writer admission cleared. Fresh combined full gate passed 558/698/212/8 tests (one skip, eight excluded modules); original reviewed pin, tests and guidance are preserved. Installed-profile refresh and native existing-store qualification remain TOOLSET-098-5d. No push or deployment.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-097-41 — Report the correct Hermes profile from nested installation paths
+
+- [x] TOOLSET-097-41 — Report the correct Hermes profile from nested installation paths
+- Status: done
+- Goal: PI-RUNNER
+- Sources: [accepted repository scope](docs/project.md#accepted-requirements), [Pi runner](scripts/pi-autowork.sh), [offline regressions](tests/test_pi_autowork.py), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Scope: Repair the Hermes coexistence diagnostic when the installation root itself contains a profiles directory; derive the label relative to the selected root, not the first matching ancestor.
+- Acceptance: Named and default-profile jobs display their actual profile below a nested installation root; active matching jobs still refuse execution and paused jobs stay excluded.
+- Checks: `python3 -m unittest discover -s tests -p test_pi_autowork.py`; `python3 scripts/check.py`; `bash -n scripts/pi-autowork.sh`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Next Autowork coordinator. Before starting, check the `pi-par` worktree under `.claude/worktrees/`, which held uncommitted edits to both touched files on 2026-10-15; adopt or wait for that writer instead of duplicating it.
+- Touches: scripts/pi-autowork.sh, tests/test_pi_autowork.py
+- Candidate: `autowork/pi-profile-reconcile` adopts only the implementation and regression from retained candidate `9625a6e` onto `73c6f7e`, preserving the newer parallel runner and service/worktree fixes. All 33 Pi tests, the full offline gate (four directories), Bash syntax, goals validation and whitespace checks passed; independent read-only review approved the two-file diff. Test subprocess/stream ResourceWarnings remain, and one offline test was skipped.
+- Planner's call: Canonical writers prevent integration, not verification in an isolated candidate. Keep this task open until the reviewed candidate is integrated; do not import the old candidate's stale archive/index changes. Next action: integrate this branch only after the canonical writer gate clears, recheck changed inputs, then archive this task.
+- Current evidence: Found by the toolset cron on 2026-10-15: the full offline gate fails one Pi test when the checkout path contains `/profiles/` (as in profile cron runs) and passes elsewhere.
+- Completion: The reviewed nested-profile implementation and regression are integrated locally in 9f84355, preserving the current runner. Fresh combined full gate passed 558/698/212/8 tests (one skip, eight excluded modules). One unchanged Pi restart test failed an earlier attempt; all 40 Pi tests and then a fresh full gate passed on retry. No job mutation, push or deployment.
+- Exclusions: No job mutation, provider execution, push or deployment; no change to coexistence refusal policy.
