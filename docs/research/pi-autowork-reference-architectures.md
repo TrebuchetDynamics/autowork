@@ -206,6 +206,29 @@ The exact `rayshawnmccall21/pi-orchestrator` repository returns 404; alternate s
 
 These findings refine the existing adapter boundary; none justifies replacing our queue or importing a whole orchestrator.
 
+## Fixture coverage (TOOLSET-116-c1)
+
+The stale-result and cancellation scenarios above are now offline fixtures in
+`skills/autowork/scripts/test_parallel_adversarial.py`, with controlled subprocess
+workers (`fixtures/fake_worker.py`). Only scenarios were ported; no upstream code.
+
+| Scenario | Mirrors | Before | Now |
+|---|---|---|---|
+| Late report from a superseded attempt arrives after the retry committed without one | AgwaB `commitAttemptResultIfActive`; Kyle Boas old final text | already covered: reports are read per attempt and must match the commit | fixture |
+| Paused attempt resumes; its earlier report must not stand in | AgwaB generation guard | already covered: the resumed attempt's report is removed | fixture |
+| Launch happened but recording the worker failed | Gas Town `RunPlan`; Saify Matteo cancellation during spawn | **gap**: the next pass started a second worker in the same worktree | fixed |
+| A child that left the worker's process group survives the timeout stop | Kyle Boas TERM without KILL; pi-rukas `killProcessTree` | **gap**: it kept running and could write into the worktree the retry reuses | fixed |
+| Worker exits while a descendant in another session still writes | Agent Orchestrator `ActivitySignal` | **gap**: the slot was reported while the descendant was writing | fixed |
+| Later task finishes first; both land exactly once | Symphony reconcile-before-dispatch; AgwaB out-of-order completion | already covered | fixture |
+| Coordinator dies mid-task; the worker reports to a new coordinator | Gas Town reconciliation; Agent Orchestrator launch identity | already covered: the live worker is adopted, no attempt spent | fixture |
+
+The three gaps had one cause: liveness came only from the recorded leader and its
+process group. Every worker now inherits `AUTOWORK_WORKTREE=<worktree>`;
+`parallel_state.worker_live` also counts any live process carrying that marker, and
+`parallel_dispatch.stop` signals those processes as well as the group, escalating
+from SIGTERM to SIGKILL. A process that clears its environment is still invisible:
+the marker narrows the race, it is not a sandbox.
+
 ## 10. Licensing and confidence
 
 - MIT references permit reuse subject to preserving the copyright/permission notice for copies or substantial portions.

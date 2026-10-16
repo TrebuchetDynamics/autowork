@@ -2291,3 +2291,22 @@ Source section: Next
 - Ownership: Current shared-source maintenance coordinator under existing local repair authority.
 - Planner's call: Skip installed adoption already isolated in TOOLSET-101-f6; native scan confirmation remains unavailable under this grant. Fix this reproduced disjoint transport defect without counting it as primary recovery.
 - Exclusions: No new consultation wave, model/product worker launch, profile mutation, scan bypass, deployment or push.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-116-c1 — Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures
+
+- [x] TOOLSET-116-c1 — Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures
+- Status: done (9c46aaf); seven fixtures in `test_parallel_adversarial.py`, three engine gaps fixed; coverage recorded in the research doc.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [research: stale-result protection](docs/research/pi-autowork-reference-architectures.md#stale-result-protection-agent-orchestrator--agwab), [adapter checks](docs/research/pi-autowork-reference-architectures.md#concrete-adapter-checks-added-by-this-wave), [design](docs/plans/2026-10-16-pi-autowork-coordinator.md).
+- Touches: skills/autowork/scripts/test_parallel_*.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, docs/research/pi-autowork-reference-architectures.md
+- Scope: Owner direction (2026-10-16): use the research's reuse findings. Reproduce, as offline fixtures with controlled subprocess workers, the adversarial cases from Agent Orchestrator (`ActivitySignal` expected revision/launch identity), AgwaB (`commitAttemptResultIfActive`), MinhDuyDEV (generation-fenced resource transfer), Gas Town (launch happened but receipt write failed) and Kyle Boas (old final text must not complete a new assignment): late report from a superseded attempt, cancellation during spawn, out-of-order completion, report written after a runner restart, receipt-write failure after launch. Port scenarios and invariants only, not code; record which upstream case each fixture mirrors. Fix only gaps the fixtures expose, against the existing slot identity and attempt guards.
+- Acceptance: Each listed scenario has a fixture that passes against the engine, or a fix that makes it pass; a superseded attempt can never move a slot or reach integration; the research doc records which scenarios were already covered.
+- Checks: engine tests in `skills/autowork/scripts`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No upstream code copied (MIT notices would apply); no live Pi or fleet runs; avoid editing `pi-autowork.sh` while TOOLSET-115-bf phase 5 is active.

@@ -566,6 +566,11 @@
           "kind": "executed",
           "ref": "TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run",
+          "result": "pass"
         }
       ],
       "id": "PI-RUNNER",
@@ -692,14 +697,6 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-116-c1",
-      "section": "Next",
-      "status": "open",
-      "title": "Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures"
     },
     {
       "depends_on": [
@@ -1511,6 +1508,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve Unicode separators in consultation stream events"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-116-c1",
+      "section": "Done",
+      "status": "done",
+      "title": "Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures"
     },
     {
       "depends_on": [

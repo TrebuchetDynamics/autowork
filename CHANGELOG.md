@@ -10,6 +10,14 @@ claim of a tagged release, completed installation or live workflow qualification
 - A merged task whose TODO entry someone else archived or removed afterwards is
   set aside automatically (its merge stays; nothing is queued again) instead of
   retrying its close every cycle (bravo TASK-001).
+- A parallel Autowork worker can no longer get a second writer beside it in its own
+  worktree (TOOLSET-116-c1). Workers carry `AUTOWORK_WORKTREE`; a worker whose launch
+  was never recorded, or a child that left its process group, now keeps the slot
+  running and is stopped with the group. Before, the next pass started a duplicate
+  worker, and a slot was reported while a stray child still wrote. Seven adversarial
+  fixtures ported from the Pi orchestrator research cover these and four cases the
+  engine already handled.
+
 - Runner health ignores a status read the engine could not answer (its state lock
   busy with a `--status` or `--fleet` reader). Such a read used to count as idle and
   restart the stall clock, so polling status could hold back a stall announcement.

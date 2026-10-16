@@ -205,6 +205,7 @@ def launch(argv, worktree, data, slot_index, stdin_path):
            if k != 'HERMES_TOOLSET_EXECUTION_COMMON' and not k.startswith('GIT_')}
     env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
+    env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
         process = subprocess.Popen(argv, cwd=worktree, env=env, stdin=stdin, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
@@ -216,16 +217,23 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     raise ValueError('worker exited before its identity could be recorded; see ' + str(data / 'worker.log'))
 
 
-def stop(worker):
-    """Stop a worker's whole process group, escalating while any member survives."""
-    slot = {'worker': worker}
+def stop(worker, worktree=None):
+    """Stop a worker's whole process group and every process carrying its worktree
+    marker (children that left the group), escalating while any of them survives."""
+    slot = {'worker': worker, 'worktree': worktree}
     for sig, pause in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 2.0)):
         if not state.worker_live(slot):
             return
-        try:
-            os.killpg(worker['pid'], sig)
-        except ProcessLookupError:
-            return
+        if worker is not None:
+            try:
+                os.killpg(worker['pid'], sig)
+            except ProcessLookupError:
+                pass
+        for pid in state.strays(worktree):
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                pass
         deadline = time.time() + pause
         while time.time() < deadline and state.worker_live(slot):
             time.sleep(0.05)
@@ -238,7 +246,7 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
         limit = meta(common, slot).get('worker_timeout', default_timeout)
         if (slot['state'] in ('dispatched', 'running') and state.worker_live(slot)
                 and time.time() - slot['started_at'] > limit):
-            stop(slot['worker'])
+            stop(slot['worker'], slot['worktree'])
             stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
                                             reason=f'worker timeout after {limit:g} s'))
     return stopped
