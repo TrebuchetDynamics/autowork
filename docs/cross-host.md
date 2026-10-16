@@ -218,7 +218,15 @@ replaces a unit an earlier release named after the escaped path.
 Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
-Reinstall after changing settings; `pi update` updates the script it runs.
+Reinstall after changing settings. The runner keeps itself current: while no task is
+in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
+turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
+across repositories. When the toolset revision changed, by that or any other update,
+a running runner restarts itself on the new release at its next cycle and resumes its
+session; an update whose script does not parse is logged and the running code kept.
+Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
+them, so a changed prompt asks those tasks again, and a pass that gave no answer is
+retried within the hour.
 
 How it works:
 
