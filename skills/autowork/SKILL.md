@@ -158,6 +158,17 @@ Named-only jobs cannot widen scope. Empty queues, green tests or unchanged HEAD
 are not proof of exhaustion; record `work_search` evidence and rejected candidates.
 This policy is not a runtime guarantee of progress. No fabricated busywork.
 
+## Parallel workers (opt-in)
+
+Only when the caller asks for parallel work, run `owner_cycle.py REPO --apply
+--parallel [N] --owner-pid PID`: it starts headless host workers, one task each in
+its own worktree, for tasks whose `Touches:` and `Resources:` prove independence.
+Then loop `--wait --timeout S`, review each `report.json`, `--integrate TASK
+--timeout S --run CHECK...` (`--run` last), `--parallel-close TASK`, commit the
+coordinator files, and refill with `--apply --parallel`; release only after no slot
+is left to integrate or close. Workers never select, merge, close or push. `SEQUENTIAL_FALLBACK` means run the returned contract the
+ordinary way. Follow [parallel workers](references/parallel-workers.md).
+
 ## Scheduled work and reporting
 
 Autowork does not create schedules. Existing jobs use [scheduled policy](references/scheduled-policy.md)
@@ -192,7 +203,8 @@ references/owner-cycle.md, references/scheduled-policy.md, references/cron-autoh
 references/repository-maintenance.md, references/dispatch-and-reporting.md,
 references/delivery-batches.md, references/accepted-plan-execution.md,
 references/whole-spec-execution.md, references/backlog-planning.md,
-references/ponytail.md, references/discovery.md, references/profile-feedback.md.
+references/parallel-workers.md, references/ponytail.md, references/discovery.md,
+references/profile-feedback.md.
 
 The following retained material documents historical native execution and evidence.
 Its card-specific commands, gates and transitions are not instructions for current

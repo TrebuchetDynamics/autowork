@@ -270,7 +270,22 @@ Hermes job), 130 stopped.
 The adapters ask native questions, inspect files, maintain TODO.md, and execute
 through available host tools. Autowork coordinates a useful slice in the current
 session; it does not create timers or promise background workers after the session
-ends. Existing goals.json is synchronized through bundled helpers when applicable.
+ends.
+
+Opt-in [parallel workers](../skills/autowork/references/parallel-workers.md)
+(`--parallel N`) start one headless worker per independent task. Linux only:
+
+| Coordinator host | Parallel workers | Worker command |
+| --- | --- | --- |
+| Hermes | Yes, built-in template | `hermes chat --query-file … --oneshot --in WORKTREE --run-budget …` |
+| Codex | Yes, built-in template | `codex exec -C WORKTREE --sandbox workspace-write --add-dir GIT_COMMON_DIR -` |
+| Pi | Yes, built-in template | `pi -p @PROMPT` |
+| Claude Code | Only with `--worker-command` | none built in; otherwise `SEQUENTIAL_FALLBACK` |
+| Other or undetected | Only with `--worker-host` or `--worker-command` | otherwise `SEQUENTIAL_FALLBACK` |
+
+Templates add no approval or sandbox bypass flags, and a missing worker CLI also
+falls back to sequential execution. These templates are checked against each CLI's
+`--help` and with fake workers offline; real model workers are not yet qualified. Existing goals.json is synchronized through bundled helpers when applicable.
 Python 3 is needed for those helpers; a questions-only interview needs no Python.
 
 No package installs external integrations, modifies approval policies, copies

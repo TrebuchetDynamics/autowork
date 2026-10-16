@@ -582,16 +582,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-089-72"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-090-2d",
-      "section": "Next",
-      "status": "open",
-      "title": "Document parallel Autowork and wire it into each host"
-    },
-    {
-      "depends_on": [
         "TOOLSET-090-2d"
       ],
       "goal": "PARALLEL",
@@ -1150,6 +1140,16 @@
       "section": "Done",
       "status": "done",
       "title": "Report parallel progress and metrics, with an end-to-end fixture and benchmark"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-089-72"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-090-2d",
+      "section": "Done",
+      "status": "done",
+      "title": "Document parallel Autowork and wire it into each host"
     },
     {
       "depends_on": [],

@@ -7,8 +7,8 @@ disable-model-invocation: true
 # Autowork
 
 Read the [host contract](../COMMON.md). Use this host's native tools for execution.
-Do not launch Hermes workers, require Hermes profiles, or depend on a native Kanban
-card. Run in the current session; delegate only when available and appropriate under
+Do not launch Hermes workers (opt-in parallel workers below use this host's own
+CLI), require Hermes profiles, or depend on a native Kanban card. Run in the current session; delegate only when available and appropriate under
 the user's instructions. Use a separate worktree when real concurrent writes need
 isolation, and preserve all unrelated edits.
 
@@ -69,6 +69,14 @@ explicit read-only runs write nothing.
    close a whole feature from a partial slice. Report completed task, checks, commit,
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
+
+Parallel workers are opt-in: only when the user asks, run the bundled
+`owner_cycle.py REPO --apply --parallel [N] --owner-pid PID` and follow
+[parallel workers](../../../skills/autowork/references/parallel-workers.md). Codex
+and Pi coordinators get Codex or Pi workers from built-in templates. Claude Code has
+no template because it chooses its workers' approval mode: pass `--worker-command`
+with an explicit worker argv, or the helper returns `SEQUENTIAL_FALLBACK` and the
+task runs in this session as usual. Never add approval or sandbox bypass flags.
 
 Caller scope and saved stop/batch limits control continuation.
 Default interactive execution completes one slice, including authorized recovery
