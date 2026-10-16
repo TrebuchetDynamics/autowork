@@ -757,6 +757,40 @@ class ConsultationTests(unittest.TestCase):
                 if text.startswith('{'):
                     self.assertTrue(json.loads(sanitized)['keep'])
 
+    def test_contextual_quoted_keys_in_partial_evidence_are_redacted(self):
+        import json
+        import sqlite3
+        from unittest.mock import patch
+        m = self.load()
+        for key in ('access_token', 'client_secret', 'X-Api-Key', 'Set-Cookie'):
+            for quote in ('"', "'"):
+                for value in (quote + 'prefix LEAK_MARKER; tail' + quote,
+                              quote + 'prefix LEAK_MARKER; tail', '123456789'):
+                    text = '{' + quote + key + quote + ': ' + value + ', status: keep'
+                    with self.subTest(key=key, quote=quote, value=value), tempfile.TemporaryDirectory() as d:
+                        root = Path(d)
+                        db = self.history(root, 'one', [('original', 'cli', text, None, None, 'one', None, 1)])
+                        with sqlite3.connect(db) as connection:
+                            connection.execute('UPDATE messages SET content=?', (text,))
+                        before = db.read_bytes()
+                        event = json.dumps({'type': 'result', 'exit_code': 0, 'text': text})
+                        with patch.object(m, 'execute', return_value={'stdout': event, 'stderr': text,
+                                'returncode': 0, 'timed_out': False}) as run:
+                            result = m.consult('one', root, 'offline-fixture', 10)
+                        for projected in (run.call_args.args[0][-1], json.dumps(result)):
+                            self.assertNotIn('LEAK_MARKER', projected)
+                            self.assertNotIn('123456789', projected)
+                        self.assertEqual(db.read_bytes(), before)
+                        sanitized = m.redact(text)
+                        self.assertIn('[REDACTED]', sanitized)
+                        self.assertEqual(m.redact(sanitized), sanitized)
+                        if value == '123456789' or value.endswith(quote):
+                            self.assertIn('status: keep', sanitized)
+                        wrapped = m.redact(json.dumps({'message': text, 'keep': True}))
+                        self.assertTrue(json.loads(wrapped)['keep'])
+                        self.assertNotIn('LEAK_MARKER', wrapped)
+                        self.assertNotIn('123456789', wrapped)
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))
