@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Docs Sync anchor checks ignore HTML-commented headings and explicit anchors,
+  including unclosed comments (TOOLSET-107-93). Hidden headings no longer consume
+  visible duplicate suffixes or validate links to nonexistent rendered targets.
+
 - Fleet collector evidence masks complete HTTP credential-header values before
   comma/semicolon field masking (TOOLSET-106-5d), including Cookie, Set-Cookie,
   Authorization and Proxy-Authorization tails. Native/legacy response diagnostics

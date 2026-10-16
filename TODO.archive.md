@@ -2125,3 +2125,24 @@ Source section: Next
 - Ownership: Shared-source maintenance coordinator under the existing audit repair authority.
 - Touches: skills/autowork/scripts/audit_profiles.py, skills/autowork/scripts/test_response_tail.py, docs/testing.md, CHANGELOG.md
 - Exclusions: No push, installed scan override, profile/job/product writes, worker replacement, schedule activation or comprehensive-redaction claim. Installed adoption stays open under TOOLSET-101-f6.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-107-93 — Ignore commented-out document anchors
+
+- [x] TOOLSET-107-93 — Ignore commented-out document anchors
+- Status: done
+- Evidence: Reproduced hidden-anchor false passes and reviewer-found literal-marker regressions before repair; 22 focused CLI tests passed; independent re-review approved after rework; Python 3.12 `scripts/check.py` passed 563/713/215/8 tests (one skip, eight excluded modules); repository docs check passed. Offline only.
+- Goal: DOCS-COMPLETENESS
+- Sources: [verification contract](docs/testing.md#verify), skills/docs-sync/scripts/docs.py, skills/docs-sync/scripts/test_docs_manifest.py.
+- Scope: Exclude HTML comments from the document-anchor inventory using the existing comment/code-span handling. Preserve visible headings, duplicate numbering, explicit anchors and literal comment markers in inline code.
+- Acceptance: CLI checks reject links and mapped roles targeting hidden headings or HTML anchors, including unclosed comments; hidden headings do not consume visible duplicate suffixes. Valid visible targets pass and input files remain unchanged.
+- Checks: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_docs_manifest.py`; `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; independent diff review; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current Toolset coordinator under autonomous repository-development authority.
+- Touches: skills/docs-sync/scripts/docs.py, skills/docs-sync/scripts/test_docs_manifest.py, docs/testing.md
+- Exclusions: No external fetching, renderer replacement, installed-profile updates or live qualification.
+- Planner's call: TOOLSET-099-87's excluded live acceptance remains separately tracked by TOOLSET-096-7e; skip it without waiver. Fix this independently reproduced docs-checker defect rather than repeat a live hold or add another Pi refusal guard.

@@ -44,8 +44,10 @@ LINK = re.compile(r'!?\[[^\]\n]*\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"\n]*"|\'[^\'\n
 SCRIPT = re.compile(r'(?:^|\s)(?:python3?|sh|bash|node)\s+(?:-\S+\s+)*([^\s`]+\.(?:py|sh|mjs|js))(?=\s|$)')
 HEADING = re.compile(r'^(?:#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*|(?![ \t]*[-=>*+#|])([^\n]*\S[^\n]*)\n[ \t]{0,3}(?:=+|-+)[ \t]*)$', re.M)
 REFERENCE = re.compile(r'^[ \t]{0,3}\[(?!\^)[^\]\n]+\]:[ \t]*<?([^\s>]+)>?', re.M)
-# HTML comments are masked; code spans are matched first so a literal `<!--` stays text.
-COMMENT = re.compile(r'`[^`\n]+`|<!--.*?(?:-->|\Z)', re.S)
+# Preserve escaped characters and complete code spans before masking comments.
+# Delimiter runs must match exactly: a backtick inside `` code `` is literal.
+COMMENT = re.compile(r'\\[^\n]|(?<!`)(?P<ticks>`+)(?!`).*?(?<!`)(?P=ticks)(?!`)|'
+                     r'(?P<comment><!--.*?(?:-->|\Z))', re.S)
 CD = re.compile(r'(?:^|[;&|]\s*)cd\s+([^\s;&|]+)')
 HTML_ANCHOR = re.compile(r'<a\s[^>]*?\b(?:id|name)\s*=\s*["\']([^"\']+)["\']', re.I)
 
@@ -115,7 +117,7 @@ def slug(text):
 
 
 def anchors(text):
-    prose = FENCE.sub('', text)
+    prose = COMMENT.sub(lambda match: '' if match.group('comment') is not None else match[0], FENCE.sub('', text))
     seen, result = {}, {name.lower() for name in HTML_ANCHOR.findall(prose)}
     for atx, setext in HEADING.findall(prose):
         base = slug(atx or setext)
@@ -155,7 +157,7 @@ class Repo:
 
 def check_document(repo, role, path):
     errors = []
-    prose = COMMENT.sub(lambda match: match[0] if match[0].startswith('`') else '', FENCE.sub('', repo.text(path)))
+    prose = COMMENT.sub(lambda match: '' if match.group('comment') is not None else match[0], FENCE.sub('', repo.text(path)))
     spans = CODE.findall(prose)
     linkable = CODE.sub('', prose)
     for target in LINK.findall(linkable) + REFERENCE.findall(linkable):

@@ -20,6 +20,12 @@ claiming or starting anything.
 
 ## Verify
 
+Document-anchor regressions exclude HTML-commented ATX/Setext headings and explicit
+HTML anchors, including unclosed comments, from both local-link and role-mapping
+checks (TOOLSET-107-93). Commented headings do not consume visible duplicate suffixes;
+visible headings, explicit anchors and literal comment markers in code spans remain
+supported. CLI fixtures also verify that checking leaves source files unchanged.
+
 The fake-Pi idle-update journey forces different human-readable log timestamps
 before and after an exec restart. It requires multiple startup records bearing the
 original runner PID, alongside the update, completed-queue and interrupt-exit

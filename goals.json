@@ -353,6 +353,11 @@
       "evidence": [
         {
           "kind": "executed",
+          "ref": "TOOLSET-107-93: 22 focused CLI tests; independent re-review approved after literal-marker rework; Python 3.12 scripts/check.py passed 563/713/215/8 tests, one skip/eight exclusions; docs.py check passed; offline only",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "python3 scripts/check.py (403/571/197/8 offline tests passed, 1 skipped, 8 modules excluded; includes test_docs_manifest, test_docs_stale, test_docs_profiles; offline only)",
           "result": "pass"
         }
@@ -364,7 +369,8 @@
       "tasks": [
         "TOOLSET-030",
         "TOOLSET-031",
-        "TOOLSET-032"
+        "TOOLSET-032",
+        "TOOLSET-107-93"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -547,6 +553,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
+      "TOOLSET-107-93",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -554,7 +561,6 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-106-5d",
       "TOOLSET-101-f6"
     ]
   },
@@ -1361,6 +1367,14 @@
       "section": "Done",
       "status": "done",
       "title": "Mask complete credential-header lines in fleet collector evidence"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-107-93",
+      "section": "Done",
+      "status": "done",
+      "title": "Ignore commented-out document anchors"
     },
     {
       "depends_on": [

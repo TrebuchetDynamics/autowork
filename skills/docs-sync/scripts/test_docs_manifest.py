@@ -54,6 +54,51 @@ class DocsManifestTests(unittest.TestCase):
         self.assertEqual(self.cli('check').strip(), 'ok')
         self.assertEqual(before, {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
 
+    def test_commented_anchors_are_not_link_targets(self):
+        design = self.repo / 'docs/design.md'
+        original = design.read_text()
+        for hidden, anchor in (
+                ('<!--\n## Hidden\n-->\n', 'hidden'),
+                ('<!--\n<a id="hidden"></a>\n-->\n', 'hidden'),
+                ('<!--\nHidden\n------\n-->\n', 'hidden'),
+                ('<!--\n## Hidden\n', 'hidden')):
+            with self.subTest(hidden=hidden):
+                design.write_text(original + hidden)
+                (self.repo / 'CHANGELOG.md').write_text(
+                    f'# Changelog\n[hidden](docs/design.md#{anchor})\n')
+                before = {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
+                out = self.cli('check', expected=1)
+                self.assertIn('changelog: CHANGELOG.md: missing anchor docs/design.md#hidden', out)
+                self.assertEqual(before, {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
+        self.roles['architecture']['path'] = 'docs/design.md#hidden'
+        self.write()
+        self.assertIn('architecture: docs/design.md#hidden: missing anchor',
+                      self.cli('check', expected=1))
+
+    def test_commented_headings_do_not_consume_duplicate_suffixes(self):
+        design = self.repo / 'docs/design.md'
+        design.write_text(design.read_text() +
+                          '\n<!--\n## Visible\n-->\n## Visible\n## Visible\n'
+                          '<a id="public-anchor"></a>\n## `<!--` marker\n')
+        changelog = self.repo / 'CHANGELOG.md'
+        changelog.write_text('# Changelog\n[one](docs/design.md#visible) '
+                             '[two](docs/design.md#visible-1) '
+                             '[html](docs/design.md#public-anchor) '
+                             '[literal](docs/design.md#---marker)\n')
+        self.cli('check')
+        changelog.write_text(changelog.read_text() + '[absent](docs/design.md#visible-2)\n')
+        self.assertIn('missing anchor docs/design.md#visible-2', self.cli('check', expected=1))
+
+    def test_literal_comment_openers_do_not_hide_later_headings(self):
+        design = self.repo / 'docs/design.md'
+        original = design.read_text()
+        for marker in ('`` ` <!-- ``', '\\<!--', '```` `` <!-- `` ````'):
+            with self.subTest(marker=marker):
+                design.write_text(original + f'\n## {marker} marker\n\n## Public after literal\n')
+                (self.repo / 'CHANGELOG.md').write_text(
+                    '# Changelog\n[public](docs/design.md#public-after-literal)\n')
+                self.cli('check')
+
     def test_missing_manifest_keeps_current_behavior(self):
         (self.repo / 'docs' / 'roles.json').unlink()
         self.assertIn('no manifest', self.cli('check'))
