@@ -53,8 +53,9 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Checks: A regression over `skills/*/SKILL.md`, then `python3 scripts/check.py`.
 - Dependencies: None.
 - Exclusions: No vendored-file edits.
-- Candidate: `autowork/TOOLSET-064` (049405e, 3 commits) rewrites the eight descriptions with a length regression; the cron reported independent review approval and a passing full offline gate on 2026-10-15 before main moved 21 commits.
-- Next action: Merge the candidate onto current main, rerun its regression, `python3 scripts/check.py` and `git diff --check`, then close. Re-review only files that conflict.
+- Candidate: `autowork/TOOLSET-064` at `6b072e6` combines the retained reviewed descriptions with main `3f23507` and the reviewed TOOLSET-097-41 repair. Hermes' frontmatter linter reports zero description-length warnings across all 13 owned skills; the description regression passes. The fresh full offline gate passes all four directories (one skipped test; eight excluded modules); all 39 Pi tests, Bash syntax and whitespace checks pass. The first combined gate failed the known nested-profile diagnostic; that failure is retained, not relabeled passed.
+- Planner's call: Repair the candidate's stale task status from canonical evidence, preserve its priority-order reconciliation, and reuse the reviewed nested-profile fix to remove the actual failing gate. Resolve runner merge conflicts to the exact newer main files before adopting that fix. Canonical active writers prevent integration, not isolated verification; leave both tasks open. Main advanced during checks, so these results qualify this pinned candidate, not latest main.
+- Next action: When canonical writers clear, reconcile this combined candidate with fresh main, rerun changed-input checks and review any new conflicts, integrate locally, then close and archive verified tasks. No push or deployment.
 
 ### TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
 
