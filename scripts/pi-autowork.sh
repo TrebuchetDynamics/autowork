@@ -290,7 +290,8 @@ on_signal() {
   say "Stopping: letting the current Pi run end (Ctrl+C again to force)"
   if [[ -n $CHILD ]]; then
     kill -INT -- "-$CHILD" 2>/dev/null
-    (sleep 30; kill -TERM -- "-$CHILD" 2>/dev/null; sleep 10; kill -KILL -- "-$CHILD" 2>/dev/null) </dev/null >/dev/null 2>&1 &
+    # Helpers never inherit the lock (fd 9): a lingering timer must not block the next runner.
+    (sleep 30; kill -TERM -- "-$CHILD" 2>/dev/null; sleep 10; kill -KILL -- "-$CHILD" 2>/dev/null) </dev/null >/dev/null 2>&1 9>&- &
     KILLER=$!
   fi
 }
@@ -298,8 +299,10 @@ stop_helpers() {  # background timers must not outlive the runner or hold its ou
   local pid
   for pid in "$KILLER" "$SLEEPER"; do
     [[ -n $pid ]] || continue
+    kill -STOP "$pid" 2>/dev/null  # freeze it so it cannot start another child
     pkill -P "$pid" 2>/dev/null
     kill "$pid" 2>/dev/null
+    kill -CONT "$pid" 2>/dev/null
   done
   KILLER='' SLEEPER=''
 }
@@ -307,7 +310,7 @@ trap on_signal INT TERM
 trap 'stop_helpers; rm -f "$STATE/runner.json"' EXIT
 
 pause() {  # interruptible sleep
-  sleep "$1" >/dev/null 2>&1 &
+  sleep "$1" >/dev/null 2>&1 9>&- &
   SLEEPER=$!
   wait "$SLEEPER" 2>/dev/null
   stop_helpers
