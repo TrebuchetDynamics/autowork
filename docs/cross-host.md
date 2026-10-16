@@ -245,7 +245,8 @@ How it works:
   Pi review that runs the task's checks against its acceptance; a reviewer that
   changes any file fails. Only then is the task closed and its TODO update committed.
   A failed review, a conflict or a file outside `Touches:` holds the task; it keeps
-  its worktree and gets one fresh retry, and a second failure stays held.
+  its worktree and gets one fresh retry, and a second failure stays held. If the
+  retry of a scope hold makes no commit, the first commit is verified once more.
 - **Task states.** `--status` and the log show each task as `pending`, `running`,
   `implemented` (reported), `verifying`, `integrated`, `done` or `failed` (held,
   interrupted or released, with the reason), mapped from the engine's slot states;

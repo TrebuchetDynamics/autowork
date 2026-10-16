@@ -52,7 +52,7 @@ def expected_branch(slot):
     """A held task's retry runs on a fresh -r2 branch; an interrupted or released
     worker restarts on its original branch, even though both count as attempt 2."""
     previous = (slot.get('previous_attempts') or [{}])[-1]
-    retried = slot['attempt'] == 2 and previous.get('state') == 'held'
+    retried = slot['attempt'] == 2 and previous.get('state') == 'held' and not slot.get('readopted')
     return 'autowork/' + slot['task_id'] + ('-r2' if retried else '')
 
 
@@ -442,6 +442,14 @@ def retry_held(args):
         with execution.lock(common / 'writer.lock'):
             state.require_owner(common, args.owner_pid)
             current = state.slots(common)
+            # A retry that produced nothing (often because it judged the first hold
+            # binding) gets the first attempt's commit re-verified once instead.
+            again = [s for s in current if state.readoptable(s)]
+            eligible = {t['id'] for t in dispatch.contracts(repo, args.tasks, args.plan)} if again else set()
+            again = next((s for s in again if s['task_id'] in eligible), None)
+            if again is not None:
+                slot = state.readopt(common, again)
+                return {'outcome': 'READOPTED', 'task': slot['task_id'], 'commit': slot['commit']}
             pending = any(s['state'] == 'held' and s['attempt'] == 1 for s in current)
             if any(state.worker_live(s) for s in current):
                 if pending or any(s['attempt'] == 2 and state.worker_live(s) for s in current):

@@ -205,6 +205,40 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
 
 
+    def readopt_fixture(self):
+        root, commit = self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason=state.SCOPE_HOLD + " or ownership: {'outside': ['A.txt']}")
+        from types import SimpleNamespace
+        args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, profile='', parallel=2,
+            max_workers=None, worker_command=json.dumps([sys.executable, '-c', 'pass']), worker_host='auto',
+            worker_profile=None, worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            self.assertEqual(self.module().retry_held(args)['outcome'], 'RETRIED')
+        slot = state.slots(self.common)[0]
+        dispatch.stop(slot['worker'])
+        state.transition(self.repo, self.owner, 'A', 'held', reason='retry made no change')
+        return args, commit
+
+    def test_a_retry_without_a_commit_reverifies_the_first_commit_once(self):
+        args, commit = self.readopt_fixture()
+        module = self.module()
+        result = module.retry_held(args)
+        self.assertEqual(result, {'outcome': 'READOPTED', 'task': 'A', 'commit': commit})
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot['branch']), ('reported', 2, 'autowork/A'))
+        self.assertEqual(len(slot['previous_attempts']), 2)
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+
+    def test_a_readopted_commit_that_fails_again_stays_held(self):
+        args, _ = self.readopt_fixture()
+        module = self.module()
+        self.assertEqual(module.retry_held(args)['outcome'], 'READOPTED')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10)['outcome'], 'HELD')
+        self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+
     def test_retry_refill_enforces_running_retry_timeout(self):
         import time
         from types import SimpleNamespace

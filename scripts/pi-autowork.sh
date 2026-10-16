@@ -887,6 +887,10 @@ while :; do
         [[ $MODE == once && -z $ONCE_TASK ]] && { ONCE_TASK=$id; DRAINING=1; }  # no second task
         note_state "$id" running "worker started"
       done ;;
+    READOPTED)
+      id=$(jq -r .task <<<"$result")
+      SEEN[$id]=''
+      say "$id: the retry made no change; re-verifying the first attempt's commit" ;;
     WAITING)
       waiting=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | (.[:4] | join("; ")) + (if length > 4 then " (+\(length - 4) more; see --status)" else "" end)' <<<"$result" 2>/dev/null)
       [[ $waiting != "$LAST_WAITING" && -n $waiting ]] && say "Waiting: $waiting"

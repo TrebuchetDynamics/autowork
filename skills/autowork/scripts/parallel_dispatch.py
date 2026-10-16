@@ -111,7 +111,8 @@ def resource_gate(running, min_free_mb):
 
 
 def data_dir(common, slot):
-    return execution.safe_path(common / 'slot-data' / slot['task_id'] / f'attempt-{slot["attempt"]}')
+    # A readopted slot keeps the first attempt's report and logs.
+    return execution.safe_path(common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}')
 
 
 def meta(common, slot):

@@ -210,6 +210,10 @@ claim of a tagged release, completed installation or live workflow qualification
 - Parallel Autowork no longer holds every task without `Touches:` at integration: a
   task dispatched alone may change its own files (coordinator files and other
   slots' files still conflict).
+- A task held for changing files outside its scope, whose fresh retry then made no
+  commit, now has its first commit verified once more (`READOPTED`) instead of
+  staying held: such retries usually decline to redo work the hold called out of
+  scope, which stranded completed work after the scope rule was fixed.
 
 - Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
   every other task: such a claim is not dispatched and still blocks its dependents and
