@@ -135,6 +135,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/autowork blockers [repo|name]`: an interview that resolves what blocks a
+  repository's queue with the owner, one question at a time, easiest first (effort from
+  the blocker's kind: quick, decision, input, investigate; then most tasks unblocked).
+  It reads the runner's BLOCKERS.md block or the engine's status, records each answer
+  as TODO.md planning, commits only planning files and never manages runners.
+
 - A runner reads its repository's settings file
   (`~/.config/pi-autowork/<repository>.env`, the file `--install-service` writes) whichever
   way it is started, so `tx autowork` in tmux keeps settings such as the model,
