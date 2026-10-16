@@ -566,7 +566,10 @@ class Coordinator:
             rows = json.loads(listing or '[]')
         except ValueError:
             return
-        for task in [r.get('id') for r in rows if isinstance(r, dict)]:
+        # A task with a slot keeps the scope it was dispatched with: a Touches commit for it
+        # would read as an answered question and re-queue it.
+        slotted = {r.get('task') for r in self.tasks() if r.get('state') not in ('waiting', None)}
+        for task in [r.get('id') for r in rows if isinstance(r, dict) and r.get('id') not in slotted]:
             if self.stop:
                 return
             if task in self.touches_tried:
@@ -814,6 +817,16 @@ class Coordinator:
         elif outcome == 'READOPTED':
             self.seen[result.get('task')] = ''
             LOG.say(f'{result.get("task")}: the retry made no change; re-verifying the first attempt\'s commit')
+        elif outcome == 'REQUEUED':
+            task = result.get('task')
+            self.seen[task] = ''
+            kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
+            if result.get('requeued') is False:
+                LOG.say(f'{task}: its TODO entry was removed or closed while it was held; set aside'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
+            else:
+                LOG.say(f'{task}: its TODO entry changed while it was held; running it fresh'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
         elif outcome in ('RESCOPED', 'RESUMED', 'REOFFERED'):
             self.seen[result.get('task')] = ''
             self.seen.pop('awaiting-' + str(result.get('task')), None)

@@ -154,6 +154,11 @@ claim of a tagged release, completed installation or live workflow qualification
   browser with textual-serve 1.1.3, on 127.0.0.1:8765 by default; `--view-only`
   disables every control key. Neither calls a model.
 
+- Answering a held task is editing its TODO.md entry: when the entry no longer matches
+  the contract its attempt was dispatched with, the next cycle sets the slot aside and
+  runs the task fresh (`REQUEUED`), its earlier work kept on `-set-aside-N` branches; a
+  removed entry is set aside without rerunning. A new runner handles held slots in its
+  first cycle. TOOLSET-120-fc (1).
 - `tx autowork` opens a live TUI on a terminal: every pi-autowork runner (tmux and
   service) with its state, blockers, held tasks and log, and keys to open a session,
   start or stop a runner, install or remove its service, set aside a held task and

@@ -190,6 +190,12 @@ nothing parallel was claimed or started.
   one that held it (a hold without the record counts as an older one). The attempt is
   unchanged and integration repeats every check; a coordinator passes a fingerprint of
   its reviewer so a corrected reviewer re-examines what the old one held.
+- **Answers re-queue:** each attempt records the contract it was dispatched with
+  (`contract.txt`). When a held task's TODO entry no longer matches it (the owner
+  answered by editing the entry), the next refill retires the slot as a set-aside
+  does and returns `REQUEUED`; the task then dispatches fresh. An entry that was
+  removed is retired with `requeued: false`. An unchanged entry stays held. A new
+  coordinator claims the lease before these checks, so a one-shot run sees them.
 - **Set aside:** `--parallel-set-aside TASK` retires a held slot with no attempt
   left, or an integrated one whose TODO entry was rewritten after validation (its
   merge stays in the main branch; the new entry is new work). Every attempt's

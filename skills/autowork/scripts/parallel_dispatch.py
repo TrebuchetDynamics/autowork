@@ -372,6 +372,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         if previous and previous.get('paused'):
             report.unlink(missing_ok=True)  # a resumed attempt reports afresh
         prompt_file = data / 'prompt.md'
+        (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
                                       adopted=idle.get(task['id'])))
         if task['id'] in idle:
