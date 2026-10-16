@@ -104,13 +104,16 @@ class TxAutoworkTests(unittest.TestCase):
     def test_ls_shows_tmux_runners_and_services(self):
         self.tx('autowork', str(self.repo))
         self.runner_lines(1)
-        result = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active'})
+        result = self.tx('autowork', 'ls', '--brief', env={'FAKE_SERVICE_STATE': 'active'})
         self.assertEqual(result.returncode, 0, result.stderr)
-        rows = {line.split()[0]: line.split()[1] for line in result.stdout.splitlines()[3:] if line.startswith('  ')}
+        rows = {line.split()[0]: line.split()[1] for line in result.stdout.splitlines()[1:]}
         self.assertEqual(rows, {'my-repo': 'tmux', 'svc': 'service'})
-        self.assertIn('my-repo', result.stdout)
+        self.assertIn('pi-autowork runners: 2 (2 unknown)', result.stdout)
+        full = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active'}).stdout
+        self.assertIn('my-repo  tmux detached', full)
+        self.assertIn('no status yet  ~/', full.replace(str(Path.home()), '~'))
         empty = self.tx('autowork', 'ls', env={'TX_TMUX': '/nonexistent'})
-        self.assertIn('(none)', empty.stdout)
+        self.assertIn('pi-autowork runners: none', empty.stdout)
 
     def test_stop_interrupts_the_runner_and_closes_the_session(self):
         self.tx('autowork', str(self.repo))
@@ -185,13 +188,37 @@ class TxAutoworkTests(unittest.TestCase):
         self.service_env('my-repo')
         service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo'}
         listing = self.tx('autowork', 'ls', env=service).stdout
-        self.assertIn('Health', listing)
-        self.assertRegex(listing, r'working [45]m; 2 running, 5 waiting')
+        self.assertIn('pi-autowork runners: 1 (1 working)', listing)
+        self.assertRegex(listing, r'my-repo  service running  working for [45] min\n  2 running, 5 waiting  ')
+        self.assertRegex(self.tx('autowork', 'ls', '--brief', env=service).stdout,
+                         r'my-repo\s+service\s+working [45]m\s+2 running, 5 waiting')
         (state / 'runner.json').write_text(json.dumps({'pid': 999999999, 'repo': str(self.repo)}))
-        self.assertIn('not running; 2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
+        self.assertIn('not running\n  2 running, 5 waiting', self.tx('autowork', 'ls', env=service).stdout)
         unknown = self.tx('autowork', 'ls', env={'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'other'})
-        self.assertEqual(unknown.returncode, 0, unknown.stderr)  # a service without settings has no health
-        self.assertRegex(unknown.stdout, r'other\s+service\s+running\s+-')
+        self.assertEqual(unknown.returncode, 0, unknown.stderr)  # a service without settings has no status
+        self.assertIn('other  service running  unknown\n  no status yet', unknown.stdout)
+
+    def test_ls_says_what_blocks_a_stalled_runner_and_lists_held_tasks(self):
+        state = self.base / 'state' / 'key'
+        state.mkdir(parents=True)
+        (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(self.repo)}))
+        roots = [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19, 'reason': ''},
+                 {'id': 'T-9', 'kind': 'held', 'blocks': 2, 'reason': 'worker reported a blocker: needs a key'},
+                 {'id': 'T-1', 'kind': 'running', 'blocks': 4, 'reason': ''}]
+        status = {'state': 'stalled', 'since': time.time() - 600, 'waiting': 23, 'roots': roots,
+                  'held': [{'task': 'T-9'}]}
+        (state / 'status.json').write_text(json.dumps(status))
+        service = {'FAKE_SERVICE_STATE': 'active', 'FAKE_SERVICE_NAME': 'my-repo', 'COLUMNS': '200'}
+        self.service_env('my-repo')
+        listing = self.tx('autowork', 'ls', env=service).stdout
+        self.assertIn('  19 wait on TASK-036: outside condition or task not in Now/Next\n', listing)
+        self.assertIn('  2 wait on T-9: held for a person — worker reported a blocker: needs a key\n', listing)
+        self.assertNotIn('T-1', listing)  # moving work is not a blocker
+        narrow = self.tx('autowork', 'ls', env={**service, 'COLUMNS': '40'}).stdout
+        self.assertTrue(all(len(line) <= 40 for line in narrow.splitlines()[:-1]), narrow)
+        status.update(state='working', active_workers=1)
+        (state / 'status.json').write_text(json.dumps(status))
+        self.assertIn('  held: T-9\n', self.tx('autowork', 'ls', env=service).stdout)
 
     def test_stop_points_a_service_runner_to_systemctl(self):
         self.service_env('my-repo')

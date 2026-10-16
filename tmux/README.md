@@ -18,7 +18,7 @@ gives one place to see every runner, whichever way it runs.
 | Command | What it does |
 |---|---|
 | `tx autowork <name\|repo\|.>` | Start the repository's runner in tmux session `pi-autowork-<repo-name>`, or attach to it |
-| `tx autowork ls` | Every runner, tmux and service, with its health (`working 54m; 1 running, 10 waiting`) |
+| `tx autowork ls [--brief]` | Every runner, tmux and service: its state and for how long, workers running, waiting and held, and what a blocked or stalled runner waits on; `--brief` is one line each |
 | `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
 | `tx autowork logs [-f] [name\|repo\|.]` | Recent output: the service journal, or the tmux pane; `-f` follows the journal or attaches |
 | `tx autowork stop <name\|repo\|.>` | Ctrl+C a tmux runner, wait for it to stop cleanly, close the session |
@@ -48,8 +48,22 @@ tx autowork stop my-project
   attempt, merges finished work and exits; `tx` waits for it (up to
   `TX_AUTOWORK_STOP_TIMEOUT` seconds, default 300) before closing the session. The
   pane stays open after the runner exits on its own, so its last lines remain.
-- Health comes from each runner's `status.json` under `~/.local/state/pi-autowork`
-  (the same record as `pi-autowork.sh --fleet`), so `ls` is instant; it needs `jq`.
+- `ls` reads each runner's `status.json` under `~/.local/state/pi-autowork` (the same
+  record as `pi-autowork.sh --fleet`), so it is instant; it needs `jq`. Lines are cut
+  to the terminal width, so it reads on a phone:
+
+  ```text
+  pi-autowork runners: 4 (2 working, 2 stalled)
+
+  india  service running  stalled for 272 min
+    0 running, 23 waiting  ~/git/games/india
+    19 wait on TASK-036: outside condition or task not in Now/Next
+    5 wait on TASK-035: outside condition or task not in Now/Next
+
+  sierra  service running  working for 39 min
+    1 running, 40 waiting, 5 held  ~/git/sierra
+    held: TASK-027, TASK-023, TASK-022, TASK-021, TASK-020
+  ```
 
 ## Files
 

@@ -142,6 +142,10 @@ claim of a tagged release, completed installation or live workflow qualification
 - `tx autowork` takes a runner name as well as a path, shows each runner's health in
   `ls`, and adds `status` (the runner's full status) and `logs [-f]` (the service
   journal or the tmux pane) for tmux and service runners alike.
+- `tx autowork ls` says what each runner is doing: its state and for how long,
+  workers running, waiting and held, the held task IDs, and for a blocked or stalled
+  runner the tasks or conditions it waits on (`19 wait on TASK-036: ...`). Lines fit
+  the terminal width; `--brief` keeps one line per runner.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),

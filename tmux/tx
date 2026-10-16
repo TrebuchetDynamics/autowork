@@ -106,7 +106,9 @@ Usage:
                           pi-autowork-<repo-name>, or attach to it. Refused while
                           the pi-autowork@<repo-name> systemd service is enabled
                           or active: the service is the primary way to run it.
-  tx autowork ls          List pi-autowork runners (tmux and services) with health.
+  tx autowork ls [--brief]
+                          Every pi-autowork runner (tmux and services): state, workers,
+                          and what blocks a stalled one; --brief is one line each.
   tx autowork status [name|repo|.]
                           The runner's full status: tasks, workers, blockers.
   tx autowork logs [-f] [name|repo|.]
@@ -1008,8 +1010,10 @@ autowork_start() {
   exec "$TMUX_BIN" attach-session -t "=$session"
 }
 
-# One line of health per repository, from the runner's own status.json (written
-# every cycle; the same source as pi-autowork.sh --fleet). Prints repo<TAB>health.
+# Health per repository from the runner's own status.json (written every cycle; the
+# same record as pi-autowork.sh --fleet). One TSV row per runner:
+# repo, state, minutes in it, running, waiting, held, blockers (joined by \x1f), held IDs;
+# "-" marks an empty field, since `read` would collapse two adjacent tabs.
 autowork_health() {
   command -v jq >/dev/null 2>&1 || return 0
   local folder pid
@@ -1017,18 +1021,42 @@ autowork_health() {
     [[ -f "$folder/status.json" || -f "$folder/runner.json" ]] || continue
     pid=$(jq -r '.pid // empty' "$folder/runner.json" 2>/dev/null || true)
     jq -rs --arg now "$(date +%s)" --arg alive "$([[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && echo 1)" '
+      def what: {runner: "the runner cannot dispatch", held: "held for a person",
+                 claim: "claimed by another session", outside: "outside condition or task not in Now/Next",
+                 cycle: "dependency cycle"}[.kind] // .kind;
       (.[0] // {}) as $s | (.[1] // {}) as $r | ($s.repo // $r.repo) as $repo | select($repo)
-      | (if $alive != "1" then "not running" else ($s.state // "starting") end) as $state
-      | (if $s.since and $alive == "1" then " \((($now | tonumber) - $s.since) / 60 | floor)m" else "" end) as $for
-      | "\($repo)\t\($state)\($for); \($s.active_workers // 0) running, \($s.waiting // 0) waiting"' \
-      "$folder/status.json" "$folder/runner.json" 2>/dev/null || true
+      | [$repo,
+         (if $alive != "1" then "not running" else ($s.state // "starting") end),
+         (if $s.since and $alive == "1" then ((($now | tonumber) - $s.since) / 60 | floor | tostring) else "-" end),
+         ($s.active_workers // 0 | tostring), ($s.waiting // 0 | tostring), (($s.held // []) | length | tostring),
+         ([($s.roots // [])[] | select(.kind | IN("runner", "held", "claim", "outside", "cycle"))
+           | "\(.blocks // 0) wait on \(.id | tostring | gsub("\\s+"; " ")): \(what)\(if .reason and .reason != "" and .kind != "outside" then " — \(.reason | gsub("\\s+"; " "))" else "" end)"]
+          | .[:3] | join("\u001f") | if . == "" then "-" else . end),
+         ([($s.held // [])[] | .task] | join(", ") | if . == "" then "-" else . end)]
+      | @tsv' "$folder/status.json" "$folder/runner.json" 2>/dev/null || true
   done
 }
 
+autowork_width() {
+  local cols=${COLUMNS:-}
+  [[ -z "$cols" && -t 1 ]] && cols=$(tput cols 2>/dev/null || true)
+  printf '%s\n' "${cols:-100}"
+}
+
+autowork_fit() {  # print $2 cut to width $1
+  local width=$1 text=$2
+  (( ${#text} > width )) && text="${text:0:$((width - 3))}..."
+  printf '%s\n' "$text"
+}
+
 autowork_list() {
-  [[ $# -eq 0 ]] || die "autowork ls: takes no arguments"
-  local -A mode=() repo=() state=() health=()
-  local name path attached unit sub line
+  local brief=0
+  case "${1:-}" in
+    --brief|-b) brief=1; shift ;;
+  esac
+  [[ $# -eq 0 ]] || die "autowork ls: takes only --brief"
+  local -A mode=() repo=() state=()
+  local name path attached unit sub
   if command -v "$TMUX_BIN" >/dev/null 2>&1; then
     while IFS=$'\t' read -r name path attached; do
       [[ "$name" == "$AUTOWORK_PREFIX"* ]] || continue
@@ -1049,33 +1077,78 @@ autowork_list() {
       fi
     done < <("$SYSTEMCTL_BIN" --user list-units 'pi-autowork@*' --all --plain --no-legend 2>/dev/null || true)
   fi
-  printf 'pi-autowork runners\n\n'
   if (( ${#mode[@]} == 0 )); then
-    printf '  (none)  start one with: tx autowork <repo>   or   pi-autowork.sh --install-service --repo <repo>\n'
+    printf 'pi-autowork runners: none\n  start one with: tx autowork <repo>   or   pi-autowork.sh --install-service --repo <repo>\n'
     return 0
   fi
-  local -A by_repo=()
-  while IFS=$'\t' read -r path line; do
-    [[ -n "$path" ]] && by_repo[$path]=$line
+  local -A health=() since=() counts=() blockers=() held=()
+  local hrepo hstate hmin hrun hwait hheld hblock hids
+  while IFS=$'\t' read -r hrepo hstate hmin hrun hwait hheld hblock hids; do
+    [[ -n "$hrepo" ]] || continue
+    [[ "$hmin" == - ]] && hmin=""
+    [[ "$hblock" == - ]] && hblock=""
+    [[ "$hids" == - ]] && hids=""
+    health[$hrepo]=$hstate
+    since[$hrepo]=$hmin
+    counts[$hrepo]="$hrun running, $hwait waiting"
+    [[ "$hheld" == 0 ]] || counts[$hrepo]+=", $hheld held"
+    blockers[$hrepo]=$hblock
+    held[$hrepo]=$hids
   done < <(autowork_health)
-  local key
-  for name in "${!mode[@]}"; do
-    key=${repo[$name]:-}
-    health[$name]=-
-    [[ -n "$key" && -n "${by_repo[$key]+x}" ]] && health[$name]=${by_repo[$key]}
+
+  local width key st label summary="" color
+  width=$(autowork_width)
+  local -A tally=()
+  local -a names
+  mapfile -t names < <(printf '%s\n' "${!mode[@]}" | sort)
+  for name in "${names[@]}"; do
+    key=${repo[$name]:-'(no repository)'}
+    st=${health[$key]:-unknown}
+    tally[$st]=$(( ${tally[$st]:-0} + 1 ))
   done
-  local name_w=4 mode_w=4 state_w=5 health_w=6
-  for name in "${!mode[@]}"; do
-    (( ${#name} > name_w )) && name_w=${#name}
-    (( ${#mode[$name]} > mode_w )) && mode_w=${#mode[$name]}
-    (( ${#state[$name]} > state_w )) && state_w=${#state[$name]}
-    (( ${#health[$name]} > health_w )) && health_w=${#health[$name]}
+  for st in working idle paused blocked stalled "not running" "not cycling" starting unknown; do
+    [[ -n "${tally[$st]:-}" ]] && summary+="${summary:+, }${tally[$st]} $st"
   done
-  printf '  %-*s  %-*s  %-*s  %-*s  %s\n' "$name_w" Name "$mode_w" Mode "$state_w" State "$health_w" Health Repository
-  while read -r name; do
-    printf '  %-*s  %-*s  %-*s  %-*s  %s\n' "$name_w" "$name" "$mode_w" "${mode[$name]}" "$state_w" "${state[$name]}" \
-      "$health_w" "${health[$name]}" "$(display_path "${repo[$name]:-?}")"
-  done < <(printf '%s\n' "${!mode[@]}" | sort)
+  printf 'pi-autowork runners: %d (%s)\n' "${#names[@]}" "$summary"
+
+  if (( brief )); then
+    local name_w=4
+    for name in "${names[@]}"; do (( ${#name} > name_w )) && name_w=${#name}; done
+    for name in "${names[@]}"; do
+      key=${repo[$name]:-'(no repository)'}
+      st=${health[$key]:-unknown}
+      label="$st${since[$key]:+ ${since[$key]}m}"
+      autowork_fit "$width" "$(printf '  %-*s  %-7s  %-14s  %s' "$name_w" "$name" "${mode[$name]}" "$label" "${counts[$key]:--}")"
+    done
+    return 0
+  fi
+
+  local line b
+  for name in "${names[@]}"; do
+    key=${repo[$name]:-'(no repository)'}
+    st=${health[$key]:-unknown}
+    case "$st" in
+      working|idle) color=32 ;;
+      blocked|paused|starting) color=33 ;;
+      *) color=31 ;;
+    esac
+    label="$st${since[$key]:+ for ${since[$key]} min}"
+    printf '\n'
+    line="$name  ${mode[$name]} ${state[$name]}  "
+    if (( TX_USE_COLOR )); then
+      printf '%s\033[%sm%s\033[0m\n' "$(autowork_fit "$width" "$line")" "$color" "$label"
+    else
+      autowork_fit "$width" "$line$label"
+    fi
+    autowork_fit "$width" "  ${counts[$key]:-no status yet}  $(display_path "${repo[$name]:-?}")"
+    if [[ -n "${blockers[$key]:-}" && "$st" != working ]]; then
+      while IFS= read -r b; do
+        [[ -n "$b" ]] && autowork_fit "$width" "  $b"
+      done < <(printf '%s\n' "${blockers[$key]}" | tr '\037' '\n')
+    elif [[ -n "${held[$key]:-}" ]]; then
+      autowork_fit "$width" "  held: ${held[$key]}"
+    fi
+  done
   printf '\nDetails: tx autowork status <name>   Output: tx autowork logs [-f] <name>\n'
 }
 
