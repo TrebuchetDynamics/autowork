@@ -590,7 +590,8 @@
         "TOOLSET-115-bf",
         "TOOLSET-116-c1",
         "TOOLSET-117-cb",
-        "TOOLSET-118-68"
+        "TOOLSET-118-68",
+        "TOOLSET-119-2b"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -600,9 +601,9 @@
     "tasks": [
       "TOOLSET-099-87",
       "TOOLSET-115-bf",
-      "TOOLSET-116-c1",
       "TOOLSET-117-cb",
       "TOOLSET-118-68",
+      "TOOLSET-119-2b",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -717,6 +718,16 @@
       "section": "Next",
       "status": "open",
       "title": "Separate worker, test and memory budgets in the parallel resource gate"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-115-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-119-2b",
+      "section": "Next",
+      "status": "open",
+      "title": "Record intent before side effects in worktree creation and slot transitions"
     },
     {
       "depends_on": [
