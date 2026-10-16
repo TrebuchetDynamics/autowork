@@ -2084,3 +2084,24 @@ Source section: Now
 - Verification: Focused checker suite passed 11 tests, including four symlink placements and checkout aliases. Independent review approved the exact code/test/docs hashes. Initial full gate ran 563/712/212/8 tests but failed one existing Pi restart assertion comparing whole timestamped log lines; its focused retry and a fresh complete 563-test top-level directory passed without code changes. Combined directory evidence passes; the original full invocation remains failed. One skip and eight excluded modules remain; ResourceWarnings were emitted.
 - Method: Ponytail bundled fallback; reuse pathlib and the existing discovery loop; omit new dependencies and sandbox claims. `git diff --check` passed.
 - Exclusions: No live tests, deployment, scheduler changes, push or upstream Agent edits. This is a static discovery boundary, not a hostile filesystem-race sandbox.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-105-79 — Make the Pi restart PID assertion independent of log timestamps
+
+- [x] TOOLSET-105-79 — Make the Pi restart PID assertion independent of log timestamps
+- Status: done
+- Evidence: Deterministic original assertion failed `2 != 1`; repaired focused journey and full 40-test Pi module passed. Negative replay rejected a changed PID, one startup and no startups. Independent exact-source review approved and reran the focused journey. `python3 scripts/check.py` passed 563/712/212/8 offline tests, one skip/eight exclusions. No runtime or live-model qualification change.
+- Goal: TEST-SUITE
+- Sources: [verification](docs/testing.md#verify), tests/test_pi_autowork.py, scripts/pi-autowork.sh.
+- Scope: Repair the idle-update regression's comparison of timestamped startup lines; force different display timestamps across the exec restart and compare actual process IDs. Preserve update, queue completion and signal-exit assertions.
+- Acceptance: The real fake-Pi update journey passes with different startup timestamps and proves at least two startup events retain the original runner PID; different PIDs still fail the assertion.
+- Checks: Deterministic old-assertion failure, focused restart test, complete Pi module, `python3 scripts/check.py`, independent review, ledger validation and whitespace check.
+- Dependencies: None.
+- Ownership: Current Toolset coordinator under autonomous repository authority.
+- Touches: tests/test_pi_autowork.py, docs/testing.md, CHANGELOG.md.
+- Exclusions: No runner runtime change, live models, installed profile edits, push or deployment.
+- Planner's call: Small independent fixture correction. Skip TOOLSET-099-87's already separated live qualification under TOOLSET-096-7e; no permission for that excluded operation is inferred. Choose deterministic display-time variation rather than sleeps across a real minute boundary or weaker restart assertions.

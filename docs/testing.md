@@ -20,6 +20,13 @@ claiming or starting anything.
 
 ## Verify
 
+The fake-Pi idle-update journey forces different human-readable log timestamps
+before and after an exec restart. It requires multiple startup records bearing the
+original runner PID, alongside the update, completed-queue and interrupt-exit
+assertions. Timestamp variation is not a process-identity change (TOOLSET-105-79).
+Only display times are replaced; scheduling clocks and ISO timestamps stay real.
+This is offline control-flow evidence, not live Pi/model qualification.
+
 Native response framing regressions preserve complete answers containing embedded
 Response headings, Unicode and long prompts. The collector shares the consultation
 cache's character-count parser, reads native documents up to 256 KiB, and redacts

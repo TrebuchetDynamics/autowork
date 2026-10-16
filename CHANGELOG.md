@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The offline Pi idle-update regression compares runner PIDs rather than whole
+  timestamped startup lines (TOOLSET-105-79). A deterministic display-minute change
+  reproduces the former false failure without weakening restart identity checks.
+
 - Offline test discovery skips symlinks in every maintained-directory component
   below the checkout root, not just the final directory (TOOLSET-104-cc). Linked
   workflow parents can no longer redirect discovery into external test modules;
