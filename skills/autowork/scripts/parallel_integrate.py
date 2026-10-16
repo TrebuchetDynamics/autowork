@@ -57,14 +57,17 @@ class Hold(ValueError):
 
 class ReportedBlocker(Hold):
     """The worker's own report names work it could not finish."""
-    def __init__(self, reason):
-        super().__init__('blocker', reason)
+    def __init__(self, reason, requested=()):
+        if requested:
+            super().__init__('scope_request', reason, requested=list(requested))
+        else:
+            super().__init__('blocker', reason)
 
 
 def hold(common, slot, reason, **updates):
     slot = state.change(common, slot, 'held', dict(updates, reason=reason))
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason,
-            **{k: updates[k] for k in ('cause', 'outside') if k in updates}}
+            **{k: updates[k] for k in ('cause', 'outside', 'requested') if k in updates}}
 
 
 def expected_branch(slot):
@@ -96,7 +99,7 @@ def verify(repo, common, slot, contracts):
     files = changed(repo, slot['baseline'], commit)
     blockers = state.report_blockers(common, slot) if isinstance(report, dict) else None
     if blockers:
-        raise ReportedBlocker(state.blocker_reason(blockers))
+        raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
     live = report.get('pending_live', []) if isinstance(report, dict) else None
     if not isinstance(live, list) or not all(isinstance(item, str) for item in live):
         raise ValueError('report.json pending_live must be a list of strings')
@@ -627,6 +630,17 @@ def retry_held(args):
                     slot = state.rescope(common, widened, touches[widened['task_id']])
                     return {'outcome': 'RESCOPED', 'task': slot['task_id'], 'commit': slot['commit'],
                             'touches': slot['touches']}
+            # A worker that asked for files outside Touches resumes in its own worktree, on
+            # the same attempt, once its current Touches cover what it asked for.
+            requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'
+                        and not state.worker_live(s)]
+            if requests:
+                touches = {t['id']: t['fields'].get('Touches', '') for t in dispatch.contracts(repo, args.tasks, args.plan)}
+                covered = next((s for s in requests if s['task_id'] in touches and touches[s['task_id']].strip()
+                                and not plan.overlap(s.get('requested') or [], plan.paths(touches[s['task_id']]), [])['outside']), None)
+                if covered is not None:
+                    slot = state.resume_widened(common, covered)
+                    return {'outcome': 'RESUMED', 'task': slot['task_id'], 'touches': touches[slot['task_id']]}
             again = [s for s in current if state.readoptable(s)]
             eligible = {t['id'] for t in dispatch.contracts(repo, args.tasks, args.plan)} if again else set()
             again = next((s for s in again if s['task_id'] in eligible), None)

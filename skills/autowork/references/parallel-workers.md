@@ -171,6 +171,12 @@ nothing parallel was claimed or started.
   `outside`, the changed files outside Touches), `overlap`, `report`, `conflict`,
   `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice) or
   `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+- **Scope requests:** a worker blocked only because it must change files outside
+  `Touches:` lists them in its report's `needs_touches` and stops without committing.
+  The slot is held with cause `scope_request` and `requested`; once the task's
+  current `Touches:` cover every requested path, the next refill returns `RESUMED` and
+  the worker continues in its own worktree on the same attempt, its changes intact.
+  Until then it waits like any hold a person must resolve.
 - **Rescope:** when a commit was held only for `scope` and the task's current
   `Touches:` now cover every `outside` file, the next refill returns `RESCOPED` and
   sets that commit back to `reported`, once, before any fresh retry. Integration

@@ -28,9 +28,11 @@ TRANSITIONS = {
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
-          'outside'}
-# Hold causes no fresh attempt can fix: the worker itself reported what it needs.
-NEEDS_PERSON = ('blocker',)
+          'outside', 'requested'}
+# Hold causes no fresh attempt can fix: the worker itself reported what it needs
+# (scope_request: files outside Touches, listed in `requested`).
+NEEDS_PERSON = ('blocker', 'scope_request')
+COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
 def common_dir(repo):
@@ -322,6 +324,37 @@ def report_blockers(common, slot):
     return [b.strip() for b in blockers if b.strip()]
 
 
+def report_scope_request(common, slot):
+    """Repository-relative paths the worker's report asks to add to Touches (needs_touches)."""
+    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+    try:
+        report = execution.read(execution.safe_path(data / 'report.json'))
+    except (ValueError, OSError):
+        return []
+    wanted = report.get('needs_touches') if isinstance(report, dict) and report.get('task') == slot['task_id'] else None
+    if not isinstance(wanted, list):
+        return []
+    paths = []
+    for item in wanted:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        path = item.strip().strip('`')
+        parts = Path(path).parts
+        if path.startswith(('/', '~')) or '..' in parts or path.rstrip('/') in COORDINATOR_FILES:
+            return []  # a malformed request is not a request: leave it to a person
+        if path not in paths:
+            paths.append(path)
+    return paths
+
+
+def resume_widened(common, old):
+    """A scope request whose Touches now cover it resumes in its worktree on the same
+    attempt (it was not a failure). Caller holds writer.lock."""
+    value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'requested', 'outside')}
+    value.update(state='interrupted', paused=True)
+    return write_slot(common, value, old)
+
+
 def blocker_reason(blockers):
     first = ' '.join(blockers[0].split())
     more = f' (+{len(blockers) - 1} more in report.json)' if len(blockers) > 1 else ''
@@ -393,6 +426,8 @@ def reconcile(repo, owner_pid):
                     # It stopped on purpose and said why; resuming would only repeat that
                     # (sierra TASK-022 spent both attempts this way). Its changes stay put.
                     target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
+                    if requested := report_scope_request(common, slot):
+                        updates.update(cause='scope_request', requested=requested)
                 elif dirty:
                     target, updates = 'interrupted', {'reason': 'dead worker with uncommitted changes'}
                 else:

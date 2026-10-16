@@ -170,6 +170,14 @@ elif behavior == 'extra':  # also changes a file its Touches did not foresee
                    'changed_files': [task + '-extra.txt', task + '.txt'], 'checks': [], 'blockers': [],
                    'changelog': ''}, out)
     finish(text='done')
+elif behavior == 'needs_file':  # needs a file outside its Touches: stops and asks for it
+    open(task + '.txt', 'w').write('half ' + task + '\n')
+    open(task + '-extra.txt', 'w').write('helper\n')
+    with open(field('Report file'), 'w') as out:
+        json.dump({'task': task, 'commit': None, 'changed_files': [], 'checks': [],
+                   'blockers': [task + '-extra.txt is outside Touches'], 'needs_touches': [task + '-extra.txt'],
+                   'changelog': ''}, out)
+    finish(text='blocked')
 elif behavior == 'needs_vendor':  # builds only with the ignored vendor/ tree of the main checkout
     if os.path.exists('vendor/sdk.txt'):
         work(); finish(text='done')
@@ -736,6 +744,43 @@ class EngineTests(Fixture):
         self.assertNotIn('widened them', result.stdout)
         self.assertIn('A: failed', result.stdout)
         self.assertFalse((self.repo / 'A-extra.txt').exists())
+
+    def test_a_worker_asking_for_files_outside_inferred_touches_resumes_after_widening(self):
+        """sierra TASK-024, bravo TASK-005: a worker needed one more file and stopped."""
+        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        self.plan({'worker:A': ['needs_file', 'extra']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt); widened them and '
+                      'resuming it in its worktree', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        workers = [r for r in self.runs('worker') if r['task'] == 'A']
+        self.assertEqual(len(workers), 2)
+        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])  # resumed in the same worktree
+        self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
+        self.assertNotIn('A: failed', result.stdout)  # a request is not a failure
+
+    def test_touches_an_older_run_inferred_are_recognized_from_its_commit(self):
+        """Touches inferred before the runner kept a record (sierra TASK-024) can still be widened."""
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', ''))
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        (self.repo / 'TODO.md').write_text(text)  # as an earlier pi-autowork run recorded it
+        self.git(self.repo, 'commit', '-qam', 'docs(tasks): declare Touches for A (pi-autowork)')
+        self.plan({'worker:A': ['needs_file', 'extra']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt)', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_a_worker_asking_for_files_outside_authored_touches_waits_for_a_person(self):
+        self.plan({'worker:A': ['needs_file']})
+        result = self.run_runner('--until-empty')
+        self.assertNotIn('widened them', result.stdout)
+        self.assertIn('A: failed — worker reported a blocker: A-extra.txt is outside Touches', result.stdout)
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
 
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""

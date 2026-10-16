@@ -127,6 +127,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- A worker blocked only by files outside `Touches:` lists them in `needs_touches`;
+  when the runner had inferred those Touches it widens them and the engine resumes the
+  worker in its own worktree on the same attempt (`RESUMED`), so the request is not a
+  failure. Touches a person wrote are never widened. Paused slots now show as
+  resuming instead of failed. (sierra TASK-024, bravo TASK-005.)
 - `tmux/` (copied from pi-toolset) with `tx autowork`: run a repository's pi-autowork
   runner in tmux session `pi-autowork-<repository name>` to watch or debug it,
   `tx autowork ls` to list tmux and service runners together, and

@@ -22,7 +22,11 @@ prompt = Path(sys.argv[1]).read_text()
 worktree = Path(sys.argv[2])
 task = re.search(r'^Task: (\S+)', prompt, re.M)[1]
 report = Path(re.search(r'^Report file: (\S+)', prompt, re.M)[1])
-spec = json.loads(Path(os.environ['FAKE_WORKER_SPEC']).read_text()).get(task, {})
+specs = json.loads(Path(os.environ['FAKE_WORKER_SPEC']).read_text())
+spec = specs.get(task, {})
+if 'then' in spec:  # the next run of this task follows `then`
+    specs[task] = spec['then']
+    Path(os.environ['FAKE_WORKER_SPEC']).write_text(json.dumps(specs))
 log = Path(os.environ['FAKE_WORKER_LOG'])
 
 
@@ -62,6 +66,7 @@ if spec.get('commit', True) and spec.get('files'):
                                       'pending_live': spec.get('pending_live', []), 'changelog': ''}))
 elif spec.get('blockers'):  # stopped on purpose: no commit, says why
     report.write_text(json.dumps({'task': task, 'commit': None, 'changed_files': sorted(spec.get('files', {})),
-                                  'checks': [], 'blockers': spec['blockers'], 'changelog': ''}))
+                                  'checks': [], 'blockers': spec['blockers'],
+                                  'needs_touches': spec.get('needs_touches', []), 'changelog': ''}))
 note('end')
 sys.exit(spec.get('exit', 0))
