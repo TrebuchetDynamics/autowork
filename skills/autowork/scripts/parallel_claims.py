@@ -8,14 +8,16 @@ only when every check passes:
 - its TODO.md / goals.json entry has not changed for ``idle_after`` seconds;
 - no branch named for the task has a commit, and no worktree on such a branch has
   a file change, within that time;
-- no live agent process works in such a worktree, and no active agent session is
-  in the canonical checkout (its task cannot be attributed, so nothing is adopted);
+- no live agent process works in such a worktree, and no active agent session in the
+  canonical checkout holds open a file inside the task's Touches (a task without Touches
+  waits for every such session: its files are unknown); idle sessions never count;
 - no note holds it: its own TODO entry, or any TODO.md line naming it, says to keep
   it open, holds it, forbids dispatch, or names a missing authority or approval.
 
 Prior work is never modified: adoption only lets a fresh worker start, and its
 prompt names the branches and worktrees to inspect and reuse.
 """
+import os
 from pathlib import Path
 import re
 import time
@@ -104,6 +106,22 @@ def hold_note(text, task):
     return None
 
 
+def attributable(todo, task, held):
+    """Whether a live session in the main checkout may be serving ``task``: it holds open a
+    file inside the task's Touches, or the task declares no Touches (its files are unknown)."""
+    import parallel_plan
+    try:
+        bodies = execution.goals_module().task_bodies(todo).get(task) or []
+        touches = execution.goals_module().task_fields(bodies[0][0]).get('Touches', '') if bodies else ''
+        declared = parallel_plan.paths(touches) if touches.strip() else []
+    except (ValueError, AttributeError):
+        return True
+    if not declared:
+        return True
+    held = sorted(held)
+    return bool(held) and len(parallel_plan.overlap(held, declared, [])['outside']) < len(held)
+
+
 def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
     """{task: evidence} for the claims in ``claims`` (task IDs) that are idle."""
     if not claims or idle_after <= 0:
@@ -114,9 +132,12 @@ def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
     # This pool's own workers (kind 'autowork') are not claims' owners; other sessions are.
     live = [w for w in workers if w.get('kind') == 'session' and w.get('active') is not False]
     main = execution.git(repo, 'worktree', 'list', '--porcelain').splitlines()[0][len('worktree '):]
-    if any({str(repo), main} & set(w.get('workspaces', [])) for w in live):
-        return {}  # an active session in the canonical or session checkout: its task is unknown
-    busy = {path for w in live for path in w.get('workspaces', [])}
+    # Active sessions in the canonical or session checkout: which claim they serve is known
+    # only from the files they hold open for writing (TOOLSET-120-fc 3).
+    shared = [w for w in live if {str(repo), main} & set(w.get('workspaces', []))]
+    held = {os.path.relpath(path, main) for w in shared for path in w.get('written') or []
+            if Path(path).is_relative_to(main)}
+    busy = {path for w in live for path in w.get('workspaces', [])} - {str(repo), main}
     worktrees = _worktrees(repo)
     try:
         todo = (repo / 'TODO.md').read_text()
@@ -126,6 +147,8 @@ def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
     for task in claims:
         if hold_note(todo, task):
             continue  # someone said to keep this claim as it is
+        if shared and attributable(todo, task, held):
+            continue  # a live session there may be working on it
         changed = _last_change(repo, task)
         if changed is None or now - changed < idle_after:
             continue

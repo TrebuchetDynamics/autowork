@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- An active agent session in the main checkout no longer holds off every idle-claim
+  adoption: it blocks only claims whose `Touches:` files it holds open for writing (and
+  claims without `Touches:`, whose files are unknown). Two owner sessions in sierra had
+  stopped all adoption. TOOLSET-120-fc (3).
 - A session in the main checkout blocks a runner's integration only when the merge
   changes a file that session holds open for writing or has left uncommitted there;
   unrelated sessions no longer hold verified work (sierra TASK-026 waited an hour).

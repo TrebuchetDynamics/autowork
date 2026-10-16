@@ -258,7 +258,9 @@ task fresh, keeping its earlier work on `-set-aside-N` branches. No command is n
 
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
-the task's entry, branches or worktrees and no live agent working there. The runner
+the task's entry, branches or worktrees and no live agent working there. An active session in
+the main checkout holds off only claims whose `Touches:` files it holds open (or
+claims without `Touches:`). The runner
 then takes the task over (never one a TODO.md note holds: kept open, on hold, not to be
 dispatched, or awaiting an authority or approval), logs `adopted an idle claim`, and its worker is pointed at
 any earlier work to reuse, which it never modifies.
