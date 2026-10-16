@@ -16,6 +16,14 @@ claim of a tagged release, completed installation or live workflow qualification
   main branch when the queue empties or it stops (Pi resolves a conflicting merge once;
   otherwise the merge is reported pending). See
   [continuous Autowork](docs/cross-host.md#run-autowork-continuously).
+- Parallel Autowork progress via `owner_cycle.py --parallel-status [--json]`,
+  with journal-derived elapsed/worker/integration/waiting metrics and a controlled
+  fake-worker ABC benchmark (`scripts/bench_parallel.py`). Offline regressions
+  cover concurrent independent workers and dependency-after-close ordering
+  (TOOLSET-089-72); real host qualification remains separate.
+- Parallel retry refill enforces worker deadlines before waiting. Task closure and
+  cleanup verify the validated contract even when its checkbox was checked or its
+  body was already archived; changed acceptance refuses closure.
 - `/toolset update status` and `hermes toolset doctor` list profiles whose plugin links
   to a working checkout, which load its current files at any gateway restart.
   `hermes toolset pin NAME [--dry-run]` replaces one link with a clone at

@@ -581,16 +581,6 @@
     },
     {
       "depends_on": [
-        "TOOLSET-088-a7"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-089-72",
-      "section": "Next",
-      "status": "open",
-      "title": "Report parallel progress and metrics, with an end-to-end fixture and benchmark"
-    },
-    {
-      "depends_on": [
         "TOOLSET-089-72"
       ],
       "goal": "PARALLEL",
@@ -1149,6 +1139,16 @@
       "section": "Done",
       "status": "done",
       "title": "Integrate finished workers one at a time and close tasks only after validation"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-088-a7"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-089-72",
+      "section": "Done",
+      "status": "done",
+      "title": "Report parallel progress and metrics, with an end-to-end fixture and benchmark"
     },
     {
       "depends_on": [],
