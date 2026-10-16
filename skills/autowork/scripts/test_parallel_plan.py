@@ -150,7 +150,7 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(result['dispatch'], [])
                 self.assertEqual([w['id'] for w in result['waiting']], ['A', 'B'])
 
-    def test_an_exhausted_hold_blocks_only_dependents_and_declared_overlap(self):
+    def test_an_exhausted_hold_blocks_only_its_dependents(self):
         from parallel_plan import plan
         held = task('H', '')  # failed twice, no Touches: would otherwise force everything to wait
         tasks = [task('S', 'package.json'), task('B', 'b.py'), task('D', 'd.py', deps='H.'),
@@ -159,9 +159,11 @@ class PlanTests(unittest.TestCase):
         self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
         result = plan(tasks[1:], parked=[held])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'O'])
-        self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency conflict with H', 'blocked_by': ['H']}])
-        result = plan([task('O', 'h.py')], parked=[task('H', 'h.py')])
-        self.assertEqual(result['waiting'], [{'id': 'O', 'reason': 'overlapping paths with held H', 'blocked_by': ['H']}])
+        self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency: held H', 'blocked_by': ['H']}])
+        # Its declared paths hold nothing: it reruns fresh from later code, never merges as is.
+        self.assertEqual([t['id'] for t in plan([task('O', 'h.py')], parked=[task('H', 'h.py')])['dispatch']], ['O'])
+        prerequisite = plan([task('P', 'p.py')], parked=[task('H', 'h.py', deps='P.')])
+        self.assertEqual([t['id'] for t in prerequisite['dispatch']], ['P'])  # what H needs still runs
 
     def test_dependencies_name_task_ids_not_the_prose_around_them(self):
         from parallel_plan import dependency_ids

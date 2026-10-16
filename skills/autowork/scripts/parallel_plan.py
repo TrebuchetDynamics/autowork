@@ -165,10 +165,11 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
     its dependents and tasks whose declared Touches or Resources overlap it, but
     its missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
     32 handed-off claims without Touches blocked every task).
-    ``parked`` contains contracts of held slots with no attempt left. Their work
-    waits for a person, not for the pool, so they block like a claim: dependents
-    and declared overlap only (all four fleet repositories, 2026-10-16: one
-    exhausted hold left every runner idle for seven hours).
+    ``parked`` contains contracts of held slots no attempt can finish. Their work
+    waits for a person, not for the pool, and only ever reruns fresh from the code
+    of that time, so they block their dependents only (2026-10-16: one exhausted
+    hold idled every runner for seven hours; then one held task's wide Touches
+    still held 34 sierra tasks).
     ``adopted`` names in_progress claims verified idle (parallel_claims): they are
     planned like open tasks.
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
@@ -197,10 +198,12 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
         return False
 
     def conflict(a, b, claim=False, reserved=False):
+        if b['id'] in held:  # waits for a person; only what needs it waits too
+            return 'dependency: held ' + b['id'] if depends(a, b) else ''
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
         if claim or reserved:  # idle claim or waiting task: only declared overlap matters
-            other = ('held ' if b['id'] in held else 'in_progress ' if claim else '') + b['id']
+            other = ('in_progress ' if claim else '') + b['id']
             if _shared(_touches(a), _touches(b)):
                 return 'overlapping paths with ' + other
             if _resources(a) & _resources(b):

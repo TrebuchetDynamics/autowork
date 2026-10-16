@@ -14,6 +14,9 @@ claim of a tagged release, completed installation or live workflow qualification
   into it. A worktree pushed to `origin/main` while the canonical `main` stayed behind,
   and the next local integration diverged from the remote.
 
+- A task held for a person now blocks only the tasks that depend on it, not tasks
+  whose declared paths overlap its own: it reruns fresh from later code and never
+  merges as is. One held sierra task with wide inferred Touches held up 34 others.
 - Autowork removes finished worktrees itself. Sessions created task worktrees and
   left them after merging; 10 integrated, clean worktrees had piled up in this
   repository, and a leftover `<repo>-autowork-<task>` path also blocks parallel
