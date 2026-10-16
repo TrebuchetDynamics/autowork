@@ -87,6 +87,9 @@ Without a subagent tool, read the tasks as that builder yourself. Sort the quest
   it and mark it as the planner's call.
 - **Theirs**: only the user can answer it, and the answer changes what gets built.
 
+Also confirm each executable task declares `Touches:` (or `Resources: exclusive`
+with a reason); add any that are missing before handoff.
+
 Bring the "theirs" pile in one message, most important first. That is the only
 question round the check produces. Until answered, keep just the affected tasks
 pending; independent tasks stay ready. Skip the check for a clear task, a
