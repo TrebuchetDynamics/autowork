@@ -206,7 +206,7 @@ def integration_worktree(repo, common, baseline):
     return path
 
 
-def integrate(repo, owner_pid, task, argv, timeout):
+def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
     if not argv or timeout is None or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('--integrate requires --run argv and a positive finite --timeout')
     repo, common = context(repo, owner_pid)
@@ -302,6 +302,8 @@ def integrate(repo, owner_pid, task, argv, timeout):
             with execution.lock(common / 'writer.lock'):
                 state.require_owner(common, owner_pid)
                 details = {'cause': exc.cause, **exc.details} if isinstance(exc, Hold) else {}
+                if reviewer:
+                    details['reviewed_by'] = reviewer  # which validation held it, for reverify
                 return hold(common, slot, str(exc), **details, **({'checks': check} if check is not None else {}))
 
 
@@ -572,6 +574,39 @@ def set_aside(repo, owner_pid, task):
                     history=str(target))
         return {'outcome': 'SET_ASIDE', 'task': task, 'previous_state': slot['state'],
                 'renamed': moved, 'history': str(target), 'requeued': requeued}
+
+
+VALIDATION_HOLD = 'integration validation failed'
+
+
+def reverifiable(slot, version):
+    """A commit held because validation or review failed, by a validator other than ``version``
+    (a hold without ``reviewed_by`` predates the record), not yet re-verified under it."""
+    return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
+            and (slot.get('cause') == 'validation'
+                 or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
+            and slot.get('reverified') != version and slot.get('reviewed_by') != version)
+
+
+def reverify(repo, owner_pid, task, version):
+    """Send a validation-held commit back to integration once per validator ``version``.
+
+    The coordinator passes a fingerprint of its validation (say its reviewer); when it
+    changes, a commit the old one held is checked again by the new one, once. Every
+    integration check repeats; the attempt is unchanged, so nothing new is dispatched.
+    """
+    if not isinstance(version, str) or not re.fullmatch(r'[A-Za-z0-9._:-]{1,80}', version):
+        raise ValueError('--reviewer-version must be a short identifier')
+    repo, common = context(repo, owner_pid)
+    with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
+        state.require_owner(common, owner_pid)
+        slot = slot_for(common, task)
+        if slot is None or not reverifiable(slot, version):
+            raise ValueError('reverify is only for a commit held by validation, once per validator version')
+        value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'checks', 'integration')}
+        value.update(state='reported', reverified=version)
+        slot = state.write_slot(common, value, slot)
+        return {'outcome': 'REVERIFY', 'task': task, 'commit': slot['commit'], 'version': version}
 
 
 def cleanup_worker(repo, common, slot):

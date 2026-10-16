@@ -571,6 +571,33 @@ class IntegrationTests(unittest.TestCase):
         with patch.object(dispatch, 'resource_gate', return_value=''):
             self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RETRIED')  # the ordinary path
 
+    def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
+        """flutter TASK-006: an old reviewer failed it for want of a device; the fix should count."""
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10, 'r0')['outcome'], 'HELD')
+        self.assertEqual(state.slots(self.common)[0]['cause'], 'validation')
+        with self.assertRaisesRegex(ValueError, 'once per validator version'):
+            module.reverify(self.repo, self.owner, 'A', 'r0')  # the reviewer that held it: no free second try
+        self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r1')['outcome'], 'REVERIFY')
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot['reverified']), ('reported', 1, 'r1'))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10)['outcome'], 'HELD')
+        with self.assertRaisesRegex(ValueError, 'once per validator version'):
+            module.reverify(self.repo, self.owner, 'A', 'r1')
+        self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r2')['outcome'], 'REVERIFY')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_only_validation_holds_are_reverified(self):
+        self.worker(files={'outside.txt': 'bad'})
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        with self.assertRaisesRegex(ValueError, 'only for a commit held by validation'):
+            module.reverify(self.repo, self.owner, 'A', 'r1')
+        legacy = dict(state.slots(self.common)[0], reason='integration validation failed or changed the integration tree')
+        legacy.pop('cause')
+        self.assertTrue(module.reverifiable(legacy, 'r1'))  # holds from before causes existed
+
     def test_coordinator_file_is_held_even_if_declared(self):
         todo = self.repo / 'TODO.md'
         todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, CHANGELOG.md'))

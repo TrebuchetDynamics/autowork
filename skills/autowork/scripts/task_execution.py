@@ -709,16 +709,20 @@ def parallel_main(args):
         if not args.owner_pid:
             raise ValueError('parallel mode requires --owner-pid of the persistent coordinator session')
         if sum(bool(v) for v in (args.wait, args.release, args.integrate, args.parallel_close,
-                                 args.parallel_pause, args.parallel_set_aside)) > 1:
+                                 args.parallel_pause, args.parallel_set_aside, args.parallel_reverify)) > 1:
             raise ValueError('choose one parallel operation: wait, release, integrate, close, pause or set-aside')
         if args.parallel_pause:
             result = parallel_state.pause(Path(args.consumer).expanduser().resolve(), args.owner_pid)
         elif args.integrate:
-            result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout)
+            result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout,
+                                                  args.reviewer_version)
         elif args.parallel_close:
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-close does not accept --run or --timeout')
             result = parallel_integrate.close(args.consumer, args.owner_pid, args.parallel_close)
+        elif args.parallel_reverify:
+            result = parallel_integrate.reverify(args.consumer, args.owner_pid, args.parallel_reverify,
+                                                 args.reviewer_version)
         elif args.parallel_set_aside:
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-set-aside does not accept --run or --timeout')
@@ -748,7 +752,7 @@ def parallel_main(args):
     print(json.dumps(result, indent=2))
     return 0 if result['outcome'] in ('DISPATCHED', 'WAITING', 'IDLE', 'CHANGED', 'TIMEOUT',
                                       'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED',
-                                      'PAUSED', 'SET_ASIDE', 'READOPTED', 'RESCOPED', 'RESUMED') else 1
+                                      'PAUSED', 'SET_ASIDE', 'READOPTED', 'RESCOPED', 'RESUMED', 'REVERIFY') else 1
 
 
 def main(argv=None):
@@ -790,6 +794,9 @@ def main(argv=None):
     parallel.add_argument('--parallel-close', metavar='TASK', help='Close and archive an integrated task with passing validation; clean only its owned worktree.')
     parallel.add_argument('--parallel-pause', action='store_true',
                           help='Before a deliberate stop: mark live workers so their interruption resumes the same attempt.')
+    parallel.add_argument('--parallel-reverify', metavar='TASK',
+                          help='Send a commit held by validation back to integration, once per --reviewer-version.')
+    parallel.add_argument('--reviewer-version', help='Fingerprint of the coordinator\'s validation, for --parallel-reverify.')
     parallel.add_argument('--parallel-set-aside', metavar='TASK',
                           help='Retire an exhausted held slot, or an integrated one whose TODO entry changed, keeping its '
                                'worktrees and branches renamed; the task then dispatches fresh.')
@@ -799,7 +806,7 @@ def main(argv=None):
     if args.parallel_status:
         try:
             if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close, args.parallel_pause,
-                    args.parallel_set_aside,
+                    args.parallel_set_aside, args.parallel_reverify,
                     args.run is not None, args.writers, args.parallel is not None)):
                 raise ValueError('--parallel-status cannot be combined with execution operations')
             import parallel_status
@@ -812,7 +819,7 @@ def main(argv=None):
     if args.json:
         parser.error('--json requires --parallel-status')
     if (args.parallel is not None or args.wait or args.integrate or args.parallel_close or args.parallel_pause
-            or args.parallel_set_aside):
+            or args.parallel_set_aside or args.parallel_reverify):
         return parallel_main(args)
     if args.writers:
         try:

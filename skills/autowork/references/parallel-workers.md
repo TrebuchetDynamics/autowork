@@ -183,6 +183,12 @@ nothing parallel was claimed or started.
   repeats every check, including other slots' files and coordinator files. Only a
   coordinator that inferred those Touches itself should widen them (pi-autowork
   does, and never touches a list a person wrote).
+- **Reverify:** `--integrate ... --reviewer-version V` records which validation held a
+  commit (`reviewed_by`). `--parallel-reverify TASK --reviewer-version V` sends a commit held
+  by validation back to `reported` once per version V, and only when V differs from the
+  one that held it (a hold without the record counts as an older one). The attempt is
+  unchanged and integration repeats every check; a coordinator passes a fingerprint of
+  its reviewer so a corrected reviewer re-examines what the old one held.
 - **Set aside:** `--parallel-set-aside TASK` retires a held slot with no attempt
   left, or an integrated one whose TODO entry was rewritten after validation (its
   merge stays in the main branch; the new entry is new work). Every attempt's
