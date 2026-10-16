@@ -60,7 +60,7 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 ### TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
 
 - [ ] TOOLSET-082 — Restore the OMH memory plugin on Hermes 0.22
-- Status: open
+- Status: in_progress
 - Goal: OMH-TRIM — Keep the OMH skills profiles use and drop the rest from every prompt.
 - Sources: [plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), [bundle defaults](plugins/defaults.json), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
 - Scope: On Hermes 0.22.0, loading OMH 3.0.0 logs "Plugin 'omh' skipped: requires hermes >=0.21.1,<0.22.0, running 0.22.0", and `hermes memory status` in a profile whose `memory.provider` is `omh` reports the plugin as not installed, so OMH memory is likely inactive fleet-wide. Confirm across profiles, find the OMH release or pin that supports Hermes 0.22, and update `plugins/defaults.json`'s pinned `omh.source` (or document the incompatibility and the safe interim provider) without changing memory stores.
@@ -73,7 +73,8 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Planner's call (2026-10-15 replan): split the live refresh of installed profiles into TOOLSET-098-5d so the reviewed offline pin can close; the live checks moved there unchanged.
 - Planner's call (2026-10-16 recovery): while canonical admission is busy, qualify this retained candidate rather than repeat the TOOLSET-064 hold. The first full gate exposed the already-fixed nested-profile diagnostic; merge the reviewed TOOLSET-064/097-41 candidate instead of duplicating its fix. Preserve all three original task IDs and keep integration pending, with no live profile changes.
 - Checks (2026-10-16): combined full offline gate passed 558/689/212/8 tests (one skip; eight modules excluded); focused OMH 28, Pi 40 and skill-description 1 passed; Bash syntax, docs/index validation and whitespace passed. The original failing gate remains failure evidence, not a pass.
-- Next action: Integrate this combined candidate after fresh canonical writer admission clears, then close and archive TOOLSET-082, TOOLSET-064 and TOOLSET-097-41. Last admission found one active canonical session and one idle session; no canonical write, push, deployment or native qualification was attempted.
+- Recovery qualification (2026-10-16): reconciled this task's TODO status with its existing `in_progress` index entry; isolated owner admission now returns `EXECUTE`. A fresh standalone Pi run passes all 40 tests in 166.821 seconds, resolving the prior combined-command timeout without changing runner code; the interrupted run remains incomplete evidence. Fresh OMH 28 and description 1 tests, goals/docs validation, Bash syntax and whitespace checks pass. Canonical main still matches 7882845; one active canonical session prevents integration. No new full offline gate or independent review is claimed.
+- Next action: Integrate this combined candidate after fresh canonical writer admission clears, then close and archive TOOLSET-082, TOOLSET-064 and TOOLSET-097-41. No canonical write, push, deployment or native qualification was attempted.
 
 ### TOOLSET-097-41 — Report the correct Hermes profile from nested installation paths
 
