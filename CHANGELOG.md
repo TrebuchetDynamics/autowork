@@ -156,6 +156,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- The `tx autowork` TUI shows worker lanes: for the selected runner, one row per task
+  in flight with its phase (from the runner's own log), attempt, time and the worker's
+  last action from its Pi transcript (`bash: pytest -q`, `said: ...`, and how long
+  ago), plus a `Now` column per runner. `tx autowork web` serves the same TUI to a
+  browser with textual-serve 1.1.3, on 127.0.0.1:8765 by default; `--view-only`
+  disables every control key. Neither calls a model.
+
 - Answering a held task is editing its TODO.md entry: when the entry no longer matches
   the contract its attempt was dispatched with, the next cycle sets the slot aside and
   runs the task fresh (`REQUEUED`), its earlier work kept on `-set-aside-N` branches; a

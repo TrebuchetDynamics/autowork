@@ -227,7 +227,8 @@ checkout, `tx autowork start` starts or attaches to its runner. See
 [`tmux/`](tmux/README.md) for installation and command details:
 
 ```sh
-tx autowork                   # the live TUI: runners, blockers, logs, and keys to act
+tx autowork                   # the live TUI: runners, worker lanes, blockers, logs, keys to act
+tx autowork web               # the same TUI in a browser, http://127.0.0.1:8765
 tx autowork start             # run this repository in tmux session pi-autowork-<name>
 tx autowork ls                # one colored line per runner; --long: what each waits on
 tx autowork status india       # tasks, workers and what blocks them
