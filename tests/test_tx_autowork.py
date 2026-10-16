@@ -135,5 +135,16 @@ class TxAutoworkTests(unittest.TestCase):
         self.assertIn('not inside a Git repository', self.tx('autowork', str(plain)).stderr)
 
 
+class TxPackageTests(unittest.TestCase):
+    def test_the_package_installs_this_tx(self):
+        """pi-toolset's tx is deprecated in favor of this one."""
+        package = json.loads((ROOT / 'package.json').read_text())
+        self.assertEqual(package['bin'], {'tx': 'tmux/tx'})
+        self.assertIn('tmux/', package['files'])
+        self.assertTrue(os.access(TX, os.X_OK))
+        self.assertIn('tx autowork <repo|.>', subprocess.run(['bash', str(TX), 'help'], capture_output=True,
+                                                               text=True).stdout)
+
+
 if __name__ == '__main__':
     unittest.main()

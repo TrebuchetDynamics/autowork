@@ -2,10 +2,11 @@
 
 Portable tmux assets and the `tx` tmux-session launcher.
 
-Copied from [pi-toolset `tmux/`](https://github.com/TrebuchetDynamics/pi-toolset/tree/main/tmux)
-at `4a2dbe5`. This copy adds `tx autowork` (below); the other files are unchanged.
-Installing it replaces a `tx` installed from pi-toolset, which has every command
-except `autowork`.
+This is the maintained `tx`. It started as a copy of
+[pi-toolset `tmux/`](https://github.com/TrebuchetDynamics/pi-toolset/tree/main/tmux)
+at `4a2dbe5` and adds `tx autowork` (below); pi-toolset's `tx` is deprecated in its
+favor. Installing this one (`./install.sh`, or the package's `tx` command) replaces a
+`tx` installed from pi-toolset; every pi-toolset command works the same.
 
 ## `tx autowork`: pi-autowork in tmux
 
@@ -110,10 +111,10 @@ set -g status-left-length 40
 The repository package declares:
 
 ```json
-{ "bin": { "tx": "./tmux/tx" } }
+{ "bin": { "tx": "tmux/tx" } }
 ```
 
-So `tx` is available when this package is installed or linked by npm. The tmux config and status helper scripts still require `tx install`, `./install.sh`, or manual copying.
+So `tx` is available when this package (hermes-toolset) is installed or linked by npm. The tmux config and status helper scripts still require `tx install`, `./install.sh`, or manual copying.
 
 ## Screen resizing
 

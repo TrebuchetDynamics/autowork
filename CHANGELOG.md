@@ -125,7 +125,8 @@ claim of a tagged release, completed installation or live workflow qualification
   `tx autowork ls` to list tmux and service runners together, and
   `tx autowork stop` to interrupt one cleanly. It runs the script the systemd unit
   runs and refuses while that repository's service is enabled; the service stays the
-  primary way to run pi-autowork.
+  primary way to run pi-autowork. This `tx` is now the maintained one, installed as
+  the package's `tx` command; pi-toolset's `tx` is deprecated in its favor.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),
