@@ -369,6 +369,19 @@ class EngineTests(Fixture):
         self.assertNotIn('external writer', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def test_blocked_tasks_are_not_reported_as_an_empty_queue(self):
+        """On sierra the engine returned IDLE with tasks waiting behind an in_progress claim."""
+        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')  # A must run alone
+        text = text.replace('- [ ] B — Task B\n', '- [ ] B — Task B\n').replace(
+            '  Dependencies: None.\n  Status: open\n- [ ] C', '  Dependencies: None.\n  Status: in_progress\n- [ ] C', 1)
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'B is in progress elsewhere')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('No task can start now', result.stdout)
+        self.assertNotIn('Queue empty', result.stdout)
+        self.assertEqual(self.runs(), [])
+
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
         self.run_runner('--status')  # creates nothing

@@ -815,7 +815,15 @@ while :; do
       waiting=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | join("; ")' <<<"$result" 2>/dev/null)
       [[ $waiting != "$LAST_WAITING" && -n $waiting ]] && say "Waiting: $waiting"
       LAST_WAITING=$waiting ;;
-    IDLE|DRAINING) ;;
+    IDLE)
+      # IDLE only means no worker is running: tasks may still be waiting on something.
+      blocked=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | .[:4] | join("; ")' <<<"$result" 2>/dev/null)
+      if [[ -n $blocked ]]; then
+        outcome=BLOCKED
+        [[ $blocked != "$LAST_WAITING" ]] && say "No task can start now: $blocked"
+        LAST_WAITING=$blocked
+      fi ;;
+    DRAINING) ;;
     BUSY)
       reason=$(jq -r '.reason // "busy"' <<<"$result")
       case $MODE in
@@ -841,13 +849,13 @@ while :; do
     owned --parallel "$WORKERS" --wait --timeout 5 >/dev/null  # short: a stop is handled between waits
     continue
   fi
-  if [[ $outcome == WAITING ]]; then
+  if [[ $outcome == WAITING || $outcome == BLOCKED ]]; then
     # Tasks remain, but none can start now (held work, dependencies or the resource gate).
     [[ $MODE != continuous ]] && finish 1 "No runnable task can start: ${LAST_WAITING:-see --status}"
     pause "$INTERVAL"
     continue
   fi
-  # Nothing running and nothing to integrate: the session ends here.
+  # Nothing running, nothing to integrate and nothing waiting: the session ends here.
   if ((DRAINING)) || [[ $MODE != continuous ]]; then
     if [[ $MODE == once && -z $ONCE_TASK && $outcome == IDLE ]]; then finish 0 "Queue empty"; fi
     [[ $outcome == IDLE && $MODE == until-empty ]] && finish 0 "Queue empty"
