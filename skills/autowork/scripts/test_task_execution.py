@@ -73,6 +73,25 @@ class DirectExecutionTests(unittest.TestCase):
         self.todo.write_text(self.todo.read_text().replace('## Now','## Needs decision'))
         p,r=self.call('--tasks','T1')
         self.assertEqual(p.returncode,1)
+    def test_claiming_a_task_removes_finished_worktrees_and_keeps_unfinished_ones(self):
+        git=lambda root,*a:subprocess.run(['git','-C',str(root),'-c','user.name=Fixture','-c','user.email=fixture@local',*a],
+                                          check=True,capture_output=True,text=True).stdout.strip()
+        git(self.repo,'switch','-q','-c','main');git(self.repo,'add','.');git(self.repo,'commit','-qm','base')
+        done,open_=Path(self.tmp.name)/'done',Path(self.tmp.name)/'open'
+        for path in (done,open_):
+            git(self.repo,'worktree','add','-q','-b','autowork/'+path.name,str(path))
+            (path/'new').write_text(path.name);git(path,'add','new');git(path,'commit','-qm',path.name)
+            gitdir=Path(git(path,'rev-parse','--absolute-git-dir'))
+            for name in ('HEAD','logs/HEAD','ORIG_HEAD'):
+                if (gitdir/name).exists():os.utime(gitdir/name,(0,0))
+        git(self.repo,'merge','-q','--ff-only','autowork/done')
+        p,r=self.call('--apply','--owner-pid',str(os.getpid()))
+        self.assertEqual(r['outcome'],'EXECUTE',r)
+        self.assertEqual([x['path'] for x in r['worktree_cleanup']['removed']],[str(done.resolve())])
+        self.assertFalse(done.exists())
+        self.assertIn('not integrated',r['worktree_cleanup']['kept'][0]['reason'])
+        self.assertTrue(open_.is_dir())
+        self.call('--release','--owner-pid',str(os.getpid()))
     def test_live_ancestor_claim_persists_across_calls_and_releases(self):
         p,r=self.call('--apply','--owner-pid',str(os.getpid()))
         self.assertEqual(p.returncode,0,r)

@@ -7,6 +7,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Autowork removes finished worktrees itself. Sessions created task worktrees and
+  left them after merging; 10 integrated, clean worktrees had piled up in this
+  repository, and a leftover `<repo>-autowork-<task>` path also blocks parallel
+  dispatch of that task. The new `worktree_closeout.py` removes a worktree only when
+  its HEAD is on `main`/`master` and it is clean (regenerable caches aside),
+  unlocked, not owned by a parallel slot or pi-autowork, not in use by any process
+  and quiet for 30 minutes, then deletes its merged branch with `git branch -d`.
+  Every `owner_cycle.py --apply` task claim runs it and reports `worktree_cleanup`;
+  closeout runs it for the task's own worktree.
+
 - A `pi-autowork` service no longer quits on a failure streak. Holds that already
   existed when the runner started (for example after a self-restart) no longer count
   toward `PI_AUTOWORK_MAX_FAILURES`; three restarts re-counted the same old holds and

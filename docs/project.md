@@ -1080,6 +1080,12 @@ to sequential and parallel work. This adds no push authority or bulk deletion of
 historical worktrees. TOOLSET-088-a7 owns remaining automated parallel integration/
 cleanup; TOOLSET-090-2d owns its host documentation. Their existing statuses and
 runtime qualification remain unchanged by this instruction update.
+Owner update (2026-10-16): finished worktrees were accumulating, so Autowork now
+removes them itself. Every task claim runs `worktree_closeout.py`, which removes
+any worktree of the repository whose HEAD is on the default branch and that is
+clean, unlocked, unused and quiet for 30 minutes, then deletes its merged branch
+with `git branch -d`. This replaces the earlier exclusion of historical worktrees;
+dirty, unmerged, locked, in-use and evidence-bearing worktrees are still kept.
 
 Findings (source as of `89549d2`):
 - `goals.py eligible()` already returns every eligible task in priority order

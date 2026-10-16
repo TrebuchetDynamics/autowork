@@ -20,51 +20,46 @@ A local task-branch commit is not integration. No push or remote merge authority
 is granted by cleanup. If integration is blocked, report **integration pending**,
 retain the candidate and continue only independently authorized work.
 
-## Remove only finished, owned worktrees
+## Remove finished worktrees with the helper
 
-After verified integration, automatically clean up the task worktree and temporary
-integration worktree created for this work, without another permission round:
-
-1. Confirm the exact path and recorded ownership; never select every worktree or
-   match by age/name alone. Never remove the canonical checkout.
-2. Inspect actual processes, open writable files, execution leases and Git worktree
-   locks. Keep active, locked and unknown-ownership worktrees. An old PID or a clean
-   Git status alone does not prove that a worker has stopped.
-3. Verify its exact HEAD is integrated into the canonical default branch. Keep
-   unmerged work. A squash/cherry-pick needs source-bound equivalence evidence;
-   ancestry failure alone never authorizes deletion or discarding the branch.
-4. Inspect tracked edits, untracked files and ignored files. Retain anything with
-   unfinished work, receipts, launch inputs or recovery evidence. Move required
-   evidence to its established private receipt owner and verify preservation before
-   cleanup; never erase it just to make the worktree appear clean.
-5. Run ordinary `git worktree remove`, without force. Keep branches unless separate
-   branch-cleanup authority applies. Never use blanket pruning, `rm -rf`, force
-   removal or automatic branch deletion as a substitute for these checks.
-6. Read back `git worktree list --porcelain`, confirm the exact worktree path is gone
-   and verify the canonical checkout is still on the recorded default branch with
-   the integrated result. Run subsequent coordinator commands there, not in the
-   deleted directory. Apply the same checks to an owned integration worktree.
-
-After the ownership/liveness/evidence checks above, this guarded Git sequence can
-remove one clean ancestry-integrated task worktree. Set the four variables from
-verified task evidence, run from the canonical checkout, and inspect every result:
+`scripts/worktree_closeout.py` removes finished worktrees deterministically. The
+task helper (`owner_cycle.py CONSUMER --apply`) runs it on every task claim, so
+worktrees left by earlier tasks, sessions or hosts are cleaned up without a model
+having to remember. After integrating, run it for the task's own worktree from the
+canonical checkout; naming a worktree skips the 30-minute grace period:
 
 ```sh
-case "$DEFAULT_BRANCH" in main|master) ;; *) exit 1 ;; esac &&
-test "$(git -C "$CANONICAL" symbolic-ref --short HEAD)" = "$DEFAULT_BRANCH" &&
-CANONICAL_COMMON=$(git -C "$CANONICAL" rev-parse --path-format=absolute --git-common-dir) &&
-TASK_COMMON=$(git -C "$TASK_WORKTREE" rev-parse --path-format=absolute --git-common-dir) &&
-test "$CANONICAL_COMMON" = "$TASK_COMMON" &&
-test "$(git -C "$TASK_WORKTREE" rev-parse HEAD)" = "$TASK_COMMIT" &&
-git -C "$CANONICAL" merge-base --is-ancestor "$TASK_COMMIT" HEAD &&
-TASK_STATUS=$(git -C "$TASK_WORKTREE" status --porcelain=v1 --untracked-files=all --ignored) &&
-test -z "$TASK_STATUS" &&
-git -C "$CANONICAL" worktree remove -- "$TASK_WORKTREE"
+python3 <this-skill-directory>/scripts/worktree_closeout.py "$CANONICAL" --worktree "$TASK_WORKTREE" --apply
 ```
 
-This shell sequence does not detect live owners or authorize integration itself;
-those preceding checks remain mandatory. This instruction contract is not a runtime guarantee
-that a model will execute it, and fixture checks do not qualify live cron cleanup.
+Without `--worktree` it considers every registered worktree of the repository;
+without `--apply` it only reports. A worktree is removed only when every check
+passes, so nothing it removes holds unique work:
+
+1. The canonical checkout is on `main` or `master`; it is never a candidate.
+2. The worktree is not locked, not a parallel slot that is not yet closed (the
+   coordinator cleans those) and not under the pi-autowork state directory.
+3. Its HEAD is an ancestor of the default branch; unmerged work is kept. A squash
+   or cherry-pick is not an ancestor and is kept too: ancestry failure alone never
+   authorizes deletion.
+4. `git status --ignored` shows no tracked or untracked change and no ignored file
+   other than regenerable caches (`__pycache__`, `*.pyc`, `.pytest_cache`,
+   `.mypy_cache`, `.ruff_cache`, `.hypothesis`). Check receipts, logs and other
+   ignored files keep it.
+5. No process has its working directory, an open file or an argument inside it,
+   and process activity can be read (`/proc`); unknown activity keeps everything.
+6. Its HEAD, reflog and ORIG_HEAD have not changed for 30 minutes, unless named.
+
+It then runs ordinary `git worktree remove` (never `--force`), reads the
+registration back, and deletes the worktree's branch with `git branch -d` when the
+branch still points at the removed HEAD. A registration whose directory is already
+gone is forgotten the same way when its HEAD is integrated. It never runs blanket
+`git worktree prune`, `rm -rf` or `git branch -D`. Every kept worktree is reported
+with its reason; report those as **cleanup pending**. An idle agent session whose
+working directory is a removed worktree must return to the canonical checkout.
+
+The helper decides from Git and process evidence only. It is not a runtime guarantee
+that a cron model reaches closeout, and fixture checks do not qualify live cleanup.
 
 ## Report and resume
 
@@ -72,5 +67,5 @@ Report integration and cleanup separately: canonical branch/commit, exact remove
 paths, and any **cleanup pending** path with its concrete preservation reason.
 Implementation acceptance may pass while workspace cleanup remains pending; never
 claim the complete worktree closeout is finished until removal and default-branch
-readback succeed. Resume eligible cleanup at the next safe reconciliation before
-creating replacement worktrees. Old unrelated worktrees are not bulk-cleanup targets.
+readback succeed. The next task claim retries pending cleanup automatically; a
+worktree that fails any check above is kept however old it is.
