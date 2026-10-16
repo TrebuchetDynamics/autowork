@@ -30,6 +30,17 @@ class DeliveryScopePolicyTests(unittest.TestCase):
                 with self.subTest(document=label, phrase=phrase):
                     self.assertIn(phrase, text)
 
+    def test_pushes_never_leave_the_remote_or_canonical_main_behind(self):
+        """A worktree pushed HEAD:main while the canonical main stayed stale; the next merge diverged."""
+        for phrase in ('never push a branch that is behind its push target',
+                       'is an ancestor of what you push',
+                       'leave the canonical checkout current after pushing the default branch from elsewhere',
+                       'merge --ff-only origin/main', 'local main stale'):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.main)
+        closeout = normalized(ROOT / 'skills/autowork/references/worktree-closeout.md')
+        self.assertIn('integrating onto a stale local `main` diverges from the remote', closeout)
+
     def test_completed_cross_agent_work_is_eligible_for_repo_wide_ship(self):
         self.both_require('all eligible changes in requested scope',
                           'take delivery ownership', 'provenance',

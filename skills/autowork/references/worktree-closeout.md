@@ -16,7 +16,10 @@ An explicitly different repository integration policy still applies.
 Before ending a worktree-backed task, complete required checks/review, integrate
 through the repository's supported path and verify the delivered commit on the
 canonical default branch. Serialize canonical writes and preserve unrelated edits.
-A local task-branch commit is not integration. No push or remote merge authority
+First `git fetch` the default branch's upstream, if one exists, and bring the canonical
+`main` up to date (`git merge --ff-only origin/main`, or the pull and merge procedure
+when local commits exist); integrating onto a stale local `main` diverges from the
+remote. A local task-branch commit is not integration. No push or remote merge authority
 is granted by cleanup. If integration is blocked, report **integration pending**,
 retain the candidate and continue only independently authorized work.
 

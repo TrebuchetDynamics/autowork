@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Git Commit Push never pushes a branch that is behind its push target, including a
+  `HEAD:main` refspec push from a worktree, and fast-forwards the canonical checkout's
+  local `main` after pushing the default branch from elsewhere (or reports **local
+  main stale**). Autowork fetches and updates the canonical `main` before integrating
+  into it. A worktree pushed to `origin/main` while the canonical `main` stayed behind,
+  and the next local integration diverged from the remote.
+
 - Autowork removes finished worktrees itself. Sessions created task worktrees and
   left them after merging; 10 integrated, clean worktrees had piled up in this
   repository, and a leftover `<repo>-autowork-<task>` path also blocks parallel

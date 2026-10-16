@@ -412,6 +412,9 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      `git revert -m 1 <merge>` (after) and report HELD.
    - Having nothing to commit is not a reason to skip the sync: a pull with nothing to push
      is reported as SYNCED.
+   - Never push a branch that is behind its push target. Before every push, including a
+     refspec push such as `HEAD:main` from a worktree, fetch and confirm that the target
+     ref (`origin/main`, not only `@{u}`) is an ancestor of what you push.
 
 7. **Push (explicit ship target only).**
    - Push the configured upstream; with one `origin` and no upstream, `git push -u origin HEAD`.
@@ -444,6 +447,13 @@ Report the branch and sha it prints. Never point it at main/master or the checke
      worktrees as incidental delivery cleanup.
    - Verify the remote: `git fetch -q && [ "$(git rev-parse HEAD)" = "$(git rev-parse @{u})" ] && echo MATCH`.
      The push output alone is not proof.
+   - **Leave the canonical checkout current after pushing the default branch from elsewhere.**
+     A push to `origin/main` (or `master`) from a worktree or task branch leaves the canonical
+     checkout's local `main` behind, and the next local integration there diverges from the
+     remote. When that checkout is on the default branch and no incoming path is dirty there,
+     run `git -C <canonical> merge --ff-only origin/main` and read back that both match. Never
+     stash, reset or switch it to make that possible; otherwise report **local main stale**
+     with the reason.
 
 8. **Close the loop.**
    - `git status --short --branch`; report hashes, the push result, and every remaining path with its reason.
