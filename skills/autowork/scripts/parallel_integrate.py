@@ -1,6 +1,5 @@
 """Serialized, validated local integration. Worker reports are evidence, not acceptance."""
 import math
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -318,17 +317,7 @@ def goals_command(repo, *argv):
 
 def archive_path(repo):
     """Reuse Docs Sync's history-owner rules, including legacy and linked archives."""
-    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/todo_archive.py'
-    spec = importlib.util.spec_from_file_location('parallel_todo_archive', path)
-    if spec is None or spec.loader is None:
-        raise ValueError('Docs Sync archive helper cannot be loaded')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    prose = execution.goals_module().markdown_prose((repo / 'TODO.md').read_text())
-    try:
-        return repo / module.archive_owner(repo, prose)
-    except SystemExit as exc:
-        raise ValueError(str(exc)) from exc
+    return execution.archive_file(repo)
 
 
 def require_task_contract(items, expected, *, archived=False):
@@ -383,7 +372,8 @@ def close(repo, owner_pid, task):
             if blocks:
                 block = blocks[0]
                 body = text[block['start']:block['end']]
-                body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\] ' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
+                # IDs may be bold or code: `- [ ] **T-1 — Title**` (sierra).
+                body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\][ \t]+(?:\*\*)?`?' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
                 body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
                 require_no_writers(repo)
                 goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)

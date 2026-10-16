@@ -185,6 +185,68 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(after['dispatched'], [])
         self.assertEqual(len([e for e in self.events() if e['event'] == 'start']), 2)
 
+    def test_a_held_slot_of_a_closed_task_stops_occupying(self):
+        """india: Plan For Me superseded a held second attempt, and its must-run-alone
+        successor waited beside the dead slot for ever."""
+        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
+                       'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
+        for _ in range(2):  # crash, restart once, crash again: held for good
+            _, first = self.apply()
+            self.assertEqual([d['task'] for d in first['dispatched']], ['A'])  # S must run alone
+            self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'held')
+        _, blocked = self.apply()
+        self.assertEqual(blocked['dispatched'], [])
+        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('S', ''))
+        _, freed = self.apply()
+        self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
+        self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
+
+    def pause_and_stop(self):
+        """What a deliberate coordinator stop does: mark live workers, then interrupt them."""
+        _, paused = self.run_cli('--parallel-pause', worker=False)
+        self.assertEqual(paused['outcome'], 'PAUSED')
+        for slot in state.slots(self.common):
+            if state.worker_live(slot):
+                dispatch.stop(slot['worker'])
+        return paused['paused']
+
+    def test_a_paused_worker_resumes_the_same_attempt(self):
+        """india: a service restart interrupted attempt 2 of TASK-015 and held it for good."""
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1}})
+        self.apply()
+        self.wait_until_idle()  # a real crash: the retry is spent
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 30, 'commit': False}})
+        _, second = self.apply()
+        self.assertEqual([(d['task'], d['attempt']) for d in second['dispatched']], [('A', 2)])
+        self.assertEqual(self.pause_and_stop(), ['A'])
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot.get('paused')), ('interrupted', 2, True))
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}})
+        _, resumed = self.apply()
+        self.assertEqual([(d['task'], d['attempt']) for d in resumed['dispatched']], [('A', 2)])
+        self.assertEqual(resumed['dispatched'][0]['worktree'], slot['worktree'])
+        self.assertNotIn('paused', state.slots(self.common)[0])
+        self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'reported')
+
+    def test_a_paused_first_attempt_keeps_its_retry(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 30, 'commit': False}})
+        self.apply()
+        self.pause_and_stop()
+        self.wait_until_idle()
+        _, resumed = self.apply()
+        self.assertEqual([(d['task'], d['attempt']) for d in resumed['dispatched']], [('A', 1)])
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1}})
+        self.stop_workers()
+        self.wait_until_idle()  # this unpaused death spends attempt 1 as before
+        _, retry = self.apply()
+        self.assertEqual([(d['task'], d['attempt']) for d in retry['dispatched']], [('A', 2)])
+
     def test_low_memory_holds_dispatch(self):
         with patch.object(dispatch, 'available_memory_mb', return_value=1000):
             _, result = self.apply()

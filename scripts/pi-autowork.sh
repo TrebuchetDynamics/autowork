@@ -82,7 +82,7 @@ MAX_COST=${PI_AUTOWORK_MAX_COST:-0}
 COST_WINDOW=${PI_AUTOWORK_COST_WINDOW:-24}
 MIN_FREE_MB=${PI_AUTOWORK_MIN_FREE_MB:-3000}
 SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
-STATE='' CHILD='' KILLER='' SLEEPER='' STOP=0 FALLBACK_ENABLED=1 DRY_RUN=0
+STATE='' CHILD='' KILLER='' SLEEPER='' STOP=0 PAUSED=0 FALLBACK_ENABLED=1 DRY_RUN=0
 
 say() {
   local line
@@ -639,8 +639,9 @@ on_signal() {
     return
   fi
   STOP=1
-  say "Stopping: interrupting workers, then merging finished work (Ctrl+C again to force)"
-  for pgid in $(worker_groups); do kill -INT -- "-$pgid" 2>/dev/null; done
+  say "Stopping: pausing workers so they resume on the next start, then merging finished work (Ctrl+C again to force)"
+  # Workers are interrupted by the main loop after the engine marks them paused, so a
+  # deliberate stop or restart neither spends a task's retry nor holds a second attempt.
   [[ -n $CHILD ]] && kill -INT "$CHILD" 2>/dev/null
 }
 stop_helpers() {
@@ -739,6 +740,28 @@ note_state() {  # log each task's lifecycle change once
   say "$id: $word${reason:+ — $reason}"
 }
 
+close_task() {  # archive an integrated task and commit the coordinator files
+  local id=$1 result file
+  result=$(owned --parallel-close "$id")
+  if [[ $(jq -r .outcome <<<"$result" 2>/dev/null) == CLOSED ]]; then
+    for file in TODO.md TODO.archive.md goals.json CHANGELOG.md; do
+      [[ -e $INTEG/$file || -n $(git -C "$INTEG" ls-files -- "$file") ]] && git -C "$INTEG" add -A -- "$file"
+    done
+    # A linked archive (say docs/TODO-archive.md) changes too.
+    git -C "$INTEG" add -u -- '*.md'
+    git -C "$INTEG" diff --cached --quiet ||
+      git -C "$INTEG" commit -q -m "docs(tasks): close $id (pi-autowork)" -m "Integrated, verified and closed by the Parallel Autowork engine."
+    note_state "$id" closed ''
+    FAILURES=0
+    [[ $id == "$ONCE_TASK" ]] && ONCE_DONE=1
+    SETTLED=1
+  else
+    result=$(jq -r '.reason // .outcome' <<<"$result" 2>/dev/null || echo "$result")
+    [[ ${SEEN["close-$id"]:-} == "$result" ]] || say "$id: could not close: $result"
+    SEEN["close-$id"]=$result
+  fi
+}
+
 # Integrates, verifies and closes every reported task, in the engine's priority order.
 settle() {
   local snapshot id result outcome reason
@@ -756,6 +779,11 @@ settle() {
     esac
   done < <(jq -r '.tasks[]? | [.task, .state, (.reason // "")] | @tsv' <<<"$snapshot")
   ((STOP)) && return 0
+  # Integrated but not closed (a close that failed earlier, or a restart in between).
+  for id in $(jq -r '.tasks[]? | select(.state == "integrated") | .task' <<<"$snapshot"); do
+    ((STOP)) && return 0
+    close_task "$id"
+  done
   for id in $(jq -r '.tasks[]? | select(.state == "reported" or .state == "integrating") | .task' <<<"$snapshot"); do
     ((STOP)) && return 0
     note_state "$id" integrating ''
@@ -766,19 +794,7 @@ settle() {
       INTEGRATED)
         SETTLED=1
         note_state "$id" integrated ''
-        result=$(owned --parallel-close "$id")
-        if [[ $(jq -r .outcome <<<"$result") == CLOSED ]]; then
-          for file in TODO.md TODO.archive.md goals.json CHANGELOG.md; do
-            [[ -e $INTEG/$file || -n $(git -C "$INTEG" ls-files -- "$file") ]] && git -C "$INTEG" add -A -- "$file"
-          done
-          git -C "$INTEG" diff --cached --quiet ||
-            git -C "$INTEG" commit -q -m "docs(tasks): close $id (pi-autowork)" -m "Integrated, verified and closed by the Parallel Autowork engine."
-          note_state "$id" closed ''
-          FAILURES=0
-          [[ $id == "$ONCE_TASK" ]] && ONCE_DONE=1
-        else
-          say "$id: could not close: $(jq -r '.reason // .outcome' <<<"$result")"
-        fi ;;
+        close_task "$id" ;;
       HELD)
         SETTLED=1
         note_state "$id" held "$reason"
@@ -877,6 +893,11 @@ summarize
 say "Started (PID $$). Stop with Ctrl+C."
 while :; do
   if ((STOP)); then
+    if ((!PAUSED)); then
+      PAUSED=1
+      owned --parallel-pause >/dev/null
+      for pgid in $(worker_groups); do kill -INT -- "-$pgid" 2>/dev/null; done
+    fi
     # Interrupted workers stay in their worktrees; the next start resumes them.
     for _ in 1 2 3 4; do owned --parallel "$WORKERS" --max-workers 8 --wait --timeout 5 >/dev/null; done
     settle

@@ -376,6 +376,22 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result['outcome'], 'HELD', result)
         self.assertIn('CHANGELOG.md', result['reason'])
 
+    def test_a_task_source_link_labelled_history_does_not_select_the_archive(self):
+        """sierra: bold task IDs stayed unchecked on close, and the archive fallback then
+        took '[Patrol history/events surface](patrol.go)' for the archive."""
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] A — Task A', '- [ ] **A — Task A**').replace(
+            '  Scope: B.txt\n', '  Scope: B.txt\n  Sources: [Patrol history/events surface](src/patrol.go)\n'))
+        self.git('commit', '-qam', 'source link')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        result = module.close(self.repo, self.owner, 'A')
+        self.assertEqual(result['outcome'], 'CLOSED', result)
+        self.assertIn('- [x] **A — Task A**', (self.repo / 'TODO.archive.md').read_text())
+        self.assertEqual(module.archive_path(self.repo), self.repo / 'TODO.archive.md')
+
     def test_closed_slot_releases_ownership_for_followup_task(self):
         self.worker()
         module = self.module()

@@ -255,6 +255,24 @@ def fallback(repo, args, reason):
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
 
 
+def retired(repo):
+    """Task IDs closed since their slot stopped: done or superseded in goals.json, or
+    checked off in TODO.md or its archive. A held or interrupted slot of such a task is
+    history and occupies nothing; Plan For Me's supersession of a held second attempt
+    otherwise left a must-run-alone successor waiting beside it for ever."""
+    goals = execution.goals_module()
+    ids = set()
+    if (repo / 'goals.json').is_file():
+        ids.update(t['id'] for t in goals.load(repo).get('tasks', [])
+                   if t.get('status') in ('done', 'superseded'))
+    for name in ('TODO.md', 'TODO.archive.md', 'todo.archive.md'):
+        path = repo / name
+        if path.is_file():
+            ids.update(key for key, items in goals.task_bodies(path.read_text()).items()
+                       if items and items[0][1].lower() == 'x')
+    return ids
+
+
 def contracts(repo, requested=None, plan=None):
     try:
         return execution.select_all(repo, requested, plan)
@@ -283,10 +301,13 @@ def dispatch_locked(args, repo, common, count, template, host):
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
-    occupying = [s for s in current if s['state'] in OCCUPYING]
+    closed = retired(repo)
+    occupying = [s for s in current if s['state'] in OCCUPYING
+                 and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
     running = [by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}}) for s in occupying]
     live = [s for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s)]
-    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released') and s['attempt'] == 1}
+    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released')
+                   and (s['attempt'] == 1 or s.get('paused'))}
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
@@ -310,10 +331,12 @@ def dispatch_locked(args, repo, common, count, template, host):
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
                               baseline=base)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
-        attempt = slot['attempt'] + (1 if previous else 0)
+        attempt = slot['attempt'] + (1 if previous and not previous.get('paused') else 0)
         data = execution.safe_path(common / 'slot-data' / task['id'] / f'attempt-{attempt}')
         data.mkdir(parents=True, exist_ok=True, mode=0o700)
         report = data / 'report.json'
+        if previous and previous.get('paused'):
+            report.unlink(missing_ok=True)  # a resumed attempt reports afresh
         prompt_file = data / 'prompt.md'
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous)))
         index = next(i for i in range(1, HARD_LIMIT + 1) if i not in used)

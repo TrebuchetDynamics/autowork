@@ -365,6 +365,10 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.branches(), ['main'])
+        # A deliberate stop pauses its workers: they resume the same attempt, retry intact.
+        sessions = [r['session'] for r in self.runs('worker') if r['task'] in ('A', 'B')]
+        self.assertEqual(len(sessions), 4, sessions)
+        self.assertTrue(all(s.endswith('-attempt-1') for s in sessions), sessions)
 
     def test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers(self):
         """Live qualification found a restart refused while a dead runner's helper held the lock."""
@@ -467,6 +471,23 @@ class EngineTests(Fixture):
         out, err = runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130, out + err)
         self.assertIn(f'at {rev}', out)
+
+    def test_bold_task_ids_close_into_a_linked_archive(self):
+        """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
+        text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
+        for t in 'ABC':
+            text = text.replace(f'- [ ] {t} — Task {t}', f'- [ ] **{t} — Task {t}**')
+        (self.repo / 'TODO.md').write_text(text)
+        (self.repo / 'docs').mkdir()
+        (self.repo / 'docs/TODO-archive.md').write_text('# History\n')
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'bold IDs, linked archive')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('- [x] **A — Task A**', (self.repo / 'docs/TODO-archive.md').read_text())
+        self.assertNotIn('Task A', (self.repo / 'TODO.md').read_text())
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
     def test_tasks_without_touches_get_proposed_ones_and_run_in_parallel(self):
         """sierra: no task declared Touches, so everything ran one at a time."""
