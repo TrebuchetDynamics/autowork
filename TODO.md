@@ -24,6 +24,18 @@ dependencies and environment match. Required tests, review, ownership protection
 integrity checks and live qualification remain mandatory. Editing this queue does
 not change a running worker's assigned contract or authorize dispatch/scheduling.
 
+## Pi Autowork research — planning only
+
+[Source comparison and reuse findings](docs/research/pi-autowork-reference-architectures.md)
+and [component-layout proposal](docs/plans/pi-autowork-component-layout.md) refine
+the ongoing upstream TOOLSET-115-bf coordinator redesign; do not create a second
+implementation task. Proposed `pi-autowork/` organization keeps the generic engine
+shared and private runtime state separate. File migration and runtime adoption
+remain proposed, not authorized by this research. Preserve the existing task's
+accepted phases, ownership and live qualification boundary; do not change an active
+worker's assigned contract. Review the archive-shipping, safe-update and Pi
+settlement/cancellation checks when refining that existing design.
+
 ## Now
 
 ### TOOLSET-099-87 — Run as many independent tasks at once as possible

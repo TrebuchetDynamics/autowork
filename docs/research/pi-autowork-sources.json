@@ -1,0 +1,1193 @@
+{
+  "schema_version": 1,
+  "retrieved_at": "2026-10-16",
+  "scope": "Source study only; no upstream test/model execution or adoption.",
+  "local_baseline": "ee82575878bb115f4b06d6f7d9b01029ab008790",
+  "project_count": 17,
+  "projects": [
+    {
+      "repository": "nicobailon/pi-subagents",
+      "sha": "f8ada81303db6ee76ed22fee5605dc8a8d62a83a",
+      "source": "https://github.com/nicobailon/pi-subagents/tree/f8ada81303db6ee76ed22fee5605dc8a8d62a83a",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "path": "src/api/delegation.ts",
+          "symbol": "SUBAGENT_DELEGATION_REQUEST_EVENT / SubagentDelegationRequest",
+          "lines": [
+            6,
+            43
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/api/delegation.ts#L6-L43"
+        },
+        {
+          "path": "src/runs/shared/child-session.ts",
+          "symbol": "createDefaultChildSessionFactory",
+          "lines": [
+            438,
+            580
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/runs/shared/child-session.ts#L438-L580"
+        },
+        {
+          "path": "src/runs/shared/parallel-utils.ts",
+          "symbol": "Semaphore / mapConcurrent",
+          "lines": [
+            159,
+            242
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/runs/shared/parallel-utils.ts#L159-L242"
+        },
+        {
+          "path": "src/runs/shared/workflow-graph.ts",
+          "symbol": "buildWorkflowGraphSnapshot",
+          "lines": [
+            92,
+            225
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/runs/shared/workflow-graph.ts#L92-L225"
+        },
+        {
+          "path": "src/runs/shared/worktree-cleanup-plan.ts",
+          "symbol": "ownership/session/dirty/divergence guards",
+          "lines": [
+            645,
+            705
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/runs/shared/worktree-cleanup-plan.ts#L645-L705"
+        },
+        {
+          "path": "src/runs/shared/worktree-cleanup-apply.ts",
+          "symbol": "applyReviewedCleanupPlan",
+          "lines": [
+            63,
+            145
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/runs/shared/worktree-cleanup-apply.ts#L63-L145"
+        },
+        {
+          "path": "src/runs/shared/worktree.ts",
+          "symbol": "cleanupSingleWorktree",
+          "lines": [
+            1183,
+            1302
+          ],
+          "url": "https://github.com/nicobailon/pi-subagents/blob/f8ada81303db6ee76ed22fee5605dc8a8d62a83a/src/runs/shared/worktree.ts#L1183-L1302"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "nicobailon/pi-messenger",
+      "sha": "09937ed647a1b07a3b595bf75943feacb80ff123",
+      "source": "https://github.com/nicobailon/pi-messenger/tree/09937ed647a1b07a3b595bf75943feacb80ff123",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/package.json",
+        "grant_inspected": false,
+        "qualification": "Package metadata declaration only; tracked full license grant unresolved."
+      },
+      "source_references": [
+        {
+          "path": "package.json",
+          "symbol": "license metadata",
+          "lines": [
+            1,
+            10
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/package.json#L1-L10"
+        },
+        {
+          "path": "crew/store.ts",
+          "symbol": "getCrewDir / task persistence / atomic write",
+          "lines": [
+            24,
+            57
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/store.ts#L24-L57"
+        },
+        {
+          "path": "crew/store.ts",
+          "symbol": "getReadyTasksFrom",
+          "lines": [
+            479,
+            492
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/store.ts#L479-L492"
+        },
+        {
+          "path": "crew/store.ts",
+          "symbol": "validatePlan",
+          "lines": [
+            531,
+            578
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/store.ts#L531-L578"
+        },
+        {
+          "path": "crew/agents.ts",
+          "symbol": "spawnAgents queue",
+          "lines": [
+            135,
+            175
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/agents.ts#L135-L175"
+        },
+        {
+          "path": "crew/agents.ts",
+          "symbol": "CLI spawn",
+          "lines": [
+            254,
+            268
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/agents.ts#L254-L268"
+        },
+        {
+          "path": "crew/agents.ts",
+          "symbol": "graceful shutdown escalation",
+          "lines": [
+            384,
+            422
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/agents.ts#L384-L422"
+        },
+        {
+          "path": "crew/handlers/work.ts",
+          "symbol": "ready filtering/max attempts",
+          "lines": [
+            65,
+            88
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/handlers/work.ts#L65-L88"
+        },
+        {
+          "path": "crew/handlers/work.ts",
+          "symbol": "worker result reconciliation",
+          "lines": [
+            211,
+            253
+          ],
+          "url": "https://github.com/nicobailon/pi-messenger/blob/09937ed647a1b07a3b595bf75943feacb80ff123/crew/handlers/work.ts#L211-L253"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "AgwaB/pi-subagent",
+      "sha": "ab91a74fcbd079caa27f9e48932004d1fd9c1e9f",
+      "source": "https://github.com/AgwaB/pi-subagent/tree/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "path": "src/api.ts",
+          "symbol": "public execution/status/wait/interrupt API",
+          "lines": [
+            263,
+            336
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/api.ts#L263-L336"
+        },
+        {
+          "path": "src/core/constants.ts",
+          "symbol": "single/parallel modes and workspace policy",
+          "lines": [
+            35,
+            44
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/core/constants.ts#L35-L44"
+        },
+        {
+          "path": "src/orchestrate/run.ts",
+          "symbol": "runParallelSubagentTasks",
+          "lines": [
+            801,
+            943
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/orchestrate/run.ts#L801-L943"
+        },
+        {
+          "path": "src/artifacts/registry.ts",
+          "symbol": "commitAttemptResultIfActive",
+          "lines": [
+            961,
+            990
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/artifacts/registry.ts#L961-L990"
+        },
+        {
+          "path": "src/process-identity.ts",
+          "symbol": "Linux birth identity",
+          "lines": [
+            55,
+            92
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/process-identity.ts#L55-L92"
+        },
+        {
+          "path": "src/process-identity.ts",
+          "symbol": "verifyProcessIdentity",
+          "lines": [
+            178,
+            188
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/process-identity.ts#L178-L188"
+        },
+        {
+          "path": "src/orchestrate/interrupt.ts",
+          "symbol": "interruptRun",
+          "lines": [
+            167,
+            250
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/orchestrate/interrupt.ts#L167-L250"
+        },
+        {
+          "path": "src/workspace/worktree.ts",
+          "symbol": "resolveWorkspace",
+          "lines": [
+            82,
+            110
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/workspace/worktree.ts#L82-L110"
+        },
+        {
+          "path": "src/workspace/worktree.ts",
+          "symbol": "capture diff HEAD",
+          "lines": [
+            168,
+            193
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/workspace/worktree.ts#L168-L193"
+        },
+        {
+          "path": "src/workspace/worktree.ts",
+          "symbol": "finalizeWorktreeResult force removal",
+          "lines": [
+            223,
+            269
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/workspace/worktree.ts#L223-L269"
+        },
+        {
+          "path": "src/orchestrate/prune.ts",
+          "symbol": "pruneSubagentRuns",
+          "lines": [
+            178,
+            185
+          ],
+          "url": "https://github.com/AgwaB/pi-subagent/blob/ab91a74fcbd079caa27f9e48932004d1fd9c1e9f/src/orchestrate/prune.ts#L178-L185"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "RielJ/pi-git-worktrees",
+      "sha": "e24a6bb17dc5a8dcd50403e4cb719895e97c0d55",
+      "source": "https://github.com/RielJ/pi-git-worktrees/tree/e24a6bb17dc5a8dcd50403e4cb719895e97c0d55",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/RielJ/pi-git-worktrees/blob/e24a6bb17dc5a8dcd50403e4cb719895e97c0d55/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "src/worktree-manager.ts",
+          "symbol": "WorktreeManager.withLock",
+          "lines": "117-152",
+          "permalink": "https://github.com/RielJ/pi-git-worktrees/blob/e24a6bb17dc5a8dcd50403e4cb719895e97c0d55/src/worktree-manager.ts#L117-L152"
+        },
+        {
+          "file": "src/worktree-manager.ts",
+          "symbol": "WorktreeManager.allocate",
+          "lines": "169-204",
+          "permalink": "https://github.com/RielJ/pi-git-worktrees/blob/e24a6bb17dc5a8dcd50403e4cb719895e97c0d55/src/worktree-manager.ts#L169-L204"
+        },
+        {
+          "file": "src/worktree-manager.ts",
+          "symbol": "WorktreeManager.merge/destroyWorktreeFiles",
+          "lines": "386-448",
+          "permalink": "https://github.com/RielJ/pi-git-worktrees/blob/e24a6bb17dc5a8dcd50403e4cb719895e97c0d55/src/worktree-manager.ts#L386-L448"
+        },
+        {
+          "file": "src/heartbeat.ts",
+          "symbol": "listActive",
+          "lines": "139-160",
+          "permalink": "https://github.com/RielJ/pi-git-worktrees/blob/e24a6bb17dc5a8dcd50403e4cb719895e97c0d55/src/heartbeat.ts#L139-L160"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "MinhDuyDEV/pi-subagents",
+      "sha": "6df61535ec2f9d580c2a687014cfb585eb7e44bf",
+      "source": "https://github.com/MinhDuyDEV/pi-subagents/tree/6df61535ec2f9d580c2a687014cfb585eb7e44bf",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "src/worktree.ts",
+          "symbol": "createTaskWorktree/inspectTaskWorktree/finalizeTaskWorktree",
+          "lines": "26-130",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/worktree.ts#L26-L130"
+        },
+        {
+          "file": "src/worktree.ts",
+          "symbol": "mergeTaskWorktree/removeTaskWorktree",
+          "lines": "133-225",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/worktree.ts#L133-L225"
+        },
+        {
+          "file": "src/orchestration/claims.ts",
+          "symbol": "ResourceClaim/ResourceLease",
+          "lines": "29-58",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/claims.ts#L29-L58"
+        },
+        {
+          "file": "src/orchestration/claims.ts",
+          "symbol": "transferResourceLeaseOwnership/renewResourceLease",
+          "lines": "256-340",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/claims.ts#L256-L340"
+        },
+        {
+          "file": "src/orchestration/file-lock.ts",
+          "symbol": "acquireFilesystemLock",
+          "lines": "74-130",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/file-lock.ts#L74-L130"
+        },
+        {
+          "file": "src/lifecycle/restore.ts",
+          "symbol": "restoreActiveBackgroundTasks",
+          "lines": "18-165",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/lifecycle/restore.ts#L18-L165"
+        },
+        {
+          "file": "src/orchestration/scheduler.ts",
+          "symbol": "TaskScheduler.install",
+          "lines": "114-155",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/scheduler.ts#L114-L155"
+        },
+        {
+          "file": "src/orchestration/runtime.ts",
+          "symbol": "child claim guard",
+          "lines": "1717-1786",
+          "permalink": "https://github.com/MinhDuyDEV/pi-subagents/blob/6df61535ec2f9d580c2a687014cfb585eb7e44bf/src/orchestration/runtime.ts#L1717-L1786"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "trail-openers/pi-rukas",
+      "sha": "a3dd722bc876273577ea490f72f8600f62421610",
+      "source": "https://github.com/trail-openers/pi-rukas/tree/a3dd722bc876273577ea490f72f8600f62421610",
+      "license": {
+        "declared_spdx": "Apache-2.0",
+        "evidence": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "extension/src/work-driver-lock.ts",
+          "symbol": "withIntegrationLock/acquireLockfile",
+          "lines": "31-108",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/work-driver-lock.ts#L31-L108"
+        },
+        {
+          "file": "extension/src/work-driver-integrate.ts",
+          "symbol": "integrate",
+          "lines": "418-477",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/work-driver-integrate.ts#L418-L477"
+        },
+        {
+          "file": "extension/src/work-driver-verify-cmd.ts",
+          "symbol": "verifyCmdFor",
+          "lines": "241-282",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/work-driver-verify-cmd.ts#L241-L282"
+        },
+        {
+          "file": "extension/src/work-driver-worktree-sweep.ts",
+          "symbol": "decideSweepAction/executeSweepAction",
+          "lines": "139-250",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/work-driver-worktree-sweep.ts#L139-L250"
+        },
+        {
+          "file": "extension/src/host-resources.ts",
+          "symbol": "readHostResources/budgetFor",
+          "lines": "79-144",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/host-resources.ts#L79-L144"
+        },
+        {
+          "file": "extension/src/spawn-kill.ts",
+          "symbol": "killProcessTree",
+          "lines": "39-105",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/spawn-kill.ts#L39-L105"
+        },
+        {
+          "file": "extension/src/work-driver-resume-reattach.ts",
+          "symbol": "attemptReattach",
+          "lines": "74-114",
+          "permalink": "https://github.com/trail-openers/pi-rukas/blob/a3dd722bc876273577ea490f72f8600f62421610/extension/src/work-driver-resume-reattach.ts#L74-L114"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "edxeth/pi-subagents",
+      "sha": "cf6dbf41c17986f3882e6804a68e8fb8282d25e6",
+      "source": "https://github.com/edxeth/pi-subagents/tree/cf6dbf41c17986f3882e6804a68e8fb8282d25e6",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/edxeth/pi-subagents/blob/cf6dbf41c17986f3882e6804a68e8fb8282d25e6/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "src/vf/apply.ts",
+          "symbol": "applyWinnerToSource/resetToBase",
+          "lines": "48-117",
+          "permalink": "https://github.com/edxeth/pi-subagents/blob/cf6dbf41c17986f3882e6804a68e8fb8282d25e6/src/vf/apply.ts#L48-L117"
+        },
+        {
+          "file": "src/vf/worktrees.ts",
+          "symbol": "removeCandidateWorktree",
+          "lines": "263-281",
+          "permalink": "https://github.com/edxeth/pi-subagents/blob/cf6dbf41c17986f3882e6804a68e8fb8282d25e6/src/vf/worktrees.ts#L263-L281"
+        },
+        {
+          "file": "src/vf/run/adopt.ts",
+          "symbol": "adoptVerifiedRuns/registerAdoptedWatcher",
+          "lines": "56-126",
+          "permalink": "https://github.com/edxeth/pi-subagents/blob/cf6dbf41c17986f3882e6804a68e8fb8282d25e6/src/vf/run/adopt.ts#L56-L126"
+        },
+        {
+          "file": "src/runtime/spawn-width.ts",
+          "symbol": "spawn slots",
+          "lines": "1-69",
+          "permalink": "https://github.com/edxeth/pi-subagents/blob/cf6dbf41c17986f3882e6804a68e8fb8282d25e6/src/runtime/spawn-width.ts#L1-L69"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "OrchestratorInc/agent-orchestrator",
+      "sha": "c228b96f29fb86acdaf58001f0bc52a71c54e998",
+      "source": "https://github.com/OrchestratorInc/agent-orchestrator/tree/c228b96f29fb86acdaf58001f0bc52a71c54e998",
+      "license": {
+        "declared_spdx": "Apache-2.0",
+        "evidence": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "README.md",
+          "symbol": "Orchestrator.inc is a local desktop workspace",
+          "lines": [
+            36,
+            42
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/README.md#L36-L42"
+        },
+        {
+          "file": "backend/internal/ports/runtime_observations.go",
+          "symbol": "type RuntimeFacts",
+          "lines": [
+            22,
+            39
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/ports/runtime_observations.go#L22-L39"
+        },
+        {
+          "file": "backend/internal/ports/runtime_observations.go",
+          "symbol": "type ActivitySignal",
+          "lines": [
+            41,
+            88
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/ports/runtime_observations.go#L41-L88"
+        },
+        {
+          "file": "backend/internal/lifecycle/manager.go",
+          "symbol": "func (m *Manager) ApplyRuntimeObservation",
+          "lines": [
+            461,
+            535
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/lifecycle/manager.go#L461-L535"
+        },
+        {
+          "file": "backend/internal/session_manager/reconcile_startup_safety_test.go",
+          "symbol": "func TestBackgroundPreparationCleanupDoesNotTouchReusedSessionID",
+          "lines": [
+            186,
+            210
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/session_manager/reconcile_startup_safety_test.go#L186-L210"
+        },
+        {
+          "file": "backend/internal/session_manager/manager.go",
+          "symbol": "UpsertSessionCleanupFacts",
+          "lines": [
+            343,
+            385
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/session_manager/manager.go#L343-L385"
+        },
+        {
+          "file": "backend/internal/session_manager/manager.go",
+          "symbol": "func (m *Manager) acquireWorkspaceGate",
+          "lines": [
+            550,
+            576
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/session_manager/manager.go#L550-L576"
+        },
+        {
+          "file": "backend/internal/ports/agent.go",
+          "symbol": "type Agent interface",
+          "lines": [
+            165,
+            190
+          ],
+          "permalink": "https://github.com/OrchestratorInc/agent-orchestrator/blob/c228b96f29fb86acdaf58001f0bc52a71c54e998/backend/internal/ports/agent.go#L165-L190"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "jayminwest/overstory",
+      "sha": "ff38f3f76f084abcc34f519bcaa69580f6e53cf1",
+      "source": "https://github.com/jayminwest/overstory/tree/ff38f3f76f084abcc34f519bcaa69580f6e53cf1",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "src/runtimes/types.ts",
+          "symbol": "export interface AgentRuntime",
+          "lines": [
+            158,
+            265
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/runtimes/types.ts#L158-L265"
+        },
+        {
+          "file": "src/runtimes/pi.ts",
+          "symbol": "export class PiRuntime",
+          "lines": [
+            27,
+            42
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/runtimes/pi.ts#L27-L42"
+        },
+        {
+          "file": "src/runtimes/pi.ts",
+          "symbol": "buildSpawnCommand(opts",
+          "lines": [
+            64,
+            92
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/runtimes/pi.ts#L64-L92"
+        },
+        {
+          "file": "src/sessions/store.ts",
+          "symbol": "CREATE TABLE IF NOT EXISTS sessions",
+          "lines": [
+            154,
+            181
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/sessions/store.ts#L154-L181"
+        },
+        {
+          "file": "src/merge/queue.ts",
+          "symbol": "export function createMergeQueue",
+          "lines": [
+            104,
+            104
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/merge/queue.ts#L104-L104"
+        },
+        {
+          "file": "src/merge/lock.ts",
+          "symbol": "export function acquireMergeLock",
+          "lines": [
+            54,
+            105
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/merge/lock.ts#L54-L105"
+        },
+        {
+          "file": "src/watchdog/health.ts",
+          "symbol": "export function isProcessRunning",
+          "lines": [
+            66,
+            76
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/watchdog/health.ts#L66-L76"
+        },
+        {
+          "file": "src/watchdog/health.ts",
+          "symbol": "assumed completed",
+          "lines": [
+            280,
+            309
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/watchdog/health.ts#L280-L309"
+        },
+        {
+          "file": "src/merge/resolver.ts",
+          "symbol": "Tiered conflict resolution",
+          "lines": [
+            1,
+            11
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/merge/resolver.ts#L1-L11"
+        },
+        {
+          "file": "src/merge/resolver.ts",
+          "symbol": "const OS_ECO_STATE_PREFIXES",
+          "lines": [
+            54,
+            75
+          ],
+          "permalink": "https://github.com/jayminwest/overstory/blob/ff38f3f76f084abcc34f519bcaa69580f6e53cf1/src/merge/resolver.ts#L54-L75"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "openai/symphony",
+      "sha": "be10a1b79df723d6d7612b5651c8522704dafb2e",
+      "source": "https://github.com/openai/symphony/tree/be10a1b79df723d6d7612b5651c8522704dafb2e",
+      "license": {
+        "declared_spdx": "Apache-2.0",
+        "evidence": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "SPEC.md",
+          "symbol": "Important boundary:",
+          "lines": [
+            36,
+            44
+          ],
+          "permalink": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L36-L44"
+        },
+        {
+          "file": "SPEC.md",
+          "symbol": "tracker/filesystem-driven",
+          "lines": [
+            48,
+            58
+          ],
+          "permalink": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L48-L58"
+        },
+        {
+          "file": "SPEC.md",
+          "symbol": "### 7.1",
+          "lines": [
+            640,
+            674
+          ],
+          "permalink": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L640-L674"
+        },
+        {
+          "file": "SPEC.md",
+          "symbol": "### 8.4",
+          "lines": [
+            780,
+            839
+          ],
+          "permalink": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L780-L839"
+        },
+        {
+          "file": "SPEC.md",
+          "symbol": "blocked_by` is best-effort",
+          "lines": [
+            1278,
+            1284
+          ],
+          "permalink": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/SPEC.md#L1278-L1284"
+        },
+        {
+          "file": "elixir/lib/symphony_elixir/orchestrator.ex",
+          "symbol": "defp terminate_running_issue",
+          "lines": [
+            554,
+            578
+          ],
+          "permalink": "https://github.com/openai/symphony/blob/be10a1b79df723d6d7612b5651c8522704dafb2e/elixir/lib/symphony_elixir/orchestrator.ex#L554-L578"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "gastownhall/gastown",
+      "sha": "649b832b7672bc7a2dbef26f5983aba6198b819b",
+      "source": "https://github.com/gastownhall/gastown/tree/649b832b7672bc7a2dbef26f5983aba6198b819b",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "internal/scheduler/capacity/pipeline.go",
+          "symbol": "func BlockerAware",
+          "lines": [
+            101,
+            144
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/scheduler/capacity/pipeline.go#L101-L144"
+        },
+        {
+          "file": "internal/scheduler/capacity/dispatch.go",
+          "symbol": "func (c *DispatchCycle) RunPlan",
+          "lines": [
+            117,
+            169
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/scheduler/capacity/dispatch.go#L117-L169"
+        },
+        {
+          "file": "internal/session/lifecycle.go",
+          "symbol": "TrackPID",
+          "lines": [
+            104,
+            113
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/session/lifecycle.go#L104-L113"
+        },
+        {
+          "file": "internal/session/lifecycle.go",
+          "symbol": "func StopSession",
+          "lines": [
+            354,
+            377
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/session/lifecycle.go#L354-L377"
+        },
+        {
+          "file": "internal/refinery/engineer.go",
+          "symbol": "func DefaultMergeQueueConfig",
+          "lines": [
+            183,
+            199
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/refinery/engineer.go#L183-L199"
+        },
+        {
+          "file": "internal/refinery/engineer.go",
+          "symbol": "func (e *Engineer) submittedBranchHead",
+          "lines": [
+            1478,
+            1517
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/refinery/engineer.go#L1478-L1517"
+        },
+        {
+          "file": "internal/refinery/engineer.go",
+          "symbol": "func (e *Engineer) verifyMRInfoPostMergeProof",
+          "lines": [
+            1538,
+            1559
+          ],
+          "permalink": "https://github.com/gastownhall/gastown/blob/649b832b7672bc7a2dbef26f5983aba6198b819b/internal/refinery/engineer.go#L1538-L1559"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "smtg-ai/claude-squad",
+      "sha": "ce1ffb4392b01f38e2c4599c7c84d2a93973b138",
+      "source": "https://github.com/smtg-ai/claude-squad/tree/ce1ffb4392b01f38e2c4599c7c84d2a93973b138",
+      "license": {
+        "declared_spdx": "AGPL-3.0",
+        "evidence": "https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/LICENSE.md",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "README.md",
+          "symbol": "is a terminal app",
+          "lines": [
+            3,
+            12
+          ],
+          "permalink": "https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/README.md#L3-L12"
+        },
+        {
+          "file": "README.md",
+          "symbol": "--autoyes",
+          "lines": [
+            65,
+            69
+          ],
+          "permalink": "https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/README.md#L65-L69"
+        },
+        {
+          "file": "README.md",
+          "symbol": "Commit and push",
+          "lines": [
+            103,
+            103
+          ],
+          "permalink": "https://github.com/smtg-ai/claude-squad/blob/ce1ffb4392b01f38e2c4599c7c84d2a93973b138/README.md#L103-L103"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "BloopAI/vibe-kanban",
+      "sha": "d5cbb5380fa0b32e98ef9b8d987f63decce4be3a",
+      "source": "https://github.com/BloopAI/vibe-kanban/tree/d5cbb5380fa0b32e98ef9b8d987f63decce4be3a",
+      "license": {
+        "declared_spdx": "Apache-2.0",
+        "evidence": "https://github.com/BloopAI/vibe-kanban/blob/d5cbb5380fa0b32e98ef9b8d987f63decce4be3a/LICENSE",
+        "grant_inspected": true,
+        "qualification": "Inspected license source; preserve applicable notices."
+      },
+      "source_references": [
+        {
+          "file": "README.md",
+          "symbol": "Vibe Kanban is sunsetting",
+          "lines": [
+            22,
+            47
+          ],
+          "permalink": "https://github.com/BloopAI/vibe-kanban/blob/d5cbb5380fa0b32e98ef9b8d987f63decce4be3a/README.md#L22-L47"
+        },
+        {
+          "file": "crates/worktree-manager/src/worktree_manager.rs",
+          "symbol": "pub async fn create_worktree",
+          "lines": [
+            60,
+            86
+          ],
+          "permalink": "https://github.com/BloopAI/vibe-kanban/blob/d5cbb5380fa0b32e98ef9b8d987f63decce4be3a/crates/worktree-manager/src/worktree_manager.rs#L60-L86"
+        },
+        {
+          "file": "crates/worktree-manager/src/worktree_manager.rs",
+          "symbol": "pub async fn cleanup_worktree",
+          "lines": [
+            404,
+            425
+          ],
+          "permalink": "https://github.com/BloopAI/vibe-kanban/blob/d5cbb5380fa0b32e98ef9b8d987f63decce4be3a/crates/worktree-manager/src/worktree_manager.rs#L404-L425"
+        }
+      ],
+      "evidence_class": "pinned_git_source"
+    },
+    {
+      "repository": "kyleboas/pi-orchestrator",
+      "sha": "7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee",
+      "evidence_class": "pinned_git_source",
+      "source": "https://github.com/kyleboas/pi-orchestrator/tree/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/LICENSE",
+        "grant_inspected": true,
+        "qualification": "MIT notice must accompany substantial copied code"
+      },
+      "source_references": [
+        {
+          "kind": "static_observation",
+          "symbol": "sendWorkerInstruction / requestWorkerRpc",
+          "claim": "Held-open RPC child receives prompt and follow-up streamingBehavior=steer; request map has no general response timeout here.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L355-L380"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "settleWorker",
+          "claim": "Fetches authoritative last assistant text before completing and reporting the run.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L411-L425"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "handleRpcLine",
+          "claim": "Accepts BOTH agent_end and agent_settled; pending worker background jobs hold settlement; an interrupted run suppresses partial delivery.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L547-L593"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "beginWorkerRun / beginWorkerSettlement / finishWorkerSettlement / claimWorkerReport / canSteerWorker",
+          "claim": "Generation guards prevent stale settlement; per-run report claim; settlement blocks steer; idle live process can accept another run.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator-lib/worker-lifecycle.ts#L82-L159"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "steerWorker",
+          "claim": "Reusable persistent workers support correction/continuation, interrupt abort, root correction budgets and lineage.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L966-L1042"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "orchestrator_delegate admission",
+          "claim": "Counts live processes, including settled idle workers, synchronously before launch; configured limit rejects instead of queuing.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L1622-L1632"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "getOrchestratorRuntime",
+          "claim": "globalThis Symbol runtime survives extension reload within one parent process, not host/process restart.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator-lib/orchestrator-runtime.ts#L154-L167"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "workerEnv / spawnWorkerChild",
+          "claim": "Strips GH_/GITHUB_/SSH_/GIT_ ambient credentials, launches detached process group; explicitly not filesystem containment.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L650-L678"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "killWorkerProcessTree / stopWorkerProcess",
+          "claim": "SIGTERM process group plus direct child; no SIGKILL escalation in this function.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator-lib/orchestrator-runtime.ts#L93-L110"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "workerRpcArgs",
+          "claim": "Pi workers use --no-session --no-extensions and explicit background-job extension; persistent PROCESS does not mean persistent transcript.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator-lib/orchestrator-core.ts#L79-L84"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "buildWorkerPrompt",
+          "claim": "Worker implementation ownership and coordinator-only PR merge are prompt instructions, not sandbox enforcement.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator-lib/orchestrator-core.ts#L177-L208"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "session_shutdown",
+          "claim": "Releases session binding; does not itself terminate workers, preserving reload continuity.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/extensions/orchestrator.ts#L1403-L1406"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "lifecycle tests",
+          "claim": "Tests assert final-text fallback, one delivery, stale invalidation, steer refusal, new generation and auto-stop selection; inspected, not run.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/test/orchestrator-worker-lifecycle.test.ts#L52-L105"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "runtime tests",
+          "claim": "Tests cover reload ownership, deferred reports, exit cleanup, process group termination; inspected, not run.",
+          "source": "https://github.com/kyleboas/pi-orchestrator/blob/7671d84c1f19f4bc52b43c15bfab3ae17b6a1bee/test/orchestrator-runtime.test.ts#L98-L278"
+        }
+      ]
+    },
+    {
+      "repository": "saifymatteo/pi-orchestrator",
+      "sha": "3f14476a0bba9ac0483247a3d687890981cbf2e3",
+      "evidence_class": "pinned_git_source",
+      "source": "https://github.com/saifymatteo/pi-orchestrator/tree/3f14476a0bba9ac0483247a3d687890981cbf2e3",
+      "license": {
+        "declared_spdx": "MIT",
+        "evidence": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/package.json",
+        "grant_inspected": false,
+        "qualification": "Manifest claims MIT but no license text/notice found anywhere in pinned tracked tree; clarify license before copying code."
+      },
+      "source_references": [
+        {
+          "kind": "static_observation",
+          "symbol": "buildChildSpawnArgs",
+          "claim": "RPC child sessions optionally persisted; persistent mode does not reuse deterministic session ID, avoiding two writers to one JSONL.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1011-L1053"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "processLine agent_settled",
+          "claim": "Only agent_settled marks completedNormally then kills child. This is one-shot process execution with persistent transcript, NOT reusable persistent workers.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1571-L1578"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "setupSubSession",
+          "claim": "Best-effort ordered RPC get_state/new_session(parentSession)/session naming precedes prompt; link failure does not fail work.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1638-L1676"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "parseSessionHeader / scanSubSessions",
+          "claim": "Disk-derived parent-linked session discovery survives parent restart; not live-worker resumption.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1084-L1148"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "createRunWatcher",
+          "claim": "In-memory async acceptance/status/cancel, late kill registration, idempotent settle; aborted conversation suppresses delivery; rejected runner settles silently.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L288-L394"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "parallel dispatch / mapWithConcurrencyLimit",
+          "claim": "Max eight tasks per invocation; blocking mode uses concurrency four, async default directly maps every task to startAsyncRun and bypasses this limiter.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L2418-L2467"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "chain dispatch",
+          "claim": "Blocking sequential chain substitutes {previous}; failure returns early. No arbitrary dependency graph scheduler.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L2338-L2404"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "parent tool_call gate",
+          "claim": "Engaged parent hard-blocks non-keep-list tools; auto mode does not force delegation.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/index.ts#L518-L535"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "child mode",
+          "claim": "Child installs watchdog, tool gate, parent prompt forwarding then returns without delegate registration: flat orchestration.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/index.ts#L322-L327"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "installChildToolGate",
+          "claim": "Runtime deny matcher backstop complements spawn-time --exclude-tools.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/index.ts#L74-L89"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "installChildWatchdog",
+          "claim": "Child polls original parent PID every five seconds; dependent on this extension loading in child.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/index.ts#L214-L237"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "runSingleAgent spawn / killChild",
+          "claim": "Inherits process.env; direct child SIGTERM then unconditional SIGKILL after five seconds; no detached process-group signaling here.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1381-L1428"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "turn budget / settlement",
+          "claim": "Soft steer at maxTurns, hard kill after grace; stall watchdog and first-killer-wins stopReason; settled is not acceptance of task.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1530-L1578"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "runSingleAgent finally",
+          "claim": "Prompt and forwarded-parent prompt temporary files/directories are removed best-effort.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/delegate.ts#L1685-L1712"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "session_shutdown",
+          "claim": "Aborts active runs then kills fleet; teardown suppresses async result delivery.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/src/index.ts#L478-L488"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "watcher tests",
+          "claim": "Tests immediate registration, once delivery, cancel/late-spawn race, abort suppression; not included in package npm test command.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/tests/watcher.test.ts#L109-L251"
+        },
+        {
+          "kind": "static_observation",
+          "symbol": "async tests",
+          "claim": "Stub harness tests acceptance, result push, chain blocking, status and cancel; inspected, not executed.",
+          "source": "https://github.com/saifymatteo/pi-orchestrator/blob/3f14476a0bba9ac0483247a3d687890981cbf2e3/tests/delegate.test.ts#L1131-L1316"
+        }
+      ]
+    },
+    {
+      "repository": "trader-payne/pi-orchestrator",
+      "sha": null,
+      "evidence_class": "checksum_verified_published_build",
+      "source": "https://registry.npmjs.org/pi-orchestrator/-/pi-orchestrator-1.1.1.tgz",
+      "github_status": 404,
+      "publisher_gitHead_unverified": "79de0e3cadd9ad8876c8ee05e8d7f08f00c84f51",
+      "npm_version": "1.1.1",
+      "tarball_sha1": "5d8e7da827feff7a2d80ed45949009f911b9fc6d",
+      "tarball_sha256": "55bd4d0efda2d21c96415b020e023f08cafde575a7bdf1bf211650e8cca033c1",
+      "license": {
+        "evidence": "https://unpkg.com/pi-orchestrator@1.1.1/LICENSE",
+        "declared_spdx": "MIT",
+        "grant_inspected": true
+      },
+      "source_references": [
+        {
+          "file": "dist/src/workflow/engine.js",
+          "symbol": "WorkflowEngine",
+          "line": 29,
+          "source": "https://unpkg.com/pi-orchestrator@1.1.1/dist/src/workflow/engine.js"
+        },
+        {
+          "file": "dist/src/dispatch/crew-runner.js",
+          "symbol": "cleanCrewState",
+          "line": 102,
+          "source": "https://unpkg.com/pi-orchestrator@1.1.1/dist/src/dispatch/crew-runner.js"
+        },
+        {
+          "file": "dist/src/dispatch/crew-shared.js",
+          "symbol": "isCrewComplete",
+          "line": 61,
+          "source": "https://unpkg.com/pi-orchestrator@1.1.1/dist/src/dispatch/crew-shared.js"
+        },
+        {
+          "file": "dist/src/dispatch/session-runner.js",
+          "symbol": "runSessionPrompt",
+          "line": 57,
+          "source": "https://unpkg.com/pi-orchestrator@1.1.1/dist/src/dispatch/session-runner.js"
+        },
+        {
+          "file": "dist/src/utils.js",
+          "symbol": "createOrchestratorPaths",
+          "line": 56,
+          "source": "https://unpkg.com/pi-orchestrator@1.1.1/dist/src/utils.js"
+        }
+      ],
+      "limitations": "No test files in published artifact; GitHub unavailable. test script advertises vitest run but tests not inspected or executed."
+    },
+    {
+      "repository": "rayshawnmccall21/pi-orchestrator",
+      "sha": null,
+      "evidence_class": "implementation_unavailable",
+      "source": null,
+      "github_status": 404,
+      "publisher_gitHead_unverified": null,
+      "npm_version": null,
+      "tarball_sha1": null,
+      "tarball_sha256": null,
+      "license": {
+        "evidence": null,
+        "declared_spdx": null,
+        "grant_inspected": false
+      },
+      "source_references": [],
+      "limitations": "API, raw main, git ls-remote and HTML all unavailable; public user repository listing omits target; archive availability empty. Cannot infer deleted versus private versus renamed."
+    }
+  ],
+  "evidence_counts": {
+    "pinned_git_source": 15,
+    "checksum_verified_published_build": 1,
+    "implementation_unavailable": 1
+  },
+  "implementation_evidence_count": 16,
+  "excerpt_policy": "Verbatim upstream excerpts are not stored here; each reference keeps its pinned URL and line range."
+}
