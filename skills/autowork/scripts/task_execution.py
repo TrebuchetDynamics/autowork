@@ -730,7 +730,23 @@ def main(argv=None):
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
     parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')
     parallel.add_argument('--parallel-close', metavar='TASK', help='Close and archive an integrated task with passing validation; clean only its owned worktree.')
+    parallel.add_argument('--parallel-status', action='store_true', help='Read-only parallel progress and journal metrics; no owner required.')
+    parallel.add_argument('--json', action='store_true', help='Machine-readable output with --parallel-status.')
     args = parser.parse_args(argv)
+    if args.parallel_status:
+        try:
+            if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close,
+                    args.run is not None, args.writers, args.parallel is not None)):
+                raise ValueError('--parallel-status cannot be combined with execution operations')
+            import parallel_status
+            result = parallel_status.snapshot(args.consumer)
+            print(json.dumps(result, indent=2) if args.json else parallel_status.render(result))
+            return 0
+        except (ValueError, OSError, subprocess.SubprocessError, KeyError, TypeError) as exc:
+            print(json.dumps({'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}, indent=2))
+            return 1
+    if args.json:
+        parser.error('--json requires --parallel-status')
     if args.parallel is not None or args.wait or args.integrate or args.parallel_close:
         return parallel_main(args)
     if args.writers:

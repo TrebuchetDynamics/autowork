@@ -1660,3 +1660,178 @@ Source section: Next
 - Delivery (2026-10-15): `parallel_integrate.py` plus `--integrate TASK --run ARGV... --timeout S` and `--parallel-close TASK` on `owner_cycle.py`; results `INTEGRATED`, `CLOSED`, `RETRIED`. Validation runs in the detached integration worktree through `bounded_command()`, factored out of the sequential `command()` (whose lease, budget and receipt output are unchanged); the canonical checkout is only fast-forwarded. Held slots get one fresh `autowork/<TASK>-r2` attempt once no worker runs (`dispatch_with_retries`). Close cleanup is retryable and follows Docs Sync's archive owner, including legacy and linked archives.
 - Implementation: by the toolset Autowork cron (b8ac329, review fixes 2927cca, archive-owner fix 0e2fa22, refreshed onto main as 1e5b97b), with the cron's independent review approving the final source. Canonical integration was held by the cron while other sessions were active in canonical main; the interactive coordinator took the released lease and integrated.
 - Checks run: `test_parallel_integrate.py` (48) with `test_parallel_dispatch.py` 65 passed together; every acceptance item has a named test (clean merge/close, close refusal and byte-identical ledger, conflict preserving dirty files and other slots, outside-Touches and coordinator-file holds, moved HEAD re-merged once then held, single `-r2` retry after drain, sequential output byte-identical, ff-only canonical updates); `python3 scripts/check.py` passed all four offline directories on the merge (510/664/212/8); `git diff --check` clean. Offline only; real workers remain TOOLSET-091-00.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-093-01 — Build the continuous Pi Autowork runner
+
+- [x] TOOLSET-093-01 — Build the continuous Pi Autowork runner
+- Status: done (2026-10-15). `scripts/pi-autowork.sh` selects each task with `goals.py next` (no model call on an empty queue; drift and ledger errors reported separately), runs `pi --mode json` with an explicit provider/model, `/skill:autowork` naming exactly that task, `--no-approve` and a per-task session, then confirms completion from `goals.json`. It falls back to DeepSeek V4.1 Flash for 30 minutes on provider errors read from the JSON events (even with exit 0) or an unauthenticated primary, and resumes the same session; retries crashes with backoff; skips no-progress tasks until the ledger changes; stops on uncommitted foreign changes, an in-progress Git operation or a Hermes Autowork job on the same repository; holds a `flock` lock; blocks pushes through Git config; forwards Ctrl+C and resumes interrupted tasks; keeps compact redacted records outside the repository. 20 fake-Pi tests in `tests/test_pi_autowork.py` cover the spec's 15 cases and more; ShellCheck is clean. Live smoke on a throwaway repository: GPT-6.1 Sol completed, committed, closed and archived a one-file task in 74 s (462k tokens). Fallback switching and a multi-task continuous run are unverified live (TOOLSET-094-65).
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/project.md#continuous-pi-runner-2026-10-15), [usage](docs/cross-host.md#run-autowork-continuously), [Pi adapter](adapters/skills/autowork/SKILL.md).
+- Scope: A standalone Bash runner, deterministic tests with a fake Pi and disposable repositories, and a concise usage guide; no change to Autowork's contracts, no scheduler, daemon or database.
+- Acceptance: The spec's 15 test cases pass offline; ShellCheck passes; a bounded real Pi run completes one task in a disposable repository.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`; one `--once` run against a disposable repository.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push; no change to the Autowork skill.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-094-65 — Qualify the Pi runner's fallback and a multi-task run live
+
+- [x] TOOLSET-094-65 — Qualify the Pi runner's fallback and a multi-task run live
+- Status: done (2026-10-15). Live in a disposable repository with five one-file tasks and a bare `origin`: (1) a continuous run (`--max-cycles 2`) completed T1 and T2 once each on GPT-6.1 Sol (85 s, 74 s); (2) a wrapper gave the first primary run an empty Pi agent directory, so the real Pi exited 1 with "No API key found for openai-codex"; the runner first classified that as a crash and retried the primary (T3), which exposed a missing pattern; after the fix (TOOLSET-094-65 regression `test_missing_credentials_at_run_time_fall_back`) the same failure on T4 was a provider failure, the primary cooled for 30 minutes, and DeepSeek V4.1 Flash resumed T4 in the same session and completed it (2 commits, 32 s, $0.007 reported, `fallback_reason` recorded); (3) SIGINT 26 s into T5 stopped the real Pi promptly, the runner exited 130 and kept the in-flight record, and the next `--until-empty` run resumed T5 in the same session, completed it and exited on an empty queue. All five tasks are done once; `origin` has no refs; tests 21 passed and ShellCheck is clean.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [plan](docs/project.md#continuous-pi-runner-2026-10-15), [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: In a disposable repository with two or three small tasks, run `--until-empty` live; then force the fallback (for example by making the primary fail authentication in a throwaway Pi agent directory) and confirm DeepSeek V4.1 Flash resumes and completes a task, and that Ctrl+C mid-task resumes cleanly.
+- Acceptance: `runs.jsonl` shows each task completed once, a provider failure followed by a fallback completion with `fallback_reason`, and an interrupted run resumed in the same session; no push.
+- Checks: `runs.jsonl`, `git log` of the disposable repository, and the runner's output.
+- Dependencies: TOOLSET-093-01.
+- Ownership: Toolset coordinator; spends OpenRouter credit, so run it on the owner's request.
+- Exclusions: No run against a real project repository.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-095-48 — Run Pi Autowork from the main branch with per-task worktrees merged at the end
+
+- [x] TOOLSET-095-48 — Run Pi Autowork from the main branch with per-task worktrees merged at the end
+- Status: done (2026-10-15). Owner request: the runner works from the main branch, uses worktrees and merges everything at the end. `scripts/pi-autowork.sh` now refuses any branch but the main branch; each session creates `pi-autowork/<session>` from it in a worktree under the state directory and reads the queue there; each task runs in a fresh worktree branched from that tip, told to commit there and not merge; finished or partial work joins the integration branch; unfinished work stays in its worktree for review while other tasks continue; when the queue empties or the runner stops, the main branch is merged into the integration branch (Pi resolves conflicts once per session with Git Commit Push), the main checkout fast-forwards, and worktrees and branches are removed; uncommitted changes in the main checkout block only that last step and are reported as `Merge pending`. 25 fake-Pi tests pass four times in a row, including merge resolution, an unresolved conflict, a blocked fast-forward and a non-main branch; ShellCheck clean. Offline only; live run in TOOLSET-096-7e.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously), [plan](docs/project.md#continuous-pi-runner-2026-10-15).
+- Scope: Worktree isolation and end-of-session merge in the runner, its tests and guide.
+- Acceptance: Work lands on the main branch only through the end-of-session merge; the main checkout's uncommitted changes are never touched; a conflicting merge is resolved or reported pending with the branch kept.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-094-65.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push by the runner.
+### TOOLSET-089-72 — Report parallel progress and metrics, with an end-to-end fixture and benchmark
+
+- [x] TOOLSET-089-72 — Report parallel progress and metrics, with an end-to-end fixture and benchmark
+- Status: done.
+- Delivery stage: Verified isolated local candidate; canonical integration remains pending while canonical sessions are active.
+- Evidence: Real CLI E2E/status suite passed five consecutive runs (9 tests per run). Combined integration/status suite passed 60 tests; independent corrective review approved. `python3 scripts/check.py` passed all four offline directories; eight native/model/integration modules excluded, with subprocess ResourceWarnings retained. `git diff --check` passed.
+- Benchmark: Linux 7.0.0-31-generic x86_64, 24 logical CPUs, Python 3.12.14; disposable Git A/B/C tasks with one-second fake-worker sleeps, commits, validation, sequential integration and closure. `python3 scripts/bench_parallel.py`: one slot 6.796823 s, two slots 5.651354 s; elapsed-minus-sleep-critical-path overhead 3.796823 s / 3.651354 s. These include CLI/Git/validation/wait costs, not isolated coordinator CPU time or LLM speedups.
+- Corrective review: Reproduced and fixed inherited TOOLSET-088-a7 timeout bypass and checked/archived contract-drift loopholes. Also fixed status capacity after changing refill concurrency. Required acceptance is unchanged; native/model/live qualification remains TOOLSET-091-00.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15); reads the journal from TOOLSET-086-9f.
+- Scope: Add `--parallel-status [--json]` printing the plan's table (header `AUTOWORK — PARALLEL`, `Workers: a/m active`, one row per task with state, worker slot, elapsed, blocked reason; then completed, failed and integration-queue counts) and, with `--json`, worktree, checks, commit and integration fields. Compute metrics from the journal: total wall time, worker time, integration time, waiting/blocked time, peak workers, conflict and retry counts. Add an end-to-end test with a disposable repository whose TODO has task A and B (independent, disjoint `Touches:`) and C (depends on A), driven through the real CLI with the fake worker: A and B overlap in time, C starts only after A is closed, and the final canonical checkout passes the fixture's own test. Add `scripts/bench_parallel.py` running the same controlled workload sequentially and with `--parallel 2`, printing elapsed times and coordinator overhead.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_e2e.py, scripts/bench_parallel.py, skills/autowork/scripts/task_execution.py
+- Acceptance: Status output matches a golden snapshot for a fixed journal and stays under 25 lines for 4 workers; the A/B/C end-to-end test passes deterministically 5 times in a row; the benchmark's measured sequential and parallel times and overhead are recorded in this task's evidence with the machine and workload, without claiming LLM-worker speedups.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_e2e.py`; `python3 scripts/bench_parallel.py`; `python3 scripts/check.py`; `git diff --check`.
+- Dependencies: TOOLSET-088-a7.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No live host workers (TOOLSET-091-00); no change to sequential output.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-097-57 — Install the Pi runner as a per-repository systemd user service
+
+- [x] TOOLSET-097-57 — Install the Pi runner as a per-repository systemd user service
+- Status: done (2026-10-15). Owner decision: background runners are set up from hermes-toolset, not by hand. `pi-autowork.sh --install-service [--repo PATH] [--allow-hermes]` writes the template unit `pi-autowork@.service` (working directory from the instance, `KillMode=mixed`, `KillSignal=SIGINT`, `SuccessExitStatus=130`, `Restart=on-abnormal`) and a 0600 environment file with the installer's `PATH` and `PI_AUTOWORK_*` settings, then reloads, enables and restarts `pi-autowork@<escaped path>`; it refuses a Hermes Autowork job on the repository without `--allow-hermes` and warns when lingering is off. `--remove-service` disables and stops the instance and removes its environment file. Two tests with a fake `systemctl` cover both; 27 runner tests and ShellCheck pass.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously).
+- Scope: Service install/remove in the runner, tests and guide; no change to how a run behaves.
+- Acceptance: One command installs and starts a repository's service; stopping it is the runner's graceful stop; deliberate exits do not restart it.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-095-48.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No system-wide units; no automatic installation.
+
+### TOOLSET-090-2d — Document parallel Autowork and wire it into each host
+
+- [x] TOOLSET-090-2d — Document parallel Autowork and wire it into each host
+- Status: done
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15), [Autowork skill](skills/autowork/SKILL.md), [adapter skill](adapters/skills/autowork/SKILL.md), [cross-host guide](docs/cross-host.md).
+- Scope: Add a short parallel-mode section to `skills/autowork/SKILL.md` and a reference `skills/autowork/references/parallel-workers.md` with the coordinator loop (claim, dispatch, `--wait`, review report, `--integrate`, `--parallel-close`, metadata commit, refill), `Touches:`/`Resources:` authoring, conflict handling, worktrees, recovery and authority. Mirror the invocation in `adapters/skills/autowork/SKILL.md` (Claude Code: sequential unless `--worker-command` is given; Codex and Pi: their templates). Document the `Touches:`/`Resources:` fields in the shared TODO rules and Docs Sync so planners write them. Fix the stale "Delegation does not create Git worktrees" line in `references/accepted-plan-execution.md`. Update README (one short paragraph and a link, no internals), docs/workflows.md, docs/cross-host.md (host capability table), docs/testing.md and the CHANGELOG. Add tests: sequential `owner_cycle.py --apply` results are byte-identical to before for an existing fixture, and an unsupported host returns `SEQUENTIAL_FALLBACK`.
+- Touches: skills/autowork/SKILL.md, skills/autowork/references/, adapters/skills/autowork/SKILL.md, skills/shared/TODO-WORKCENTER.md, skills/docs-sync/SKILL.md, README.md, docs/workflows.md, docs/cross-host.md, docs/testing.md, CHANGELOG.md, skills/autowork/scripts/test_parallel_compat.py
+- Acceptance: Docs describe only implemented behavior and flags (checked against `--help`); the host table states which hosts run parallel workers and which fall back; compatibility and fallback tests pass; `docs.py check` passes; skill bundle and adapter tests pass.
+- Checks: `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/docs.py check .`; `node --test tests/portable_pi.test.mjs`; `git diff --check`.
+- Dependencies: TOOLSET-089-72.
+- Ownership: Toolset coordinator under Autowork local repository authority.
+- Exclusions: No new Telegram command (the flag passes through `/autowork` arguments); no Hermes Agent changes.
+- Delivery (2026-10-15): `skills/autowork/references/parallel-workers.md` (coordinator loop with exact outcomes, `--run` last, Touches/Resources admission, coordinator-owned root files, host templates and every fallback condition, held `-r2` retries, restart reconciliation, resource gate, release semantics); an opt-in section in `skills/autowork/SKILL.md` and `adapters/skills/autowork/SKILL.md` (Claude Code: sequential unless `--worker-command`; Codex and Pi: built-in templates); Touches/Resources authoring in the shared TODO rules and Docs Sync; the stale worktree line in `accepted-plan-execution.md` fixed; README, docs/workflows.md, docs/cross-host.md (host table), docs/testing.md and CHANGELOG updated.
+- Checks run: every flag named in the new docs matches `owner_cycle.py --help` or the worker templates (`--no-ff` is the `git merge` flag integration uses); `test_parallel_compat.py` 5 passed, and its two golden tests also pass when run against the pre-parallel tree `b5092b3` (sequential output byte-identical with and without goals.json); fallback tests cover Claude Code without `--worker-command` and missing Hermes/Codex/Pi CLIs with no journal, slots, coordinator lease, worktrees or branches; `docs.py check` ok; `node --test tests/portable_pi.test.mjs` 3 passed; skill-policy, workflow-cycle, portable-package and update-bundle tests pass; `python3 scripts/check.py` passed all four offline directories; `git diff --check` clean.
+- Independent review (2026-10-15) found and this task fixed: the documented `--integrate ... --run ... --timeout` order could not work (`--run` takes the rest of the line); `IDLE` was described as queue completion; missing outcomes, hold reasons, retry/restart/launch-failure rules, reconcile states, name-collision behavior, close's archive and cleanup scope, root-only coordinator files, undetected-host fallback and the release caveat; the test gained a goals.json golden, a clean `GIT_*` environment and a coordinator-lease assertion. Not changed: the `--worker-profile` help text (task_execution.py is outside this task's Touches).
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-091-00
+Reason: The measured startup path (native start_goal admission) is retired historical execution; current startup is owner_cycle selection, whose real-host timing TOOLSET-091-00 records. Planner's call in the 2026-10-15 replan.
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
+
+- [ ] TOOLSET-013 — Measure time to useful worker action and qualify the faster startup
+- Status: open; TOOLSET-012 is integrated; isolated bounded environment still required.
+- Goal: STARTUP — Verify lower preparation overhead without weaker startup safety.
+- Sources: [accepted measurement contract](docs/project.md#faster-ready-task-startup), TOOLSET-012, [admission](skills/autowork/scripts/start_goal.py), [reporting boundaries](skills/autowork/references/dispatch-and-reporting.md).
+- Scope: Compare manual and composed startup on the same disposable accepted task, source, model/environment and cold/warm conditions. Separate request-to-handoff, queue wait, admission and first useful test/reproduction/edit after the guard. Count coordinator tool/model round trips and routine messages.
+- Acceptance: Fewer preparation round trips/messages with no observed comparable startup regression; preserve stale/ownership/dependency refusals. A heartbeat/queued card is not useful action; offline fixtures cannot close native qualification. Investigate contradictory timing.
+- Checks: Run both routes with source-bound implementation commands; retain exact argv, dependency/interpreter/model identity, enforced limits, timestamps, native admission/run evidence and failures. Harness/baseline runs are not yet executed.
+- Exclusions: No production repositories/messages, fabricated measurements, absolute latency/minimum-version promises, budget reset, protection bypass, push/deployment or live schedule/profile edits.
+- Dependencies: TOOLSET-012.
+- Environment prerequisite: Isolated configured native/model environment with external spending/descendant limits; unknown usage is not zero.
+- Ownership: Authorized coordinator with that environment; no active claim.
+- Current evidence: No externally capped isolated model environment is established; the existing local containment/controller fixtures exclude provider execution. No useful-action timing or speed claim was inferred from them.
+- Next action: With the same isolated model environment required by TOOLSET-003, execute the paired cold/warm comparison and report actual results.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-098-4c — Drive pi-autowork through the Parallel Autowork engine
+
+- [x] TOOLSET-098-4c — Drive pi-autowork through the Parallel Autowork engine
+- Status: done (2026-10-15), offline. Owner decision: use the toolset's own engine, no third-party orchestrator. `scripts/pi-autowork.sh` no longer selects tasks: it drives `owner_cycle.py --parallel` (dispatch with `--worker-command`, `--wait`, `--integrate` with `--run pi-autowork.sh --verify`, `--parallel-close`, coordinator metadata commit, refill, `--release` after the session merges into the main branch). `--worker` runs Pi on the engine prompt with model choice, JSON-event provider fallback that resumes the session, the push guard re-applied (the engine strips `GIT_*`) and `timeout --foreground` so the engine's process-group stop reaches Pi. `--verify` runs `PI_AUTOWORK_VALIDATE` then a read-only Pi review that must print `PI_AUTOWORK_VERIFY: pass` and leave the checkout unchanged. `--workers` 1-4 (default 2); `--status` maps slot states to pending/running/implemented/verifying/integrated/done/failed; `PI_AUTOWORK_MAX_COST` counts a rolling `PI_AUTOWORK_COST_WINDOW` over `runs.jsonl` from all processes. With `--allow-hermes` the engine lease keeps Pi and Hermes Autowork from owning tasks at once (tested both ways). Fixed an engine bug: a restarted interrupted/released worker was held as `unexpected worker branch` (`parallel_integrate.expected_branch`, regression in `test_parallel_integrate.py`). 24 runner tests (parallel overlap barrier, C after A, verification failure, tampering reviewer, blocked worker, fallback, missing credentials, interrupt/resume, budget persistence, merge conflict resolved and pending, dirty main, Hermes lease both ways, push guard, status/dry run, setup, service) and 106 engine tests pass; `python3 scripts/check.py` passes. Live qualification in TOOLSET-091-00.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [usage](docs/cross-host.md#run-autowork-continuously), [engine](skills/autowork/references/parallel-workers.md), [parallel plan](docs/project.md#parallel-autowork-2026-10-15).
+- Scope: Replace the runner's own selection loop with the engine's coordinator loop; keep model selection, fallback, services, locks, shutdown, budgets and recovery.
+- Acceptance: No second scheduler; tasks close only after verified integration; budgets survive restarts; Hermes and Pi never own a task at once; existing options keep working.
+- Checks: `python3 -m unittest tests/test_pi_autowork.py`; engine tests in `skills/autowork/scripts`; `shellcheck scripts/pi-autowork.sh`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-097-57.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No third-party orchestration; no push by the runner.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-091-00 — Qualify parallel Autowork with real host workers
+
+- [x] TOOLSET-091-00 — Qualify parallel Autowork with real host workers
+- Status: done (2026-10-15). Pi qualified live; Codex fails live and now falls back to sequential; Hermes workers not run, by owner decision (Hermes plans tasks, the pi-autowork service executes them with Pi workers), so `/autowork --parallel` from Hermes stays unqualified. Evidence below.
+- Evidence (2026-10-15): disposable repository (A, B independent with `Touches:`; C depends on A; combined `check.sh`; bare `origin`).
+  - **Pi qualified** (Pi 1.2.0, `openai-codex/gpt-6.1-sol`, workers through `pi-autowork.sh --worker` as `--worker-command`, Pi review as validation). Parallel run: A and B overlapped (peak 2 workers), A integrated while B ran, C dispatched only after A closed, sequential merge commits, combined check passed, 0 retries/conflicts, no push, wall 158 s (worker 162 s, integration 104 s). Sequential control (`--workers 1`): 240 s, one hold then a passing retry. Interruption: the coordinator was killed with SIGKILL while both workers ran; the restart adopted A's live worker (no second worker started), integrated B (finished meanwhile) and completed C after one held first attempt (its report listed an early failing check; the worker prompt now asks for final results only).
+  - **Codex fails** (codex-cli 0.162.1, scripted coordinator following the documented loop): two workers ran at once and passed their checks, but neither could commit, because the workspace-write sandbox keeps Git metadata read-only; dispatch now returns `SEQUENTIAL_FALLBACK` for Codex workers.
+  - **Hermes not run**: the scope excludes fleet profiles, and a disposable Hermes profile would be loaded by the live gateway; that needs the owner's go-ahead.
+  - Found and fixed on the way: restarted interrupted/released workers were held as `unexpected worker branch`; a killed coordinator's helper kept the runner lock (helpers no longer inherit it); writer holds now name their processes.
+- Decision (owner, 2026-10-15): Hermes workers are not needed; no disposable Hermes profile is created.
+- Goal: PARALLEL — Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [plan](docs/project.md#parallel-autowork-2026-10-15).
+- Scope: On a disposable local repository (not a fleet project) with three small real tasks (A, B independent; C depends on A), run `/autowork --parallel 2` from a Hermes coordinator with Hermes workers, then repeat with Codex and Pi workers where installed. Record per run: worker overlap, integration order, C waiting for A, combined test result, wall time against a sequential run of the same tasks, worker and integration time, and any held or interrupted slot. Interrupt one run's coordinator mid-way and confirm a restart adopts live workers without duplicates.
+- Acceptance: Each qualified host shows two real workers overlapping in separate worktrees, sequential integration, C after A, a passing combined check and no push; the interruption test starts no duplicate worker; measured times recorded with host versions; any host that fails stays documented as sequential-only.
+- Checks: `--parallel-status --json` at each step, the journal, `git log --graph` of the disposable repository, and the recorded elapsed times.
+- Dependencies: TOOLSET-090-2d.
+- Environment prerequisite: Installed host CLIs with working model access; owner availability to observe the run.
+- Current evidence (2026-10-15): Hermes 0.22.0, Codex CLI 0.162.1 and Pi 1.2.0 are installed; model access and owner availability are not verified.
+- Exclusions: No fleet repositories or profiles, no push, no cron schedule.

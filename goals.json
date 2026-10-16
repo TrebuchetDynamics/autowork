@@ -90,7 +90,8 @@
       "tasks": [
         "TOOLSET-080",
         "TOOLSET-081",
-        "TOOLSET-082"
+        "TOOLSET-082",
+        "TOOLSET-098-5d"
       ],
       "title": "Keep the OMH skills profiles use and drop the rest from every prompt"
     },
@@ -181,7 +182,6 @@
       "source": "docs/project.md#accepted-requirements",
       "status": "unverified",
       "tasks": [
-        "AUDIT-QUOTED-SECRET",
         "TOOLSET-003",
         "TOOLSET-015",
         "TOOLSET-016",
@@ -195,6 +195,7 @@
         "TOOLSET-026",
         "TOOLSET-027",
         "TOOLSET-083",
+        "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18"
       ],
       "title": "Qualify bounded automatic planning recovery"
@@ -394,11 +395,17 @@
     },
     {
       "depends_on": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.",
+          "result": "pass"
+        }
+      ],
       "id": "PARALLEL",
       "priority": 89,
       "source": "docs/project.md#parallel-autowork-2026-10-15",
-      "status": "unmet",
+      "status": "met",
       "tasks": [
         "TOOLSET-085-1a",
         "TOOLSET-086-9f",
@@ -445,6 +452,35 @@
         "TOOLSET-034"
       ],
       "title": "Report OMH memory left off when another provider holds the slot"
+    },
+    {
+      "depends_on": [],
+      "evidence": [
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed",
+          "result": "pass"
+        }
+      ],
+      "id": "PI-RUNNER",
+      "priority": 96,
+      "source": "docs/project.md#continuous-pi-runner-2026-10-15",
+      "status": "partial",
+      "tasks": [
+        "TOOLSET-093-01",
+        "TOOLSET-094-65",
+        "TOOLSET-095-48",
+        "TOOLSET-096-7e",
+        "TOOLSET-097-41",
+        "TOOLSET-097-57",
+        "TOOLSET-098-4c"
+      ],
+      "title": "Run Autowork continuously through Pi with a model fallback"
     }
   ],
   "priority_order": {
@@ -452,19 +488,19 @@
     "tasks": [
       "AUDIT-QUOTED-SECRET",
       "TOOLSET-092-18",
-      "TOOLSET-089-72",
-      "TOOLSET-090-2d",
-      "TOOLSET-091-00",
-      "TOOLSET-029",
-      "TOOLSET-003",
-      "TOOLSET-019",
-      "TOOLSET-011",
-      "TOOLSET-013",
       "TOOLSET-064",
-      "TOOLSET-066",
+      "TOOLSET-082",
+      "TOOLSET-097-41",
       "TOOLSET-072",
       "TOOLSET-073",
-      "TOOLSET-082"
+      "TOOLSET-066",
+      "TOOLSET-091-00",
+      "TOOLSET-003",
+      "TOOLSET-098-5d",
+      "TOOLSET-019",
+      "TOOLSET-096-7e",
+      "TOOLSET-029",
+      "TOOLSET-011"
     ]
   },
   "tasks": [
@@ -475,6 +511,14 @@
       "section": "Now",
       "status": "in_progress",
       "title": "Redact complete quoted credential values in fleet observations"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-092-18",
+      "section": "Next",
+      "status": "open",
+      "title": "Reject in-profile output directory aliases during fleet collection"
     },
     {
       "depends_on": [],
@@ -493,16 +537,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify the updated reporting workflow on the affected profile"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-012"
-      ],
-      "goal": "STARTUP",
-      "id": "TOOLSET-013",
-      "section": "Next",
-      "status": "open",
-      "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
       "depends_on": [],
@@ -566,41 +600,31 @@
     },
     {
       "depends_on": [
-        "TOOLSET-088-a7"
+        "TOOLSET-095-48"
       ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-089-72",
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-096-7e",
       "section": "Next",
       "status": "open",
-      "title": "Report parallel progress and metrics, with an end-to-end fixture and benchmark"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-089-72"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-090-2d",
-      "section": "Next",
-      "status": "open",
-      "title": "Document parallel Autowork and wire it into each host"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-090-2d"
-      ],
-      "goal": "PARALLEL",
-      "id": "TOOLSET-091-00",
-      "section": "Next",
-      "status": "open",
-      "title": "Qualify parallel Autowork with real host workers"
+      "title": "Qualify the worktree runner live on a fleet repository"
     },
     {
       "depends_on": [],
-      "goal": "RECOVERY",
-      "id": "TOOLSET-092-18",
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-097-41",
       "section": "Next",
       "status": "open",
-      "title": "Reject in-profile output directory aliases during fleet collection"
+      "title": "Report the correct Hermes profile from nested installation paths"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-082"
+      ],
+      "goal": "OMH-TRIM",
+      "id": "TOOLSET-098-5d",
+      "section": "Next",
+      "status": "open",
+      "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
     },
     {
       "depends_on": [],
@@ -1134,12 +1158,98 @@
       "title": "Integrate finished workers one at a time and close tasks only after validation"
     },
     {
+      "depends_on": [
+        "TOOLSET-088-a7"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-089-72",
+      "section": "Done",
+      "status": "done",
+      "title": "Report parallel progress and metrics, with an end-to-end fixture and benchmark"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-089-72"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-090-2d",
+      "section": "Done",
+      "status": "done",
+      "title": "Document parallel Autowork and wire it into each host"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-090-2d"
+      ],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-091-00",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify parallel Autowork with real host workers"
+    },
+    {
       "depends_on": [],
       "goal": "GENTLE-UPDATE",
       "id": "TOOLSET-092-f2",
       "section": "Done",
       "status": "done",
       "title": "Keep the restart outcome when a later update replaces the receipt"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-093-01",
+      "section": "Done",
+      "status": "done",
+      "title": "Build the continuous Pi Autowork runner"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-093-01"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-094-65",
+      "section": "Done",
+      "status": "done",
+      "title": "Qualify the Pi runner's fallback and a multi-task run live"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-095-48",
+      "section": "Done",
+      "status": "done",
+      "title": "Run Pi Autowork from the main branch with per-task worktrees merged at the end"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-097-57",
+      "section": "Done",
+      "status": "done",
+      "title": "Install the Pi runner as a per-repository systemd user service"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-098-4c",
+      "section": "Done",
+      "status": "done",
+      "title": "Drive pi-autowork through the Parallel Autowork engine"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-012"
+      ],
+      "goal": "STARTUP",
+      "id": "TOOLSET-013",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-091-00"
+      ],
+      "supersession_reason": "The measured startup path (native start_goal admission) is retired historical execution; current startup is owner_cycle selection, whose real-host timing TOOLSET-091-00 records. Planner's call in the 2026-10-15 replan.",
+      "title": "Measure time to useful worker action and qualify the faster startup"
     },
     {
       "depends_on": [],

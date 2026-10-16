@@ -228,6 +228,10 @@ class DispatchTests(unittest.TestCase):
             for flag in ('--yolo', 'bypass', 'danger', 'skip-permissions', '--approve'):
                 self.assertNotIn(flag, text, host)
         self.assertIn('{git_common_dir}', dispatch.TEMPLATES['codex'])
+        codex = type('Args', (), {'worker_command': None, 'worker_host': 'codex', 'worker_profile': None})
+        with patch.object(dispatch.shutil, 'which', return_value='/bin/codex'):
+            self.assertEqual(dispatch.worker_command(codex, self.owner)[0], None)  # not qualified live
+            self.assertIn('read-only', dispatch.worker_command(codex, self.owner)[1])
         args = type('Args', (), {'worker_command': None, 'worker_host': 'hermes', 'worker_profile': 'work'})
         with patch.object(dispatch.shutil, 'which', return_value='/bin/hermes'):
             template, host = dispatch.worker_command(args, self.owner)

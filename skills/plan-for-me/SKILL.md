@@ -99,6 +99,27 @@ For a concrete method gap or explicit protocol request, select one technique thr
 [engineering](../engineering/SKILL.md); consult
 [the engineering cycle](../shared/ENGINEERING-CYCLE.md) only if routing is unclear.
 Routine planning needs no experiment loop.
+
+For requests to finish faster or free the owner's time, plan backward from a usable
+handoff rather than rewriting the whole backlog. Inspect the still-failing acceptance
+criterion and recent partial deliveries first; separate necessary positive capability,
+required safety/package proof, unavailable external evidence and convenience work.
+Freeze speculative scope, reuse existing IDs/artifacts, and choose outcome-sized
+batches. Do not present task splitting, shorter prose, more frequent scheduling or
+larger test totals as measured throughput improvement. Keep the saved plan and user
+summary short enough to reduce the attention cost they asked to escape.
+
+State the handoff's observable done conditions, the remaining full-project roadmap
+and the next actually executable action separately. A staged handoff does not cancel
+later obligations, waive authentication/data-preservation gates, or qualify downstream
+training, research or deployment. If a positive trust/capability mechanism is still
+unidentified, label that contract unready and name the exact missing mechanism;
+do not hand the worker another open-ended instruction to discover it between guard
+fixes. Propose or apply only an authorized fix-or-skip disposition, preserving real
+dependencies, and identify existing independent work instead of manufacturing new
+investigation tasks. Do not claim that saved next-batch guidance has changed an active
+worker's behavior or been integrated into a queue whose pinned inputs are preserved.
+
 When called by Autowork, investigate its named uncertainty and return to the
 current task. For a held or blocked task, return a **fix or skip** decision, never a
 restated blocker: fix with the smallest reversible change inside the delegated scope

@@ -48,6 +48,14 @@ def hold(common, slot, reason, **updates):
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason}
 
 
+def expected_branch(slot):
+    """A held task's retry runs on a fresh -r2 branch; an interrupted or released
+    worker restarts on its original branch, even though both count as attempt 2."""
+    previous = (slot.get('previous_attempts') or [{}])[-1]
+    retried = slot['attempt'] == 2 and previous.get('state') == 'held'
+    return 'autowork/' + slot['task_id'] + ('-r2' if retried else '')
+
+
 def verify(repo, common, slot, contracts):
     task = contracts.get(slot['task_id'])
     if task is None:
@@ -55,8 +63,7 @@ def verify(repo, common, slot, contracts):
     if state.worker_live(slot):
         raise ValueError('worker still running')
     state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
-    expected = 'autowork/' + slot['task_id'] + ('-r2' if slot['attempt'] == 2 else '')
-    if slot['branch'] != expected:
+    if slot['branch'] != expected_branch(slot):
         raise ValueError('unexpected worker branch')
     commit = slot.get('commit', '')
     try:
@@ -124,7 +131,12 @@ def require_no_writers(repo):
         if not attributed:
             blocking.append(worker)
     if blocking:
-        raise ValueError('live or unknown external writer/session; preserve canonical checkout')
+        def describe(worker):
+            name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'
+            return (f"pid {worker['pid']} {name} in {', '.join(worker.get('workspaces') or ['?'])}"
+                    f" ({worker.get('evidence') or worker.get('kind', '')})")
+        raise ValueError('live or unknown external writer/session; preserve canonical checkout: '
+                         + '; '.join(describe(w) for w in blocking[:3]))
 
 
 def integration_worktree(repo, common, baseline):
@@ -315,6 +327,17 @@ def archive_path(repo):
         raise ValueError(str(exc)) from exc
 
 
+def require_task_contract(items, expected, *, archived=False):
+    """Only closure-owned checkbox/status changes may differ from validation."""
+    closed = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', expected)
+    if len(items) != 1:
+        raise ValueError('task contract provenance missing or ambiguous; no close')
+    body, mark, _ = items[0]
+    if ((archived and mark.lower() != 'x') or body.strip() not in
+            ({expected, closed} if mark.lower() == 'x' else {expected})):
+        raise ValueError('task contract changed since integration; no close')
+
+
 def close(repo, owner_pid, task):
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
@@ -327,16 +350,19 @@ def close(repo, owner_pid, task):
         if slot['state'] == 'closed':
             archive = archive_path(repo)
             archived = execution.goals_module().task_bodies(archive.read_text()) if archive.exists() else {}
-            if len(archived.get(task, [])) != 1 or archived[task][0][1].lower() != 'x':
-                raise ValueError('closed cleanup requires completed archive provenance')
+            require_task_contract(archived.get(task, []), info.get('task_contract', ''), archived=True)
             return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
         # The helper has no TODO-only `task` CLI. Use its same coordination and
         # atomic writer in this narrow adapter instead of creating a goals ledger.
         goals = execution.goals_module()
         current = goals.task_bodies((repo / 'TODO.md').read_text()).get(task, [])
-        if (len(current) > 1 or (current and current[0][1].lower() != 'x'
-                and current[0][0].strip() != info.get('task_contract'))):
-            raise ValueError('task contract changed since integration; no close')
+        expected_contract = info.get('task_contract', '')
+        if current:
+            require_task_contract(current, expected_contract)
+        else:
+            archive = archive_path(repo)
+            archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
+            require_task_contract(archived.get(task, []), expected_contract, archived=True)
         indexed = (repo / 'goals.json').exists()
         if indexed:
             require_no_writers(repo)
@@ -364,8 +390,7 @@ def close(repo, owner_pid, task):
         # The archive command can return null on an idempotent retry.
         archive = repo / archived_result['archive'] if archived_result.get('archive') else archive_path(repo)
         archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
-        if task not in archived or archived[task][0][1].lower() != 'x':
-            raise ValueError('archive readback does not contain the completed task')
+        require_task_contract(archived.get(task, []), expected_contract, archived=True)
         slot = state.change(common, slot, 'closed', {})
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
 
@@ -407,6 +432,9 @@ def retry_held(args):
     """Refill adapter for held slots; first attempts and their artifacts survive."""
     repo, common = context(args.consumer, args.owner_pid)
     with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'):
+        state.require_owner(common, args.owner_pid)
+        # transition() acquires writer.lock itself; never nest it under that lock.
+        dispatch.enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
         with execution.lock(common / 'writer.lock'):
             state.require_owner(common, args.owner_pid)
             current = state.slots(common)

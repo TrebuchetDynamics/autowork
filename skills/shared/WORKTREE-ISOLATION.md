@@ -15,3 +15,9 @@ Worktree creation is not commit, push, merge, cleanup or delivery authorization.
 Preserve existing worktrees, branches, indexes and live writers. Remove only
 scratch you created when it is no longer needed, without deleting receipts or
 launch inputs required for recovery.
+
+For authorized Autowork tasks, apply [worktree closeout](../autowork/references/worktree-closeout.md):
+integrate verified results into the canonical default branch (`main` or `master`),
+then remove finished owned task/integration worktrees. Keep active, dirty, locked,
+unmerged and recovery-bearing worktrees; report pending integration or cleanup.
+There is no cap on necessary active worktrees and no blanket deletion authority.

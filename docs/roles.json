@@ -117,7 +117,8 @@
       "covers": [
         "adapters",
         ".claude-plugin",
-        ".codex-plugin"
+        ".codex-plugin",
+        "scripts/pi-autowork.sh"
       ],
       "verified_at": "41aaad8fccfe"
     },

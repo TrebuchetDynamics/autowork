@@ -205,6 +205,58 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
 
 
+    def test_retry_refill_enforces_running_retry_timeout(self):
+        import time
+        from types import SimpleNamespace
+        self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason='fixture failure')
+        args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, profile='', parallel=2,
+            max_workers=None, worker_command=json.dumps([sys.executable, '-c', 'import time; time.sleep(60)']),
+            worker_host='auto', worker_profile=None, worker_timeout=.1,
+            min_free_mem_mb=0, tasks=None, plan=None)
+        module = self.module()
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            self.assertEqual(module.dispatch_with_retries(args)['outcome'], 'RETRIED')
+            worker = state.slots(self.common)[0]['worker']
+            self.addCleanup(dispatch.stop, worker)
+            time.sleep(.2)
+            module.dispatch_with_retries(args)
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'held')
+        self.assertIn('timeout', slot['reason'])
+        self.assertFalse(state.worker_live(slot))
+
+    def test_archived_task_cannot_close_changed_acceptance(self):
+        root, _ = self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] A', '- [x] A').replace(
+            'Acceptance: offline fixture', 'Acceptance: changed unvalidated requirement', 1).replace(
+            'Status: open', 'Status: done', 1))
+        module.goals_command(self.repo, 'archive', '--verified-tasks', 'A')
+        before = (self.repo / 'TODO.archive.md').read_bytes()
+        with self.assertRaisesRegex(ValueError, 'contract|provenance'):
+            module.close(self.repo, self.owner, 'A')
+        self.assertEqual((self.repo / 'TODO.archive.md').read_bytes(), before)
+        self.assertTrue(root.exists())
+        self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
+
+    def test_checked_task_cannot_archive_changed_acceptance(self):
+        root, _ = self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] A', '- [x] A').replace(
+            'Acceptance: offline fixture', 'Acceptance: changed unvalidated requirement', 1))
+        before = todo.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'contract changed'):
+            module.close(self.repo, self.owner, 'A')
+        self.assertEqual(todo.read_bytes(), before)
+        self.assertFalse((self.repo / 'TODO.archive.md').exists())
+        self.assertTrue(root.exists())
+
     def test_failed_validation_refuses_close_without_ledger_writes(self):
         root, commit = self.worker()
         before = (self.repo / 'TODO.md').read_bytes()
@@ -668,7 +720,7 @@ class IntegrationTests(unittest.TestCase):
             slot = state.slots(self.common)[1]
             slot.update(worker=execution.identity(worker.pid), state='running')
             execution.save(state.slot_path(self.common, 'B'), slot)
-            args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner)
+            args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, worker_timeout=30)
             self.assertEqual(self.module().retry_held(args)['outcome'], 'WAITING')
             self.assertFalse(self.git('branch', '--list', 'autowork/A-r2'))
             self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
@@ -695,6 +747,19 @@ class IntegrationTests(unittest.TestCase):
             if worker.poll() is None:
                 worker.kill()
             worker.wait()
+
+
+
+class ExpectedBranchTests(unittest.TestCase):
+    """Found qualifying pi-autowork: a restarted worker was held as 'unexpected worker branch'."""
+    def test_restart_keeps_its_branch_and_a_held_retry_uses_r2(self):
+        first = {'task_id': 'A', 'attempt': 1}
+        restarted = {'task_id': 'A', 'attempt': 2, 'previous_attempts': [{'state': 'released'}]}
+        interrupted = {'task_id': 'A', 'attempt': 2, 'previous_attempts': [{'state': 'interrupted'}]}
+        retried = {'task_id': 'A', 'attempt': 2, 'previous_attempts': [{'state': 'held'}]}
+        integrate = importlib.import_module('parallel_integrate')
+        self.assertEqual([integrate.expected_branch(s) for s in (first, restarted, interrupted, retried)],
+                         ['autowork/A', 'autowork/A', 'autowork/A', 'autowork/A-r2'])
 
 
 if __name__ == '__main__':

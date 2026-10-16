@@ -7,6 +7,43 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `scripts/pi-autowork.sh` now drives the toolset's Parallel Autowork engine instead of
+  picking tasks itself: up to `--workers N` (default 2, at most 4) Pi workers run
+  independent tasks in their own worktrees, the engine merges each into the session
+  branch, a separate read-only Pi review (after optional `PI_AUTOWORK_VALIDATE`) must
+  pass before a task closes, and the session merges into the main branch at the end.
+  `--status` shows each task as pending, running, implemented, verifying, integrated,
+  done or failed. `PI_AUTOWORK_MAX_COST` now counts a rolling window
+  (`PI_AUTOWORK_COST_WINDOW`, 24 h) across restarts and workers. With `--allow-hermes`
+  the engine's lease keeps Pi and Hermes Autowork from owning tasks at the same time.
+- `scripts/pi-autowork.sh` runs Autowork through the Pi coding agent one task at a time
+  until stopped: it takes the next task from `goals.py next` (an empty queue costs no
+  model call), runs Pi on GPT-6.1 Sol and falls back to DeepSeek V4.1 Flash on provider
+  errors, confirms completion from `goals.json`, resumes interrupted tasks, holds one
+  lock per repository and blocks pushes. It runs from the main branch, gives each task
+  its own worktree off a session integration branch, and merges the session into the
+  main branch when the queue empties or it stops (Pi resolves a conflicting merge once;
+  otherwise the merge is reported pending). `--install-service` runs it as a systemd
+  user service per repository (`pi-autowork@<repository name>`), stopped gracefully with SIGINT. See
+  [continuous Autowork](docs/cross-host.md#run-autowork-continuously).
+- Opt-in parallel Autowork (TOOLSET-085-1a to 090-2d): `/autowork --parallel N`
+  runs independent tasks in headless Hermes, Codex or Pi workers, each in its own
+  worktree, admitted by the tasks' new `Touches:` and `Resources:` fields. The
+  coordinator merges and validates one worker branch at a time, only fast-forwards
+  the canonical checkout, and closes a task only after validation. Claude Code
+  coordinators need `--worker-command`; otherwise, and when a worker CLI is
+  missing, Autowork runs the task sequentially as before. Sequential output is
+  unchanged. Documented in
+  [parallel workers](skills/autowork/references/parallel-workers.md); real model
+  workers are not yet qualified (TOOLSET-091-00).
+- Parallel Autowork progress via `owner_cycle.py --parallel-status [--json]`,
+  with journal-derived elapsed/worker/integration/waiting metrics and a controlled
+  fake-worker ABC benchmark (`scripts/bench_parallel.py`). Offline regressions
+  cover concurrent independent workers and dependency-after-close ordering
+  (TOOLSET-089-72); real host qualification remains separate.
+- Parallel retry refill enforces worker deadlines before waiting. Task closure and
+  cleanup verify the validated contract even when its checkbox was checked or its
+  body was already archived; changed acceptance refuses closure.
 - `/toolset update status` and `hermes toolset doctor` list profiles whose plugin links
   to a working checkout, which load its current files at any gateway restart.
   `hermes toolset pin NAME [--dry-run]` replaces one link with a clone at
@@ -133,6 +170,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `pi-autowork.sh --install-service` names units after the repository,
+  `pi-autowork@<name>.service` (for example `pi-autowork@sierra`), with the path kept in
+  its environment file; a unit named after the escaped path by an earlier release is
+  replaced, and a name already used by another repository is refused.
 - `/toolset update` no longer restarts the gateway in the middle of a chat turn. It
   restarts at once only when no chat or API turn is in flight; otherwise it reports
   `gateway_restart: deferred` and a detached waiter restarts at the first quiet
@@ -160,6 +201,18 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Parallel Autowork no longer lets an idle `in_progress` claim without `Touches:` stop
+  every other task: such a claim is not dispatched and still blocks its dependents and
+  declared overlaps, but unrelated tasks run. On sierra, 32 handed-off claims had left
+  the Pi runner with nothing it could start.
+- Parallel Autowork names the processes behind a "live or unknown external writer" hold
+  (PID, name, checkouts touched, evidence), tells workers to report each check's final
+  result only (a listed early failure held the task), and returns `SEQUENTIAL_FALLBACK`
+  for Codex workers, which live qualification showed cannot commit inside Codex's
+  workspace-write sandbox.
+- Parallel Autowork no longer holds a worker that was interrupted or released and then
+  restarted: integration expected the `-r2` branch of a held retry, so every restarted
+  task failed with `unexpected worker branch`. Found while qualifying `pi-autowork.sh`.
 - A gateway restart's outcome no longer disappears when another update runs before
   anyone reads the status: it is kept in `restart.json`, recorded by the next update
   before that replaces the receipt, and shown as `Last gateway restart` (TOOLSET-092-f2).

@@ -1,10 +1,56 @@
-# App-derived artwork: capture to icon proof
+# Brand artwork: approved source to icon proof
 
-Use when app-rendered content becomes a logo, launcher or store icon. Reuse the
-repository's renderer, capture/export tools, icon generator and provenance owner;
-do not build another rendering implementation or add dependencies for resizing.
+Use when supplied or app-rendered content becomes a logo, launcher or store icon.
+Reuse the repository's renderer, capture/export tools, icon generator and provenance
+owner; do not build another rendering implementation or add dependencies for resizing.
+Choose the source branch first: supplied artwork uses the procedure below;
+app-generated artwork continues with the renderer-specific capture steps.
 
-## 1. Establish the real source
+## Supplied artwork: preserve, inventory, derive, verify
+
+1. Inspect the supplied image and the current runtime logo and launcher icons
+   separately. Record the owner's source selection; do not infer authorship,
+   licensing or approval from an asset already being in the repository. Do not
+   generate competing drafts when the owner has designated the actual artwork.
+2. Preserve the untouched source and its SHA-256. Check EXIF/comments before
+   committing it: if they contain private metadata, keep the original private and
+   record a sanitized derivative with its distinct hash. Do not claim a sanitized
+   copy is byte-identical to the original.
+3. Enumerate actual asset consumers and packaging references before replacing
+   anything: runtime bundle entry, Android mipmaps/adaptive XML, web favicon and
+   manifest icons, Apple asset catalogs and Windows ICO frames where present.
+   Preserve existing sizes and identities; do not invent a platform resource that
+   the application does not use. Keep an existing runtime filename when replacing
+   its bytes is sufficient and avoids an unrelated caller migration.
+4. Derive each requested resource from the selected master with a recorded
+   resampler. Use a house generator first, otherwise an already installed image
+   library. Preserve composition and color; do not trace, crop, remove backgrounds
+   or add a new mask without authority. Keep platform padding a documented
+   derivative, not a silently altered master.
+5. For a square image that must fit wholly inside a maskable icon's circular safe
+   area, a centered 56% square is a tested conservative framing. Retain the full
+   image on the recorded background and verify the rounded size rather than
+   relying on the percentage label:
+
+   ```python
+   side = round(width * 0.56)
+   assert 2 * (side / 2) ** 2 <= (width * 0.4) ** 2
+   ```
+
+   Apply this only to the relevant maskable resources, not ordinary full-image
+   launcher/store artwork. Check the target's current safe-area requirements.
+6. Compare decoded PNG pixels and every ICO frame with the expected transformed
+   master; checking only the first ICO image misses stale smaller frames. Record
+   source/output hashes, dimensions, frame sizes and transformations in one
+   provenance manifest. Pin the approved source in a small regression and verify
+   output hashes/headers so a partial icon update cannot pass unnoticed.
+7. Render the actual welcome/logo consumer and native-size icon proofs. Inspect
+   loading completion, aspect-ratio containment and masks. Resource coverage and
+   a widget capture are not installed-device or cross-platform qualification.
+   Build an APK only within the requested handoff scope and read its bundled
+   branding back before attaching it.
+
+## 1. Establish the real app-rendered source
 
 - Inspect the registered module, actual shader and controller API before writing
   a capture test. Resolve symbols and preset constructor requirements from source,

@@ -46,6 +46,12 @@ same ID. Allocate it with `goals.py new-id <repo>` (or omit the ID in
 bodies: outcome, source/plan link, bounded scope, acceptance checks, dependencies,
 status and next action. Reconcile matching goals.json entries. Link a substantial
 plan from its tasks; do not create a separate plan file merely to satisfy a ritual.
+When the paths are known, add `Touches:` (repository-relative paths or globs the task
+may change; a trailing `/` covers a directory) and, where needed, `Resources:`
+(`live` or `exclusive` to run alone, or shared names such as `test-db`). Parallel
+Autowork runs a task beside others only when these prove it independent; a task
+without `Touches:` runs alone. Do not list the root `TODO.md`, `TODO.archive.md`,
+`goals.json` or `CHANGELOG.md`: the coordinator owns them.
 Keep unsupported ideas visibly Proposed/Needs decision instead of fabricating
 acceptance. If research finds no new work, retain existing bytes and report why.
 Missing Graphify or a failed readiness gate must be reported honestly; saving a

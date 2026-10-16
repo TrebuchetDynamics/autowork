@@ -197,6 +197,10 @@ Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes a
 
 - **Develop:** `/autowork Implement the accepted cache spec` executes and verifies
   one useful slice. No push or deployment is implied.
+- **Run in parallel:** `/autowork --parallel 2` runs independent tasks in separate
+  worker sessions and worktrees, then merges and checks them one at a time. It is
+  opt-in; tasks declare the files they change so overlapping work never runs
+  together. See [parallel workers](skills/autowork/references/parallel-workers.md).
 - **Continue:** `/lgtm` proceeds with the agreed next step under existing limits,
   including `no push`.
 - **Deliver:** `/git-commit-push only src/cache` validates, commits, pulls and merges
