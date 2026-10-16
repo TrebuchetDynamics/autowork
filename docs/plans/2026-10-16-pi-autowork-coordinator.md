@@ -141,8 +141,9 @@ runner's Bash shrinks to the entry point.
    schema check before install), adoption of verifiably idle claims, linked ignored
    dependencies; plus guarded priority-drift recording and no service exit on engine
    errors.
-5. In progress. Done: typed hold causes with re-verification after widening inferred
-   Touches; Touches inference and the Pi job runtime moved into the component. Next:
-   the coordinator loop and service rendering. Deferred causes and their automatic actions; extract the coordinator into the
+5. Done offline. Typed hold causes with re-verification after widening inferred
+   Touches; the whole runner (CLI, coordinator loop, worker modes, service, Pi job
+   runtime, Touches inference) moved into the component, with `pi-autowork.sh` as a
+   thin entry point. Deferred causes and their automatic actions; extract the coordinator into the
    `pi-autowork/` component per the [layout proposal](pi-autowork-component-layout.md)
    and reduce `pi-autowork.sh` to a compatibility entry point.

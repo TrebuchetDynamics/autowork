@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Integration and close no longer refuse because of a process that exited during the
+  writer check (a worker's short tool run seen by the scan and gone by the attribution
+  step): only a writer still alive with the same identity blocks.
 - A merged task whose TODO entry someone else archived or removed afterwards is
   set aside automatically (its merge stays; nothing is queued again) instead of
   retrying its close every cycle (bravo TASK-001).
@@ -322,6 +325,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The pi-autowork runner is now Python in the `pi-autowork/` component (`cli.py`,
+  `coordinator.py`, `worker.py`, `service.py`); `scripts/pi-autowork.sh` shrank from
+  about 1,200 lines of Bash to a 35-line entry point that finds the component. Options,
+  output, exit codes, state files, the service unit and the engine contract are
+  unchanged, and a run continues in the component of the toolset release it resolves,
+  so runner and engine never mix releases. Retried tasks are now logged and counted as
+  started workers (the Bash loop missed them). TOOLSET-115-bf phase 5.
 - `pi-autowork.sh` runs Pi jobs through the component's `pi_runtime.py` instead of its own
   Bash: the same model choice, fallback, retries, timeouts, budget and redacted records,
   now unit-tested. The runner requires the component from the toolset release it

@@ -975,18 +975,6 @@ class SetupTests(Fixture):
 
     def test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code(self):
         package = self.installed_package()
-        # Reproduce a minute boundary without sleeping or changing engine clocks.
-        # Only the human-readable prefix changes; scheduling/ISO dates stay real.
-        real_date = shutil.which('date')
-        self.assertIsNotNone(real_date)
-        assert real_date is not None
-        date = self.bin / 'date'
-        date.write_text('#!/bin/sh\n'
-                        'if [ "$1" = +%H:%M ]; then\n'
-                        '  if [ -f "$FAKE_PI_TOOLSET/.updated" ]; then printf "12:01\\n"; '
-                        'else printf "12:00\\n"; fi\n'
-                        'else exec ' + shlex.quote(real_date) + ' "$@"; fi\n')
-        date.chmod(0o755)
         before = self.git(package, 'rev-parse', '--short', 'HEAD')
         runner = self.run_until(package / 'scripts/pi-autowork.sh', 'restarting on it')
         deadline = time.monotonic() + 30
@@ -1005,7 +993,6 @@ class SetupTests(Fixture):
         starts = re.findall(r'^\[(\d{2}:\d{2})\] Started \(PID (\d+)\)\. Stop with Ctrl\+C\.$',
                             out, re.MULTILINE)
         self.assertGreaterEqual(len(starts), 2, out)
-        self.assertEqual({stamp for stamp, _ in starts}, {'12:00', '12:01'}, out)
         self.assertEqual({pid for _, pid in starts}, {str(runner.pid)}, out)  # exec keeps the PID
         updates = [json.loads(l) for l in self.log.read_text().splitlines() if '"update"' in l]
         self.assertEqual(updates[0]['update'], [str(self.origin)])

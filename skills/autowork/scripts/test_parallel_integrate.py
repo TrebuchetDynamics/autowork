@@ -124,6 +124,19 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
         self.assertFalse((self.repo / 'TODO.archive.md').exists())
 
+    def test_a_writer_that_exits_during_the_check_does_not_block(self):
+        """A worker's short tool run seen by the scan and gone by the check blocked a close."""
+        from unittest.mock import patch
+        gone = {'pid': 2 ** 22 + 13, 'start_ticks': 1, 'boot_id': 'x', 'kind': 'session', 'active': True,
+                'workspaces': [str(self.repo)], 'evidence': 'running commands'}
+        module = self.module()
+        with patch.object(execution, 'external_workers', return_value=[gone]):
+            module.require_no_writers(self.repo)  # no error: nothing alive to protect against
+        alive = dict(gone, pid=os.getpid(), **{k: v for k, v in execution.identity(os.getpid()).items() if k != 'pid'})
+        with patch.object(execution, 'external_workers', return_value=[alive]), \
+                self.assertRaisesRegex(ValueError, 'live or unknown external writer'):
+            module.require_no_writers(self.repo)
+
     def test_isolated_pool_session_does_not_block_landing(self):
         self.worker()
         root, _ = self.worker('B')
