@@ -76,6 +76,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `PI_AUTOWORK_LINK_PATHS` links gitignored dependencies (say a vendored source
+  tree) from the main checkout into each task and review worktree, only where Git
+  ignores the path, and verifies the link shows up as no change; directories become
+  real directories of links because Git does not treat a symlink as a directory. The
+  link is cooperative, not write-protected. sierra TASK-022 stopped twice on a missing
+  ignored source tree.
+- Self-update waits for a safe checkpoint: no runner on the machine has work in flight,
+  and the new release, read from Git before installing, declares it can read the
+  current execution state (`STATE_SCHEMA_READS` in the engine). Otherwise the update
+  is deferred with the reason, logged once, and the running release stays.
 - Parallel Autowork can adopt another session's `in_progress` claim once it is
   verifiably idle (`--adopt-idle-claims SECONDS`): its TODO/ledger entry, any branch
   or worktree named for the task and any agent process there all show no activity

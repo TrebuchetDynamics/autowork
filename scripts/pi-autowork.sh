@@ -60,6 +60,9 @@ Environment (optional):
   PI_AUTOWORK_CLAIM_IDLE    adopt another session's in_progress claim after this many seconds
                             with no task, branch or worktree change and no live agent
                             (default 21600; 0 never adopts)
+  PI_AUTOWORK_LINK_PATHS    comma-separated gitignored paths (say vendor/sdk) to link from the
+                            main checkout into each task and review worktree; only paths Git
+                            ignores there, and the link is cooperative, not write-protected
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)
@@ -293,8 +296,17 @@ if [[ ${1:-} == --worker || ${1:-} == --verify ]]; then
   push_guard  # the engine removes GIT_* from workers' environments
   # Stops reach the whole process group (engine and runner signal it), Pi included.
   trap 'STOP=1' INT TERM
+  # Gitignored dependencies the service names (PI_AUTOWORK_LINK_PATHS) are linked from
+  # the canonical checkout into this worktree first; a fresh worktree has none of them.
+  link_ignored() {
+    local helper
+    helper=$(dirname "$SCRIPT")/../pi-autowork/pi_autowork/workspaces.py
+    [[ -n ${PI_AUTOWORK_LINK_PATHS:-} && -n ${PI_AUTOWORK_REPO:-} && -f $helper ]] || return 0
+    python3 "$helper" link "$PI_AUTOWORK_REPO" "$1" "$PI_AUTOWORK_LINK_PATHS" | sed 's/^/pi-autowork: linked path /' >&2
+  }
   if [[ $role == worker ]]; then
     worktree=$3 prompt_file=$4 report=$5 limit=${6:-$TASK_TIMEOUT}
+    link_ignored "$worktree"
     task=$(sed -n 's/^Task: //p' "$prompt_file" | head -n1)
     attempt=$(basename "$(dirname "$report")")
     pi_job worker "$task" "$worktree" "Follow the instructions in this file exactly: @$prompt_file" \
@@ -304,6 +316,7 @@ if [[ ${1:-} == --worker || ${1:-} == --verify ]]; then
   fi
   task=$3
   checkout=$PWD
+  link_ignored "$checkout"
   if [[ -n ${PI_AUTOWORK_VALIDATE:-} ]]; then
     if ! bash -c "$PI_AUTOWORK_VALIDATE"; then
       echo "pi-autowork: PI_AUTOWORK_VALIDATE failed for $task" >&2
@@ -421,6 +434,8 @@ else
   die 2 "Hermes Toolset not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/hermes-toolset) or set PI_AUTOWORK_TOOLSET."
 fi
 export PI_AUTOWORK_SKILL_ARGS="${SKILL_ARGS[*]}"
+# Workers and the reviewer link gitignored dependencies from here (PI_AUTOWORK_LINK_PATHS).
+export PI_AUTOWORK_REPO=$REPO
 ENGINE=$TOOLSET/skills/autowork/scripts/owner_cycle.py
 # Health comes from the same release as the engine.
 [[ -f $TOOLSET/pi-autowork/pi_autowork/health.py ]] && HEALTH=$TOOLSET/pi-autowork/pi_autowork/health.py
@@ -544,7 +559,7 @@ UNIT
     [[ ${PI_AUTOWORK_NO_FALLBACK:-0} == 1 ]] && echo 'PI_AUTOWORK_NO_FALLBACK=1'
     [[ $WORKERS != 8 ]] && echo "PI_AUTOWORK_WORKERS=$WORKERS"
     for name in PI_AUTOWORK_PRIMARY PI_AUTOWORK_FALLBACK PI_AUTOWORK_TASK_TIMEOUT PI_AUTOWORK_VERIFY_TIMEOUT \
-                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE PI_AUTOWORK_STALL_AFTER PI_AUTOWORK_CLAIM_IDLE \
+                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE PI_AUTOWORK_STALL_AFTER PI_AUTOWORK_CLAIM_IDLE PI_AUTOWORK_LINK_PATHS \
                 PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME PI_AUTOWORK_MAX_COST \
                 PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET \
                 PI_AUTOWORK_INFER_TOUCHES PI_AUTOWORK_UPDATE_INTERVAL; do
@@ -888,6 +903,7 @@ finish() {
 # loads, at most once per interval and one runner at a time across repositories; the
 # main loop then restarts on the new release.
 UPDATE_INTERVAL=${PI_AUTOWORK_UPDATE_INTERVAL:-3600}
+LAST_UPDATE_NOTE=''
 LAST_UPDATE=$SECONDS
 update_toolset() {
   local source
@@ -896,8 +912,23 @@ update_toolset() {
   LAST_UPDATE=$SECONDS
   ((${#SKILL_ARGS[@]})) && return 0  # not the package Pi loads: a checkout is updated by its owner
   source=$(git -C "$TOOLSET" remote get-url origin 2>/dev/null) || return 0
-  flock -w 600 "$STATE_ROOT/toolset-update.lock" timeout 300 "$PI" update "$source" \
-    >>"$STATE/engine.err" 2>&1 9>&- || say "Toolset update failed (see $STATE/engine.err); keeping $TOOLSET_REV"
+  local release=$TOOLSET/pi-autowork/pi_autowork/release.py check reason
+  # One updater at a time; the safety check runs under the same lock as the update.
+  exec 8>>"$STATE_ROOT/toolset-update.lock"
+  if ! flock -w 600 8; then exec 8>&-; return 0; fi
+  if [[ -f $release ]] && ! check=$(python3 "$release" check "$STATE_ROOT" "$STATE" "$TOOLSET" 2>>"$STATE/engine.err" 8>&- 9>&-); then
+    # Another runner's work in flight, or a release that cannot read this state.
+    reason=$(jq -r '.reason // "update check failed"' <<<"$check" 2>/dev/null)
+    if ! jq -e '.current' <<<"$check" >/dev/null 2>&1 && [[ $reason != "$LAST_UPDATE_NOTE" ]]; then
+      say "Toolset update deferred: $reason"
+    fi
+    LAST_UPDATE_NOTE=$reason
+  else
+    LAST_UPDATE_NOTE=''
+    timeout 300 "$PI" update "$source" >>"$STATE/engine.err" 2>&1 8>&- 9>&- ||
+      say "Toolset update failed (see $STATE/engine.err); keeping $TOOLSET_REV"
+  fi
+  exec 8>&-
 }
 
 # --- Health ---------------------------------------------------------------------

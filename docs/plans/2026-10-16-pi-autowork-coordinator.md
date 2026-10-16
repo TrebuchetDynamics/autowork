@@ -137,7 +137,10 @@ runner's Bash shrinks to the entry point.
 3. Done. Health: `status.json`, one `STALLED` report with root blockers, `--status`
    and `--fleet`; the first module of the `pi-autowork/` component
    ([layout](pi-autowork-component-layout.md)).
-4. Owner decisions 1-3.
+4. Done. Owner decisions 1-3: safe-checkpoint self-update (fleet idle, state
+   schema check before install), adoption of verifiably idle claims, linked ignored
+   dependencies; plus guarded priority-drift recording and no service exit on engine
+   errors.
 5. Deferred causes and their automatic actions; extract the coordinator into the
    `pi-autowork/` component per the [layout proposal](pi-autowork-component-layout.md)
    and reduce `pi-autowork.sh` to a compatibility entry point.
