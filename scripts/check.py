@@ -40,7 +40,10 @@ def discover_tests(root):
     tests = []
     for directory in TEST_DIRS:
         folder = root / directory
-        if folder.is_symlink() or not folder.is_dir():
+        if (not folder.is_dir()
+                or any((root / parent).is_symlink()
+                       for parent in (Path(directory), *Path(directory).parents)
+                       if parent != Path('.'))):
             continue
         for path in sorted(folder.glob('test_*.py')):
             if (path.is_file() and not path.is_symlink()

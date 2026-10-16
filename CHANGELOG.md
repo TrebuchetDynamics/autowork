@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Offline test discovery skips symlinks in every maintained-directory component
+  below the checkout root, not just the final directory (TOOLSET-104-cc). Linked
+  workflow parents can no longer redirect discovery into external test modules;
+  ordinary suites and checkout-root aliases remain supported.
+
 - Fleet response evidence now validates native character-framed outputs, preserving
   opening blockers when an answer quotes a Response heading (TOOLSET-103-fe).
   The collector and consultation cache share the parser. Invalid/oversized native

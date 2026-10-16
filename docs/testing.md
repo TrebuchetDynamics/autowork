@@ -49,7 +49,11 @@ alone takes about 150 seconds on an idle machine). The directories run at the sa
 time by default, and each one's output is printed whole and in the usual order, so a
 full run takes about as long as the Autowork suite; `--jobs N` limits how many run at
 once and `--jobs 1` runs them one after another. `--list` prints the
-inventory without importing tests. Model, installed native backend and optional
+inventory without importing tests. Symlinked test modules and maintained-directory
+components below the resolved checkout root are skipped, so a linked `skills` or
+workflow parent cannot redirect discovery into external tests. Checkout-root aliases
+remain supported. This static check is not protection against concurrent hostile
+filesystem replacement. Model, installed native backend and optional
 integration suites are explicitly excluded with reasons; live opt-in flags are
 removed from test subprocesses. Passing this gate does not qualify model/native
 execution. Tests use temporary Git fixtures and may write offline scratch receipts.

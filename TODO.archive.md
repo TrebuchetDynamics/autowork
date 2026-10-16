@@ -2062,3 +2062,25 @@ Source section: Next
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Planner's call: Prefer this measured fixture-cost seam to unmeasured thin-wrapper parametrization; no test removal or new model/live operation is authorized.
 - Exclusions: No weakened assertions, no runner/source changes, no live model or fleet repository, no coverage plugin dependency, no push.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-104-cc — Keep offline test discovery inside real owned directories
+
+- [x] TOOLSET-104-cc — Keep offline test discovery inside real owned directories
+- Status: done
+- Goal: TEST-SUITE
+- Sources: [offline verification](docs/testing.md#verify), scripts/check.py, tests/test_check.py.
+- Scope: Skip maintained test directories when any component beneath the repository root is a symlink, not only the final directory. Preserve import-free discovery and ordinary suite execution.
+- Touches: scripts/check.py, tests/test_check.py, docs/testing.md, CHANGELOG.md
+- Acceptance: Symlinks at tests, skills, workflow and scripts levels cannot import external test modules; normal owned tests still list and run. A symlink alias for the checkout root remains supported.
+- Checks: `python3 tests/test_check.py`; `python3 scripts/check.py`; `git diff --check`; independent diff review.
+- Dependencies: None.
+- Ownership: Current Toolset coordinator under broad repository-development authority.
+- Planner's call: Skip live/model and installed-profile queue work without changing its acceptance. Reuse the existing live qualification tasks. Repair the demonstrated offline discovery seam instead; no new dependency or runner redesign.
+- Verification: Focused checker suite passed 11 tests, including four symlink placements and checkout aliases. Independent review approved the exact code/test/docs hashes. Initial full gate ran 563/712/212/8 tests but failed one existing Pi restart assertion comparing whole timestamped log lines; its focused retry and a fresh complete 563-test top-level directory passed without code changes. Combined directory evidence passes; the original full invocation remains failed. One skip and eight excluded modules remain; ResourceWarnings were emitted.
+- Method: Ponytail bundled fallback; reuse pathlib and the existing discovery loop; omit new dependencies and sandbox claims. `git diff --check` passed.
+- Exclusions: No live tests, deployment, scheduler changes, push or upstream Agent edits. This is a static discovery boundary, not a hostile filesystem-race sandbox.

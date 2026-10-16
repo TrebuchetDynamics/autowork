@@ -60,6 +60,48 @@ class OfflineCheckTests(unittest.TestCase):
         spec.loader.exec_module(checker)
         included = self.write('tests/test_unit.py', "raise RuntimeError('do not import')\n")
         self.assertEqual(checker.discover_tests(self.root), [included])
+        alias = self.root / 'checkout-alias'
+        alias.symlink_to(self.root, target_is_directory=True)
+        self.assertEqual(checker.discover_tests(alias), [included])
+        (self.root / 'tests/test_link.py').symlink_to(included)
+        self.assertEqual(checker.discover_tests(self.root), [included])
+
+    def test_symlinked_directory_components_never_import_external_tests(self):
+        cases = (('tests', 'test_external.py'),
+                 ('skills', 'autowork/scripts/test_external.py'),
+                 ('skills/autowork', 'scripts/test_external.py'),
+                 ('skills/autowork/scripts', 'test_external.py'))
+        base = self.root
+        for index, (link_name, module_name) in enumerate(cases):
+            with self.subTest(component=link_name):
+                self.root = base / f'case-{index}'
+                self.script = self.root / 'scripts/check.py'
+                self.script.parent.mkdir(parents=True)
+                shutil.copy2(SCRIPT, self.script)
+                external = base / f'external-{index}'
+                external.mkdir()
+                sentinel = external / 'imported'
+                module = external / module_name
+                module.parent.mkdir(parents=True, exist_ok=True)
+                module.write_text(f'from pathlib import Path\nPath({str(sentinel)!r}).touch()\n')
+                link = self.root / link_name
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(external, target_is_directory=True)
+                try:
+                    control = ('skills/docs-sync/scripts/test_owned.py'
+                               if link_name == 'tests' else 'tests/test_owned.py')
+                    self.write(control,
+                               'import unittest\nclass Owned(unittest.TestCase):\n'
+                               '    def test_owned(self): pass\n')
+                    listed = self.run_check('--list')
+                    self.assertEqual(listed.returncode, 0, listed.stderr)
+                    self.assertNotIn('RUN ' + str(Path(link_name) / module_name), listed.stdout)
+                    result = self.run_check()
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn('Ran 1 test', result.stdout)
+                    self.assertFalse(sentinel.exists(), 'external module was imported')
+                finally:
+                    link.unlink()
 
     def test_runs_real_tests_without_live_flags_or_unsafe_imports(self):
         self.write('tests/test_environment.py', '''import os, unittest

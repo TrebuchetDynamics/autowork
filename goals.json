@@ -136,6 +136,11 @@
           "kind": "executed",
           "ref": "TOOLSET-102-ea: python3 scripts/check.py passed 562/712/212/8, one skip/eight exclusions; Pi module 40 passed; focused median 5.390 to 0.709 s; paired changed+composed-sibling subprocess coverage 1536 lines/403 arcs unchanged; independent review approved; docs/test-suite-audit.md",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-104-cc: checker regressions 11 passed; independent exact-source review approved; scripts/check.py original failed Pi timestamped-line assertion; unchanged full top-level retry 563 passed, retained 712/212/8 passes, one skip/eight exclusions; combined offline evidence, not one clean full invocation",
+          "result": "pass"
         }
       ],
       "id": "TEST-SUITE",
@@ -148,7 +153,8 @@
         "TOOLSET-069",
         "TOOLSET-072",
         "TOOLSET-073",
-        "TOOLSET-102-ea"
+        "TOOLSET-102-ea",
+        "TOOLSET-104-cc"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -529,7 +535,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-099-87",
-      "TOOLSET-102-ea",
+      "TOOLSET-104-cc",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -537,7 +543,6 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-103-fe",
       "TOOLSET-101-f6"
     ]
   },
@@ -1320,6 +1325,14 @@
       "section": "Done",
       "status": "done",
       "title": "Preserve native cron response framing in fleet evidence"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-104-cc",
+      "section": "Done",
+      "status": "done",
+      "title": "Keep offline test discovery inside real owned directories"
     },
     {
       "depends_on": [
