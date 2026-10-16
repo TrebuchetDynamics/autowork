@@ -419,6 +419,10 @@ def archive_path(repo):
 def require_task_contract(items, expected, *, archived=False):
     """Only closure-owned checkbox/status changes may differ from validation."""
     closed = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', expected)
+    if archived and len(items) > 1:
+        # History can hold an older entry for the same ID (sierra TASK-029): the closed
+        # entry matching this contract is the one this close wrote.
+        items = [item for item in items if item[1].lower() == 'x' and item[0].strip() in (expected, closed)]
     if len(items) != 1:
         raise ValueError('task contract provenance missing or ambiguous; no close')
     body, mark, _ = items[0]
