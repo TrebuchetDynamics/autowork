@@ -10,6 +10,29 @@ unavailable/not-consulted or explicitly reused with its original reply time and
 age. Never infer an answer from its old cron report. Native metadata and profile
 replies remain separate evidence.
 
+Before retaining collector projections, mask complete quoted credential values
+before comma/newline field splitting, and decode complete JSON envelopes before
+masking their string values and keys. Keep the existing contextual and opaque-value
+masking after JSON decoding; decoding supplements that coverage, never bypasses it.
+Fail closed on scrubber stack exhaustion,
+withholding that envelope rather than aborting other responses. Test raw, escaped,
+unterminated and nested serialized values through the actual response consumer;
+a passing consultation redactor does
+not qualify the collector's separate masking path. Partial chunks and omitted
+history remain unknown, not proof that every secret representation was covered.
+Keep Cookie credential handling in both collectors and consultation projections;
+exercise quoted and JSON header values through original-evidence injection and
+saved transport results, not just the standalone redactor. Mask quoted contextual
+keys in incomplete JSON and header dumps as well as parsed objects; a failed JSON
+parse must not expose `access_token` or `X-Api-Key` values. Cover closed and
+unterminated quotes, numeric values and nested transport envelopes.
+
+Require each response directory to resolve to its exact `cron/output/JOB_ID`
+location, not merely somewhere inside its profile. An in-profile job or parent
+alias must produce a gap, never another job's falsely attributed output. Keep
+healthy neighboring responses and test this through the actual collector; the
+path check is not a race-proof filesystem sandbox or execution-to-file binding.
+
 Use the shared executable `scripts/profile-consult.py`, independent of optional
 cron tool schemas. Run it with the default root, a NEW private
 maintenance output directory, and a file containing the auditor's local default
@@ -114,7 +137,10 @@ under the existing default-maintenance lock, in a 0600 file capped at 1 MiB and
 paths disable reuse; they do not prevent fresh reporting.
 
 Read current boards, jobs and actual worker state every occurrence, including for
-subjects whose feedback was reused. Reuse cannot skip actionable work, recovery,
+subjects whose feedback was reused. Inspect execution evidence per exact job: a
+profile-wide recent window can contain only sync runs and omit a paused development
+job entirely. Recover its records read-only; missing rows are unknown, not exhaustion.
+Reuse cannot skip actionable work, recovery,
 acceptance checks or actual process/workspace reconciliation; it only avoids an unchanged
 advisory model request.
 
@@ -127,7 +153,12 @@ time and exact evidence pointers in default-owned maintenance storage. Redact
 JSON credential values after decoding escaped strings, including nested text in
 each stream-JSON envelope. Consume complete quoted assignment values before
 whitespace-delimited masking; otherwise multiword credential tails can survive.
-Plain-text regex masking alone can retain value tails.
+Plain-text regex masking alone can retain value tails. Scrub JSON keys as well as
+values; contextual fields such as `access_token` retain credential masking through
+decoding. Catch stack exhaustion during parsing and scrubbing and emit an explicit
+redacted sentinel instead of aborting original-evidence projection. Preserve valid
+shallow JSON because consultation consumers parse it. Test these paths through
+`original_evidence()` as well as the redactor without making another model call.
 This is bounded redaction, not a guarantee that arbitrary secret formats are found.
 Deduplicate
 suggestions by helper/seam plus failure signature; distinguish owner-reported

@@ -193,6 +193,7 @@
       "source": "docs/project.md#accepted-requirements",
       "status": "unverified",
       "tasks": [
+        "AUDIT-QUOTED-SECRET",
         "TOOLSET-003",
         "TOOLSET-015",
         "TOOLSET-016",
@@ -205,7 +206,9 @@
         "TOOLSET-025",
         "TOOLSET-026",
         "TOOLSET-027",
-        "TOOLSET-083"
+        "TOOLSET-083",
+        "TOOLSET-092-18",
+        "TOOLSET-100-78"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -502,11 +505,10 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "AUDIT-QUOTED-SECRET",
       "TOOLSET-099-87",
-      "TOOLSET-064",
-      "TOOLSET-082",
-      "TOOLSET-097-41",
-      "TOOLSET-072",
+      "TOOLSET-092-18",
+      "TOOLSET-100-78",
       "TOOLSET-073",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -518,6 +520,14 @@
     ]
   },
   "tasks": [
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "AUDIT-QUOTED-SECRET",
+      "section": "Now",
+      "status": "in_progress",
+      "title": "Redact complete quoted credential values in fleet observations"
+    },
     {
       "depends_on": [
         "TOOLSET-098-4c"
@@ -583,6 +593,14 @@
       "title": "Measure subprocess coverage, then review identical and subset test groups"
     },
     {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-092-18",
+      "section": "Next",
+      "status": "open",
+      "title": "Reject in-profile output directory aliases during fleet collection"
+    },
+    {
       "depends_on": [
         "TOOLSET-095-48"
       ],
@@ -601,6 +619,14 @@
       "section": "Next",
       "status": "open",
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-100-78",
+      "section": "Next",
+      "status": "open",
+      "title": "Retain execution evidence for every existing profile job"
     },
     {
       "depends_on": [],

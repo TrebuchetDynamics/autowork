@@ -693,6 +693,114 @@ class ConsultationTests(unittest.TestCase):
                     if wrapped != text:
                         self.assertTrue(json.loads(sanitized)['keep'])
 
+    def test_nested_json_redaction_fails_closed_without_aborting_evidence(self):
+        import sqlite3
+        m = self.load()
+        for depth in (600, 1200):
+            text = '[' * depth + '{"password":"synthetic-private-value"}' + ']' * depth
+            with self.subTest(depth=depth), tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+                root = Path(d)
+                db = self.history(root, 'one', [('original', 'cli', 'Project', None, None, 'one', None, 1)])
+                with sqlite3.connect(db) as connection:
+                    connection.execute('UPDATE messages SET content=?', (text,))
+                before = db.read_bytes()
+                evidence = m.original_evidence('one', root)
+                self.assertEqual(evidence['status'], 'available')
+                self.assertNotIn('synthetic-private-value', evidence['anchor_excerpt'])
+                if depth == 1200:
+                    self.assertEqual(evidence['anchor_excerpt'], '[NESTED JSON REDACTED]')
+                self.assertEqual(db.read_bytes(), before)
+
+    def test_json_keys_and_contextual_credential_values_are_redacted(self):
+        import json
+        m = self.load()
+        for key in ('ghp_SYNTHETIC_PRIVATE_KEY', 'password=synthetic-key-value'):
+            with self.subTest(key=key):
+                value = json.loads(m.redact(json.dumps({key: 'diagnostic', 'keep': True})))
+                self.assertTrue(value['keep'])
+                self.assertNotIn(key, value)
+                self.assertIn('diagnostic', value.values())
+        for key in ('access_token', 'client_secret', 'OPENAI_API_KEY', 'old_password'):
+            for value in ('synthetic-private-value', 123456789, ['synthetic-private-value']):
+                with self.subTest(key=key, value=value):
+                    actual = json.loads(m.redact(json.dumps({key: value, 'keep': True})))
+                    self.assertEqual(actual[key], '[REDACTED]')
+                    self.assertTrue(actual['keep'])
+
+    def test_cookie_credentials_are_withheld_from_consultation_evidence(self):
+        import json
+        import sqlite3
+        from unittest.mock import patch
+        m = self.load()
+        values = ('cookie=synthetic-private-cookie',
+                  'Authorization: Basic synthetic-private-cookie\r\nStatus: keep',
+                  '  pRoXy-AuThOrIzAtIoN: Digest username="public", response="synthetic-private-cookie"\nStatus: keep',
+                  'Authorization: Negotiate synthetic-private-cookie\nStatus: keep',
+                  json.dumps({'text': 'Authorization: Basic synthetic-private-cookie\nStatus: keep', 'keep': True}),
+                  'Cookie: session=public-prefix; refresh=synthetic-private-cookie\r\nStatus: keep',
+                  '  sEt-CoOkIe: session=public-prefix; refresh=synthetic-private-cookie\nStatus: keep',
+                  'Cookie: "session=public-prefix;\nrefresh=synthetic-private-cookie"\nStatus: keep',
+                  "Set-Cookie: 'session=public-prefix;\nrefresh=synthetic-private-cookie'\nStatus: keep",
+                  'Cookie: "session=synthetic-private-cookie; other=value"',
+                  json.dumps({'Cookie': 'session=synthetic-private-cookie; other=value', 'keep': True}),
+                  json.dumps({'Set-Cookie': ['synthetic-private-cookie'], 'keep': True}))
+        for text in values:
+            with self.subTest(text=text), tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+                root = Path(d)
+                db = self.history(root, 'one', [('original', 'cli', text, None, None, 'one', None, 1)])
+                with sqlite3.connect(db) as connection:
+                    connection.execute('UPDATE messages SET content=?', (text,))
+                before = db.read_bytes()
+                event = json.dumps({'type': 'result', 'exit_code': 0, 'text': text})
+                with patch.object(m, 'execute', return_value={'stdout': event, 'stderr': text,
+                        'returncode': 0, 'timed_out': False}) as run:
+                    result = m.consult('one', root, 'offline-fixture', 10)
+                self.assertNotIn('synthetic-private-cookie', run.call_args.args[0][-1])
+                self.assertNotIn('synthetic-private-cookie', json.dumps(result))
+                self.assertEqual(result['status'], 'replied')
+                self.assertEqual(db.read_bytes(), before)
+                sanitized = m.redact(text)
+                self.assertIn('[REDACTED]', sanitized)
+                self.assertEqual(m.redact(sanitized), sanitized)
+                if text.startswith('{'):
+                    self.assertTrue(json.loads(sanitized)['keep'])
+                if 'Status: keep' in text:
+                    self.assertIn('Status: keep', sanitized)
+
+    def test_contextual_quoted_keys_in_partial_evidence_are_redacted(self):
+        import json
+        import sqlite3
+        from unittest.mock import patch
+        m = self.load()
+        for key in ('access_token', 'client_secret', 'X-Api-Key', 'Set-Cookie'):
+            for quote in ('"', "'"):
+                for value in (quote + 'prefix LEAK_MARKER; tail' + quote,
+                              quote + 'prefix LEAK_MARKER; tail', '123456789'):
+                    text = '{' + quote + key + quote + ': ' + value + ', status: keep'
+                    with self.subTest(key=key, quote=quote, value=value), tempfile.TemporaryDirectory() as d:
+                        root = Path(d)
+                        db = self.history(root, 'one', [('original', 'cli', text, None, None, 'one', None, 1)])
+                        with sqlite3.connect(db) as connection:
+                            connection.execute('UPDATE messages SET content=?', (text,))
+                        before = db.read_bytes()
+                        event = json.dumps({'type': 'result', 'exit_code': 0, 'text': text})
+                        with patch.object(m, 'execute', return_value={'stdout': event, 'stderr': text,
+                                'returncode': 0, 'timed_out': False}) as run:
+                            result = m.consult('one', root, 'offline-fixture', 10)
+                        for projected in (run.call_args.args[0][-1], json.dumps(result)):
+                            self.assertNotIn('LEAK_MARKER', projected)
+                            self.assertNotIn('123456789', projected)
+                        self.assertEqual(db.read_bytes(), before)
+                        sanitized = m.redact(text)
+                        self.assertIn('[REDACTED]', sanitized)
+                        self.assertEqual(m.redact(sanitized), sanitized)
+                        if value == '123456789' or value.endswith(quote):
+                            self.assertIn('status: keep', sanitized)
+                        wrapped = m.redact(json.dumps({'message': text, 'keep': True}))
+                        self.assertTrue(json.loads(wrapped)['keep'])
+                        self.assertNotIn('LEAK_MARKER', wrapped)
+                        self.assertNotIn('123456789', wrapped)
+
     def test_json_secret_redaction_and_private_scope(self):
         m = self.load()
         self.assertNotIn('private-key-value', m.redact('{"api_key": "private-key-value"}'))
@@ -755,7 +863,12 @@ class ConsultationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
             root = Path(d) / '.hermes'
             root.mkdir()
-            with patch.object(m, 'discover', return_value=['default', 'alpha', 'zed']), patch.object(m, 'consult', side_effect=[RuntimeError('bad target'), {'profile': 'zed', 'status': 'replied', 'reply': 'ok'}]):
+            def consult(name, *args):
+                if name == 'alpha':
+                    raise RuntimeError('bad target')
+                return {'profile': name, 'status': 'replied', 'reply': 'ok'}
+
+            with patch.object(m, 'discover', return_value=['default', 'alpha', 'zed']), patch.object(m, 'consult', side_effect=consult):
                 results = m.run_all(root, root / 'maintenance' / 'results', 'self', 'hermes', 10)
             self.assertEqual({r['profile']: r['status'] for r in results}, {'default': 'replied', 'alpha': 'failed', 'zed': 'replied'})
 
