@@ -218,6 +218,25 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(status.metrics(pending, 17)['waiting_seconds'], 5)
         self.assertEqual(status.metrics(pending, 17)['worker_seconds'], 2)
 
+    def test_roots_trace_waiting_chains_to_what_holds_them(self):
+        row = lambda task, state, by=(), **extra: dict(task=task, state=state, blocked_by=list(by), **extra)
+        rows = [row('H', 'held', cause='blocker', reason='worker reported a blocker: needs a device'),
+                row('A', 'waiting', ['H']), row('B', 'waiting', ['A']),        # a chain behind H
+                row('C', 'waiting', ['C']), row('D', 'waiting', ['C']),        # C is claimed elsewhere
+                row('E', 'waiting', ['approved device access']),             # an outside condition
+                row('R', 'running'), row('G', 'waiting', ['R']),
+                row('F', 'waiting', []),                                    # only capacity: not blocked
+                row('X', 'waiting', ['Y']), row('Y', 'waiting', ['X'])]      # a cycle ends somewhere
+        found = {r['id']: (r['kind'], r['blocks']) for r in status.roots(rows)}
+        self.assertEqual(status.roots(rows)[0]['id'], 'H')
+        self.assertEqual(found['H'], ('held', 2))
+        self.assertEqual(found['C'], ('claim', 1))
+        self.assertEqual(found['approved device access'], ('outside', 1))
+        self.assertEqual(found['R'], ('running', 1))
+        self.assertNotIn('F', found)
+        self.assertNotIn('A', found)
+        self.assertEqual({found[t][0] for t in ('X', 'Y')}, {'cycle'})  # each member of the cycle is named
+
     def test_status_uses_latest_dispatch_capacity(self):
         with ABCWorkload(workers=1, delay=1) as fixture:
             fixture.dispatch()

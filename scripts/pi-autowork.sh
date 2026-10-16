@@ -27,6 +27,8 @@ Options:
   --until-empty        Exit when no runnable task remains
   --dry-run            Show what would run; change nothing
   --status             Show the session, budget and each task's state; change nothing
+  --fleet              One line per pi-autowork runner on this machine: service, health
+                       (working, blocked, stalled, paused, not running) and root blockers
   --set-aside TASK     Ask this repository's runner to retire TASK's stuck slot (held with
                        no attempt left, or merged with a changed TODO entry); its work is
                        kept under renamed branches and the task runs fresh
@@ -55,6 +57,8 @@ Environment (optional):
   PI_AUTOWORK_MAX_RETRIES   provider/crash retries per Pi run (default 3)
   PI_AUTOWORK_MAX_FAILURES  consecutive failed tasks before stopping (default 3); a service
                             pauses new tasks for PI_AUTOWORK_FAILURE_PAUSE seconds (3600) instead
+  PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
+                            announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)
   PI_AUTOWORK_BACKOFF       first retry delay in seconds, doubling to 600 (default 30)
   PI_AUTOWORK_MAX_RUNTIME   stop starting tasks after this many seconds (default 0, unlimited)
@@ -79,7 +83,7 @@ TASK_TIMEOUT=${PI_AUTOWORK_TASK_TIMEOUT:-5400}
 VERIFY_TIMEOUT=${PI_AUTOWORK_VERIFY_TIMEOUT:-1800}
 MAX_RETRIES=${PI_AUTOWORK_MAX_RETRIES:-3}
 MAX_FAILURES=${PI_AUTOWORK_MAX_FAILURES:-3}
-FAILURE_PAUSE=${PI_AUTOWORK_FAILURE_PAUSE:-3600} PAUSE_UNTIL=0
+FAILURE_PAUSE=${PI_AUTOWORK_FAILURE_PAUSE:-3600} PAUSE_UNTIL=0 RUNNER_BLOCKER=''
 COOLDOWN=${PI_AUTOWORK_COOLDOWN:-1800}
 BACKOFF=${PI_AUTOWORK_BACKOFF:-30}
 MAX_RUNTIME=${PI_AUTOWORK_MAX_RUNTIME:-0}
@@ -94,6 +98,16 @@ say() {
   line=$(printf '[%s] %s' "$(date +%H:%M)" "$*")
   printf '%s\n' "$line"
   [[ -n $STATE && -d $STATE ]] && printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$STATE/runner.log"
+  return 0
+}
+# A warning-priority journal line under systemd (journald reads the <4> prefix).
+warn() {
+  if [[ -n ${INVOCATION_ID:-} ]]; then
+    printf '<4>[%s] %s\n' "$(date +%H:%M)" "$*"
+    [[ -n $STATE && -d $STATE ]] && printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$STATE/runner.log"
+  else
+    say "$*"
+  fi
   return 0
 }
 die() { local code=$1; shift; printf 'pi-autowork: %s\n' "$*" >&2; exit "$code"; }
@@ -310,7 +324,7 @@ fi
 
 # --- Options ------------------------------------------------------------------
 ORIGINAL_ARGS=("$@")
-MODE=continuous REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 SERVICE='' STATUS=0 SET_ASIDE=''
+MODE=continuous REPO_ARG='' INTERVAL=60 MAX_CYCLES=0 SERVICE='' STATUS=0 SET_ASIDE='' FLEET=0
 WORKERS=${PI_AUTOWORK_WORKERS:-8}
 while (($#)); do
   case $1 in
@@ -318,6 +332,7 @@ while (($#)); do
     --until-empty) MODE='until-empty' ;;
     --dry-run) DRY_RUN=1 ;;
     --status) STATUS=1 ;;
+    --fleet) FLEET=1 ;;
     --set-aside) SET_ASIDE=${2:?--set-aside needs a task ID}; shift ;;
     --repo) REPO_ARG=${2:?--repo needs a path}; shift ;;
     --workers) WORKERS=${2:?--workers needs a number}; shift ;;
@@ -342,6 +357,15 @@ for tool in git jq python3 flock timeout systemd-escape; do
   command -v "$tool" >/dev/null 2>&1 || die 2 "Missing required command: $tool"
 done
 command -v "$PI" >/dev/null 2>&1 || die 2 "Pi not found ($PI). Install Pi, then: pi install git:github.com/TrebuchetDynamics/hermes-toolset"
+
+STATE_ROOT=${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-autowork}
+# Health ships beside this script in the same release.
+HEALTH=$(dirname "$SCRIPT")/../pi-autowork/pi_autowork/health.py
+[[ -f $HEALTH || -z ${PI_AUTOWORK_TOOLSET:-} ]] || HEALTH=$PI_AUTOWORK_TOOLSET/pi-autowork/pi_autowork/health.py
+if ((FLEET)); then
+  [[ -f $HEALTH ]] || die 2 "Runner health component not found next to $SCRIPT; run the installed pi-autowork.sh"
+  exec python3 "$HEALTH" fleet "$STATE_ROOT"
+fi
 
 # --- Repository ---------------------------------------------------------------
 is_toolset() { [[ -f $1/skills/autowork/scripts/owner_cycle.py && -f $1/skills/docs-sync/scripts/goals.py ]]; }
@@ -393,6 +417,8 @@ else
 fi
 export PI_AUTOWORK_SKILL_ARGS="${SKILL_ARGS[*]}"
 ENGINE=$TOOLSET/skills/autowork/scripts/owner_cycle.py
+# Health comes from the same release as the engine.
+[[ -f $TOOLSET/pi-autowork/pi_autowork/health.py ]] && HEALTH=$TOOLSET/pi-autowork/pi_autowork/health.py
 TOOLSET_REV=$(git -C "$TOOLSET" rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 # --- Models -------------------------------------------------------------------
@@ -434,7 +460,6 @@ for path in files:
 PY
 }
 HERMES_JOBS=$(hermes_jobs)
-STATE_ROOT=${PI_AUTOWORK_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/pi-autowork}
 REPO_KEY=$(printf '%s' "$GIT_COMMON" | sha256sum | cut -c1-16)
 STATE_PATH=$STATE_ROOT/$REPO_KEY
 WT_ROOT=$STATE_PATH/worktrees
@@ -514,7 +539,7 @@ UNIT
     [[ ${PI_AUTOWORK_NO_FALLBACK:-0} == 1 ]] && echo 'PI_AUTOWORK_NO_FALLBACK=1'
     [[ $WORKERS != 8 ]] && echo "PI_AUTOWORK_WORKERS=$WORKERS"
     for name in PI_AUTOWORK_PRIMARY PI_AUTOWORK_FALLBACK PI_AUTOWORK_TASK_TIMEOUT PI_AUTOWORK_VERIFY_TIMEOUT \
-                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE \
+                PI_AUTOWORK_VALIDATE PI_AUTOWORK_REVIEW PI_AUTOWORK_MAX_RETRIES PI_AUTOWORK_MAX_FAILURES PI_AUTOWORK_FAILURE_PAUSE PI_AUTOWORK_STALL_AFTER \
                 PI_AUTOWORK_COOLDOWN PI_AUTOWORK_BACKOFF PI_AUTOWORK_MAX_RUNTIME PI_AUTOWORK_MAX_COST \
                 PI_AUTOWORK_COST_WINDOW PI_AUTOWORK_MIN_FREE_MB PI_AUTOWORK_STATE_DIR PI_AUTOWORK_TOOLSET \
                 PI_AUTOWORK_INFER_TOUCHES PI_AUTOWORK_UPDATE_INTERVAL; do
@@ -619,6 +644,12 @@ if ((STATUS || DRY_RUN)); then
   snapshot=$(status_json "$view")
   if [[ -n $snapshot ]]; then
     echo "Workers:    $(jq -r '"\(.active_workers // 0) running; \(.completed // 0) done, \(.failed // 0) failed, \(.integration_queue // 0) awaiting integration"' <<<"$snapshot")"
+    if [[ -f $STATE_PATH/status.json ]]; then
+      jq -r '"Health:     \(.state) since \(.since | floor | strflocaltime("%Y-%m-%d %H:%M"))"
+        + ([.roots[]? | select(.kind | IN("runner", "held", "claim", "outside", "cycle"))][:3]
+           | if length == 0 then "" else "; blocked by " + (map("\(.id | gsub("\\s+"; " ") | .[:60]) (\(.kind), holds \(.blocks))") | join("; ")) end)' \
+        "$STATE_PATH/status.json" 2>/dev/null
+    fi
     while IFS=$'\t' read -r id state reason; do
       printf '  %-12s %-12s %s\n' "$id" "$(lifecycle "$state")" "$reason"
     done < <(jq -r '.tasks[]? | [.task, .state, (.reason // .blocked_reason // "")] | @tsv' <<<"$snapshot" | head -40)
@@ -864,6 +895,22 @@ update_toolset() {
     >>"$STATE/engine.err" 2>&1 9>&- || say "Toolset update failed (see $STATE/engine.err); keeping $TOOLSET_REV"
 }
 
+# --- Health ---------------------------------------------------------------------
+# Records this runner's state in $STATE/status.json each cycle; announces a stall once
+# (no task running while work waits for PI_AUTOWORK_STALL_AFTER seconds) with its roots.
+health_update() {
+  local line paused=0
+  [[ -f $HEALTH ]] || return 0
+  ((PAUSE_UNTIL > SECONDS)) && paused=$(($(date +%s) + PAUSE_UNTIL - SECONDS))
+  line=$(status_json | PI_AUTOWORK_HEALTH_REPO=$REPO PI_AUTOWORK_HEALTH_PID=$$ \
+    PI_AUTOWORK_HEALTH_TOOLSET_REV=$TOOLSET_REV PI_AUTOWORK_HEALTH_MODE=$MODE \
+    PI_AUTOWORK_HEALTH_PAUSED_UNTIL=$paused PI_AUTOWORK_HEALTH_STALL_AFTER=${PI_AUTOWORK_STALL_AFTER:-1800} \
+    PI_AUTOWORK_HEALTH_BLOCKER=$RUNNER_BLOCKER \
+    python3 "$HEALTH" update "$STATE" 2>>"$STATE/engine.err") || return 0
+  [[ -n $line ]] && warn "$line"
+  return 0
+}
+
 # --- Requests -------------------------------------------------------------------
 # `pi-autowork.sh --set-aside TASK` leaves a request here; only this runner holds the
 # engine lease, so it performs the request and reports the engine's answer.
@@ -1018,9 +1065,12 @@ while :; do
       once|until-empty) finish 1 "No usable model: ${FALLBACK_REASON:-primary and fallback not ready}" ;;
     esac
     say "No usable model (${FALLBACK_REASON:-primary and fallback not ready}); checking again in ${INTERVAL}s"
+    RUNNER_BLOCKER="no usable model: ${FALLBACK_REASON:-primary and fallback not ready}"
+    health_update
     pause "$INTERVAL"
     continue
   fi
+  RUNNER_BLOCKER=''
   if ((!DRAINING && SECONDS < PAUSE_UNTIL)); then
     outcome=PAUSED  # after a failure streak: settle running work, start nothing new
   elif ((!DRAINING)); then
@@ -1066,6 +1116,8 @@ while :; do
         once|until-empty) finish 4 "Repository busy: $reason" ;;
       esac
       say "Repository busy ($reason); checking again in ${INTERVAL}s"
+      RUNNER_BLOCKER="repository busy: $reason"
+      health_update
       pause "$INTERVAL"
       continue ;;
     PRIORITY_DRIFT)
@@ -1073,6 +1125,8 @@ while :; do
         once|until-empty) finish 4 "TODO.md priority changed since it was recorded; run goals.py reorder" ;;
       esac
       say "TODO.md priority changed since it was recorded; run goals.py reorder (see Autowork); checking again in ${INTERVAL}s"
+      RUNNER_BLOCKER="TODO.md priority changed; run goals.py reorder"
+      health_update
       pause "$INTERVAL"
       continue ;;
     *)
@@ -1080,6 +1134,7 @@ while :; do
   esac
   settle
   handle_requests
+  health_update
   ((SETTLED)) && continue  # closing work can make dependents runnable: dispatch again first
   active=$(status_json | jq '[.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))] | length' 2>/dev/null || echo 0)
   if ((active > 0)); then

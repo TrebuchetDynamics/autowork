@@ -218,23 +218,29 @@ def plan(tasks, running=(), *, all_tasks=(), parked=()):
     # overlap. A task that must run alone and waits on running or just-dispatched work
     # stops all lower dispatch, or backfill would keep the pool from draining for it;
     # one waiting only on a claim or another waiting task gains nothing from a stop.
-    dispatch, waiting, stopped, reserved = [], [], '', []
+    def first(task, others, **kind):
+        """(reason, blocking task ID) for the first conflict, or ('', None)."""
+        return next(((r, other['id']) for other in others if (r := conflict(task, other, **kind))), ('', None))
+
+    # Each waiting entry names what holds it in ``blocked_by``, so a stalled queue can be
+    # traced to its root blockers without parsing reason text.
+    dispatch, waiting, stopped, reserved = [], [], ('', None), []
     for task in tasks:
         tid = task['id']
         if tid in active or tid in claims:
-            waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress'})
+            waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress', 'blocked_by': [tid]})
             continue
-        busy = next((r for other in [*active.values(), *dispatch] if (r := conflict(task, other))), '')
-        reason = stopped or busy \
-            or next((r for other in claims.values() if (r := conflict(task, other, claim=True))), '') \
-            or next((r for other in reserved if (r := conflict(task, other, reserved=True))), '')
+        busy = first(task, [*active.values(), *dispatch])
+        reason, by = (stopped if stopped[0] else busy if busy[0] else first(task, claims.values(), claim=True))
+        if not reason:
+            reason, by = first(task, reserved, reserved=True)
         if reason:
-            if not stopped and busy and _solo(task):
-                stopped = 'priority waits for ' + tid
+            if not stopped[0] and busy[0] and _solo(task):
+                stopped = ('priority waits for ' + tid, tid)
             reserved.append(task)
-            waiting.append({'id': tid, 'reason': reason})
+            waiting.append({'id': tid, 'reason': reason, 'blocked_by': [by]})
         else:
             dispatch.append(task)
             if _solo(task):
-                stopped = 'priority task ' + tid + ': ' + _solo(task)
+                stopped = ('priority task ' + tid + ': ' + _solo(task), tid)
     return {'dispatch': dispatch, 'waiting': waiting}

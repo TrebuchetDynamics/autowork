@@ -228,6 +228,15 @@ Remembered `NONE` answers from the `Touches:` pass belong to the prompt that pro
 them, so a changed prompt asks those tasks again, and a pass that gave no answer is
 retried within the hour.
 
+`pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
+service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not
+running`/`not cycling` when the process is gone or silent) and, when it cannot
+progress, the root blockers: a held task, another session's claim, an outside
+condition or a dependency cycle, each with how many tasks it holds up. `--status`
+shows the same health for one repository. A runner with nothing running while work
+waits for `PI_AUTOWORK_STALL_AFTER` seconds (1800) logs one `STALLED` line with
+those roots, at warning priority in the journal, and again only if they change.
+
 A task a worker reported blockers for, or one held with no attempt left, waits for a
 person and blocks only its dependents and overlapping work. Once its cause is
 resolved, `pi-autowork.sh --repo PATH --set-aside TASK` asks that repository's

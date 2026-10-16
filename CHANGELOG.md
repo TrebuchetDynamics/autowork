@@ -68,6 +68,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- Runner health (TOOLSET-115-bf phase 3): each `pi-autowork` runner keeps a
+  `status.json`, announces a stall once at warning priority with its root blockers,
+  and `pi-autowork.sh --fleet` lists every runner's service, health and blockers;
+  `--status` shows the same for one repository. The engine's waiting entries now
+  name what holds them (`blocked_by`) and `--parallel-status --json` lists the
+  `roots` of each waiting chain (held task, claim, outside condition, cycle or
+  moving work). This is the first module of the `pi-autowork/` component, which
+  now ships in the package together with the previously omitted Touches helper.
 - `pi-autowork.sh --set-aside TASK` asks the repository's running runner, which holds
   the engine lease, to retire a stuck slot (`--parallel-set-aside`) within one cycle;
   no service stop, so live workers are not interrupted.

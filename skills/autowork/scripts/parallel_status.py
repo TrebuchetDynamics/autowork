@@ -119,8 +119,50 @@ def pending_tasks(repo, known=()):
         running = fields.get('Status', indexed.get(task, {}).get('status', '')).startswith('in_progress')
         reason = ('sequential task in progress' if running else 'dependency: ' + ', '.join(unresolved)
                   if unresolved else 'awaiting dispatch')
-        result.append(dict(id=task, reason=reason))
+        # A claim blocks as itself; a dependency by what it names; otherwise nothing.
+        result.append(dict(id=task, reason=reason, blocked_by=[task] if running else unresolved))
     return result
+
+
+ROOT_KINDS = {'held': 'held', 'interrupted': 'restarting', 'released': 'restarting', 'dispatched': 'running',
+              'running': 'running', 'reported': 'integrating', 'integrating': 'integrating',
+              'integrated': 'integrating'}
+
+
+def roots(rows):
+    """What ultimately holds waiting tasks: follow ``blocked_by`` to its end.
+
+    Kinds: ``held`` (needs a person), ``claim`` (in_progress elsewhere), ``outside``
+    (a dependency that is no Now/Next task: an outside condition, or a task held in
+    Needs decision), ``cycle`` (tasks waiting on each other), ``running``/``integrating``/``restarting`` (moving work). Each
+    root counts the waiting tasks it holds, most first.
+    """
+    by_id = {r['task']: r for r in rows}
+
+    def ends(tid, seen):
+        row = by_id.get(tid)
+        if row is not None and (row['state'] == 'closed' or (row['state'] == 'waiting' and not row.get('blocked_by'))):
+            return set()  # finished, or ready to dispatch (or only waiting for capacity)
+        if row is None or row['state'] != 'waiting' or row.get('blocked_by') == [tid]:
+            return {tid}
+        fresh = [other for other in row.get('blocked_by', []) if other not in seen]
+        if not fresh:
+            return {tid}  # every blocker leads back here: a cycle
+        return set().union(*(ends(other, seen | {other}) for other in fresh))
+
+    counts = {}
+    for row in rows:
+        if row['state'] == 'waiting' and row.get('blocked_by') and row['blocked_by'] != [row['task']]:
+            for root in ends(row['task'], {row['task']}):
+                counts[root] = counts.get(root, 0) + 1
+    result = []
+    for tid, count in counts.items():
+        row = by_id.get(tid)
+        kind = ('outside' if row is None else 'claim' if row.get('blocked_by') == [tid]
+                else 'cycle' if row['state'] == 'waiting' else ROOT_KINDS.get(row['state'], row['state']))
+        result.append(dict(id=tid, kind=kind, blocks=count, cause=(row or {}).get('cause'),
+                           reason=(row or {}).get('reason') or ''))
+    return sorted(result, key=lambda r: (-r['blocks'], r['id']))
 
 
 def _snapshot(repo, common, now):
@@ -130,7 +172,7 @@ def _snapshot(repo, common, now):
     capacity = (coordinator or last_coordinator).get('max_workers', 0)
     observed = next((e for e in reversed(events) if e['event'] == 'dispatch_observed'), {})
     capacity = observed.get('max_workers', capacity)
-    pending = {v['id']: v['reason'] for v in observed.get('waiting', [])}
+    pending = {v['id']: v for v in observed.get('waiting', [])}
     rows = []
     active = 0
     for slot in state.slots(common):
@@ -143,20 +185,25 @@ def _snapshot(repo, common, now):
                          elapsed_seconds=max(0, end - (changes[0]['timestamp'] if changes else slot['started_at'])),
                          reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
-                         worker_live=live))
+                         worker_live=live, cause=slot.get('cause'), blocked_by=[]))
         pending.pop(task, None)
     # Include dependencies and pre-existing sequential claims that have no slot.
     for item in pending_tasks(repo, {r['task'] for r in rows}):
         task = item['id']
         observations = [e['timestamp'] for e in events if e['event'] == 'dispatch_observed'
                         and any(v['id'] == task for v in e['waiting'])]
+        # TODO.md tells today's dependencies; the last dispatch observation tells the rest.
+        # A dependency reason, then or now, is always taken from TODO.md as it is now.
+        dependency = (item['blocked_by'] and item['blocked_by'] != [task]) \
+            or pending.get(task, {}).get('reason', '').startswith('dependency:')
+        source = item if dependency or task not in pending else pending[task]
         rows.append(dict(task=task, state='waiting', slot=None,
                          elapsed_seconds=max(0, now - observations[0]) if observations else 0,
-                         reason=(item['reason'] if pending.get(task, '').startswith('dependency:')
-                                 else pending.get(task, item['reason'])), worktree=None, checks=None,
-                         commit=None, integration=None, attempt=0, worker_live=False))
+                         reason=source['reason'], worktree=None, checks=None,
+                         commit=None, integration=None, attempt=0, worker_live=False,
+                         blocked_by=list(source.get('blocked_by', item['blocked_by']))))
     return dict(outcome='PARALLEL_STATUS', workspace=str(repo), active_workers=active, max_workers=capacity,
-                tasks=rows, completed=sum(r['state'] == 'closed' for r in rows),
+                tasks=rows, roots=roots(rows), completed=sum(r['state'] == 'closed' for r in rows),
                 failed=sum(r['state'] in ('held', 'interrupted', 'released') for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
                 metrics=metrics(events, now))

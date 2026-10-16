@@ -117,7 +117,7 @@ class PlanTests(unittest.TestCase):
         tasks = [task('T1', 'shared/x.py, lib/y.py'), task('T7', 'lib/y.py'), task('T3', 'free.py')]
         result = plan(tasks, all_tasks=[claim, *tasks])
         self.assertEqual([t['id'] for t in result['dispatch']], ['T3'])
-        self.assertEqual(result['waiting'][1], {'id': 'T7', 'reason': 'overlapping paths with T1'})
+        self.assertEqual(result['waiting'][1], {'id': 'T7', 'reason': 'overlapping paths with T1', 'blocked_by': ['T1']})
         # A task that must run alone and waits on running work stops everything below it
         # so the pool drains; a waiting T1 does not keep it from running alone now.
         result = plan([task('S', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
@@ -159,9 +159,9 @@ class PlanTests(unittest.TestCase):
         self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
         result = plan(tasks[1:], parked=[held])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'O'])
-        self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency conflict with H'}])
+        self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency conflict with H', 'blocked_by': ['H']}])
         result = plan([task('O', 'h.py')], parked=[task('H', 'h.py')])
-        self.assertEqual(result['waiting'], [{'id': 'O', 'reason': 'overlapping paths with held H'}])
+        self.assertEqual(result['waiting'], [{'id': 'O', 'reason': 'overlapping paths with held H', 'blocked_by': ['H']}])
 
     def test_dependencies_name_task_ids_not_the_prose_around_them(self):
         from parallel_plan import dependency_ids

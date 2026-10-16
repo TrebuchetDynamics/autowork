@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 TEST_DIRS = ('tests', 'skills/autowork/scripts', 'skills/docs-sync/scripts',
-             'skills/git-commit-push/scripts')
+             'skills/git-commit-push/scripts', 'pi-autowork/tests')
 EXCLUSIONS = {
     'skills/docs-sync/scripts/test_goal_gap_regression.py':
         ('model', 'runs Hermes chat and writes profile receipts at import'),

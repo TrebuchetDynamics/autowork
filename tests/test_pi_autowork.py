@@ -583,6 +583,31 @@ class EngineTests(Fixture):
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
 
+    def test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why(self):
+        """2026-10-16: four services sat idle for seven hours and only logged a poll line."""
+        self.plan({'worker:A': ['blocked']})  # C depends on A: nothing can run once B is done
+        env = {**self.env, 'PI_AUTOWORK_STALL_AFTER': '2'}
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'STALLED' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        time.sleep(4)  # several more cycles: still announced only once
+        self.assertEqual(log().count('STALLED'), 1, log())
+        self.assertIn('Root blockers: A (held for a person, holds 1)', log())
+        fleet = subprocess.run(['bash', str(RUNNER), '--fleet'], cwd=self.root, env=self.env,
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(fleet.returncode, 0, fleet.stderr)
+        self.assertIn(f'{self.repo.name}', fleet.stdout)
+        self.assertIn('stalled for 0 min; 0 running, 1 waiting', fleet.stdout)
+        self.assertIn('    blocked by A (held for a person, holds 1)', fleet.stdout)
+        status = self.run_runner('--status')
+        self.assertIn('Health:     stalled since', status.stdout)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

@@ -327,11 +327,11 @@ def dispatch_locked(args, repo, common, count, template, host):
     started, waiting = [], list(planned['waiting'])
     for task in planned['dispatch']:
         if len(live) + len(started) >= count:
-            waiting.append({'id': task['id'], 'reason': f'all {count} worker slots busy'})
+            waiting.append({'id': task['id'], 'reason': f'all {count} worker slots busy', 'blocked_by': []})
             continue
         gate = resource_gate(len(live) + len(started), args.min_free_mem_mb)
         if gate:
-            waiting.append({'id': task['id'], 'reason': gate})
+            waiting.append({'id': task['id'], 'reason': gate, 'blocked_by': []})
             continue
         previous = restartable.get(task['id'])
         if previous:

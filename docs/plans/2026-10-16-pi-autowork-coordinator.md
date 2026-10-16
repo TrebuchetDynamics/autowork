@@ -130,12 +130,14 @@ runner's Bash shrinks to the entry point.
 
 ## Phases
 
-1. Worker outcomes from reports: a report with blockers defers with that cause
+1. Done (59a44cf). Worker outcomes from reports: a report with blockers defers with that cause
    instead of resuming; `pending_live` never holds; the worker prompt says which.
-2. Git safety: reviewer and Touches passes in disposable worktrees; closure commits
+2. Done (50768e2). Git safety: reviewer and Touches passes in disposable worktrees; closure commits
    only the files closure changed.
-3. Health: `status.json`, one `STALLED` report with root blockers, `--status` for
-   every service.
+3. Done. Health: `status.json`, one `STALLED` report with root blockers, `--status`
+   and `--fleet`; the first module of the `pi-autowork/` component
+   ([layout](pi-autowork-component-layout.md)).
 4. Owner decisions 1-3.
-5. Deferred causes and their automatic actions; extract the coordinator into a
-   tested Python package and reduce `pi-autowork.sh` to the entry point.
+5. Deferred causes and their automatic actions; extract the coordinator into the
+   `pi-autowork/` component per the [layout proposal](pi-autowork-component-layout.md)
+   and reduce `pi-autowork.sh` to a compatibility entry point.

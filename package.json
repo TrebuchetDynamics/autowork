@@ -15,6 +15,10 @@
     "adapters/",
     "skills/",
     "scripts/pi-autowork.sh",
+    "scripts/pi_autowork_touches.py",
+    "pi-autowork/pi_autowork/",
+    "pi-autowork/README.md",
+    "!**/__pycache__",
     "LICENSE",
     "README.md",
     "docs/cross-host.md"
