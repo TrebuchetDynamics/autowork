@@ -213,6 +213,18 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A held task with no attempt left no longer stalls the whole queue. It now blocks
+  only its dependents and tasks whose declared `Touches:` or `Resources:` overlap it,
+  like an `in_progress` claim, and its files no longer hold other work at
+  integration. Before, one such hold kept all four fleet runners idle for seven hours.
+- `Dependencies:` lines count task IDs, not the words around them: `none for this
+  slice`, `T-1; not eligible until done` and `RD-8; goal gates: G1` no longer wait
+  on "for", "Section" or "G1". A line that names no task still blocks.
+- `owner_cycle.py --parallel-set-aside TASK` retires a slot that can never finish:
+  an exhausted hold, or an integrated task whose TODO entry was rewritten after
+  validation. Its worktrees and branches are kept, renamed `-set-aside-N`, and the
+  task dispatches fresh. `pi-autowork.sh` does this by itself when a merged task's
+  entry changed, instead of retrying the close forever.
 - Parallel Autowork no longer holds every task without `Touches:` at integration: a
   task dispatched alone may change its own files (coordinator files and other
   slots' files still conflict).

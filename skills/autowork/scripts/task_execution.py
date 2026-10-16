@@ -21,6 +21,8 @@ import tempfile
 import time
 import uuid
 
+import parallel_plan
+
 
 class NoEligibleTask(ValueError):
     """No TODO task passes selection; the queue is idle rather than malformed."""
@@ -444,10 +446,10 @@ def _contracts(repo, requested, plan, *, parallel=False):
             reasons.append(f'{tid}: needs unique Scope, Acceptance and Checks fields')
             continue
         deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()
-        # `None. <prose>` or `None; <prose>` declares no dependencies; only the first clause counts.
-        if re.split(r';|\.\s', deps)[0].strip().lower() not in ('none', 'none required', '—', '-', ''):
-            ids = re.findall(r'`?([A-Za-z0-9][A-Za-z0-9_-]*)`?', deps)
-            # Dependencies must be explicit IDs; unknown prose is not evidence of completion.
+        # `None <prose>` declares no dependencies; prose words around IDs are not IDs.
+        ids = parallel_plan.dependency_ids(deps, set(bodies) | set(indexed))
+        if ids:
+            # An unknown ID is not evidence of completion.
             done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'}
             done.update(archived_done(repo))
             done.update(key for key, task in indexed.items() if task['status'] == 'done')
@@ -686,14 +688,18 @@ def parallel_main(args):
     try:
         if not args.owner_pid:
             raise ValueError('parallel mode requires --owner-pid of the persistent coordinator session')
-        if sum(bool(v) for v in (args.wait, args.release, args.integrate, args.parallel_close)) > 1:
-            raise ValueError('choose one parallel operation: wait, release, integrate or close')
+        if sum(bool(v) for v in (args.wait, args.release, args.integrate, args.parallel_close, args.parallel_set_aside)) > 1:
+            raise ValueError('choose one parallel operation: wait, release, integrate, close or set-aside')
         if args.integrate:
             result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout)
         elif args.parallel_close:
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-close does not accept --run or --timeout')
             result = parallel_integrate.close(args.consumer, args.owner_pid, args.parallel_close)
+        elif args.parallel_set_aside:
+            if args.run is not None or args.timeout is not None:
+                raise ValueError('--parallel-set-aside does not accept --run or --timeout')
+            result = parallel_integrate.set_aside(args.consumer, args.owner_pid, args.parallel_set_aside)
         elif args.wait:
             if args.timeout is None or args.timeout <= 0:
                 raise ValueError('--wait requires a positive --timeout')
@@ -718,7 +724,7 @@ def parallel_main(args):
         result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
     print(json.dumps(result, indent=2))
     return 0 if result['outcome'] in ('DISPATCHED', 'WAITING', 'IDLE', 'CHANGED', 'TIMEOUT',
-                                      'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED') else 1
+                                      'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED', 'SET_ASIDE') else 1
 
 
 def main(argv=None):
@@ -755,12 +761,15 @@ def main(argv=None):
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
     parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')
     parallel.add_argument('--parallel-close', metavar='TASK', help='Close and archive an integrated task with passing validation; clean only its owned worktree.')
+    parallel.add_argument('--parallel-set-aside', metavar='TASK',
+                          help='Retire an exhausted held slot, or an integrated one whose TODO entry changed, keeping its '
+                               'worktrees and branches renamed; the task then dispatches fresh.')
     parallel.add_argument('--parallel-status', action='store_true', help='Read-only parallel progress and journal metrics; no owner required.')
     parallel.add_argument('--json', action='store_true', help='Machine-readable output with --parallel-status.')
     args = parser.parse_args(argv)
     if args.parallel_status:
         try:
-            if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close,
+            if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close, args.parallel_set_aside,
                     args.run is not None, args.writers, args.parallel is not None)):
                 raise ValueError('--parallel-status cannot be combined with execution operations')
             import parallel_status
@@ -772,7 +781,7 @@ def main(argv=None):
             return 1
     if args.json:
         parser.error('--json requires --parallel-status')
-    if args.parallel is not None or args.wait or args.integrate or args.parallel_close:
+    if args.parallel is not None or args.wait or args.integrate or args.parallel_close or args.parallel_set_aside:
         return parallel_main(args)
     if args.writers:
         try:

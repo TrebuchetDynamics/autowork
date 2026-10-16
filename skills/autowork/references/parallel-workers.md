@@ -87,7 +87,9 @@ A task runs beside others only when the planner can prove it is independent:
   `.github/workflows/`), runs alone. Because it ran alone, a task without `Touches:`
   may change any file except coordinator-owned ones when it integrates.
 - Dependencies and TODO.md priority still apply: a task waits for its
-  prerequisites to close. A lower-priority task starts past a higher-priority one
+  prerequisites to close. `Dependencies:` counts task-ID-shaped tokens and known task IDs; surrounding
+  prose is ignored, a first clause starting with `none` means none, and a line naming
+  no task at all stays an unresolved outside condition. A lower-priority task starts past a higher-priority one
   that cannot start yet only when it shares no path, resource or dependency with it,
   so priority still decides every overlap. A task that must run alone and waits on
   running work stops all lower-priority dispatch so the pool drains for it.
@@ -132,8 +134,14 @@ nothing parallel was claimed or started.
   `READOPTED` and sets the first commit back to `reported`, once: scope can change
   after a hold, and integration repeats every check, judging scope by the `Touches:`
   the worker was dispatched with (from its prompt), not by Touches recorded later. A second failure stays held:
-  send it to Plan For Me to fix or skip. Closing a retried task leaves the first attempt's worktree
-  and branch for manual cleanup.
+  send it to Plan For Me to fix or skip. Until then it blocks only like an
+  `in_progress` claim (dependents and declared overlap), not the queue. Closing a
+  retried task leaves the first attempt's worktree and branch for manual cleanup.
+- **Set aside:** `--parallel-set-aside TASK` retires a held slot with no attempt
+  left, or an integrated one whose TODO entry was rewritten after validation (its
+  merge stays in the main branch; the new entry is new work). Every attempt's
+  worktree and branch is kept, renamed with `-set-aside-N`, and the slot record and
+  data move to `slot-history/TASK/N`; the next refill dispatches the task fresh.
 - **Interrupted or released workers** (timed out, or dead with uncommitted changes
   or with nothing) restart once in the same worktree with a resume note; a second
   interruption is held. A failed first launch holds the task, which can still get

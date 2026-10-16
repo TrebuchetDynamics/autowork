@@ -123,15 +123,35 @@ def _solo(task):
     return ''
 
 
-def _dependencies(task):
-    fields = task.get('fields', {})
-    value = fields.get('Dependencies', 'None.').strip().strip('.').strip()
-    if re.split(r';|\.\s', value)[0].strip().lower() in ('none', 'none required', '—', '-', ''):
+TASK_ID = re.compile(r'[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+)+')
+
+
+def dependency_ids(value, known=()):
+    """Task IDs a Dependencies field names; prose around them is not a dependency.
+
+    A first clause starting with "none" declares none ("none for this slice; ...").
+    A token counts when it is shaped like a task ID (``TASK-022``, ``TASK-009``)
+    or is a known task ID, so words such as "for", "Section", "Next" or goal gates
+    ("G1") never hold a task (bravo, 2026-10-16). A line with no task ID at
+    all is returned whole, so it still holds the task.
+    """
+    value = value.strip().strip('.').strip()
+    first = re.split(r';|\.\s', value)[0].strip().lower()
+    if first in ('—', '-', '') or re.match(r'none\b', first):
         return set()
-    return set(re.findall(r'`?([A-Za-z0-9][A-Za-z0-9_-]*)`?', value))
+    known = set(known)
+    ids = {token for token in re.findall(r'[A-Za-z0-9][A-Za-z0-9_-]*', value)
+           if TASK_ID.fullmatch(token) or token in known}
+    # A line naming no task ("approved device access") is an outside condition:
+    # it stays an unresolved dependency rather than meaning "none".
+    return ids or {value}
 
 
-def plan(tasks, running=(), *, all_tasks=()):
+def _dependencies(task, known=()):
+    return dependency_ids(task.get('fields', {}).get('Dependencies', 'None.'), known)
+
+
+def plan(tasks, running=(), *, all_tasks=(), parked=()):
     """Plan ordered runnable contracts against running contracts/live slots.
 
     ``running`` contains task contracts held by live slots. Also pass every
@@ -145,19 +165,25 @@ def plan(tasks, running=(), *, all_tasks=()):
     its dependents and tasks whose declared Touches or Resources overlap it, but
     its missing Touches does not force unrelated tasks to wait (sierra, 2026-10-15:
     32 handed-off claims without Touches blocked every task).
+    ``parked`` contains contracts of held slots with no attempt left. Their work
+    waits for a person, not for the pool, so they block like a claim: dependents
+    and declared overlap only (all four fleet repositories, 2026-10-16: one
+    exhausted hold left every runner idle for seven hours).
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
     """
-    tasks, running, all_tasks = list(tasks), list(running), list(all_tasks)
-    known = {t['id']: t for t in [*all_tasks, *tasks, *running]}
+    tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
+    known = {t['id']: t for t in [*all_tasks, *tasks, *running, *parked]}
     active = {t['id']: t for t in running}
     claims = {}
     for t in known.values():
         status = re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0]
         if status == 'in_progress' and t['id'] not in active:
             claims[t['id']] = t
+    held = {t['id'] for t in parked}
+    claims.update((t['id'], t) for t in parked)
 
     def depends(a, b):
-        pending, seen = list(_dependencies(a)), set()
+        pending, seen = list(_dependencies(a, known)), set()
         while pending:
             tid = pending.pop()
             if tid == b['id']:
@@ -165,14 +191,14 @@ def plan(tasks, running=(), *, all_tasks=()):
             if tid not in seen:
                 seen.add(tid)
                 if tid in known:
-                    pending.extend(_dependencies(known[tid]))
+                    pending.extend(_dependencies(known[tid], known))
         return False
 
     def conflict(a, b, claim=False, reserved=False):
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
         if claim or reserved:  # idle claim or waiting task: only declared overlap matters
-            other = ('in_progress ' if claim else '') + b['id']
+            other = ('held ' if b['id'] in held else 'in_progress ' if claim else '') + b['id']
             if _shared(_touches(a), _touches(b)):
                 return 'overlapping paths with ' + other
             if _resources(a) & _resources(b):

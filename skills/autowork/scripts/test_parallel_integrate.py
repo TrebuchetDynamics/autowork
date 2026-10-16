@@ -253,6 +253,69 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.retry_held(args)['outcome'], 'IDLE')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
+    def exhaust(self, task='A'):
+        root, commit = self.worker(task)
+        state.transition(self.repo, self.owner, task, 'held', reason='fixture failure')
+        slot = state.slots(self.common)[0]
+        retry = Path(str(root) + '-r2')
+        self.git('worktree', 'add', '-q', '-b', 'autowork/' + task + '-r2', str(retry), self.baseline)
+        state.change(self.common, slot, 'dispatched', {'worktree': str(retry), 'branch': 'autowork/' + task + '-r2',
+                                                         'baseline': self.baseline})
+        (retry / 'wip.txt').write_text('unsaved\n')
+        state.transition(self.repo, self.owner, task, 'released')  # second failure: held
+        return root, retry, commit
+
+    def test_an_exhausted_hold_is_set_aside_with_its_work_kept(self):
+        root, retry, commit = self.exhaust()
+        module = self.module()
+        self.assertTrue(state.exhausted(state.slots(self.common)[0]))
+        result = module.set_aside(self.repo, self.owner, 'A')
+        self.assertEqual((result['outcome'], result['previous_state']), ('SET_ASIDE', 'held'))
+        self.assertEqual(state.slots(self.common), [])
+        self.assertFalse(root.exists() or retry.exists())
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), commit)
+        self.assertEqual(Path(str(retry) + '-set-aside-1', 'wip.txt').read_text(), 'unsaved\n')
+        self.assertTrue((self.common / 'slot-history' / 'A' / '1' / 'slot.json').exists())
+        self.assertFalse((self.common / 'slot-data' / 'A').exists())
+        # The task dispatches fresh under its original names.
+        fresh, branch, _ = dispatch.create_worktree(self.repo, self.common, 'A', self.baseline)
+        self.assertEqual((fresh, branch), (root, 'autowork/A'))
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=fresh), self.baseline)
+
+    def test_set_aside_refuses_a_slot_that_can_still_finish(self):
+        self.worker()
+        module = self.module()
+        with self.assertRaisesRegex(ValueError, 'only for'):
+            module.set_aside(self.repo, self.owner, 'A')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        with self.assertRaisesRegex(ValueError, 'close it instead'):
+            module.set_aside(self.repo, self.owner, 'A')
+        self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
+
+    def test_an_integrated_task_whose_entry_changed_is_set_aside_and_queued_again(self):
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
+        self.git('commit', '-qam', 'rewrite A')
+        with self.assertRaisesRegex(ValueError, module.CONTRACT_CHANGED):
+            module.close(self.repo, self.owner, 'A')
+        merged = self.git('rev-parse', 'HEAD')
+        self.assertEqual(module.set_aside(self.repo, self.owner, 'A')['outcome'], 'SET_ASIDE')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), merged)
+        self.assertIn('A', [t['id'] for t in execution.select_all(self.repo, None, None)])
+
+    def test_an_exhausted_hold_does_not_hold_other_work_at_integration(self):
+        self.exhaust('A')
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: B.txt', 'Touches: A.txt, B.txt'))
+        self.git('commit', '-qam', 'B also owns A.txt')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker('B', {'A.txt': 'overlap\n', 'B.txt': 'worker\n'})
+        result = self.module().integrate(self.repo, self.owner, 'B', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+
     def test_retry_refill_enforces_running_retry_timeout(self):
         import time
         from types import SimpleNamespace

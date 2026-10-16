@@ -150,6 +150,34 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual(result['dispatch'], [])
                 self.assertEqual([w['id'] for w in result['waiting']], ['A', 'B'])
 
+    def test_an_exhausted_hold_blocks_only_dependents_and_declared_overlap(self):
+        from parallel_plan import plan
+        held = task('H', '')  # failed twice, no Touches: would otherwise force everything to wait
+        tasks = [task('S', 'package.json'), task('B', 'b.py'), task('D', 'd.py', deps='H.'),
+                 task('O', 'h.py')]
+        result = plan(tasks, parked=[held])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
+        result = plan(tasks[1:], parked=[held])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'O'])
+        self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency conflict with H'}])
+        result = plan([task('O', 'h.py')], parked=[task('H', 'h.py')])
+        self.assertEqual(result['waiting'], [{'id': 'O', 'reason': 'overlapping paths with held H'}])
+
+    def test_dependencies_name_task_ids_not_the_prose_around_them(self):
+        from parallel_plan import dependency_ids
+        known = {'T-1', 'TASK-019', 'X9'}
+        for value, expected in (
+                ('None.', set()), ('none for this shared-client slice. Existing authority', set()),
+                ('None required; ask first.', set()), ('—', set()),
+                ('TASK-004; not eligible until that task is done.', {'TASK-004'}),
+                ('BACKEND-SSH-CONNECT. Section: Next. Ownership: unclaimed.', {'BACKEND-SSH-CONNECT'}),
+                ('TASK-033, TASK-032; goal gates: G1.', {'TASK-033', 'TASK-032'}),
+                ('TASK-018. TASK-019 (goal prerequisite).', {'TASK-018', 'TASK-019'}),
+                ('`T-1` and X9', {'T-1', 'X9'}),
+                ('approved device access', {'approved device access'}), ('H', {'H'})):
+            with self.subTest(value=value):
+                self.assertEqual(dependency_ids(value, known), expected)
+
     def test_running_in_progress_and_live_slot_tasks_never_redispatched(self):
         from parallel_plan import plan
         running = task('A', 'a.py', status='in_progress; prior work')
