@@ -686,9 +686,11 @@ def parallel_main(args):
     try:
         if not args.owner_pid:
             raise ValueError('parallel mode requires --owner-pid of the persistent coordinator session')
-        if sum(bool(v) for v in (args.wait, args.release, args.integrate, args.parallel_close)) > 1:
-            raise ValueError('choose one parallel operation: wait, release, integrate or close')
-        if args.integrate:
+        if sum(bool(v) for v in (args.wait, args.release, args.integrate, args.parallel_close, args.parallel_pause)) > 1:
+            raise ValueError('choose one parallel operation: wait, release, integrate, close or pause')
+        if args.parallel_pause:
+            result = parallel_state.pause(Path(args.consumer).expanduser().resolve(), args.owner_pid)
+        elif args.integrate:
             result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout)
         elif args.parallel_close:
             if args.run is not None or args.timeout is not None:
@@ -718,7 +720,8 @@ def parallel_main(args):
         result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
     print(json.dumps(result, indent=2))
     return 0 if result['outcome'] in ('DISPATCHED', 'WAITING', 'IDLE', 'CHANGED', 'TIMEOUT',
-                                      'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED') else 1
+                                      'SEQUENTIAL_FALLBACK', 'RELEASED', 'INTEGRATED', 'CLOSED', 'RETRIED',
+                                      'PAUSED') else 1
 
 
 def main(argv=None):
@@ -755,12 +758,14 @@ def main(argv=None):
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
     parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')
     parallel.add_argument('--parallel-close', metavar='TASK', help='Close and archive an integrated task with passing validation; clean only its owned worktree.')
+    parallel.add_argument('--parallel-pause', action='store_true',
+                          help='Before a deliberate stop: mark live workers so their interruption resumes the same attempt.')
     parallel.add_argument('--parallel-status', action='store_true', help='Read-only parallel progress and journal metrics; no owner required.')
     parallel.add_argument('--json', action='store_true', help='Machine-readable output with --parallel-status.')
     args = parser.parse_args(argv)
     if args.parallel_status:
         try:
-            if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close,
+            if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close, args.parallel_pause,
                     args.run is not None, args.writers, args.parallel is not None)):
                 raise ValueError('--parallel-status cannot be combined with execution operations')
             import parallel_status
@@ -772,7 +777,7 @@ def main(argv=None):
             return 1
     if args.json:
         parser.error('--json requires --parallel-status')
-    if args.parallel is not None or args.wait or args.integrate or args.parallel_close:
+    if args.parallel is not None or args.wait or args.integrate or args.parallel_close or args.parallel_pause:
         return parallel_main(args)
     if args.writers:
         try:

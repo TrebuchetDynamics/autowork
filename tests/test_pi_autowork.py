@@ -365,6 +365,10 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.branches(), ['main'])
+        # A deliberate stop pauses its workers: they resume the same attempt, retry intact.
+        sessions = [r['session'] for r in self.runs('worker') if r['task'] in ('A', 'B')]
+        self.assertEqual(len(sessions), 4, sessions)
+        self.assertTrue(all(s.endswith('-attempt-1') for s in sessions), sessions)
 
     def test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers(self):
         """Live qualification found a restart refused while a dead runner's helper held the lock."""

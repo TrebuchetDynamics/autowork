@@ -292,11 +292,13 @@ How it works:
   security boundary, and does not cover other tools such as `gh`. Pi runs with
   `--no-approve`, so a repository's own Pi extensions do not load; its `AGENTS.md`
   still does.
-- **Stopping and recovery.** Ctrl+C interrupts running workers' process groups,
-  merges finished work into the main branch and exits 130 within seconds. On the next
-  start the engine reconciles: interrupted or released tasks restart once in the
-  same worktree, a dead worker with a commit is integrated, and live workers are
-  adopted rather than duplicated.
+- **Stopping and recovery.** Ctrl+C (and a service stop or restart) first marks the
+  running workers paused, then interrupts their process groups, merges finished work
+  into the main branch and exits 130 within seconds. On the next start the engine
+  reconciles: a paused worker resumes in its worktree on the same attempt, so a stop
+  never spends a task's retry or holds its second attempt; other interrupted or
+  released tasks restart once in the same worktree, a dead worker with a commit is
+  integrated, and live workers are adopted rather than duplicated.
 
 State lives outside the repository, in
 `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key>/`: `runner.log`,

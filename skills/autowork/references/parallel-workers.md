@@ -136,7 +136,10 @@ nothing parallel was claimed or started.
   and branch for manual cleanup.
 - **Interrupted or released workers** (timed out, or dead with uncommitted changes
   or with nothing) restart once in the same worktree with a resume note; a second
-  interruption is held. A failed first launch holds the task, which can still get
+  interruption is held. A deliberate coordinator stop first runs `--parallel-pause`
+  (with `--owner-pid`), which marks live workers `paused`; a paused
+  worker that dies resumes in its worktree on the same attempt, spending no retry
+  and never holding a second attempt. The flag clears when it is dispatched again. A failed first launch holds the task, which can still get
   the `-r2` attempt; a failed restart launch uses up its retry.
 - **A restarted coordinator** reclaims the lease and reconciles the slot records
   under `<git-common-dir>/autowork-execution/slots/`: live workers are adopted; a

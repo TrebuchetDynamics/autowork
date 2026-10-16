@@ -223,6 +223,12 @@ claim of a tagged release, completed installation or live workflow qualification
   "history" link), for closing and for dependencies on archived tasks.
 - `pi-autowork.sh` retries closing an integrated task on later cycles and commits a
   linked archive with the close; a failed close no longer blocks the queue.
+- A deliberate stop or restart of Parallel Autowork (Ctrl+C, `systemctl stop` or
+  `restart`) no longer costs a task its retry: the coordinator marks live workers
+  paused (`--parallel-pause`) before interrupting them, and each resumes in its
+  worktree on the same attempt. Before, an interrupted second attempt was held for
+  good. A held or interrupted slot whose task is done or superseded no longer blocks a
+  must-run-alone successor.
 - A continuous `pi-autowork.sh` also keeps itself current: while idle, at most hourly
   (`PI_AUTOWORK_UPDATE_INTERVAL`), it runs `pi update` for its toolset package, one
   runner at a time, and skips a restart onto a script that does not parse. Its

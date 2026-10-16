@@ -82,7 +82,7 @@ MAX_COST=${PI_AUTOWORK_MAX_COST:-0}
 COST_WINDOW=${PI_AUTOWORK_COST_WINDOW:-24}
 MIN_FREE_MB=${PI_AUTOWORK_MIN_FREE_MB:-3000}
 SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
-STATE='' CHILD='' KILLER='' SLEEPER='' STOP=0 FALLBACK_ENABLED=1 DRY_RUN=0
+STATE='' CHILD='' KILLER='' SLEEPER='' STOP=0 PAUSED=0 FALLBACK_ENABLED=1 DRY_RUN=0
 
 say() {
   local line
@@ -638,8 +638,9 @@ on_signal() {
     return
   fi
   STOP=1
-  say "Stopping: interrupting workers, then merging finished work (Ctrl+C again to force)"
-  for pgid in $(worker_groups); do kill -INT -- "-$pgid" 2>/dev/null; done
+  say "Stopping: pausing workers so they resume on the next start, then merging finished work (Ctrl+C again to force)"
+  # Workers are interrupted by the main loop after the engine marks them paused, so a
+  # deliberate stop or restart neither spends a task's retry nor holds a second attempt.
   [[ -n $CHILD ]] && kill -INT "$CHILD" 2>/dev/null
 }
 stop_helpers() {
@@ -891,6 +892,11 @@ summarize
 say "Started (PID $$). Stop with Ctrl+C."
 while :; do
   if ((STOP)); then
+    if ((!PAUSED)); then
+      PAUSED=1
+      owned --parallel-pause >/dev/null
+      for pgid in $(worker_groups); do kill -INT -- "-$pgid" 2>/dev/null; done
+    fi
     # Interrupted workers stay in their worktrees; the next start resumes them.
     for _ in 1 2 3 4; do owned --parallel "$WORKERS" --max-workers 8 --wait --timeout 5 >/dev/null; done
     settle

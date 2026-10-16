@@ -306,7 +306,8 @@ def dispatch_locked(args, repo, common, count, template, host):
                  and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
     running = [by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}}) for s in occupying]
     live = [s for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s)]
-    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released') and s['attempt'] == 1}
+    restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released')
+                   and (s['attempt'] == 1 or s.get('paused'))}
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
@@ -330,10 +331,12 @@ def dispatch_locked(args, repo, common, count, template, host):
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
                               baseline=base)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
-        attempt = slot['attempt'] + (1 if previous else 0)
+        attempt = slot['attempt'] + (1 if previous and not previous.get('paused') else 0)
         data = execution.safe_path(common / 'slot-data' / task['id'] / f'attempt-{attempt}')
         data.mkdir(parents=True, exist_ok=True, mode=0o700)
         report = data / 'report.json'
+        if previous and previous.get('paused'):
+            report.unlink(missing_ok=True)  # a resumed attempt reports afresh
         prompt_file = data / 'prompt.md'
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous)))
         index = next(i for i in range(1, HARD_LIMIT + 1) if i not in used)
