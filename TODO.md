@@ -69,9 +69,11 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Dependencies: None.
 - Ownership: Toolset coordinator under Autowork local repository authority.
 - Exclusions: No memory-store migration or deletion; no provider switch without the owner.
-- Candidate: `autowork/TOOLSET-082` (c4644bb) pins official OMH v3.0.2 (manifest `>=0.21.1`), maps all 41 kept names, adds offline tests and interim guidance; the cron reported independent review approval on 2026-10-15.
+- Candidate: `autowork/TOOLSET-082` (bdc34d3) retains the reviewed official OMH v3.0.2 pin (manifest `>=0.21.1`), all 41 kept-name mappings, offline tests and interim guidance from c4644bb; refreshed against main 7882845. Independent review approved the TODO merge resolution; original pin/docs/tests are unchanged.
 - Planner's call (2026-10-15 replan): split the live refresh of installed profiles into TOOLSET-098-5d so the reviewed offline pin can close; the live checks moved there unchanged.
-- Next action: Merge the candidate onto current main, rerun the checks above, close.
+- Planner's call (2026-10-16 recovery): while canonical admission is busy, qualify this retained candidate rather than repeat the TOOLSET-064 hold. The first full gate exposed the already-fixed nested-profile diagnostic; merge the reviewed TOOLSET-064/097-41 candidate instead of duplicating its fix. Preserve all three original task IDs and keep integration pending, with no live profile changes.
+- Checks (2026-10-16): combined full offline gate passed 558/689/212/8 tests (one skip; eight modules excluded); focused OMH 28, Pi 40 and skill-description 1 passed; Bash syntax, docs/index validation and whitespace passed. The original failing gate remains failure evidence, not a pass.
+- Next action: Integrate this combined candidate after fresh canonical writer admission clears, then close and archive TOOLSET-082, TOOLSET-064 and TOOLSET-097-41. Last admission found one active canonical session and one idle session; no canonical write, push, deployment or native qualification was attempted.
 
 ### TOOLSET-097-41 — Report the correct Hermes profile from nested installation paths
 
