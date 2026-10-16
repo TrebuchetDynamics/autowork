@@ -396,6 +396,27 @@ class EngineTests(Fixture):
         self.assertNotIn('Queue empty', result.stdout)
         self.assertEqual(self.runs(), [])
 
+    def test_a_waiting_runner_sees_tasks_committed_to_main_later(self):
+        """india: tasks committed to main while the runner waited were never dispatched."""
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
+        self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
+        runner = self.start_runner('--interval', '1')
+        deadline = time.monotonic() + 30
+        while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
+                                               if list(self.state.glob('*/runner.log')) else ''):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.2)
+        self.git(self.repo, 'checkout', '--', 'TODO.md')
+        (self.repo / 'TODO.md').write_text(text)  # A and B become runnable on main
+        self.git(self.repo, 'commit', '-qam', 'unblock')
+        deadline = time.monotonic() + 60
+        while not self.done('A'):
+            self.assertLess(time.monotonic(), deadline, 'runner never picked up the new tasks')
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
         self.run_runner('--status')  # creates nothing

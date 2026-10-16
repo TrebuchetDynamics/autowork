@@ -801,6 +801,14 @@ while :; do
     finish 130 "Stopped. Unfinished tasks keep their worktrees and resume on the next start."
   fi
   ensure_session
+  # A session with no work of its own follows the main branch, so new tasks committed
+  # while it waits are seen (india: tasks committed after the session began were missed).
+  # Only while nothing is in flight: moving the base under a running worker would make
+  # its integration conflict.
+  if [[ -z $(git -C "$REPO" rev-list "$BASE..$INTEG_BRANCH" 2>/dev/null) && -z $(dirty "$INTEG") ]] &&
+     ! status_json | jq -e '.tasks[]? | select(.state as $s | ["dispatched","running","reported","integrating","integrated"] | index($s))' >/dev/null 2>&1; then
+    git -C "$INTEG" merge -q --ff-only "$BASE" 2>/dev/null
+  fi
   if ((!DRAINING)); then
     ((MAX_CYCLES && STARTED_WORKERS >= MAX_CYCLES)) && { DRAINING=1; say "Reached --max-cycles $MAX_CYCLES; finishing running tasks"; }
     ((MAX_RUNTIME && SECONDS - STARTED >= MAX_RUNTIME)) && { DRAINING=1; say "Reached PI_AUTOWORK_MAX_RUNTIME; finishing running tasks"; }
