@@ -581,7 +581,8 @@
         "TOOLSET-097-57",
         "TOOLSET-098-4c",
         "TOOLSET-099-87",
-        "TOOLSET-111-b3"
+        "TOOLSET-111-b3",
+        "TOOLSET-115-bf"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -611,6 +612,14 @@
       "section": "Now",
       "status": "open",
       "title": "Run as many independent tasks at once as possible"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-115-bf",
+      "section": "Now",
+      "status": "open",
+      "title": "Redesign pi-autowork around one lifecycle authority"
     },
     {
       "depends_on": [],

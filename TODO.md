@@ -41,6 +41,20 @@ not change a running worker's assigned contract or authorize dispatch/scheduling
 - Exclusions: No push by the runner; no direct edits in fleet repositories.
 - Planner's call (2026-10-16): Skip the excluded live/model operation in this occurrence; its remaining fleet qualification is already separated under TOOLSET-096-7e. Preserve both open acceptances. The offline TOOLSET-072/073 work and TOOLSET-102-ea's measured fixture follow-up are archived. No new live authority is inferred.
 
+### TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
+
+- [ ] TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
+- Status: open; phase 1 next.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [design](docs/plans/2026-10-16-pi-autowork-coordinator.md), [engine](skills/autowork/references/parallel-workers.md).
+- Touches: scripts/pi-autowork.sh, scripts/pi_autowork_touches.py, scripts/pi_autowork/, skills/autowork/scripts/parallel_*.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_*.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py, docs/cross-host.md, docs/plans/2026-10-16-pi-autowork-coordinator.md
+- Scope: Owner direction (2026-10-16, after four runners idled seven hours): stop special-casing stalls in Bash. Implement the design's invariants in phases: worker outcomes from reports (`blockers` defer, `pending_live` never holds); Git safety (disposable review and Touches worktrees, exact closure commits); health (`status.json`, one `STALLED` report); owner decisions (safe-checkpoint self-update with a state schema version, adoption of verifiably idle claims, linked ignored dependencies); deferred causes with automatic actions; a tested Python coordinator behind a thin `pi-autowork.sh`.
+- Acceptance: The design's twelve scenarios pass with controlled subprocess workers and failure injection; no runner path runs `reset --hard`, `clean` or `stash` on the session or canonical checkout; a runner with no worker while runnable work exists reports `STALLED` with root blockers.
+- Checks: `python3 scripts/check.py`; `python3 -m unittest tests/test_pi_autowork.py`; engine tests in `skills/autowork/scripts`; `shellcheck scripts/pi-autowork.sh`.
+- Dependencies: None; builds on TOOLSET-099-87 offline work.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push by the runner; no direct edits in fleet repositories; live fleet qualification stays with TOOLSET-096-7e.
+
 ## Next
 
 ### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
