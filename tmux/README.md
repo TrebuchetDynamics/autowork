@@ -12,28 +12,44 @@ favor. Installing this one (`./install.sh`, or the package's `tx` command) repla
 
 pi-autowork normally runs as a systemd user service
 (`pi-autowork.sh --install-service`; see [cross-host](../docs/cross-host.md#run-autowork-continuously)).
-`tx autowork` runs one repository's runner in tmux instead, to watch or debug it:
+`tx autowork` runs one repository's runner in tmux instead, to watch or debug it, and
+gives one place to see every runner, whichever way it runs.
+
+| Command | What it does |
+|---|---|
+| `tx autowork <name\|repo\|.>` | Start the repository's runner in tmux session `pi-autowork-<repo-name>`, or attach to it |
+| `tx autowork ls` | Every runner, tmux and service, with its health (`working 54m; 1 running, 10 waiting`) |
+| `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
+| `tx autowork logs [-f] [name\|repo\|.]` | Recent output: the service journal, or the tmux pane; `-f` follows the journal or attaches |
+| `tx autowork stop <name\|repo\|.>` | Ctrl+C a tmux runner, wait for it to stop cleanly, close the session |
 
 ```sh
-tx autowork .                 # this repository; or tx autowork ~/git/my-project
-tx autowork ls                # tmux and service runners together
-tx autowork stop my-project    # Ctrl+C to the runner, then close the session
+tx autowork ls                # what is running, and how it is doing
+tx autowork status india       # why india is stalled
+tx autowork logs -f sierra     # follow a service runner's journal
+tx autowork .                 # run this repository in tmux (no service installed)
+tx autowork stop my-project
 ```
 
+- A target is a runner name (`sierra`), a repository path, or `.`. A name is found
+  through its tmux session or its service settings (`~/.config/pi-autowork/<name>.env`).
 - The session is `pi-autowork-<repository name>`, the same name the service uses
   (`pi-autowork@<repository name>`); `.` and `:` become `_`. An existing session is
   attached, not started again; a session holding another repository is refused.
 - It runs the script the systemd unit runs (`ExecStart` of
   `~/.config/systemd/user/pi-autowork@.service`), else `../scripts/pi-autowork.sh`
   next to `tx`; `PI_AUTOWORK_SCRIPT` overrides both.
-- It refuses while `pi-autowork@<name>` is enabled or active and prints how to watch
-  the service (`journalctl --user -fu ...`) or hand the repository to tmux
-  (`systemctl --user disable --now ...`). The runner's own per-repository lock keeps
-  two runners off one repository regardless.
+- Starting refuses while `pi-autowork@<name>` is enabled or active and says how to
+  follow it (`tx autowork logs -f <name>`) or hand the repository to tmux
+  (`systemctl --user disable --now ...`); `stop` points a service runner to
+  `systemctl --user stop`. The runner's own per-repository lock keeps two runners off
+  one repository regardless.
 - `stop` sends Ctrl+C: the runner pauses live workers so they resume on the same
   attempt, merges finished work and exits; `tx` waits for it (up to
   `TX_AUTOWORK_STOP_TIMEOUT` seconds, default 300) before closing the session. The
   pane stays open after the runner exits on its own, so its last lines remain.
+- Health comes from each runner's `status.json` under `~/.local/state/pi-autowork`
+  (the same record as `pi-autowork.sh --fleet`), so `ls` is instant; it needs `jq`.
 
 ## Files
 
