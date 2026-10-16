@@ -286,6 +286,11 @@ class Coordinator:
             if result.returncode:
                 out = (result.stdout + result.stderr).splitlines()
                 line = next((l for l in out if re.search(r'error|fatal|abort', l, re.I)), out[0] if out else '')
+                # Git lists the blocking files on the indented lines after the error.
+                files = [l.strip() for l in out if l.startswith(('\t', '    ')) and l.strip()]
+                if files:
+                    shown = ', '.join(files[:6]) + (f' (+{len(files) - 6} more)' if len(files) > 6 else '')
+                    line = line.rstrip(':') + ': ' + shown
                 self.merge_pending = f'{self.base} in {self.repo} could not take {self.integ_branch}: {line}'
         if self.merge_pending:
             LOG.say(f'Merge pending: {self.merge_pending}. Branch {self.integ_branch} is kept; the next run retries.')

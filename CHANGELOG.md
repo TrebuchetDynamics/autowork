@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A pending final merge names the files that block it (for example uncommitted
+  `TODO.md` edits in the main checkout); the message used to stop at "would be
+  overwritten by merge:".
 - An idle `in_progress` claim is never adopted when a TODO.md note holds it: its own
   entry, or any line naming it, says to keep it open, forbids dispatch, puts it on hold,
   or says it requires or is missing an authority or approval. sierra TASK-029 was adopted

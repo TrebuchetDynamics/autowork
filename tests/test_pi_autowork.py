@@ -795,6 +795,22 @@ class EngineTests(Fixture):
         (envs / 'project.env').write_text('PI_AUTOWORK_REPO=/elsewhere/project\nPI_AUTOWORK_WORKERS=3\n')
         self.assertIn('up to 8 worker(s)', self.run_runner('--dry-run').stdout)  # another repository's file
 
+    def test_a_pending_merge_names_the_files_that_block_it(self):
+        """Every fleet main checkout had uncommitted TODO.md edits; the message stopped before the file names."""
+        self.plan({'worker:A': ['slow']})
+        runner = subprocess.Popen(['bash', str(RUNNER), '--until-empty'], cwd=self.repo, env=self.env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        busy = self.root / 'busy-A'
+        deadline = time.monotonic() + 60
+        while not busy.exists():
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.1)
+        with (self.repo / 'TODO.md').open('a') as todo:  # a person edits the backlog meanwhile
+            todo.write('\n<!-- a note being written -->\n')
+        out, _ = runner.communicate(timeout=120)
+        self.assertEqual(runner.returncode, 4, out)
+        self.assertRegex(out, r'Merge pending: main in .* could not take pi-autowork/[0-9-]+: .*TODO\.md')
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
