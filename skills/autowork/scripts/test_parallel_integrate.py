@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -111,6 +112,43 @@ class IntegrationTests(unittest.TestCase):
         result = self.module().retry_held(self.retry_args())
         self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'A'))
         self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def session_checkout(self):
+        """Integrate in a separate session worktree, as pi-autowork does."""
+        session = Path(self.temp.name) / 'session'
+        self.git('worktree', 'add', '-q', '-b', 'session', str(session), self.baseline)
+        state.release(self.repo, self.owner)
+        state.claim(session, self.owner)
+        return session
+
+    def holder(self, path):
+        """An agent in the main checkout holding ``path`` open for writing."""
+        fake = Path(self.temp.name) / 'hermes'
+        fake.write_text('import sys, time\nheld = open(sys.argv[1], "a")\ntime.sleep(60)\n')
+        proc = subprocess.Popen([sys.executable, str(fake), str(path)], cwd=self.repo, start_new_session=True)
+        self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
+        time.sleep(0.5)
+        return proc
+
+    def test_a_main_checkout_session_blocks_only_the_files_it_touches(self):
+        """sierra TASK-026 waited an hour on owner sessions that touched none of its files."""
+        session = self.session_checkout()
+        self.worker()
+        module = self.module()
+        self.agent_process()  # idle at nothing relevant, in the main checkout
+        (self.repo / 'B.txt').write_text('owner edit\n')  # uncommitted, but not a file A changes
+        self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_a_main_checkout_session_on_the_same_files_still_waits(self):
+        session = self.session_checkout()
+        self.worker()
+        module = self.module()
+        self.agent_process()
+        (self.repo / 'A.txt').write_text('owner edit\n')  # the owner is changing A's file
+        self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'BUSY')
+        (self.repo / 'A.txt').write_text('base\n')
+        self.holder(self.repo / 'A.txt')  # or holds it open for writing
+        self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'BUSY')
 
     def test_fresh_session_blocks_close_without_task_writes(self):
         self.worker()

@@ -27,7 +27,12 @@ def modules(toolset):
 
 def missing(repo, toolset, limit):
     _, dispatch = modules(toolset)
-    rows = [{'id': t['id'], 'title': t.get('title', '')} for t in dispatch.contracts(Path(repo))
+    try:
+        contracts = dispatch.contracts(Path(repo))
+    except dispatch.execution.PriorityDriftError:
+        print('[]')  # the runner's dispatch records the new order first; no proposals until then
+        return
+    rows = [{'id': t['id'], 'title': t.get('title', '')} for t in contracts
             if not t['fields'].get('Touches', '').strip()]
     print(json.dumps(rows[:limit]))
 

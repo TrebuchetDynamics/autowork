@@ -297,7 +297,9 @@ def external_workers(repo):
                 writing = any(inside(path, root) for path in written for root in touched)
                 active, evidence = session_activity(pid, writing)
                 workers.append(dict(found, kind='session', workspaces=[str(w) for w in touched],
-                                    active=active, evidence=evidence))
+                                    active=active, evidence=evidence,
+                                    written=sorted({str(path) for path in written
+                                                    if any(inside(path, root) for root in touched)})))
         except (OSError, ValueError):
             continue
     return workers

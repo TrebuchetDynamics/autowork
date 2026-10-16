@@ -23,14 +23,17 @@ IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  
 NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
 
 
-def classify(snapshot, *, paused=False):
-    """'working', 'paused', 'idle' (nothing waits) or 'blocked' (work waits, none runs)."""
-    if snapshot.get('active_workers') or snapshot.get('integration_queue'):
+def classify(snapshot, *, paused=False, stuck=0):
+    """'working', 'paused', 'idle' (nothing waits) or 'blocked' (work waits, none runs).
+
+    ``stuck`` integrations only wait for another session to leave the main checkout:
+    they are in flight but make no progress (flutter, 2026-10-16)."""
+    if snapshot.get('active_workers') or (snapshot.get('integration_queue') or 0) > stuck:
         return 'working'
     if paused:
         return 'paused'
     waiting = [t for t in snapshot.get('tasks', []) if t.get('state') == 'waiting']
-    return 'blocked' if waiting else 'idle'
+    return 'blocked' if waiting or stuck else 'idle'
 
 
 CAUSES = {'blocker': 'its worker reported a blocker', 'scope': 'changed files outside Touches',
@@ -43,11 +46,12 @@ CAUSES = {'blocker': 'its worker reported a blocker', 'scope': 'changed files ou
 
 def label(root):
     text = ' '.join(str(root['id']).split())
-    return (text[:60] + '…') if len(text) > 60 else text
+    width = 240 if root.get('kind') == 'runner' else 60  # a runner blocker names what to act on
+    return (text[:width] + '…') if len(text) > width else text
 
 
 def describe(root):
-    what = {'runner': 'the runner cannot dispatch', 'held': 'held for a person',
+    what = {'runner': 'the runner cannot proceed', 'held': 'held for a person',
             'contract': 'its TODO entry is not runnable as written', 'claim': 'claimed by another session',
             'outside': 'outside condition or task not in Now/Next', 'cycle': 'dependency cycle',
             'running': 'running', 'integrating': 'being integrated', 'restarting': 'restarting'}
@@ -75,11 +79,12 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         # reader): that is no observation, so keep the record and its stall clock.
         return None
     paused = float(runner.get('paused_until') or 0) > now
-    state = classify(snapshot, paused=paused)
+    state = classify(snapshot, paused=paused, stuck=int(runner.get('stuck_integrations') or 0))
     since = previous.get('since', now) if previous.get('state', '').replace('stalled', 'blocked') == state else now
     roots = list(snapshot.get('roots', []))
-    if runner.get('blocker'):  # the runner itself cannot dispatch: no model, busy lease, drift
-        waiting = sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', []))
+    if runner.get('blocker'):  # the runner cannot dispatch or integrate: no model, busy lease, drift
+        waiting = sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])) \
+            + int(runner.get('stuck_integrations') or 0)
         roots.insert(0, dict(id=runner['blocker'], kind='runner', blocks=waiting, cause=None, reason=''))
     stuck = [r for r in roots if r.get('kind') in NEEDS_PERSON]
     if state == 'blocked' and now - since >= stall_after and stuck:

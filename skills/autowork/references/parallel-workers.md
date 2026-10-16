@@ -54,8 +54,11 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    - the merge conflicts (aborted; the canonical checkout, its uncommitted files and
      the worker branch stay untouched);
    - validation fails, or the task contract or canonical branch changes meanwhile;
-   - (not a hold) another live agent session is active in the canonical checkout: the
-     result is `BUSY` and the commit stays reported until that session leaves.
+   - (not a hold) another live agent session would be affected: the result is `BUSY`
+     and the commit stays reported until that session leaves. Integrating outside
+     the main checkout (a runner's session worktree), a session in the main checkout
+     counts only when the merge changes a file it holds open for writing or has left
+     uncommitted there.
 
    Validation runs in the engine's own journaled integration worktree. If it leaves
    changes there, the next integration saves them to
