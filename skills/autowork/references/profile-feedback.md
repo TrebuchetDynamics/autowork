@@ -71,6 +71,10 @@ Decode consultation stdout as strict UTF-8 protocol data, but decode stderr
 independently with replacement characters. A damaged diagnostic must not discard
 a valid reply or erase its subprocess exit code; damaged protocol bytes still
 fail closed. Retain timeout status and process-group cleanup before decoding.
+Split native stream-json only on LF, both when parsing events and when redacting
+saved event lines: Unicode NEL, line separator and paragraph separator are valid
+JSON string content, not transport boundaries. Regress both valid replies and
+observed tool events through a real local subprocess; preserve nonzero exit status.
 
 The native `file` and `skills` groups contain writes; empty `--toolsets` selects
 defaults. The verified narrow selection is `session_search`; deferred schema

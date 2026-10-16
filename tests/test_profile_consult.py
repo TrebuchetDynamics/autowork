@@ -595,6 +595,44 @@ class ConsultationTests(unittest.TestCase):
                     self.assertEqual(result['receipt']['returncode'], status)
                     self.assertEqual(result['receipt']['stderr'], 'diagnostic: \ufffd\n')
 
+    def test_stream_json_preserves_unicode_separators(self):
+        import json
+        import sys
+        m = self.load()
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
+            root = Path(d)
+            (root / 'maintenance').mkdir()
+            cli = root / 'hermes'
+            for separator in ('\u0085', '\u2028', '\u2029'):
+                for status in (0, 7):
+                    for tool in ('session_search', 'write_file'):
+                        with self.subTest(separator=repr(separator), status=status, tool=tool):
+                            text = 'café' + separator + 'retained'
+                            events = [
+                                {'type': 'tool_use', 'name': tool,
+                                 'input': {'text': text, 'password': 'synthetic-private-value'}},
+                                {'type': 'result', 'exit_code': 0, 'text': text}]
+                            payload = ''.join(json.dumps(event, ensure_ascii=False) + '\n'
+                                              for event in events).encode('utf-8')
+                            cli.write_text(f'#!{sys.executable}\nimport os,sys\n'
+                                           f'os.write(1, {payload!r})\nsys.exit({status})\n')
+                            cli.chmod(0o700)
+                            result = m.consult('one', root, str(cli), 5)
+                            self.assertEqual(result['status'], 'replied' if status == 0 else 'failed')
+                            self.assertEqual(result['reply'], text)
+                            self.assertEqual(result['receipt']['returncode'], status)
+                            self.assertEqual(result['tool_calls'], [tool])
+                            self.assertEqual(result['read_only_call_limit_observed'], tool == 'session_search')
+                            receipt = root / 'receipt.json'
+                            receipt.unlink(missing_ok=True)
+                            m.private_json(receipt, result)
+                            saved = json.loads(receipt.read_text())
+                            self.assertNotIn('synthetic-private-value', receipt.read_text())
+                            parsed = [json.loads(line) for line in saved['receipt']['stdout'].split('\n') if line]
+                            self.assertEqual(len(parsed), 2)
+                            self.assertEqual(parsed[0]['input'], {'text': text, 'password': '[REDACTED]'})
+                            self.assertEqual(parsed[1], events[1])
+
     def test_malformed_stdout_still_refuses_protocol(self):
         import sys
         m = self.load()

@@ -2270,3 +2270,24 @@ Source section: Next
 - Exclusions: No installed-profile edits, live models, deployment, schedules or push.
 - Evidence: Twelve container-status/CLI subcases failed before the fix; all 24 manifest CLI tests passed afterward. Independent exact-source review approved. Python 3.12 `scripts/check.py` passed 568/715/217/8 tests across four directories, one skip and eight native/model/integration modules excluded. Offline only.
 - Planner's call: Reuse the existing validator and unknown-status diagnostic, adding only a string-type guard. Skip the already-separated fleet/model acceptance under TOOLSET-096-7e; other current tasks need excluded live or deployment access. Preserve their acceptance and priority.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-114-c4 — Preserve Unicode separators in consultation stream events
+
+- [x] TOOLSET-114-c4 — Preserve Unicode separators in consultation stream events
+- Status: done
+- Evidence: Twelve real-subprocess Unicode/exit/tool subcases failed before repair; all 45 consultation tests passed afterward. Independent exact-source review approved; separate parser and receipt-decoding negative controls both detected the regression. Native emitter replay with identical local consumer inputs changed failed to replied while masking synthetic credentials. Python 3.12 `scripts/check.py` passed 569/715/217/8 tests, one skip and eight excluded modules. Source-only completion; installed adoption remains TOOLSET-101-f6.
+- Goal: RECOVERY
+- Sources: [maintenance contract](skills/autowork/references/profile-feedback.md), [consultation transport](scripts/profile-consult.py), [verification](docs/testing.md).
+- Scope: Parse the native LF-delimited stream-json without treating Unicode NEL, line separator or paragraph separator inside JSON strings as event boundaries. Preserve those characters in sanitized receipts and retain subprocess/protocol failure verdicts.
+- Acceptance: Valid Unicode-bearing replies are retained exactly, sanitized event receipts remain parseable JSON, forbidden tool events remain visible and synthetic credentials stay masked. Nonzero exits and malformed stdout remain failures.
+- Checks: Reproduce the regression before repair; run the focused consultation suite, the identical local read-only consumer before/after, independent exact-source review and `python3 scripts/check.py`.
+- Dependencies: None.
+- Touches: scripts/profile-consult.py, tests/test_profile_consult.py, docs/testing.md, skills/autowork/references/profile-feedback.md
+- Ownership: Current shared-source maintenance coordinator under existing local repair authority.
+- Planner's call: Skip installed adoption already isolated in TOOLSET-101-f6; native scan confirmation remains unavailable under this grant. Fix this reproduced disjoint transport defect without counting it as primary recovery.
+- Exclusions: No new consultation wave, model/product worker launch, profile mutation, scan bypass, deployment or push.

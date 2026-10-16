@@ -20,6 +20,13 @@ claiming or starting anything.
 
 ## Verify
 
+Consultation stream-json regressions (TOOLSET-114-c4) exercise real local
+subprocesses with Unicode NEL, line separator and paragraph separator inside
+reply and tool-event JSON strings. LF-only framing must retain exact replies and
+parseable sanitized receipts, preserve tool-limit observations and nonzero exit
+verdicts, and mask synthetic credentials. These fixtures do not establish native
+profile recovery or installed adoption.
+
 `python3 -m unittest discover -s skills/docs-sync/scripts -p test_docs_manifest.py -v`
 checks malformed array/object role statuses through `validate`, `check` and `stale`
 (TOOLSET-113-04). Each command must return exit 1 with a role-specific diagnostic,

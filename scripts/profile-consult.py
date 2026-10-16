@@ -171,7 +171,8 @@ def consult(name, root, hermes, seconds):
     try:
         raw = execute(argv, filtered_env(root), root / 'maintenance', seconds + 10)
         events = []
-        for line in raw['stdout'].splitlines():
+        # Native JSONL uses LF; Unicode line separators belong inside JSON strings.
+        for line in raw['stdout'].split('\n'):
             try:
                 events.append(json.loads(line))
             except ValueError:
@@ -186,7 +187,7 @@ def consult(name, root, hermes, seconds):
                 'duration_seconds': round(time.time() - started, 2),
                 'tool_calls': tools, 'read_only_call_limit_observed': len(tools) <= 2 and set(tools) <= {'session_search', 'tool_describe'}
                 and tools.count('session_search') <= 1 and tools.count('tool_describe') <= 1,
-                'receipt': {**raw, 'stdout': '\n'.join(redact(line) for line in raw['stdout'].splitlines()),
+                'receipt': {**raw, 'stdout': '\n'.join(redact(line) for line in raw['stdout'].split('\n')),
                             'stderr': redact(raw['stderr'])}}
     except Exception as exc:
         return {'profile': name, 'status': 'failed', 'error': redact(str(exc)), 'started_at': started}

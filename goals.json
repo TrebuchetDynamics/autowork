@@ -235,6 +235,11 @@
           "kind": "executed",
           "ref": "TOOLSET-108-21: response regression RED then 22 focused passes; independent exact-source review approved; Python 3.12 scripts/check.py 563/715/215/8 passed, one skip/eight exclusions; identical read-only consumer restores two prior frames with actual ranks, installed adoption remains TOOLSET-101-f6",
           "result": "pass"
+        },
+        {
+          "kind": "executed",
+          "ref": "TOOLSET-114-c4: 12 Unicode stream subcases failed then passed; 45 focused consultation tests; independently reviewed exact source and two negative controls; native-emitter same-consumer replay failed to replied; Python 3.12 scripts/check.py passed 569/715/217/8 tests, one skip/eight excluded; source only, installed adoption remains TOOLSET-101-f6",
+          "result": "pass"
         }
       ],
       "id": "RECOVERY",
@@ -262,7 +267,8 @@
         "TOOLSET-103-fe",
         "TOOLSET-106-5d",
         "TOOLSET-108-21",
-        "TOOLSET-112-29"
+        "TOOLSET-112-29",
+        "TOOLSET-114-c4"
       ],
       "title": "Qualify bounded automatic planning recovery"
     },
@@ -591,7 +597,7 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-113-04",
+      "TOOLSET-114-c4",
       "TOOLSET-101-f6"
     ]
   },
@@ -1454,6 +1460,14 @@
       "section": "Done",
       "status": "done",
       "title": "Report malformed role statuses without crashing"
+    },
+    {
+      "depends_on": [],
+      "goal": "RECOVERY",
+      "id": "TOOLSET-114-c4",
+      "section": "Done",
+      "status": "done",
+      "title": "Preserve Unicode separators in consultation stream events"
     },
     {
       "depends_on": [
