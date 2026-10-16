@@ -196,12 +196,23 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual([d['task'] for d in first['dispatched']], ['A'])  # S must run alone
             self.wait_until_idle()
         self.assertEqual(state.slots(self.common)[0]['state'], 'held')
-        _, blocked = self.apply()
-        self.assertEqual(blocked['dispatched'], [])
-        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('S', ''))
+        # An exhausted hold waits for a person, not the pool: S starts at once, and
+        # closing A meanwhile keeps it out of the way too.
         _, freed = self.apply()
         self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
         self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
+
+    def test_a_retryable_slot_of_a_closed_task_stops_occupying(self):
+        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
+                       'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
+        self.apply()
+        self.wait_until_idle()  # crashed once: interrupted, with its restart still to come
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt']), ('interrupted', 1))
+        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('S', ''))
+        _, freed = self.apply()
+        self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
 
     def pause_and_stop(self):
         """What a deliberate coordinator stop does: mark live workers, then interrupt them."""

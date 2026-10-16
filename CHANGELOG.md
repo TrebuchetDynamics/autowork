@@ -237,6 +237,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Parallel Autowork backfills: a lower-priority task starts past a higher-priority
+  one that cannot start yet when it shares no path, resource or dependency with it.
+  Before, one blocked task (on sierra, behind another session's `in_progress` claim)
+  held back every task below it. A task that must run alone and waits on running
+  work still stops lower-priority dispatch so the pool drains for it.
+
 - `pi-autowork.sh --install-service` names units after the repository,
   `pi-autowork@<name>.service` (for example `pi-autowork@sierra`), with the path kept in
   its environment file; a unit named after the escaped path by an earlier release is
@@ -268,6 +274,18 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A held task with no attempt left no longer stalls the whole queue. It now blocks
+  only its dependents and tasks whose declared `Touches:` or `Resources:` overlap it,
+  like an `in_progress` claim, and its files no longer hold other work at
+  integration. Before, one such hold kept all four fleet runners idle for seven hours.
+- `Dependencies:` lines count task IDs, not the words around them: `none for this
+  slice`, `T-1; not eligible until done` and `RD-8; goal gates: G1` no longer wait
+  on "for", "Section" or "G1". A line that names no task still blocks.
+- `owner_cycle.py --parallel-set-aside TASK` retires a slot that can never finish:
+  an exhausted hold, or an integrated task whose TODO entry was rewritten after
+  validation. Its worktrees and branches are kept, renamed `-set-aside-N`, and the
+  task dispatches fresh. `pi-autowork.sh` does this by itself when a merged task's
+  entry changed, instead of retrying the close forever.
 - Parallel Autowork no longer holds every task without `Touches:` at integration: a
   task dispatched alone may change its own files (coordinator files and other
   slots' files still conflict).
@@ -290,6 +308,8 @@ claim of a tagged release, completed installation or live workflow qualification
   worktree on the same attempt. Before, an interrupted second attempt was held for
   good. A held or interrupted slot whose task is done or superseded no longer blocks a
   must-run-alone successor.
+- Closing accepts a live task an earlier close left half-closed (`Status: done`, box
+  unchecked) instead of refusing it as a changed contract.
 - A continuous `pi-autowork.sh` also keeps itself current: while idle, at most hourly
   (`PI_AUTOWORK_UPDATE_INTERVAL`), it runs `pi update` for its toolset package, one
   runner at a time, and skips a restart onto a script that does not parse. Its

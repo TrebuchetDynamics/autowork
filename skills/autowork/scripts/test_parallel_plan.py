@@ -94,10 +94,41 @@ class PlanTests(unittest.TestCase):
         ]
         for a, b, reason in cases:
             with self.subTest(reason=reason, tasks=(a, b)):
+                from parallel_plan import _solo
                 result = plan([a, b, task('C', 'other/c.py')])
-                self.assertEqual([t['id'] for t in result['dispatch']], ['A'])
-                self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'])
+                # C shares nothing with A or the waiting B, so it does not wait behind B
+                # (unless A must run alone).
+                alone = bool(_solo(a))
+                self.assertEqual([t['id'] for t in result['dispatch']], ['A'] if alone else ['A', 'C'])
+                self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
+
+    def test_independent_work_backfills_past_a_waiting_task_but_never_takes_its_paths(self):
+        """sierra: one task blocked by another session's claim held back 33 independent tasks."""
+        from parallel_plan import plan
+        claim = task('CL', 'shared/', status='in_progress')
+        tasks = [task('T1', 'shared/x.py'), task('T2', 'shared/x.py'), task('T3', 'free.py'),
+                 task('T4', 'other.py', resources='db'), task('T5', 'more.py', resources='db')]
+        result = plan(tasks, all_tasks=[claim, *tasks])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T3', 'T4'])
+        self.assertEqual([w['id'] for w in result['waiting']], ['T1', 'T2', 'T5'])
+        self.assertIn('in_progress CL', result['waiting'][0]['reason'])
+        # Sharing a path only with the waiting T1 (not with the claim) still waits for T1.
+        tasks = [task('T1', 'shared/x.py, lib/y.py'), task('T7', 'lib/y.py'), task('T3', 'free.py')]
+        result = plan(tasks, all_tasks=[claim, *tasks])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T3'])
+        self.assertEqual(result['waiting'][1], {'id': 'T7', 'reason': 'overlapping paths with T1'})
+        # A task that must run alone and waits on running work stops everything below it
+        # so the pool drains; a waiting T1 does not keep it from running alone now.
+        result = plan([task('S', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
+        self.assertEqual(result['dispatch'], [])
+        tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
+        result = plan(tasks, all_tasks=[claim, *tasks])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
+        self.assertEqual([w['id'] for w in result['waiting']], ['T1', 'T3'])
+        # Once T1 runs, S waits on running work and stops lower dispatch until the pool drains.
+        result = plan([task('S', 'package.json'), task('T3', 'free.py')], [tasks[0]])
+        self.assertEqual(result['dispatch'], [])
 
     def test_transitive_dependencies_include_nonrunnable_contracts(self):
         from parallel_plan import plan
@@ -118,6 +149,34 @@ class PlanTests(unittest.TestCase):
                 result = plan(tasks, [task('RUN', 'run.py')])
                 self.assertEqual(result['dispatch'], [])
                 self.assertEqual([w['id'] for w in result['waiting']], ['A', 'B'])
+
+    def test_an_exhausted_hold_blocks_only_dependents_and_declared_overlap(self):
+        from parallel_plan import plan
+        held = task('H', '')  # failed twice, no Touches: would otherwise force everything to wait
+        tasks = [task('S', 'package.json'), task('B', 'b.py'), task('D', 'd.py', deps='H.'),
+                 task('O', 'h.py')]
+        result = plan(tasks, parked=[held])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
+        result = plan(tasks[1:], parked=[held])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'O'])
+        self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency conflict with H'}])
+        result = plan([task('O', 'h.py')], parked=[task('H', 'h.py')])
+        self.assertEqual(result['waiting'], [{'id': 'O', 'reason': 'overlapping paths with held H'}])
+
+    def test_dependencies_name_task_ids_not_the_prose_around_them(self):
+        from parallel_plan import dependency_ids
+        known = {'T-1', 'TASK-019', 'X9'}
+        for value, expected in (
+                ('None.', set()), ('none for this shared-client slice. Existing authority', set()),
+                ('None required; ask first.', set()), ('—', set()),
+                ('TASK-004; not eligible until that task is done.', {'TASK-004'}),
+                ('BACKEND-SSH-CONNECT. Section: Next. Ownership: unclaimed.', {'BACKEND-SSH-CONNECT'}),
+                ('TASK-033, TASK-032; goal gates: G1.', {'TASK-033', 'TASK-032'}),
+                ('TASK-018. TASK-019 (goal prerequisite).', {'TASK-018', 'TASK-019'}),
+                ('`T-1` and X9', {'T-1', 'X9'}),
+                ('approved device access', {'approved device access'}), ('H', {'H'})):
+            with self.subTest(value=value):
+                self.assertEqual(dependency_ids(value, known), expected)
 
     def test_running_in_progress_and_live_slot_tasks_never_redispatched(self):
         from parallel_plan import plan
