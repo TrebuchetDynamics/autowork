@@ -1,6 +1,9 @@
 {
   "name": "hermes-toolset",
   "version": "0.2.0",
+  "bin": {
+    "tx": "tmux/tx"
+  },
   "description": "Hermes Toolset workflows for the Pi coding agent",
   "license": "MIT",
   "type": "module",
@@ -21,7 +24,8 @@
     "!**/__pycache__",
     "LICENSE",
     "README.md",
-    "docs/cross-host.md"
+    "docs/cross-host.md",
+    "tmux/"
   ],
   "pi": {
     "extensions": [

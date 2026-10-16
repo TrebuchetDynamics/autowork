@@ -57,7 +57,17 @@ It then runs ordinary `git worktree remove` (never `--force`), reads the
 registration back, and deletes the worktree's branch with `git branch -d` when the
 branch still points at the removed HEAD. A registration whose directory is already
 gone is forgotten the same way when its HEAD is integrated. It never runs blanket
-`git worktree prune`, `rm -rf` or `git branch -D`. Every kept worktree is reported
+`git worktree prune`, `rm -rf` or `git branch -D`.
+
+For a backlog of old worktrees, `--archive` also removes those kept only for an
+unintegrated HEAD or uncommitted (tracked or untracked) changes, after saving them.
+The whole working tree becomes a commit on HEAD, built with a temporary index so the
+worktree is untouched, under `refs/archive/worktrees/<time>-<name>-<head>`; a clean
+unintegrated HEAD is referenced as is. Removal follows only when a fresh snapshot
+still matches, and uses `--force` only for changes that archive commit now holds.
+Restore with `git worktree add DIR REF`. Ignored non-cache files, locks, runner
+ownership, live processes and the grace period still keep a worktree. Run it
+without `--apply` first; it lists each candidate with `"archive": true`. Every kept worktree is reported
 with its reason; report those as **cleanup pending**. An idle agent session whose
 working directory is a removed worktree must return to the canonical checkout.
 

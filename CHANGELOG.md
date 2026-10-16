@@ -11,6 +11,11 @@ claim of a tagged release, completed installation or live workflow qualification
   entry, or any line naming it, says to keep it open, forbids dispatch, puts it on hold,
   or says it requires or is missing an authority or approval. sierra TASK-029 was adopted
   and merged although a planner note retained it open for a missing authority.
+- `worktree_closeout.py --archive` clears a backlog of old worktrees without losing
+  work: an unintegrated HEAD or uncommitted changes are saved as a commit under
+  `refs/archive/worktrees/` (restore with `git worktree add DIR REF`) before the
+  worktree is removed. sierra had 99 worktrees, 97 of which ordinary cleanup must keep.
+
 - Closing a task works when the archive already holds an older entry with the same ID;
   the closed entry matching the validated contract is judged. sierra TASK-029 closed but
   then read two archived entries and retried its close every cycle.
@@ -121,6 +126,14 @@ claim of a tagged release, completed installation or live workflow qualification
   remain separate. No memory provider or store is changed by the pin update.
 
 ### Added
+
+- `tmux/` (copied from pi-toolset) with `tx autowork`: run a repository's pi-autowork
+  runner in tmux session `pi-autowork-<repository name>` to watch or debug it,
+  `tx autowork ls` to list tmux and service runners together, and
+  `tx autowork stop` to interrupt one cleanly. It runs the script the systemd unit
+  runs and refuses while that repository's service is enabled; the service stays the
+  primary way to run pi-autowork. This `tx` is now the maintained one, installed as
+  the package's `tx` command; pi-toolset's `tx` is deprecated in its favor.
 
 - Held tasks carry a machine-readable cause (`scope`, `overlap`, `report`,
   `conflict`, `validation`, `contract_changed`, `moved`, `blocker`, `crash`, `launch`),

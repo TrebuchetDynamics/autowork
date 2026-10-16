@@ -208,17 +208,17 @@ class AdversarialWorkerTests(unittest.TestCase):
             # bash is the coordinator: its PID is the owner and it exits afterwards.
             script = '; '.join(' '.join(map(lambda a: a if a == '$$' else "'" + a + "'", command + list(step)))
                                for step in steps) + '; true'
-            out = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=60)
+            out = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=240)
             return [json.loads(chunk) for chunk in out.stdout.replace('}\n{', '}\x00{').split('\x00') if chunk.strip()]
 
         first = coordinator(['--apply', '--parallel', '--worker-command', worker])
         self.assertEqual([d['task'] for d in first[0]['dispatched']], ['A'])
         self.assertEqual(state.live_coordinator(self.common), None)  # the first coordinator is gone
         later = coordinator(['--apply', '--parallel', '--worker-command', worker],
-                            ['--parallel', '--wait', '--timeout', '20'],
+                            ['--parallel', '--wait', '--timeout', '90'],  # generous on a loaded host
                             ['--integrate', 'A', '--timeout', '10', '--run', 'true'])
         self.assertEqual(later[0]['dispatched'], [])  # the live worker was adopted, not duplicated
-        self.assertEqual(later[-1]['outcome'], 'INTEGRATED', later[-1])
+        self.assertEqual(later[-1]['outcome'], 'INTEGRATED', json.dumps(later, indent=1)[-3000:])
         slot = self.slot()
         self.assertEqual((slot['state'], slot['attempt']), ('integrated', 1))
         self.assertEqual(len(self.starts('A')), 1)

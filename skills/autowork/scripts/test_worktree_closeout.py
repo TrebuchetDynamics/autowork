@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import worktree_closeout as closeout  # noqa: E402
@@ -68,7 +69,7 @@ class WorktreeCloseoutTests(unittest.TestCase):
         result = self.run_closeout(apply=True)
         self.assertEqual(result['removed'], [{'path': str(done), 'branch': 'autowork/done',
                                               'head': self.git(self.repo, 'rev-parse', 'main'),
-                                              'branch_deleted': True}])
+                                              'branch_deleted': True, 'archive': None}])
         self.assertFalse(done.exists())
         self.assertNotIn(str(done), self.git(self.repo, 'worktree', 'list', '--porcelain'))
         self.assertEqual(self.git(self.repo, 'branch', '--list', 'autowork/done'), '')
@@ -187,6 +188,88 @@ class WorktreeCloseoutTests(unittest.TestCase):
         self.git(self.repo, 'switch', '-q', '-c', 'feature')
         with self.assertRaisesRegex(ValueError, 'main or master'):
             self.run_closeout()
+
+    def archived(self, result, path):
+        entry = next(r for r in result['removed'] if r['path'] == str(path))
+        self.assertTrue(entry['archive'].startswith('refs/archive/worktrees/'), entry)
+        return entry['archive']
+
+    def test_archive_keeps_an_unmerged_detached_commit_reachable(self):
+        path = self.base / 'pass'
+        self.git(self.repo, 'worktree', 'add', '-q', '--detach', str(path), 'main')
+        (path / 'pass.txt').write_text('pass\n')
+        self.git(path, 'add', 'pass.txt')
+        self.git(path, 'commit', '-qm', 'detached pass')
+        head = self.git(path, 'rev-parse', 'HEAD')
+        self.assertIn('not integrated', self.kept(self.run_closeout(apply=True), path))
+        ref = self.archived(self.run_closeout(apply=True, archive=True), path)
+        self.assertFalse(path.exists())
+        self.assertEqual(self.git(self.repo, 'rev-parse', ref), head)
+
+    def test_archive_saves_uncommitted_and_untracked_work_as_a_commit(self):
+        dirty = self.worktree('dirty', merge=False)
+        head = self.git(dirty, 'rev-parse', 'HEAD')
+        (dirty / 'file').write_text('edited\n')
+        (dirty / 'notes').write_text('unfinished\n')
+        result = self.run_closeout(apply=True, archive=True)
+        ref = self.archived(result, dirty)
+        self.assertFalse(dirty.exists())
+        self.assertEqual(self.git(self.repo, 'rev-parse', ref + '^'), head)
+        self.assertEqual(self.git(self.repo, 'show', ref + ':file'), 'edited')
+        self.assertEqual(self.git(self.repo, 'show', ref + ':notes'), 'unfinished')
+        self.assertIn(str(dirty), self.git(self.repo, 'log', '-1', '--format=%B', ref))
+        self.assertTrue(self.git(self.repo, 'branch', '--list', 'autowork/dirty'))  # unmerged branch kept
+        restored = self.base / 'restored'
+        self.git(self.repo, 'worktree', 'add', '-q', '--detach', str(restored), ref)
+        self.assertEqual((restored / 'notes').read_text(), 'unfinished\n')
+
+    def test_archive_still_keeps_evidence_locked_used_and_recent_worktrees(self):
+        evidence = self.worktree('evidence', merge=False)
+        (evidence / 'receipts').mkdir()
+        (evidence / 'receipts' / 'check.json').write_text('{}')
+        locked = self.worktree('locked', merge=False)
+        self.git(self.repo, 'worktree', 'lock', str(locked))
+        used = self.worktree('used', merge=False)
+        recent = self.worktree('recent', merge=False)
+        result = closeout.closeout(self.repo, apply=True, archive=True, now=time.time(),
+                                   users=lambda paths: {str(used): ['pid 42 working directory']})
+        self.assertEqual(result['removed'], [])
+        self.assertIn('ignored files', self.kept(result, evidence))
+        self.assertIn('locked', self.kept(result, locked))
+        self.assertIn('pid 42', self.kept(result, used))
+        self.assertIn('used', self.kept(result, recent))
+        self.assertEqual(self.git(self.repo, 'for-each-ref', 'refs/archive'), '')
+
+    def test_archive_of_a_missing_directory_keeps_its_commit(self):
+        gone = self.worktree('gone', merge=False)
+        head = self.git(gone, 'rev-parse', 'HEAD')
+        subprocess.check_call(['rm', '-rf', str(gone)])
+        ref = self.archived(self.run_closeout(apply=True, archive=True), gone)
+        self.assertEqual(self.git(self.repo, 'rev-parse', ref), head)
+        self.assertNotIn('worktree ' + str(gone), self.git(self.repo, 'worktree', 'list', '--porcelain').splitlines())
+
+    def test_archive_refuses_a_worktree_that_changed_after_its_snapshot(self):
+        dirty = self.worktree('dirty', merge=False)
+        (dirty / 'notes').write_text('first\n')
+        real = closeout.snapshot
+
+        def racing(root, head, message):
+            ref = real(root, head, message)
+            (Path(root) / 'notes').write_text('written after the snapshot\n')
+            return ref
+
+        with unittest.mock.patch.object(closeout, 'snapshot', side_effect=racing):
+            result = self.run_closeout(apply=True, archive=True)
+        self.assertIn('changed during archive', self.kept(result, dirty))
+        self.assertEqual((dirty / 'notes').read_text(), 'written after the snapshot\n')
+
+    def test_archive_report_lists_what_would_be_archived_without_writing(self):
+        dirty = self.worktree('dirty', merge=False)
+        (dirty / 'notes').write_text('x\n')
+        result = self.run_closeout(archive=True)
+        self.assertEqual([(r['path'], r['archive']) for r in result['removable']], [(str(dirty), True)])
+        self.assertTrue(dirty.is_dir())
+        self.assertEqual(self.git(self.repo, 'for-each-ref', 'refs/archive'), '')
 
     def test_cli_reports_json_and_applies(self):
         done = self.worktree('done')

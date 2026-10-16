@@ -1,0 +1,1158 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+default_config_path() {
+  if [[ -n "${TX_CONFIG:-}" ]]; then
+    printf '%s\n' "$TX_CONFIG"
+    return 0
+  fi
+
+  local config_home=${XDG_CONFIG_HOME:-$HOME/.config}
+  local config_dir="$config_home/tx"
+  local current="$config_dir/session.config"
+  local legacy="$config_dir/sessions.conf"
+  if [[ -f "$legacy" && ! -e "$current" ]]; then
+    printf '%s\n' "$legacy"
+  else
+    printf '%s\n' "$current"
+  fi
+}
+
+CONFIG_PATH=$(default_config_path)
+TMUX_BIN=${TX_TMUX:-tmux}
+TX_COLOR_MODE=${TX_COLOR:-always}
+TX_USE_COLOR=0
+if [[ -z "${NO_COLOR:-}" ]]; then
+  case "$TX_COLOR_MODE" in
+    always|1|true|yes) TX_USE_COLOR=1 ;;
+    never|0|false|no) TX_USE_COLOR=0 ;;
+    auto|"") [[ -t 1 ]] && TX_USE_COLOR=1 ;;
+    *) TX_USE_COLOR=0 ;;
+  esac
+fi
+
+RESERVED_ALIASES=(help ls kill kill-all init add remove edit doctor which config install completion autowork __complete_aliases __complete_commands)
+
+declare -A ALIAS_TO_PATH=()
+declare -A PATH_TO_ALIASES=()
+declare -a PATH_ORDER=()
+
+die() {
+  printf 'tx: %s\n' "$1" >&2
+  exit 1
+}
+
+require_tmux() {
+  command -v "$TMUX_BIN" >/dev/null 2>&1 || die "tmux is not installed or not on PATH: $TMUX_BIN"
+}
+
+ensure_config_parent() {
+  mkdir -p -- "$(dirname -- "$CONFIG_PATH")"
+}
+
+script_dir() {
+  local source=${BASH_SOURCE[0]}
+  local dir
+  while [[ -L "$source" ]]; do
+    dir=$(cd -P "$(dirname -- "$source")" && pwd)
+    source=$(readlink "$source")
+    [[ "$source" == /* ]] || source="$dir/$source"
+  done
+  cd -P "$(dirname -- "$source")" && pwd
+}
+
+installer_path() {
+  local installer
+  installer="$(script_dir)/install.sh"
+  [[ -f "$installer" ]] || die "install: installer not found next to tx: $installer"
+  printf '%s\n' "$installer"
+}
+
+run_installer() {
+  [[ $# -eq 0 ]] || die "install: takes no arguments; configure with TMUX_CONF_TARGET, TMUX_HELPER_DIR, TX_BIN_DIR, TX_BIN_NAME, or TX_INSTALL_BACKUP"
+  exec sh "$(installer_path)"
+}
+
+print_config_path() {
+  printf '%s\n' "$CONFIG_PATH"
+}
+
+print_help() {
+  cat <<EOF
+Usage:
+  tx <alias>              Start (if needed) and attach the tmux session for <alias>.
+  tx ls                   List all configured aliases grouped by target directory.
+  tx which <alias>        Print the resolved target directory for <alias>.
+  tx add <alias[,..]> [dir]
+                          Add alias mapping for dir, defaulting to the current directory.
+  tx add <dir> <alias[,..]>
+                          Add alias mapping for dir, with directory-first shorthand.
+  tx add . | tx add <dir>
+                          Prompt for an alias and add/update that directory mapping.
+  tx add . <alias[,..]>
+                          Add alias mapping for the current directory without prompting.
+  tx remove <alias>       Remove one alias from the tx config.
+  tx edit <alias> [new]   Rename one alias in the tx config; prompts when [new] is omitted.
+  tx init                 Create an example config if one does not exist.
+  tx config               Print the config path.
+  tx install              Install tmux.conf, status helpers, and tx for this user.
+  tx completion <shell>   Print shell completion script for bash, zsh, or fish.
+  tx doctor               Validate tmux availability, config parsing, and target dirs.
+  tx doctor --install     Install/repair tmux assets, then verify installed paths.
+  tx kill <alias>         Kill the tmux session for <alias>.
+  tx kill-all             Kill all running configured tx sessions.
+  tx autowork <repo|.>    Run pi-autowork for a Git repository in tmux session
+                          pi-autowork-<repo-name>, or attach to it. Refused while
+                          the pi-autowork@<repo-name> systemd service is enabled
+                          or active: the service is the primary way to run it.
+  tx autowork ls          List pi-autowork runners: tmux sessions and services.
+  tx autowork stop <name|repo>
+                          Interrupt a tmux runner (Ctrl-C: a deliberate pause, its
+                          workers resume on the same attempt), then close it.
+  tx help                 Show this help.
+
+Flag forms also accepted: -l/--list, -k/--kill, --kill-all, -h/--help.
+
+Config file:
+  \$TX_CONFIG, or \$XDG_CONFIG_HOME/tx/session.config, or ~/.config/tx/session.config
+  Current: $CONFIG_PATH
+
+Config format:
+  # comments and blank lines allowed
+  VAR=value                            # uppercase vars, expanded later in file
+  alias[,alias2,...]=path              # path may use ~ and \$VAR
+
+Alias prefixes are accepted. Exact aliases win; otherwise the shortest
+matching alias wins, with alphabetical order used as a tie-breaker.
+
+Environment:
+  TX_CONFIG                         Override config file path.
+  TX_TMUX                           Override tmux binary name/path.
+  TX_DISPLAY_STRIP_PREFIX           Optional prefix to hide in tx ls paths.
+  TX_COLOR=always|auto|never        Color tx ls aliases (default: always; NO_COLOR disables).
+  TX_COMPLETION_COMMAND             Command name emitted by completion scripts (default: tx).
+  TMUX_CONF_TARGET                  Install/doctor target for tmux.conf.
+  TMUX_HELPER_DIR                   Install/doctor target for status helpers.
+  TX_BIN_DIR, TX_BIN_NAME           Install/doctor target for tx.
+  PI_AUTOWORK_SCRIPT                pi-autowork.sh for tx autowork (default: the one
+                                    the systemd unit runs, else ../scripts next to tx).
+  PI_AUTOWORK_SYSTEMCTL             systemctl for tx autowork service checks.
+EOF
+}
+
+is_reserved_alias() {
+  local a=$1 r
+  for r in "${RESERVED_ALIASES[@]}"; do
+    [[ "$a" == "$r" ]] && return 0
+  done
+  return 1
+}
+
+validate_alias_list() {
+  local keys=$1 context=${2:-alias} part
+  local -a parts
+  IFS=',' read -ra parts <<< "$keys"
+  for part in "${parts[@]}"; do
+    [[ -n "$part" ]] || die "$context: empty alias in '$keys' (check for stray commas)"
+    [[ "$part" =~ ^[A-Za-z0-9_-]+$ ]] || die "$context: invalid alias '$part'"
+    if is_reserved_alias "$part"; then
+      die "$context: alias '$part' is reserved (used by a subcommand)"
+    fi
+  done
+}
+
+prompt_alias_list() {
+  local target=$1 keys=""
+  printf 'Alias for %s: ' "$target" >&2
+  IFS= read -r keys || die "add: alias prompt cancelled"
+  [[ -n "${keys//[[:space:]]/}" ]] || die "add: alias is required"
+  printf '%s\n' "$keys"
+}
+
+# expand_vars VALUE VARS_ASSOC_NAME -> stdout
+# Substitutes $VAR references using vars defined earlier in the config file.
+expand_vars() {
+  local val=$1
+  local -n _vars=$2
+  local result=""
+  local rest=$val
+  while [[ "$rest" =~ ^([^$]*)\$([A-Z_][A-Z0-9_]*)(.*)$ ]]; do
+    local prefix=${BASH_REMATCH[1]}
+    local name=${BASH_REMATCH[2]}
+    local tail=${BASH_REMATCH[3]}
+    result+=$prefix
+    if [[ -z "${_vars[$name]+x}" ]]; then
+      die "config: undefined variable \$$name (only vars defined earlier in the file may be used)"
+    fi
+    result+=${_vars[$name]}
+    rest=$tail
+  done
+  result+=$rest
+  printf '%s' "$result"
+}
+
+expand_tilde() {
+  local p=$1
+  if [[ "$p" == "~" ]]; then
+    printf '%s' "$HOME"
+  elif [[ "$p" == "~/"* ]]; then
+    printf '%s%s' "$HOME" "${p:1}"
+  else
+    printf '%s' "$p"
+  fi
+}
+
+display_path() {
+  local p=$1
+  local strip_prefix=${TX_DISPLAY_STRIP_PREFIX:-}
+  if [[ -n "$strip_prefix" && "$p" == "$strip_prefix"* ]]; then
+    p="${p#"$strip_prefix"}"
+    p="${p#/}"
+  fi
+  if [[ "$p" == "$HOME" ]]; then
+    printf '~'
+  elif [[ "$p" == "$HOME/"* ]]; then
+    printf '~/%s' "${p#"$HOME"/}"
+  else
+    printf '%s' "$p"
+  fi
+}
+
+colorize() {
+  local code=$1 text=$2
+  if (( TX_USE_COLOR == 1 )); then
+    printf '\033[%sm%s\033[0m' "$code" "$text"
+  else
+    printf '%s' "$text"
+  fi
+}
+
+colorize_status() {
+  local status=$1 text=$2
+  case "$status" in
+    running) colorize '32' "$text" ;;
+    stopped) colorize '31' "$text" ;;
+    missing) colorize '31' "$text" ;;
+    *) printf '%s' "$text" ;;
+  esac
+}
+
+completion_commands() {
+  printf '%s\n' help ls kill kill-all init add remove edit doctor which config install completion autowork
+}
+completion_aliases() {
+  [[ -f "$CONFIG_PATH" ]] || return 0
+  load_config
+  printf '%s\n' "${!ALIAS_TO_PATH[@]}" | sort
+}
+
+print_completion() {
+  local shell=$1 command_name=${TX_COMPLETION_COMMAND:-tx}
+  case "$shell" in
+    bash)
+      cat <<'EOF'
+_tx_completion() {
+  local cur cmd tx_bin commands aliases
+  COMPREPLY=()
+  tx_bin="${COMP_WORDS[0]}"
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  commands="$($tx_bin __complete_commands 2>/dev/null)"
+  aliases="$($tx_bin __complete_aliases 2>/dev/null)"
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=( $(compgen -W "$commands $aliases" -- "$cur") )
+    return 0
+  fi
+  cmd="${COMP_WORDS[1]}"
+  case "$cmd" in
+    which|kill|remove|edit|-k|--kill)
+      COMPREPLY=( $(compgen -W "$aliases" -- "$cur") )
+      ;;
+    completion)
+      COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+      ;;
+    add)
+      compopt -o default 2>/dev/null || true
+      ;;
+  esac
+}
+EOF
+      printf 'complete -F _tx_completion %q\n' "$command_name"
+      ;;
+    zsh)
+      cat <<EOF
+#compdef ${command_name}
+_tx_completion() {
+  local -a commands aliases
+  commands=(\${(f)"\$(${command_name} __complete_commands 2>/dev/null)"})
+  aliases=(\${(f)"\$(${command_name} __complete_aliases 2>/dev/null)"})
+  if (( CURRENT == 2 )); then
+    _describe 'tx commands' commands
+    _describe 'tx aliases' aliases
+  elif [[ \${words[2]} == (which|kill|remove|edit|-k|--kill) ]]; then
+    _describe 'tx aliases' aliases
+  elif [[ \${words[2]} == completion ]]; then
+    _values 'shell' bash zsh fish
+  else
+    _files
+  fi
+}
+compdef _tx_completion ${command_name}
+EOF
+      ;;
+    fish)
+      cat <<EOF
+complete -c ${command_name} -f -n '__fish_use_subcommand' -a '(${command_name} __complete_commands; ${command_name} __complete_aliases)'
+complete -c ${command_name} -f -n '__fish_seen_subcommand_from which kill remove edit -k --kill' -a '(${command_name} __complete_aliases)'
+complete -c ${command_name} -f -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+complete -c ${command_name} -n '__fish_seen_subcommand_from add' -a '(__fish_complete_directories)'
+EOF
+      ;;
+    *)
+      die "completion: expected bash, zsh, or fish"
+      ;;
+  esac
+}
+
+load_config() {
+  [[ -f "$CONFIG_PATH" ]] || die "config not found: $CONFIG_PATH"
+
+  ALIAS_TO_PATH=()
+  PATH_TO_ALIASES=()
+  PATH_ORDER=()
+  declare -A vars=()
+  local lineno=0 line key val keys path part
+  local -a parts
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    lineno=$((lineno + 1))
+    line=${line%$'\r'}
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+    if [[ "$line" =~ ^[[:space:]]*([A-Z_][A-Z0-9_]*)=(.*)$ ]]; then
+      key=${BASH_REMATCH[1]}
+      val=${BASH_REMATCH[2]}
+      vars[$key]=$(expand_vars "$val" vars)
+      continue
+    fi
+
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z0-9_,-]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      keys=${BASH_REMATCH[1]}
+      val=${BASH_REMATCH[2]}
+      val=${val%"${val##*[![:space:]]}"}
+      path=$(expand_vars "$val" vars)
+      path=$(expand_tilde "$path")
+      [[ -n "$path" ]] || die "config:$lineno: empty path"
+
+      validate_alias_list "$keys" "config:$lineno"
+      IFS=',' read -ra parts <<< "$keys"
+      for part in "${parts[@]}"; do
+        if [[ -n "${ALIAS_TO_PATH[$part]+x}" ]]; then
+          die "config:$lineno: duplicate alias '$part' (already maps to ${ALIAS_TO_PATH[$part]})"
+        fi
+        ALIAS_TO_PATH[$part]=$path
+      done
+
+      if [[ -z "${PATH_TO_ALIASES[$path]+x}" ]]; then
+        PATH_ORDER+=("$path")
+        PATH_TO_ALIASES[$path]=$keys
+      else
+        PATH_TO_ALIASES[$path]+=",$keys"
+      fi
+      continue
+    fi
+
+    die "config:$lineno: cannot parse line: $line"
+  done < "$CONFIG_PATH"
+}
+
+init_config() {
+  if [[ -e "$CONFIG_PATH" ]]; then
+    printf 'config exists: %s\n' "$CONFIG_PATH"
+    return 0
+  fi
+
+  ensure_config_parent
+  cat > "$CONFIG_PATH" <<'EOF'
+# tx sessions
+#
+# Format:
+#   VAR=value
+#   alias[,alias2]=path
+#
+# Example:
+#   WORK=~/git
+#   app=$WORK/example-app
+EOF
+  printf 'created config: %s\n' "$CONFIG_PATH"
+}
+
+append_aliases_to_existing_path() {
+  local keys=$1 target=$2
+  local tmp line lineno=0 key val map_keys path done=0
+  declare -A vars=()
+  tmp=$(mktemp "${CONFIG_PATH}.tmp.XXXXXX")
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    lineno=$((lineno + 1))
+    line=${line%$'\r'}
+    if [[ "$line" =~ ^[[:space:]]*([A-Z_][A-Z0-9_]*)=(.*)$ ]]; then
+      key=${BASH_REMATCH[1]}
+      val=${BASH_REMATCH[2]}
+      vars[$key]=$(expand_vars "$val" vars)
+      printf '%s\n' "$line" >> "$tmp"
+      continue
+    fi
+
+    if (( done == 0 )) && [[ "$line" =~ ^[[:space:]]*([A-Za-z0-9_,-]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      map_keys=${BASH_REMATCH[1]}
+      val=${BASH_REMATCH[2]}
+      val=${val%"${val##*[![:space:]]}"}
+      path=$(expand_vars "$val" vars)
+      path=$(expand_tilde "$path")
+      if [[ "$path" == "$target" ]]; then
+        printf '%s,%s=%s\n' "$map_keys" "$keys" "$val" >> "$tmp"
+        done=1
+        continue
+      fi
+    fi
+
+    printf '%s\n' "$line" >> "$tmp"
+  done < "$CONFIG_PATH"
+
+  if (( done == 0 )); then
+    rm -f "$tmp"
+    die "add: no existing config row found for $target"
+  fi
+  mv "$tmp" "$CONFIG_PATH"
+}
+
+add_alias() {
+  [[ $# -ge 1 && $# -le 2 ]] || die "add: expected alias[,alias2] and optional directory, or a directory to prompt for aliases"
+  local keys target part prompt_for_alias=0 first_path ending
+  local -a parts
+
+  first_path=$(expand_tilde "$1")
+  if [[ $# -eq 1 && ( "$1" == "." || -d "$first_path" ) ]]; then
+    target=$1
+    prompt_for_alias=1
+  elif [[ $# -eq 2 && ( "$1" == "." || -d "$first_path" ) ]]; then
+    target=$1
+    keys=$2
+  else
+    keys=$1
+    target=${2:-$PWD}
+  fi
+
+  target=$(expand_tilde "$target")
+  [[ -d "$target" ]] || die "add: target dir does not exist: $target"
+  target=$(cd -- "$target" && pwd -P)
+
+  if (( prompt_for_alias == 1 )); then
+    keys=$(prompt_alias_list "$target")
+  fi
+
+  validate_alias_list "$keys" "add"
+
+  if [[ -f "$CONFIG_PATH" ]]; then
+    load_config
+    IFS=',' read -ra parts <<< "$keys"
+    for part in "${parts[@]}"; do
+      if [[ -n "${ALIAS_TO_PATH[$part]+x}" ]]; then
+        die "add: duplicate alias '$part' (already maps to ${ALIAS_TO_PATH[$part]})"
+      fi
+    done
+  else
+    init_config >/dev/null
+  fi
+
+  if [[ -n "${PATH_TO_ALIASES[$target]+x}" ]]; then
+    append_aliases_to_existing_path "$keys" "$target"
+    printf 'updated: %s,%s=%s\n' "${PATH_TO_ALIASES[$target]}" "$keys" "$target"
+  else
+    if [[ -s "$CONFIG_PATH" ]]; then
+      ending=$(tail -c 1 "$CONFIG_PATH"; printf x)
+      [[ "$ending" == $'\nx' ]] || printf '\n' >> "$CONFIG_PATH"
+    fi
+    printf '%s=%s\n' "$keys" "$target" >> "$CONFIG_PATH"
+    printf 'added: %s=%s\n' "$keys" "$target"
+  fi
+}
+
+rewrite_alias_row() {
+  local mode=$1 alias=$2 replacement=${3:-}
+  [[ -f "$CONFIG_PATH" ]] || die "$mode: config missing: $CONFIG_PATH"
+  load_config
+
+  local target tmp line key val map_keys path changed=0 kept_keys part new_part
+  local -a parts kept_parts
+  alias=$(resolve_alias "$alias")
+  target=${ALIAS_TO_PATH[$alias]}
+  tmp=$(mktemp "${CONFIG_PATH}.tmp.XXXXXX")
+  declare -A vars=()
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line=${line%$'\r'}
+    if [[ "$line" =~ ^[[:space:]]*([A-Z_][A-Z0-9_]*)=(.*)$ ]]; then
+      key=${BASH_REMATCH[1]}
+      val=${BASH_REMATCH[2]}
+      vars[$key]=$(expand_vars "$val" vars)
+      printf '%s\n' "$line" >> "$tmp"
+      continue
+    fi
+
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z0-9_,-]+)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      map_keys=${BASH_REMATCH[1]}
+      val=${BASH_REMATCH[2]}
+      val=${val%"${val##*[![:space:]]}"}
+      path=$(expand_vars "$val" vars)
+      path=$(expand_tilde "$path")
+      if [[ "$path" == "$target" ]]; then
+        IFS=',' read -ra parts <<< "$map_keys"
+        kept_parts=()
+        for part in "${parts[@]}"; do
+          if [[ "$part" == "$alias" ]]; then
+            changed=1
+            [[ "$mode" == "edit" ]] && kept_parts+=("$replacement")
+          else
+            kept_parts+=("$part")
+          fi
+        done
+        if (( ${#kept_parts[@]} > 0 )); then
+          kept_keys=""
+          for new_part in "${kept_parts[@]}"; do
+            [[ -n "$kept_keys" ]] && kept_keys+=","
+            kept_keys+="$new_part"
+          done
+          printf '%s=%s\n' "$kept_keys" "$val" >> "$tmp"
+        fi
+        continue
+      fi
+    fi
+
+    printf '%s\n' "$line" >> "$tmp"
+  done < "$CONFIG_PATH"
+
+  if (( changed == 0 )); then
+    rm -f "$tmp"
+    die "$mode: alias not found: $alias"
+  fi
+
+  mv "$tmp" "$CONFIG_PATH"
+  if [[ "$mode" == "edit" ]]; then
+    printf 'renamed: %s -> %s=%s\n' "$alias" "$replacement" "$target"
+  else
+    printf 'removed: %s=%s\n' "$alias" "$target"
+  fi
+}
+
+remove_alias() {
+  [[ $# -eq 1 ]] || die "remove: expected exactly one alias"
+  rewrite_alias_row remove "$1"
+}
+
+edit_alias() {
+  [[ $# -ge 1 && $# -le 2 ]] || die "edit: expected alias and optional new alias"
+  [[ -f "$CONFIG_PATH" ]] || die "edit: config missing: $CONFIG_PATH"
+  load_config
+
+  local old_alias new_alias
+  old_alias=$(resolve_alias "$1")
+  if [[ $# -eq 2 ]]; then
+    new_alias=$2
+  else
+    printf 'Rename %s to: ' "$old_alias" >&2
+    IFS= read -r new_alias || die "edit: alias prompt cancelled"
+  fi
+  validate_alias_list "$new_alias" "edit"
+  [[ "$new_alias" != "$old_alias" ]] || die "edit: new alias matches old alias: $old_alias"
+  if [[ -n "${ALIAS_TO_PATH[$new_alias]+x}" ]]; then
+    die "edit: duplicate alias '$new_alias' (already maps to ${ALIAS_TO_PATH[$new_alias]})"
+  fi
+  rewrite_alias_row edit "$old_alias" "$new_alias"
+}
+
+print_alias_path() {
+  local alias
+  alias=$(resolve_alias "$1")
+  [[ -n "${ALIAS_TO_PATH[$alias]+x}" ]] || die "unknown alias: $alias"
+  printf '%s\n' "${ALIAS_TO_PATH[$alias]}"
+}
+
+doctor_install() {
+  sh "$(installer_path)"
+
+  local home=${HOME:?HOME is required}
+  local tmux_conf_target=${TMUX_CONF_TARGET:-$home/.tmux.conf}
+  local tmux_helper_dir=${TMUX_HELPER_DIR:-$home/.tmux}
+  local tx_bin_dir=${TX_BIN_DIR:-$home/.local/bin}
+  local tx_bin_name=${TX_BIN_NAME:-tx}
+  local tx_path="$tx_bin_dir/$tx_bin_name"
+  local ok=1
+
+  if [[ -f "$tmux_conf_target" ]]; then
+    printf 'tmux.conf: %s\n' "$tmux_conf_target"
+  else
+    printf 'tmux.conf: missing (%s)\n' "$tmux_conf_target"
+    ok=0
+  fi
+
+  for helper in git-status.sh short-path.sh; do
+    if [[ -x "$tmux_helper_dir/$helper" ]]; then
+      printf 'helper: %s\n' "$tmux_helper_dir/$helper"
+    else
+      printf 'helper: missing or not executable (%s)\n' "$tmux_helper_dir/$helper"
+      ok=0
+    fi
+  done
+
+  if [[ -x "$tx_path" ]]; then
+    printf 'tx: %s\n' "$tx_path"
+  else
+    printf 'tx: missing or not executable (%s)\n' "$tx_path"
+    ok=0
+  fi
+
+  case ":$PATH:" in
+    *":$tx_bin_dir:"*) printf 'PATH: includes %s\n' "$tx_bin_dir" ;;
+    *) printf 'PATH: missing %s\n' "$tx_bin_dir"; ok=0 ;;
+  esac
+
+  if [[ -f "$tmux_conf_target" ]]; then
+    if grep -F -- "$tmux_helper_dir/short-path.sh" "$tmux_conf_target" >/dev/null || grep -F -- "$tmux_helper_dir/git-status.sh" "$tmux_conf_target" >/dev/null; then
+      printf 'tmux.conf: references status helpers\n'
+    else
+      printf 'tmux.conf: no status helper references\n'
+    fi
+  fi
+
+  (( ok == 1 ))
+}
+
+doctor() {
+  local ok=1 p alias_str a missing=0
+  local -a parts
+
+  if command -v "$TMUX_BIN" >/dev/null 2>&1; then
+    printf 'tmux: %s\n' "$(command -v "$TMUX_BIN")"
+  else
+    printf 'tmux: missing (%s)\n' "$TMUX_BIN"
+    ok=0
+  fi
+
+  if [[ -f "$CONFIG_PATH" ]]; then
+    printf 'config: %s\n' "$CONFIG_PATH"
+    load_config
+  else
+    printf 'config: missing (%s)\n' "$CONFIG_PATH"
+    return 1
+  fi
+
+  for p in "${PATH_ORDER[@]}"; do
+    [[ -d "$p" ]] && continue
+    missing=$((missing + 1))
+    alias_str=${PATH_TO_ALIASES[$p]}
+    IFS=',' read -ra parts <<< "$alias_str"
+    for a in "${parts[@]}"; do
+      printf 'missing target: %s -> %s\n' "$a" "$p"
+    done
+  done
+
+  if (( missing == 0 )); then
+    printf 'targets: ok (%d configured paths)\n' "${#PATH_ORDER[@]}"
+  else
+    ok=0
+  fi
+
+  (( ok == 1 ))
+}
+
+list_sessions() {
+  local running=""
+  running=$("$TMUX_BIN" list-sessions -F '#{session_name}' 2>/dev/null || true)
+
+  local -a row_aliases=() row_aliases_plain=() row_paths=()
+  local total=0 running_count=0 missing_count=0
+  local p alias_str a disp dir_exists status item colored_item joined colored_joined
+  local -a parts colored_parts plain_parts
+
+  for p in "${PATH_ORDER[@]}"; do
+    alias_str=${PATH_TO_ALIASES[$p]}
+    IFS=',' read -ra parts <<< "$alias_str"
+    disp=$(display_path "$p")
+    dir_exists=1
+    [[ -d "$p" ]] || dir_exists=0
+    colored_parts=()
+    plain_parts=()
+    for a in "${parts[@]}"; do
+      total=$((total + 1))
+      if (( ! dir_exists )); then
+        status="missing"
+        missing_count=$((missing_count + 1))
+      elif [[ -n "$running" ]] && printf '%s\n' "$running" | grep -qx -- "$a"; then
+        status="running"
+        running_count=$((running_count + 1))
+      else
+        status="stopped"
+      fi
+      item=$a
+      colored_item=$(colorize_status "$status" "$item")
+      colored_parts+=("$colored_item")
+      plain_parts+=("$item")
+    done
+    joined=""
+    colored_joined=""
+    for item in "${plain_parts[@]}"; do
+      [[ -n "$joined" ]] && joined+=", "
+      joined+="$item"
+    done
+    for item in "${colored_parts[@]}"; do
+      [[ -n "$colored_joined" ]] && colored_joined+=", "
+      colored_joined+="$item"
+    done
+    row_aliases+=("$colored_joined")
+    row_aliases_plain+=("$joined")
+    row_paths+=("$disp")
+  done
+
+  printf 'tx sessions\n'
+  printf 'config: %s\n\n' "$CONFIG_PATH"
+
+  if (( total == 0 )); then
+    printf '  (no aliases configured)\n'
+    return 0
+  fi
+
+  local alias_w=7 path_w=4
+  local i n=${#row_aliases[@]}
+  for (( i=0; i<n; i++ )); do
+    (( ${#row_aliases_plain[i]} > alias_w )) && alias_w=${#row_aliases_plain[i]}
+    (( ${#row_paths[i]}          > path_w  )) && path_w=${#row_paths[i]}
+  done
+
+  local alias_dash path_dash
+  printf -v alias_dash '%*s' "$alias_w" ''
+  printf -v path_dash  '%*s' "$path_w"  ''
+  alias_dash=${alias_dash// /-}
+  path_dash=${path_dash// /-}
+
+  printf '  %-*s  %s\n' "$alias_w" 'Aliases' 'Path'
+  printf '  %s  %s\n' "$alias_dash" "$path_dash"
+  local pad
+  for (( i=0; i<n; i++ )); do
+    pad=$((alias_w - ${#row_aliases_plain[i]}))
+    printf '  %s' "${row_aliases[i]}"
+    printf '%*s  %s\n' "$pad" '' "${row_paths[i]}"
+  done
+
+  printf '\n%d configured; %d running; %d missing target dirs.\n' \
+    "$total" "$running_count" "$missing_count"
+}
+
+resolve_alias() {
+  local requested=$1
+  if [[ -n "${ALIAS_TO_PATH[$requested]+x}" ]]; then
+    printf '%s\n' "$requested"
+    return 0
+  fi
+
+  local p alias_str a match="" best=""
+  local -a parts matches=()
+  for p in "${PATH_ORDER[@]}"; do
+    alias_str=${PATH_TO_ALIASES[$p]}
+    IFS=',' read -ra parts <<< "$alias_str"
+    for a in "${parts[@]}"; do
+      if [[ "$a" == "$requested"* ]]; then
+        matches+=("$a")
+        match=$a
+      fi
+    done
+  done
+
+  case ${#matches[@]} in
+    0)
+      die "unknown alias: $requested"
+      ;;
+    1)
+      printf '%s\n' "$match"
+      ;;
+    *)
+      best=${matches[0]}
+      for a in "${matches[@]:1}"; do
+        if (( ${#a} < ${#best} )) || { (( ${#a} == ${#best} )) && [[ "$a" < "$best" ]]; }; then
+          best=$a
+        fi
+      done
+      printf '%s\n' "$best"
+      ;;
+  esac
+}
+
+kill_session() {
+  local alias
+  alias=$(resolve_alias "$1")
+  [[ -n "${ALIAS_TO_PATH[$alias]+x}" ]] || die "unknown alias: $alias"
+  if "$TMUX_BIN" has-session -t "=$alias" 2>/dev/null; then
+    "$TMUX_BIN" kill-session -t "=$alias"
+    printf 'killed: %s\n' "$alias"
+  else
+    printf 'not running: %s\n' "$alias"
+  fi
+}
+
+kill_all_sessions() {
+  local running="" current="" p alias_str a
+  local -a parts aliases=() targets=()
+  local total=0 killed=0 not_running=0 i
+
+  running=$("$TMUX_BIN" list-sessions -F '#{session_name}' 2>/dev/null || true)
+  if [[ -n "${TMUX:-}" ]]; then
+    current=$("$TMUX_BIN" display-message -p '#S' 2>/dev/null || true)
+  fi
+
+  for p in "${PATH_ORDER[@]}"; do
+    alias_str=${PATH_TO_ALIASES[$p]}
+    IFS=',' read -ra parts <<< "$alias_str"
+    for a in "${parts[@]}"; do
+      aliases+=("$a")
+      targets+=("$a")
+      total=$((total + 1))
+    done
+  done
+
+  if (( total == 0 )); then
+    printf 'no aliases configured\n'
+    return 0
+  fi
+
+  # If invoked from inside one of the target sessions, kill it last so the
+  # command can clean up the others before its own pane disappears.
+  if [[ -n "$current" ]]; then
+    targets=()
+    for a in "${aliases[@]}"; do
+      [[ "$a" == "$current" ]] || targets+=("$a")
+    done
+    for a in "${aliases[@]}"; do
+      [[ "$a" == "$current" ]] && targets+=("$a")
+    done
+  fi
+
+  for (( i=0; i<${#targets[@]}; i++ )); do
+    a=${targets[i]}
+    if [[ -n "$running" ]] && printf '%s\n' "$running" | grep -qx -- "$a"; then
+      "$TMUX_BIN" kill-session -t "=$a"
+      printf 'killed: %s\n' "$a"
+      killed=$((killed + 1))
+    else
+      not_running=$((not_running + 1))
+    fi
+  done
+
+  printf '%d killed; %d not running.\n' "$killed" "$not_running"
+}
+
+attach_session() {
+  local alias
+  alias=$(resolve_alias "$1")
+  [[ -n "${ALIAS_TO_PATH[$alias]+x}" ]] || die "unknown alias: $alias"
+  local target=${ALIAS_TO_PATH[$alias]}
+  [[ -d "$target" ]] || die "target dir does not exist: $target"
+
+  local shell_path=${SHELL:-/bin/bash}
+  local startup
+  startup="cd -- $(printf '%q' "$target") && exec $(printf '%q' "$shell_path")"
+
+  if ! "$TMUX_BIN" has-session -t "=$alias" 2>/dev/null; then
+    "$TMUX_BIN" new-session -d -s "$alias" -c "$target" "$startup"
+  else
+    # Existing session (e.g. restored by tmux-continuum/resurrect) may be in
+    # the wrong cwd. If the active pane is an idle shell in the wrong dir,
+    # self-heal by sending `cd <target>` before attaching.
+    local cur_path="" cur_cmd=""
+    cur_path=$("$TMUX_BIN" display-message -p -t "=$alias" '#{pane_current_path}' 2>/dev/null || true)
+    cur_cmd=$("$TMUX_BIN" display-message -p -t "=$alias" '#{pane_current_command}' 2>/dev/null || true)
+    if [[ "$cur_path" != "$target" ]] && [[ "$cur_cmd" =~ ^(bash|zsh|sh|fish|dash)$ ]]; then
+      "$TMUX_BIN" send-keys -t "=$alias" "cd -- $(printf '%q' "$target")" C-m
+    fi
+  fi
+
+  if [[ -n "${TMUX:-}" ]]; then
+    exec "$TMUX_BIN" switch-client -t "=$alias"
+  fi
+  exec "$TMUX_BIN" attach-session -t "=$alias"
+}
+
+# --- tx autowork ---------------------------------------------------------------
+# systemd (pi-autowork.sh --install-service) is the primary way to run pi-autowork;
+# a tmux session is for watching or debugging one runner live. Both use the same
+# per-repository runner lock, so they never work on a repository at once.
+AUTOWORK_PREFIX=pi-autowork-
+SYSTEMCTL_BIN=${PI_AUTOWORK_SYSTEMCTL:-systemctl}
+
+autowork_script() {
+  if [[ -n "${PI_AUTOWORK_SCRIPT:-}" ]]; then
+    [[ -f "$PI_AUTOWORK_SCRIPT" ]] || die "autowork: PI_AUTOWORK_SCRIPT not found: $PI_AUTOWORK_SCRIPT"
+    printf '%s\n' "$PI_AUTOWORK_SCRIPT"
+    return 0
+  fi
+  local unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/pi-autowork@.service script
+  if [[ -f "$unit" ]]; then
+    script=$(sed -n 's/^ExecStart=[^ ]*bash \([^ ]*pi-autowork\.sh\) .*/\1/p' "$unit" | head -n 1)
+    [[ -n "$script" && -f "$script" ]] && { printf '%s\n' "$script"; return 0; }
+  fi
+  script="$(script_dir)/../scripts/pi-autowork.sh"
+  [[ -f "$script" ]] || die "autowork: pi-autowork.sh not found; install the hermes-toolset Pi package or set PI_AUTOWORK_SCRIPT"
+  printf '%s\n' "$(cd -P "$(dirname -- "$script")" && pwd)/pi-autowork.sh"
+}
+
+# Same instance name as pi-autowork.sh --install-service: the directory name.
+autowork_instance() {
+  local name
+  name=$(basename -- "$1")
+  if [[ ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    name=$(systemd-escape -- "$name")
+  fi
+  printf '%s\n' "$name"
+}
+
+# tmux rewrites '.' and ':' in session names; keep names predictable.
+autowork_session() {
+  local name=$1
+  name=${name//./_}
+  printf '%s%s\n' "$AUTOWORK_PREFIX" "${name//:/_}"
+}
+
+autowork_repo() {
+  local dir=$1 root
+  [[ -d "$dir" ]] || die "autowork: not a directory: $dir"
+  root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || die "autowork: not inside a Git repository: $dir"
+  printf '%s\n' "$root"
+}
+
+autowork_service_state() {
+  local unit="pi-autowork@$1.service" state
+  command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1 || { printf 'none\n'; return 0; }
+  if "$SYSTEMCTL_BIN" --user is-active --quiet "$unit" 2>/dev/null; then
+    printf 'active\n'
+  elif "$SYSTEMCTL_BIN" --user is-enabled --quiet "$unit" 2>/dev/null; then
+    printf 'enabled\n'
+  else
+    state=$("$SYSTEMCTL_BIN" --user is-failed "$unit" 2>/dev/null || true)
+    [[ "$state" == failed ]] && printf 'failed\n' || printf 'none\n'
+  fi
+}
+
+autowork_start() {
+  [[ $# -eq 1 ]] || die "autowork: expected exactly one repository path (or .)"
+  require_tmux
+  local root instance session script service
+  root=$(autowork_repo "$1")
+  instance=$(autowork_instance "$root")
+  session=$(autowork_session "$instance")
+  if "$TMUX_BIN" has-session -t "=$session" 2>/dev/null; then
+    local owner
+    owner=$("$TMUX_BIN" show-options -qv -t "=$session:" @pi_autowork_repo 2>/dev/null || true)
+    [[ -z "$owner" || "$owner" == "$root" ]] ||
+      die "autowork: session $session already runs $owner; two repositories cannot share the name $instance"
+  else
+    service=$(autowork_service_state "$instance")
+    case "$service" in
+      active|enabled)
+        die "autowork: pi-autowork@$instance.service is $service and owns $root. Watch it with: journalctl --user -fu pi-autowork@$instance; to run it in tmux instead: systemctl --user disable --now pi-autowork@$instance" ;;
+    esac
+    script=$(autowork_script)
+    local shell_path=${SHELL:-/bin/bash} command
+    # The pane outlives the runner so its last lines stay readable.
+    # shellcheck disable=SC2016  # $? and $status expand inside the tmux pane
+    printf -v command 'bash %q --repo %q; status=$?; printf "\\npi-autowork exited with status %%s.\\n" "$status"; exec %q' \
+      "$script" "$root" "$shell_path"
+    "$TMUX_BIN" new-session -d -s "$session" -c "$root" "$command"
+    "$TMUX_BIN" set-option -q -t "=$session:" @pi_autowork_repo "$root"
+    printf 'tx: started %s for %s\n' "$session" "$root" >&2
+  fi
+  [[ "${TX_NO_ATTACH:-0}" == 1 ]] && return 0
+  if [[ -n "${TMUX:-}" ]]; then
+    exec "$TMUX_BIN" switch-client -t "=$session"
+  fi
+  exec "$TMUX_BIN" attach-session -t "=$session"
+}
+
+autowork_list() {
+  [[ $# -eq 0 ]] || die "autowork ls: takes no arguments"
+  local -A mode=() repo=() state=()
+  local name path attached unit sub
+  if command -v "$TMUX_BIN" >/dev/null 2>&1; then
+    while IFS=$'\t' read -r name path attached; do
+      [[ "$name" == "$AUTOWORK_PREFIX"* ]] || continue
+      name=${name#"$AUTOWORK_PREFIX"}
+      mode[$name]=tmux; repo[$name]=$path
+      state[$name]=$([[ "$attached" == 0 ]] && echo detached || echo attached)
+    done < <("$TMUX_BIN" list-sessions -F "#{session_name}	#{@pi_autowork_repo}	#{session_attached}" 2>/dev/null || true)
+  fi
+  if command -v "$SYSTEMCTL_BIN" >/dev/null 2>&1; then
+    while read -r unit _ _ sub _; do
+      [[ "$unit" == pi-autowork@*.service ]] || continue
+      name=${unit#pi-autowork@}; name=${name%.service}
+      path=$(sed -n 's/^PI_AUTOWORK_REPO=//p' "${XDG_CONFIG_HOME:-$HOME/.config}/pi-autowork/$name.env" 2>/dev/null || true)
+      if [[ -n "${mode[$name]+x}" ]]; then
+        mode[$name]="tmux+service"; state[$name]+=", service $sub"
+      else
+        mode[$name]=service; repo[$name]=$path; state[$name]=$sub
+      fi
+    done < <("$SYSTEMCTL_BIN" --user list-units 'pi-autowork@*' --all --plain --no-legend 2>/dev/null || true)
+  fi
+  printf 'pi-autowork runners\n\n'
+  if (( ${#mode[@]} == 0 )); then
+    printf '  (none)  start one with: tx autowork <repo>   or   pi-autowork.sh --install-service --repo <repo>\n'
+    return 0
+  fi
+  local name_w=4 mode_w=4 state_w=5
+  for name in "${!mode[@]}"; do
+    (( ${#name} > name_w )) && name_w=${#name}
+    (( ${#mode[$name]} > mode_w )) && mode_w=${#mode[$name]}
+    (( ${#state[$name]} > state_w )) && state_w=${#state[$name]}
+  done
+  printf '  %-*s  %-*s  %-*s  %s\n' "$name_w" Name "$mode_w" Mode "$state_w" State Repository
+  while read -r name; do
+    printf '  %-*s  %-*s  %-*s  %s\n' "$name_w" "$name" "$mode_w" "${mode[$name]}" "$state_w" "${state[$name]}" \
+      "$(display_path "${repo[$name]:-?}")"
+  done < <(printf '%s\n' "${!mode[@]}" | sort)
+  printf '\nHealth for one runner: pi-autowork.sh --repo <repo> --status; all: pi-autowork.sh --fleet\n'
+}
+
+autowork_stop() {
+  [[ $# -eq 1 ]] || die "autowork stop: expected exactly one runner name or repository path"
+  require_tmux
+  local target=$1 session
+  if [[ -d "$target" ]]; then
+    session=$(autowork_session "$(autowork_instance "$(autowork_repo "$target")")")
+  else
+    session=$(autowork_session "${target#"$AUTOWORK_PREFIX"}")
+  fi
+  "$TMUX_BIN" has-session -t "=$session" 2>/dev/null || die "autowork stop: no tmux session $session"
+  local pane_pid
+  pane_pid=$("$TMUX_BIN" display-message -p -t "=$session:" '#{pane_pid}')
+  # Ctrl-C reaches the runner as SIGINT: it pauses live workers and stops cleanly.
+  "$TMUX_BIN" send-keys -t "=$session:" C-c
+  local deadline=$((SECONDS + ${TX_AUTOWORK_STOP_TIMEOUT:-300}))
+  while pgrep -P "$pane_pid" -f 'pi-autowork\.sh' >/dev/null 2>&1; do
+    if (( SECONDS >= deadline )); then
+      die "autowork stop: the runner in $session is still stopping; check it with: tx autowork $target"
+    fi
+    sleep 1
+  done
+  if "$TMUX_BIN" has-session -t "=$session" 2>/dev/null; then
+    "$TMUX_BIN" kill-session -t "=$session"
+  fi
+  printf 'tx: stopped %s\n' "$session" >&2
+}
+
+autowork_main() {
+  [[ $# -ge 1 ]] || die "autowork: expected a repository path, ls, or stop <name> (try 'tx help')"
+  case "$1" in
+    ls|--list|-l) shift; autowork_list "$@" ;;
+    stop) shift; autowork_stop "$@" ;;
+    *) autowork_start "$@" ;;
+  esac
+}
+
+main() {
+  if [[ $# -eq 0 ]]; then
+    print_help >&2
+    exit 1
+  fi
+
+  case "$1" in
+    -h|--help|help)
+      print_help
+      return 0
+      ;;
+  esac
+
+  case "$1" in
+    init)
+      [[ $# -eq 1 ]] || die "init: takes no arguments"
+      init_config
+      ;;
+    config)
+      [[ $# -eq 1 ]] || die "config: takes no arguments"
+      print_config_path
+      ;;
+    install)
+      shift
+      run_installer "$@"
+      ;;
+    completion)
+      shift
+      [[ $# -eq 1 ]] || die "completion: expected exactly one shell: bash, zsh, or fish"
+      print_completion "$1"
+      ;;
+    __complete_aliases)
+      [[ $# -eq 1 ]] || die "__complete_aliases: takes no arguments"
+      completion_aliases
+      ;;
+    __complete_commands)
+      [[ $# -eq 1 ]] || die "__complete_commands: takes no arguments"
+      completion_commands
+      ;;
+    add)
+      shift
+      add_alias "$@"
+      ;;
+    remove)
+      shift
+      remove_alias "$@"
+      ;;
+    edit)
+      shift
+      edit_alias "$@"
+      ;;
+    doctor)
+      if [[ $# -eq 2 && "$2" == "--install" ]]; then
+        doctor_install
+      else
+        [[ $# -eq 1 ]] || die "doctor: takes no arguments, or exactly --install"
+        doctor
+      fi
+      ;;
+    which)
+      shift
+      [[ $# -eq 1 ]] || die "which: expected exactly one alias"
+      load_config
+      print_alias_path "$1"
+      ;;
+    autowork)
+      shift
+      autowork_main "$@"
+      ;;
+    -l|--list|ls)
+      [[ $# -eq 1 ]] || die "ls: takes no arguments"
+      require_tmux
+      load_config
+      list_sessions
+      ;;
+    -k|--kill|kill)
+      shift
+      [[ $# -eq 1 ]] || die "kill: expected exactly one alias"
+      require_tmux
+      load_config
+      kill_session "$1"
+      ;;
+    --kill-all|kill-all)
+      [[ $# -eq 1 ]] || die "kill-all: takes no arguments"
+      require_tmux
+      load_config
+      kill_all_sessions
+      ;;
+    -*)
+      die "unknown option: $1 (try 'tx help')"
+      ;;
+    *)
+      [[ $# -eq 1 ]] || die "expected exactly one alias, got: $*"
+      require_tmux
+      load_config
+      attach_session "$1"
+      ;;
+  esac
+}
+
+main "$@"
