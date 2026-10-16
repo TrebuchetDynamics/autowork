@@ -112,10 +112,11 @@
       "id": "README-DESIGN",
       "priority": 20,
       "source": "docs/project.md#readme-design-skill-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-060",
-        "TOOLSET-061"
+        "TOOLSET-061",
+        "TOOLSET-116-fc"
       ],
       "title": "Vendor the README design skill and use it on this README"
     },
@@ -595,7 +596,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-115-aa",
+      "TOOLSET-116-fc",
       "TOOLSET-099-87",
       "TOOLSET-066",
       "TOOLSET-003",
@@ -617,6 +618,14 @@
       "section": "Now",
       "status": "open",
       "title": "Run as many independent tasks at once as possible"
+    },
+    {
+      "depends_on": [],
+      "goal": "README-DESIGN",
+      "id": "TOOLSET-116-fc",
+      "section": "Now",
+      "status": "open",
+      "title": "Ignore inline code examples in README image audits"
     },
     {
       "depends_on": [],

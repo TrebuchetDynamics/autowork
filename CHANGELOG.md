@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- README image audits skip complete image examples in single-line backtick spans
+  (partial TOOLSET-116-fc), preserving genuine image paths, exact delimiter runs and
+  escaped backticks. Mixed-text and multiline spans retain conservative auditing;
+  the broader task stays open. Delimiter lookup indexes exact runs rather than
+  repeatedly scanning unmatched suffixes.
+
 - Setup preflight validates runtime installation-facts structures before selecting
   an interpreter (TOOLSET-115-aa). Malformed mappings and non-string or empty
   environment paths return the existing safe admission error instead of crashing

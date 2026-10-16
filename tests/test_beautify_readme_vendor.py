@@ -13,7 +13,7 @@ AUDIT = SKILL / 'scripts/audit_readme.py'
 SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><title>t</title></svg>'
 
 
-def audit(readme_text, files=('assets/ok.svg',)):
+def audit(readme_text, files=('assets/ok.svg',), *, timeout=60):
     """Run the toolset audit on a README inside a throwaway Git-like repository."""
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td)
@@ -24,7 +24,9 @@ def audit(readme_text, files=('assets/ok.svg',)):
         (repo / 'docs').mkdir(exist_ok=True)
         readme = repo / 'docs/README.md'
         readme.write_text(readme_text)
-        result = subprocess.run([sys.executable, str(AUDIT), str(readme)], capture_output=True, text=True, timeout=60)
+        before = {p.relative_to(repo): p.read_bytes() for p in repo.rglob('*') if p.is_file()}
+        result = subprocess.run([sys.executable, str(AUDIT), str(readme)], capture_output=True, text=True, timeout=timeout)
+        assert before == {p.relative_to(repo): p.read_bytes() for p in repo.rglob('*') if p.is_file()}
         return result.returncode, result.stdout + result.stderr
 
 
@@ -82,6 +84,101 @@ class BeautifyReadmeVendorTests(unittest.TestCase):
         code, output = audit(text, files=('assets/ok.svg', 'assets/my logo.svg'))
         self.assertEqual(code, 0, output)
         self.assertIn('Local images checked: 2', output)
+
+    def test_toolset_audit_ignores_inline_code_image_examples(self):
+        cases = (
+            '`![example](missing.png)`',
+            '``![example](missing.png)``',
+            '`![undefined][example]`',
+            '`<img src="missing.png">`',
+            '`<source srcset="missing.png 1x">`',
+            '`` ![example](missing.png) ``',
+            '[`<img src="missing.png">`](https://example.org)',
+            '[`<source srcset="missing.png">`](https://example.org)',
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                code, output = audit(text + '\n\n![visible](../assets/ok.svg)\n')
+                self.assertEqual(code, 0, output)
+                self.assertIn('Local images checked: 1', output)
+
+    def test_toolset_audit_retains_visible_images_around_literal_backticks(self):
+        cases = (
+            '`![actual](missing.png)',
+            '``![actual](missing.png)`',
+            '\\`![actual](missing.png)\\`',
+            '`example` ![actual](missing.png)',
+            '`unclosed\n\n![actual](missing.png)\n\n`later`',
+            '`first line\n![actual](missing.png)`',
+            '``![actual](missing.png) and `literal` ``',
+            '``literal \\` and ![actual](missing.png)``',
+            '<https://x`foo> ![actual](missing.png) `later`',
+            '<foo`bar@example.com> ![actual](missing.png) `later`',
+            '[a](foo(bar`baz)qux) ![actual](missing.png) `later`',
+            '`unclosed\n```text\nexample\n```\n![actual](missing.png) `later`',
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                code, output = audit(text)
+                self.assertEqual(code, 1, output)
+                self.assertIn('missing image: missing.png', output)
+        for text in ('<img src="../assets/has`tick`.svg" alt="image">',
+                     '[<img src="../assets/has`tick`.svg" alt="image">](https://example.org)',
+                     '![image](../assets/has`tick`.svg)',
+                     '![image][art]\n\n[art]: ../assets/has`tick`.svg'):
+            with self.subTest(text=text):
+                code, output = audit(text, files=('assets/has`tick`.svg',))
+                self.assertEqual(code, 0, output)
+                self.assertIn('Local images checked: 1', output)
+
+    def test_toolset_audit_preserves_block_link_and_multiline_tag_boundaries(self):
+        for boundary in ('# ', '***\n', '> ', '- ', '---\n', '<div>\n'):
+            with self.subTest(boundary=boundary):
+                code, output = audit('`unclosed\n' + boundary + '![actual](missing.png) `later`')
+                self.assertEqual(code, 1, output)
+                self.assertIn('missing image: missing.png', output)
+        text = ('<picture><source srcset="`![a](missing.png)`">'
+                '<img src="https://example.org/fallback.png" alt="fallback"></picture>')
+        code, output = audit(text)
+        self.assertEqual(code, 1, output)
+        self.assertIn('missing image: `![a](missing.png)`', output)
+        for text in ('<img src="`![a]`" alt="real">', '![real](<`![a](missing.png)`>)'):
+            with self.subTest(text=text):
+                code, output = audit(text)
+                self.assertEqual(code, 1, output)
+                self.assertIn('missing image: `![a]', output)
+        for html in ('<!-- ` -->', '<!-- first\n `\n-->', '<?instruction ` ?>',
+                     '<![CDATA[ ` ]]>', '<!DECLARATION ` >'):
+            with self.subTest(html=html):
+                code, output = audit('Text ' + html + ' ![actual](missing.png) `later`')
+                self.assertEqual(code, 1, output)
+                self.assertIn('missing image: missing.png', output)
+        code, output = audit('< `example >` ![actual](missing.png) `later`')
+        self.assertEqual(code, 1, output)
+        self.assertIn('missing image: missing.png', output)
+        code, output = audit('[a [b]](has`tick.svg) ![actual](missing.png) `later`')
+        self.assertEqual(code, 1, output)
+        self.assertIn('missing image: missing.png', output)
+        code, output = audit('[link](has`tick.svg) ![actual](missing.png) `later`')
+        self.assertEqual(code, 1, output)
+        self.assertIn('missing image: missing.png', output)
+        for tag in ('<img\n src="../assets/has`tick`.svg" alt="actual">',
+                    '<source\n srcset="../assets/has`tick`.svg 1x">'):
+            with self.subTest(tag=tag):
+                code, output = audit(tag, files=('assets/has`tick`.svg',))
+                self.assertEqual(code, 0, output)
+                self.assertIn('Local images checked: 1', output)
+        code, output = audit('\\``![example](missing.png)`')
+        self.assertEqual(code, 0, output)
+        code, output = audit('`example\\` ![actual](missing.png)')
+        self.assertEqual(code, 1, output)
+        self.assertIn('missing image: missing.png', output)
+
+        self.assertEqual(audit(' '.join('`' * i + 'x' for i in range(1, 1280)), timeout=5)[0], 0)
+        self.assertEqual(audit('\\' * 40000, timeout=5)[0], 0)
+        for prefix in ('[', '<'):
+            with self.subTest(prefix=prefix):
+                self.assertEqual(audit(prefix * 80000, timeout=5)[0], 0)
 
     def test_toolset_audit_keeps_upstream_svg_checks(self):
         code, output = audit('![hero](../assets/bad.svg)\n', files=())

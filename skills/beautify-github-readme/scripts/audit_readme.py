@@ -71,8 +71,59 @@ def local_target(src, readme, root):
     return (root / clean.lstrip('/')).resolve() if clean.startswith('/') else (readme.parent / clean).resolve()
 
 
+def without_inline_code(text):
+    """Mask complete single-line image examples, not general Markdown code."""
+    offset = until = protected = 0
+    images = sorted(match.span() for pattern in (INLINE_IMAGE, HTML_IMAGE, SOURCE, DEFINITION)
+                    for match in pattern.finditer(text))
+    spans = []
+    for line in text.splitlines(keepends=True):
+        runs = list(re.finditer(r'`+', line))
+        escaped = []
+        for run in runs:
+            cursor = run.start()
+            while cursor > 0 and line[cursor - 1] == '\\':
+                cursor -= 1
+            escaped.append((run.start() - cursor) % 2)
+        following, last = {}, {}
+        # Index the next exact closing run once; unmatched openers never rescan
+        # the rest of the line. Backslashes are literal inside a code span.
+        for index in range(len(runs) - 1, -1, -1):
+            run = runs[index]
+            length = len(run.group())
+            following[index] = last.get(length - escaped[index])
+            last[length] = index
+        for index, run in enumerate(runs):
+            start = offset + run.start() + escaped[index]
+            if start < until or start >= offset + run.end():
+                continue
+            closing = following[index]
+            if closing is not None:
+                until = offset + runs[closing].end()
+                content = line[run.end():runs[closing].start()].strip()
+                # Restrict this partial capability to a whole image example.
+                # Mixed text and ambiguous markup retain the original audit;
+                # a delimiter from a URL or HTML fragment must not hide images.
+                while protected < len(images) and images[protected][1] <= start:
+                    protected += 1
+                if protected < len(images) and images[protected][0] < start < images[protected][1]:
+                    continue  # literal backticks inside an existing image/path
+                if (INLINE_IMAGE.fullmatch(content) or FULL_REFERENCE.fullmatch(content)
+                        or SHORTCUT_REFERENCE.fullmatch(content) or HTML_IMAGE.fullmatch(content)
+                        or re.fullmatch(r'<source\b[^>]*>', content, re.I)):
+                    spans.append((start, until))
+        offset += len(line)
+    pieces, previous = [], 0
+    for start, end in spans:
+        pieces.extend((text[previous:start], ' ' * (end - start)))
+        previous = end
+    pieces.append(text[previous:])
+    return ''.join(pieces)
+
+
 def collect(text, upstream):
     """Image sources in document order, undefined reference labels and alt-text warnings."""
+    text = without_inline_code(text)
     definitions = {}
     for label, raw in DEFINITION.findall(text):
         definitions.setdefault(label_key(label), destination(raw))
