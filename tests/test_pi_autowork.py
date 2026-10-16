@@ -510,6 +510,39 @@ class EngineTests(Fixture):
         self.assertEqual(runner.returncode, 130, out + err)
         self.assertIn(f'at {rev}', out)
 
+    def test_a_tampering_reviewer_fails_once_and_never_wedges_integration(self):
+        """The engine resets its own integration worktree, keeping the residue as a patch;
+        nothing else is reset, and independent work keeps landing."""
+        self.plan({'verify:A': ['tamper', 'tamper']})
+        result = self.run_runner('--until-empty', '--workers', '1')
+        self.assertIn('A: failed', result.stdout)
+        self.assertTrue(self.done('B'), result.stdout)  # integrated after A's tampered review
+        self.assertFalse((self.repo / 'tampered.txt').exists())
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        patches = list((common / 'autowork-execution' / 'integration-residue').glob('*.patch'))
+        self.assertTrue(patches)
+        self.assertIn('tampered.txt', patches[0].read_text())
+
+    def test_closing_commits_only_the_files_the_close_wrote(self):
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        closes = self.git(self.repo, 'log', '--format=%H', '--grep=^docs(tasks): close').split()
+        self.assertTrue(closes)
+        for commit in closes:
+            files = set(self.git(self.repo, 'show', '--format=', '--name-only', commit).split())
+            self.assertLessEqual(files, {'TODO.md', 'goals.json', 'TODO.archive.md'}, commit)
+
+    def test_the_touches_pass_reads_a_disposable_copy_of_the_session(self):
+        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        cwd = self.runs('touches')[0]['cwd']
+        self.assertIn('/scratch/touches-', cwd)
+        self.assertFalse(Path(cwd).exists())
+        self.assertNotIn(cwd, self.git(self.repo, 'worktree', 'list'))
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import re
 import sys
+import time
 
 
 import parallel_dispatch as dispatch
@@ -161,7 +162,16 @@ def integration_worktree(repo, common, baseline):
         if state.common_dir(path) != common or git(path, 'rev-parse', '--show-toplevel') != str(path):
             raise ValueError('integration worktree identity changed')
         if git(path, 'status', '--porcelain', '--untracked-files=all'):
-            raise ValueError('integration worktree has changes; preserve for diagnosis')
+            # Validation or review left changes in this exclusive, journaled, disposable
+            # worktree (integration.lock is held). Keep them as a patch, then reset it;
+            # never anywhere else.
+            residue = execution.safe_path(common / 'integration-residue')
+            residue.mkdir(exist_ok=True, mode=0o700)
+            git(path, 'add', '-A')
+            patch = residue / (time.strftime('%Y%m%d-%H%M%S') + '-' + git(path, 'rev-parse', '--short', 'HEAD') + '.patch')
+            patch.write_text(git(path, 'diff', '--cached', '--binary', 'HEAD'))
+            git(path, 'reset', '-q', '--hard', 'HEAD')
+            state.event(common, 'integration_residue_saved', worktree=str(path), patch=str(patch))
         if git(path, 'rev-parse', '--abbrev-ref', 'HEAD') != 'HEAD':
             raise ValueError('integration worktree is no longer detached')
         git(path, 'checkout', '--detach', baseline)
@@ -445,8 +455,9 @@ def close(repo, owner_pid, task):
         archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
         require_task_contract(archived.get(task, []), expected_contract, archived=True)
         slot = state.change(common, slot, 'closed', {})
+        files = ['TODO.md', *(['goals.json'] if indexed else []), archive.relative_to(repo).as_posix()]
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
-                **({'live_followup': followup} if followup else {})}
+                'files': files, **({'live_followup': followup} if followup else {})}
 
 
 CONTRACT_CHANGED = 'task contract changed since integration; no close'

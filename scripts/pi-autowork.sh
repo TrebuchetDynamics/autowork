@@ -293,8 +293,9 @@ if [[ ${1:-} == --worker || ${1:-} == --verify ]]; then
     "pi-autowork-verify-$(safe_name "$task")-$(date +%Y%m%d%H%M%S)" "$VERIFY_TIMEOUT" --tools read,bash,grep,find,ls
   verdict=$(grep -m1 -oE '^PI_AUTOWORK_VERIFY: (pass|fail)' <<<"$JOB_TEXT" | awk '{print $2}')
   if [[ -n $(dirty "$checkout") || $(git -C "$checkout" rev-parse HEAD) != "$head_before" ]]; then
+    # The engine owns this disposable integration worktree: it keeps the changes as a
+    # patch for diagnosis and resets it before the next integration.
     echo "pi-autowork: the reviewer changed the checkout; verification fails" >&2
-    git -C "$checkout" reset -q --hard "$head_before" && git -C "$checkout" clean -qfd
     exit 1
   fi
   ((JOB_OK)) && [[ $verdict == pass ]] && exit 0
@@ -744,11 +745,10 @@ close_task() {  # archive an integrated task and commit the coordinator files
   local id=$1 result file followup
   result=$(owned --parallel-close "$id")
   if [[ $(jq -r .outcome <<<"$result" 2>/dev/null) == CLOSED ]]; then
-    for file in TODO.md TODO.archive.md goals.json CHANGELOG.md; do
-      [[ -e $INTEG/$file || -n $(git -C "$INTEG" ls-files -- "$file") ]] && git -C "$INTEG" add -A -- "$file"
-    done
-    # A linked archive (say docs/TODO-archive.md) changes too.
-    git -C "$INTEG" add -u -- '*.md'
+    # Exactly the files the close wrote (TODO.md, goals.json, the archive it chose).
+    while IFS= read -r file; do
+      [[ -n $file ]] && git -C "$INTEG" add -A -- "$file"
+    done < <(jq -r '.files[]?' <<<"$result" 2>/dev/null)
     git -C "$INTEG" diff --cached --quiet ||
       git -C "$INTEG" commit -q -m "docs(tasks): close $id (pi-autowork)" -m "Integrated, verified and closed by the Parallel Autowork engine."
     note_state "$id" closed ''
@@ -849,6 +849,21 @@ update_toolset() {
     >>"$STATE/engine.err" 2>&1 9>&- || say "Toolset update failed (see $STATE/engine.err); keeping $TOOLSET_REV"
 }
 
+# --- Scratch checkouts -----------------------------------------------------------
+# Read-only passes get a detached worktree of the session HEAD under $STATE/scratch.
+# Only such a path, created here, is ever force-removed.
+scratch_checkout() {  # $1 purpose; prints the path
+  local path
+  mkdir -p "$STATE/scratch"
+  path=$(mktemp -d "$STATE/scratch/$1-XXXXXX") && rmdir "$path" &&
+    git -C "$INTEG" worktree add -q --detach "$path" HEAD >/dev/null 2>>"$STATE/engine.err" && printf '%s' "$path"
+}
+drop_scratch() {
+  [[ $1 == "$STATE"/scratch/* ]] || return 0
+  git -C "$INTEG" worktree remove --force "$1" 2>>"$STATE/engine.err" || rm -rf -- "$1"
+  git -C "$INTEG" worktree prune 2>/dev/null
+}
+
 # --- Touches ------------------------------------------------------------------
 # A task without Touches: must run alone, so most backlogs would run one task at a
 # time. For the top runnable tasks lacking it, a read-only Pi pass proposes the paths
@@ -868,7 +883,7 @@ touches_hold() {  # $1 task, $2 seconds before it is asked again
     '($old[0] // {}) + {($id): $until}' >"$cache.$$" && mv "$cache.$$" "$cache"
 }
 infer_touches() {
-  local list id answer recorded
+  local list id answer recorded scratch
   [[ ${PI_AUTOWORK_INFER_TOUCHES:-1} == 0 || ! -f $TOUCHES_HELPER ]] && return 0
   list=$(python3 "$TOUCHES_HELPER" missing "$INTEG" "$TOOLSET" "$WORKERS" 2>>"$STATE/engine.err") || return 0
   for id in $(jq -r '.[].id' <<<"$list" 2>/dev/null); do
@@ -877,11 +892,12 @@ infer_touches() {
     TOUCHES_TRIED[$id]=1
     # A task judged unboundable is asked again after a day, not every cycle.
     jq -e --arg id "$id" --arg now "$(date +%s)" '.[$id] // 0 | . > ($now | tonumber)' "$STATE/$TOUCHES_CACHE" >/dev/null 2>&1 && continue
-    pi_job touches "$id" "$INTEG" "$(touches_prompt "$id" "$INTEG")" \
+    # A planning pass reads a disposable copy of the session, so nothing it does can
+    # touch the session checkout; the copy is removed afterwards.
+    scratch=$(scratch_checkout touches) || { say "$id: could not create a scratch checkout; skipping the Touches pass"; continue; }
+    pi_job touches "$id" "$scratch" "$(touches_prompt "$id" "$scratch")" \
       "pi-autowork-touches-$(safe_name "$id")-$(date +%Y%m%d%H%M%S)" 900 --tools read,grep,find,ls
-    if [[ -n $(dirty "$INTEG") ]]; then  # a planning pass must not change the session
-      git -C "$INTEG" reset -q --hard HEAD && git -C "$INTEG" clean -qfd
-    fi
+    drop_scratch "$scratch"
     answer=$(grep -m1 '^PI_AUTOWORK_TOUCHES:' <<<"$JOB_TEXT" | sed 's/^PI_AUTOWORK_TOUCHES:[[:space:]]*//')
     if ((JOB_OK)) && [[ -n $answer && ! $answer =~ ^NONE([^[:alnum:]_./]|$) ]] &&
        recorded=$(python3 "$TOUCHES_HELPER" apply "$INTEG" "$TOOLSET" "$id" "$answer" 2>>"$STATE/engine.err"); then

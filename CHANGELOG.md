@@ -274,6 +274,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `pi-autowork.sh` never resets or cleans the session checkout any more. The Touches
+  pass reads a disposable detached worktree that is removed afterwards; when
+  validation or review leaves changes in the engine's integration worktree, the
+  engine saves them as a patch under `autowork-execution/integration-residue/` and
+  resets only that journaled, lock-held worktree (before, a tampering reviewer
+  wedged every later integration unless the runner reset it). Closing commits
+  exactly the files the close wrote (`files` in the `CLOSED` result) instead of
+  every modified Markdown file.
 - Parallel Autowork reads a worker's report instead of guessing from its process. A
   worker that stops with `blockers` is held for a person (`cause: blocker`) and is
   neither resumed nor retried; before, a deliberate stop looked like a crash and

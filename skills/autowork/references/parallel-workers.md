@@ -55,6 +55,10 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
      the worker branch stay untouched);
    - validation fails, or the task contract or canonical branch changes meanwhile;
    - another live agent session is active in the canonical checkout.
+
+   Validation runs in the engine's own journaled integration worktree. If it leaves
+   changes there, the next integration saves them to
+   `autowork-execution/integration-residue/*.patch` and resets that worktree only.
 5. **Close.** `--parallel-close TASK` refuses unless the slot is `integrated` with a
    passing validation receipt and its TODO contract still matches the validated
    one. It marks the task done, runs the Docs Sync archive (with goals.json this
@@ -63,7 +67,8 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    listed `pending_live`, close also adds `TASK-LIVE` under Needs decision (in
    goals.json too), depending on TASK and listing those checks, exactly once:
    offline completion never qualifies live behavior. Result: `CLOSED`, with
-   `live_followup` when one was added.
+   `live_followup` when one was added and `files`, the exact paths it wrote,
+   for the coordinator's commit.
 6. **Commit coordinator files.** Close edits TODO.md, the archive and goals.json in
    the canonical checkout without committing. Commit them, plus the CHANGELOG line
    from the report if it is accurate, as one coordinator metadata commit.
