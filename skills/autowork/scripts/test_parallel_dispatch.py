@@ -185,6 +185,24 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(after['dispatched'], [])
         self.assertEqual(len([e for e in self.events() if e['event'] == 'start']), 2)
 
+    def test_a_held_slot_of_a_closed_task_stops_occupying(self):
+        """india: Plan For Me superseded a held second attempt, and its must-run-alone
+        successor waited beside the dead slot for ever."""
+        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
+                       'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
+        for _ in range(2):  # crash, restart once, crash again: held for good
+            _, first = self.apply()
+            self.assertEqual([d['task'] for d in first['dispatched']], ['A'])  # S must run alone
+            self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'held')
+        _, blocked = self.apply()
+        self.assertEqual(blocked['dispatched'], [])
+        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('S', ''))
+        _, freed = self.apply()
+        self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
+        self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
+
     def test_low_memory_holds_dispatch(self):
         with patch.object(dispatch, 'available_memory_mb', return_value=1000):
             _, result = self.apply()

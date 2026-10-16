@@ -90,7 +90,9 @@ A task runs beside others only when the planner can prove it is independent:
   prerequisites to close, and a higher-priority task that cannot start yet, or
   must run alone, stops lower-priority dispatch until it can run.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
-  overlapping tasks until closed. An `in_progress` task with no live slot is a claim:
+  overlapping tasks until closed. A `held` or `interrupted` slot whose task is now done
+  or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
+  nothing; its worktree and record stay for inspection. An `in_progress` task with no live slot is a claim:
   it is never dispatched and blocks its dependents and tasks whose declared `Touches:`
   or `Resources:` overlap it, but its own missing `Touches:` does not hold back
   unrelated tasks (the coordinator holds the repository lease, so no sequential
