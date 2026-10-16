@@ -605,6 +605,23 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
     return result
 
 
+def finished_worktree_cleanup(repo):
+    """Remove earlier tasks' integrated, clean, unused worktrees; never blocks selection.
+
+    Runs under the writer lock the caller holds. Kept worktrees are reported as
+    cleanup pending with their reason.
+    """
+    import worktree_closeout
+    try:
+        canonical = worktree_closeout.registrations(repo)[0]['path']
+        found = worktree_closeout.closeout(canonical, apply=True)
+    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        return {'skipped': str(exc)}
+    if not found['removed'] and not found['kept']:
+        return None
+    return {key: found[key] for key in ('removed', 'kept')}
+
+
 def execute(args):
     repo = Path(git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
     common_git = Path(git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
@@ -649,6 +666,9 @@ def execute(args):
             return dict(result, outcome='OWNER_REQUIRED', reason='Use a persistent coordinator ancestor PID or one bounded --run command.')
         if claim and active_owner(claim) and claim.get('task_id') != task['id']:
             return dict(result, outcome='BUSY', reason='Release the current task before claiming another.')
+        cleanup = finished_worktree_cleanup(repo)
+        if cleanup:
+            result['worktree_cleanup'] = cleanup
         workers = external_workers(repo)
         blocking = blocking_workers(workers, repo)
         idle, elsewhere = nonblocking_sessions(workers, blocking)

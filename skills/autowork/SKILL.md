@@ -104,9 +104,11 @@ review step. Keep Hermes Agent unchanged.
    deploy, publish, spend money, place trades or broaden live authority without its
    explicit scoped authorization. Report actual commit/review/integration separately.
    For worktree-backed work, finish [worktree closeout](references/worktree-closeout.md):
-   verify integration on the canonical `main` or `master`, then remove finished owned
-   task/integration worktrees. Preserve active, dirty, unmerged or recovery-bearing
-   worktrees; report integration/cleanup pending instead of claiming full closeout.
+   verify integration on the canonical `main` or `master`, then remove the task's
+   worktree with `scripts/worktree_closeout.py CANONICAL --worktree PATH --apply`.
+   Every `--apply` task claim also removes earlier integrated, clean, unused
+   worktrees and reports the rest under `worktree_cleanup`. Preserve active, dirty,
+   unmerged or recovery-bearing worktrees; report integration/cleanup pending.
    Reconcile TODO and any existing goals.json only after verified acceptance, then
    archive completed bodies to `TODO.archive.md` (or the established archive) with
    `goals.py archive <repo>` (without an index use `--verified-tasks ID1,ID2`).

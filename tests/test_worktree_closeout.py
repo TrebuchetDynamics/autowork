@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -55,14 +56,17 @@ class WorktreeCloseoutTests(unittest.TestCase):
         commit = self.git(worktree, 'rev-parse', 'HEAD').stdout.strip()
         return canonical, worktree, commit
 
-    def test_documented_git_sequence_on_main_and_master(self):
+    def test_documented_closeout_command_on_main_and_master(self):
         command = re.findall(r'```sh\n(.*?)```', self.reference(), re.S)[0]
+        command = command.replace('python3 <this-skill-directory>', f'"{sys.executable}" "{ROOT}/skills/autowork"')
         for branch in ('main', 'master'):
             for state in ('merged', 'unmerged', 'dirty', 'ignored', 'locked', 'wrong-target', 'moved-head'):
                 with self.subTest(branch=branch, state=state), tempfile.TemporaryDirectory() as folder:
                     canonical, worktree, commit = self.fixture(Path(folder), branch)
                     if state != 'unmerged':
                         self.git(canonical, 'merge', '--ff-only', 'task/example')
+                    if state == 'wrong-target':
+                        self.git(canonical, 'switch', '-q', '-c', 'feature')
                     if state == 'locked':
                         self.git(canonical, 'worktree', 'lock', str(worktree))
                     if state == 'dirty':
@@ -75,14 +79,14 @@ class WorktreeCloseoutTests(unittest.TestCase):
                         self.git(worktree, 'add', 'later.txt')
                         self.git(worktree, 'commit', '-qm', 'later work')
                     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
-                    env.update(CANONICAL=str(canonical), TASK_WORKTREE=str(worktree),
-                               TASK_COMMIT=commit, DEFAULT_BRANCH='wrong' if state == 'wrong-target' else branch)
+                    env.update(CANONICAL=str(canonical), TASK_WORKTREE=str(worktree))
                     result = subprocess.run(['bash', '-c', command], cwd=canonical,
                                             env=env, capture_output=True, text=True)
-                    self.assertEqual(result.returncode == 0, state == 'merged', result.stderr)
-                    self.assertEqual(worktree.exists(), state != 'merged')
+                    self.assertEqual(result.returncode == 0, state != 'wrong-target', result.stdout + result.stderr)
+                    self.assertEqual(worktree.exists(), state != 'merged', result.stdout)
                     self.assertTrue(canonical.is_dir())
-                    self.assertEqual(self.git(canonical, 'branch', '--show-current').stdout.strip(), branch)
+                    expected = 'feature' if state == 'wrong-target' else branch
+                    self.assertEqual(self.git(canonical, 'branch', '--show-current').stdout.strip(), expected)
                     listed = self.git(canonical, 'worktree', 'list', '--porcelain').stdout
                     self.assertEqual(str(worktree) in listed, state != 'merged')
 

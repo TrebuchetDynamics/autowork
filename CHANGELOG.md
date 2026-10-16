@@ -10,6 +10,16 @@ claim of a tagged release, completed installation or live workflow qualification
 - A task held for a person now blocks only the tasks that depend on it, not tasks
   whose declared paths overlap its own: it reruns fresh from later code and never
   merges as is. One held sierra task with wide inferred Touches held up 34 others.
+- Autowork removes finished worktrees itself. Sessions created task worktrees and
+  left them after merging; 10 integrated, clean worktrees had piled up in this
+  repository, and a leftover `<repo>-autowork-<task>` path also blocks parallel
+  dispatch of that task. The new `worktree_closeout.py` removes a worktree only when
+  its HEAD is on `main`/`master` and it is clean (regenerable caches aside),
+  unlocked, not owned by a parallel slot or pi-autowork, not in use by any process
+  and quiet for 30 minutes, then deletes its merged branch with `git branch -d`.
+  Every `owner_cycle.py --apply` task claim runs it and reports `worktree_cleanup`;
+  closeout runs it for the task's own worktree.
+
 - A `pi-autowork` service records a changed TODO.md order itself (guarded
   `goals.py reorder`, committing only goals.json) and selects again, as scheduled
   Autowork runs are documented to do; before, it asked a person and waited. A refusal

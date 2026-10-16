@@ -67,8 +67,8 @@ explicit read-only runs write nothing.
    repository integration policy and existing authority. Push/deploy requires its
    own authorization; never override host approvals or actual live-safety gates.
    Finish [worktree closeout](../../../skills/autowork/references/worktree-closeout.md):
-   verify integration on the canonical `main` or `master`, then remove finished owned
-   task/integration worktrees. Preserve active, dirty, unmerged and recovery-bearing
+   verify integration on the canonical `main` or `master`, then remove the task's
+   worktree with `skills/autowork/scripts/worktree_closeout.py CANONICAL --worktree PATH --apply`. Preserve active, dirty, unmerged and recovery-bearing
    worktrees; report integration/cleanup pending until the remaining steps succeed.
 5. Reconcile task status and evidence in TODO.md and any existing goals.json. Do not
    close a whole feature from a partial slice. Report completed task, checks, commit,

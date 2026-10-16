@@ -20,4 +20,5 @@ For authorized Autowork tasks, apply [worktree closeout](../autowork/references/
 integrate verified results into the canonical default branch (`main` or `master`),
 then remove finished owned task/integration worktrees. Keep active, dirty, locked,
 unmerged and recovery-bearing worktrees; report pending integration or cleanup.
-There is no cap on necessary active worktrees and no blanket deletion authority.
+There is no cap on necessary active worktrees. `worktree_closeout.py` removes only
+worktrees that are integrated, clean, unlocked and unused; nothing else is deleted.
