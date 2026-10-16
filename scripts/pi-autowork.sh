@@ -830,12 +830,12 @@ while :; do
         note_state "$id" running "worker started"
       done ;;
     WAITING)
-      waiting=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | join("; ")' <<<"$result" 2>/dev/null)
+      waiting=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | (.[:4] | join("; ")) + (if length > 4 then " (+\(length - 4) more; see --status)" else "" end)' <<<"$result" 2>/dev/null)
       [[ $waiting != "$LAST_WAITING" && -n $waiting ]] && say "Waiting: $waiting"
       LAST_WAITING=$waiting ;;
     IDLE)
       # IDLE only means no worker is running: tasks may still be waiting on something.
-      blocked=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | .[:4] | join("; ")' <<<"$result" 2>/dev/null)
+      blocked=$(jq -r '[(.waiting // [])[]? | "\(.id // .task): \(.reason)"] | (.[:4] | join("; ")) + (if length > 4 then " (+\(length - 4) more; see --status)" else "" end)' <<<"$result" 2>/dev/null)
       if [[ -n $blocked ]]; then
         outcome=BLOCKED
         [[ $blocked != "$LAST_WAITING" ]] && say "No task can start now: $blocked"
