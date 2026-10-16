@@ -733,6 +733,10 @@ class ConsultationTests(unittest.TestCase):
         from unittest.mock import patch
         m = self.load()
         values = ('cookie=synthetic-private-cookie',
+                  'Authorization: Basic synthetic-private-cookie\r\nStatus: keep',
+                  '  pRoXy-AuThOrIzAtIoN: Digest username="public", response="synthetic-private-cookie"\nStatus: keep',
+                  'Authorization: Negotiate synthetic-private-cookie\nStatus: keep',
+                  json.dumps({'text': 'Authorization: Basic synthetic-private-cookie\nStatus: keep', 'keep': True}),
                   'Cookie: session=public-prefix; refresh=synthetic-private-cookie\r\nStatus: keep',
                   '  sEt-CoOkIe: session=public-prefix; refresh=synthetic-private-cookie\nStatus: keep',
                   'Cookie: "session=public-prefix;\nrefresh=synthetic-private-cookie"\nStatus: keep',

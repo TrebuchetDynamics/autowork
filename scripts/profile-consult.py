@@ -54,8 +54,8 @@ def redact(text):
     text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
     # Missing closing quotes must mask through EOF, not expose whitespace tails.
     text = re.sub(r'''(?is)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*["\']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1[REDACTED]', text)
-    # Cookie headers contain multiple credentials separated by semicolons.
-    text = re.sub(r'(?im)^([ \t]*(?:set-cookie|cookie)[ \t]*:[ \t]*)[^\r\n]+', r'\1[REDACTED]', text)
+    # Auth schemes and Cookie headers carry credentials beyond the first token.
+    text = re.sub(r'(?im)^([ \t]*(?:set-cookie|cookie|(?:proxy-)?authorization)[ \t]*:[ \t]*)[^\r\n]+', r'\1[REDACTED]', text)
     text = re.sub(r'(?i)((?:api[_-]?key|token|password|secret|authorization|cookie)\s*["\']?\s*[:=]\s*)[^\s,;]+', r'\1[REDACTED]', text)
     text = re.sub(r'\b(?:(?:sk|ghp|gho|xoxb|xoxp)-[A-Za-z0-9_-]+|(?:gh[pour]|github_pat)_[A-Za-z0-9_-]+|ghs_[A-Za-z0-9_.-]+)', '[REDACTED]', text)
     text = re.sub(r'''(?is)(["'](?:api[_-]?key|token|password|secret|authorization|cookie)["']\s*:\s*)(?:"(?:\\.|[^"\\])*(?:"|\\?\Z)|'(?:\\.|[^'\\])*(?:'|\\?\Z))''', r'\1"[REDACTED]"', text)
