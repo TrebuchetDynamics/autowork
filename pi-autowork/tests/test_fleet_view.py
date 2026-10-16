@@ -110,6 +110,52 @@ class FleetViewTests(unittest.TestCase):
         self.assertEqual(fleet_view.blockers_agent({'PATH': str(bin_dir)}), ['pi'])
         self.assertIsNone(fleet_view.blockers_agent({'PATH': str(self.base / 'nothing')}))
 
+    def test_lanes_show_what_each_task_in_flight_is_doing(self):
+        repo = self.base / 'repo'
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        slots = repo / '.git' / 'autowork-execution' / 'slots'
+        slots.mkdir(parents=True)
+        started = time.time() - 14 * 60
+        for task, state in (('T-1', 'running'), ('T-2', 'reported'), ('T-3', 'closed'), ('T-4', 'held')):
+            (slots / f'{task}.json').write_text(json.dumps({'task_id': task, 'state': state, 'attempt': 2,
+                                                            'started_at': started}))
+        state = self.base / 'state' / 'key'
+        (state / 'sessions').mkdir(parents=True)
+        (state / 'runner.log').write_text(
+            '2026-10-16T16:00:00-06:00 T-2: implemented\n'
+            '2026-10-16T16:01:00-06:00 T-2: waiting to integrate until another session leaves the main checkout (pid 7)\n')
+        stamp = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(time.time() - 20))
+        (state / 'sessions' / '2026-10-16T22-00-00-000Z_pi-autowork-T-1-attempt-2.jsonl').write_text('\n'.join(json.dumps(e) for e in [
+            {'type': 'message', 'timestamp': stamp, 'message': {'role': 'assistant', 'content': [
+                {'type': 'toolCall', 'name': 'bash', 'arguments': json.dumps({'command': 'pytest -q tests/\necho done'})}]}},
+            {'type': 'message', 'timestamp': stamp, 'message': {'role': 'toolResult', 'content': [{'type': 'text', 'text': 'ok'}]}},
+        ]) + '\n')
+        runner = fleet_view.Runner(name='repo', repo=str(repo), state_dir=str(state))
+        lanes = {lane.task: lane for lane in fleet_view.lanes(runner)}
+        self.assertEqual(sorted(lanes), ['T-1', 'T-2'])  # closed and held are not in flight
+        one, two = lanes['T-1'], lanes['T-2']
+        self.assertEqual((one.phase, one.attempt, fleet_view.duration(one.minutes)), ('implementing', 2, '14m'))
+        self.assertEqual(one.activity, 'bash: pytest -q tests/')
+        self.assertRegex(fleet_view.ago(one.activity_age), r'^(1|2)\ds ago$')
+        self.assertEqual((two.phase, two.detail), ('waiting to integrate', 'until another session leaves the main checkout (pid 7)'))
+        self.assertEqual((two.activity, two.activity_age), ('', None))
+
+    def test_phase_text_is_split_into_a_short_phase_and_its_detail(self):
+        self.assertEqual(fleet_view._split_phase('verifying'), ('verifying', ''))
+        self.assertEqual(fleet_view._split_phase('failed — validation failed'), ('failed', 'validation failed'))
+        self.assertEqual(fleet_view._split_phase('its TODO entry changed while it was held'),
+                         ('its TODO entry', 'changed while it was held'))
+        self.assertEqual(fleet_view.ago(45), '45s ago')
+        self.assertEqual(fleet_view.ago(3 * 3600), '3h00m ago')
+
+    def test_web_serves_the_tui_on_this_machine_by_default(self):
+        from pi_autowork import tui_web
+        self.assertTrue(tui_web.loopback('127.0.0.1') and tui_web.loopback('localhost') and tui_web.loopback('::1'))
+        self.assertFalse(tui_web.loopback('0.0.0.0') or tui_web.loopback('100.64.0.5'))
+        self.assertEqual(tui_web.command('/bin/tx', '/opt/pa.sh', python='/py'),
+                         f'/py {tui_web.TUI} --tx /bin/tx --script /opt/pa.sh')
+        self.assertTrue(tui_web.command('tx', 'pa.sh', view_only=True).endswith('--view-only'))
+
     @unittest.skipUnless(shutil.which('uv'), 'uv is not installed')
     def test_the_tui_drives_the_same_actions_headless(self):
         """Textual is not a runner dependency: the pilot runs under uv, from its cache only."""

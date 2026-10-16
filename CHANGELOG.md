@@ -147,6 +147,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- The `tx autowork` TUI shows worker lanes: for the selected runner, one row per task
+  in flight with its phase (from the runner's own log), attempt, time and the worker's
+  last action from its Pi transcript (`bash: pytest -q`, `said: ...`, and how long
+  ago), plus a `Now` column per runner. `tx autowork web` serves the same TUI to a
+  browser with textual-serve 1.1.3, on 127.0.0.1:8765 by default; `--view-only`
+  disables every control key. Neither calls a model.
+
 - `tx autowork` opens a live TUI on a terminal: every pi-autowork runner (tmux and
   service) with its state, blockers, held tasks and log, and keys to open a session,
   start or stop a runner, install or remove its service, set aside a held task and

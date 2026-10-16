@@ -17,8 +17,9 @@ place to see every runner. A systemd user service is an optional alternative
 
 | Command | What it does |
 |---|---|
-| `tx autowork` | The live TUI (on a terminal): every runner with its state, blockers, held tasks and log; keys open a session, start or stop a runner, install or remove its service, set aside a held task (`x`) and answer blockers (`b`, `/autowork blockers` in `TX_AUTOWORK_AGENT`, else `claude` or `pi`). Stop, remove and set-aside ask first |
+| `tx autowork` | The live TUI (on a terminal): every runner with its state and what it is doing now, its worker lanes (each task in flight: phase, attempt, time, and the worker's last action, such as `bash: pytest -q`, with how long ago), blockers, held tasks and log; keys open a session, start or stop a runner, install or remove its service, set aside a held task (`x`) and answer blockers (`b`, `/autowork blockers` in `TX_AUTOWORK_AGENT`, else `claude` or `pi`). Stop, remove and set-aside ask first |
 | `tx autowork start [name\|repo\|.]` | Open/start the runner; defaults to the current Git repository, including from a subdirectory; follows the journal if a service owns it |
+| `tx autowork web [--port N] [--host H] [--view-only]` | The same TUI in a web browser, at `http://127.0.0.1:8765` by default (this machine only; reach it through an SSH tunnel or a private network). `--view-only` serves it with every control key disabled, for a shared screen or network |
 | `tx pi-autowork-<name>` or `tx autowork <name\|repo\|.>` | Open the runner's session `pi-autowork-<name>`: attach, or start a tmux runner; for a service runner the session follows its journal |
 | `tx autowork ls [--long]` | One colored line per runner, tmux and service: state and for how long, workers running, waiting and held; `--long` adds its `tx pi-autowork-<name>` command and what it waits on |
 | `tx autowork status [name\|repo\|.]` | The runner's full status: tasks, workers, blockers (`pi-autowork.sh --status`) |
@@ -34,6 +35,9 @@ tx autowork start             # run this repository in tmux (also: tx autowork .
 tx autowork stop my-project
 ```
 
+- The browser view runs `textual-serve` 1.1.3: each tab gets its own copy of the TUI on this
+  machine, with the same keys and confirmations. Binding beyond `127.0.0.1` without
+  `--view-only` warns, since anyone who reaches the page can stop runners.
 - The TUI runs through `uv run --with textual==8.2.8` (Textual is fetched into uv's
   cache once, nothing is installed globally) from the runner's own release, reads the
   same state as `ls` every few seconds and calls no model. Without a terminal, `uv` or a

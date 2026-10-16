@@ -66,6 +66,16 @@ async def main():
             await pilot.press('b')                       # no agent: nothing to run, a notice instead
             await pilot.pause()
             assert len(calls) == 2, calls
+        viewer = FleetApp(tx='tx', script='pa.sh', state_root=base / 'state', env_dir=env, tmux=str(tmux),
+                          systemctl='/nonexistent', journalctl='/nonexistent', agent=['claude'], runner_cmd=run,
+                          view_only=True)
+        async with viewer.run_test(size=(140, 40)) as pilot:
+            await pilot.pause()
+            assert 'view only' in str(viewer.query_one('#detail').render())
+            for key in ('s', 'x', 'b', 'i', 'enter'):
+                await pilot.press(key)
+                await pilot.pause()
+            assert len(calls) == 2, calls                # view-only: no key runs anything
     print('PILOT OK')
 
 
