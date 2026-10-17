@@ -27,13 +27,13 @@ Use its actual name in place of `PROFILE`; `default` names the default profile.
 Stop active work that depends on this plugin before removing it.
 
 ```sh
-hermes -p PROFILE config set plugins.entries.hermes-toolset.settings.apply_runtime_defaults false
-hermes -p PROFILE plugins disable hermes-toolset
-hermes -p PROFILE plugins remove hermes-toolset
+hermes -p PROFILE config set plugins.entries.autowork.settings.apply_runtime_defaults false
+hermes -p PROFILE plugins disable autowork
+hermes -p PROFILE plugins remove autowork
 ```
 
 These are Hermes' native removal commands. `plugins remove` also deletes the whole
-`plugins.entries.hermes-toolset` entry, including that opt-out, so set the opt-out
+`plugins.entries.autowork` entry, including that opt-out, so set the opt-out
 again before any later reinstall. Repeat for each profile you intend to remove. A shared gateway can still have loaded handlers: restart it through your
 normal service procedure after ongoing work has stopped, and reopen CLI sessions.
 Removing a local plugin link does not mean its source checkout should be deleted.

@@ -1,9 +1,9 @@
-name: hermes-toolset
-version: 0.2.0
+name: autowork
+version: 0.3.0
 description: Run the repository's bundled skills as commands in Hermes CLI and Telegram.
 author: TrebuchetDynamics
 license: MIT
-homepage: https://github.com/TrebuchetDynamics/hermes-toolset
+homepage: https://github.com/TrebuchetDynamics/autowork
 kind: standalone
 
 requires_plugins:

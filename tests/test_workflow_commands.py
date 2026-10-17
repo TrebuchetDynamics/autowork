@@ -22,7 +22,7 @@ class WorkflowCommands(unittest.TestCase):
                     raw = 'read-only: compare approaches\n--no-push $(literal)'
                     self.ctx.commands[spelling](raw)
                     prompt, routing = self.ctx.messages[-1]
-                    self.assertIn('hermes-toolset:' + skill, prompt)
+                    self.assertIn('autowork:' + skill, prompt)
                     self.assertTrue(prompt.endswith(raw))
                     self.assertEqual(routing['origin']['chat_id'], 'fixture')
                     if command == 'plan_for_me':
@@ -39,7 +39,7 @@ class WorkflowCommands(unittest.TestCase):
         raw = 'every 30m; repository scope; no push'
         self.ctx.commands['cron-autowork'](raw)
         prompt, routing = self.ctx.messages[-1]
-        self.assertIn('hermes-toolset:cron-autowork', prompt)
+        self.assertIn('autowork:cron-autowork', prompt)
         self.assertTrue(prompt.endswith(raw))
         self.assertEqual(routing['origin']['chat_id'], 'fixture')
 
@@ -79,7 +79,7 @@ class WorkflowCommands(unittest.TestCase):
         for retired in ('repo-docs', 'repo_docs', 'repo-interview', 'repo_interview'):
             self.assertNotIn(retired, self.ctx.commands)
         self.ctx.commands['docs_sync']('resume')
-        self.assertIn('hermes-toolset:docs-sync', self.ctx.messages[-1][0])
+        self.assertIn('autowork:docs-sync', self.ctx.messages[-1][0])
 
     def test_foreign_retired_command_does_not_block_docs_sync(self):
         self.skill('docs-sync')
@@ -102,7 +102,7 @@ class WorkflowCommands(unittest.TestCase):
         self.assertEqual(set(self.ctx.skills), {'plan-with-me', 'docs-sync', 'plan-for-me', 'autoresearch'})
         self.ctx.commands['grill-me']('challenge my cache plan')
         prompt, _ = self.ctx.messages[-1]
-        self.assertIn('skill_view(name="hermes-toolset:plan-with-me")', prompt)
+        self.assertIn('skill_view(name="autowork:plan-with-me")', prompt)
         self.assertIn('../grill-me/SKILL.md', prompt)
         self.assertTrue(prompt.endswith('challenge my cache plan'))
 

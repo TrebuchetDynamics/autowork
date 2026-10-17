@@ -36,7 +36,7 @@ def note(kind):
                                  'cwd': os.getcwd(), 'tmpdir': os.environ.get('TMPDIR'),
                                  'slot': os.environ.get('AUTOWORK_SLOT'),
                                  'port_base': os.environ.get('AUTOWORK_PORT_BASE'),
-                                 'marker': 'HERMES_TOOLSET_EXECUTION_COMMON' in os.environ}) + '\n')
+                                 'marker': 'AUTOWORK_EXECUTION_COMMON' in os.environ}) + '\n')
 
 
 note('start')

@@ -1,6 +1,6 @@
 # Repository agent instructions
 
-Hermes Toolset supplies repository workflows, command registration and profile
+Autowork supplies repository workflows, command registration and profile
 setup. Read README.md and the relevant docs before changing these contracts.
 Preserve unrelated changes and keep credentials, private profile identities and
 runtime state out of Git. Do not edit or patch upstream Hermes Agent.

@@ -4,7 +4,7 @@
 
 ## Decision brief
 
-Keep Hermes Toolset's `TODO.md` → `goals.json` → deterministic coordinator pipeline. Reuse execution, recovery and verification mechanisms underneath it; do not replace it with another project's task board, role hierarchy or PR workflow.
+Keep Autowork's `TODO.md` → `goals.json` → deterministic coordinator pipeline. Reuse execution, recovery and verification mechanisms underneath it; do not replace it with another project's task board, role hierarchy or PR workflow.
 
 **Closest overall architectural reference: Overstory.** It combines agent-runtime adapters, isolated workspaces, persistent sessions, a merge queue and supervision. Its Pi adapter is explicitly experimental, and several merge/recovery policies differ from ours. It is a reference, not a recommended drop-in installation.
 
@@ -22,7 +22,7 @@ The study investigated **17 distinct project leads**. The initial wave screened 
 
 Core modules and selected tests were read, not executed. No external project was installed, no upstream scripts/models were run, and no production worker, service, schedule, credential or task contract was changed. “A test exists” does not mean it passed. Repo descriptions and search results were leads, not implementation evidence.
 
-The local comparison baseline is [`ee825758`](https://github.com/TrebuchetDynamics/hermes-toolset/tree/ee82575878bb115f4b06d6f7d9b01029ab008790). During research, the existing [TOOLSET-115-bf coordinator redesign](https://github.com/TrebuchetDynamics/hermes-toolset/blob/0e6f67b1a7d49e59868885d3312bbe9bc91361ee/docs/plans/2026-10-16-pi-autowork-coordinator.md) and its [phase-1 report-outcome change](https://github.com/TrebuchetDynamics/hermes-toolset/commit/59a44cf1de210c3ea0c5d8a98e019ea580ecfe08) appeared upstream. The research supports that work; it must not create a competing redesign or reopen completed parallel-worker tasks. Observations about the pinned baseline are not claims that later revisions still contain every issue.
+The local comparison baseline is [`ee825758`](https://github.com/TrebuchetDynamics/autowork/tree/ee82575878bb115f4b06d6f7d9b01029ab008790). During research, the existing [TOOLSET-115-bf coordinator redesign](https://github.com/TrebuchetDynamics/autowork/blob/0e6f67b1a7d49e59868885d3312bbe9bc91361ee/docs/plans/2026-10-16-pi-autowork-coordinator.md) and its [phase-1 report-outcome change](https://github.com/TrebuchetDynamics/autowork/commit/59a44cf1de210c3ea0c5d8a98e019ea580ecfe08) appeared upstream. The research supports that work; it must not create a competing redesign or reopen completed parallel-worker tasks. Observations about the pinned baseline are not claims that later revisions still contain every issue.
 
 ## 1. The problem we actually need to solve
 
@@ -157,7 +157,7 @@ Keep project-specific facts in its existing instructions/configuration and pass 
 
 ## 8. File organization and adoption plan
 
-The companion [component-layout proposal](../plans/pi-autowork-component-layout.md) recommends one `pi-autowork/` component inside Hermes Toolset, containing Pi-specific coordinator/runtime code, tests and local documentation. Generic queue/admission/integration code remains shared under Autowork. Runtime state, worktrees, credentials and source-research clones do not move into that component.
+The companion [component-layout proposal](../plans/pi-autowork-component-layout.md) recommends one `pi-autowork/` component inside Autowork, containing Pi-specific coordinator/runtime code, tests and local documentation. Generic queue/admission/integration code remains shared under Autowork. Runtime state, worktrees, credentials and source-research clones do not move into that component.
 
 A skeptical builder review identified two acceptance gaps, now added to the proposal: coherent old/new-release switching for installed and copied launchers, and functional archive tests for the currently omitted Touches-inference helper. These are specification corrections, not implemented fixes or a new passing runtime test result.
 

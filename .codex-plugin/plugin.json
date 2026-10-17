@@ -1,6 +1,6 @@
 {
-  "name": "hermes-toolset",
-  "version": "0.2.0",
+  "name": "autowork",
+  "version": "0.3.0",
   "description": "Repository planning, documentation, research and execution workflows for Codex.",
   "license": "MIT",
   "skills": "./adapters/skills/"

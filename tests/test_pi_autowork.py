@@ -1066,7 +1066,7 @@ class SetupTests(Fixture):
         self.assertIn('(not a Pi package)', result.stdout)
 
     def installed_package(self):
-        """A disposable hermes-toolset Pi package whose local origin holds one newer,
+        """A disposable autowork Pi package whose local origin holds one newer,
         compatible release, so the update check passes and `pi update` applies."""
         package = self.root / 'pi-package'
         for part in ('skills', 'adapters', 'scripts', 'pi-autowork'):
@@ -1174,7 +1174,7 @@ class SetupTests(Fixture):
         jobs.mkdir(parents=True)
         (jobs / 'jobs.json').write_text(json.dumps({'jobs': [
             {'id': 'a1', 'name': 'Work Autowork', 'workdir': str(self.repo), 'enabled': True,
-             'skills': ['hermes-toolset:autowork']},
+             'skills': ['autowork:autowork']},
             {'id': 'b2', 'name': 'Paused', 'workdir': str(self.repo), 'paused_at': 'x', 'skills': ['autowork']}]}))
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 4)
@@ -1192,9 +1192,9 @@ class SetupTests(Fixture):
                 store = jobs / 'jobs.json'
                 store.write_text(json.dumps({'jobs': [
                     {'id': 'active', 'name': 'Active Autowork', 'workdir': str(self.repo),
-                     'enabled': True, 'skills': ['hermes-toolset:autowork']},
+                     'enabled': True, 'skills': ['autowork:autowork']},
                     {'id': 'paused', 'name': 'Paused Autowork', 'workdir': str(self.repo),
-                     'enabled': True, 'state': 'paused', 'skills': ['hermes-toolset:autowork']}]}))
+                     'enabled': True, 'state': 'paused', 'skills': ['autowork:autowork']}]}))
                 before = store.read_bytes()
                 result = self.run_runner('--once')
                 self.assertEqual(result.returncode, 4, result.stdout + result.stderr)

@@ -16,6 +16,7 @@ class Context:
     def __init__(self):
         self.skills = {}
         self.commands = {}
+        self.cli_commands = []
         self.messages = []
         self.accept = True
 
@@ -25,8 +26,8 @@ class Context:
     def register_command(self, name, handler, description="", args_hint=""):
         self.commands[name] = handler
 
-    def register_cli_command(self, *args, **kwargs):
-        pass
+    def register_cli_command(self, name, *args, **kwargs):
+        self.cli_commands.append(name)
 
     def get_config(self, key, default=None):
         # Config persistence is exercised against the real Hermes loader in
@@ -80,11 +81,11 @@ class PluginTests(unittest.TestCase):
         self.skill("alpha")
         (self.root / "not-a-skill").mkdir()
         self.plugin.register(self.ctx)
-        self.assertEqual(set(self.ctx.commands), {"alpha", "toolset"})
+        self.assertEqual(set(self.ctx.commands), {"alpha"})
         self.skill("beta")
         next_ctx = Context()
         self.plugin.register(next_ctx)
-        self.assertEqual(set(next_ctx.commands), {"alpha", "beta", "toolset"})
+        self.assertEqual(set(next_ctx.commands), {"alpha", "beta"})
 
     def test_incomplete_native_folder_is_logged_and_registration_continues(self):
         self.skill("alpha")
@@ -95,7 +96,7 @@ class PluginTests(unittest.TestCase):
         user_skill.write_text('user content\n')
         with self.assertLogs(self.plugin.logger, level='WARNING') as logs:
             self.plugin.register(self.ctx)
-        self.assertEqual(set(self.ctx.commands), {"alpha", "beta", "toolset"})
+        self.assertEqual(set(self.ctx.commands), {"alpha", "beta"})
         self.assertEqual(set(self.ctx.skills), {"alpha", "beta"})
         self.assertTrue(any('incomplete existing skill' in line and 'alpha' in line
                             for line in logs.output), logs.output)
@@ -111,9 +112,9 @@ class PluginTests(unittest.TestCase):
         args = 'only src/; $(touch /tmp/should-not-run)\nno push'
         self.assertIsNone(self.ctx.commands["alpha"](args))
         message, target = self.ctx.messages[-1]
-        self.assertIn('skill_view(name="hermes-toolset:alpha")', message)
+        self.assertIn('skill_view(name="autowork:alpha")', message)
         self.assertIn(args, message)
-        self.assertNotIn("hermes-toolset:beta", message)
+        self.assertNotIn("autowork:beta", message)
         self.assertEqual(target, {})
 
     def test_gateway_routes_first_command_to_origin_including_topic_and_user(self):
@@ -153,7 +154,7 @@ class PluginTests(unittest.TestCase):
         self.existing["alpha"] = {"plugin": "other"}
         with self.assertLogs(level="WARNING"):
             self.plugin.register(self.ctx)
-        self.assertEqual(set(self.ctx.commands), {"toolset"})
+        self.assertEqual(set(self.ctx.commands), set())
         self.assertEqual(set(self.ctx.skills), {"help", "alpha"})
 
     def test_invalid_names_and_telegram_alias_collisions_fail_before_registration(self):
@@ -188,9 +189,23 @@ class PluginTests(unittest.TestCase):
         for command in ('autowork',):
             self.ctx.commands[command]('Improve this repo; no push')
             prompt,target=self.ctx.messages[-1]
-            self.assertIn('hermes-toolset:autowork',prompt)
+            self.assertIn('autowork:autowork',prompt)
             self.assertIn('Improve this repo; no push',prompt)
             self.assertEqual(target['origin']['chat_id'],'fixture-chat')
+
+    def test_autowork_maintenance_forms_reply_and_other_arguments_run_the_skill(self):
+        self.plugin.SKILLS_DIR = ROOT / 'skills'
+        self.plugin.register(self.ctx)
+        self.assertEqual(self.ctx.cli_commands, ['autowork'])
+        self.assertNotIn('toolset', self.ctx.commands)
+        bundle = sys.modules['toolset_under_test.bundle']
+        with patch.object(bundle, 'start_update', return_value='started') as start:
+            self.assertEqual(self.ctx.commands['autowork']('update'), 'started')
+            start.assert_called_once_with(check=False)
+        self.assertEqual(self.ctx.messages, [])
+        self.ctx.commands['autowork']('update the README')
+        self.assertIn('autowork:autowork', self.ctx.messages[-1][0])
+        self.assertIn('update the README', self.ctx.messages[-1][0])
 
     def test_repository_skills_are_all_discovered(self):
         self.plugin.SKILLS_DIR = ROOT / "skills"
@@ -201,7 +216,7 @@ class PluginTests(unittest.TestCase):
         self.assertEqual(self.ctx.skills['plan-with-me'], ROOT / 'skills/plan-with-me/SKILL.md')
         self.session.update(HERMES_SESSION_PLATFORM='telegram', HERMES_SESSION_CHAT_ID='fixture-chat')
         self.ctx.commands['grill_me'.replace('_', '-')]('review this plan')
-        self.assertIn('hermes-toolset:plan-with-me', self.ctx.messages[-1][0])
+        self.assertIn('autowork:plan-with-me', self.ctx.messages[-1][0])
         self.assertIn('review this plan', self.ctx.messages[-1][0])
         self.assertEqual(self.ctx.messages[-1][1]['origin']['chat_id'], 'fixture-chat')
 

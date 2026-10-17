@@ -3,7 +3,7 @@
 [Completed tasks](TODO.archive.md)
 
 
-Central queue for Hermes Toolset. Scope and current architecture: [project contract](docs/project.md).
+Central queue for Autowork. Scope and current architecture: [project contract](docs/project.md).
 [goals.json](goals.json) indexes the remaining work below; verified completed
 tasks move to the archive automatically. Ledger eligibility is not worker
 admission or live qualification.
@@ -86,16 +86,29 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
 
 - [ ] TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
-- Status: open; owner decision (2026-10-16): the new repository name is `autowork`.
+- Status: open; owner decisions (2026-10-16): the new name is `autowork`, the maintenance commands become `/autowork update|status|list` and `hermes autowork …`, and there is no backwards compatibility. Source rename implemented on `autowork/TOOLSET-121-3d`; GitHub repository renamed to `TrebuchetDynamics/autowork` by the owner's approval. Reinstalling live installs is TOOLSET-123-a0 below.
 - Goal: PORTABLE — Align portable workflow discovery.
 - Sources: [README host table](README.md), [cross-host adapters](docs/cross-host.md), [project contract](docs/project.md).
 - Touches: README.md, CHANGELOG.md, AGENTS.md, plugin.yaml, package.json, .claude-plugin/, adapters/, update_bundle.py, update_bundle_native.py, setup_runtime.py, setup_preflight.py, install.sh, install-plugins.sh, install-skills.sh, install_skills.py, scripts/, skills/, tmux/, pi-autowork/, docs/, tests/
-- Scope: Planning happens in any host (Hermes, Claude Code, Codex, Pi); pi-autowork builds the queued work, so the name should not name one host. Rename the project, the plugin and the command namespace to `autowork` in every manifest (`plugin.yaml`, `package.json`, `.claude-plugin/plugin.json` and `marketplace.json`, the Codex and Pi adapters), the upstream URL in `update_bundle.py`, install scripts, docs and tests (about 78 files reference `hermes-toolset`; inventory them with `rg -l hermes-toolset` first). Keep host-specific parts named for their host: the Hermes plugin's fleet, scheduler and Telegram features are documented as Hermes-only. Compatibility for one release: an installation or profile that still carries `hermes-toolset` (plugin name, source in `setup_runtime.py`'s inventory check, hook name, `/hermes-toolset:*` and `$hermes-toolset:*` invocations, install paths) keeps working or is migrated by the supported update path with a clear notice; nothing a running profile holds is renamed out from under it. Record the rename and the alias removal release in CHANGELOG.md.
-- Acceptance: `rg hermes-toolset` returns only the deliberate compatibility aliases, CHANGELOG/history and archived task text; each host's registration test finds the plugin as `autowork`; a fixture of an existing `hermes-toolset` installation passes `setup_runtime.py` checks and updates without losing profile state; README and the logo/hero text use the new name.
+- Scope: Planning happens in any host (Hermes, Claude Code, Codex, Pi); pi-autowork builds the queued work, so the name should not name one host. Rename the project, the plugin and the command namespace to `autowork` in every manifest (`plugin.yaml`, `package.json`, `.claude-plugin/plugin.json` and `marketplace.json`, the Codex and Pi adapters), the upstream URL in `update_bundle.py`, install scripts, docs and tests (about 78 files reference `hermes-toolset`; inventory them with `rg -l hermes-toolset` first). Keep host-specific parts named for their host: the Hermes plugin's fleet, scheduler and Telegram features are documented as Hermes-only. No compatibility layer (owner direction): no aliases, legacy fallbacks or migration code; an installation from before the rename is removed and installed again. The `/toolset` maintenance command moves to exact `/autowork update|status|list` forms and `hermes toolset` to `hermes autowork`. Record the rename in CHANGELOG.md.
+- Acceptance: `rg -i 'hermes[ -]toolset'` returns only historical text (CHANGELOG past entries, archive, evidence, the rename notes); each host's registration test finds the plugin as `autowork`; `/autowork update|status|list` reach maintenance and other `/autowork` arguments run the skill; README and the hero use the new name.
 - Checks: `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`; adapter registration tests; `docs.py check`. Registration checks do not prove live installs on the hosts.
 - Dependencies: none.
 - Ownership: Toolset coordinator under the owner's request.
-- Exclusions: The GitHub repository rename, the local checkout directory rename, marketplace republication and updating installed profiles are owner/live steps, not done by this task; record them as a pending live follow-up. No push; no direct edits in fleet repositories; preserve per-profile job state and existing `~/.config/pi-autowork/` settings.
+- Exclusions: The local checkout directory rename, marketplace republication and reinstalling installed profiles and hosts are owner/live steps (TOOLSET-123-a0). No direct edits in fleet repositories; per-profile state folders (`maintenance/toolset-update/`) keep their names.
+
+### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+
+- [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+- Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer.
+- Goal: PORTABLE — Align portable workflow discovery.
+- Sources: [rename note](README.md#renamed-from-hermes-toolset), [rename decision](docs/project.md#rename-to-autowork-2026-10-16), [installation](docs/installation.md).
+- Scope: Every installed copy still carries the old identity: profiles hold `plugins/hermes-toolset`, `plugins.enabled: [hermes-toolset]`, `plugins.entries.hermes-toolset` settings and cron jobs naming `hermes-toolset:` skills, and the old `/toolset update` cannot enable the renamed plugin. Per profile: record the settings under `plugins.entries.hermes-toolset` and the cron jobs' state; remove the old plugin; install and enable `autowork`; restore those settings under `plugins.entries.autowork`; run `scripts/wire-owner-cron.py --root ROOT` and then `--apply`; refresh bundle-managed cron scripts. Reinstall the Claude Code and Codex plugins and switch the Pi package to `git:github.com/TrebuchetDynamics/autowork`, then restart pi-autowork runners when no task is in flight.
+- Acceptance: In each profile `hermes -p PROFILE autowork doctor --core` is ready and `/autowork status` answers in chat; settings and opt-outs match the recorded values; every cron job keeps its pause state, schedule, model and delivery and names `autowork:` skills; `pi list` shows the autowork source and runners resume their sessions.
+- Checks: Per-profile before/after config and job readback; `autowork doctor --core`; one `/autowork status` in a gateway chat; `pi list`; runner `--status`.
+- Dependencies: TOOLSET-121-3d.
+- Ownership: Owner or a coordinator with live authorization.
+- Exclusions: No job resumption, cadence, model or delivery change; no direct edits in fleet repositories; no unrelated profile settings changed.
 
 ### TOOLSET-117-cb — Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures
 
@@ -145,7 +158,7 @@ settlement/cancellation checks when refining that existing design.
 - Status: open; live qualification not run.
 - Goal: CLAUDE-CODE — Install the portable workflows in Claude Code.
 - Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
-- Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/hermes-toolset:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
+- Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/autowork:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
 - Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
 - Checks: Session transcript or output plus `git status` of the disposable repository.
 - Dependencies: TOOLSET-065.
@@ -176,9 +189,9 @@ settlement/cancellation checks when refining that existing design.
 - Status: open
 - Goal: OMH-TRIM
 - Sources: [OMH plan](docs/project.md#omh-catalog-trim-2026-10-15), [OMH installer](install-omh.py), TOOLSET-082, [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
-- Scope: List the profiles whose installed OMH plugin requires Hermes <0.22. With the owner's approval, refresh each one's OMH plugin and executable to the release pinned by TOOLSET-082 through the existing installer, with a backup, then rerun `/toolset update` for the affected profiles.
-- Acceptance: In each refreshed profile `hermes memory status` shows the OMH plugin installed and available and `omh doctor --json` passes against the same existing store; `hermes plugins enable hermes-toolset` no longer refuses (on 2026-10-15 a newly created profile refused it because its OMH plugin requires Hermes <0.22); stores and memories are untouched; any profile that fails keeps its backup and is reported.
-- Checks: `hermes memory status`, `omh doctor --json` and the `/toolset update` per-profile result before and after in each profile.
+- Scope: List the profiles whose installed OMH plugin requires Hermes <0.22. With the owner's approval, refresh each one's OMH plugin and executable to the release pinned by TOOLSET-082 through the existing installer, with a backup, then rerun `/autowork update` for the affected profiles.
+- Acceptance: In each refreshed profile `hermes memory status` shows the OMH plugin installed and available and `omh doctor --json` passes against the same existing store; `hermes plugins enable autowork` no longer refuses (on 2026-10-15 a newly created profile refused it because its OMH plugin requires Hermes <0.22); stores and memories are untouched; any profile that fails keeps its backup and is reported.
+- Checks: `hermes memory status`, `omh doctor --json` and the `/autowork update` per-profile result before and after in each profile.
 - Dependencies: TOOLSET-082.
 - Environment prerequisite: Owner approval to modify installed plugins in live profiles.
 - Ownership: Toolset coordinator with that approval.
@@ -197,7 +210,7 @@ settlement/cancellation checks when refining that existing design.
 - Ownership: Shared maintainer for implementation; authorized coordinator for selected-profile deployment.
 - Exclusions: No implicit remote publication, dependency overrides, native scanner bypass, global configuration changes or active-runtime rebinding.
 - Historical deployment evidence: Preflight against 51d99d6 deferred three selected profiles under the former native-ownership checks and one for a customized `skills/autoresearch/SKILL.md`; their bytes were preserved. That receipt proves no installation. The TODO-first implementation has since retired card-only vetoes; recheck actual consumers and current customizations rather than treating those old deferrals as present blockers.
-- Current evidence (2026-10-15): fleet-wide `/toolset update` has since installed every reviewed fix in all profiles (all at 90f164f, finalize readback ready). Only the selected-profile mode (`--profile NAME`) is still unqualified live.
+- Current evidence (2026-10-15): fleet-wide `/autowork update` has since installed every reviewed fix in all profiles (all at 90f164f, finalize readback ready). Only the selected-profile mode (`--profile NAME`) is still unqualified live.
 - Next action: Run the reviewed updater once in selected-profile mode for one profile, read back installed hashes and registrations, rerun it to confirm a no-op, and record the receipts. Reuse the reviewed updater; do not repeat its completed implementation or label preflight as deployment.
 
 ### TOOLSET-096-7e — Qualify the worktree runner live on a fleet repository
@@ -272,7 +285,7 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 
 | Goal | Status | Evidence | Task |
 | --- | --- | --- | --- |
-| PORTABLE: Align portable workflow discovery | partial | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | TOOLSET-121-3d |
+| PORTABLE: Align portable workflow discovery | partial | executed <code>Integration af8e567: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py; exact 5e5d043 independent review and isolated Codex 0.162.1/Pi 1.2.0 discovery verified</code> → pass; executed <code>python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | TOOLSET-121-3d, TOOLSET-123-a0 |
 | RELIABILITY-2026-10: Fix the reproduced high-ROI reliability bugs from the 2026-10-15 harvest | met | executed <code>python3 scripts/check.py on integrated main (437/575/209/8 offline tests passed, includes the TOOLSET-043..051 regressions) and node --test tests/portable_pi.test.mjs (3 passed); offline only</code> → pass | — |
 | BACKLOG: Provide repeatable first-time backlog initialization | met | executed <code>Reviewed 7f07b182; integrated 73a8efc: uv run --python 3.12 --no-project --with-requirements requirements-test.txt python scripts/check.py (247/437/135/8 offline tests; 2 skipped; native/model excluded)</code> → pass; executed <code>uv run --python 3.12 --no-project --with-requirements requirements-test.txt python -m unittest discover -s skills/docs-sync/scripts -p test_goals.py / test_milestone_focus.py / test_goal_concurrency.py (all OK) plus malformed-source CLI probe on 5db9ccf; offline only</code> → pass | — |
 | OMH-TRIM: Keep the OMH skills profiles use and drop the rest from every prompt | unmet | executed <code>Integrated 9f84355: python3 scripts/check.py passed, including OMH pin/keep-list fixtures; live installed-profile refresh TOOLSET-098-5d remains open</code> → pass; executed <code>TOOLSET-080/081: python3 scripts/check.py passed; one-profile qualification cut OMH skill-index entries from 12,349 to 3,522 characters with code-review and verification-gate loading and omh doctor unchanged; fleet rollout 101 managed entries in each of 9 OMH profiles</code> → pass | TOOLSET-098-5d |

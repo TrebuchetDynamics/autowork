@@ -78,7 +78,7 @@ always belong to the target repository and reuse its existing document owners.
 Preserve normal document-relative links otherwise. Read referenced
 checklists when relevant; never claim missing material was consulted.
 
-Use this adapter through `hermes-toolset:engineering` or its verified installed
+Use this adapter through `autowork:engineering` or its verified installed
 path. Other upstream skills are protocol files, not separately registered Hermes
 commands. Analytical personas are not actual subagents unless separate agents ran.
 Do not execute upstream host integration commands or install hooks from examples.

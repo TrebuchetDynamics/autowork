@@ -1,10 +1,10 @@
 {
-  "name": "hermes-toolset",
+  "name": "autowork",
   "owner": {"name": "TrebuchetDynamics"},
-  "description": "Hermes Toolset repository workflows",
+  "description": "Autowork repository workflows",
   "plugins": [
     {
-      "name": "hermes-toolset",
+      "name": "autowork",
       "source": "./",
       "description": "Repository planning, documentation, research and execution workflows for Claude Code.",
       "skills": ["./adapters/skills/"]

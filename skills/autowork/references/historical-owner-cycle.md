@@ -495,7 +495,7 @@ native limit; no branch/worktree, observer-lock or inline-picker workaround.
 
 Explicit maintainer authorization to repair schedules permits
 `python scripts/wire-owner-cron.py --root DEFAULT_HOME --apply` from shared source.
-The default is read-only inventory. It makes `hermes-toolset:autowork` the primary
+The default is read-only inventory. It makes `autowork:autowork` the primary
 attached skill, replacing legacy Autogoal bindings while retaining extra skills.
 A prompt mention alone is not migration; verify both `skills` and legacy `skill`
 readback, then repeat inventory to prove idempotency. Retain established continuity

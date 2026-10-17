@@ -87,7 +87,7 @@ def inventory():
     manager = get_plugin_manager()
     manager.discover_and_load()
     plugins = manager.list_plugins()
-    wanted = set(defaults()['imported_plugins']) | {'hermes-toolset'}
+    wanted = set(defaults()['imported_plugins']) | {'autowork'}
     rows = []
     for name, item in sorted(get_plugin_commands().items()):
         if item.get('plugin') in wanted:
@@ -112,7 +112,7 @@ def inventory():
                                     if info['name'].partition(':')[0] in wanted),
             'missing_skills': missing_skills, 'unchecked_skill_sources': unchecked_sources,
             'commands': rows, 'telegram_menu_hidden': hidden, 'telegram_menu_limit': menu_limit,
-            'note': 'Menu capacity is limited; typed commands and /toolset list remain available.'}
+            'note': 'Menu capacity is limited; typed commands and /autowork list remain available.'}
 
 
 # Workflow commands shown first in the overview, in Telegram spelling.
@@ -154,15 +154,15 @@ def _last_update():
     when = _ago(result.get('started_ns'))
     return (f"Last update: {result.get('status', 'unknown')}"
             + (f', {when}' if when else '') + (f", at {', '.join(after)}" if after else '')
-            + ' · /toolset update status')
+            + ' · /autowork update status')
 
 
 def overview(report):
-    """A short, actionable /toolset reply: what is installed, ready, missing and next."""
+    """A short, actionable /autowork status reply: what is installed, ready, missing and next."""
     revision, profile = _identity()
-    own = next((p for p in report['plugins'] if p['name'] == 'hermes-toolset'), None)
+    own = next((p for p in report['plugins'] if p['name'] == 'autowork'), None)
     version = f" {own['version']}" if own and own.get('version') else ''
-    head = f'Hermes Toolset{version}' + (f' ({revision})' if revision else '')
+    head = f'Autowork{version}' + (f' ({revision})' if revision else '')
     if profile:
         head += f' · profile {profile}'
     if own and own.get('error'):
@@ -172,7 +172,7 @@ def overview(report):
     lines = [head]
     available = {row['telegram'] for row in report['commands']}
     ready = [name for name in LEAD_WORKFLOWS if name in available]
-    toolset_skills = [n for n in report['plugin_skills'] if n.startswith('hermes-toolset:')]
+    toolset_skills = [n for n in report['plugin_skills'] if n.startswith('autowork:')]
     if ready:
         lines.append('Ready: ' + ' '.join('/' + name for name in ready)
                      + (f' · {len(toolset_skills)} skills, {len(report["commands"])} commands in all'
@@ -181,7 +181,7 @@ def overview(report):
     if last:
         lines.append(last)
     for plugin in report['plugins']:
-        if plugin['name'] == 'hermes-toolset':
+        if plugin['name'] == 'autowork':
             continue
         name = plugin['name'] + (f" {plugin['version']}" if plugin.get('version') else '')
         if plugin.get('error'):
@@ -204,10 +204,10 @@ def overview(report):
     if report['unchecked_skill_sources']:
         gaps.append('skill sources ' + ', '.join(report['unchecked_skill_sources']))
     if gaps:
-        lines.append('Needs setup: ' + '; '.join(gaps) + ' → hermes toolset setup')
+        lines.append('Needs setup: ' + '; '.join(gaps) + ' → hermes autowork setup')
     if report['telegram_menu_hidden']:
         lines.append(f"Telegram menu hides {report['telegram_menu_hidden']} commands; type them directly.")
-    lines.append('More: /toolset list · /toolset update · hermes toolset doctor')
+    lines.append('More: /autowork list · /autowork update · hermes autowork doctor')
     return lines
 
 
@@ -218,7 +218,7 @@ def list_commands(raw_args=''):
         return '\n'.join(overview(report))
     query = request[5:].strip() if request.startswith('list ') else ('' if request == 'list' else request)
     rows = [r for r in report['commands'] if not query or query in r['command'] or query in r['source']]
-    lines = [f'Toolset commands: {len(rows)} matches']
+    lines = [f'Autowork commands: {len(rows)} matches']
     for row in rows:
         alias = f" (Telegram: /{row['telegram']})" if row['telegram'] != row['command'] else ''
         lines.append(f"/{row['command']}{alias} — {row['source']}")
@@ -268,7 +268,7 @@ def updater_alive(pid):
 def _updater():
     """The updater module, loaded by path like its subprocess."""
     import importlib.util
-    spec = importlib.util.spec_from_file_location('hermes_toolset_update_bundle', ROOT / 'update_bundle.py')
+    spec = importlib.util.spec_from_file_location('autowork_update_bundle', ROOT / 'update_bundle.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -298,7 +298,7 @@ def linked_lines(rows):
     names = ', '.join(r['profile'] for r in rows)
     targets = ', '.join(sorted({r['target'] for r in rows}))
     return [f'Linked to a working checkout ({targets}); any gateway restart loads its current files: {names}',
-            'Preview pinning one to its current revision: hermes toolset pin NAME --dry-run']
+            'Preview pinning one to its current revision: hermes autowork pin NAME --dry-run']
 
 
 def last_restart(folder, started_ns):
@@ -384,14 +384,14 @@ def summarize_update(result):
                      + (f", PID {done['gateway_pid']}, menus resent {len(menus)} of "
                         f"{len(menus) + len(done.get('menus_not_seen') or [])}" if done.get('gateway_pid') else ''))
     lines += linked_lines(result.get('linked_profiles'))
-    lines.append('Full receipt: /toolset update status full')
+    lines.append('Full receipt: /autowork update status full')
     return lines
 
 
 def update_status(full=False):
     path = update_home() / 'maintenance/toolset-update/latest.json'
     if not path.is_file():
-        return 'No update receipt yet. Run /toolset update; if just started, check status again shortly.'
+        return 'No update receipt yet. Run /autowork update; if just started, check status again shortly.'
     try:
         result = json.loads(path.read_text())
         request = path.with_name('request.json')
@@ -400,11 +400,11 @@ def update_status(full=False):
             requested_pid = requested.get('pid')
             if requested_pid != result.get('pid') and requested.get('started_ns', 0) > result.get('started_ns', 0):
                 if updater_alive(requested_pid):
-                    return 'Requested update is starting; use /toolset update status shortly.'
+                    return 'Requested update is starting; use /autowork update status shortly.'
                 result['request_note'] = 'The later chat request did not produce a receipt (another updater may have held the lock). Showing the actual latest updater result.'
         if result.get('status') == 'running':
             if not updater_alive(result.get('pid')):
-                return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /toolset update.'
+                return 'Update process stopped without a final receipt. Inspect maintenance/toolset-update/run.log and rerun /autowork update.'
         if result.get('gateway_restart') == 'deferred':
             # The waiter rewrites the receipt when it restarts, sees another restart or gives up.
             result['gateway_restart_progress'] = gateway_drain(path.parent) or (
@@ -449,9 +449,9 @@ def start_update(*, check=False):
     except (Exception, SystemExit):  # an unreadable lock or updater never blocks starting; the updater checks again
         owner = None
     if owner:
-        return (f"Another toolset {owner.get('mode') or 'update'} is running (PID {owner.get('pid') or '?'}"
+        return (f"Another Autowork {owner.get('mode') or 'update'} is running (PID {owner.get('pid') or '?'}"
                 + (f", started {owner['started']}" if owner.get('started') else '')
-                + '). Nothing was started; use /toolset update status, then rerun once it finishes.')
+                + '). Nothing was started; use /autowork update status, then rerun once it finishes.')
     argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
     if check:
         argv.append('--check')
@@ -466,7 +466,7 @@ def start_update(*, check=False):
         request.write_text(json.dumps({'pid': process.pid, 'started_ns': started_ns}) + '\n')
     except OSError as error:
         return f'Update could not start: {type(error).__name__}.'
-    return ('Upstream check' if check else 'All-profile update') + ' requested. Use /toolset update status for the result. Local conflicts are preserved; workers and schedules are not restarted.'
+    return ('Upstream check' if check else 'All-profile update') + ' requested. Use /autowork update status for the result. Local conflicts are preserved; workers and schedules are not restarted.'
 
 
 def handle_chat(raw_args=''):
@@ -480,8 +480,24 @@ def handle_chat(raw_args=''):
             return update_status()
         if words[1:] == ['status', 'full']:
             return update_status(full=True)
-        return 'Usage: /toolset update [--check|status [full]] — updates all existing profiles; no force option.'
+        return 'Usage: /autowork update [--check|status [full]] — updates all existing profiles; no force option.'
     return list_commands(raw_args)
+
+
+def maintenance_reply(raw_args=''):
+    """Reply to `/autowork update|status|list`, or None: other arguments run the Autowork skill.
+
+    Only these exact forms are maintenance, so instructions such as
+    `/autowork update the README` still reach the skill.
+    """
+    words = raw_args.strip().lower().split()
+    if words[:1] == ['update'] and words[1:] in ([], ['--check'], ['status'], ['status', 'full']):
+        return handle_chat(raw_args)
+    if words == ['status']:
+        return list_commands('')
+    if words[:1] == ['list'] and len(words) <= 2:
+        return list_commands(' '.join(words))
+    return None
 
 
 def setup_parser(parser):
@@ -514,13 +530,13 @@ def setup_parser(parser):
 def diagnose(report, *, core_only=False):
     """Evaluate one inventory snapshot without invoking setup or reloading gateways."""
     errors = []
-    own = next((p for p in report['plugins'] if p['name'] == 'hermes-toolset'), {})
+    own = next((p for p in report['plugins'] if p['name'] == 'autowork'), {})
     if not own.get('enabled') or own.get('error'):
-        errors.append('hermes-toolset is not loaded cleanly')
+        errors.append('autowork is not loaded cleanly')
     names = {p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')
              if p.parent.name not in {'repo-docs', 'repo-interview'}}
     commands = {r['command'] for r in report['commands']
-                if r.get('kind') == 'plugin' and r.get('source') == 'hermes-toolset'}
+                if r.get('kind') == 'plugin' and r.get('source') == 'autowork'}
     missing_commands = sorted(n.replace('_', '-') for n in names
                               if n.replace('_', '-') not in commands)
     public_names = set()
@@ -530,15 +546,15 @@ def diagnose(report, *, core_only=False):
         text = (ROOT / 'skills' / name / 'SKILL.md').read_text(encoding='utf-8')
         match = re.search(r'^name: ([a-z0-9_-]+)$', text, re.MULTILINE)
         public_names.add(match.group(1) if match else name)
-    missing_skills = sorted('hermes-toolset:' + n for n in public_names
-                            if 'hermes-toolset:' + n not in report['plugin_skills'])
+    missing_skills = sorted('autowork:' + n for n in public_names
+                            if 'autowork:' + n not in report['plugin_skills'])
     if not names:
         errors.append('No bundled skills found')
     if missing_commands:
         errors.append('Unavailable bundled commands: ' + ', '.join(missing_commands))
     if missing_skills:
         errors.append('Unavailable bundled skills: ' + ', '.join(missing_skills))
-    gaps = {field: [name for name in report[field] if name != 'hermes-toolset']
+    gaps = {field: [name for name in report[field] if name != 'autowork']
             for field in ('missing_plugins', 'missing_skills', 'unchecked_skill_sources')}
     integrations_ready = not any(gaps.values())
     ready = not errors and (core_only or integrations_ready)
@@ -552,7 +568,7 @@ def diagnose(report, *, core_only=False):
 
 
 def format_diagnosis(report):
-    lines = [f"Hermes Toolset — {report['scope']} check: {report['status']}",
+    lines = [f"Autowork — {report['scope']} check: {report['status']}",
              f"Core: {report['core_status']} (bundled skill and command registration)",
              f"Integrations: {report['integrations_status']}"]
     lines.extend('  ' + error for error in report['core_errors'])
@@ -602,7 +618,6 @@ def handle_cli(args):
 
 def register_bundle(ctx, invoke):
     register_imported_skills(ctx, invoke)
-    ctx.register_command('toolset', handle_chat, description='Bundle status, commands, and all-profile upstream update',
-                         args_hint='[list|update|filter]')
-    ctx.register_cli_command('toolset', help='Install and diagnose the Hermes toolset bundle',
+    # Chat maintenance is `/autowork update|status|list`, dispatched by maintenance_reply.
+    ctx.register_cli_command('autowork', help='Install, update and diagnose the Autowork bundle',
                              setup_fn=setup_parser, handler_fn=handle_cli)

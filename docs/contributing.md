@@ -53,13 +53,13 @@ plugin command only logs a warning and skips that command.
 For a GitHub installation, publish your skill changes and run:
 
 ```sh
-hermes plugins update hermes-toolset
+hermes plugins update autowork
 hermes gateway restart
 ```
 
 For a local symlink installation, edit this checkout and restart instead. New commands are
 discovered on startup, not watched live. A restart does not refresh a skill already
-copied into the profile's native skill directory; use `/toolset update` for that.
+copied into the profile's native skill directory; use `/autowork update` for that.
 Telegram's menu has limited capacity; the bundle prioritizes only the five workflow
 commands in [`telegram_menu_policy.py`](../telegram_menu_policy.py).
 

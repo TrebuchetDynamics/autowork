@@ -85,7 +85,7 @@ def target(root, profile, job_id, repo):
     if (not wiring.is_owner_job(job) or wiring.MARKER not in job.get('prompt', '')
             or job.get('no_agent') is True or type(job.get('enabled')) is not bool):
         raise Refused('requires a managed development Autowork job with explicit enabled state')
-    if profile == 'default' and job.get('name') == 'Profile audit and hermes-toolset maintenance':
+    if profile == 'default' and job.get('name') == wiring.AUDIT_JOB:
         raise Refused('audit jobs require their separate maintenance policy')
     return home, job
 

@@ -1,6 +1,6 @@
 # Scheduled policy and profile exceptions
 
-Maintain reusable behavior in hermes-toolset source before changing profile prompts.
+Maintain reusable behavior in autowork source before changing profile prompts.
 Profiles carry only workspace, accepted scope, owner authorization, delivery target
 and genuine repository exceptions; do not duplicate this workflow in each job.
 Existing authorized cron jobs may invoke autowork; the skill never creates schedules.
@@ -15,7 +15,7 @@ checks and required review are verified. A pending review or approval holds its
 operation and dependent work, not independently authorized non-overlapping work;
 fallback still consumes the saved batch allowance and never expands worker scope.
 
-Start with `hermes-toolset:autowork` for repository-stage preparation, then use the
+Start with `autowork:autowork` for repository-stage preparation, then use the
 current session and actual repository state. Missing task files alone are bootstrap work; an
 unintegrated owner proposal still requires reconciliation.
 
@@ -46,7 +46,7 @@ under broad repository authorization: inspect a distinct component, record justi
 TODO tasks and execute an eligible slice now. Do not confuse a cached task-specific
 planning receipt with completed repository-wide discovery.
 
-When no runnable task remains and no live worker owns the affected work, load `hermes-toolset:docs-sync`
+When no runnable task remains and no live worker owns the affected work, load `autowork:docs-sync`
 for narrow task/document reconciliation grounded in existing accepted intent; use
 Bootstrap only for applicable missing documentation. Then
 rerun selection in the same occurrence. Respect concurrent docs ownership and ledger
@@ -56,7 +56,7 @@ conflict is reconciled, not replaced by a competing docs writer.
 
 A standing explicit owner request to commit and push remains a delivery obligation
 across occurrences; autowork invocation alone never implies push permission.
-With that authority, load `hermes-toolset:git-commit-push`, gate and commit the owned
+With that authority, load `autowork:git-commit-push`, gate and commit the owned
 completed slice, push only its policy-permitted ref to the existing authorized remote,
 and read back the exact remote ref and SHA. Carry explicit publication authority
 into any delegated contract; never transfer coordinator-only permission implicitly.

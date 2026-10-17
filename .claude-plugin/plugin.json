@@ -1,10 +1,10 @@
 {
-  "name": "hermes-toolset",
-  "version": "0.2.0",
+  "name": "autowork",
+  "version": "0.3.0",
   "description": "Repository planning, documentation, research and execution workflows for Claude Code.",
   "author": {
     "name": "TrebuchetDynamics"
   },
   "license": "MIT",
-  "repository": "https://github.com/TrebuchetDynamics/hermes-toolset"
+  "repository": "https://github.com/TrebuchetDynamics/autowork"
 }

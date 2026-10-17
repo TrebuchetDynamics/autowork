@@ -1,10 +1,10 @@
 {
-  "name": "hermes-toolset",
-  "version": "0.2.0",
+  "name": "autowork",
+  "version": "0.3.0",
   "bin": {
     "tx": "tmux/tx"
   },
-  "description": "Hermes Toolset workflows for the Pi coding agent",
+  "description": "Autowork workflows for the Pi coding agent",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -12,7 +12,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/TrebuchetDynamics/hermes-toolset.git"
+    "url": "https://github.com/TrebuchetDynamics/autowork.git"
   },
   "files": [
     "adapters/",

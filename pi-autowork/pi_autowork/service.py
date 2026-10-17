@@ -21,7 +21,7 @@ ENV_NAMES = ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK', 'PI_AUTOWORK_TASK_TI
 
 UNIT = """[Unit]
 Description=pi-autowork for %i
-Documentation=https://github.com/TrebuchetDynamics/hermes-toolset/blob/main/docs/cross-host.md#run-autowork-continuously
+Documentation=https://github.com/TrebuchetDynamics/autowork/blob/main/docs/cross-host.md#run-autowork-continuously
 After=network-online.target
 
 [Service]

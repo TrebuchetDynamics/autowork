@@ -43,9 +43,9 @@ class BundleTests(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def register_command(self, name, handler, description='', args_hint=''):
-        self.commands[name] = {'handler': handler, 'plugin': 'hermes-toolset'}
+        self.commands[name] = {'handler': handler, 'plugin': 'autowork'}
 
-    def invoke(self, ctx, name, path, args, namespace='hermes-toolset'):
+    def invoke(self, ctx, name, path, args, namespace='autowork'):
         self.messages.append((namespace, name, args))
 
     def test_chat_update_is_not_treated_as_inventory_filter(self):
@@ -58,6 +58,19 @@ class BundleTests(unittest.TestCase):
         with patch.object(self.bundle, 'update_status', return_value='updated'):
             self.assertEqual(self.bundle.handle_chat('update status'), 'updated')
         self.assertIn('Usage:', self.bundle.handle_chat('update --force'))
+
+    def test_autowork_maintenance_forms_are_exact(self):
+        with patch.object(self.bundle, 'handle_chat', return_value='update') as chat, \
+                patch.object(self.bundle, 'list_commands', return_value='listed') as listing:
+            for args in ('update', 'UPDATE --check', 'update status', 'update status full'):
+                self.assertEqual(self.bundle.maintenance_reply(args), 'update')
+            self.assertEqual(self.bundle.maintenance_reply('status'), 'listed')
+            listing.assert_called_with('')
+            self.assertEqual(self.bundle.maintenance_reply('list omh'), 'listed')
+            listing.assert_called_with('list omh')
+            for args in ('', 'update the README', 'status of task 4', 'list the open tasks', 'next task'):
+                self.assertIsNone(self.bundle.maintenance_reply(args), args)
+            self.assertEqual(chat.call_count, 4)
 
     def test_update_cli_uses_dedicated_updater(self):
         args=argparse.Namespace(action='update', check=True, hermes_home='/tmp/home')
@@ -267,17 +280,17 @@ class BundleTests(unittest.TestCase):
         home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
         (folder / 'latest.json').write_text(json.dumps({'pid': 2, 'started_ns': 1, 'status': 'up_to_date',
                                                         'linked_profiles': [{'profile': 'stale', 'target': '/old'}]}))
-        rows = [{'profile': f'profile{i}', 'target': '/src/hermes-toolset', 'link': '/src/hermes-toolset',
+        rows = [{'profile': f'profile{i}', 'target': '/src/autowork', 'link': '/src/autowork',
                  'revision': 'a' * 40, 'dirty': False, 'released': True} for i in range(8)]
         with patch.object(self.bundle, 'update_home', return_value=home), \
                 patch.object(self.bundle, 'linked_profiles', return_value=rows):
             summary = self.bundle.update_status()
             full = json.loads(self.bundle.update_status(full=True).strip('`json\n'))
-        self.assertIn('Linked to a working checkout (/src/hermes-toolset); any gateway restart loads its current files: '
+        self.assertIn('Linked to a working checkout (/src/autowork); any gateway restart loads its current files: '
                       + ', '.join(r['profile'] for r in rows), summary)
-        self.assertIn('hermes toolset pin NAME --dry-run', summary)
+        self.assertIn('hermes autowork pin NAME --dry-run', summary)
         self.assertNotIn('stale', summary)
-        self.assertEqual(full['linked_profiles'][0], {'profile': 'profile0', 'target': '/src/hermes-toolset'})
+        self.assertEqual(full['linked_profiles'][0], {'profile': 'profile0', 'target': '/src/autowork'})
         self.assertLess(len(summary), 600)
         with patch.object(self.bundle, 'update_home', return_value=home), \
                 patch.object(self.bundle, 'linked_profiles', return_value=[]):
@@ -287,7 +300,7 @@ class BundleTests(unittest.TestCase):
         home = Path(self.tmp.name); folder = home / 'maintenance/toolset-update'; folder.mkdir(parents=True)
         names = [f'profile{i}' for i in range(10)]
         receipt = {'status': 'updated', 'pid': 1, 'started_ns': 1, 'profiles': names,
-                   'sources': {f'/h/{n}/plugins/hermes-toolset': {'before': '10ef9be' + 'a' * 33, 'after': '2187e98' + 'b' * 33} for n in names},
+                   'sources': {f'/h/{n}/plugins/autowork': {'before': '10ef9be' + 'a' * 33, 'after': '2187e98' + 'b' * 33} for n in names},
                    'skill_files': 500, 'drift': [], 'local_edits': [{'action': 'kept_retired'}] * 3,
                    'backup': '/h/maintenance/toolset-update/x', 'settings_healed': [],
                    'activation': [{'profile': n, 'status': 'ready', 'enable_exit': 0, 'finalize_exit': 0} for n in names],
@@ -301,7 +314,7 @@ class BundleTests(unittest.TestCase):
         self.assertLess(len(summary), 600)
         for part in ('Toolset update: updated, 10 profile(s); at 2187e98 (from 10ef9be)', 'Skill files written: 500; local edits: 3 kept_retired',
                      'Chat menus: cleared profile4; unreachable profile1', 'Gateway restart: requested, done',
-                     'Full receipt: /toolset update status full'):
+                     'Full receipt: /autowork update status full'):
             self.assertIn(part, summary)
 
     def test_running_receipt_owned_by_other_user_is_still_running(self):
@@ -453,26 +466,26 @@ class BundleTests(unittest.TestCase):
                              'tools': 0, 'commands': 6, 'hooks': 2, 'error': None}],
                 'plugin_skills': ['ponytail:ponytail', 'ponytail:ponytail-help'],
                 'commands': [{'command': 'ponytail', 'telegram': 'ponytail', 'source': 'ponytail'},
-                             {'command': 'docs-sync', 'telegram': 'docs_sync', 'source': 'hermes-toolset'}],
+                             {'command': 'docs-sync', 'telegram': 'docs_sync', 'source': 'autowork'}],
                 'missing_plugins': [], 'missing_skills': ['blocked-skill'],
                 'unchecked_skill_sources': [], 'telegram_menu_hidden': 12}
 
     def test_default_summary_reports_capabilities_and_gaps_without_command_dump(self):
         report = self.report()
-        report['plugins'].insert(0, {'name': 'hermes-toolset', 'version': '0.2.0', 'enabled': True,
+        report['plugins'].insert(0, {'name': 'autowork', 'version': '0.2.0', 'enabled': True,
                                      'tools': 0, 'commands': 44, 'hooks': 0, 'error': None})
-        report['plugin_skills'] += ['hermes-toolset:autowork', 'hermes-toolset:docs-sync']
-        report['commands'].append({'command': 'autowork', 'telegram': 'autowork', 'source': 'hermes-toolset'})
+        report['plugin_skills'] += ['autowork:autowork', 'autowork:docs-sync']
+        report['commands'].append({'command': 'autowork', 'telegram': 'autowork', 'source': 'autowork'})
         report['missing_plugins'] = ['hermes-speech']
         with patch.object(self.bundle, 'inventory', return_value=report), \
                 patch.object(self.bundle, '_identity', return_value=('abc1234', 'work')), \
-                patch.object(self.bundle, '_last_update', return_value='Last update: updated, 5 min ago, at abc1234 · /toolset update status'):
+                patch.object(self.bundle, '_last_update', return_value='Last update: updated, 5 min ago, at abc1234 · /autowork update status'):
             output = self.bundle.list_commands('')
         lines = output.splitlines()
-        self.assertEqual(lines[0], 'Hermes Toolset 0.2.0 (abc1234) · profile work')
+        self.assertEqual(lines[0], 'Autowork 0.2.0 (abc1234) · profile work')
         self.assertEqual(lines[1], 'Ready: /docs_sync /autowork · 2 skills, 3 commands in all')
         self.assertIn('ponytail 5.1.0: loaded — 6 commands, 2 skills, 2 hooks', output)
-        self.assertIn('Needs setup: plugins hermes-speech; skills blocked-skill → hermes toolset setup', output)
+        self.assertIn('Needs setup: plugins hermes-speech; skills blocked-skill → hermes autowork setup', output)
         self.assertIn('Telegram menu hides 12 commands', output)
         self.assertNotIn('/docs-sync', output)
         self.assertNotIn('Counts show', output)

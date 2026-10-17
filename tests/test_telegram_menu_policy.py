@@ -90,7 +90,7 @@ class SelfHealTests(unittest.TestCase):
         rd=importlib.util.module_from_spec(spec); sys.modules[spec.name]=rd; spec.loader.exec_module(rd)
         old={'approvals':{'mode':'off','destructive_slash_confirm':False,'mcp_reload_confirm':False},
              'agent':{'max_turns':90},
-             'plugins':{'entries':{'hermes-toolset':{'allow_gateway_injection':True}}},
+             'plugins':{'entries':{'autowork':{'allow_gateway_injection':True}}},
              'platforms':{'telegram':{'extra':{'command_menu':{'priority':['autoresearch','autoresearch_plan','autowork']}}}}}
         self.assertEqual(rd.settings_drift(old, rd.expected_settings(old)),
                          ['agent.max_turns', 'platforms.telegram.extra.command_menu.priority'])
@@ -99,7 +99,7 @@ class SelfHealTests(unittest.TestCase):
         old['platforms']['telegram']['extra']['command_menu'].update(healed['platforms']['telegram']['extra']['command_menu'])
         self.assertEqual(rd.settings_drift(old, rd.expected_settings(old)), [])
         # Hermes never reads an entry-level key, so it is not an opt-out (TOOLSET-033).
-        self.assertFalse(rd._opted_out({'plugins':{'entries':{'hermes-toolset':{'apply_runtime_defaults':False}}}}))
+        self.assertFalse(rd._opted_out({'plugins':{'entries':{'autowork':{'apply_runtime_defaults':False}}}}))
 
 
 
@@ -129,7 +129,7 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
         self.rd=importlib.util.module_from_spec(spec); sys.modules[spec.name]=self.rd; spec.loader.exec_module(self.rd)
 
     def entry(self, value):
-        return {'plugins':{'entries':{'hermes-toolset':value}}}
+        return {'plugins':{'entries':{'autowork':value}}}
 
     def test_opt_out_follows_hermes_settings_then_legacy_config(self):
         rd=self.rd
@@ -150,7 +150,7 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'config.yaml'
             self.assertFalse(self.rd.setup_opted_out(path))  # missing
-            path.write_text('plugins:\n  entries:\n    hermes-toolset:\n      config:\n        apply_runtime_defaults: false\n')
+            path.write_text('plugins:\n  entries:\n    autowork:\n      config:\n        apply_runtime_defaults: false\n')
             self.assertTrue(self.rd.setup_opted_out(path))
             path.write_text('plugins: [\n  apply_runtime_defaults: false\n')  # malformed: Hermes refuses later
             self.assertFalse(self.rd.setup_opted_out(path))
@@ -161,11 +161,11 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
 
     def test_documented_opt_out_with_restored_values_reports_no_drift(self):
         self.raw={'approvals':{'mode':'manual','destructive_slash_confirm':True},
-                  'plugins':{'entries':{'hermes-toolset':{'settings':{'apply_runtime_defaults':False}}}}}
+                  'plugins':{'entries':{'autowork':{'settings':{'apply_runtime_defaults':False}}}}}
         self.assertEqual(self.rd.verify_runtime_defaults(), [])
-        self.raw['plugins']['entries']['hermes-toolset']['settings']['apply_runtime_defaults']=True
+        self.raw['plugins']['entries']['autowork']['settings']['apply_runtime_defaults']=True
         self.assertIn('approvals.mode', self.rd.verify_runtime_defaults())
-        del self.raw['plugins']['entries']['hermes-toolset']['settings']
+        del self.raw['plugins']['entries']['autowork']['settings']
         self.assertIn('approvals.mode', self.rd.verify_runtime_defaults())
 
 
@@ -175,7 +175,7 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
             'native_probe', Path(__file__).resolve().parents[1]/'update_bundle_native.py')
         native=importlib.util.module_from_spec(spec); spec.loader.exec_module(native)
         probe=yaml.safe_load(native.PROBE_CONFIG)
-        self.assertEqual(probe['plugins']['enabled'], ['hermes-toolset'])
+        self.assertEqual(probe['plugins']['enabled'], ['autowork'])
         self.assertTrue(self.rd._opted_out(probe))
 
 

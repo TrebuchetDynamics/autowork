@@ -165,7 +165,7 @@ class UpdateDefersRestartTests(unittest.TestCase):
         self.git(self.remote, 'config', 'user.name', 'Fixture')
         (self.remote / 'skills/demo').mkdir(parents=True)
         (self.remote / 'skills/demo/SKILL.md').write_text('old\n')
-        (self.remote / 'plugin.yaml').write_text('name: hermes-toolset\n')
+        (self.remote / 'plugin.yaml').write_text('name: autowork\n')
         self.git(self.remote, 'add', '.')
         self.git(self.remote, 'commit', '-m', 'initial')
         self.repo = self.root / 'checkout'
@@ -173,7 +173,7 @@ class UpdateDefersRestartTests(unittest.TestCase):
         self.home = self.root / 'home'
         self.profiles = [('default', self.home)]
         (self.home / 'plugins').mkdir(parents=True)
-        (self.home / 'plugins/hermes-toolset').symlink_to(self.repo)
+        (self.home / 'plugins/autowork').symlink_to(self.repo)
         (self.home / 'skills/demo').mkdir(parents=True)
         (self.home / 'skills/demo/SKILL.md').write_text('old\n')
         self.mod = load()

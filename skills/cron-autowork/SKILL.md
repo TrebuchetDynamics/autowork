@@ -15,7 +15,7 @@ Creating this skill or installing the plugin never creates a job automatically.
 An unknown-command reply occurs before scheduler work; do not recreate a job to
 repair it. Verify the receiving profile's native skill and plugin registration.
 When supported by the installed toolset, run
-`hermes -p PROFILE toolset finalize --hermes-home ROOT --bundle-only` to refresh
+`hermes -p PROFILE autowork finalize --hermes-home ROOT --bundle-only` to refresh
 that profile's live gateway command wiring without restarting the shared gateway.
 Require a profile-matched `ready` / `commands_reloaded` receipt. Finalization does
 not update native skill copies or prove the original Telegram invocation succeeded;
@@ -116,7 +116,7 @@ work or override newer authority. Keep reusable recovery behavior in skills.
 Use this template with resolved values; never save placeholders:
 
 ```text
-Use hermes-toolset:autowork in REPOSITORY under PROFILE.
+Use autowork:autowork in REPOSITORY under PROFILE.
 Scope: REPOSITORY_DEVELOPMENT_OR_EXACT_TASK_FILTER.
 Delivery authority and exclusions: EXPLICIT_LIMITS.
 Resume saved continuation and inspect actual process/workspace activity first.

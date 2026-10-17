@@ -7,12 +7,12 @@ def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reloa
     bundled = {p.parent.name for p in (bundle / 'skills').glob('*/SKILL.md')
                if p.parent.name not in {'repo-docs', 'repo-interview'}}
     commands = {r['command'] for r in inventory['commands']
-                if r.get('kind') == 'plugin' and r.get('source') == 'hermes-toolset'}
+                if r.get('kind') == 'plugin' and r.get('source') == 'autowork'}
     missing = sorted(bundled - commands)
     if missing: errors.append('Unavailable bundled commands: ' + ', '.join(missing))
-    own = next((p for p in inventory['plugins'] if p['name'] == 'hermes-toolset'), {})
+    own = next((p for p in inventory['plugins'] if p['name'] == 'autowork'), {})
     if not own.get('enabled') or own.get('error'):
-        errors.append('hermes-toolset is not loaded cleanly in this profile')
+        errors.append('autowork is not loaded cleanly in this profile')
     if not bundle_only:
         for field in ('missing_plugins', 'missing_skills', 'unchecked_skill_sources'):
             if inventory[field]: errors.append(field + ': ' + ', '.join(inventory[field]))
@@ -49,7 +49,7 @@ def finish_profile(bundle, home, root, inventory, *, bundle_only=False, no_reloa
                 active.update((activation.get('name'), command) for command in
                               activation.get('activated_now', {}).get('gateway_commands', []))
             expected = {(r['source'], r['command']) for r in inventory['commands'] if r.get('kind') == 'plugin'
-                        and (not bundle_only or r['source'] == 'hermes-toolset')}
+                        and (not bundle_only or r['source'] == 'autowork')}
             absent = sorted(owner + ':' + command for owner, command in expected - active)
             if not valid or absent or receipt.get('adapters_rewired') is None:
                 result['gateway'] = 'reload_incomplete'

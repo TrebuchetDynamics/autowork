@@ -15,7 +15,12 @@ import sys
 import tempfile
 import time
 
-UPSTREAM = 'https://github.com/TrebuchetDynamics/hermes-toolset.git'
+UPSTREAM = 'https://github.com/TrebuchetDynamics/autowork.git'
+PLUGIN = 'autowork'
+
+
+def plugin_dir(home):
+    return home / 'plugins' / PLUGIN
 
 
 def git(repo, *args):
@@ -156,7 +161,7 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
     drift = []  # Legacy receipt key: profile edits are now merged into local_edits.
     local_edits = []
     for name, home in profiles:
-        plugin = home / 'plugins/hermes-toolset'
+        plugin = plugin_dir(home)
         if (home / 'plugins').is_symlink() or (plugin.is_symlink() and not plugin.exists()):
             raise ValueError(f'Unsafe or dangling plugin path: {plugin}')
         repo = plugin.resolve() if plugin.exists() else source.resolve()
@@ -297,13 +302,13 @@ def finalize_profiles(source, root, profiles):
     results = []
     env = dict(os.environ, HERMES_HOME=str(root))
     for name, home in profiles:
-        plugin = home / 'plugins/hermes-toolset'
+        plugin = plugin_dir(home)
         if not plugin.exists():
             plugin.parent.mkdir(parents=True, exist_ok=True)
             plugin.symlink_to(source, target_is_directory=True)
-        enable = subprocess.run(['hermes', '-p', name, 'plugins', 'enable', 'hermes-toolset'],
+        enable = subprocess.run(['hermes', '-p', name, 'plugins', 'enable', PLUGIN],
                                 env=env, timeout=120)
-        final = subprocess.run(['hermes', '-p', name, 'toolset', 'finalize',
+        final = subprocess.run(['hermes', '-p', name, 'autowork', 'finalize',
                                 '--hermes-home', str(root), '--bundle-only'], env=env, timeout=120)
         results.append({'profile': name, 'status': 'ready' if enable.returncode == final.returncode == 0 else 'incomplete',
                         'enable_exit': enable.returncode, 'finalize_exit': final.returncode})
@@ -561,7 +566,7 @@ def restart_when_quiet(root, homes, folder, *, update_id, gateway, window=QUIET_
                         gateway_restart_action=f'The gateway was not free of chat turns for {hours} h, so it was not '
                                                'restarted. Run `hermes gateway restart` when convenient (Hermes then '
                                                'waits for chat turns up to agent.restart_after_turn_timeout), or rerun '
-                                               '/toolset update.')
+                                               '/autowork update.')
                     return 'deferred_expired'
         sleep(poll)
 
@@ -936,7 +941,7 @@ def linked_profiles(profiles, *, upstream=UPSTREAM):
     """Profiles whose plugin links to a working checkout: any gateway restart loads its current files."""
     rows, checkouts = [], {}
     for name, home in profiles:
-        plugin = home / 'plugins/hermes-toolset'
+        plugin = plugin_dir(home)
         if not plugin.is_symlink():
             continue
         target = plugin.resolve()
@@ -955,7 +960,7 @@ def linked_profiles(profiles, *, upstream=UPSTREAM):
 def fleet_linked_profiles(root):
     """Linked profiles of a Hermes home, loadable from the plugin process (no setup_bundle on sys.path)."""
     import importlib.util
-    spec = importlib.util.spec_from_file_location('hermes_toolset_setup_bundle', Path(__file__).resolve().parent / 'setup_bundle.py')
+    spec = importlib.util.spec_from_file_location('autowork_setup_bundle', Path(__file__).resolve().parent / 'setup_bundle.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return linked_profiles(module.live_profiles(root_home(root)))
@@ -973,7 +978,7 @@ def pin_profile(root, name, *, dry_run=False, upstream=UPSTREAM):
     home = dict(live_profiles(root)).get(name)
     if home is None:
         raise ValueError(f'No profile named {name}')
-    plugin = home / 'plugins/hermes-toolset'
+    plugin = plugin_dir(home)
     if any(p.is_symlink() for p in plugin.parents):
         raise ValueError('Symlinked plugin parent')
     if not plugin.is_symlink():
@@ -992,8 +997,8 @@ def pin_profile(root, name, *, dry_run=False, upstream=UPSTREAM):
         raise ValueError('Symlinked updater state')
     backup = state / 'pinned' / f'{name}-{time.time_ns()}'
     result = {**row, 'status': 'would_pin' if dry_run else 'pinned', 'backup': str(backup),
-              'note': 'The profile keeps this revision; only /toolset update advances it. The gateway loads the '
-                      'clone at its next restart. Undo with: hermes toolset pin --unpin ' + name}
+              'note': 'The profile keeps this revision; only /autowork update advances it. The gateway loads the '
+                      'clone at its next restart. Undo with: hermes autowork pin --unpin ' + name}
     if dry_run:
         return result
     state.mkdir(parents=True, exist_ok=True)
@@ -1031,7 +1036,7 @@ def unpin_profile(root, name, *, dry_run=False):
     backup = records[-1].parent if records else None
     if backup is None:
         raise ValueError(f'No saved link for {name}; nothing to restore')
-    plugin = home / 'plugins/hermes-toolset'
+    plugin = plugin_dir(home)
     if plugin.is_symlink() or not plugin.is_dir():
         raise ValueError('The plugin is not a pinned clone; nothing was changed')
     if git(plugin, 'status', '--porcelain').strip():
@@ -1113,7 +1118,7 @@ def scoped_update(root, source, revision, names, python, *, check=False):
                 reason = active_consumers(home, name) if row.get('phase') != 'ready' else None
                 if reason:
                     raise ValueError(reason)
-                plugin = home / 'plugins/hermes-toolset'
+                plugin = plugin_dir(home)
                 if any(p.is_symlink() for p in plugin.parents):
                     raise ValueError('Symlinked plugin parent')
                 original = backup / name / 'plugin'
@@ -1342,7 +1347,7 @@ def main(argv=None):
                     # Report the owner; its receipt stays untouched.
                     print(json.dumps({'status': 'busy', 'running': _describe_runner(state_dir),
                                       'note': 'Another update holds the update lock. Nothing was changed and its '
-                                              'receipt was not replaced; use /toolset update status, then rerun '
+                                              'receipt was not replaced; use /autowork update status, then rerun '
                                               'once it finishes.'}, indent=2))
                     return 3
                 time.sleep(0.2)
@@ -1370,14 +1375,14 @@ def main(argv=None):
             result['skill_files'] = len(plan['writes'])
             result['linked_profiles'] = [{k: r[k] for k in ('profile', 'target')} for r in linked_profiles(profiles)]
             changed = bool(plan['writes']) or any(s['before'] != s['after'] for s in plan['sources'].values())
-            missing = any(not (h / 'plugins/hermes-toolset').exists() for _, h in profiles)
+            missing = any(not plugin_dir(h).exists() for _, h in profiles)
             result['drift'] = plan['drift']
             # Profile edits merged onto (or kept over) the release; review and port
             # any that should reach every profile.
             result['local_edits'] = plan.get('local_edits', [])
             if plan['drift']:
                 result.update(status='incomplete',
-                              action='Review the listed native skill files, back up customizations or intentional pins, and reconcile them with the fetched revision before rerunning /toolset update. No checkout or profile changes were applied.')
+                              action='Review the listed native skill files, back up customizations or intentional pins, and reconcile them with the fetched revision before rerunning /autowork update. No checkout or profile changes were applied.')
             elif args.check:
                 result['status'] = 'update_available' if changed or missing else 'up_to_date'
             else:
@@ -1421,11 +1426,11 @@ def main(argv=None):
                     result['gateway_restart'] = 'not_running'
             result['note'] = ('Existing chats may retain loaded instructions. The gateway restarts only when no chat '
                               'turn is in flight; while one is, the restart is deferred and retried for up to 6 h, '
-                              'never forced. It then refreshes commands and Telegram menus; /toolset update status '
+                              'never forced. It then refreshes commands and Telegram menus; /autowork update status '
                               'shows what it waits on. Cron runs continue in their own workers; schedules persist.')
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             result.update(status='incomplete', error=str(error),
-                          action='Resolve the named checkout/file error and rerun /toolset update. Partial changes, if any, are retained with backups.')
+                          action='Resolve the named checkout/file error and rerun /autowork update. Partial changes, if any, are retained with backups.')
         save()
         print(json.dumps(result, indent=2))
         return int(result['status'] == 'incomplete')

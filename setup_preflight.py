@@ -137,7 +137,7 @@ def preflight(repo, root, profiles, *, bundle_only=False):
         'approvals.mcp_reload_confirm': defaults['mcp_reload_confirm'],
         'agent.max_turns': defaults['max_turns'],
         'skills.platform_disabled': defaults['skills_platform_disabled'],
-        'plugins.entries.hermes-toolset.allow_gateway_injection': defaults['allow_gateway_injection'],
+        'plugins.entries.autowork.allow_gateway_injection': defaults['allow_gateway_injection'],
     }
     spec = importlib.util.spec_from_file_location('preflight_runtime_defaults', repo / 'runtime_defaults.py')
     runtime = importlib.util.module_from_spec(spec)
@@ -155,7 +155,7 @@ def preflight(repo, root, profiles, *, bundle_only=False):
         plugins = home / 'plugins'
         if plugins.exists() and not plugins.is_dir():
             errors.append(f'{name}: plugins must be a directory')
-        target = plugins / 'hermes-toolset'
+        target = plugins / 'autowork'
         if target.exists() or target.is_symlink():
             if not (target / 'plugin.yaml').is_file():
                 errors.append(f'{name}: existing bundle path is not a complete plugin')
@@ -168,9 +168,9 @@ def preflight(repo, root, profiles, *, bundle_only=False):
         if opted_out is None:
             errors.append(f'{name}: cannot verify the runtime-defaults opt-out without PyYAML')
         elif opted_out:
-            plan.append('  Enable hermes-toolset; runtime-defaults opt-out: bundle policy settings skipped')
+            plan.append('  Enable autowork; runtime-defaults opt-out: bundle policy settings skipped')
         else:
-            plan.append('  Enable hermes-toolset; apply settings: ' + json.dumps(settings, sort_keys=True))
+            plan.append('  Enable autowork; apply settings: ' + json.dumps(settings, sort_keys=True))
         plan.append('  Existing skill copies are preserved; auth and conversation history unchanged')
         if bundle_only:
             plan.append('  External integrations and memory unchanged')

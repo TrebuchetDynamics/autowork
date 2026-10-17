@@ -21,7 +21,8 @@
       "tasks": [
         "TOOLSET-001",
         "TOOLSET-035",
-        "TOOLSET-121-3d"
+        "TOOLSET-121-3d",
+        "TOOLSET-123-a0"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -605,6 +606,7 @@
       "TOOLSET-115-bf",
       "TOOLSET-120-fc",
       "TOOLSET-121-3d",
+      "TOOLSET-123-a0",
       "TOOLSET-117-cb",
       "TOOLSET-118-68",
       "TOOLSET-119-2b",
@@ -748,6 +750,16 @@
       "section": "Next",
       "status": "open",
       "title": "Rename the repository and plugin from hermes-toolset to autowork"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-121-3d"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-123-a0",
+      "section": "Next",
+      "status": "open",
+      "title": "Reinstall the live Hermes profiles and host plugins as autowork"
     },
     {
       "depends_on": [

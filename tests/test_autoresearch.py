@@ -26,7 +26,7 @@ class AutoresearchCommands(unittest.TestCase):
                 self.assertIn(alias, self.ctx.commands)
                 self.ctx.commands[alias](raw)
                 prompt, _ = self.ctx.messages[-1]
-                self.assertIn('hermes-toolset:autoresearch', prompt)
+                self.assertIn('autowork:autoresearch', prompt)
                 self.assertIn(f'Selected subcommand: {command}\n', prompt)
                 self.assertTrue(prompt.endswith(raw))
 

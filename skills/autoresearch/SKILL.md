@@ -136,7 +136,7 @@ existing task and docs already preserve its material reasoning/evidence and scop
 acceptance, sources and dependencies remain correct, return the decision/evidence to the same Autowork
 coordinator without invoking Docs Sync. Keep any needed execution receipt in the
 existing task journal. When documentation or backlog actually needs a change, load
-`hermes-toolset:docs-sync` (or the verified sibling SKILL.md) in **narrow Maintain**
+`autowork:docs-sync` (or the verified sibling SKILL.md) in **narrow Maintain**
 for affected owners; do not start a whole-repository bootstrap implicitly.
 
 1. Supply a compact finding receipt: command/run path, accepted requirement/source,

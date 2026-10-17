@@ -1,12 +1,12 @@
-# Hermes Toolset
+# Autowork
 
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="Hermes Toolset: your repository is the workspace. TODO.md holds the work queue; /autowork implements eligible tasks and checks each change. Conceptual workflow, not a run receipt.">
+  <img src="assets/readme/hero.svg" width="100%" alt="Autowork: your repository is the workspace. TODO.md holds the work queue; /autowork implements eligible tasks and checks each change. Conceptual workflow, not a run receipt.">
 </p>
 
 **Plan with an agent. Keep the decisions in Git. Pick up the next ready task.**
 
-Hermes Toolset connects planning, documentation and verified repository work around
+Autowork connects planning, documentation and verified repository work around
 one shared queue: `TODO.md`. Use it in **Hermes, Claude Code, Codex or Pi**.
 
 [Install](#install) · [First use](#first-use-in-your-project) ·
@@ -23,8 +23,8 @@ one shared queue: `TODO.md`. Use it in **Hermes, Claude Code, Codex or Pi**.
 | Host | Installation | Planning invocation |
 | --- | --- | --- |
 | Hermes | [Native plugin](#try-the-native-plugin-in-one-profile) | `/plan-with-me` |
-| Claude Code | [Plugin marketplace](#install) | `/hermes-toolset:plan-with-me` |
-| Codex | [Plugin marketplace](#install) | `$hermes-toolset:plan-with-me` |
+| Claude Code | [Plugin marketplace](#install) | `/autowork:plan-with-me` |
+| Codex | [Plugin marketplace](#install) | `$autowork:plan-with-me` |
 | Pi | [Git package](#install) | `/plan_with_me` |
 
 **Fleet management and the Hermes scheduler integration are Hermes-only.** Portable
@@ -68,13 +68,13 @@ Default-profile commands below; add `-p work` after `hermes` for a named profile
 Advisory dependencies are not installed; missing ones warn rather than block loading.
 
 **Keep your approval settings?** Before enabling, run
-`hermes config set plugins.entries.hermes-toolset.settings.apply_runtime_defaults false`
+`hermes config set plugins.entries.autowork.settings.apply_runtime_defaults false`
 ([opt-out details](docs/installation.md#install)). Otherwise, accept the defaults with:
 
 ```sh
-hermes plugins install TrebuchetDynamics/hermes-toolset
-hermes plugins enable hermes-toolset
-hermes toolset doctor --core
+hermes plugins install TrebuchetDynamics/autowork
+hermes plugins enable autowork
+hermes autowork doctor --core
 ```
 
 The opt-out does not undo prior changes or prevent full setup from configuring
@@ -84,21 +84,21 @@ Native install stays in one profile; full setup expands to **every live profile*
 **Claude Code** — install the marketplace and plugin:
 
 ```sh
-claude plugin marketplace add TrebuchetDynamics/hermes-toolset
-claude plugin install hermes-toolset@hermes-toolset
+claude plugin marketplace add TrebuchetDynamics/autowork
+claude plugin install autowork@autowork
 ```
 
 **Codex** — requires a CLI with plugin support:
 
 ```sh
-codex plugin marketplace add TrebuchetDynamics/hermes-toolset --ref main
-codex plugin add hermes-toolset@hermes-toolset-marketplace
+codex plugin marketplace add TrebuchetDynamics/autowork --ref main
+codex plugin add autowork@autowork-marketplace
 ```
 
 **Pi** — requires Node 22 or later:
 
 ```sh
-pi install git:github.com/TrebuchetDynamics/hermes-toolset
+pi install git:github.com/TrebuchetDynamics/autowork
 ```
 
 Restart your host session to discover the installed skills. See the
@@ -144,8 +144,8 @@ also needs `uv` unless the OMH and Graphify CLIs are installed. After backing up
 configuration and reviewing the policy above:
 
 ```sh
-git clone https://github.com/TrebuchetDynamics/hermes-toolset.git
-cd hermes-toolset
+git clone https://github.com/TrebuchetDynamics/autowork.git
+cd autowork
 bash install.sh --bundle-only --dry-run
 bash install.sh --bundle-only
 ```
@@ -209,9 +209,9 @@ From your project's main-branch checkout, after the Pi installation above:
 
 ```sh
 # Preview only: no workers or repository changes.
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --dry-run
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --dry-run
 # Run until no task can start, with up to two workers.
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --until-empty --workers 2
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --until-empty --workers 2
 ```
 
 Starting the second command makes model calls and local commits. Configure project
@@ -282,8 +282,8 @@ Hermes-only scheduler, profiles and fleet management:
 - **Schedule:** `/cron-autowork every 30 minutes for this repo; no push` creates or
   updates a matching job and verifies it. **With a cadence, a paused job resumes.**
 - **Set up a profile:** `/profile-create` guides repository-bound profile setup.
-- **Update:** `/toolset update` updates every live profile; see [updating](#updating).
-- **Inspect:** `/toolset list` lists registered commands and their owners.
+- **Update:** `/autowork update` updates every live profile; see [updating](#updating).
+- **Inspect:** `/autowork list` lists registered commands and their owners.
 
 | Interface | Plan | Docs Sync | Schedule |
 | --- | --- | --- | --- |
@@ -352,17 +352,27 @@ and [reporting contract](skills/autowork/references/dispatch-and-reporting.md):
 
 ## Updating
 
-**Hermes:** `/toolset update` in chat updates every live profile; the terminal form
-is `hermes toolset update`. Use `/toolset update --check` in chat to preview. Updates
+**Hermes:** `/autowork update` in chat updates every live profile; the terminal form
+is `hermes autowork update`. Use `/autowork update --check` in chat to preview. Updates
 are fast-forward-only, refuse dirty plugin checkouts, preserve compatible installed-skill
 edits and reapply runtime/menu defaults except where opted out. Conflicts stop preflight.
 
 **Files updated does not mean the gateway is running updated code.** A busy root
 gateway can defer its restart for up to six hours, then expire without restarting.
-Check `/toolset update status` in chat for pending/deferred activation and the final
+Check `/autowork update status` in chat for pending/deferred activation and the final
 result. Profile-dedicated gateways need their own restart. See
 [update behavior and recovery](docs/installation.md#update-all-profiles);
 portable hosts use their [own package update commands](docs/cross-host.md).
+
+### Renamed from hermes-toolset
+
+This project was called hermes-toolset before 0.3.0. The rename has no compatibility
+layer: the plugin, command namespace, settings key (`plugins.entries.autowork`) and
+chat/terminal maintenance commands (`/autowork update|status|list`,
+`hermes autowork …`) exist only under the new name. Remove an older installation and
+[install](#install) `autowork` again in each host; in Hermes, move any settings you set
+under `plugins.entries.hermes-toolset` and rewire existing cron jobs with
+`scripts/wire-owner-cron.py --apply`.
 
 ## What verification proves
 
@@ -376,7 +386,7 @@ portable hosts use their [own package update commands](docs/cross-host.md).
 Package contents have changed since some isolated-install runs. The
 [cross-host verification record](docs/cross-host.md#behavior-and-verification) names
 the tested versions and gaps; [testing and compatibility](docs/testing.md) covers
-Hermes. `/toolset` reports registrations, not connected services; Hermes' `/toolsets`
+Hermes. `/autowork status` reports registrations, not connected services; Hermes' `/toolsets`
 is a different tool-group inventory. No registration or package test proves model
 output quality, Git delivery or live Telegram execution.
 

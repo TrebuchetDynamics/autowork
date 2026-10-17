@@ -190,7 +190,7 @@ class InstallOmhTests(unittest.TestCase):
     def test_plugin_comments_do_not_hide_enabled_list_from_omh(self):
         config = self.home / 'config.yaml'
         config.write_text('plugins:\n  clone_timeout_seconds: 300\n'
-                          '# Model settings\n  enabled:\n    - hermes-toolset\n'
+                          '# Model settings\n  enabled:\n    - autowork\n'
                           'model:\n  provider: openai-codex\n')
         self.command('omh', '''import json, sys
 from pathlib import Path
@@ -209,7 +209,7 @@ print(json.dumps({'ok': True}))
         result = self.run_helper('--profile', 'default')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(config.read_text().count('  enabled:'), 1)
-        self.assertIn('    - hermes-toolset', config.read_text())
+        self.assertIn('    - autowork', config.read_text())
         self.assertIn('  provider: openai-codex', config.read_text())
         self.assertIn('# Model settings', config.read_text())
 

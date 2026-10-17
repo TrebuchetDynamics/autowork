@@ -32,7 +32,7 @@ export default function register(pi) {
       handler: async (args, ctx) => {
         const file = new URL(`${skill}/SKILL.md`, skillsRoot);
         const body = await readFile(file, 'utf8');
-        const message = `Use this portable Hermes Toolset workflow. Source: ${fileURLToPath(file)}\n`
+        const message = `Use this portable Autowork workflow. Source: ${fileURLToPath(file)}\n`
           + `Resolve its relative references from that directory.\n\n${body}\n\n`
           + (protocol ? `Selected subcommand: ${protocol}\n\n` : '')
           + (mode ? `Selected mode: ${mode}\n\n` : '')

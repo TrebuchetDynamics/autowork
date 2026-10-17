@@ -2,13 +2,13 @@
 
 ## Commands
 
-Use `/toolset` for a short overview: the bundle version and revision, the profile serving
+Use `/autowork status` for a short overview: the bundle version and revision, the profile serving
 the chat, which workflow commands are ready, the last update, other plugins' load status
 and counts, and what still needs setup. These are registered capabilities, not a claim
 that every tool is enabled in the current chat. Hermes's `/toolsets` lists tool
 groups; plugins that provide skills, commands, or hooks need not appear there.
-Use `/toolset list` in CLI chat or Telegram for the installed command inventory,
-or `/toolset omh` to filter it. `hermes toolset doctor --core` checks the bundled command layer and lists external
+Use `/autowork list` in CLI chat or Telegram for the installed command inventory,
+or `/autowork list omh` to filter it. `hermes autowork doctor --core` checks the bundled command layer and lists external
 gaps separately. Plain `doctor` requires the full stack; add `--json` for automation. Imported native commands keep their own handlers;
 imported plugin skills without commands receive aliases. Telegram's menu has a
 capacity limit, so some commands must be typed rather than selected in the menu.
@@ -29,7 +29,7 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/ui-taste` | `/ui_taste` | Uizze's UI Taste playbooks for building, polishing and reviewing web and iOS interfaces |
 | `/beautify-github-readme` | `/beautify_github_readme` | Redesign or audit a GitHub README with project-native SVG assets |
 | `/engineering` | `/engineering` | Select one engineering protocol for a concrete method gap |
-| `/toolset` | `/toolset` | Inspect registered capabilities and setup gaps; `/toolset update [--check\|status [full]]` updates all profiles |
+| `/autowork status` | `/autowork status` | Inspect registered capabilities and setup gaps; `/autowork update [--check\|status [full]]` updates all profiles |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
 decisions and actionable tasks through Docs Sync, following the shared
@@ -56,7 +56,7 @@ subcommands. The agent loads the skill through `skill_view` and performs its
 instructions using the current conversation and tools.
 
 Bundled skills also remain available by their qualified names, such as
-`hermes-toolset:docs-sync`. Supporting files stay next to their `SKILL.md`. Shared contracts live in
+`autowork:docs-sync`. Supporting files stay next to their `SKILL.md`. Shared contracts live in
 [`skills/shared`](../skills/shared/COMMON-CONTRACT.md), alongside the skill folders;
 the legacy skill copier preserves that support directory too. Resolve helper
 commands from the loaded bundle rather than assuming `~/.hermes/shared-skills`.

@@ -916,7 +916,7 @@ autowork_script() {
     [[ -n "$script" && -f "$script" ]] && { printf '%s\n' "$script"; return 0; }
   fi
   script="$(script_dir)/../scripts/pi-autowork.sh"
-  [[ -f "$script" ]] || die "autowork: pi-autowork.sh not found; install the hermes-toolset Pi package or set PI_AUTOWORK_SCRIPT"
+  [[ -f "$script" ]] || die "autowork: pi-autowork.sh not found; install the autowork Pi package or set PI_AUTOWORK_SCRIPT"
   printf '%s\n' "$(cd -P "$(dirname -- "$script")" && pwd)/pi-autowork.sh"
 }
 

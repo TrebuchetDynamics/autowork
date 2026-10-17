@@ -1,8 +1,8 @@
 {
-  "name": "hermes-toolset-marketplace",
+  "name": "autowork-marketplace",
   "plugins": [
     {
-      "name": "hermes-toolset",
+      "name": "autowork",
       "source": {
         "source": "local",
         "path": "."

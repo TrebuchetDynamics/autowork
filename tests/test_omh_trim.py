@@ -42,32 +42,32 @@ class OmhTrimTests(unittest.TestCase):
         patch = self.rd.expected_settings(raw)
         if 'skills' in patch:
             raw.setdefault('skills', {})['disabled'] = patch['skills']['disabled']
-        entry = patch['plugins']['entries']['hermes-toolset']
+        entry = patch['plugins']['entries']['autowork']
         if 'omh_trim' in entry:
-            raw.setdefault('plugins', {}).setdefault('entries', {}).setdefault('hermes-toolset', {})['omh_trim'] = entry['omh_trim']
+            raw.setdefault('plugins', {}).setdefault('entries', {}).setdefault('autowork', {})['omh_trim'] = entry['omh_trim']
         return patch
 
     def test_unkept_omh_skills_join_user_entries_by_registered_name(self):
         self.apply(self.raw)
         self.assertEqual(self.raw['skills']['disabled'], ['my-own-skill', 'omh-browser', 'omh-wiki-export'])
-        self.assertEqual(self.raw['plugins']['entries']['hermes-toolset']['omh_trim'], ['omh-browser', 'omh-wiki-export'])
+        self.assertEqual(self.raw['plugins']['entries']['autowork']['omh_trim'], ['omh-browser', 'omh-wiki-export'])
         # Idempotent: a second pass reports no drift.
         drift = self.rd.settings_drift(self.raw, self.rd.expected_settings(self.raw))
         self.assertNotIn('skills.disabled', drift)
-        self.assertNotIn('plugins.entries.hermes-toolset.omh_trim', drift)
+        self.assertNotIn('plugins.entries.autowork.omh_trim', drift)
 
     def test_keeping_a_skill_removes_only_that_managed_entry(self):
         self.apply(self.raw)
         self.keep.append('browser-operator')
         self.apply(self.raw)
         self.assertEqual(self.raw['skills']['disabled'], ['my-own-skill', 'omh-wiki-export'])
-        self.assertEqual(self.raw['plugins']['entries']['hermes-toolset']['omh_trim'], ['omh-wiki-export'])
+        self.assertEqual(self.raw['plugins']['entries']['autowork']['omh_trim'], ['omh-wiki-export'])
 
     def test_profiles_without_omh_or_keep_list_gain_nothing(self):
         plain = {'platforms': {'telegram': {'extra': {'command_menu': {'priority': []}}}}}
         patch = self.rd.expected_settings(plain)
         self.assertNotIn('skills', patch)
-        self.assertNotIn('omh_trim', patch['plugins']['entries']['hermes-toolset'])
+        self.assertNotIn('omh_trim', patch['plugins']['entries']['autowork'])
         self.keep.clear(); self.keep.extend([])
         sys.modules['trim_pkg.bundle'].defaults = lambda: {'hermes': {'approvals_mode': 'off', 'destructive_slash_confirm': False,
             'mcp_reload_confirm': False, 'max_turns': 'unlimited', 'allow_gateway_injection': True}}

@@ -205,7 +205,7 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     (data / 'tmp').mkdir(exist_ok=True, mode=0o700)
     env = {k: v for k, v in os.environ.items()
-           if k != 'HERMES_TOOLSET_EXECUTION_COMMON' and not k.startswith('GIT_')}
+           if k != 'AUTOWORK_EXECUTION_COMMON' and not k.startswith('GIT_')}
     env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())

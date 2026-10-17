@@ -22,14 +22,14 @@ class UpdateTests(unittest.TestCase):
         self.git(self.remote,'config','user.name','Fixture')
         (self.remote/'skills/demo').mkdir(parents=True)
         (self.remote/'skills/demo/SKILL.md').write_text('old\n')
-        (self.remote/'plugin.yaml').write_text('name: hermes-toolset\n')
+        (self.remote/'plugin.yaml').write_text('name: autowork\n')
         self.git(self.remote,'add','.');self.git(self.remote,'commit','-m','initial')
         self.repo=self.root/'checkout';self.git(self.root,'clone',str(self.remote),str(self.repo))
         self.home=self.root/'home';self.home.mkdir()
         self.profiles=[('default',self.home),('work',self.home/'profiles/work')]
         for name,home in self.profiles:
             (home/'plugins').mkdir(parents=True)
-            (home/'plugins/hermes-toolset').symlink_to(self.repo)
+            (home/'plugins/autowork').symlink_to(self.repo)
             (home/'skills/demo').mkdir(parents=True)
             (home/'skills/demo/SKILL.md').write_text('old\n')
         spec=importlib.util.spec_from_file_location('update_under_test',ROOT/'update_bundle.py')
@@ -494,8 +494,8 @@ class ScopedUpdateTests(unittest.TestCase):
             raise ValueError('Kanban lookup is forbidden during deployment')
         self.calls.append((action, str(home)))
         if action == 'install':
-            self.git(home, 'clone', str(stage), str(home/'plugins/hermes-toolset'))
-        return {'commands': ['autowork', 'toolset']} if action == 'verify' else {'admitted': True}
+            self.git(home, 'clone', str(stage), str(home/'plugins/autowork'))
+        return {'commands': ['autowork']} if action == 'verify' else {'admitted': True}
 
     def deploy(self, names=('default',), **kwargs):
         return self.mod.scoped_update(self.home, self.remote, self.revision, names, 'python3', **kwargs)
@@ -507,10 +507,10 @@ class ScopedUpdateTests(unittest.TestCase):
         result = self.deploy()
         self.assertEqual(result['status'], 'updated')
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'new\n')
-        self.assertFalse((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertFalse((self.home/'plugins/autowork').is_symlink())
         self.assertEqual((self.repo/'skills/demo/SKILL.md').read_text(), 'old\n')
         self.assertEqual((self.profiles[1][1]/'skills/demo/SKILL.md').read_text(), 'old\n')
-        self.assertTrue((self.profiles[1][1]/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.profiles[1][1]/'plugins/autowork').is_symlink())
         self.assertEqual(self.git(self.remote, 'rev-parse', 'HEAD'), self.revision)
         self.assertTrue(result['profiles']['default']['installed_hashes'])
         self.assertEqual((Path(result['backup'])/'default/original-source/skills/demo/SKILL.md').read_text(), 'old\n')
@@ -531,7 +531,7 @@ class ScopedUpdateTests(unittest.TestCase):
             result = self.deploy()
         self.assertEqual(result['status'], 'incomplete')
         self.assertIn('scanner', result['profiles']['default']['error'])
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
         self.assertEqual(config.read_text(), 'model: unchanged\n')
 
@@ -568,7 +568,7 @@ class ScopedUpdateTests(unittest.TestCase):
             result = self.deploy(('default', 'work'))
         self.assertEqual(result['status'], 'updated', result['profiles'])
         for _, home in self.profiles:
-            self.assertFalse((home/'plugins/hermes-toolset').is_symlink())
+            self.assertFalse((home/'plugins/autowork').is_symlink())
             self.assertEqual((home/'skills/demo/SKILL.md').read_text(), 'new\n')
         if path:
             self.assertEqual(path.read_bytes(), before)
@@ -630,7 +630,7 @@ class ScopedUpdateTests(unittest.TestCase):
             return self.fake_native(action, *args)
         with patch.object(self.mod, 'native_call', race): result = self.deploy()
         self.assertEqual(result['status'], 'incomplete')
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
 
     def test_destination_race_during_scan_is_not_overwritten(self):
         path = self.home/'skills/demo/SKILL.md'
@@ -640,7 +640,7 @@ class ScopedUpdateTests(unittest.TestCase):
         with patch.object(self.mod, 'native_call', race): result = self.deploy()
         self.assertEqual(result['status'], 'incomplete')
         self.assertEqual(path.read_text(), 'concurrent change')
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
 
     def test_killed_after_slot_move_resumes_original_backup(self):
         class Killed(BaseException): pass
@@ -649,7 +649,7 @@ class ScopedUpdateTests(unittest.TestCase):
             return self.fake_native(action, *args)
         with patch.object(self.mod, 'native_call', kill), self.assertRaises(Killed): self.deploy()
         saved = json.loads((self.home/'maintenance/toolset-update/scoped.json').read_text())
-        self.assertFalse((self.home/'plugins/hermes-toolset').exists())
+        self.assertFalse((self.home/'plugins/autowork').exists())
         result = self.deploy()
         self.assertEqual(result['status'], 'updated')
         self.assertEqual(result['backup'], saved['backup'])
@@ -657,7 +657,7 @@ class ScopedUpdateTests(unittest.TestCase):
 
     def test_slot_move_intent_before_rename_resumes_directory_install(self):
         import shutil
-        slot = self.home/'plugins/hermes-toolset'
+        slot = self.home/'plugins/autowork'
         slot.unlink(); shutil.copytree(self.repo, slot)
         original = Path.rename
         class Killed(BaseException): pass
@@ -675,12 +675,12 @@ class ScopedUpdateTests(unittest.TestCase):
             return self.fake_native(action, home, stage, *args)
         with patch.object(self.mod, 'native_call', race): result = self.deploy()
         self.assertEqual(result['status'], 'incomplete')
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
 
     def test_untracked_native_output_cannot_be_reported_ready(self):
         def extra(action, home, stage, *args):
             result = self.fake_native(action, home, stage, *args)
-            if action == 'install': (home/'plugins/hermes-toolset/extra.py').write_text('extra')
+            if action == 'install': (home/'plugins/autowork/extra.py').write_text('extra')
             return result
         with patch.object(self.mod, 'native_call', extra): result = self.deploy()
         self.assertEqual(result['status'], 'incomplete')
@@ -692,7 +692,7 @@ class ScopedUpdateTests(unittest.TestCase):
         self.addCleanup(lambda: (process.terminate(), process.wait()))
         result = self.deploy()
         self.assertEqual(result['profiles']['default']['status'], 'deferred')
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
 
     def test_helper_launch_lock_defers_install_without_changing_profile(self):
         import fcntl
@@ -703,7 +703,7 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual(result['status'], 'incomplete')
         self.assertIn('handoff is active', result['profiles']['default']['error'])
         self.assertEqual(self.calls, [])
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
 
     def test_helper_started_during_scan_is_preserved_and_blocks_publication(self):
@@ -711,7 +711,7 @@ class ScopedUpdateTests(unittest.TestCase):
         def race(action, *args):
             if action == 'scan':
                 process = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)',
-                                           str(self.home/'plugins/hermes-toolset/update_bundle.py')])
+                                           str(self.home/'plugins/autowork/update_bundle.py')])
                 processes.append(process)
                 self.addCleanup(lambda: (process.terminate(), process.wait()))
             return self.fake_native(action, *args)
@@ -720,7 +720,7 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual(result['status'], 'incomplete')
         self.assertIn('Active helper process', result['profiles']['default']['error'])
         self.assertIsNone(processes[0].poll())
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
         self.assertNotIn('install', [action for action, _ in self.calls])
 
@@ -746,7 +746,7 @@ class ScopedUpdateTests(unittest.TestCase):
         self.assertEqual(result['profiles']['default']['status'], 'deferred')
         self.assertIn('Active direct coordinator', result['profiles']['default']['error'])
         self.assertEqual(claim_path.read_bytes(), before)
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertEqual(self.calls, [])
 
     def test_released_direct_claim_does_not_veto_install(self):
@@ -775,7 +775,7 @@ class ScopedUpdateTests(unittest.TestCase):
             result = self.deploy()
         self.assertEqual(result['status'], 'incomplete')
         self.assertIn('Active direct coordinator', result['profiles']['default']['error'])
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(), 'old\n')
         self.assertNotIn('install', [action for action, _ in self.calls])
 
@@ -827,7 +827,7 @@ class ScopedUpdateTests(unittest.TestCase):
         result = self.deploy()
         self.assertEqual(result['profiles']['default']['status'], 'deferred')
         self.assertIn('Active direct coordinator owns TASK-1', result['profiles']['default']['error'])
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertEqual(claim_a.read_bytes(), before)
         self.assertEqual(self.calls, [])
         claim_a.unlink()
@@ -911,7 +911,7 @@ class ScopedUpdateTests(unittest.TestCase):
         result = self.deploy(check=True)
         self.assertEqual(result['status'], 'update_available')
         self.assertEqual(self.calls, [])
-        self.assertTrue((self.home/'plugins/hermes-toolset').is_symlink())
+        self.assertTrue((self.home/'plugins/autowork').is_symlink())
         self.assertFalse((self.remote/'.git/FETCH_HEAD').exists())
 
     def test_unknown_or_empty_selection_is_rejected(self):
@@ -1060,7 +1060,7 @@ class PinProfileTests(unittest.TestCase):
         with patch.dict('sys.modules', {'setup_bundle': self.setup_stub}):
             return self.mod.unpin_profile(self.home, name, **options)
     def plugin(self, name='work'):
-        return dict(self.profiles)[name]/'plugins/hermes-toolset'
+        return dict(self.profiles)[name]/'plugins/autowork'
 
     def test_reports_only_linked_profiles_with_their_checkout_state(self):
         rows = self.mod.linked_profiles(self.profiles, upstream=str(self.remote))

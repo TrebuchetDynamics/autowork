@@ -6,7 +6,7 @@ page has drifted. Conversational workflow commands (`/autowork`, `/docs_sync`,
 `/plan_with_me` and the rest) are listed in [workflows](workflows.md#commands);
 procedures and their side effects are in [installation](installation.md).
 
-## Terminal: `hermes toolset`
+## Terminal: `hermes autowork`
 
 Source: [`bundle.py`](../bundle.py) `setup_parser` and `handle_cli`. Add `-p PROFILE`
 after `hermes` to run from a named profile; `setup` and `update` still target every
@@ -14,11 +14,11 @@ live profile under the same Hermes root.
 
 | Command | Flags | Effect |
 | --- | --- | --- |
-| `hermes toolset doctor` | `--json`; `--core` (alias `--bundle-only`) | Reports plugin load and command/skill registration, and lists profiles linked to a working checkout (`linked_profiles`; never a failure). Exit 1 unless `status` is `ready`. `--core` ignores external integration gaps. |
-| `hermes toolset setup` | `--dry-run`, `--yes-deps`, `--bundle-only`, `--no-reload`, `--hermes-home ROOT` | Runs [`setup_bundle.py`](../setup_bundle.py): installs sources in [`plugins/PLUGINS.md`](../plugins/PLUGINS.md), applies [defaults](../plugins/defaults.json), finalizes every live profile. |
-| `hermes toolset update` | `--check`, `--hermes-home ROOT` | Runs [`update_bundle.py`](../update_bundle.py) and waits: fast-forward-only update of every live profile. `--check` fetches and previews only. |
-| `hermes toolset pin NAME` | `--dry-run`, `--unpin`, `--hermes-home ROOT` | Replaces one profile's plugin link with a clone at the same revision, saving the link; `--unpin` restores it. See [linked profiles](installation.md#linked-profiles-and-pinned-clones). |
-| `hermes toolset finalize` | `--hermes-home ROOT` (required), `--bundle-only`, `--no-reload` | Verifies one profile's registrations and runtime settings and refreshes gateway commands; setup calls it per profile. |
+| `hermes autowork doctor` | `--json`; `--core` (alias `--bundle-only`) | Reports plugin load and command/skill registration, and lists profiles linked to a working checkout (`linked_profiles`; never a failure). Exit 1 unless `status` is `ready`. `--core` ignores external integration gaps. |
+| `hermes autowork setup` | `--dry-run`, `--yes-deps`, `--bundle-only`, `--no-reload`, `--hermes-home ROOT` | Runs [`setup_bundle.py`](../setup_bundle.py): installs sources in [`plugins/PLUGINS.md`](../plugins/PLUGINS.md), applies [defaults](../plugins/defaults.json), finalizes every live profile. |
+| `hermes autowork update` | `--check`, `--hermes-home ROOT` | Runs [`update_bundle.py`](../update_bundle.py) and waits: fast-forward-only update of every live profile. `--check` fetches and previews only. |
+| `hermes autowork pin NAME` | `--dry-run`, `--unpin`, `--hermes-home ROOT` | Replaces one profile's plugin link with a clone at the same revision, saving the link; `--unpin` restores it. See [linked profiles](installation.md#linked-profiles-and-pinned-clones). |
+| `hermes autowork finalize` | `--hermes-home ROOT` (required), `--bundle-only`, `--no-reload` | Verifies one profile's registrations and runtime settings and refreshes gateway commands; setup calls it per profile. |
 
 `setup` flags:
 
@@ -30,20 +30,21 @@ live profile under the same Hermes root.
 | `--no-reload` | Defer live gateway wiring explicitly. |
 | `--hermes-home ROOT` | Hermes root containing `profiles/` (default: `HERMES_HOME`, else `~/.hermes`). |
 
-## Chat: `/toolset`
+## Chat: `/autowork status`, `list` and `update`
 
 Source: [`bundle.py`](../bundle.py) `handle_chat`, `list_commands`, `start_update`,
 `update_status`. Works in CLI chat and Telegram.
 
 | Form | Effect |
 | --- | --- |
-| `/toolset` | Bundle version, revision and profile; ready workflow commands; the last update; other plugins' load status and counts; missing imports with the setup command. |
-| `/toolset list` | Every available command with its owner and Telegram spelling. |
-| `/toolset list TEXT` or `/toolset TEXT` | Commands whose name or owner contains `TEXT`, for example `/toolset omh`. |
-| `/toolset update` | Starts the all-profile updater in the background and returns immediately. |
-| `/toolset update --check` | Starts an upstream check only. |
-| `/toolset update status` | Summarizes the durable result from `maintenance/toolset-update/latest.json` at the Hermes root in a few lines, and lists profiles linked to a working checkout. |
-| `/toolset update status full` | Shows that whole receipt as JSON. |
+| `/autowork status` | Bundle version, revision and profile; ready workflow commands; the last update; other plugins' load status and counts; missing imports with the setup command. |
+| `/autowork list` | Every available command with its owner and Telegram spelling. |
+| `/autowork list TEXT` | Commands whose name or owner contains `TEXT`, for example `/autowork list omh`. |
+| `/autowork update` | Starts the all-profile updater in the background and returns immediately. |
+| `/autowork update --check` | Starts an upstream check only. |
+| `/autowork update status` | Summarizes the durable result from `maintenance/toolset-update/latest.json` at the Hermes root in a few lines, and lists profiles linked to a working checkout. |
+| `/autowork update status full` | Shows that whole receipt as JSON. |
+| `/autowork` with other arguments | Runs the Autowork skill with them as instructions, for example `/autowork update the README`. |
 
 ## Source-checkout scripts
 
@@ -51,7 +52,7 @@ Run from a clone of this repository. The shell installers are thin wrappers.
 
 | Script | Flags | Effect |
 | --- | --- | --- |
-| `bash install.sh` | Same as `hermes toolset setup` | Executes [`setup_bundle.py`](../setup_bundle.py). |
+| `bash install.sh` | Same as `hermes autowork setup` | Executes [`setup_bundle.py`](../setup_bundle.py). |
 | `bash install-plugins.sh` | Same as `install.sh`; `--help` | Public calls, including `--help`, execute `setup_bundle.py`. The source-installer usage appears only with the internal `--sources-only --help`. |
 | `bash install-skills.sh` | `--dry-run`, `--hermes-home ROOT`, `--profile-home HOME` | Runs [`install_skills.py`](../install_skills.py): copies `skills/` (except retired `repo-docs` and `repo-interview`) into the default and every existing profile, or only `--profile-home`; `--hermes-home` and `--profile-home` are mutually exclusive. Never overwrites existing skill paths or changes configuration. |
 | `python3 update_bundle.py` | `--hermes-home ROOT` (required), `--check`, `--profile NAME` (repeatable with `--source`), `--source CHECKOUT`, `--revision SHA`, `--native-python PATH` | All-profile update, or with `--profile`, `--source`, `--revision` and `--native-python` (all four required) a scoped deployment of a reviewed local commit; see [installation](installation.md#deploy-an-exact-local-revision-to-selected-profiles). |
@@ -78,7 +79,7 @@ Source: [`runtime_defaults.py`](../runtime_defaults.py),
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `plugins.entries.hermes-toolset.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load (`config set` stores the word `false` as a boolean). The legacy `…hermes-toolset.config.apply_runtime_defaults` is honored when `settings` lacks the key. Setup honors it too and skips the policy and skill-list settings for that profile. Set it before restoring your own values. |
+| `plugins.entries.autowork.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load (`config set` stores the word `false` as a boolean). The legacy `…autowork.config.apply_runtime_defaults` is honored when `settings` lacks the key. Setup honors it too and skips the policy and skill-list settings for that profile. Set it before restoring your own values. |
 
 While `apply_runtime_defaults` is not `false`, each plugin load writes these
 values whenever they differ, preserving other settings:
@@ -89,9 +90,9 @@ values whenever they differ, preserving other settings:
 | `approvals.destructive_slash_confirm` | `false` |
 | `approvals.mcp_reload_confirm` | `false` |
 | `agent.max_turns` | `unlimited` (no per-turn iteration cap; Hermes quick setup writes `90`) |
-| `plugins.entries.hermes-toolset.allow_gateway_injection` | `true` |
+| `plugins.entries.autowork.allow_gateway_injection` | `true` |
 | `skills.disabled` | Your entries, plus OMH skills outside `omh_keep_skills` in profiles with OMH; bundled toolset skills removed |
-| `plugins.entries.hermes-toolset.omh_trim` | The OMH skill names the bundle added to `skills.disabled`, so it can remove them later |
+| `plugins.entries.autowork.omh_trim` | The OMH skill names the bundle added to `skills.disabled`, so it can remove them later |
 | `platforms.telegram.extra.command_menu.priority` | Your entries first, then the workflow commands and the `ui_taste`, `beautify_github_readme`, `impeccable`, `lgtm`, `engineering` and `git_commit_push` skill commands appended; retired bundle names and `autoresearch_*` entries removed. Other menu settings such as the mode and cap are not changed ([`telegram_menu_policy.py`](../telegram_menu_policy.py)). |
 
 Every setup, including `--bundle-only`, also clears the per-platform skill disable
@@ -103,7 +104,7 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 
 | Variable | Read by | Meaning |
 | --- | --- | --- |
-| `HERMES_HOME` | Setup, skill installer, `install-plugins.sh` | Default Hermes root when `--hermes-home` is absent. A named-profile home (`ROOT/profiles/NAME`) resolves to `ROOT`. Defaults to `~/.hermes`. `/toolset update` uses the running profile's Hermes root the same way. |
+| `HERMES_HOME` | Setup, skill installer, `install-plugins.sh` | Default Hermes root when `--hermes-home` is absent. A named-profile home (`ROOT/profiles/NAME`) resolves to `ROOT`. Defaults to `~/.hermes`. `/autowork update` uses the running profile's Hermes root the same way. |
 | `OMH_HOME` | [`install-omh.py`](../install-omh.py) | An exported or `.env` binding is preserved as the OMH store location; see [memory](memory.md). |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing, from each profile's `.env` (not the process environment) | For each distinct bot token, the chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
 
@@ -113,7 +114,7 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | --- | --- | --- |
 | `ROOT/maintenance/toolset-update/latest.json` | Updater | Latest update receipt: status, revisions, profiles, local edits, backup location, and the gateway restart's state or recorded outcome (`gateway_restart`, `gateway_restart_result`). |
 | `ROOT/maintenance/toolset-update/restart.json` | Updater | The last gateway restart the updater requested (process ID), or its deferred-restart waiter (process ID, latest chat-turn count), plus `covers`, the updates that restart will load; used to report progress, avoid overlapping restarts and record the outcome on each covered update. Once finished, also `finished` and the recorded `outcome`, which status shows when a later receipt replaced the covered one. |
-| `ROOT/maintenance/toolset-update/pinned/NAME-*/` | `hermes toolset pin` | One pin: `record.json` (profile, link, checkout, revision), the saved `link`, and after unpinning the kept clone (`unpinned-*`). |
-| `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/toolset update` and of gateway restarts the updater requests; terminal `hermes toolset update` prints to the terminal. |
+| `ROOT/maintenance/toolset-update/pinned/NAME-*/` | `hermes autowork pin` | One pin: `record.json` (profile, link, checkout, revision), the saved `link`, and after unpinning the kept clone (`unpinned-*`). |
+| `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/autowork update` and of gateway restarts the updater requests; terminal `hermes autowork update` prints to the terminal. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |

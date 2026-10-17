@@ -67,7 +67,7 @@ sys.exit(5 if os.environ.get('VERIFY_FAIL')==sys.argv[2] else 0)
         self.assertTrue(calls[1][0].endswith('install-plugins.sh'))
         for option in ('--sources-only', '--setup', '--enable'): self.assertIn(option, calls[1])
         self.assertEqual([c[2] for c in calls[2:]], ['default', 'sample'])
-        self.assertTrue(all(c[3:5] == ['toolset', 'finalize'] for c in calls[2:]))
+        self.assertTrue(all(c[3:5] == ['autowork', 'finalize'] for c in calls[2:]))
 
     def test_failure_keeps_finalization_and_nonzero_status(self):
         self.env['CHILD_FAIL'] = '9'

@@ -29,8 +29,8 @@ purpose and a useful bounded outcome are already clear.
 | Held or blocked task | Run Plan For Me in the same run to fix it (reversible in-scope change, planner's call) or skip it (split the blocked acceptance into its own open task, continue with the next ready task). Escalate only a genuinely unavailable external input, once. |
 | Mature repo with no open task | Check one bounded source/test/user-flow seam against documented intent; implement a demonstrated gap, or report evidence that no useful authorized delta was found. |
 
-Use `hermes-toolset:plan-for-me` subcommand `plan` for unresolved discovery questions and
-`hermes-toolset:docs-sync` for canonical tasks. Planning follows
+Use `autowork:plan-for-me` subcommand `plan` for unresolved discovery questions and
+`autowork:docs-sync` for canonical tasks. Planning follows
 [bounded backlog planning](backlog-planning.md): at most
 three useful slices, measurable checks, no invented scope or repetitive replanning.
 For a new backlog, derive tasks from the user's development request and existing
