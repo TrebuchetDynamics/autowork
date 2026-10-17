@@ -622,13 +622,12 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-116-fc",
       "TOOLSET-099-87",
       "TOOLSET-115-bf",
       "TOOLSET-120-fc",
+      "TOOLSET-124-97",
       "TOOLSET-122-27",
       "TOOLSET-123-de",
-      "TOOLSET-121-3d",
       "TOOLSET-123-a0",
       "TOOLSET-117-cb",
       "TOOLSET-118-68",
