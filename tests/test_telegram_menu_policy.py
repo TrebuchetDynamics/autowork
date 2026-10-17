@@ -4,7 +4,7 @@ import unittest
 spec=importlib.util.spec_from_file_location('menu_policy',Path(__file__).resolve().parents[1]/'telegram_menu_policy.py')
 policy=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)
-WORKFLOWS=['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork',
+WORKFLOWS=['plan_with_me', 'blockers', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork',
            'ui_taste', 'beautify_github_readme', 'impeccable', 'lgtm',
            'engineering', 'git_commit_push']
 
@@ -28,7 +28,7 @@ class MenuPolicyTests(unittest.TestCase):
         raw={'platforms':{'telegram':{'extra':{'command_menu':{'priority':old,
              'max_commands':40,'priority_mode':'append'}}}}}
         menu=priority(raw)
-        self.assertEqual(menu['priority'], ['status','custom','autowork','plan_with_me','plan_for_me','docs_sync','cron_autowork',
+        self.assertEqual(menu['priority'], ['status','custom','autowork','plan_with_me','blockers','plan_for_me','docs_sync','cron_autowork',
                                            'ui_taste','beautify_github_readme','impeccable','lgtm',
                                            'engineering','git_commit_push'])
         raw['platforms']['telegram']['extra']['command_menu'].update(menu)

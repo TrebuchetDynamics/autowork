@@ -86,10 +86,21 @@ def _invoke(ctx, name, path, raw_args, namespace="autowork"):
     )
 
 
-def _autowork(run_skill, raw_args):
-    """`/autowork update|status|list` maintain the bundle; any other arguments run the skill."""
+def blockers_args(raw_args):
+    """The rest of `blockers [repo|name]`, or None: `/autowork blockers` and
+    `/plan_with_me blockers` are `/blockers`, routed here rather than by the model."""
+    first, _, rest = (raw_args or '').strip().partition(' ')
+    return rest.strip() if first.lower() == 'blockers' else None
+
+
+def _autowork(run_skill, run_blockers, raw_args):
+    """`/autowork update|status|list` maintain the bundle; `blockers` is `/blockers`;
+    any other arguments run the skill."""
     from .bundle import maintenance_reply
 
+    rest = blockers_args(raw_args)
+    if rest is not None and run_blockers is not None:
+        return run_blockers(rest)
     reply = maintenance_reply(raw_args)
     return run_skill(raw_args) if reply is None else reply
 
@@ -127,7 +138,8 @@ def register(ctx):
             continue
         handler = partial(_invoke, ctx, name, path)
         if name == "autowork":
-            handler = partial(_autowork, handler)
+            blockers = next((partial(_invoke, ctx, n, p) for n, _, p in skills if n == "blockers"), None)
+            handler = partial(_autowork, handler, blockers)
         ctx.register_command(
             command, handler,
             description=f"Run the {name} skill",

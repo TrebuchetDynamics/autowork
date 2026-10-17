@@ -256,7 +256,7 @@ autowork status india          # tasks, workers and what blocks them
 autowork pause india           # stop it and keep it off; autowork resume india starts it again
 autowork model india openai-codex/gpt-6-luna   # per-service model, from: autowork models
 autowork web                  # the TUI in a browser, http://127.0.0.1:8765
-autowork blockers india        # answer what blocks the queue (/autowork blockers)
+autowork blockers india        # answer what blocks the queue, picking options (/blockers)
 ```
 
 A target is a runner name, a repository path or `.`. Workers pause and resume on
@@ -277,6 +277,9 @@ Examples use **Hermes CLI**. Portable workflows use the host-specific prefixes a
   plan before implementation.
 - **Delegate planning:** `/plan-for-me Reduce cache latency` investigates, chooses
   an approach and saves tasks; it does not implement.
+- **Answer blockers:** `/blockers [repo|runner]` (also `/autowork blockers`,
+  `/plan_with_me blockers`) asks about each blocked task at once, easiest first, with
+  options to pick; answers become TODO.md planning and the runners pick them up.
 - **Keep the repository coherent:** `/docs-sync Record the accepted cache design`
   maintains docs and tasks with acceptance criteria and dependencies.
 

@@ -183,6 +183,9 @@ class FleetViewTests(unittest.TestCase):
         self.fake('bin/pi', 'true')
         self.assertEqual(fleet_view.blockers_agent({'PATH': str(bin_dir)}), ['pi'])
         self.assertIsNone(fleet_view.blockers_agent({'PATH': str(self.base / 'nothing')}))
+        # Claude Code namespaces plugin skills; the others take /blockers directly.
+        self.assertEqual(fleet_view.blockers_prompt(['/usr/bin/claude'], '/r'), '/autowork:blockers /r')
+        self.assertEqual(fleet_view.blockers_prompt(['pi', '--model', 'x'], '/r'), '/blockers /r')
 
     def test_lanes_show_what_each_task_in_flight_is_doing(self):
         repo = self.base / 'repo'

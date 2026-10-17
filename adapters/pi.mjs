@@ -16,6 +16,7 @@ const workflows = {
   beautify_github_readme: ['beautify-github-readme', 'Redesign or audit a GitHub README'],
   grill_me: ['plan-with-me', 'Plan With Me challenge mode (compatibility)', 'challenge'],
   lgtm: ['lgtm', 'Continue the last approved action'],
+  blockers: ['blockers', 'Answer what blocks the queue, one picked option at a time'],
   git_commit_push: ['git-commit-push', 'Commit and push, or pull and merge, owned changes'],
 };
 
@@ -30,7 +31,12 @@ export default function register(pi) {
     pi.registerCommand(command, {
       description,
       handler: async (args, ctx) => {
-        const file = new URL(`${skill}/SKILL.md`, skillsRoot);
+        // `/autowork blockers` and `/plan_with_me blockers` are `/blockers`.
+        const [first, ...rest] = (args || '').trim().split(/\s+/);
+        const routed = ['autowork', 'plan-with-me'].includes(skill) && !mode && first === 'blockers';
+        const target = routed ? 'blockers' : skill;
+        if (routed) args = rest.join(' ');
+        const file = new URL(`${target}/SKILL.md`, skillsRoot);
         const body = await readFile(file, 'utf8');
         const message = `Use this portable Autowork workflow. Source: ${fileURLToPath(file)}\n`
           + `Resolve its relative references from that directory.\n\n${body}\n\n`

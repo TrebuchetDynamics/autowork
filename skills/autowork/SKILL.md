@@ -191,8 +191,8 @@ ordinary way. Follow [parallel workers](references/parallel-workers.md).
 
 ## Owner blockers
 
-`/autowork blockers [repo|name]` walks the owner through queue blockers, easiest
-first; answers become planning: [owner blockers](references/owner-blockers.md).
+`/autowork blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): picked
+answers become planning, never execution.
 Tasks may read runners (`autowork ls|status`), never start, stop or reconfigure them.
 
 ## Scheduled work and reporting

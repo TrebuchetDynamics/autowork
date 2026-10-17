@@ -15,7 +15,7 @@
     autowork remove [target]      stop and remove the service; state and worktrees stay
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
-    autowork blockers [dir]       answer what blocks the queue (/autowork blockers in an agent)
+    autowork blockers [dir]       answer what blocks the queue (/blockers in an agent)
 
 A systemd user service (`pi-autowork@<repository name>`) is the default way to run a
 repository's runner. A target is a runner name (sierra), a repository path, or `.`.
@@ -306,8 +306,8 @@ def cmd_blockers(args, paths):
     repo, _ = resolve(args.target, paths)
     agent = fleet_view.blockers_agent()
     if not agent:
-        raise Fail('no agent for /autowork blockers: install claude or pi, or set AUTOWORK_AGENT')
-    os.execvp(agent[0], [*agent, f'/autowork blockers {repo}'])
+        raise Fail('no agent for /blockers: install claude or pi, or set AUTOWORK_AGENT')
+    os.execvp(agent[0], [*agent, fleet_view.blockers_prompt(agent, repo)])
 
 
 def parser():

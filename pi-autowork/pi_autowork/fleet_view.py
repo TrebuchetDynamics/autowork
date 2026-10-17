@@ -532,8 +532,15 @@ def how_to_fix(ready):
     return hints
 
 
+def blockers_prompt(agent, repo):
+    """The `/blockers` command in the agent's own spelling: Claude Code namespaces plugin
+    skills (`/autowork:blockers`); Pi and Codex take `/blockers`."""
+    name = os.path.basename(agent[0]) if agent else ''
+    return f'/autowork:blockers {repo}' if name == 'claude' else f'/blockers {repo}'
+
+
 def blockers_agent(env=os.environ):
-    """The agent command for `/autowork blockers`: AUTOWORK_AGENT, else claude, else pi."""
+    """The agent command for `/blockers`: AUTOWORK_AGENT, else claude, else pi."""
     configured = env.get('AUTOWORK_AGENT', '').split()
     if configured:
         return configured

@@ -312,9 +312,9 @@ planning was left alone.
 Questions for the owner live in the repository's `BLOCKERS.md`, in a block the runner
 maintains under `## Active` (between `<!-- pi-autowork:questions:start -->` and
 `<!-- pi-autowork:questions:end -->`), never in a chat. Each names the task, what it
-needs and exactly how to answer, easiest first; `/autowork blockers` walks through
-them. Answering is editing the task's TODO.md entry; the question leaves the block once
-its cause is gone. Writing the block costs no model call.
+needs and exactly how to answer, easiest first; `/blockers` (also `/autowork blockers`)
+asks about each one with options to pick. Answering is editing the task's TODO.md
+entry; the question leaves the block once its cause is gone. Writing the block costs no model call.
 
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not

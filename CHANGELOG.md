@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/blockers [repo|runner]` is the owner's blockers command in Hermes, Claude Code
+  (`/autowork:blockers`), Codex and Pi: it starts at once with one question per
+  blocked task, easiest first, answered by picking one of two to four plan changes
+  (Hermes `clarify`, Claude Code `AskUserQuestion`), and plans a task that needs it
+  with Plan With Me before the next. `/autowork blockers` and `/plan_with_me blockers`
+  route to it in code; a Hermes `/autowork blockers` had reached the Autowork skill,
+  which launched a repair session instead of asking (india). `autowork blockers`
+  opens it in claude or pi.
 - pi-autowork runners land and push their work (owner decision, 2026-10-16): after
   each closed task the session merges into main, Pi resolving a conflict with the
   owner's newer plan once per main revision (it was once per runner process, so a

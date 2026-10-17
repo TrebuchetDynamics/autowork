@@ -79,7 +79,7 @@ settlement/cancellation checks when refining that existing design.
 - Checks: `python3 scripts/check.py`; `python3 -m unittest tests/test_pi_autowork.py`; engine tests in `skills/autowork/scripts`; `tests/test_tx_autowork.py`; `shellcheck scripts/pi-autowork.sh tmux/tx`.
 - Dependencies: None; coordinate with TOOLSET-115-bf phase 5 (deferred causes and their automatic actions), whose files overlap.
 - Ownership: Toolset coordinator under the owner's request.
-- Exclusions: No push by the runner; no chat or Telegram delivery; no direct edits in fleet repositories beyond the runner's own planning commits and BLOCKERS.md block; no model call to detect or phrase a question; `/autowork blockers` ([owner blockers](skills/autowork/references/owner-blockers.md)) is the answering side; live fleet qualification stays with TOOLSET-096-7e.
+- Exclusions: No push by the runner; no chat or Telegram delivery; no direct edits in fleet repositories beyond the runner's own planning commits and BLOCKERS.md block; no model call to detect or phrase a question; `/blockers` ([blockers](skills/blockers/SKILL.md)) is the answering side; live fleet qualification stays with TOOLSET-096-7e.
 
 ## Next
 
