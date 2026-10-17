@@ -678,7 +678,8 @@
         "TOOLSET-179-cf",
         "TOOLSET-180-72",
         "TOOLSET-181-02",
-        "TOOLSET-182-ce"
+        "TOOLSET-182-ce",
+        "TOOLSET-183-d6"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -687,6 +688,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-165-f7",
+      "TOOLSET-183-d6",
       "TOOLSET-170-f6",
       "TOOLSET-174-1d",
       "TOOLSET-161-17",
@@ -970,6 +972,14 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-183-d6",
+      "section": "Now",
+      "status": "open",
+      "title": "A review runs beside the runner's loop, so dispatch, status and questions continue while a commit is verified"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1168,7 +1178,8 @@
     },
     {
       "depends_on": [
-        "TOOLSET-129-c4"
+        "TOOLSET-129-c4",
+        "TOOLSET-179-cf"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-130-15",
