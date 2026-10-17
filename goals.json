@@ -665,7 +665,8 @@
         "TOOLSET-167-03",
         "TOOLSET-168-ff",
         "TOOLSET-169-1d",
-        "TOOLSET-170-f6"
+        "TOOLSET-170-f6",
+        "TOOLSET-171-35"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -676,6 +677,7 @@
       "TOOLSET-165-f7",
       "TOOLSET-170-f6",
       "TOOLSET-161-17",
+      "TOOLSET-171-35",
       "TOOLSET-164-f1",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
@@ -707,7 +709,6 @@
       "TOOLSET-135-16",
       "TOOLSET-136-0b",
       "TOOLSET-137-cd",
-      "TOOLSET-124-97",
       "TOOLSET-125-e6",
       "TOOLSET-126-6b",
       "TOOLSET-127-b1",
@@ -897,6 +898,14 @@
       "section": "Now",
       "status": "open",
       "title": "Closeout waits only for a main-checkout session that holds the files it writes"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-171-35",
+      "section": "Now",
+      "status": "open",
+      "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
     },
     {
       "depends_on": [],
