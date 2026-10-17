@@ -18,6 +18,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A pi-autowork service that finds another runner holding its repository (an old tmux
+  runner, a manual run) waits for that runner to exit instead of exiting 3, which
+  systemd never restarts; bravo's service had stayed down after its tmux runner
+  ended. Interactive and `--once` runs still exit 3.
+- `autowork ls` and the TUI say `paused` only for a service paused with `autowork
+  pause` (which now leaves `<name>.paused` beside its settings file; `resume` and
+  `start` remove it). Any other stopped service shows `not running`.
 - An active agent session in the main checkout no longer holds off every idle-claim
   adoption: it blocks only claims whose `Touches:` files it holds open for writing (and
   claims without `Touches:`, whose files are unknown). Two owner sessions in sierra had

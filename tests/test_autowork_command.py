@@ -105,7 +105,9 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('is already running', again.stdout)
         self.assertEqual(len([c for c in self.calls() if c.startswith('script')]), 1)  # idempotent
         self.aw('pause', 'india')
+        self.assertTrue((self.env_dir / 'india.paused').exists())
         restarted = self.aw('start', 'india' if False else str(self.repo))
+        self.assertFalse((self.env_dir / 'india.paused').exists())  # starting ends the pause
         self.assertIn('Started pi-autowork@india.service', restarted.stdout)
         self.assertIn('systemctl --user enable --now pi-autowork@india.service', self.calls())  # survives a reboot
 
@@ -128,6 +130,7 @@ class AutoworkCommandTests(unittest.TestCase):
                 result = self.aw(*args)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(f'systemctl --user {expected} pi-autowork@india.service', self.calls())
+                self.assertEqual((self.env_dir / 'india.paused').exists(), args[0] == 'pause')
         self.aw('remove', 'india')
         self.assertIn(f'script --remove-service --repo {self.repo}', self.calls())
         self.assertIn('no runner named nothing', self.aw('stop', 'nothing').stderr)

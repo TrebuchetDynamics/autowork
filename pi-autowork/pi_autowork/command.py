@@ -123,6 +123,7 @@ def cmd_start(args, paths):
         raise Fail(f'{ready.repo or ready.path} is not ready for Autowork ({ready.mark}):\n' + '\n'.join(problems))
     name = fleet_view.instance(ready.repo)
     unit = f'pi-autowork@{name}.service'
+    fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     legacy = [r for r in runners(paths) if r.name == name and r.runs_in_tmux]
     if legacy:
         raise Fail(f'{name} still runs in tmux session {legacy[0].session}; stop it first '
@@ -182,6 +183,12 @@ def cmd_pause(args, paths, resume=False):
     verb = 'enable' if resume else 'disable'
     if systemctl(paths, verb, '--now', unit, quiet=False).returncode:
         raise Fail(f'could not {"resume" if resume else "pause"} {unit}')
+    marker = fleet_view.paused_marker(paths['env_dir'], name)
+    if resume:
+        marker.unlink(missing_ok=True)
+    else:  # so a paused service is told apart from one that is simply not running
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text('paused with autowork pause\n')
     print(f'Resumed {unit}.' if resume else
           f'Paused {unit}: stopped, and it stays off until: autowork resume {name}')
     return 0
