@@ -64,23 +64,24 @@ Start with a configured host and model; portable adapters need no Hermes install
 
 ### Everything at once
 
-From a checkout, `install.sh` shows a checkbox menu with every component checked:
+From a checkout, `install.sh` installs every available component with verbose output:
 the Pi package, the `autowork` command and TUI, the `tx` tmux launcher, the Hermes
 plugin (every live profile), the Claude Code plugin and the Codex plugin, including
-their complete portable skill suites. A host whose CLI is missing is left unchecked and explained. Each item runs that host's own install
+their complete portable skill suites. A host whose CLI is missing is skipped and explained. Each item runs that host's own install
 command, listed below; `tx` keeps an existing `~/.tmux.conf`.
 
 ```sh
 git clone https://github.com/TrebuchetDynamics/autowork && cd autowork
-./install.sh                    # the menu: arrows, Space toggles, Enter installs
-./install.sh --full --verbose   # full suite for available hosts, live output and commands
-./install.sh --full --dry-run   # preview every selected install step
+./install.sh                    # full suite, live output and exact commands
+./install.sh --menu             # arrows, Space toggles, Enter installs
+./install.sh --dry-run          # preview the full suite without installing
 ./install.sh --only pi,autowork,tx --dry-run   # print what it would run
 ```
 
-`--all` remains an alias for `--full`. Install steps stream output as they run,
+`--full` (`--all`) and `--verbose` (`-v`) are already the defaults.
+Install steps stream output as they run,
 with component/step progress, elapsed times and a final result for every component.
-Use `--verbose` (`-v`) to show exact commands, or `--quiet` (`-q`) for summaries and
+Use `--quiet` (`-q`) for summaries and
 failure diagnostics (native output stays visible when input is a terminal).
 Colors are automatic on terminals; `--color always|never|auto` overrides that
 choice, and `NO_COLOR=1` disables automatic color.
