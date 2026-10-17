@@ -365,13 +365,20 @@ How it works:
   interrupted or released, with the reason), mapped from the engine's slot states;
   the TODO.md and `goals.json` contracts do not change.
 - **Session, merged at the end.** The engine works on an integration branch
-  `pi-autowork/<session>` in a worktree under the state directory. When the queue
-  drains or the runner stops, the main branch is merged into it, the main checkout
-  fast-forwards, and the session's worktree and branch are removed. If `main` moved
-  and conflicts, Pi resolves the merge once per session with Git Commit Push;
-  otherwise, or when your uncommitted changes in the main checkout would be
-  overwritten, the runner reports `Merge pending` and keeps the branch for the next
-  end. Nothing is pushed.
+  `pi-autowork/<session>` in a worktree under the state directory. After each closed
+  task (once nothing else is in flight), and when the queue drains or the runner
+  stops, the main branch is merged into it and the main checkout fast-forwards; a
+  drained session's worktree and branch are removed. A new main commit (an owner's
+  plan) is also merged into an idle session at once, so the runner plans from it. If
+  `main` moved and conflicts, Pi resolves the merge with Git Commit Push, once per
+  main revision; otherwise, or when your uncommitted changes in the main checkout
+  would be overwritten, the runner reports `Merge pending`, shows it as its blocker in
+  `autowork` and keeps the branch for the next attempt.
+- **Push.** After a merge the runner pushes main to its upstream (`main@{u}`):
+  fast-forward only, never forced. A rejected push fetches the upstream, merges it
+  into the session, fast-forwards main and tries once more; a failure is logged once
+  and the next merge retries. A main without an upstream is left local. Workers and
+  Pi tools still cannot push. `PI_AUTOWORK_PUSH=0` turns pushing off.
 - **Models.** `openai-codex/gpt-6.1-sol` first; the script switches to
   `openrouter/deepseek/deepseek-v4.1-flash` for 30 minutes when the primary is
   unauthenticated or a run ends on a provider error (read from Pi's JSON events, even

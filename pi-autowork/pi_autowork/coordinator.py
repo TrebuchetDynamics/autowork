@@ -69,6 +69,7 @@ class Coordinator:
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
         self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '3600'))
         self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
+        self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
         self.engine_path = Path(self.toolset) / 'skills/autowork/scripts/owner_cycle.py'
         self.goals = Path(self.toolset) / 'skills/docs-sync/scripts/goals.py'
@@ -80,7 +81,7 @@ class Coordinator:
                                           '{prompt_file}', '{report_file}', '{timeout}'])
         self.started = time.monotonic()
         self.integ = self.integ_branch = None
-        self.merge_pending, self.resolved_once = '', False
+        self.merge_pending, self.resolved_for, self.merge_blocker = '', '', ''
         self.stop, self.paused, self.child = False, False, None
         self.started_workers = self.failures = 0
         self.draining, self.once_task, self.once_done = False, None, False
@@ -205,12 +206,13 @@ class Coordinator:
         """Interruptible sleep: a stop ends it at once, and so does a change to the plan.
 
         Once a second the planning files and the main branch are compared with how they
-        looked when the wait began; after a change has been quiet for PI_AUTOWORK_PLAN_SETTLE
+        looked when this cycle began reading the plan (a change made while the cycle ran
+        counts too, or it would wait out the whole interval); after a change has been quiet for PI_AUTOWORK_PLAN_SETTLE
         seconds (default 3, so a save in progress is not read half-written) the wait ends
         and the next cycle reads the new plan. No model call is involved.
         """
         end = time.monotonic() + float(seconds)
-        seen = self.plan_signature()
+        seen, self.plan_seen = self.plan_seen or self.plan_signature(), None
         start = dict(seen)
         checked = time.monotonic()
         changed_at = None
@@ -284,7 +286,7 @@ class Coordinator:
         git(self.repo, 'branch', '-q', '-D', self.integ_branch)
         (self.state / 'session.json').unlink(missing_ok=True)
         self.integ = self.integ_branch = None
-        self.resolved_once = False
+        self.resolved_for = ''
         return True
 
     def ahead(self):
@@ -292,7 +294,7 @@ class Coordinator:
 
     def merge_main(self):
         """The session into the main branch: the base into the session first (Pi resolves
-        conflicts once per session), then a fast-forward of the base in the main checkout."""
+        conflicts once per base revision), a fast-forward of the base in the main checkout, then a push."""
         self.merge_pending = ''
         if not self.integ and not self.load_session():
             return True
@@ -302,8 +304,9 @@ class Coordinator:
         planning_note = self.commit_owner_planning()
         if not git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
             files = ' '.join((git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').split())
-            if not self.stop and not self.resolved_once:
-                self.resolved_once = True
+            base_rev = git(self.repo, 'rev-parse', self.base)
+            if not self.stop and self.resolved_for != base_rev:  # once per main revision, not per session
+                self.resolved_for = base_rev
                 LOG.say(f'{self.base} moved and conflicts with this session in: {files}; asking Pi to resolve the merge')
                 self.pi_job('merge', self.integ_branch.removeprefix('pi-autowork/'), self.integ,
                             MERGE_PROMPT.format(branch=self.integ_branch, base=self.base, files=files,
@@ -337,8 +340,46 @@ class Coordinator:
                 self.merge_pending += f' (uncommitted planning left alone: {planning_note})'
             LOG.say(f'Merge pending: {self.merge_pending}. Branch {self.integ_branch} is kept; the next run retries.')
             return False
-        LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s), not pushed)')
+        LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s))')
+        self.push()
         return True
+
+    def push(self, retry=True):
+        """Publish the main branch to its upstream after a merge (owner decision, 2026-10-16).
+
+        Fast-forward only, never forced; workers and Pi's tools stay unable to push (the push
+        guard), only this step runs without it. A rejected push fetches the upstream, merges
+        it into the session, lands that and pushes once more. PI_AUTOWORK_PUSH=0 turns it off.
+        """
+        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
+            return
+        upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
+        if not upstream or '/' not in upstream:
+            if self.seen.get('push-note') != 'no upstream':
+                self.seen['push-note'] = 'no upstream'
+                LOG.say(f'Not pushed: {self.base} has no upstream branch')
+            return
+        remote, branch = upstream.split('/', 1)
+        env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_CONFIG_')}
+        result = subprocess.run(['git', '-C', str(self.repo), 'push', '--quiet', remote, f'{self.base}:{branch}'],
+                                capture_output=True, text=True, env=env, timeout=300)
+        if result.returncode == 0:
+            self.seen.pop('push-note', None)
+            LOG.say(f'Pushed {self.base} to {upstream}')
+            return
+        text = (result.stdout + result.stderr).strip()
+        if retry and re.search(r'rejected|non-fast-forward|fetch first', text):
+            if git_ok(self.repo, 'fetch', '--quiet', remote, branch) and self.integ \
+                    and git_ok(self.integ, 'merge', '-q', '--no-edit', upstream):
+                if git_ok(self.repo, 'merge', '--ff-only', '--quiet', self.integ_branch):
+                    LOG.say(f'{upstream} had moved; merged it and pushing again')
+                    return self.push(retry=False)
+            if self.integ:
+                git(self.integ, 'merge', '--abort')
+        note = text.splitlines()[-1] if text else f'exit {result.returncode}'
+        if self.seen.get('push-note') != note:
+            self.seen['push-note'] = note
+            LOG.say(f'Push of {self.base} to {upstream} failed: {note}; the merge stays local and the next merge retries')
 
     def commit_owner_planning(self):
         """Planning never blocks delivery: when the main checkout's only uncommitted changes
@@ -386,12 +427,28 @@ class Coordinator:
         return ''
 
     def follow_base(self):
-        """While nothing is in flight the session follows the main branch, so tasks
-        committed meanwhile are seen; a running worker's base never moves under it."""
-        if git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') and not dirty(self.integ) \
-                and not self.in_flight():
-            if not git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
-                git(self.integ, 'merge', '--abort')  # a conflicting main waits for the final merge
+        """While nothing is in flight the session follows the main branch, so the owner's
+        plan is seen; a running worker's base never moves under it. A conflict (the owner's
+        TODO.md edit against the session's own bookkeeping) is resolved at once through the
+        session merge, not left for a final merge a stalled runner never reaches; a merge
+        that still fails is a runner blocker the owner sees."""
+        if not git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') or dirty(self.integ) \
+                or self.in_flight():
+            return
+        if git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
+            self.merge_blocker = ''
+            return
+        git(self.integ, 'merge', '--abort')
+        if self.merge_main():
+            self.merge_blocker = ''
+        else:
+            self.merge_blocker = f'the session cannot take {self.base}: {self.merge_pending}'
+
+    def land(self):
+        """After a task closes, bring the session to the main branch (and push) while nothing
+        is in flight, so the session never drifts far from the owner's plan."""
+        if self.integ and not self.in_flight() and self.ahead():
+            self.merge_main()
 
     def commit(self, paths, *message):
         for path in paths:
@@ -436,6 +493,7 @@ class Coordinator:
             self.commit(result.get('files') or [], f'docs(tasks): close {task} (pi-autowork)',
                         'Integrated, verified and closed by the Parallel Autowork engine.')
             self.note_state(task, 'closed')
+            self.land()
             if result.get('live_followup'):
                 LOG.say(f'{task}: done offline; its live checks are recorded as {result["live_followup"]} (Needs decision)')
             self.failures = 0
@@ -754,7 +812,7 @@ class Coordinator:
         # Commits that only wait for another session to leave the main checkout are no progress.
         waiting = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')
                    and self.seen.get('busy-' + str(t.get('task')))]
-        blocker = self.runner_blocker
+        blocker = self.runner_blocker or self.merge_blocker
         if waiting and not blocker:
             blocker = (f'{len(waiting)} verified commit(s) wait for another session in the main checkout: '
                        + self.seen['busy-' + waiting[0]['task']])
@@ -871,6 +929,7 @@ class Coordinator:
         self.pause(self.interval)
 
     def cycle(self):
+        self.plan_seen = self.plan_signature()
         if self.stop:
             self.stop_now()
         if not self.draining and not self.in_flight():
