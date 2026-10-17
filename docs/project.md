@@ -850,8 +850,10 @@ Planner's calls (reversible; reject any of them):
   `skills/engineering/local/`, selected with `route.py --protocol` like pinned ones. No
   new slash command, coordinator or task file.
 - The protocol audits first and changes nothing; each consolidation, removal or speed-up
-  becomes its own TODO.md task executed by Autowork. Fewer tests is never the goal:
-  coverage (lines and branches) and, when available, mutation score of the touched
+  becomes its own TODO.md task executed by Autowork. The 2026-10-16
+  [suite-thinning plan](test-suite-audit.md#suite-thinning-plan-2026-10-16) extends
+  this to fewer unnecessary tests and thinner fixtures; counts alone prove nothing.
+  Coverage (lines and branches) and, when available, mutation score of the touched
   modules must not drop, and named regression tests are kept.
 - Redundancy evidence comes from coverage.py per-test contexts, which are installed.
   Mutation testing is optional: run a tool such as mutmut only from a disposable
@@ -870,6 +872,149 @@ a required network or paid tool.
 | TOOLSET-069 | `check.py` runs its test directories concurrently with ordered output |
 | TOOLSET-072 | Cache `check_receipt.runtime()`'s package inventory and executable hash safely |
 | TOOLSET-073 | Subprocess coverage, then evidence-based review of identical and subset groups |
+
+### Discoverable test-optimization-suite skill
+
+Status: Accepted
+
+Owner request (2026-10-16): add `test-optimization-suite` for repositories with
+excessive tests. Minimum means **minimum sufficient protection against real
+regressions**, not a minimum count. Measure value, prune duplicate behavior,
+consolidate fixtures/cases, and prevent regrowth. This planning pass saves the
+design and tasks; it does not create/install the skill or delete tests.
+
+#### Reuse and distribution
+
+At `1a955e5`, the existing Toolset-owned
+[`test-suite-optimization` protocol](../skills/engineering/local/test-suite-optimization/PROTOCOL.md)
+already defines audit-first pruning, contextual coverage, optional mutation
+testing and retained safety cases. `engineering/scripts/route.py --protocol
+test-suite-optimization` is its existing selector. The shared
+[test budget](../skills/shared/ENGINEERING-CYCLE.md#test-budget) supplies growth
+rules. Neither root nor portable skills expose the requested name. Portable
+package tests enumerate 13 adapters; Pi commands have an explicit registry.
+
+Add thin `skills/test-optimization-suite/SKILL.md` and
+`adapters/skills/test-optimization-suite/SKILL.md` entrypoints sharing that protocol.
+Keep its existing path and selector compatible; update the method once, not in
+three copies. Preserve this plugin's explicit-only portable policy, including
+`agents/openai.yaml`, and register Pi's `test_optimization_suite` command. Hermes
+already discovers root skill folders. Current Claude/Codex/Pi manifests include
+adapter directories; verify archive/install reference closure rather than adding
+another installer. Update focused catalogs and usage examples. Do not modify
+vendored upstream protocols, add a scheduler, or expand Telegram menu policy.
+
+Default invocation audits the named/current repository and records supported
+findings in its existing plan/queue. Explicit read-only saves nothing. An explicit
+apply request or an existing authorized implementation task allows bounded pruning
+with validation; do not require another plan or permission ceremony. “All my repos”
+motivates a reusable method, not a filesystem-wide deletion operation. Apply only
+to identified repositories, preserve their instructions and active writers, and
+reuse their existing audit/task IDs. In this repository TOOLSET-124-97 remains the
+one suite audit; TOOLSET-125/126/127/128 remain its implementation/qualification
+tasks. No duplicate audit or framework migration is needed.
+
+#### Method contract
+
+1. **Build a behavior/risk matrix before candidate tests.** Record public contract,
+   representative edge cases, layer, existing detector, unique boundary risk and
+   cost. Keep pure logic/parsing/calculation cases at unit level, real DB/HTTP/queue/
+   serialization contracts at integration level, and a small set of critical user
+   journeys at smoke/E2E level. The lowest reliable layer wins only if it protects
+   the same risk; a unit mock cannot prove a real boundary handoff.
+2. **Measure with proportional effort.** Bind source/tests, environment, command,
+   collected case count and outcome. Record timing by test/file, available CI
+   failure history and bounded repeated-run flake observations (failures/runs and
+   sample window). Missing history is unknown, not zero failures. Inspect diff
+   line/branch coverage at touched behavior and per-test contexts where useful;
+   total coverage is context, not the target. Mark subprocess/native blind spots.
+   Inspect critical-module mutation results when tooling is available. Use a
+   disposable environment and bounded scope; no required dependency, paid tool or
+   unconditional repeated whole-suite baseline. A qualitative audit may identify
+   exact duplicates without timing the whole repository three times; quantitative
+   speedup claims require comparable passing measurements. Unavailable evidence
+   blocks only removals that depend on it, not unrelated safe fixture improvements.
+3. **Prune by the protected behavior.** For every proposed deletion, identify the
+   retained test/case and its regression oracle, or document that the product
+   obligation no longer exists. Preserve incident traceability, unique branches,
+   security, authorization, data-loss protection and required qualification.
+   A named regression may be consolidated with equivalent protection and an
+   explicit mapping; its risk must not disappear. No recorded failures, matching
+   coverage, a low mutation score, mock calls or lack of explicit assertions alone
+   justify deletion. A no-exception smoke test, contractual log, protocol call
+   ordering or externally visible interaction can be a valid oracle. Remove
+   internal-detail assertions and framework-only checks when they protect no owned
+   contract. Remove tests for deleted behavior together with that deletion, while
+   retaining any surviving compatibility obligation.
+4. **Consolidate without obscuring failures.** Prefer labeled table cases and small
+   test-data builders; share immutable setup, not mutable databases/processes.
+   Replace mock-heavy internals with fakes or real boundary contracts when they
+   improve fidelity. Combine trivial assertions only for one coherent behavior.
+   Use property tests where generators, invariants and reproducible counterexamples
+   beat a hand-written matrix and existing tools support them; keep critical named
+   examples. Golden/snapshot tests need an intentional stable output contract and
+   reviewable diffs. File splitting or fewer declared methods alone is not pruning.
+5. **Use mutation evidence carefully.** Mutants survive, not tests. Record the
+   mutant-to-test detection map where available; preserve uniquely detected
+   non-equivalent faults and compare before/after on the same source/operators.
+   Identical killed-mutant sets suggest redundancy only alongside the behavior
+   matrix. A surviving mutant can identify an assertion gap or equivalent behavior;
+   it does not automatically make a test disposable. Separate uncovered, equivalent,
+   invalid, ignored, pending and timed-out mutants. A timeout counted as detected
+   by a tool is not proof of a meaningful assertion. Unknown mappings or unavailable
+   tooling remain explicit. The primary [Stryker state definitions](https://stryker-mutator.io/docs/mutation-testing-elements/mutant-states-and-metrics)
+   and [equivalent-mutant guidance](https://stryker-mutator.io/docs/mutation-testing-elements/equivalent-mutants),
+   consulted through Context7, support these distinctions; no specific engine is
+   mandated for other languages.
+6. **Set repository-specific budgets and resist regrowth.** Record per-suite CI
+   wall-time limits, a justified new-case budget per change/PR, environment and
+   baseline, and a review rule for exceptions protecting distinct risks. Reuse the
+   default one regression at the right seam for a bug fix, extending an existing
+   case when sufficient; do not turn it into a hard ban on necessary boundary
+   coverage. No test-per-line/function output or implementation-mirroring TDD loops.
+   Require each test/case to identify its behavior/risk in a useful name or matrix,
+   not mandatory boilerplate. Duplicate layers require a stated integration risk.
+   Config/parser/migration behavior may warrant tests even though prose/renames
+   usually do not. Review the slowest/noisiest suites quarterly in the existing
+   maintenance process; do not create a timed job without scheduling authority.
+7. **Handle flakes and CI selection honestly.** Diagnose product races separately
+   from test instability. Quarantine only with owner, reason, expiry, issue and
+   explicit lost protection; on expiry repair or delete only if a documented risk
+   review supports deletion, otherwise escalate visibly. Never hide a critical
+   regression or manufacture a passing gate. Impact-based CI selection is optional
+   where dependency mapping is sound; retain the existing full gate or an agreed
+   periodic full run and fall back when impact is unknown. No blanket CI skipping.
+
+Required output is a compact keep/consolidate/remove/repair/quarantine/investigate
+map, source-bound before/after evidence, retained-risk mapping, explicit unknowns,
+budgets and bounded next tasks. No raw private CI history or credentials in Git.
+Apply one supported batch at a time; validate its focused behaviors and the normal
+repository gate before claiming completion. Preserve diff/branch obligations and
+critical mutant detection when measured; never lower thresholds or assertions to
+make the suite green. Report saved time only when measured, and explain retained
+integration risk when a slower test remains.
+
+#### Delivery and validation
+
+TOOLSET-133-f5 updates the canonical method/shared budget and the engineering
+entrypoints. TOOLSET-134-ab adds the discoverable skill/adapters, Pi command,
+package/installer closure and user docs after that method is ready. The existing
+local suite-thinning tasks can continue from their evidence without waiting for
+new skill packaging; apply the clarified method when it becomes available.
+
+Extend existing executable routing/package/install cases rather than add phrase
+tests for every rule. For behavioral qualification use a compact disposable
+fixture with: equivalent table cases; equal-coverage but distinct authorization
+branches; a valuable never-failed regression; an assertless smoke oracle; a real
+boundary absent from mocks; a flaky critical check; equivalent/surviving mutants;
+and missing CI/mutation evidence. Check decisions and resulting artifacts, not
+wording. Include read-only versus authorized-apply requests and a budget exception
+for a unique risk. The skill must not delete unsupported candidates, invent
+measurements, run live suites or repeatedly ask for routine implementation choices.
+
+New behavior checks are proposed and unrun. Existing source inspection establishes
+reuse and packaging boundaries; no mutation run, flake rate, new timing baseline,
+skill installation or fleet-wide test optimization is claimed by this plan.
 
 ### Baseline audit (TOOLSET-068, 2026-10-15)
 
@@ -1160,11 +1305,14 @@ Decisions (all planner's calls; reversible; reject any of them):
   `git diff --name-only baseline..commit` must stay inside its `Touches:` and must
   not overlap work that is running or already integrated in this run. Otherwise
   integration is held and the task is retried alone after the others.
-- **Priority is preserved.** Each free slot first considers the highest-priority
-  runnable task. If that task can run alone only, or conflicts with running work,
-  no lower-priority task is dispatched. The pool drains, and the top task then runs
-  by itself. Lower-priority work fills slots only beside compatible higher-priority
-  work.
+- **Priority is preserved.** Independent work can backfill past a waiting task
+  when it shares no paths, resources or dependencies with that task. A genuinely
+  solo task waiting on active work stops lower-priority dispatch so the pool drains
+  and it is not starved. The accepted [progress and independent-workers plan](plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers)
+  addresses unnecessarily broad scopes, candidate-preserving recovery and visible
+  admission reasons while retaining these safety gates. Its first slice improves
+  the existing Needs column and selected-runner detail; delivery stages, blocker
+  evidence and log navigation follow. These additions remain planned.
 - **Repository lease and journal.** These live under
   `<git-common-dir>/autowork-execution/`:
   - `coordinator.json`: one live coordinator per repository. It holds the owner
@@ -1381,3 +1529,213 @@ GitHub repository is `TrebuchetDynamics/autowork`.
   historical changelog, archived task and evidence text.
 - Reinstalling the live profiles and hosts is an owner step, recorded as a pending
   follow-up rather than claimed by the source change.
+
+## Pi agent harness bootstrap
+
+Status: Accepted
+
+**User requirement:** `install.sh` must install the Pi agent harness from pi.dev
+when the host lacks it, not just install a Pi extension after assuming the harness
+already exists. Planning records this requirement; it does not run an installation.
+
+**Current implementation:** `scripts/install_menu.py` marks the `pi` component
+`needs='pi'`, so default/full selection excludes it when Pi is absent and explicit
+`--only pi` fails before any bootstrap. Its early package probe also occurs before
+Pi could be installed. The base full-suite/verbose installer exists; this new
+positive missing-harness path is not implemented.
+
+**Planner's call:** Keep one selected Pi component for harness plus Autowork package.
+Prefer the [official managed installer](https://pi.dev/install.sh), documented by
+the [Pi quickstart](https://pi.dev/docs/latest/quickstart), over writing our own
+Node/npm installer or silently changing npm's global installation. Download first,
+fail on HTTP errors, run the downloaded file through the existing captured-output
+subprocess path, then verify and reuse the resulting absolute Pi executable for
+package installation in the same invocation. Preserve the current full/verbose
+default, optional menu, explicit skips, working harnesses, installed packages and
+all credentials/settings. Only the selected Pi component gains bootstrap behavior;
+other missing hosts keep their existing rules.
+
+The inspected official script requires Node.js >=22.19 and npm, offers native
+interactive prerequisite installation, and fails without a terminal if prerequisites
+are missing. Keep those prompts and refusal semantics; do not implement automatic
+sudo or invent an unattended bootstrap flag. Its startup prompt runs only when
+stdout is a terminal: keep bootstrap stdout captured, and test that it never opens
+an agent or makes a model call. Resolve Pi's managed/user-local entrypoint rather
+than requiring a shell restart or assuming the child changed the parent's PATH.
+Do not force shell-profile edits; native consent still applies.
+
+**Rejected alternatives:** Leaving Pi “unavailable” does not meet the new requirement.
+Direct global npm installation is documented but needs Node/npm and has a different
+transitive-dependency policy. Reimplementing Node provisioning or migrating a
+working Pi installation adds unrelated risk. Those are not default fallback paths.
+
+**Verification plan:** Extend `tests/test_install_menu.py` with fake downloads,
+bootstrap scripts and harnesses in an isolated HOME/PATH. Cover missing and existing
+harnesses, off-PATH discovery, extension idempotence, download/bootstrap/probe
+failures, native prerequisite refusal, skip/menu choices, zero-write/no-download
+preview and no agent/service startup. Run the focused installer tests and normal
+offline inventory once implemented. No new bootstrap test has been run yet.
+
+**Owner and order:** Reuse TOOLSET-123-de in its existing Next position and retain
+its TOOLSET-122-27 dependency. Live installation and renamed-plugin/service rollout
+remain separate operations; no runtime, profile, service or schedule changes occur
+as a result of saving this plan.
+
+## Per-repository Pi models and accounts
+
+Status: Accepted
+
+**Owner requirement:** Autowork's TUI must select a model for each repository and
+let the owner add an API key or use a subscription login, using Pi's own provider
+and model library. This accepts the feature, not implementation, credential use,
+service changes, or scheduling in this planning run.
+
+**Baseline and size:** Small feature with an offline implementation and a separate
+live-authentication qualification. TOOLSET-122-27 already delivered a per-service
+primary/fallback picker; preserve that slice and its outstanding migration gate.
+`tui.py`'s `ModelScreen` currently accepts only `runner.has_service`, while
+`fleet_view.models()` scrapes `pi --list-models` text. There is no account/login
+screen. `command.cmd_model` writes per-instance environment settings and offers a
+restart for a running service. `service_state` treats an env file as an installed
+service: merely precreating one would make first start take the wrong path.
+
+**Planner's calls — interface and ownership:**
+- Extend the current Models screen rather than replace the TUI. A selected Git
+  repository can configure primary/fallback before starting a runner, including
+  when its queue is not yet runnable; Start retains all existing readiness gates.
+  Provide provider grouping/search, stable provider/model identifiers, current
+  selections, explicit fallback clearing, account status, and Connect account.
+  A model needing credentials remains visible with a Connect action, not silently
+  absent. Preserve the complete model ID, including embedded slashes.
+- Model choices are repository-scoped. Reuse the existing private per-instance env
+  settings; don't create a second competing model database. Separate configuration
+  presence from actual service installation, retain settings through first install,
+  and reject a repository-name collision rather than overwrite another repository.
+  Saving configuration must not install, enable, start or unpause a service. For a
+  running service retain the explicit restart choice; declining saves for next
+  start, shows pending/effective values, and leaves its workers untouched.
+- An account means a Pi provider credential in the selected runner's Pi user/agent
+  context, not a repository-local secret. Context resolution must cover the actual
+  Pi executable, its matching SDK/runtime, agent directory, model configuration,
+  and inherited provider environment used by that runner. Show the context and warn
+  that login/replacement affects other repositories sharing it. Preserve overrides;
+  never silently authenticate the TUI's default Pi when a runner uses another one.
+  Follow Pi's one stored credential per provider semantics; no multi-account vault,
+  cross-profile import, or automatic account replacement. Replacing an existing
+  stored credential requires explicit confirmation.
+
+**Planner's call — reuse Pi, do not reimplement it:** A small local JSON-lines
+Node bridge under `pi-autowork/` consumes the public SDK exported by the selected
+Pi installation. Keep Python/Textual as the UI. Resolve both the supported managed
+installer layout and npm/symlink layout, including their matching Node runtime;
+capability-check package exports/version and report an actionable unsupported-layout
+or API error. Do not install another SDK from the network or fall back silently to
+an unrelated global copy. Preserve this boundary in package/release manifests.
+
+The inspected Pi 1.2.0 public entry exports `ModelRuntime` and `ModelRegistry`.
+Use `ModelRuntime.create({ refreshOnCreate: false, allowModelNetwork: false })`,
+`getProviders`/`getProvider`, `getAllModels`, `listCredentials`, and
+`login(providerId, type, interaction)`; retain only Pi's LLM model kinds in the
+worker picker. The inspected declarations and compiled runtime differ on some
+compatibility helpers, so bind tests to the executable exports, not typings alone.
+Do not use `getAvailable` or implicit initialization for passive display: those
+can perform auth availability work even with catalog networking disabled.
+Derive API-key login
+from `provider.auth.apiKey.login`, OAuth from `provider.auth.oauth`, and subscription
+labels from its `isSubscription`/`loginLabel` metadata. Pi owns provider-specific
+prompts, OAuth/device/callback flows, refresh, locking and credential persistence.
+`AuthInteraction` supplies secret/text/select/manual-code prompts and
+info/auth-URL/device-code/progress events. The login return value contains secrets:
+consume it inside the bridge and return only allowlisted non-secret status.
+`AuthStorage` is internal in this inspected release; old snippets importing it or
+runtime OAuth helpers from `pi-ai/oauth` are not the contract. The inspected RPC
+command types do not expose provider login. Recheck capabilities during
+implementation; a materially incompatible public API is an actionable compatibility
+failure, not permission to patch Pi or invent provider-specific authentication.
+
+**State and safety contract:**
+- Structured catalog/account responses, not human-table parsing or a hardcoded
+  provider/model/auth list. Include Pi-configured custom providers/models while
+  honoring Pi's existing project-trust boundary; do not execute project extensions
+  merely to populate this screen. Ordinary account display uses credential metadata,
+  not resolved request auth. Avoid OAuth refresh, configured key-command execution,
+  model requests, and automatic network catalog refresh on screen open/timer refresh.
+  Use cached/bundled catalog and `allowModelNetwork: false`; the bridge controls any
+  Pi library disk/cache effects, which are tested and must not mutate credentials
+  during read-only display. Refresh of account status does not prove entitlement.
+- API keys and codes are entered locally in ephemeral UI prompts, with secret
+  fields masked and no history. Send input through the private child pipe, never
+  shell interpolation, arguments, logs, receipts, repository files or service env
+  settings. OAuth URLs/device codes appear only in the transient login UI. Never
+  send a credential, raw SDK login result, error object/cause, or token response
+  across the result/log boundary. Clear prompt/widget references on completion.
+- Use request IDs and a cancellable login state machine; refresh results cannot
+  overwrite newer repository/context selections. Handle per-prompt cancellation,
+  overall cancellation, timeout, child exit, and screen/TUI close. Abort and close
+  callback resources; late results must not update the wrong screen or repository.
+  Cancellation before credential commit preserves the previous account. If commit
+  already occurred, report saved/refresh-pending rather than claim no change or
+  delete a valid credential. Pi's `CredentialSynchronizationError` can mean login
+  was committed but local model refresh failed; allowlist that outcome without
+  serializing the error's credential property or automatically repeating login.
+- Native terminal account entry only in this increment. `autowork web` passes an
+  explicit served-origin capability which denies auth mutation even when its PTY
+  looks local; `--view-only` denies all mutations. Enforce this in action handlers
+  and the bridge boundary, not merely disabled buttons. Web model selection retains
+  existing access rules; secured remote credential entry is a separate feature.
+- Successful login refreshes the selected context's metadata/models and shows any
+  model configuration still to apply. It does not change model choices implicitly,
+  dispatch work, restart services, enable jobs, or make a paid validation request.
+
+**Alternatives rejected:** Keep table scraping and shell out to a guessed `pi auth
+login`: current `pi auth --help` exposes print/check, not login, and RPC has no
+login command. Build a second provider/OAuth registry or credential vault: violates
+reuse and loses Pi refresh/storage behavior. Launch a whole interactive agent for
+every connection: unnecessary agent/extension/session side effects and no structured
+completion contract. Reuse the current first-party model/auth runtime instead.
+
+**Acceptance and planned checks:** Extend existing command, fleet and Pi-package
+regressions and add a focused SDK-bridge/auth/TUI test module. Use fake systemctl,
+fake providers/OAuth callbacks, private disposable fixture stores and headless TUI
+pilot flows; no production secrets, models or network. Prove two repositories retain
+different primary/fallback selections, names cannot collide, a not-yet-installed
+repository stays unstarted until Start actually installs its unit, context-specific
+catalogs/accounts match the runner, configured custom models are preserved, unsupported
+methods stay disabled, key/OAuth flows commit through Pi, cancel/error/late-result
+paths preserve state, and forbidden strings never reach stdout/log/receipt/env/repo
+artifacts. Exercise committed-but-refresh-failed outcomes and both web/view-only
+backend denials. Validate both supported install layouts, absent/incompatible SDK,
+release inclusion and the existing running-service restart-decline behavior. Tests
+must bind the bridge to the inspected public SDK surface, not only self-consistent
+fake interfaces. New cases are planned, not executed by saving this section.
+
+**Queue and live boundary:** Add a bounded offline successor to the implemented
+TOOLSET-122-27 slice without reopening its historical evidence or depending on its
+unrelated live migration. Preserve all existing task IDs, ordering and dependencies.
+A dependent live qualification stays in Needs decision until the owner authorizes
+local credential use and selects a Pi context/provider. Prefer a private isolated
+Pi agent directory, with no existing production credentials imported. Real API-key
+and subscription flows are qualified only for methods/providers actually exercised;
+no model call, service migration or cron action is part of that check.
+
+**Sources:** Current `pi-autowork/pi_autowork/{tui,fleet_view,command}.py`,
+`pi-autowork/tests/test_fleet_view.py`, `tests/test_autowork_command.py`,
+`tests/portable_pi.test.mjs`, `pi-autowork/tests/test_release.py`; installed Pi 1.2.0 public SDK declarations and model-runtime
+implementation inspected without reading credential files; official
+[models](https://pi.dev/docs/latest/models),
+[providers](https://pi.dev/docs/latest/providers),
+[SDK](https://pi.dev/docs/latest/sdk),
+[RPC](https://pi.dev/docs/latest/rpc), and
+[CLI](https://pi.dev/docs/latest/cli) documentation. Latest docs may move; private
+planning evidence fingerprints the inspected local package/API files.
+
+## Compact task ledger
+
+Status: Accepted
+
+The owner requests smaller root queue/index/history documents through future updates
+to planning, Docs Sync and their consumers. The [compact ledger plan](plans/compact-task-ledger.md)
+records the audit, linked task-record design, compatible rollout and offline checks.
+This accepts planning/queued implementation scope, not a direct format conversion.
+This repository stays on its current schema and inline task format; future adoption
+requires an explicit owner action after compatible tools and skills are delivered.
