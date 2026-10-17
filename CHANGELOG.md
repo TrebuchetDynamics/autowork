@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The reviewer can use what the worker provisioned. A task's docs placed its pinned SDK under the
+  worker's `$TMPDIR`; the reviewer had its own and failed every check for want of it. The review prompt
+  now names the worker's `$TMPDIR` (also `AUTOWORK_WORKER_TMPDIR`) for read-only use, and the changed
+  reviewer re-verifies such holds once. Integration also accepts an abbreviated commit in `report.json`
+  and says what differs when a report really mismatches.
 - More workers run at once. A task touching a manifest, lockfile, migration or CI file
   used to run alone, and while it waited it stopped every lower-priority task, so most
   runners used one of their eight workers. It now runs beside independent work and only

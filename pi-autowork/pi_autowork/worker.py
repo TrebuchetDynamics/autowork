@@ -74,6 +74,24 @@ def pending_live(checkout, task):
     return [' '.join(t.split()) for t in texts if t.strip()]  # the engine's live_items, which the close uses
 
 
+PROVISIONED = (' Toolchains, SDKs and caches the worker provisioned for this task (its $TMPDIR) are in {path}, '
+               'also exported as AUTOWORK_WORKER_TMPDIR. Use them read-only, for example an SDK the task\'s docs place '
+               'under $TMPDIR, instead of downloading again; do not write there.')
+
+
+def worker_tmp(checkout, task):
+    """The finished worker's $TMPDIR (slot data), where it may have provisioned a toolchain the
+    task's checks need; the reviewer gets its own $TMPDIR and would not find it otherwise."""
+    try:
+        common = Path(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        slot = json.loads((common / 'autowork-execution' / 'slots' / f'{task}.json').read_text())
+        attempt = slot.get('data_attempt', slot['attempt'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    path = common / 'autowork-execution' / 'slot-data' / task / f'attempt-{attempt}' / 'tmp'
+    return path if path.is_dir() and any(path.iterdir()) else None
+
+
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
@@ -84,8 +102,12 @@ def verify(state, task):
     if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
         return 0
     head_before = git(checkout, 'rev-parse', 'HEAD')
+    provisioned = worker_tmp(checkout, task)
+    if provisioned:
+        os.environ['AUTOWORK_WORKER_TMPDIR'] = str(provisioned)
     result = pi_runtime.job(pi_runtime.Settings(state), 'verify', task, checkout,
-                            REVIEW.format(task=task, checkout=checkout) + (
+                            REVIEW.format(task=task, checkout=checkout)
+                            + (PROVISIONED.format(path=provisioned) if provisioned else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
                             os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800'),
