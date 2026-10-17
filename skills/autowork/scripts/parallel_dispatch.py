@@ -138,6 +138,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '',
         'Rules:',
         f'- Work only inside {worktree}; change only paths within Touches: {touches}',
+        '- New dependency manifests, lock files, schema/migration or CI files need an explicit',
+        '  protected path in Touches before editing; a broad directory alone does not reserve them.',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
         '  Put a one-line CHANGELOG proposal in the report instead.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
@@ -307,6 +309,14 @@ def contracts(repo, requested=None, plan=None):
         return []  # Malformed queues still raise and report ACTION_REQUIRED.
 
 
+def protected_files(repo, revision=None):
+    """Inventory shared build/schema/CI files without interpreting names as globs."""
+    args = ('ls-tree', '-rz', '--name-only', revision) if revision else (
+        'ls-files', '-z', '--cached', '--others', '--exclude-standard')
+    names = execution.git(repo, *args).split('\0')
+    return [name for name in names if name and parallel_plan.protected_path(name)]
+
+
 def retry_plan(repo, current, requested=None, plan_path=None):
     """One admission policy for the retry adapter and its lifecycle transition guard."""
     held = {s['task_id'] for s in current if s['state'] == 'held' and s['attempt'] == 1
@@ -321,7 +331,8 @@ def retry_plan(repo, current, requested=None, plan_path=None):
     # holds reserve only dependencies, just as they do for ordinary dispatch.
     return parallel_plan.plan([t for t in tasks if t['id'] in held],
                               [contract(s) for s in occupying if s not in parked],
-                              all_tasks=everything, parked=[contract(s) for s in parked], adopted=held)
+                              all_tasks=everything, parked=[contract(s) for s in parked], adopted=held,
+                              protected_files=protected_files(repo))
 
 
 def dispatch(args):
@@ -363,7 +374,8 @@ def dispatch_locked(args, repo, common, count, template, host):
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
                                   or t['id'] in restartable], running, all_tasks=everything,
-                                 parked=[contract(s) for s in parked], adopted=set(idle))
+                                 parked=[contract(s) for s in parked], adopted=set(idle),
+                                 protected_files=protected_files(repo))
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

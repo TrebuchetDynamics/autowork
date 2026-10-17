@@ -76,6 +76,42 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
         return proc
 
+    def test_new_protected_file_needs_explicit_serial_scope(self):
+        module = self.module()
+        slot = {'task_id': 'A', 'baseline': self.baseline, 'attempt': 1}
+        contracts = {'A': {'fields': {'Touches': 'src/'}}}
+        with self.assertRaises(module.Hold):
+            module.verify_scope(self.repo, self.common, slot, contracts, ['src/go.mod'])
+        contracts['A']['fields']['Touches'] = 'src/, src/go.mod'
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'contract.txt').write_text('Scope: src\nTouches: src/, src/go.mod\n')
+        module.verify_scope(self.repo, self.common, slot, contracts, ['src/go.mod'])
+
+    def test_existing_protected_file_under_directory_glob_is_accepted(self):
+        path = self.repo / 'packages/api/go.mod'
+        path.parent.mkdir(parents=True)
+        path.write_text('module example.invalid/api\n')
+        self.git('add', 'packages/api/go.mod')
+        self.git('commit', '-qm', 'existing manifest')
+        slot = {'task_id': 'A', 'baseline': self.git('rev-parse', 'HEAD'), 'attempt': 1}
+        contracts = {'A': {'fields': {'Touches': 'packages/*/'}}}
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'contract.txt').write_text('Scope: packages\nTouches: packages/*/\n')
+        self.module().verify_scope(self.repo, self.common, slot, contracts, ['packages/api/go.mod'])
+
+    def test_changed_contract_cannot_retroactively_make_protected_edit_serial(self):
+        slot = {'task_id': 'A', 'baseline': self.baseline, 'attempt': 1}
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'contract.txt').write_text('Scope: src\nTouches: src/\n')
+        for fields in ({'Touches': 'src/, src/go.mod'},
+                       {'Touches': 'src/', 'Resources': 'exclusive'}):
+            with self.subTest(fields=fields), self.assertRaises(self.module().Hold):
+                self.module().verify_scope(self.repo, self.common, slot,
+                                           {'A': {'fields': fields}}, ['src/go.mod'])
+
     def test_fresh_unknown_session_blocks_integration_before_writes(self):
         self.worker()
         self.agent_process()
@@ -1211,6 +1247,15 @@ class IntegrationTests(unittest.TestCase):
         gate.assert_called_once_with(1, 0)
         self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
         self.assertTrue(root.exists())
+
+    def test_directory_retry_runs_beside_independent_worker(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: component-a/')
+                        .replace('Touches: B.txt', 'Touches: component-b/'))
+        self.git('add', 'TODO.md')
+        self.git('commit', '-qm', 'directory scopes')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.test_bounded_retry_runs_beside_independent_worker()
 
     def test_running_retry_does_not_block_independent_dispatch(self):
         self.worker()

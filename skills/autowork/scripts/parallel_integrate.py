@@ -136,6 +136,16 @@ def verify_scope(repo, common, slot, contracts, files):
         else:
             others.append(plan.paths(contracts.get(other['task_id'], {}).get('fields', {}).get('Touches', '')))
     declared = plan.paths(slot['touches'] if 'touches' in slot else task['fields'].get('Touches', ''))
+    # A broad directory alone does not reserve hypothetical future manifests.
+    # Require an explicit serial declaration before accepting newly created shared
+    # build/schema/CI state, even if other workers have already finished.
+    protected = [p for p in files if plan.protected_path(p)]
+    if protected:
+        original = dispatched_contract(common, slot)
+        admitted = {'fields': execution.goals_module().task_fields(original)} if original else None
+        if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
+            raise Hold('scope', 'protected files need serial admission in the original task contract: '
+                       + str(protected), outside=protected)
     # A task without Touches was dispatched alone, so every file it changed is its own;
     # coordinator files and other slots still conflict. (Requiring a declaration here
     # held every such task: it could never integrate.)

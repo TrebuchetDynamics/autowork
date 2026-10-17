@@ -130,6 +130,32 @@ class DispatchTests(unittest.TestCase):
         self.assertLess(moment['B', 'running'], moment['A', 'reported'])
         self.assertLess(moment['A', 'running'], moment['B', 'reported'])
 
+    def test_directory_containing_manifest_remains_exclusive(self):
+        for tracked in (True, False):
+            with self.subTest(tracked=tracked):
+                self.write_todo(task('A', 'component/'), task('B', 'other/'))
+                (self.repo / 'component').mkdir(exist_ok=True)
+                manifest = self.repo / 'component/go.mod'
+                manifest.write_text('module example.invalid/component\n')
+                if tracked:
+                    self.git('add', 'component/go.mod')
+                    self.git('commit', '-qm', 'protected manifest')
+                else:
+                    self.git('rm', '--cached', 'component/go.mod')
+                self.assertEqual(dispatch.protected_files(self.repo), ['component/go.mod'])
+                planned = dispatch.parallel_plan.plan(execution.select_all(self.repo),
+                                                      protected_files=dispatch.protected_files(self.repo))
+                self.assertEqual([t['id'] for t in planned['dispatch']], ['A'])
+
+    def test_eight_disjoint_directory_workers_launch_together(self):
+        self.write_todo(*(task(f'T{i}', f'component{i}/') for i in range(8)))
+        self.git('add', 'TODO.md')
+        self.git('commit', '-qm', 'directory task scopes')
+        self.set_spec({f'T{i}': {'sleep': 60} for i in range(8)})
+        code, result = self.apply('8', '--max-workers', '8')
+        self.assertEqual((code, result['active_workers']), (0, 8), result)
+        self.assertEqual({s['slot'] for s in result['dispatched']}, set(range(1, 9)))
+
     def test_refill_starts_next_task_when_a_worker_finishes(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2},
                        'B': {'files': {'b.txt': 'b'}, 'sleep': 3.0},

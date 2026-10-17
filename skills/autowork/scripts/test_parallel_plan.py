@@ -81,6 +81,27 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(tasks, before)
 
 
+    def test_directory_scopes_use_actual_protected_files(self):
+        from parallel_plan import plan
+        tasks = [task('A', 'test/shaders/'), task('B', 'lib/models/'), task('C', 'docs/research/')]
+        self.assertEqual(plan(tasks, protected_files=[])['dispatch'], tasks)
+        result = plan(tasks, protected_files=['lib/models/go.mod'])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['A'])
+        self.assertIn('serial path', result['waiting'][0]['reason'])
+        for scope in ('src/package.json', 'db/migrations/', 'scripts/research/schemas/',
+                      '.github/workflows/', 'src/go.mod'):
+            with self.subTest(scope=scope):
+                candidates = [task('A', scope), task('B', 'independent.py')]
+                self.assertEqual(plan(candidates, protected_files=[])['dispatch'], candidates[:1])
+
+    def test_glob_directory_containing_manifest_remains_exclusive(self):
+        from parallel_plan import plan
+        for scope, manifest in [('packages/*/', 'packages/api/package.json'),
+                                ('components/[ab]/', 'components/a/go.mod')]:
+            with self.subTest(scope=scope):
+                tasks = [task('A', scope), task('B', 'independent.py')]
+                self.assertEqual(plan(tasks, protected_files=[manifest])['dispatch'], tasks[:1])
+
     def test_conflicts_serialize_in_priority_order(self):
         from parallel_plan import plan
         cases = [

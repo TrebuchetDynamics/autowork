@@ -19,7 +19,7 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 1. **Claim and dispatch.** `--apply --parallel [N]` claims the parallel coordinator
    lease, reconciles existing slots, plans the queue and starts up to N workers
    (default 2; at most 4 unless `--max-workers`, hard limit 8). Each worker gets
-   worktree `<parent>/<repo>-autowork-<TASK>` on branch `autowork/<TASK>` at the
+   worktree `<canonical-repo>/.worktrees/autowork-<TASK>` on branch `autowork/<TASK>` at the
    current canonical HEAD, its own process group, `TMPDIR`, `AUTOWORK_SLOT` and a
    100-port range from `AUTOWORK_PORT_BASE`. Results: `DISPATCHED` (started slots,
    each with its worker command and log), `WAITING` (each held-back task with its
@@ -43,7 +43,7 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 4. **Integrate.** `--integrate TASK --timeout S --run ARGV...`, where TASK is the
    highest-priority `reported` task (otherwise `ACTION_REQUIRED`). It merges the
    worker commit with `--no-ff` in the detached integration worktree
-   `<parent>/<repo>-autowork-integration`, runs the validation argv there under a
+   `<canonical-repo>/.worktrees/autowork-integration`, runs the validation argv there under a
    bounded process tree, and fast-forwards the canonical checkout only if its HEAD
    has not moved (one re-merge on a moved HEAD, then hold). Result: `INTEGRATED`,
    or `HELD` with a reason when:
@@ -107,6 +107,11 @@ A task runs beside others only when the planner can prove it is independent:
   and lock files, `migration(s)/` and `schema(s)/` directories, CI files such as
   `.github/workflows/`), runs alone. Because it ran alone, a task without `Touches:`
   may change any file except coordinator-owned ones when it integrates.
+  Directory scopes use the repository's tracked and nonignored untracked protected
+  files: `test/shaders/` is not exclusive merely because a manifest could be created
+  there. Explicit manifest paths and schema/migration/CI directories remain exclusive
+  even before they exist. A worker introducing a new protected file through an ordinary
+  directory scope is held at verification until its task explicitly reserves serial work.
 - Dependencies and TODO.md priority still apply: a task waits for its
   prerequisites to close. `Dependencies:` counts task-ID-shaped tokens and known task IDs; surrounding
   prose is ignored, a first clause starting with `none` means none, and a line naming
