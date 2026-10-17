@@ -630,6 +630,11 @@
         "TOOLSET-119-2b",
         "TOOLSET-120-fc",
         "TOOLSET-122-27",
+        "TOOLSET-125-3c",
+        "TOOLSET-126-02",
+        "TOOLSET-127-8f",
+        "TOOLSET-128-89",
+        "TOOLSET-129-6c",
         "TOOLSET-129-c4",
         "TOOLSET-130-15",
         "TOOLSET-131-ac",
@@ -670,6 +675,11 @@
       "TOOLSET-141-c4",
       "TOOLSET-146-bc",
       "TOOLSET-156-75",
+      "TOOLSET-125-3c",
+      "TOOLSET-126-02",
+      "TOOLSET-127-8f",
+      "TOOLSET-128-89",
+      "TOOLSET-129-6c",
       "TOOLSET-130-15",
       "TOOLSET-131-ac",
       "TOOLSET-132-af",
@@ -947,11 +957,27 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-125-3c",
+      "section": "Next",
+      "status": "open",
+      "title": "Runners report unlanded work in health and BLOCKERS.md"
+    },
+    {
+      "depends_on": [],
       "goal": "TEST-SUITE",
       "id": "TOOLSET-125-e6",
       "section": "Next",
       "status": "open",
       "title": "Run inherited execution regressions once"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-126-02",
+      "section": "Next",
+      "status": "open",
+      "title": "Every runner worktree in .worktrees, none outliving its work"
     },
     {
       "depends_on": [
@@ -962,6 +988,16 @@
       "section": "Next",
       "status": "open",
       "title": "Trim prose-only test assertions while retaining executable contracts"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-125-3c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-127-8f",
+      "section": "Next",
+      "status": "open",
+      "title": "autowork audit: the landing and worktree audit as one command"
     },
     {
       "depends_on": [
@@ -984,6 +1020,14 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify suite thinning and reconcile the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-128-89",
+      "section": "Next",
+      "status": "open",
+      "title": "First push of a long-local or diverged main"
     },
     {
       "depends_on": [
@@ -1151,6 +1195,18 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Deploy reviewed fleet-audit helpers through the native scanned updater"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-125-3c",
+        "TOOLSET-126-02",
+        "TOOLSET-128-89"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-129-6c",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Qualify landing, push and worktree placement on the live fleet"
     },
     {
       "depends_on": [

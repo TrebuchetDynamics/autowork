@@ -318,6 +318,62 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No splitting of tasks that are in progress with a live worker. No change to dependencies outside the split task, no change to Now/Next order, and no owner-decision tasks.
 - Planner's call: the split is a coordinator planning job with hard invariants (acceptance preserved, at most once, validated). It is not a worker improvising, so parallelism rises without silently shrinking scope.
 
+### TOOLSET-125-3c — Runners report unlanded work in health and BLOCKERS.md
+
+- [ ] TOOLSET-125-3c — Runners report unlanded work in health and BLOCKERS.md
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 3–4.
+- Touches: pi-autowork/pi_autowork/health.py, pi-autowork/pi_autowork/questions.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_health.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: bravo and sierra kept 20–29 commits off main for hours with nothing in health or the TUI. (1) `merge_main` and `push` record in the runner's status (via `health.update`'s runner fields): commits the session is ahead of main, since when, the last merge result (time, merged or the pending reason) and the last push result (time, pushed, failed reason or off). (2) Health raises a `landing` root when the session has been ahead of main for over 30 minutes with nothing in flight (`PI_AUTOWORK_LAND_ALARM`, seconds), naming the pending reason; a STALLED-style warning is logged once per reason. (3) questions.py adds a `landing` question when the cause needs a person (uncommitted files in the main checkout that stay open or keep changing, a main checkout on another branch, a push the remote keeps rejecting), saying exactly which files or which remote. No model call.
+- Acceptance: a fixture runner whose main checkout holds a file open keeps the session ahead and, after the alarm time (set to seconds in the test), status.json carries the ahead count, since and pending reason, health lists a `landing` root, and BLOCKERS.md has one landing question naming the file; after the file is closed and committed the next merge clears all three; a normal land after a closed task records the merge and push results.
+- Checks: `python3 -m unittest pi-autowork/tests/test_health.py pi-autowork/tests/test_questions.py`; `python3 -m unittest discover -s tests -p 'test_pi_autowork.py' -k landing`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request (2026-10-17).
+- Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+
+### TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
+
+- [ ] TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 1–2, [worktree placement](docs/worktree-placement.md).
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/workspaces.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/worktree_paths.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py, docs/worktree-placement.md
+- Scope: 47 runner worktrees still live in state directories and 34 exist only for `-set-aside-N` branches. (1) Session: when nothing is in flight and the session worktree is outside `.worktrees/`, `git worktree move` it to `workspaces.task_path` and update session.json; a move that fails leaves it in place and says why once. (2) Set-aside: `set_aside` removes the worktree after the `-set-aside-N` branch is created, when the worktree is clean; a dirty one is kept and reported. (3) A one-time sweep on runner start removes clean worktrees of `-set-aside-N` branches and of task branches already merged into main with no engine slot, and runs `git worktree prune`; it never touches worktrees the runner did not create (journal `worktree_created`) or the owner's own worktrees.
+- Acceptance: a fixture with a session in the state directory moves it into `.worktrees/` while idle and resumes from there; a set-aside leaves the branch and removes the clean worktree, keeps a dirty one with a report line; the start sweep removes only runner-created clean set-aside or merged worktrees and leaves a foreign worktree and a dirty one untouched.
+- Checks: `python3 -m unittest skills/autowork/scripts/test_parallel_integrate.py`; `python3 -m unittest discover -s tests -p 'test_pi_autowork.py' -k worktree`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request (2026-10-17).
+- Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+
+### TOOLSET-127-8f — autowork audit: the landing and worktree audit as one command
+
+- [ ] TOOLSET-127-8f — autowork audit: the landing and worktree audit as one command
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), the audit table in the plan.
+- Touches: pi-autowork/pi_autowork/command.py, pi-autowork/pi_autowork/landing.py, tests/test_autowork_command.py, pi-autowork/README.md
+- Scope: The 2026-10-17 audit took an hour of shell. `autowork audit [target]` prints, per runner and read-only: worktrees by location (`.worktrees`, state directory, elsewhere), set-aside and leftover counts, the session's commits ahead of and behind main, main against its upstream, uncommitted files in main and in the session, the release the runner runs, and the last merge and push results recorded by TOOLSET-125-3c. A new standard-library module `landing.py`; no change to `fleet_view.py`.
+- Acceptance: against fixture repositories (runner-created worktrees in both locations, a set-aside branch, a session ahead of main, a main ahead of a bare upstream) the command prints those numbers exactly and changes no file, ref or worktree (`git status`, refs and `git worktree list` identical before and after).
+- Checks: `python3 -m unittest tests/test_autowork_command.py`; `python3 scripts/check.py`.
+- Dependencies: TOOLSET-125-3c.
+- Ownership: Toolset coordinator under the owner's request (2026-10-17).
+- Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+
+### TOOLSET-128-89 — First push of a long-local or diverged main
+
+- [ ] TOOLSET-128-89 — First push of a long-local or diverged main
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit finding 5.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: Mains are 39–72 commits ahead of origin and bravo's has diverged (5 ahead, 19 behind); no runner push has run yet. `push` handles a diverged upstream: fetch, merge the upstream into the session (the Pi merge resolver once per upstream revision on a conflict), land, push once more; a push still rejected becomes a runner blocker and a TOOLSET-125-3c landing question, never a force push. A push that would publish more than `PI_AUTOWORK_PUSH_BATCH` commits (default 200) still runs but logs the count once.
+- Acceptance: fixtures with a bare upstream: a main many commits ahead pushes in one step; a diverged upstream with a clean merge is merged, landed and pushed; a conflicting upstream asks the resolver once and, if still conflicting, leaves main local with a runner blocker and no force push.
+- Checks: `python3 -m unittest discover -s tests -p 'test_pi_autowork.py' -k push`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request (2026-10-17).
+- Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+
 ### TOOLSET-130-15 — Separate worker activity, delivery evidence and available capacity
 
 - [ ] TOOLSET-130-15 — Separate worker activity, delivery evidence and available capacity
@@ -820,6 +876,20 @@ settlement/cancellation checks when refining that existing design.
 
 ## Needs decision
 
+### TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
+
+- [ ] TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
+- Status: open; live
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit findings 1–5.
+- Touches: (none: live qualification)
+- Scope: After the runners self-update to a release with c00a110, TOOLSET-125-3c, TOOLSET-126-02 and TOOLSET-128-89: for each fleet runner, observe one closed task land on main and reach origin (or a recorded landing blocker), no runner worktree outside `.worktrees/`, no set-aside worktree left, and no session ahead of main for over 30 minutes without a landing root. Record the evidence (times, commit IDs, `autowork audit` output) in the plan.
+- Acceptance: evidence for all five runners as above, or each exception recorded with its landing question.
+- Checks: `autowork audit`; the runners' journals.
+- Dependencies: TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-128-89.
+- Ownership: Toolset coordinator under the owner's request (2026-10-17).
+- Exclusions: Live observation only; no runner restarts beyond the owner's normal operation.
+
 ### TOOLSET-101-f6 — Deploy reviewed fleet-audit helpers through the native scanned updater
 
 - [ ] TOOLSET-101-f6 — Deploy reviewed fleet-audit helpers through the native scanned updater
@@ -881,6 +951,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-140-f4, TOOLSET-141-c4, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-148-88, TOOLSET-152-d4, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-140-f4, TOOLSET-141-c4, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-148-88, TOOLSET-152-d4, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75 |
 
 <!-- goals:coverage:end -->
