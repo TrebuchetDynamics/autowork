@@ -163,6 +163,7 @@ settlement/cancellation checks when refining that existing design.
 
 - [ ] TOOLSET-147-54 — Merge pending names its real cause and clears a dirty integration worktree safely
 - Status: open
+- Next action (owner, 2026-10-17): set aside behind TOOLSET-161-17, whose engine files its held candidate overlaps. The hold was ownership, not the change: restore candidate commit 950ac98 from its kept `-set-aside-` branch, merge current main and reverify it instead of reimplementing.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [session merge](pi-autowork/pi_autowork/coordinator.py) (`merge_main`).
 - Evidence (2026-10-16 23:47 monitor pass): runner A logs `Merge pending: pi-autowork/20261015-230814 conflicts with main in: .`, with an empty file list. Its integration worktree has an uncommitted `tasks/plan.md`, so `git merge` refuses before any conflict exists. `--diff-filter=U` therefore lists nothing, the merge aborts, and the next cycle repeats it. Pi resolution runs once per main revision and is skipped while stopping. The session, which holds a verified a fleet task closure, has waited more than a day.
