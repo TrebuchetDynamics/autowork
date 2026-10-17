@@ -70,10 +70,19 @@ def hold(common, slot, reason, **updates):
             **{k: updates[k] for k in ('cause', 'outside', 'requested') if k in updates}}
 
 
+BRANCH_HOLD = 'unexpected worker branch'
+
+
 def expected_branch(slot):
     """A held task's retry runs on a fresh -r2 branch; an interrupted or released
-    worker restarts on its original branch, even though both count as attempt 2."""
-    previous = (slot.get('previous_attempts') or [{}])[-1]
+    worker restarts on its original branch, even though both count as attempt 2.
+    A worker paused by a deliberate stop resumes the same attempt on the same branch,
+    so its paused record is judged by the attempts before it."""
+    history = slot.get('previous_attempts') or []
+    previous = history[-1] if history else {}
+    if (previous.get('paused') and previous.get('state') in ('interrupted', 'released')
+            and previous.get('attempt') == slot['attempt']):
+        return expected_branch(dict(previous, previous_attempts=history[:-1]))
     retried = slot['attempt'] == 2 and previous.get('state') == 'held' and not slot.get('readopted')
     return 'autowork/' + slot['task_id'] + ('-r2' if retried else '')
 
@@ -86,7 +95,7 @@ def verify(repo, common, slot, contracts):
         raise ValueError('worker still running')
     state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
     if slot['branch'] != expected_branch(slot):
-        raise ValueError('unexpected worker branch')
+        raise ValueError(BRANCH_HOLD)
     commit = slot.get('commit', '')
     try:
         lineage = git(repo, 'merge-base', slot['baseline'], commit) == slot['baseline'] if commit else False
@@ -727,8 +736,11 @@ def retry_held(args):
             # binding) gets the first attempt's commit re-verified once instead.
             # Earlier releases held a commit when a live session was in the canonical checkout
             # (flutter, 2026-10-16): that was no verdict, so offer such a commit again.
+            # Earlier releases also held a paused-and-resumed -r2 retry as 'unexpected worker branch'
+            # (sierra TASK-026); one whose branch is now the expected one is offered again too.
             busy = next((s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
-                         and str(s.get('reason', '')).startswith(WRITER_HOLD)), None)
+                         and (str(s.get('reason', '')).startswith(WRITER_HOLD)
+                              or (s.get('reason') == BRANCH_HOLD and s['branch'] == expected_branch(s)))), None)
             if busy is not None:
                 value = {k: v for k, v in busy.items() if k not in ('reason', 'cause', 'checks', 'integration')}
                 value['state'] = 'reported'

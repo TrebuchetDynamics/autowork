@@ -18,6 +18,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A held task's `-r2` retry that a runner stop paused and the next start resumed is
+  verified on its `-r2` branch; the engine had held it as "unexpected worker branch"
+  (sierra TASK-026). A commit an earlier release held that way is offered for verification
+  again once.
 - A pi-autowork service that finds another runner holding its repository (an old tmux
   runner, a manual run) waits for that runner to exit instead of exiting 3, which
   systemd never restarts; bravo's service had stayed down after its tmux runner

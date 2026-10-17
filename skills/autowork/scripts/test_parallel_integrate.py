@@ -334,6 +334,45 @@ class IntegrationTests(unittest.TestCase):
         state.transition(self.repo, self.owner, task, 'released')  # second failure: held
         return root, retry, commit
 
+    def paused_retry(self):
+        """A held task's -r2 retry, paused by a runner stop, resumed and reported."""
+        root, _ = self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason='fixture failure')
+        retry = Path(str(root) + '-r2')
+        self.git('worktree', 'add', '-q', '-b', 'autowork/A-r2', str(retry), self.baseline)
+        state.change(self.common, state.slots(self.common)[0], 'dispatched',
+                     {'worktree': str(retry), 'branch': 'autowork/A-r2', 'baseline': self.baseline})
+        state.transition(self.repo, self.owner, 'A', 'interrupted', paused=True)
+        resumed = state.change(self.common, state.slots(self.common)[0], 'dispatched', {})
+        self.assertEqual((resumed['attempt'], resumed['branch']), (2, 'autowork/A-r2'))
+        (retry / 'A.txt').write_text('retried\n')
+        self.git('add', '.', cwd=retry)
+        self.git('commit', '-qm', 'retry A', cwd=retry)
+        commit = self.git('rev-parse', 'HEAD', cwd=retry)
+        slot = state.transition(self.repo, self.owner, 'A', 'reported', commit=commit)
+        execution.save(dispatch.data_dir(self.common, slot) / 'report.json', {
+            'task': 'A', 'commit': commit, 'changed_files': ['A.txt'], 'checks': [], 'blockers': [],
+            'changelog': 'fixture'})
+        return commit
+
+    def test_a_paused_and_resumed_held_retry_integrates_from_r2(self):
+        """sierra TASK-026: a runner stop paused the -r2 retry; after the resume it was held as
+        'unexpected worker branch' instead of being verified."""
+        self.paused_retry()
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'retried\n')
+
+    def test_a_retry_held_for_its_own_branch_by_an_earlier_release_is_offered_again(self):
+        commit = self.paused_retry()
+        slot = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(slot, state='held', reason='unexpected worker branch'), slot)
+        from types import SimpleNamespace
+        args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, tasks=None, plan=None, worker_timeout=10)
+        module = self.module()
+        self.assertEqual(module.retry_held(args), {'outcome': 'REOFFERED', 'task': 'A', 'commit': commit})
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_an_exhausted_hold_is_set_aside_with_its_work_kept(self):
         root, retry, commit = self.exhaust()
         module = self.module()
@@ -1162,6 +1201,20 @@ class ExpectedBranchTests(unittest.TestCase):
         integrate = importlib.import_module('parallel_integrate')
         self.assertEqual([integrate.expected_branch(s) for s in (first, restarted, interrupted, retried)],
                          ['autowork/A', 'autowork/A', 'autowork/A', 'autowork/A-r2'])
+
+    def test_a_paused_resume_keeps_the_branch_of_the_attempt_it_resumes(self):
+        """sierra TASK-026: a held retry on -r2, paused by a runner stop and resumed, was held as
+        'unexpected worker branch' because its last record was the paused interruption."""
+        held = {'task_id': 'A', 'attempt': 1, 'state': 'held'}
+        paused_retry = {'task_id': 'A', 'attempt': 2, 'state': 'interrupted', 'paused': True}
+        paused_first = {'task_id': 'A', 'attempt': 1, 'state': 'interrupted', 'paused': True}
+        integrate = importlib.import_module('parallel_integrate')
+        cases = ({'task_id': 'A', 'attempt': 2, 'previous_attempts': [held, paused_retry]},
+                 {'task_id': 'A', 'attempt': 2, 'previous_attempts': [held, paused_retry, paused_retry]},
+                 {'task_id': 'A', 'attempt': 1, 'previous_attempts': [paused_first]},
+                 {'task_id': 'A', 'attempt': 2, 'previous_attempts': [paused_first, {'state': 'interrupted'}]})
+        self.assertEqual([integrate.expected_branch(s) for s in cases],
+                         ['autowork/A-r2', 'autowork/A-r2', 'autowork/A', 'autowork/A'])
 
 
 if __name__ == '__main__':
