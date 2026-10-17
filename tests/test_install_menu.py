@@ -3,6 +3,8 @@
 The Hermes item runs only as a dry run here: the real setup changes live profiles.
 """
 import os
+import pty
+import selectors
 from pathlib import Path
 import subprocess
 import tempfile
@@ -102,14 +104,127 @@ class InstallMenuTests(unittest.TestCase):
         self.assertEqual(self.calls('pi install'), [])  # a dry run runs nothing
         self.assertIn('no terminal for the menu', self.install().stderr)
 
-    def test_a_failed_step_is_reported_and_already_installed_is_fine(self):
+    def test_failed_steps_remain_failures_even_when_output_says_already(self):
         self.fake('claude', LOGGING + 'echo "boom: no network" >&2; exit 1\n')
         self.fake('codex', LOGGING + 'echo "marketplace already added" >&2; exit 1\n')
         result = self.install('--only', 'claude,codex')
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r'claude\s+failed\s+boom: no network')
-        self.assertRegex(result.stdout, r'codex\s+installed\s+already there')
+        self.assertRegex(result.stdout, r'codex\s+failed.*marketplace already added')
         self.assertIn('unknown item(s): nope', self.install('--only', 'nope').stderr)
+
+    def test_full_selects_all_hosts_and_bundled_skills(self):
+        self.fake('hermes', LOGGING)
+        result = self.install('--full', '--dry-run')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for key in ('pi', 'autowork', 'tx', 'hermes', 'claude', 'codex'):
+            self.assertRegex(result.stdout, rf'{key}\s+planned')
+        self.assertIn('codex plugin add autowork@autowork-marketplace', result.stdout)
+        self.assertIn('setup_bundle.py', result.stdout)
+        self.assertEqual(self.calls('codex'), [])
+        self.assertEqual(self.calls('hermes'), [])
+
+    def test_explicit_missing_host_fails_but_other_items_continue(self):
+        result = self.install('--only', 'hermes,tx')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r'hermes\s+failed.*hermes not found')
+        self.assertTrue((self.home / '.local/bin/tx').is_file())
+
+    def test_default_output_shows_both_child_streams(self):
+        self.fake('codex', LOGGING + 'echo "skill stdout"; echo "skill stderr" >&2\n')
+        result = self.install('--only', 'codex')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('skill stdout', result.stdout)
+        self.assertIn('skill stderr', result.stdout)
+        self.assertIn('[1/1]', result.stdout)
+        self.assertNotIn('\x1b[', result.stdout)
+
+    def test_verbose_prints_commands_and_quiet_keeps_failure_details(self):
+        self.fake('codex', LOGGING + 'echo "registered skills"\n')
+        result = self.install('--only', 'codex', '--verbose')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('$ codex plugin add', result.stdout)
+        self.assertIn('registered skills', result.stdout)
+        result = self.install('--only', 'codex', '--quiet')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('registered skills', result.stdout)
+        self.assertNotIn('$ codex', result.stdout)
+        self.assertRegex(result.stdout, r'codex\s+installed')
+        self.fake('codex', LOGGING + 'echo "failure context"; echo "failure cause" >&2; exit 4\n')
+        result = self.install('--only', 'codex', '--quiet')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('failure context', result.stdout)
+        self.assertIn('failure cause', result.stdout)
+        self.assertIn('exit 4', result.stdout)
+
+    def test_color_controls_and_no_color_environment(self):
+        for args, env, colored in (
+            (('--color', 'always'), {}, True),
+            (('--color', 'never'), {}, False),
+            ((), {'NO_COLOR': '1', 'TERM': 'xterm-256color'}, False),
+            (('--color', 'always'), {'NO_COLOR': '1'}, True),
+        ):
+            with self.subTest(args=args, env=env):
+                result = self.install('--full', '--dry-run', *args, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual('\x1b[' in result.stdout, colored)
+
+    def test_auto_color_uses_terminal_and_respects_opt_out(self):
+        for env, colored in (({'TERM': 'xterm'}, True),
+                             ({'TERM': 'dumb'}, False),
+                             ({'TERM': 'xterm', 'NO_COLOR': '1'}, False)):
+            with self.subTest(env=env):
+                master, slave = pty.openpty()
+                try:
+                    result = subprocess.run(['bash', str(INSTALL), '--only', 'codex', '--dry-run'],
+                                            env={**self.env, **env}, stdout=slave,
+                                            stderr=subprocess.PIPE, timeout=10)
+                    os.close(slave)
+                    slave = None
+                    chunks = []
+                    while True:
+                        try:
+                            chunk = os.read(master, 4096)
+                        except OSError:
+                            break  # Linux PTY reports EIO when its writer closes.
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(b'\x1b[' in b''.join(chunks), colored)
+                finally:
+                    os.close(master)
+                    if slave is not None:
+                        os.close(slave)
+
+    def test_child_output_arrives_before_command_exits(self):
+        # The child cannot finish until the parent receives its prompt.
+        # A capture-until-exit implementation deadlocks this handshake.
+        self.fake('codex', LOGGING + 'printf "waiting for input: "; read -r answer; '
+                  'test "$answer" = continue || exit 9\n')
+        with subprocess.Popen(['bash', str(INSTALL), '--only', 'codex'], env=self.env,
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
+            seen = b''
+            try:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(proc.stdout, selectors.EVENT_READ)
+                    for _ in range(2):
+                        pending = b''
+                        while b'waiting for input: ' not in pending:
+                            self.assertTrue(selector.select(timeout=5), seen.decode(errors='replace'))
+                            chunk = os.read(proc.stdout.fileno(), 4096)
+                            self.assertTrue(chunk, seen.decode(errors='replace'))
+                            pending += chunk
+                            seen += chunk
+                        proc.stdin.write(b'continue\n')
+                        proc.stdin.flush()
+                tail, _ = proc.communicate(timeout=5)
+                seen += tail
+                self.assertEqual(proc.returncode, 0, seen.decode(errors='replace'))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
 
     def test_hermes_options_reach_the_hermes_item(self):
         self.fake('hermes', LOGGING)
