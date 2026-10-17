@@ -666,7 +666,8 @@
         "TOOLSET-168-ff",
         "TOOLSET-169-1d",
         "TOOLSET-170-f6",
-        "TOOLSET-171-35"
+        "TOOLSET-171-35",
+        "TOOLSET-172-40"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -678,6 +679,7 @@
       "TOOLSET-170-f6",
       "TOOLSET-161-17",
       "TOOLSET-171-35",
+      "TOOLSET-172-40",
       "TOOLSET-164-f1",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
@@ -906,6 +908,14 @@
       "section": "Now",
       "status": "open",
       "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-172-40",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker paused by a runner restart shows as paused, not failed"
     },
     {
       "depends_on": [],

@@ -105,6 +105,22 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No change to which tasks are exclusive or to how they run once started; no change to the worker cap.
 - Planner's call: a time-bounded drain instead of an immediate one. It keeps the anti-starvation guarantee (an exclusive task still gets the whole pool within the grace period plus one task's run) while short independent work stops idling behind it.
 
+### TOOLSET-172-40 — A worker paused by a runner restart shows as paused, not failed
+
+- [ ] TOOLSET-172-40 — A worker paused by a runner restart shows as paused, not failed
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "find out why 165-f7 died", then "yes, plan the task"; [slot reaping and pause](skills/autowork/scripts/parallel_state.py) (`pause`, the reap that sets `EMPTY`, `change`), [status rows](skills/autowork/scripts/parallel_status.py) (`failed` count), [lifecycle words](pi-autowork/pi_autowork/common.py) (`lifecycle`), [coordinator log](pi-autowork/pi_autowork/coordinator.py) (`note_state`), [status listing](pi-autowork/pi_autowork/cli.py), [TUI words](pi-autowork/pi_autowork/fleet_view.py) (`PHASE_WORDS`, `WORD_STYLES`).
+- Evidence (2026-10-17 13:43, this repository's runner): a service restart stopped the runner five seconds after TOOLSET-165-f7's worker started. `pause` marked the slot `paused`, Pi exited with no changes, and the reap released it with `dead worker without a commit or changes`. The runner logged `TOOLSET-165-f7: failed — dead worker without a commit or changes`, and status listed it as `failed` with that reason and again as `pending`, and counted it among `4 failed`. The slot was `released`, attempt 1, `paused: true`: it resumes on the same attempt and lost nothing. The owner read it as a crash.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/parallel_status.py, pi-autowork/pi_autowork/common.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py, tests/test_pi_autowork.py
+- Scope: (1) A slot that a deliberate stop paused and that ended `interrupted` or `released` gets the lifecycle word `paused`, not `failed`, in the runner log, `autowork status`, `autowork ls` and the TUI. The reap records the reason `stopped by a runner restart; resumes on attempt <n>`, plus `with uncommitted changes` when the worktree had any; the dead-worker reasons stay for unpaused slots. (2) Paused slots do not count toward `failed` in status totals and never toward the failure streak. (3) Status shows each task once: a paused slot that also waits for dispatch shows `paused` with the waiting reason appended (`…; waiting: overlapping paths with <task>`).
+- Acceptance: In fixtures, a worker stopped by `pause` and then reaped with no changes shows `paused` with the restart reason in the log line, the status row, the totals and the TUI. The same with uncommitted changes says so. An unpaused worker that dies with nothing still shows `failed — dead worker without a commit or changes`, and a second-attempt unpaused death still holds with cause `empty`. A paused slot that waits on overlap appears in one row. The resume itself is unchanged: same worktree, same attempt.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when a stop pauses workers, to resume or retry rules, or to holds.
+- Planner's call: placed after TOOLSET-171-35. It changes only words and counts, and a misread failure costs the owner an investigation, not runner time.
+
 ### TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 
 - [ ] TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
