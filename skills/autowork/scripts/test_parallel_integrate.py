@@ -76,6 +76,42 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
         return proc
 
+    def test_new_protected_file_needs_explicit_serial_scope(self):
+        module = self.module()
+        slot = {'task_id': 'A', 'baseline': self.baseline, 'attempt': 1}
+        contracts = {'A': {'fields': {'Touches': 'src/'}}}
+        with self.assertRaises(module.Hold):
+            module.verify_scope(self.repo, self.common, slot, contracts, ['src/go.mod'])
+        contracts['A']['fields']['Touches'] = 'src/, src/go.mod'
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'contract.txt').write_text('Scope: src\nTouches: src/, src/go.mod\n')
+        module.verify_scope(self.repo, self.common, slot, contracts, ['src/go.mod'])
+
+    def test_existing_protected_file_under_directory_glob_is_accepted(self):
+        path = self.repo / 'packages/api/go.mod'
+        path.parent.mkdir(parents=True)
+        path.write_text('module example.invalid/api\n')
+        self.git('add', 'packages/api/go.mod')
+        self.git('commit', '-qm', 'existing manifest')
+        slot = {'task_id': 'A', 'baseline': self.git('rev-parse', 'HEAD'), 'attempt': 1}
+        contracts = {'A': {'fields': {'Touches': 'packages/*/'}}}
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'contract.txt').write_text('Scope: packages\nTouches: packages/*/\n')
+        self.module().verify_scope(self.repo, self.common, slot, contracts, ['packages/api/go.mod'])
+
+    def test_changed_contract_cannot_retroactively_make_protected_edit_serial(self):
+        slot = {'task_id': 'A', 'baseline': self.baseline, 'attempt': 1}
+        data = dispatch.data_dir(self.common, slot)
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'contract.txt').write_text('Scope: src\nTouches: src/\n')
+        for fields in ({'Touches': 'src/, src/go.mod'},
+                       {'Touches': 'src/', 'Resources': 'exclusive'}):
+            with self.subTest(fields=fields), self.assertRaises(self.module().Hold):
+                self.module().verify_scope(self.repo, self.common, slot,
+                                           {'A': {'fields': fields}}, ['src/go.mod'])
+
     def test_fresh_unknown_session_blocks_integration_before_writes(self):
         self.worker()
         self.agent_process()
@@ -83,7 +119,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
         self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
-        self.assertFalse((self.repo.parent / (self.repo.name + '-autowork-integration')).exists())
+        self.assertFalse((self.repo / '.worktrees/autowork-integration').exists())
 
     def test_session_appearing_during_validation_blocks_landing(self):
         self.worker()
@@ -836,6 +872,36 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((self.repo / 'A.txt').read_text(), 'user edit\n')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
+    def test_legacy_candidate_revalidates_after_location_upgrade(self):
+        self.worker()
+        module = self.module()
+        from unittest.mock import patch
+        legacy = self.repo.parent / 'legacy-integration'
+        with patch.object(module, 'worktree_path', return_value=legacy), \
+                patch.object(execution, 'bounded_command', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        slot = state.slots(self.common)[0]
+        slot['integration'].pop('worktree', None)  # pre-upgrade intent format
+        execution.save(state.slot_path(self.common, 'A'), slot)
+        state.reconcile(self.repo, self.owner)
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertTrue(legacy.is_dir())  # never discard prior evidence
+
+    def test_legacy_landed_candidate_recovers_after_location_upgrade(self):
+        module = self.module()
+        from unittest.mock import patch
+        legacy = self.repo.parent / 'legacy-integration'
+        with patch.object(module, 'worktree_path', return_value=legacy):
+            self.interrupted_after_landing()
+        slot = state.slots(self.common)[0]
+        slot['integration'].pop('worktree', None)
+        execution.save(state.slot_path(self.common, 'A'), slot)
+        with patch.object(execution, 'bounded_command', side_effect=AssertionError('already validated')):
+            result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+
     def test_interrupted_validation_can_revalidate_abandoned_candidate(self):
         self.worker()
         module = self.module()
@@ -1151,24 +1217,161 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual(result['integration']['changed_files'], [name])
 
-    def test_held_retry_waits_for_real_running_worker_to_drain(self):
-        from types import SimpleNamespace
+    def start_sleeping_slot(self, task):
+        args = self.retry_args()
+        args.tasks = task
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            result = dispatch.dispatch(args)
+        self.assertEqual(result['outcome'], 'DISPATCHED', result)
+        slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+        self.addCleanup(dispatch.stop, slot['worker'])
+        return slot
+
+    def test_bounded_retry_runs_beside_independent_worker(self):
         root, commit = self.worker()
         state.transition(self.repo, self.owner, 'A', 'held', reason='failure')
-        other, other_commit = self.worker('B')
-        worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(10)'], start_new_session=True)
-        try:
-            slot = state.slots(self.common)[1]
-            slot.update(worker=execution.identity(worker.pid), state='running')
-            execution.save(state.slot_path(self.common, 'B'), slot)
-            args = SimpleNamespace(consumer=str(self.repo), owner_pid=self.owner, worker_timeout=30)
-            self.assertEqual(self.module().retry_held(args)['outcome'], 'WAITING')
-            self.assertFalse(self.git('branch', '--list', 'autowork/A-r2'))
-            self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
-            self.assertEqual(self.git('rev-parse', 'autowork/B'), other_commit)
-        finally:
-            worker.kill()
-            worker.wait()
+        other = self.start_sleeping_slot('B')
+        args = self.retry_args()
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value='') as gate:
+            result = self.module().retry_held(args)
+        self.assertEqual(result['outcome'], 'RETRIED', result)
+        slot = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        self.addCleanup(dispatch.stop, slot['worker'])
+        self.assertTrue(state.worker_live(slot) and state.worker_live(other))
+        self.assertNotEqual(dispatch.meta(self.common, slot)['slot_index'],
+                            dispatch.meta(self.common, other)['slot_index'])
+        gate.assert_called_once_with(1, 0)
+        self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
+        self.assertTrue(root.exists())
+
+    def test_directory_retry_runs_beside_independent_worker(self):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: component-a/')
+                        .replace('Touches: B.txt', 'Touches: component-b/'))
+        self.git('add', 'TODO.md')
+        self.git('commit', '-qm', 'directory scopes')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.test_bounded_retry_runs_beside_independent_worker()
+
+    def test_running_retry_does_not_block_independent_dispatch(self):
+        self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason='failure')
+        args = self.retry_args()
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            first = self.module().dispatch_with_retries(args)
+            self.assertEqual(first['outcome'], 'RETRIED', first)
+            self.addCleanup(dispatch.stop, first['slot']['worker'])
+            second = self.module().dispatch_with_retries(args)
+        self.assertEqual(second['outcome'], 'DISPATCHED', second)
+        slot = next(s for s in state.slots(self.common) if s['task_id'] == 'B')
+        self.addCleanup(dispatch.stop, slot['worker'])
+        self.assertEqual(second['active_workers'], 2)
+
+    def test_two_retries_and_fresh_tasks_fill_eight_worker_slots(self):
+        todo = self.repo / 'TODO.md'
+        with todo.open('a') as out:
+            for task in 'CDEFGHI':
+                out.write(f'\n- [ ] {task} — Task {task}\n  Scope: {task}.txt\n'
+                          f'  Touches: {task}.txt\n  Acceptance: offline fixture\n'
+                          '  Checks: true\n  Dependencies: None.\n  Status: open\n')
+        self.git('commit', '-qam', 'nine independent tasks')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        for task in 'AB':
+            self.worker(task)
+            state.transition(self.repo, self.owner, task, 'held', reason='failure')
+        args = self.retry_args()
+        args.parallel = args.max_workers = 8
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        def cleanup():
+            for slot in state.slots(self.common):
+                if slot.get('worker'):
+                    dispatch.stop(slot['worker'])
+        self.addCleanup(cleanup)
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            for _ in range(2):
+                result = self.module().dispatch_with_retries(args)
+                self.assertEqual(result['outcome'], 'RETRIED', result)
+            result = self.module().dispatch_with_retries(args)
+            self.assertEqual(result['outcome'], 'DISPATCHED', result)
+            self.assertEqual(result['active_workers'], 8)
+            self.assertEqual(self.module().dispatch_with_retries(args)['outcome'], 'WAITING')
+        slots = state.slots(self.common)
+        self.assertEqual({s['task_id'] for s in slots}, set('ABCDEFGH'))
+        self.assertEqual({dispatch.meta(self.common, s)['slot_index'] for s in slots}, set(range(1, 9)))
+        self.assertTrue(all(state.worker_live(s) for s in slots))
+
+    def claimed_retry_fixture(self, exhausted, requested=None):
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: B.txt', 'Touches: A.txt')
+                        .replace('Status: open', 'Status: in_progress') +
+                        '\n- [ ] C — Independent\n  Scope: C.txt\n  Touches: C.txt\n'
+                        '  Acceptance: fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n')
+        self.git('commit', '-qam', 'overlapping claimed holds and independent work')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.start_sleeping_slot('C')
+        for task in 'AB':
+            self.worker(task)
+            state.transition(self.repo, self.owner, task, 'held', reason='failure',
+                             cause='blocker' if task == 'B' and exhausted else 'validation')
+        args = self.retry_args()
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        args.tasks = requested
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            result = self.module().retry_held(args)
+        self.assertEqual((result['outcome'], result.get('task')), ('RETRIED', requested or 'A'), result)
+        self.addCleanup(dispatch.stop, result['slot']['worker'])
+        self.assertEqual(result['slot']['attempt'], 2)
+
+    def test_retry_adapter_and_guard_agree_on_other_owned_claims(self):
+        self.claimed_retry_fixture(exhausted=False)
+
+    def test_explicit_retry_selection_keeps_other_owned_claims(self):
+        self.claimed_retry_fixture(exhausted=False, requested='B')
+
+    def test_retry_adapter_and_guard_agree_on_exhausted_claims(self):
+        self.claimed_retry_fixture(exhausted=True)
+
+    def retry_blocked_fixture(self, constraint):
+        todo = self.repo / 'TODO.md'
+        content = todo.read_text()
+        if constraint == 'overlap':
+            content = content.replace('Touches: A.txt', 'Touches: B.txt')
+        elif constraint == 'exclusive':
+            content = content.replace('Touches: A.txt', 'Touches: A.txt\n  Resources: exclusive')
+        elif constraint == 'unknown':
+            content = content.replace('  Touches: A.txt\n', '')
+        todo.write_text(content)
+        self.git('commit', '--allow-empty', '-qam', 'scope fixture')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.start_sleeping_slot('B')
+        self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason='failure')
+        args = self.retry_args()
+        if constraint == 'capacity':
+            args.parallel = 1
+        result = self.module().retry_held(args)
+        self.assertEqual(result['outcome'], 'IDLE', result)
+        self.assertFalse(self.git('branch', '--list', 'autowork/A-r2'))
+
+    def test_retry_respects_worker_capacity(self):
+        self.retry_blocked_fixture('capacity')
+
+    def test_retry_waits_for_overlapping_worker(self):
+        self.retry_blocked_fixture('overlap')
+
+    def test_exclusive_retry_waits_for_worker_pool(self):
+        self.retry_blocked_fixture('exclusive')
+
+    def test_unbounded_retry_waits_for_worker_pool(self):
+        self.retry_blocked_fixture('unknown')
 
     def test_validation_cannot_mutate_candidate_then_land(self):
         self.worker()

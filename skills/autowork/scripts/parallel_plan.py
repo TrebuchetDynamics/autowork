@@ -112,13 +112,29 @@ def _resources(task):
     return set(re.split(r'[,\s]+', task.get('fields', {}).get('Resources', '').strip())) - {''}
 
 
-def _solo(task):
+def protected_path(path):
+    """Whether a concrete repository path changes shared build/schema/CI state."""
+    return any(fnmatchcase(path, p + '*' if p.endswith('/') else p) for p in SERIAL_PATHS)
+
+
+def _solo(task, protected_files=None):
     touches = _touches(task)
     if not touches:
         return 'missing Touches; must run alone'
     if _resources(task) & {'live', 'exclusive'}:
         return 'live/exclusive resource; must run alone'
-    if _shared(touches, SERIAL_PATHS):
+    if protected_files is None:
+        serial = _shared(touches, SERIAL_PATHS)
+    else:
+        # A directory can hypothetically contain every manifest name. Use the
+        # actual inventory for directories, keeping explicit new protected paths
+        # and named schema/CI directories exclusive even before they exist.
+        serial = any(
+            (protected_path(p + '.autowork-probe')
+             or any(fnmatchcase(f, p + '*') for f in protected_files)) if p.endswith('/')
+            else _shared([p], SERIAL_PATHS)
+            for p in touches)
+    if serial:
         return 'serial path; must run alone'
     return ''
 
@@ -151,7 +167,7 @@ def _dependencies(task, known=()):
     return dependency_ids(task.get('fields', {}).get('Dependencies', 'None.'), known)
 
 
-def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
+def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_files=None):
     """Plan ordered runnable contracts against running contracts/live slots.
 
     ``running`` contains task contracts held by live slots. Also pass every
@@ -175,6 +191,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
     """
     tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
+    solo = lambda task: _solo(task, protected_files)
     known = {t['id']: t for t in [*all_tasks, *tasks, *running, *parked]}
     active = {t['id']: t for t in running}
     claims = {}
@@ -209,9 +226,9 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
             if _resources(a) & _resources(b):
                 return 'shared resource with ' + other
             return ''
-        solo = _solo(a) or _solo(b)
-        if solo:
-            return solo + ' (beside ' + b['id'] + ')'
+        exclusive = solo(a) or solo(b)
+        if exclusive:
+            return exclusive + ' (beside ' + b['id'] + ')'
         if _shared(_touches(a), _touches(b)):
             return 'overlapping paths with ' + b['id']
         if _resources(a) & _resources(b):
@@ -240,12 +257,12 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=()):
         if not reason:
             reason, by = first(task, reserved, reserved=True)
         if reason:
-            if not stopped[0] and busy[0] and _solo(task):
+            if not stopped[0] and busy[0] and solo(task):
                 stopped = ('priority waits for ' + tid, tid)
             reserved.append(task)
             waiting.append({'id': tid, 'reason': reason, 'blocked_by': [by]})
         else:
             dispatch.append(task)
-            if _solo(task):
-                stopped = ('priority task ' + tid + ': ' + _solo(task), tid)
+            if solo(task):
+                stopped = ('priority task ' + tid + ': ' + solo(task), tid)
     return {'dispatch': dispatch, 'waiting': waiting}

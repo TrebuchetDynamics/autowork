@@ -18,6 +18,7 @@ import parallel_claims
 import parallel_plan
 import parallel_state as state
 import task_execution as execution
+from worktree_paths import worktree_path
 
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 8
@@ -137,6 +138,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '',
         'Rules:',
         f'- Work only inside {worktree}; change only paths within Touches: {touches}',
+        '- New dependency manifests, lock files, schema/migration or CI files need an explicit',
+        '  protected path in Touches before editing; a broad directory alone does not reserve them.',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
         '  Put a one-line CHANGELOG proposal in the report instead.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
@@ -183,7 +186,7 @@ def create_worktree(repo, common, task_id, baseline):
     """Return (path, branch, baseline); adopt only a worktree the journal shows Autowork created."""
     safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
     branch = 'autowork/' + safe
-    path = (repo.parent / f'{repo.name}-autowork-{safe}').resolve()
+    path = worktree_path(repo, 'autowork-' + safe)
     exists = path.exists() or bool(execution.git(repo, 'branch', '--list', branch))
     if exists and created_by_autowork(common, path, branch) and path.is_dir():
         # A previous dispatch stopped between creating the worktree and its slot.
@@ -306,6 +309,32 @@ def contracts(repo, requested=None, plan=None):
         return []  # Malformed queues still raise and report ACTION_REQUIRED.
 
 
+def protected_files(repo, revision=None):
+    """Inventory shared build/schema/CI files without interpreting names as globs."""
+    args = ('ls-tree', '-rz', '--name-only', revision) if revision else (
+        'ls-files', '-z', '--cached', '--others', '--exclude-standard')
+    names = execution.git(repo, *args).split('\0')
+    return [name for name in names if name and parallel_plan.protected_path(name)]
+
+
+def retry_plan(repo, current, requested=None, plan_path=None):
+    """One admission policy for the retry adapter and its lifecycle transition guard."""
+    held = {s['task_id'] for s in current if s['state'] == 'held' and s['attempt'] == 1
+            and not state.exhausted(s) and not state.worker_live(s)}
+    everything = contracts(repo)
+    by_id = {t['id']: t for t in everything}
+    tasks = contracts(repo, requested, plan_path) if (requested or plan_path) else everything
+    contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
+    occupying = [s for s in current if s['state'] in OCCUPYING and s['task_id'] not in held]
+    parked = [s for s in occupying if state.exhausted(s)]
+    # Retained slots are this coordinator's work, not outside claims. Exhausted
+    # holds reserve only dependencies, just as they do for ordinary dispatch.
+    return parallel_plan.plan([t for t in tasks if t['id'] in held],
+                              [contract(s) for s in occupying if s not in parked],
+                              all_tasks=everything, parked=[contract(s) for s in parked], adopted=held,
+                              protected_files=protected_files(repo))
+
+
 def dispatch(args):
     repo = Path(execution.git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
     count = capacity(args)
@@ -345,7 +374,8 @@ def dispatch_locked(args, repo, common, count, template, host):
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
                                   or t['id'] in restartable], running, all_tasks=everything,
-                                 parked=[contract(s) for s in parked], adopted=set(idle))
+                                 parked=[contract(s) for s in parked], adopted=set(idle),
+                                 protected_files=protected_files(repo))
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

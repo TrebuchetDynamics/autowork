@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 
-from . import health, pi_runtime, questions, release, touches_inference
+from . import health, pi_runtime, questions, release, touches_inference, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -253,8 +253,11 @@ class Coordinator:
             if read_only:
                 return False
             self.forget_missing_worktree(path)
+            path = str(workspaces.task_path(self.toolset, self.repo, branch.replace('/', '-')))
             if not git_ok(self.repo, 'worktree', 'add', '-q', path, branch):
                 raise Finish(1, f'Cannot restore the integration worktree for {branch}')
+            value['path'] = path
+            session.write_text(json.dumps(value) + '\n')
         self.integ, self.integ_branch = path, branch
         os.environ['PI_AUTOWORK_SESSION'] = branch
         return True
@@ -263,7 +266,7 @@ class Coordinator:
         if self.integ or self.load_session():
             return
         branch = f'pi-autowork/{datetime.now():%Y%m%d-%H%M%S}'
-        path = str(self.state / 'worktrees' / 'integration')
+        path = str(workspaces.task_path(self.toolset, self.repo, branch.replace('/', '-')))
         self.forget_missing_worktree(path)
         if Path(path).exists():
             raise Finish(1, f'{path} exists but belongs to no session; remove it after checking its contents.')
@@ -687,22 +690,26 @@ class Coordinator:
         os.replace(tmp, self.touches_cache)
 
     def scratch_checkout(self, purpose):
-        """A detached worktree of the session HEAD under STATE/scratch; only such a path is
-        ever force-removed."""
-        (self.state / 'scratch').mkdir(exist_ok=True)
-        path = tempfile.mkdtemp(prefix=purpose + '-', dir=self.state / 'scratch')
+        """A disposable detached checkout inside the canonical .worktrees directory."""
+        target = workspaces.task_path(self.toolset, self.repo, 'pi-scratch-' + purpose)
+        target.parent.mkdir(exist_ok=True)
+        path = tempfile.mkdtemp(prefix=target.name + '-', dir=target.parent)
         os.rmdir(path)
         with open(self.state / 'engine.err', 'a') as err:
             ok = subprocess.run(['git', '-C', self.integ, 'worktree', 'add', '-q', '--detach', path, 'HEAD'],
                                 stdout=subprocess.DEVNULL, stderr=err).returncode == 0
+        if ok:
+            self.__dict__.setdefault('_scratch_paths', set()).add(path)
         return path if ok else None
 
     def drop_scratch(self, path):
-        if not str(path).startswith(str(self.state / 'scratch') + '/'):
+        # Only checkouts this instance created are disposable. Other worktrees
+        # under the same directory can contain a person's unfinished work.
+        owned = getattr(self, '_scratch_paths', set())
+        if path not in owned or Path(path).is_symlink():
             return
-        if not git_ok(self.integ, 'worktree', 'remove', '--force', path):
-            shutil.rmtree(path, ignore_errors=True)
-        git(self.integ, 'worktree', 'prune')
+        if git_ok(self.integ, 'worktree', 'remove', '--force', path):
+            owned.remove(path)
 
     def infer_touches(self):
         """For the top runnable tasks without Touches, a read-only Pi pass proposes the

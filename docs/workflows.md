@@ -226,7 +226,7 @@ gates merging the branch back.
 
 Parallel mode is opt-in (`/autowork --parallel 2`, or `owner_cycle.py REPO --apply
 --parallel 2 --owner-pid PID`). The coordinator session starts headless host workers,
-one task each in its own worktree `<repo>-autowork-<TASK>` on branch
+one task each in its own worktree `<repo>/.worktrees/autowork-<TASK>` on branch
 `autowork/<TASK>`, for tasks whose `Touches:` and `Resources:` fields prove them
 independent; dependencies and TODO.md priority still apply. `--wait` blocks inside
 the helper until a worker finishes. The coordinator reviews each worker's report,

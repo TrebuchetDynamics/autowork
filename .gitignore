@@ -8,3 +8,6 @@ __pycache__/
 .pytest_cache/
 # Claude Code session state and agent worktrees (local only)
 /.claude/
+
+# Task worktrees stay inside the canonical checkout.
+/.worktrees/

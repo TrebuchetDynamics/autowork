@@ -83,7 +83,7 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
             die(1, f'Could not stop {unit}')
         env_file.unlink(missing_ok=True)
         retire_legacy()
-        print(f'Removed {unit}. Its state, kept worktrees and any unmerged session stay in {state_root}.')
+        print(f'Removed {unit}. Its state stays in {state_root}; kept worktrees and unmerged sessions remain at their recorded paths.')
         return 0
     if hermes_jobs and env.get('PI_AUTOWORK_ALLOW_HERMES', '0') != '1':
         die(4, f'A Hermes Autowork cron job already works on this repository:\n{hermes_jobs}\n'
