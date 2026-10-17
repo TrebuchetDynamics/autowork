@@ -658,7 +658,8 @@
         "TOOLSET-160-df",
         "TOOLSET-161-17",
         "TOOLSET-162-d2",
-        "TOOLSET-163-f7"
+        "TOOLSET-163-f7",
+        "TOOLSET-164-f1"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -667,6 +668,8 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-161-17",
+      "TOOLSET-164-f1",
+      "TOOLSET-149-df",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
       "TOOLSET-162-d2",
@@ -683,7 +686,6 @@
       "TOOLSET-099-87",
       "TOOLSET-115-bf",
       "TOOLSET-120-fc",
-      "TOOLSET-141-c4",
       "TOOLSET-146-bc",
       "TOOLSET-156-75",
       "TOOLSET-125-3c",
@@ -717,7 +719,6 @@
       "TOOLSET-029",
       "TOOLSET-011",
       "TOOLSET-144-c0",
-      "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
       "TOOLSET-129-6c",
@@ -812,6 +813,14 @@
     },
     {
       "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-149-df",
+      "section": "Now",
+      "status": "open",
+      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
+    },
+    {
+      "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-153-64",
       "section": "Now",
@@ -865,6 +874,14 @@
       "section": "Now",
       "status": "open",
       "title": "A claim question says why the claim is kept and quotes the note that holds it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-164-f1",
+      "section": "Now",
+      "status": "open",
+      "title": "A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs"
     },
     {
       "depends_on": [],
@@ -1151,14 +1168,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-141-c4",
-      "section": "Next",
-      "status": "open",
-      "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-144-c0",
       "section": "Next",
       "status": "open",
@@ -1171,14 +1180,6 @@
       "section": "Next",
       "status": "open",
       "title": "Run conditional Docs Sync during verified Autowork closeout"
-    },
-    {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-149-df",
-      "section": "Next",
-      "status": "open",
-      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
     },
     {
       "depends_on": [
@@ -2131,6 +2132,18 @@
       ],
       "supersession_reason": "Accepted TODO-first execution decision retires native-card-only recovery; shipped fixes and unpassed historical acceptance remain preserved.",
       "title": "Bind original-card continuation to supported budget enforcement"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-141-c4",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-164-f1"
+      ],
+      "supersession_reason": "Owner decision 2026-10-17: planning repair moves to the standing DOCS-MAINTAINER worker (docs/plans/2026-10-17-docs-maintainer.md, decision 5)",
+      "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
     }
   ],
   "version": 1
