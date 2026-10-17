@@ -653,7 +653,8 @@
         "TOOLSET-155-e2",
         "TOOLSET-156-75",
         "TOOLSET-157-cd",
-        "TOOLSET-158-08"
+        "TOOLSET-158-08",
+        "TOOLSET-159-30"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -661,6 +662,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-159-30",
       "TOOLSET-157-cd",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
@@ -842,6 +844,14 @@
       "section": "Now",
       "status": "open",
       "title": "A rejected push with a conflicting upstream is resolved, not left to diverge silently"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-159-30",
+      "section": "Now",
+      "status": "open",
+      "title": "A git timeout under host load waits as busy, not as an engine fault"
     },
     {
       "depends_on": [],
