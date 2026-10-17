@@ -25,11 +25,18 @@ SERIAL_PATHS = tuple(p for name in SERIAL_NAMES for p in (name, '*/' + name)) + 
 
 def paths(value):
     """Parse a comma list; reject ambiguous/non-relative declarations fail-closed."""
+    def valid(path):
+        return not (path.startswith('/') or '\\' in path or '\x00' in path
+                    or any(part in ('.', '..', '') for part in path.rstrip('/').split('/')))
+
     result = [p.strip() for p in value.split(',') if p.strip()]
+    # Prose often ends the last item with a period. Remove just that one,
+    # never a parent segment or a dot inside a path, and only if it is safe.
+    if result and result[-1].endswith('.') and not result[-1].endswith('..') and valid(result[-1][:-1]):
+        result[-1] = result[-1][:-1]
     for path in result:
-        if (path.startswith('/') or '\\' in path or '\x00' in path
-                or any(part in ('.', '..', '') for part in path.rstrip('/').split('/'))):
-            raise ValueError('Touches must contain repository-relative paths without dot segments')
+        if not valid(path):
+            raise ValueError('invalid Touches: ' + path)
     return result
 
 
@@ -194,6 +201,12 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     solo = lambda task: _solo(task, protected_files)
     known = {t['id']: t for t in [*all_tasks, *tasks, *running, *parked]}
     active = {t['id']: t for t in running}
+    invalid = {}
+    for tid, task in known.items():
+        try:
+            _touches(task)
+        except ValueError as exc:
+            invalid[tid] = str(exc)
     claims = {}
     for t in known.values():
         status = re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0]
@@ -219,6 +232,10 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return 'dependency: held ' + b['id'] if depends(a, b) else ''
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
+        if b['id'] in invalid:
+            # A malformed idle contract cannot reserve paths. A live slot's
+            # unknown scope still fails closed until its work has settled.
+            return invalid[b['id']] + ' (beside ' + b['id'] + ')' if b['id'] in active else ''
         if claim or reserved:  # idle claim or waiting task: only declared overlap matters
             other = ('in_progress ' if claim else '') + b['id']
             if _shared(_touches(a), _touches(b)):
@@ -249,6 +266,9 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     dispatch, waiting, stopped, reserved = [], [], ('', None), []
     for task in tasks:
         tid = task['id']
+        if tid in invalid:
+            waiting.append({'id': tid, 'reason': invalid[tid], 'blocked_by': [tid], 'root_kind': 'contract'})
+            continue
         if tid in active or tid in claims:
             waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress', 'blocked_by': [tid]})
             continue
