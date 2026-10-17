@@ -73,6 +73,38 @@ settlement/cancellation checks when refining that existing design.
 - Done by the owner session (2026-10-17): part of (2). Each review runs with its own `TMPDIR` under the runner's state directory, removed (and `git worktree prune`d) when the review ends; reviewer and worker prompts say never to write directly under `/tmp` and to make a scratch copy with `git worktree add --detach "$TMPDIR/copy" HEAD`. Still open: (1) the gate arithmetic and (3) the janitor.
 - Planner's call: fix the double-counted reservation and clean the scratch that caused it, rather than lower `PI_AUTOWORK_MIN_FREE_MB`. The gate's purpose stays; only its arithmetic and the leak change.
 
+### TOOLSET-168-ff — Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit
+
+- [ ] TOOLSET-168-ff — Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (`commit_owner_changes`), owner direction (2026-10-16) that auto work commits all quiet work.
+- Evidence (2026-10-17 12:18 monitor pass): a runner committed 18 quiet paths from its main checkout as `chore: uncommitted work in the main checkout (pi-autowork)`, including two submodule pointer changes. One submodule now points at a commit that is on no branch of the submodule's remote. The push failed for an unrelated reason (non-fast-forward, TOOLSET-158-08); once that resolves, the superproject's main would reference a submodule commit no other clone can fetch.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: Before committing, `commit_owner_changes` finds gitlink paths (mode 160000 in the index or in `git diff --raw`). A submodule pointer change is committed only when its new commit is reachable from a remote-tracking branch of that submodule (after a quiet `git fetch` limited to 30 seconds); otherwise the path is left uncommitted and logged once per commit: `left <path> uncommitted: submodule commit <sha> is not on its remote yet`. Everything else commits as today. The pointer is committed in a later cycle once the submodule commit is pushed.
+- Acceptance: In fixtures with a submodule, a pointer to a pushed commit is committed with the other quiet work; a pointer to a local-only commit stays uncommitted, is logged once, and is committed after the submodule commit reaches its remote; a repository without submodules behaves exactly as before.
+- Checks: python3 -m unittest tests/test_pi_autowork.py (the owner-planning and uncommitted-work tests); python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which other files auto work commits; no pushing of submodules by the runner.
+- Planner's call: hold back only the unpublishable pointer, not the whole commit; the rest of the owner's quiet work still lands.
+
+### TOOLSET-169-1d — Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse
+
+- [ ] TOOLSET-169-1d — Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`, the worker environment), [review](pi-autowork/pi_autowork/worker.py) (`verify`, `worker_tmp`).
+- Evidence (2026-10-17 12:15 monitor pass): one runner's bootstrap task installed a pinned SDK under its worker's `$TMPDIR` as its own docs say; the next task in its chain and that task's reviewer each started with a fresh `$TMPDIR`, found no SDK, and the reviewer failed the commit with `no pinned … SDK was available, so the analyze and test checks could not be run`. The earlier fix (the reviewer reads the finished worker's `$TMPDIR`) only covers the same task.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, skills/autowork/references/parallel-workers.md
+- Scope: Every worker and reviewer gets `AUTOWORK_CACHE`, one directory per repository on disk (`<git common dir>/autowork-execution/cache`), kept across tasks and runs. Prompts say: download or extract SDKs, toolchains and package caches into `$AUTOWORK_CACHE/<name>-<version>` (reuse one that is already there), and keep only scratch in `$TMPDIR`. The reviewer is told the same and may use the cache read-only. The cache is never committed, has a size note in status (`cache N GB`), and is removed only by `autowork` housekeeping when a person asks.
+- Acceptance: In fixtures, a worker's prompt and environment carry `AUTOWORK_CACHE`, the same path for two tasks of one repository and a different one for another repository; a reviewer's prompt names it; the cache directory survives a task's close and set-aside.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No edits to fleet repositories' docs; no automatic deletion of the cache.
+- Planner's call: a per-repository cache rather than sharing one task's `$TMPDIR` with the next: tasks run in parallel and are removed when they close, while a pinned SDK is a repository-wide prerequisite.
+
 ### TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
 
 - [ ] TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict

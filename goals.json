@@ -662,7 +662,9 @@
         "TOOLSET-164-f1",
         "TOOLSET-165-f7",
         "TOOLSET-166-b4",
-        "TOOLSET-167-03"
+        "TOOLSET-167-03",
+        "TOOLSET-168-ff",
+        "TOOLSET-169-1d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -672,10 +674,11 @@
     "tasks": [
       "TOOLSET-165-f7",
       "TOOLSET-162-d2",
+      "TOOLSET-168-ff",
+      "TOOLSET-169-1d",
       "TOOLSET-161-17",
       "TOOLSET-164-f1",
       "TOOLSET-149-df",
-      "TOOLSET-167-03",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
       "TOOLSET-163-f7",
@@ -895,6 +898,22 @@
       "section": "Now",
       "status": "open",
       "title": "A runner's own worker processes never count as an outside session in the main checkout"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-168-ff",
+      "section": "Now",
+      "status": "open",
+      "title": "Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-169-1d",
+      "section": "Now",
+      "status": "open",
+      "title": "Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse"
     },
     {
       "depends_on": [],
