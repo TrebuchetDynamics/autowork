@@ -659,7 +659,8 @@
         "TOOLSET-161-17",
         "TOOLSET-162-d2",
         "TOOLSET-163-f7",
-        "TOOLSET-164-f1"
+        "TOOLSET-164-f1",
+        "TOOLSET-165-f7"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -668,6 +669,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-161-17",
+      "TOOLSET-165-f7",
       "TOOLSET-164-f1",
       "TOOLSET-149-df",
       "TOOLSET-142-85",
@@ -882,6 +884,14 @@
       "section": "Now",
       "status": "open",
       "title": "A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-165-f7",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner's own worker processes never count as an outside session in the main checkout"
     },
     {
       "depends_on": [],
