@@ -241,8 +241,13 @@ def change(common, old, target, updates):
         if worker_live(old):
             raise ValueError('cannot restart a live worker')
         if old['state'] == 'held':
-            if any(worker_live(s) for s in slots(common)):
-                raise ValueError('held retry requires a drained worker pool')
+            live = [s for s in slots(common) if worker_live(s)]
+            if live:
+                import parallel_dispatch
+                repo = Path(lease(common)['workspace'])
+                admitted = parallel_dispatch.retry_plan(repo, slots(common), old['task_id'])
+                if old['task_id'] not in {task['id'] for task in admitted['dispatch']}:
+                    raise ValueError('held retry conflicts with worker pool')
             if updates.get('branch') != 'autowork/' + old['task_id'] + '-r2':
                 raise ValueError('held retry requires a fresh -r2 branch')
             if not updates.get('worktree') or Path(updates['worktree']).resolve() == Path(old['worktree']):

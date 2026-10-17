@@ -32,6 +32,41 @@ class LinkTests(unittest.TestCase):
     def git(self, *args):
         subprocess.run(['git', '-C', str(self.main), *args], check=True, capture_output=True)
 
+    def test_runner_session_and_scratch_stay_in_canonical_worktree_directory(self):
+        from pi_autowork.coordinator import Coordinator
+        runner = Coordinator.__new__(Coordinator)
+        runner.repo = str(self.main)
+        runner.base = 'main'
+        runner.toolset = str(Path(__file__).resolve().parents[2])
+        runner.state = Path(self.temp.name) / 'state'
+        runner.state.mkdir()
+        runner.integ = runner.integ_branch = None
+        runner.ensure_session()
+        self.assertEqual(Path(runner.integ).parent, self.main / '.worktrees')
+        scratch = runner.scratch_checkout('probe')
+        self.assertEqual(Path(scratch).parent, self.main / '.worktrees')
+        runner.drop_scratch(scratch)
+        self.assertFalse(Path(scratch).exists())
+        runner.drop_scratch(str(self.tree))
+        self.assertTrue(self.tree.is_dir())
+
+    def test_missing_legacy_session_restores_inside_canonical_repository(self):
+        import json
+        from pi_autowork.coordinator import Coordinator
+        runner = Coordinator.__new__(Coordinator)
+        runner.repo = str(self.main)
+        runner.toolset = str(Path(__file__).resolve().parents[2])
+        runner.state = Path(self.temp.name) / 'state'
+        runner.state.mkdir()
+        self.git('branch', 'pi-autowork/legacy')
+        old = Path(self.temp.name) / 'old-checkout'
+        session = runner.state / 'session.json'
+        session.write_text(json.dumps({'branch': 'pi-autowork/legacy', 'path': str(old)}))
+        self.assertTrue(runner.load_session())
+        self.assertEqual(Path(runner.integ), self.main / '.worktrees/pi-autowork-legacy')
+        self.assertFalse(old.exists())
+        self.assertEqual(json.loads(session.read_text())['path'], runner.integ)
+
     def test_ignored_paths_are_linked_from_the_canonical_checkout(self):
         whole = Path(self.temp.name) / 'whole'
         self.git('worktree', 'add', '-q', '--detach', str(whole))

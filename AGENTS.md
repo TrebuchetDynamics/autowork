@@ -18,6 +18,20 @@ runtime state out of Git. Do not edit or patch upstream Hermes Agent.
 - Keep public examples generic and preserve existing per-profile job state.
   Instruction changes alone do not prove that a cron job completed a task.
 
+## Worktree location
+
+The user requires all new task worktrees under the **canonical repository's
+`.worktrees/` directory** (plural). This overrides skill defaults and examples.
+Never create sibling `<repo>-<task>` directories or new
+`.claude/worktrees/` checkouts. Resolve the canonical checkout from `git worktree
+list --porcelain`, including when already in a linked worktree. Reuse an existing
+task checkout when appropriate and ensure `/.worktrees/` is ignored.
+
+Claude must use `EnterWorktree` with the configured user `WorktreeCreate` hook;
+manual Bash creation bypasses that hook. Preserve live sessions, dirty files and
+unmerged branches when relocating or closing worktrees. See
+`docs/worktree-placement.md` for the hook configuration.
+
 <!-- autowork-local-authority:start -->
 ## Autowork: autonomous local progress
 

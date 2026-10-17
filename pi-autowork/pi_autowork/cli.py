@@ -428,7 +428,7 @@ def summarize(repo, base, toolset, rev, skill_args, opts, settings, state):
           else 'Fallback:   disabled')
     if settings.max_cost != '0':
         print(f'Budget:     ${pi_runtime.spent(settings)} of ${settings.max_cost} in the last {settings.window_text} h')
-    print(f'Mode:       {opts["mode"]}; state and worktrees in {state}', flush=True)
+    print(f'Mode:       {opts["mode"]}; state in {state}; new worktrees in {repo}/.worktrees', flush=True)
 
 
 def status_view(repo, base, toolset, state):

@@ -22,6 +22,7 @@ import time
 import uuid
 
 import parallel_plan
+from worktree_paths import worktree_path
 
 
 class NoEligibleTask(ValueError):
@@ -292,7 +293,15 @@ def external_workers(repo):
                 except (OSError, TypeError):
                     continue
             inside = lambda path, root: path == root or root in path.parents
-            touched = [root for root in workspaces if any(inside(path, root) for path in paths + written)]
+            # A nested worktree owns its files; it is not also a writer in its
+            # enclosing canonical checkout. Attribute each path to its deepest root.
+            touched = []
+            for path in paths + written:
+                matches = [root for root in workspaces if inside(path, root)]
+                if matches:
+                    root = max(matches, key=lambda candidate: len(candidate.parts))
+                    if root not in touched:
+                        touched.append(root)
             if touched:
                 writing = any(inside(path, root) for path in written for root in touched)
                 active, evidence = session_activity(pid, writing)
@@ -686,7 +695,7 @@ def execute(args):
                         reason='Active agent session in this checkout; run this task from an isolated worktree.',
                         isolate={'branch': branch,
                                  'command': ['git', '-C', str(repo), 'worktree', 'add', '-b', branch,
-                                             str(repo.parent / f'{repo.name}-{branch.replace("/", "-")}')]})
+                                             str(worktree_path(repo, branch.replace("/", "-")))]})
         lease = {'task_id': task['id'], 'workspace': str(repo), 'profile': args.profile,
                  'owner': owner or identity(os.getpid()), 'selected_inputs': selected_inputs}
         save(claim_path, lease)

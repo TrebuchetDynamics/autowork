@@ -13,6 +13,7 @@ import parallel_dispatch as dispatch
 import parallel_plan as plan
 import parallel_state as state
 import task_execution as execution
+from worktree_paths import worktree_path
 
 
 def git(repo, *argv):
@@ -135,6 +136,16 @@ def verify_scope(repo, common, slot, contracts, files):
         else:
             others.append(plan.paths(contracts.get(other['task_id'], {}).get('fields', {}).get('Touches', '')))
     declared = plan.paths(slot['touches'] if 'touches' in slot else task['fields'].get('Touches', ''))
+    # A broad directory alone does not reserve hypothetical future manifests.
+    # Require an explicit serial declaration before accepting newly created shared
+    # build/schema/CI state, even if other workers have already finished.
+    protected = [p for p in files if plan.protected_path(p)]
+    if protected:
+        original = dispatched_contract(common, slot)
+        admitted = {'fields': execution.goals_module().task_fields(original)} if original else None
+        if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
+            raise Hold('scope', 'protected files need serial admission in the original task contract: '
+                       + str(protected), outside=protected)
     # A task without Touches was dispatched alone, so every file it changed is its own;
     # coordinator files and other slots still conflict. (Requiring a declaration here
     # held every such task: it could never integrate.)
@@ -219,7 +230,7 @@ def require_no_writers(repo, files=None):
 
 
 def integration_worktree(repo, common, baseline):
-    path = execution.safe_path(repo.parent / (repo.name + '-autowork-integration'))
+    path = worktree_path(repo, 'autowork-integration')
     if path.exists():
         if not dispatch.created_by_autowork(common, path, '(detached)'):
             raise ValueError('integration worktree was not created by this coordinator')
@@ -306,7 +317,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                     files = changed(repo, baseline, merge)
                     verify_scope(repo, common, slot, contracts, files)
                     run_id = execution.uuid.uuid4().hex
-                    integration = {'commit': merge, 'baseline': baseline, 'changed_files': files,
+                    integration = {'commit': merge, 'baseline': baseline, 'changed_files': files, 'worktree': str(root),
                                    'check_receipt': str(common / (run_id + '.json')),
                                    'task_contract': contracts[task]['contract'], 'canonical_branch': canonical_branch}
                     # Durable intent precedes validation and FF. An abandoned helper
@@ -389,12 +400,23 @@ def recover_integration(repo, common, slot, contracts):
     verify_scope(repo, common, slot, contracts, files)
     if files != info.get('changed_files'):
         raise ValueError('abandoned integration delta does not match intent')
-    root = execution.safe_path(repo.parent / (repo.name + '-autowork-integration'))
-    if (not dispatch.created_by_autowork(common, root, '(detached)')
-            or state.common_dir(root) != common
-            or git(root, 'rev-parse', 'HEAD') != info['commit']
-            or git(root, 'status', '--porcelain', '--untracked-files=all')):
-        raise ValueError('abandoned integration tree changed; preserve for diagnosis')
+    # Older intents have no path. Recover only an unambiguous journaled checkout
+    # with the exact candidate, including a retained pre-upgrade sibling tree.
+    journal = common / 'journal.jsonl'
+    paths = {info['worktree']} if info.get('worktree') else {
+        entry['worktree'] for entry in map(json.loads, journal.read_text().splitlines())
+        if entry.get('event') == 'worktree_created' and entry.get('branch') == '(detached)'
+    } if journal.exists() else set()
+    candidates = []
+    for raw in paths:
+        root = execution.safe_path(raw)
+        if (root.is_dir() and dispatch.created_by_autowork(common, root, '(detached)')
+                and state.common_dir(root) == common
+                and git(root, 'rev-parse', 'HEAD') == info['commit']
+                and not git(root, 'status', '--porcelain', '--untracked-files=all')):
+            candidates.append(root)
+    if len(candidates) != 1:
+        raise ValueError('abandoned integration tree changed or ambiguous; preserve for diagnosis')
     if git(repo, 'rev-parse', 'HEAD') == info['baseline']:
         return None  # Pre-FF; remerge and revalidate, retaining worker attempt.
     validated_receipt(repo, common, slot)
@@ -806,27 +828,29 @@ def retry_held(args):
                 result = _retire(repo, common, changed, present)
                 return dict(result, outcome='REQUEUED')
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
-            pending = any(s['state'] == 'held' and s['attempt'] == 1 and not state.exhausted(s) for s in current)
-            if any(state.worker_live(s) for s in current):
-                if pending or any(s['attempt'] == 2 and state.worker_live(s) for s in current):
-                    return {'outcome': 'WAITING', 'reason': 'held retries run alone after the worker pool drains'}
-                return {'outcome': 'IDLE'}
+            live = [s for s in current if state.worker_live(s)]
+            capacity = dispatch.capacity(args)
+            if len(live) >= capacity:
+                return {'outcome': 'IDLE'}  # ordinary dispatch reports the occupied pool
             held = {s['task_id']: s for s in current if s['state'] == 'held' and s['attempt'] == 1
-                    and not state.exhausted(s)}
-            tasks = dispatch.contracts(repo, args.tasks, args.plan)
-            task = next((t for t in tasks if t['id'] in held), None)
-            if task is None:
+                    and not state.exhausted(s) and not state.worker_live(s)}
+            if not held:
                 return {'outcome': 'IDLE'}
+            # Attempt number is not a mutex: use ordinary parallel admission.
+            planned = dispatch.retry_plan(repo, current, args.tasks, args.plan)
+            task = next(iter(planned['dispatch']), None)
+            if task is None:
+                return {'outcome': 'IDLE'}  # unrelated fresh work may still fill spare slots
             template, host = dispatch.worker_command(args, args.owner_pid)
             if template is None:
                 return {'outcome': 'SEQUENTIAL_FALLBACK', 'reason': host}
-            gate = dispatch.resource_gate(0, args.min_free_mem_mb)
+            gate = dispatch.resource_gate(len(live), args.min_free_mem_mb)
             if gate:
                 return {'outcome': 'WAITING', 'reason': gate}
             old = held[task['id']]
             baseline = git(repo, 'rev-parse', 'HEAD')
             branch = 'autowork/' + task['id'] + '-r2'
-            root = execution.safe_path(repo.parent / (repo.name + '-autowork-' + task['id'] + '-r2'))
+            root = worktree_path(repo, 'autowork-' + task['id'] + '-r2')
             if root.exists() or git(repo, 'branch', '--list', branch):
                 raise ValueError('fresh retry branch/worktree already exists; preserve and reconcile by hand')
             git(repo, 'worktree', 'add', '-b', branch, str(root), baseline)
@@ -841,10 +865,12 @@ def retry_held(args):
                               '\nFresh retry after a held integration. Inspect prior failure: ' + old.get('reason', '') + '\n')
             argv = dispatch.render(template, {'worktree': root, 'prompt_file': prompt, 'timeout': int(args.worker_timeout),
                                             'report_file': report, 'git_common_dir': common.parent})
-            execution.save(data / 'meta.json', {'slot_index': 1, 'command': argv, 'host': host,
+            used = {dispatch.meta(common, s).get('slot_index') for s in live}
+            index = next(i for i in range(1, dispatch.HARD_LIMIT + 1) if i not in used)
+            execution.save(data / 'meta.json', {'slot_index': index, 'command': argv, 'host': host,
                            'prompt_file': str(prompt), 'report_file': str(report), 'worker_timeout': args.worker_timeout})
             try:
-                worker = dispatch.launch(argv, root, data, 1, prompt)
+                worker = dispatch.launch(argv, root, data, index, prompt)
                 slot = state.change(common, slot, 'running', {'worker': worker, 'log_path': str(data / 'worker.log')})
             except (ValueError, OSError) as exc:
                 return hold(common, slot, 'fresh retry launch failed: ' + str(exc), cause='launch')

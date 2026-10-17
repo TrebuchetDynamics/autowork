@@ -113,7 +113,7 @@ class ParallelCompatibilityTests(unittest.TestCase):
         self.assertFalse((execution / 'journal.jsonl').exists())
         self.assertFalse((execution / 'slots').exists())
         self.assertFalse((execution / 'coordinator.json').exists())
-        self.assertFalse(list(self.repo.parent.glob('repo-autowork-*')))
+        self.assertFalse(list((self.repo / '.worktrees').glob('autowork-*')))
         branches = subprocess.run(['git', '-C', str(self.repo), 'branch', '--list', 'autowork/*'],
                                   capture_output=True, text=True, check=True).stdout
         self.assertEqual(branches, '')
