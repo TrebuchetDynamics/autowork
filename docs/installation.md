@@ -19,8 +19,12 @@ The suite includes the Pi package, `autowork` command/TUI, `tx` launcher, Hermes
 fleet setup, and Claude Code and Codex plugins with their complete portable skill
 suites. `--full` (`--all`) is the default; `--skip` excludes components. Host CLIs
 must already be installed: full mode reports missing hosts as skipped, while
-`--only` reports a requested missing host as failed. The TUI/web view needs `uv`,
-and using the tmux launcher needs `tmux`.
+`--only` reports a requested missing host as failed. Hermes also needs a Hermes
+home (`~/.hermes`, or `--hermes-home`/`HERMES_HOME`); a default home that does not
+exist yet counts as missing. The TUI/web view needs `uv`, and using the tmux
+launcher needs `tmux`. A replaced `~/.local/bin/autowork` or `~/.local/bin/tx` is
+kept as `<name>.bak`, then `.bak.1` and so on, so no earlier backup is lost; a
+symlinked `tx` is moved aside, never written through.
 
 Output streams during each install step, including native prompts. Verbose output
 is on by default (`--verbose`) and shows shell-quoted commands; `--quiet` shows summaries and failure diagnostics,
@@ -33,8 +37,11 @@ time. A failed command stops that component, continues independent components,
 and causes a nonzero exit. Even an error mentioning “already” remains a failure.
 
 `--dry-run` prints selected commands without installing. `--hermes-home`,
-`--bundle-only`, `--no-reload` and `--yes-deps` apply only to Hermes. Host security
-and dependency prompts still apply; full mode does not supply consent flags.
+`--bundle-only`, `--no-reload` and `--yes-deps` apply only to Hermes. When a
+profile already has its own plugin clone, Hermes is updated with `update_bundle.py`,
+which supports none of those three and restarts gateways, so passing one fails the
+Hermes item instead of being ignored. Host security and dependency prompts still
+apply; full mode does not supply consent flags.
 
 ## Install
 

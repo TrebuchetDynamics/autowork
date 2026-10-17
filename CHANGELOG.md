@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `install.sh` no longer writes through a symlinked `~/.local/bin/tx` into the file it points at;
+  the link is moved aside. Replaced files keep every earlier backup (`.bak`, `.bak.1`, …).
+  `--no-reload`, `--bundle-only` and `--yes-deps` fail the Hermes item when profiles have their
+  own plugin clone (updated by `update_bundle.py`, which cannot honor them) instead of being
+  dropped. A Pi package listed as `(filtered)` counts as installed, so `autowork` links to the
+  package rather than the checkout. Hermes without a Hermes home is unavailable, not a failed setup.
 - Reviews no longer fill RAM-backed `/tmp`. Each review gets its own `TMPDIR` on disk, removed when it
   ends, and reviewer and worker prompts say to keep scratch and copies under `$TMPDIR` (a scratch
   checkout as `git worktree add --detach`) instead of copying whole repositories into `/tmp`.

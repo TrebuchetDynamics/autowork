@@ -92,6 +92,7 @@ class InstallMenuTests(unittest.TestCase):
 
     def test_dry_run_defaults_to_the_full_suite_without_installing(self):
         self.fake('hermes', LOGGING)
+        (self.home / '.hermes').mkdir()
         result = self.install('--dry-run')
         self.assertEqual(result.returncode, 0, result.stderr)
         for key in ('pi', 'autowork', 'tx', 'hermes', 'claude', 'codex'):
@@ -137,6 +138,7 @@ class InstallMenuTests(unittest.TestCase):
 
     def test_full_selects_all_hosts_and_bundled_skills(self):
         self.fake('hermes', LOGGING)
+        (self.home / '.hermes').mkdir()
         result = self.install('--full', '--dry-run')
         self.assertEqual(result.returncode, 0, result.stderr)
         for key in ('pi', 'autowork', 'tx', 'hermes', 'claude', 'codex'):
@@ -261,6 +263,67 @@ class InstallMenuTests(unittest.TestCase):
         self.assertIn(f"update_bundle.py --hermes-home {self.home / '.hermes'}", result.stdout)
         self.assertNotIn('setup_bundle.py', result.stdout)
 
+
+    def test_tx_moves_a_symlink_aside_instead_of_writing_through_it(self):
+        elsewhere = self.home / 'other-checkout/tx'
+        elsewhere.parent.mkdir()
+        elsewhere.write_text('someone else\'s tx\n')
+        (self.home / '.local/bin').mkdir(parents=True)
+        (self.home / '.local/bin/tx').symlink_to(elsewhere)
+        result = self.install('--only', 'tx')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(elsewhere.read_text(), 'someone else\'s tx\n')
+        self.assertFalse((self.home / '.local/bin/tx').is_symlink())
+        self.assertEqual((self.home / '.local/bin/tx').read_bytes(), (ROOT / 'tmux/tx').read_bytes())
+        self.assertEqual(Path(os.readlink(self.home / '.local/bin/tx.bak')), elsewhere)
+
+    def test_a_second_replacement_keeps_the_first_backup(self):
+        command = self.home / '.local/bin/autowork'
+        command.parent.mkdir(parents=True)
+        for content in ('first script\n', 'second script\n'):
+            if command.is_symlink():
+                command.unlink()
+            command.write_text(content)
+            (self.home / '.local/bin/tx').write_text('old ' + content)
+            result = self.install('--only', 'autowork,tx')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        bin = self.home / '.local/bin'
+        self.assertEqual((bin / 'autowork.bak').read_text(), 'first script\n')
+        self.assertEqual((bin / 'autowork.bak.1').read_text(), 'second script\n')
+        self.assertEqual((bin / 'tx.bak').read_text(), 'old first script\n')
+        self.assertEqual((bin / 'tx.bak.1').read_text(), 'old second script\n')
+
+    def test_a_filtered_pi_package_counts_as_installed(self):
+        package = self.home / 'pkg/autowork'
+        (package / 'pi-autowork/bin').mkdir(parents=True)
+        (package / 'pi-autowork/bin/autowork').touch()
+        self.fake('pi', LOGGING + f'[ "$1" = list ] && printf "User packages:\\n  {NEW} (filtered)\\n    {package}\\n"\n')
+        result = self.install('--only', 'pi,autowork')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.calls('pi install'), [])
+        self.assertEqual(Path(os.readlink(self.home / '.local/bin/autowork')), package / 'pi-autowork/bin/autowork')
+
+    def test_setup_only_hermes_options_are_refused_for_profile_clones(self):
+        self.fake('hermes', LOGGING)
+        (self.home / '.hermes/profiles/work/plugins/autowork/.git').mkdir(parents=True)
+        for flag in ('--no-reload', '--bundle-only', '--yes-deps'):
+            with self.subTest(flag=flag):
+                result = self.install('--only', 'hermes,tx', flag)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertRegex(result.stdout, rf'hermes\s+failed\s+{flag} cannot apply')
+                self.assertNotIn('update_bundle.py --hermes-home', self.calls())
+                self.assertRegex(result.stdout, r'tx\s+installed')
+
+    def test_hermes_without_a_home_is_unavailable_not_a_failed_setup(self):
+        self.fake('hermes', LOGGING)
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r'hermes\s+skipped\s+no Hermes home at .*\.hermes')
+        self.assertRegex(self.install('--list').stdout, r'hermes\s+unavailable.*no Hermes home')
+        result = self.install('--only', 'hermes')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r'hermes\s+failed\s+no Hermes home')
+        self.assertEqual(self.calls('hermes'), [])
 
 if __name__ == '__main__':
     unittest.main()
