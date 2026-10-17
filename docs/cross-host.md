@@ -294,6 +294,14 @@ Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 the service, `autowork run` and a terminal; variables already set in the environment
 win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
 
+The runner follows the plan, not a clock: while it waits (queue empty, everything
+blocked, or a failure pause), a change to `TODO.md`, `goals.json`, `BLOCKERS.md`, the
+TODO archive or a new commit on the main branch ends the wait within seconds, once the
+change has been quiet for `PI_AUTOWORK_PLAN_SETTLE` seconds (default 3). The log says
+`TODO.md changed; checking now`, and the next cycle dispatches newly runnable tasks
+and re-queues answered held ones. `--interval` is only the longest wait. Watching is
+file status checks once a second; it calls no model.
+
 Planning never blocks delivery: when the main checkout's only uncommitted changes are
 planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive), untouched for
 `PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing nowhere, the runner

@@ -743,6 +743,34 @@ class EngineTests(Fixture):
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
 
+    def test_an_idle_runner_starts_new_work_as_soon_as_todo_changes(self):
+        """The owner plans; the runner reacts to the plan, not to its polling interval."""
+        (self.repo / 'TODO.md').write_text(todo([]))
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        runner = self.start_runner('--interval', '300')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'Queue empty; checking again in 300s' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        (self.repo / 'D.txt').write_text('')
+        (self.repo / 'TODO.md').write_text(todo([('D', None)]))
+        self.git(self.repo, 'add', '-A')
+        self.git(self.repo, 'commit', '-qm', 'plan D')
+        changed = time.monotonic()
+        while 'changed; checking now' not in log():
+            self.assertLess(time.monotonic() - changed, 30, log())  # well inside the 300 s interval
+            time.sleep(0.2)
+        while not self.done('D'):
+            self.assertLess(time.monotonic() - changed, 120, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        self.assertEqual(len([r for r in self.runs('worker') if r.get('task') == 'D']), 1, self.runs())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_listed_ignored_dependencies_are_linked_into_task_worktrees(self):
         """sierra TASK-022: a gitignored source tree in the main checkout was missing in worktrees."""
         (self.repo / '.gitignore').write_text('vendor/\n')

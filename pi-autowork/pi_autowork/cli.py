@@ -48,7 +48,8 @@ Options:
   --repo PATH          Use the repository at PATH
   --workers N          Tasks run at once, 1-8 (default 8; PI_AUTOWORK_WORKERS); the engine's
                        memory and load gate starts fewer when the machine is busy
-  --interval SECONDS   Idle polling interval (default 60)
+  --interval SECONDS   Longest idle wait (default 60); a change to TODO.md, goals.json,
+                       BLOCKERS.md or the main branch ends it within seconds
   --max-cycles N       Start at most N Pi workers, then finish
   --no-fallback        Never switch to the fallback model
   --allow-hermes       Run although a Hermes Autowork cron job targets this repository
@@ -79,6 +80,8 @@ Environment (optional):
   PI_AUTOWORK_PLANNING_QUIET seconds uncommitted planning (TODO.md, goals.json, BLOCKERS.md,
                             the archive) must rest before the runner commits it so its merge
                             can land; any other uncommitted file keeps the merge pending (600)
+  PI_AUTOWORK_PLAN_SETTLE   seconds a plan change must be quiet before an idle runner reads it
+                            (default 3)
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)

@@ -68,6 +68,7 @@ class Coordinator:
         self.max_runtime = int(env.get('PI_AUTOWORK_MAX_RUNTIME', '0'))
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
         self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '3600'))
+        self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
         self.engine_path = Path(self.toolset) / 'skills/autowork/scripts/owner_cycle.py'
         self.goals = Path(self.toolset) / 'skills/docs-sync/scripts/goals.py'
@@ -183,11 +184,49 @@ class Coordinator:
             except OSError:
                 pass
 
+    PLAN_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md')
+
+    def plan_signature(self):
+        """What the owner's plan looks like on disk: the planning files in the main checkout
+        and the main branch's ref (a planning commit moves it). Only stat calls."""
+        paths = [Path(self.repo) / name for name in self.PLAN_FILES]
+        common = Path(self.cfg['git_common'])
+        paths += [common / 'refs' / 'heads' / self.base, common / 'packed-refs']
+        found = {}
+        for path in paths:
+            try:
+                info = path.stat()
+                found[path.name] = (info.st_mtime_ns, info.st_size)
+            except OSError:
+                found[path.name] = None
+        return found
+
     def pause(self, seconds):
-        """Interruptible sleep: a stop ends it at once."""
+        """Interruptible sleep: a stop ends it at once, and so does a change to the plan.
+
+        Once a second the planning files and the main branch are compared with how they
+        looked when the wait began; after a change has been quiet for PI_AUTOWORK_PLAN_SETTLE
+        seconds (default 3, so a save in progress is not read half-written) the wait ends
+        and the next cycle reads the new plan. No model call is involved.
+        """
         end = time.monotonic() + float(seconds)
+        seen = self.plan_signature()
+        start = dict(seen)
+        checked = time.monotonic()
+        changed_at = None
         while not self.stop and time.monotonic() < end:
             time.sleep(min(0.2, max(0.0, end - time.monotonic())))
+            if time.monotonic() - checked < 1:
+                continue
+            checked = time.monotonic()
+            now = self.plan_signature()
+            if now != seen:
+                seen, changed_at = now, time.monotonic()
+            elif changed_at is not None and time.monotonic() - changed_at >= self.plan_settle:
+                names = [n for n in now if now[n] != start.get(n)]
+                labels = ['main' if n in (self.base, 'packed-refs') else n for n in names]
+                LOG.say(f'{", ".join(dict.fromkeys(labels)) or "the plan"} changed; checking now')
+                return
 
     # --- Session --------------------------------------------------------------------
     def forget_missing_worktree(self, path):

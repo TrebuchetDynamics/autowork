@@ -194,6 +194,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- An idle pi-autowork runner reacts to the plan: a change to `TODO.md`, `goals.json`,
+  `BLOCKERS.md`, the TODO archive or the main branch ends its wait within seconds
+  (after `PI_AUTOWORK_PLAN_SETTLE`, default 3, of quiet), so a new task or an answered
+  question starts at once instead of after `--interval`. Only file status checks; no
+  model call.
+
 - `/plan_with_me blockers [repo|name]` works through what blocks the queue from the
   same list as `/autowork blockers`, easiest first, one question at a time; when an
   answer needs replanning (split or rescope a task, add a task or dependency, change
