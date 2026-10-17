@@ -9,7 +9,7 @@ dependency cycles. They live under BLOCKERS.md's `## Active`, between
     <!-- pi-autowork:questions:start -->
     <!-- pi-autowork:questions:end -->
 
-and nothing outside those markers changes. `/autowork blockers` reads this block to
+and nothing outside those markers changes. `/blockers` reads this block to
 resolve them with the owner, easiest first; an answered question leaves the block when
 its cause is gone (Git history keeps it).
 """

@@ -851,7 +851,7 @@ class Coordinator:
             return
         path.write_text(new)
         self.commit(['BLOCKERS.md'], 'docs(blockers): questions for the owner (pi-autowork)',
-                    'Built from the engine status without a model; /autowork blockers answers them.')
+                    'Built from the engine status without a model; /blockers answers them.')
         LOG.say(f'Questions for the owner in BLOCKERS.md: {len(found)} open'
                 + (f" (easiest: {found[0]['id']}, {found[0]['effort']})" if found else ''))
 

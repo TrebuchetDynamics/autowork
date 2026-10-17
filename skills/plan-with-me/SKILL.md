@@ -23,8 +23,8 @@ jurisdiction changes, long interviews and live gates, load the matching section 
 
 `/plan_with_me` (`/plan-with-me` also works in CLI) starts an interview about the
 current repository; arguments narrow the topic. `/plan_with_me blockers [repo|name]`
-works through what blocks the queue, easiest first, like `/autowork blockers`, and
-replans an answer that needs it ([special cases](references/special-cases.md#blockers-and-recovery)). Its default scope includes saving
+is [`/blockers`](../blockers/SKILL.md): a picked question per blocked task, easiest
+first, planning each task that needs it with this skill ([special cases](references/special-cases.md#blockers-and-recovery)). Its default scope includes saving
 answered decisions and maintaining affected docs. `questions only`, `audit` or
 `read-only` means no file changes. It does not authorize code changes or start
 autowork. Honor any separate implementation authority already given.

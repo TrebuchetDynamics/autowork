@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/blockers [repo|runner]` is the owner's blockers command in Hermes, Claude Code
+  (`/autowork:blockers`), Codex and Pi: it starts at once with one question per
+  blocked task, easiest first, answered by picking one of two to four plan changes
+  (Hermes `clarify`, Claude Code `AskUserQuestion`), and plans a task that needs it
+  with Plan With Me before the next. `/autowork blockers` and `/plan_with_me blockers`
+  route to it in code; a Hermes `/autowork blockers` had reached the Autowork skill,
+  which launched a repair session instead of asking (india). `autowork blockers`
+  opens it in claude or pi.
 - pi-autowork runners land and push their work (owner decision, 2026-10-16): after
   each closed task the session merges into main, Pi resolving a conflict with the
   owner's newer plan once per main revision (it was once per runner process, so a
@@ -15,6 +23,20 @@ claim of a tagged release, completed installation or live workflow qualification
   that cannot land shows as the runner's blocker. Workers still cannot push;
   `PI_AUTOWORK_PUSH=0` keeps main local.
 
+- A shared **test budget** keeps tests few and thin: one behavior change adds or extends
+  at most one test at its public seam (a bug fix, one regression test), none for docs,
+  config or renames, and focused tests while working instead of the whole suite after
+  every edit. Pi workers get it in their prompt; the reviewer no longer asks for tests
+  beyond the acceptance and fails changes that mostly repeat existing cases. Planned
+  `Checks:` name focused commands, never a test count. A suite past the budget (normal
+  check over 10 minutes, test modules past about 1,000 lines, near-duplicate tests)
+  gets one `test-suite-optimization` audit task, which now starts with a cheap quick
+  pass before any per-test coverage.
+- `autowork start` moves a service onto the Pi package installed from
+  `git:github.com/TrebuchetDynamics/autowork` when its unit runs another copy, such as
+  the package still installed under the old hermes-toolset name: it reinstalls the
+  shared unit from that package and restarts the service (workers pause and resume);
+  the other services follow at their next restart, and the command names them.
 - The `autowork` TUI stacks the runner table, detail, worker lanes and log full width
   (the side-by-side split left a 30-column pane on an 80-column terminal). Each runner
   shows what it needs: the owner's open questions, read from the session's BLOCKERS.md
@@ -31,6 +53,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The TUI runs pause, stop, restart, start and model changes in the background and
+  reports when they finish. They ran on its event loop, so a restart, which waits for
+  the runner to stop gracefully (30 s for bravo, up to 150 s), froze the whole
+  TUI as if it had crashed.
+- With both packages installed in Pi, the runner runs from the one installed from
+  `git:github.com/TrebuchetDynamics/autowork`; it took the first Autowork package Pi
+  listed, the copy under the old hermes-toolset name, so services moved onto the
+  renamed package still ran the old one.
 - `autowork ls` and the TUI label a TODO entry the engine cannot run as written
   `not runnable`; they said `entry changed`, which reads as a rerun already pending.
   A runner whose worker or reviewer acted in the last 10 minutes shows `working`: the

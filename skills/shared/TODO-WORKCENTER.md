@@ -44,7 +44,11 @@ who add tasks at the same time on separate clones never create two tasks with th
 same ID. Allocate it with `goals.py new-id <repo>` (or omit the ID in
 `goals.py add-task`); it works without `goals.json` too. Keep existing IDs unchanged. Put executable details in full TODO
 bodies: outcome, source/plan link, bounded scope, acceptance checks, dependencies,
-status and next action. Reconcile matching goals.json entries. Link a substantial
+status and next action. `Checks:` names the focused commands that prove the
+acceptance (a test file, class or selector), plus the repository's normal check
+only when the change crosses modules; acceptance asks for behavior, never for a
+number of tests (see the [test budget](ENGINEERING-CYCLE.md#test-budget)).
+Reconcile matching goals.json entries. Link a substantial
 plan from its tasks; do not create a separate plan file merely to satisfy a ritual.
 Every executable task you create or rewrite gets `Touches:`: the repository-relative
 paths or globs it may change (a trailing `/` covers a directory). Derive it from the

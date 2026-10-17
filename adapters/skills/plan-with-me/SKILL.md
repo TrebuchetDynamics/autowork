@@ -25,9 +25,9 @@ than facts already in the repo. Play each understood part back with guesses mark
 Decide routine engineering details yourself and say them as your calls. Honor
 questions-only/read-only without writing files.
 
-`/plan_with_me blockers [repo|name]` works through what blocks the queue, easiest first,
-one question at a time, following [owner blockers](../../../skills/autowork/references/owner-blockers.md);
-an answer that needs replanning is planned here before the next question.
+`/plan_with_me blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): a picked
+question per blocked task, easiest first; a task that needs replanning is planned here
+before the next question.
 
 Save explicit answers in existing requirement/spec documents when permitted. At
 finish, summarize scope, non-goals, acceptance and open questions. Ask for approval

@@ -124,6 +124,42 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len([c for c in self.calls() if c.startswith('script --install-service')]), 2)
 
+    def test_start_moves_a_service_off_another_copy_of_the_package(self):
+        """Services ran from the Pi package under its old hermes-toolset name."""
+        self.aw('start', str(self.repo))
+        other = self.make_repo('bravo')
+        self.aw('start', str(other))
+        unit = self.base / 'unit-dir' / 'pi-autowork@.service'
+        unit.parent.mkdir(exist_ok=True)
+        old = self.base / 'old' / 'scripts' / 'pi-autowork.sh'
+        old.parent.mkdir(parents=True)
+        old.write_text('exit 0\n')
+        unit.write_text(f'[Service]\nExecStart=/bin/bash {old} --repo ${{PI_AUTOWORK_REPO}}\n')
+        moved = self.aw('start', str(self.repo))
+        self.assertEqual(moved.returncode, 0, moved.stderr)
+        self.assertIn(f'Moving pi-autowork services from {old} to {self.base / "bin/pi-autowork.sh"}', moved.stdout)
+        self.assertIn('Still on the old copy until restarted: bravo', moved.stdout)
+        self.assertEqual([c for c in self.calls() if c.startswith('script')][-1],
+                         f'script --install-service --repo {self.repo}')
+        unit.write_text(f'[Service]\nExecStart=/bin/bash {self.base / "bin/pi-autowork.sh"} --repo x\n')
+        self.assertIn('is already running', self.aw('start', str(self.repo)).stdout)  # moved: nothing to do
+
+    def test_the_package_is_found_where_pi_installed_it(self):
+        package = self.base / 'pkg'
+        (package / 'scripts').mkdir(parents=True)
+        (package / 'scripts' / 'pi-autowork.sh').write_text('exit 0\n')
+        (self.base / 'bin' / 'pi').write_text('#!/usr/bin/env bash\necho "User packages:"\n'
+                                              'echo "  git:github.com/TrebuchetDynamics/hermes-toolset"\necho "    /old"\n'
+                                              f'echo "  git:github.com/TrebuchetDynamics/autowork (filtered)"\necho "    {package}"\n')
+        import sys
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import command
+        from unittest import mock
+        with mock.patch.dict(os.environ, AUTOWORK_PI=str(self.base / 'bin' / 'pi')):
+            self.assertEqual(command.package_script(), str(package / 'scripts' / 'pi-autowork.sh'))
+            (package / 'scripts' / 'pi-autowork.sh').unlink()
+            self.assertIsNone(command.package_script())
+
     def test_start_refuses_a_repository_that_is_not_ready(self):
         bare = self.make_repo('bare', files=('TODO.md',))
         result = self.aw('start', str(bare))

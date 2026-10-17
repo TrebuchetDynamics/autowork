@@ -19,7 +19,7 @@ class DoctorModes(unittest.TestCase):
         names = [p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')]
         self.report = {
             'plugins': [{'name': 'autowork', 'enabled': True, 'error': None}],
-            'plugin_skills': ['autowork:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme')],
+            'plugin_skills': ['autowork:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'blockers', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme')],
             'commands': [{'command': name.replace('_', '-'), 'source': 'autowork', 'kind': 'plugin'}
                          for name in names],
             'missing_plugins': ['omh'], 'missing_skills': ['graphify'],

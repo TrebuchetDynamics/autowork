@@ -32,7 +32,8 @@ Read the returned protocol and relevant supporting references.
 The adapter also carries toolset-written protocols under `local/`, versioned with this
 repository rather than pinned, selected only with `--protocol` and never in a phase
 bundle: `test-suite-optimization` audits slow, redundant or low-signal tests and turns
-each consolidation or speed-up into its own task without losing defect detection. If the method is
+each consolidation or speed-up into its own task without losing defect detection; use it
+when a suite passes the [test budget](../shared/ENGINEERING-CYCLE.md#test-budget). If the method is
 unclear, consult the menu in [engineering cycle](../shared/ENGINEERING-CYCLE.md).
 Stop when the gap is resolved; do not load every protocol or invent a skill quota.
 
@@ -56,7 +57,9 @@ python3 "<engineering-skill-dir>/scripts/route.py" plan
 python3 "<engineering-skill-dir>/scripts/route.py" implement --domain frontend-ui-engineering
 ```
 
-Omit an inapplicable technique (for example TDD for a prose-only correction).
+Omit an inapplicable technique (for example TDD for a prose-only correction). Test-first
+work stays within the [test budget](../shared/ENGINEERING-CYCLE.md#test-budget): the
+upstream protocols' advice to add tests does not raise it.
 
 This vendored pack is the default source for Addy methods, including when a profile
 has no external imports. Existing native imports are preserved but do not take

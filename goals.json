@@ -170,7 +170,7 @@
       "id": "TEST-SUITE",
       "priority": 20,
       "source": "docs/project.md#test-suite-optimization-method-2026-10-15",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-067",
         "TOOLSET-068",
@@ -180,7 +180,8 @@
         "TOOLSET-102-ea",
         "TOOLSET-104-cc",
         "TOOLSET-105-79",
-        "TOOLSET-110-61"
+        "TOOLSET-110-61",
+        "TOOLSET-124-97"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -792,6 +793,14 @@
       "section": "Next",
       "status": "open",
       "title": "Reinstall the live Hermes profiles and host plugins as autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-124-97",
+      "section": "Next",
+      "status": "open",
+      "title": "Audit this repository's suite against the test budget"
     },
     {
       "depends_on": [

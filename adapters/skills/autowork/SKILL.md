@@ -75,9 +75,9 @@ explicit read-only runs write nothing.
    next task and exact remaining blocker. Default is one completed slice; continue
    across tasks when the user's mandate explicitly requests it.
 
-`/autowork blockers [repo|name]` is the owner's interview on what blocks the queue,
-easiest first, one question at a time; answers become TODO.md planning. Follow
-[owner blockers](../../../skills/autowork/references/owner-blockers.md). A task may
+`/autowork blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): the owner's
+questionnaire on what blocks the queue, a picked question per blocked task, easiest
+first; answers become TODO.md planning, never execution. A task may
 read runner state (`autowork ls`, `autowork status NAME`); it never starts,
 stops or reconfigures runners.
 

@@ -21,7 +21,7 @@ class PortablePackageTests(unittest.TestCase):
     def test_portable_skills_and_references_are_self_contained(self):
         folder = ROOT / 'adapters/skills'
         names = {p.parent.name for p in folder.glob('*/SKILL.md')}
-        self.assertEqual(names, {'plan-with-me', 'plan-for-me', 'docs-sync', 'autowork',
+        self.assertEqual(names, {'plan-with-me', 'blockers', 'plan-for-me', 'docs-sync', 'autowork',
             'cron-autowork', 'autoresearch', 'engineering', 'impeccable', 'lgtm',
             'git-commit-push', 'ui-taste', 'beautify-github-readme'})
         for source in folder.rglob('*.md'):

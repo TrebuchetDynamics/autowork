@@ -3,7 +3,7 @@ import re
 
 # Hermes' 60-entry default menu is already full of built-ins, so only these are advertised;
 # each one displaces the lowest-ranked built-in, which stays typeable.
-WORKFLOWS = ['plan_with_me', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork',
+WORKFLOWS = ['plan_with_me', 'blockers', 'plan_for_me', 'docs_sync', 'autowork', 'cron_autowork',
              'ui_taste', 'beautify_github_readme', 'impeccable', 'lgtm',
              'engineering', 'git_commit_push']
 # Names this bundle once promoted or registered; compatibility spellings stay

@@ -9,7 +9,12 @@ WORKFLOWS = (
 )
 
 
-def dispatch(invoke, ctx, skill, path, subcommand, raw_args):
+def dispatch(invoke, ctx, skill, path, subcommand, raw_args, blockers=None):
+    from . import blockers_args
+
+    rest = blockers_args(raw_args) if blockers else None
+    if rest is not None:
+        return invoke(ctx, 'blockers', blockers, rest)  # `/plan_with_me blockers` is `/blockers`
     if subcommand:
         raw_args = f'Selected subcommand: {subcommand}\n\n{raw_args}'
     return invoke(ctx, skill, path, raw_args)
@@ -31,7 +36,8 @@ def register(ctx, skills, invoke):
         if any(name in occupied or resolve_command(name) is not None for name in names):
             logging.getLogger(__name__).warning('Skipping /%s: command already exists.', public)
             continue
-        handler = partial(dispatch, invoke, ctx, skill, paths[skill], subcommand)
+        handler = partial(dispatch, invoke, ctx, skill, paths[skill], subcommand,
+                          blockers=paths.get('blockers') if skill == 'plan-with-me' else None)
         for name in names:
             ctx.register_command(name, handler, description=description, args_hint='[instructions]')
             occupied.add(name)

@@ -44,9 +44,10 @@ async def main():
             subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
             for f in files:
                 (repo / f).write_text('x\n')
-        calls = []
+        calls, slow = [], {'seconds': 0}
 
         def run(argv, **kwargs):
+            time.sleep(slow['seconds'])
             calls.append(argv)
             return Result()
 
@@ -70,8 +71,13 @@ async def main():
             assert calls == [], calls
             await pilot.press('p')                      # pause, confirmed
             await pilot.pause()
+            started = time.monotonic()
+            slow['seconds'] = 2                         # a restart waits for the runner to stop
             await pilot.press('y')
             await pilot.pause()
+            assert time.monotonic() - started < 1.5, 'the action blocked the TUI'
+            await app.workers.wait_for_complete()
+            slow['seconds'] = 0
             assert calls == [['aw', 'pause', 'india']], calls
             await pilot.press('m')                      # model from Pi's list, filtered, then confirmed
             await pilot.pause()
@@ -81,6 +87,7 @@ async def main():
             await pilot.pause()
             await pilot.press('y')
             await pilot.pause()
+            await app.workers.wait_for_complete()
             assert calls[-1] == ['aw', 'model', 'india', 'openai-codex/gpt-6-luna'], calls
             await pilot.press('enter')                  # Enter: the full-screen log
             await pilot.pause()
@@ -105,6 +112,7 @@ async def main():
             await pilot.pause()
             await pilot.press('y')
             await pilot.pause()
+            await app.workers.wait_for_complete()
             assert calls[-1] == ['aw', 'start', str(tree / 'ready')], calls
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
