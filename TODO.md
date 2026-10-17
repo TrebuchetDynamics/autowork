@@ -138,6 +138,55 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No provisioning outside `$AUTOWORK_CACHE`; no network-heavy installs without the repository's setup docs naming them; no change to what counts as a passing review.
 - Planner's call: separate "could not check" from "checked and wrong". The first is the runner's to fix with the repository's own setup; only the second needs the owner.
 
+### TOOLSET-179-cf — The runner merges the upstream before it dispatches work
+
+- [ ] TOOLSET-179-cf — The runner merges the upstream before it dispatches work
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: feedback from an interactive session in one fleet repository (2026-10-17), pasted by the owner with "please plan these as tasks, folding into existing ones where they overlap" (item 1); [session landing and push](pi-autowork/pi_autowork/coordinator.py) (`merge_main`, `push`).
+- Evidence (one fleet repository, 2026-10-17): its main and its upstream grew two separate designs of the same feature from one base: 19 upstream commits against 415 runner commits, which took a 17-file hand merge. `merge_main` merges only the local main into the session; the upstream is fetched only after a push is rejected, so tasks kept starting from a base without the upstream's work. A merge before each task would have shown a one-commit conflict on the first day.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: (1) Before admission, at most once a minute (`PI_AUTOWORK_UPSTREAM_INTERVAL`, seconds, default 60, 0 off), fetch the main branch's upstream. When it has commits main lacks, merge it into the session, land the session on main and push, so every task dispatched after that branches from a base that includes the upstream. (2) A conflict goes to the existing Pi merge resolver, once per upstream revision, in the session worktree; one that stays unresolved stops new dispatch, keeps running workers going and becomes one owner question naming the upstream revision, the files and the ahead/behind counts. (3) The log says `merged <n> upstream commit(s) before dispatch` once per upstream revision. Without an upstream, nothing changes.
+- Acceptance: In fixtures with a bare upstream, an upstream commit made while a task runs is on main before the next task starts, and the next task's baseline includes it. A conflicting upstream commit asks the resolver once and, resolved, lands; unresolved, new dispatch stops with one question and running work continues. An unchanged upstream causes no merge and no extra log line. Nothing is force-pushed.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator; shares the upstream merge and resolver path with TOOLSET-158-08, so whichever lands second reuses it.
+- Exclusions: No force-push, no rebase of published history, no hand merges in fleet repositories.
+- Planner's call: once a minute before admission instead of before every single dispatch, so a burst of dispatches costs one fetch. A stop on an unresolved conflict keeps new work from piling onto a diverged base, which is how the gap grew.
+
+### TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
+
+- [ ] TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [push](pi-autowork/pi_autowork/coordinator.py) (`Coordinator.push`, `merge_main`, the Pi merge resolver).
+- Evidence (2026-10-17 09:23 monitor pass): one runner's push was rejected as non-fast-forward. Its local main was 364 commits ahead of upstream and 19 behind. `push(retry=True)` fetches and merges upstream into the session once; on conflict it runs `merge --abort`. The failure is logged once, deduplicated by `push-note`, and every later attempt fails silently while the unpublished count grows.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) When the upstream merge during a push retry conflicts, hand it to the existing Pi merge resolver, as `merge_main` does for local main: once per upstream revision, in the integration worktree, never in the canonical checkout. Then land on the base branch and push again. (2) Never force-push. (3) Record `unpublished_commits`, `behind_upstream` and the last push error in `status.json` on every attempt, so TOOLSET-125-3c and the TUI show them. A push that has failed past the stall threshold becomes one investigate question naming the counts. (4) Log each new upstream revision's failure once, so silence never hides a growing gap.
+- Acceptance: In fixtures with a diverged upstream, a conflicting upstream merge invokes the resolver once per upstream revision, and a resolved merge pushes fast-forward. An unresolved one keeps the branch and produces one question with the ahead/behind counts. A new upstream revision retries, and an unchanged one does not. Nothing is force-pushed. `status.json` always carries the counts.
+- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator; reconcile active TOOLSET-115-bf output in coordinator.py first.
+- Exclusions: No force-push, no rewriting of published history, no hand edits to fleet repositories.
+- Planner's call: reuse the existing resolver path. Delivery that silently stops publishing is worse than a visible stall.
+- Added (2026-10-17, fleet feedback item 2): in one fleet repository a push failed every hour for over 13 hours while the gap grew to 415 commits, and the log showed only Git's last line (`hint: See the 'Note about fast-forwards'…`). (5) The logged failure quotes Git's `! [rejected]`, `error:` or `fatal:` line, never a `hint:` line, with the ahead and behind counts. (6) A push still failing after `PI_AUTOWORK_STALL_AFTER` becomes the investigate question of (3) at once, not after a further stall. Acceptance adds: the logged line is the rejection line with both counts. Placed right after TOOLSET-179-cf, which merges the upstream before dispatch and shares this resolver path.
+
+### TOOLSET-180-72 — A candidate lands only if the merged tree's full suite has no new failures
+
+- [ ] TOOLSET-180-72 — A candidate lands only if the merged tree's full suite has no new failures
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: feedback from an interactive session in one fleet repository (2026-10-17), pasted by the owner with "please plan these as tasks, folding into existing ones where they overlap" (item 3); [review and validation](pi-autowork/pi_autowork/worker.py) (`verify`, `PI_AUTOWORK_VALIDATE`), [questions](pi-autowork/pi_autowork/questions.py).
+- Evidence (one fleet repository, 2026-10-17): a reviewer-approved commit landed while breaking 44 tests. A screen read a connection provider during build and added a listener that never closed; a later fix repaired it. The task's checks covered only its own feature, the reviewer ran those, and the repository had no `PI_AUTOWORK_VALIDATE`, so nothing ran the whole suite on the merged tree.
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_worker_tmp.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py, docs/cross-host.md, AGENTS.md
+- Scope: (1) The full check comes from `PI_AUTOWORK_VALIDATE`, else from a `Full check:` line in the repository's AGENTS.md (documented, and added to this repository's AGENTS.md). Without either, the runner asks one owner question per repository and status shows `no full-suite gate`. (2) Verification runs it on the merged tree and compares it with the base revision's result, run once per base revision and cached: a pass that becomes a failure, or failing test names (from unittest, pytest, go test, flutter test and jest output) not failing on the base, reject the candidate. Failures the base already has do not block. (3) A rejection is a `regression` hold naming the newly failing tests, and the retry's prompt includes them. (4) `PI_AUTOWORK_VALIDATE_TIMEOUT` (default 3600 seconds) bounds each run; a timeout is a validation failure, not a pass.
+- Acceptance: In fixtures, a candidate that breaks a test outside its own checks is rejected with that test named, and its retry prompt quotes it. A candidate in a repository whose base already fails one test lands when it adds no new failure. The base result is computed once per base revision. A repository with neither setting gets one question and a status note, not a hold on every task.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p 'test_*.py'; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the reviewer's prompt or to how a task's own checks are chosen; no full suite in the worker's own run.
+- Planner's call: compare against the base instead of requiring a green suite, so a repository with a known failing test still lands work; parse test names where the common runners print them and fall back to the exit status otherwise.
+
 ### TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 
 - [ ] TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
@@ -158,6 +207,38 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No implementation of product code by the maintainer, no worker cap change, no polling loop, no direct edits to fleet repositories outside their own runner's integration.
 - Evidence (2026-10-17 15:05 monitor pass, `waiting_groups` across the fleet): four of eight runners had been stalled for 1–2.5 hours, and `not runnable as written` (a TODO entry the engine will not run: missing or malformed fields, a ledger disposition that holds it) appears in four runners' waiting groups (4, 3, 2 and 1 tasks), each also an owner question. A worker that repairs entries from the repository's own evidence would turn most of these into runnable work.
 - Planner's call: second in Now, behind TOOLSET-161-17. Most holds need a restated contract, not the owner; one event-driven writer of planning files also removes the coordinator/owner write races.
+
+### TOOLSET-181-02 — Planning files merge without conflicts: union archive, keyed goals.json, re-rendered coverage
+
+- [ ] TOOLSET-181-02 — Planning files merge without conflicts: union archive, keyed goals.json, re-rendered coverage
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: feedback from an interactive session in one fleet repository (2026-10-17), pasted by the owner with "please plan these as tasks, folding into existing ones where they overlap" (item 4); [goals commands](skills/docs-sync/scripts/goals.py) (`render`, `reorder`), [archive](skills/docs-sync/scripts/todo_archive.py), [merge attributes](.gitattributes) (`CHANGELOG.md merge=union`), [session merge](pi-autowork/pi_autowork/coordinator.py) (`merge_main`).
+- Evidence (2026-10-17): TODO.md and goals.json conflicted again in one fleet repository, and this repository needed a hand merge that kept both task archive entries. Coverage rows run to hundreds of characters with inline scratch paths, so two closes that touch one goal always collide on the same line. goals.json is keyed by task ID and its `priority_order` follows TODO.md; the coverage table is rendered from goals.json.
+- Touches: skills/docs-sync/scripts/goals.py, skills/docs-sync/scripts/test_goals.py, skills/docs-sync/scripts/todo_archive.py, skills/docs-sync/scripts/test_todo_archive.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, .gitattributes, skills/docs-sync/SKILL.md
+- Scope: (1) `goals.py merge-driver` merges goals.json by task and goal ID (three-way per record; the same record changed differently on both sides is a real conflict) and rebuilds `priority_order` from the merged TODO.md. (2) For TODO.md it merges the task entries with Git and re-renders the coverage table from the merged goals.json, so the generated region never conflicts. (3) The archive merges as a union of entries, keeping both and never duplicating one. (4) Each runner registers the drivers in its repository's local Git config on start and commits the matching `.gitattributes` lines on its session branch; this repository's `.gitattributes` gets them too. (5) Coverage evidence rows hold a short summary and a link to the archived task, never scratch paths. A conflict the drivers leave goes to the Pi merge resolver as today.
+- Acceptance: In fixtures, two branches that each close a different task under one goal merge with no conflict, and the result validates. Two that reprioritize the same task differently conflict only on that entry. Archive entries from both sides are kept once. A runner start registers the drivers and adds the attributes once. New coverage rows stay short.
+- Checks: python3 -m unittest discover -s skills/docs-sync/scripts -p 'test_*.py'; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Docs Sync; TOOLSET-150-71 later replaces the coverage format and keeps these drivers.
+- Exclusions: Generating goals.json from TODO.md is not part of this; that is the linked-store direction (TOOLSET-149-df, TOOLSET-150-71). No rewrite of existing coverage rows beyond what each close touches.
+- Planner's call: merge drivers instead of generating goals.json from TODO.md. They remove the conflicts now without a format change, which TOOLSET-150-71 already plans.
+
+### TOOLSET-182-ce — Back-to-back question updates make one commit
+
+- [ ] TOOLSET-182-ce — Back-to-back question updates make one commit
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: feedback from an interactive session in one fleet repository (2026-10-17), pasted by the owner with "please plan these as tasks, folding into existing ones where they overlap" (item 7); [questions writer](pi-autowork/pi_autowork/coordinator.py) (the BLOCKERS.md commit, `commit`).
+- Evidence (one fleet repository, 2026-10-17): two `docs(blockers): questions for the owner (pi-autowork)` commits a minute apart. The runner commits BLOCKERS.md every time the questions change, so each status change adds a commit to main's history.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) When the session branch's tip is the runner's own questions commit and it has not reached main, a new questions update amends it instead of adding another. (2) A tip that main or the upstream already has is never amended; the update is a new commit. (3) Each commit still holds only BLOCKERS.md.
+- Acceptance: In fixtures, three question changes before a landing give one questions commit; a change after the landing gives a second; no amended commit is ever on main or the upstream.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator; TOOLSET-154-d3 (stable question IDs) removes the remaining churn.
+- Exclusions: No change to which questions are written or when the session lands.
+- Planner's call: amend only unlanded commits, so published history is never rewritten.
 
 ### TOOLSET-143-62 — Add the conversational tasks skill and host commands
 
@@ -193,22 +274,6 @@ settlement/cancellation checks when refining that existing design.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the idle threshold or to which claims are adopted beyond the new hold phrases; no edits to fleet TODO entries.
 - Planner's call: show the evidence the engine already has instead of a generic sentence. The owner answers one quoted note rather than reading the entry to guess why the runner waits.
-
-### TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
-
-- [ ] TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [push](pi-autowork/pi_autowork/coordinator.py) (`Coordinator.push`, `merge_main`, the Pi merge resolver).
-- Evidence (2026-10-17 09:23 monitor pass): one runner's push was rejected as non-fast-forward. Its local main was 364 commits ahead of upstream and 19 behind. `push(retry=True)` fetches and merges upstream into the session once; on conflict it runs `merge --abort`. The failure is logged once, deduplicated by `push-note`, and every later attempt fails silently while the unpublished count grows.
-- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
-- Scope: (1) When the upstream merge during a push retry conflicts, hand it to the existing Pi merge resolver, as `merge_main` does for local main: once per upstream revision, in the integration worktree, never in the canonical checkout. Then land on the base branch and push again. (2) Never force-push. (3) Record `unpublished_commits`, `behind_upstream` and the last push error in `status.json` on every attempt, so TOOLSET-125-3c and the TUI show them. A push that has failed past the stall threshold becomes one investigate question naming the counts. (4) Log each new upstream revision's failure once, so silence never hides a growing gap.
-- Acceptance: In fixtures with a diverged upstream, a conflicting upstream merge invokes the resolver once per upstream revision, and a resolved merge pushes fast-forward. An unresolved one keeps the branch and produces one question with the ahead/behind counts. A new upstream revision retries, and an unchanged one does not. Nothing is force-pushed. `status.json` always carries the counts.
-- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator; reconcile active TOOLSET-115-bf output in coordinator.py first.
-- Exclusions: No force-push, no rewriting of published history, no hand edits to fleet repositories.
-- Planner's call: reuse the existing resolver path. Delivery that silently stops publishing is worse than a visible stall.
 
 ### TOOLSET-155-e2 — Keep owner-listed private terms out of public commits, pushes and runner integrations
 
@@ -473,6 +538,7 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: None.
 - Ownership: Toolset coordinator under the owner's request (2026-10-17).
 - Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+- Added (2026-10-17, fleet feedback item 5): one fleet repository logged `Merge pending` for hours from the evening before, because an unrelated README.md edit in the main checkout blocked the merge. (5) `Merge pending` with an unchanged reason is logged once, not on every retry, and after `PI_AUTOWORK_LAND_ALARM` it is the landing question of (3), naming the files that block it. Acceptance adds: repeated retries with the same reason produce one log line and, past the alarm, one question.
 
 ### TOOLSET-126-02 — Every runner worktree in .worktrees, none outliving its work
 
@@ -487,6 +553,7 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: None.
 - Ownership: Toolset coordinator under the owner's request (2026-10-17).
 - Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+- Added (2026-10-17, fleet feedback item 6): about 20 worktrees under this repository's `.worktrees/`, many for `-set-aside-N` branches, and more under the runners' state directories. Acceptance adds: after the start sweep and a task's close, no clean runner worktree remains for a closed task or an archived set-aside branch.
 
 ### TOOLSET-127-8f — autowork audit: the landing and worktree audit as one command
 

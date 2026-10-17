@@ -674,7 +674,11 @@
         "TOOLSET-175-2b",
         "TOOLSET-176-98",
         "TOOLSET-177-d0",
-        "TOOLSET-178-47"
+        "TOOLSET-178-47",
+        "TOOLSET-179-cf",
+        "TOOLSET-180-72",
+        "TOOLSET-181-02",
+        "TOOLSET-182-ce"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -682,17 +686,20 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-177-d0",
       "TOOLSET-165-f7",
       "TOOLSET-170-f6",
       "TOOLSET-174-1d",
       "TOOLSET-161-17",
       "TOOLSET-172-40",
       "TOOLSET-173-94",
+      "TOOLSET-179-cf",
+      "TOOLSET-158-08",
+      "TOOLSET-180-72",
       "TOOLSET-164-f1",
+      "TOOLSET-181-02",
+      "TOOLSET-182-ce",
       "TOOLSET-143-62",
       "TOOLSET-163-f7",
-      "TOOLSET-158-08",
       "TOOLSET-155-e2",
       "TOOLSET-154-d3",
       "TOOLSET-147-54",
@@ -928,6 +935,38 @@
       "section": "Now",
       "status": "open",
       "title": "Restarting a runner keeps its workers running"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-179-cf",
+      "section": "Now",
+      "status": "open",
+      "title": "The runner merges the upstream before it dispatches work"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-180-72",
+      "section": "Now",
+      "status": "open",
+      "title": "A candidate lands only if the merged tree's full suite has no new failures"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-181-02",
+      "section": "Now",
+      "status": "open",
+      "title": "Planning files merge without conflicts: union archive, keyed goals.json, re-rendered coverage"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-182-ce",
+      "section": "Now",
+      "status": "open",
+      "title": "Back-to-back question updates make one commit"
     },
     {
       "depends_on": [],
