@@ -655,7 +655,8 @@
         "TOOLSET-157-cd",
         "TOOLSET-158-08",
         "TOOLSET-159-30",
-        "TOOLSET-160-df"
+        "TOOLSET-160-df",
+        "TOOLSET-161-17"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -663,6 +664,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-161-17",
       "TOOLSET-157-cd",
       "TOOLSET-160-df",
       "TOOLSET-152-d4",
@@ -844,6 +846,14 @@
       "section": "Now",
       "status": "open",
       "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-161-17",
+      "section": "Now",
+      "status": "open",
+      "title": "Touches schedules work but never holds it: integrate by merge, rebase on conflict"
     },
     {
       "depends_on": [],
