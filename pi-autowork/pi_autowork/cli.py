@@ -64,9 +64,9 @@ Environment (optional):
   PI_AUTOWORK_WORKERS       default for --workers (default 8)
   PI_AUTOWORK_INFER_TOUCHES 0 to stop proposing Touches: for tasks that lack them
   PI_AUTOWORK_UPDATE_INTERVAL seconds between idle `pi update` checks of the toolset package;
-                            new toolset code restarts the runner (default 600; 0 off)
+                            new toolset code restarts the runner (default 120; 0 off)
   PI_AUTOWORK_UPDATE_WAIT   seconds a new release waits for no runner to have work in
-                            flight before it is installed anyway (default 1800)
+                            flight before it is installed anyway (default 600)
   PI_AUTOWORK_TASK_TIMEOUT  seconds per worker (default 5400)
   PI_AUTOWORK_VERIFY_TIMEOUT seconds for verifying one task (default 1800)
   PI_AUTOWORK_VALIDATE      command run before the Pi reviewer on every integrated task

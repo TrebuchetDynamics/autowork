@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Runners pick up a new release sooner: they check for one every 2 minutes while idle
+  (`PI_AUTOWORK_UPDATE_INTERVAL`, was 10 minutes) and install a release that has waited
+  10 minutes for every runner to be idle (`PI_AUTOWORK_UPDATE_WAIT`, was 30 minutes).
 - `install.sh` no longer writes through a symlinked `~/.local/bin/tx` into the file it points at;
   the link is moved aside. Replaced files keep every earlier backup (`.bak`, `.bak.1`, …).
   `--no-reload`, `--bundle-only` and `--yes-deps` fail the Hermes item when profiles have their

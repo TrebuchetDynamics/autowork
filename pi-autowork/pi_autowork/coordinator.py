@@ -67,8 +67,8 @@ class Coordinator:
         self.claim_idle = cfg['claim_idle']
         self.max_runtime = int(env.get('PI_AUTOWORK_MAX_RUNTIME', '0'))
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
-        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '600'))
-        self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '1800'))
+        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '120'))
+        self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '600'))
         self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
