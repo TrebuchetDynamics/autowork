@@ -469,12 +469,22 @@ class FleetApp(App):
                 self.runner_cmd(action.argv, env=env)
             self.action_refresh()
             return
-        result = self.runner_cmd(action.argv, env=env, capture_output=True, text=True)
-        output = ((result.stdout or '') + (result.stderr or '')).strip().splitlines()
-        message = output[-1] if output else action.label
-        self.notify(message[:300], severity='information' if result.returncode == 0 else 'error',
-                    title=f'{action.label}: {"done" if result.returncode == 0 else "failed"}')
-        self.action_refresh()
+        # A restart or stop waits for the runner to stop gracefully (up to the unit's 150 s):
+        # run it off the event loop, or the whole TUI freezes and looks crashed.
+        self.notify(f'{action.label}: running...', timeout=4)
+        self.run_worker(lambda: self.finish_action(action, env), thread=True, group='actions')
+
+    def finish_action(self, action, env):
+        """In a worker thread: run the command, then report it on the event loop."""
+        try:
+            result = self.runner_cmd(action.argv, env=env, capture_output=True, text=True)
+            output = ((result.stdout or '') + (result.stderr or '')).strip().splitlines()
+            ok, message = result.returncode == 0, (output[-1] if output else action.label)
+        except OSError as error:
+            ok, message = False, str(error)
+        self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
+                              title=f'{action.label}: {"done" if ok else "failed"}')
+        self.call_from_thread(self.action_refresh)
 
 
 def main(argv=None):

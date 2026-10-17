@@ -21,7 +21,9 @@ from .common import dirty, git, push_guard, safe_name
 REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, which holds a worker\'s commit '
           'merged onto the session branch (see git log -1 and git diff HEAD^1 HEAD). Read the task\'s entry in '
           'TODO.md (its Acceptance and Checks), run the offline checks it lists, and judge the merged change '
-          'against the acceptance criteria. Do not edit, create or delete files, commit, push or change branches; '
+          'against the acceptance criteria. Do not ask for more tests than the acceptance and Checks need; fail a '
+          'change whose new tests mostly repeat existing cases or add many near-identical tests where one table '
+          'would do. Do not edit, create or delete files, commit, push or change branches; '
           'temporary files go in $TMPDIR only. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as

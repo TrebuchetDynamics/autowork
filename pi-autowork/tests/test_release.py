@@ -75,5 +75,31 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertEqual(self.check(), dict(ok=False, reason='other runners have work in flight: sierra (2 in flight)'))
 
 
+
+class InstalledToolsetTests(unittest.TestCase):
+    """The runner runs from the package installed under the Autowork name when Pi has several."""
+    def test_the_renamed_package_wins_over_an_earlier_listed_copy(self):
+        from pi_autowork import cli
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder).resolve()
+            old, new = base / 'hermes-toolset', base / 'autowork'
+            for copy in (old, new):
+                for name in ('skills/autowork/scripts/owner_cycle.py', 'skills/docs-sync/scripts/goals.py'):
+                    (copy / name).parent.mkdir(parents=True, exist_ok=True)
+                    (copy / name).touch()
+            pi = base / 'pi'
+
+            def listing(*rows):
+                pi.write_text('#!/usr/bin/env bash\necho "User packages:"\n'
+                              + ''.join(f'echo "  {src}"\necho "    {path}"\n' for src, path in rows))
+                pi.chmod(0o755)
+                return cli.installed_toolset(str(pi))
+            self.assertEqual(listing(('git:github.com/TrebuchetDynamics/hermes-toolset', old),
+                                     ('git:github.com/TrebuchetDynamics/autowork (filtered)', new)),
+                             str(new.resolve()))
+            self.assertEqual(listing(('npm:other', base), ('git:github.com/TrebuchetDynamics/hermes-toolset', old)),
+                             str(old.resolve()))
+            self.assertIsNone(listing(('npm:other', base)))
+
 if __name__ == '__main__':
     unittest.main()

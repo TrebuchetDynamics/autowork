@@ -125,7 +125,8 @@ is separate from product ownership; shared plugin links do not expand that scope
    use command timeouts, batch reads and park unchanged blockers by input signature.
 8. Choose at most one evidence-backed autowork repair. Inspect callers and
    live ownership; foreign dirty source means a tested isolated patch, not overwrite.
-   Code changes need red/green regression and focused checks; guidance needs an
+   Code changes need one red/green regression test within the
+   [test budget](../../shared/ENGINEERING-CYCLE.md#test-budget) and focused checks; guidance needs an
    observed failure and policy check, never claimed as runtime proof. Record actual
    tests, files, commit state and whether the fix was applied or only prepared.
 

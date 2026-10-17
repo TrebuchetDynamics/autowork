@@ -59,6 +59,11 @@ hold separate from ordinary engineering choices that can already be made.
      tools permit. Screenshot-free source inspection is not visual acceptance.
    - Tests/reliability: a reproducible defect or an important uncovered contract;
      use a focused failing reproduction and a bounded fix.
+   - Test-suite cost: a normal offline check over 10 minutes, test modules past about
+     1,000 lines, or many near-identical tests. Record one audit task with the
+     engineering `test-suite-optimization` protocol and execute its findings as
+     separate tasks; do not add tests to a suite that is already past the
+     [test budget](../../shared/ENGINEERING-CYCLE.md#test-budget).
    - Refactoring: demonstrated duplication, coupling or repeated change friction
      with concrete call sites. Preserve behavior with suitable characterization
      checks. Large files alone are not a reason to rewrite them.

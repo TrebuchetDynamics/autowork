@@ -108,17 +108,27 @@ def is_toolset(path):
         (Path(path) / 'skills/docs-sync/scripts/goals.py').is_file()
 
 
+PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
+
+
 def installed_toolset(pi):
-    """The autowork package Pi loads, from `pi list`."""
+    """The autowork package Pi loads, from `pi list`: the one installed from PI_SOURCE, else
+    the first other package that is an Autowork toolset (Pi lists a source, then its path).
+    The package installed under the old hermes-toolset name came first in the list and
+    kept every runner on it after the renamed one was installed."""
     try:
         listing = subprocess.run([pi, 'list'], capture_output=True, text=True, timeout=60).stdout
     except (OSError, subprocess.SubprocessError):
         return None
+    found, source = [], ''
     for line in listing.splitlines():
         line = line.strip()
-        if line.startswith('/') and is_toolset(line):
-            return str(Path(line).resolve())
-    return None
+        if line.startswith('/'):
+            if is_toolset(line):
+                found.append((source.split()[:1] != [PI_SOURCE], str(Path(line).resolve())))
+        else:
+            source = line
+    return next((path for other, path in found if not other), found[0][1] if found else None)
 
 
 def parse(argv):

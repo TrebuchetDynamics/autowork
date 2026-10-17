@@ -83,6 +83,20 @@ settlement/cancellation checks when refining that existing design.
 
 ## Next
 
+### TOOLSET-124-97 — Audit this repository's suite against the test budget
+
+- [ ] TOOLSET-124-97 — Audit this repository's suite against the test budget
+- Status: open
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: owner direction (2026-10-16: "make less tests and thinner; if a project has many tests we have to optimize"), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget), [protocol](skills/engineering/local/test-suite-optimization/PROTOCOL.md), [earlier audit](docs/test-suite-audit.md).
+- Touches: docs/test-suite-audit.md, docs/project.md
+- Scope: The suite is past the budget: about 31,800 lines and 1,758 test functions (TOOLSET-073 audited 562/709/212/8 tests), three modules over 1,000 lines (tests/test_pi_autowork.py 1,395, skills/autowork/scripts/test_parallel_integrate.py 1,221, tests/test_update_bundle.py 1,143), and `python3 scripts/check.py` ran over 10 minutes on 2026-10-16 with four runners loading the machine. Run the protocol's quick pass (time the normal check on an idle machine, the 30 slowest tests, the largest modules; read them for duplicates, parametrizable families, rebuilt fixtures, sleeps and repeated repository or process setup), measure per-test coverage only for the consolidation candidates, update docs/test-suite-audit.md, and record one TODO task per change ordered by measured payoff, assertion-free speed-ups first. Edit no tests in this task.
+- Acceptance: docs/test-suite-audit.md has the 2026-10 baseline (test count, wall time over 3 idle runs, slowest tests, module sizes) and the candidates with evidence; each change is its own open task with before values and the protocol's acceptance; keep-rule tests are not proposed for removal.
+- Checks: `python3 scripts/check.py`; `python3 skills/docs-sync/scripts/goals.py validate .`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No test edits, no new dependency (coverage runs from a scratch environment), no mutation tool added.
+
 
 ### TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
 
