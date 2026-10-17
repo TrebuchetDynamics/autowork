@@ -671,14 +671,6 @@
       "title": "Hands-off runners: the owner only plans and answers questions"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-122-27",
-      "section": "Now",
-      "status": "open",
-      "title": "An autowork command: the TUI home, service runners by default, no tmux"
-    },
-    {
       "depends_on": [
         "TOOLSET-122-27"
       ],
@@ -783,6 +775,14 @@
       "section": "Next",
       "status": "open",
       "title": "Record intent before side effects in worktree creation and slot transitions"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-122-27",
+      "section": "Next",
+      "status": "open",
+      "title": "An autowork command: the TUI home, service runners by default, no tmux"
     },
     {
       "depends_on": [
