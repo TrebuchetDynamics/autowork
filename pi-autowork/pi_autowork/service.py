@@ -3,6 +3,7 @@
 One template serves every repository; the instance's env file names the repository
 path. SIGINT is the runner's Ctrl+C: workers pause, finished work merges and the
 next start resumes. Deliberate exits (1, 3, 4) do not restart; crashes and kills do.
+A service never exits 3: it waits for another runner holding the repository to end.
 """
 import os
 from pathlib import Path

@@ -413,6 +413,34 @@ class EngineTests(Fixture):
         self.assertNotEqual((self.repo / 'A.txt').read_text(), 'done A\n', result.stdout)
         self.assertFalse((self.repo / 'tampered.txt').exists())
 
+    def test_a_service_waits_for_the_lock_instead_of_exiting(self):
+        """Exit 3 is never restarted by systemd, so a service runner waits for the other runner to end."""
+        self.run_runner('--once')  # creates the state folder
+        lock = next(self.state.glob('*/lock'))
+        holder = subprocess.Popen([sys.executable, '-c', 'import fcntl, sys, time; f = open(sys.argv[1], "a"); '
+                                   'fcntl.flock(f, fcntl.LOCK_EX); print("held", flush=True); time.sleep(120)',
+                                   str(lock)], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: (holder.kill(), holder.wait(), holder.stdout.close()))
+        self.assertEqual(holder.stdout.readline().strip(), 'held')
+        log = lock.parent / 'runner.log'
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo,
+                                  env={**self.env, 'INVOCATION_ID': 'test'}, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        deadline = time.monotonic() + 60
+        while 'waiting for it to exit' not in (log.read_text() if log.exists() else ''):
+            self.assertIsNone(runner.poll(), runner.stderr.read() if runner.poll() is not None else '')
+            self.assertLess(time.monotonic(), deadline, 'the service never waited')
+            time.sleep(0.2)
+        holder.kill()
+        holder.wait()
+        while 'The other runner exited; starting.' not in log.read_text():
+            self.assertLess(time.monotonic(), deadline + 30, log.read_text()[-1500:])
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGINT)
+        out, err = runner.communicate(timeout=120)
+        self.assertEqual(runner.returncode, 130, out + err)
+
     def test_blocked_worker_is_held_not_merged(self):
         self.plan({'worker:A': ['blocked', 'blocked']})
         result = self.run_runner('--once')

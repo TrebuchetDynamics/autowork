@@ -129,12 +129,14 @@ class FleetViewTests(unittest.TestCase):
         fleet_view.write_env(settings, {'PI_AUTOWORK_FALLBACK': None})
         self.assertNotIn('FALLBACK', settings.read_text())
 
-    def test_a_stopped_disabled_service_is_paused_and_listed_from_its_settings(self):
+    def test_a_stopped_disabled_service_is_listed_from_its_settings_and_paused_only_when_paused(self):
         (self.env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6-luna\n')
         self.runner_state('/git/india', state='stalled', since=time.time() - 60)
         india = self.collect()['india']  # systemd lists nothing: unloaded once stopped and disabled
         self.assertEqual((india.mode, india.state, india.model, india.fallback),
-                         ('service', 'paused', 'openai-codex/gpt-6-luna', fleet_view.DEFAULT_FALLBACK))
+                         ('service', 'not running', 'openai-codex/gpt-6-luna', fleet_view.DEFAULT_FALLBACK))
+        fleet_view.paused_marker(self.env, 'india').write_text('paused\n')  # `autowork pause` leaves this
+        self.assertEqual(self.collect()['india'].state, 'paused')
 
     def test_agent_for_blockers(self):
         self.assertEqual(fleet_view.blockers_agent({'AUTOWORK_AGENT': 'pi --model x', 'PATH': ''}), ['pi', '--model', 'x'])

@@ -378,7 +378,18 @@ def main(argv):
             owner = f"PID {owner['pid']}, started {owner['started']}"
         except (OSError, ValueError, KeyError):
             owner = 'unknown owner'
-        die(3, f'Another pi-autowork runner holds {repo} ({owner}).')
+        if not (os.environ.get('INVOCATION_ID') and opts['mode'] == 'continuous'):
+            die(3, f'Another pi-autowork runner holds {repo} ({owner}).')
+        # A service exiting 3 is never restarted, so it would stay down after the other runner
+        # (an old tmux runner, a manual run) ends; wait for the lock instead. Stopping the unit
+        # interrupts the wait.
+        LOG.warn(f'Another pi-autowork runner holds {repo} ({owner}); waiting for it to exit.')
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        except KeyboardInterrupt:
+            print('Stopped while waiting for the other runner.', flush=True)
+            return 130
+        LOG.say('The other runner exited; starting.')
     (state / 'runner.json').write_text(json.dumps({
         'pid': os.getpid(), 'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo}))
     push_guard()

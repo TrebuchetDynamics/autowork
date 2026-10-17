@@ -36,7 +36,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork` | The live TUI on a terminal (help otherwise) |
 | `autowork start [dir]` | Install (if needed) and start the repository's service; refuses a directory without `TODO.md`, `goals.json` and its main branch checked out, saying what is missing |
 | `autowork stop` / `restart [target]` | Stop or restart the service; workers pause and resume on the same attempt |
-| `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable) |
+| `autowork pause` / `resume [target]` | Stop the service and keep it off, also after a reboot (disable), or start it again (enable); only a paused service is listed as `paused`, any other stopped one as `not running` |
 | `autowork model [target] [provider/model] [--fallback provider/model]` | Show or set this service's Pi model (checked against Pi's list), then restart it |
 | `autowork models [search]` | Pi's model list (`pi --list-models`) |
 | `autowork ls [--long]` | One colored line per runner; `--long` adds its workers in flight, blockers and model |

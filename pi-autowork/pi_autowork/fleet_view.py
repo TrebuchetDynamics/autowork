@@ -86,7 +86,7 @@ class Runner:
     roots: list = field(default_factory=list)
     state_dir: str = ''       # this runner's pi-autowork state directory
     lanes: list = field(default_factory=list)
-    enabled: bool = False     # its service starts at login; a stopped, disabled service is paused
+    enabled: bool = False     # its service starts at login; paused also needs `autowork pause`'s marker
     model: str = ''
     fallback: str = ''
 
@@ -281,6 +281,12 @@ def _lines(argv, timeout=10):
     return out.stdout.splitlines() if out.returncode == 0 else []
 
 
+def paused_marker(env_dir, name):
+    """Written by `autowork pause`, removed by `autowork resume` and `autowork start`: a stopped
+    service is paused only when someone paused it; otherwise it is simply not running."""
+    return Path(env_dir) / f'{name}.paused'
+
+
 def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
     """Every runner: pi-autowork@ services and their runner state, merged by name."""
     now = time.time() if now is None else now
@@ -333,8 +339,11 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
     for runner in found.values():
         runner.lanes = lanes(runner, now)
-        if runner.has_service and runner.service not in ('running', 'start', 'reload') and not runner.enabled:
-            runner.state, runner.minutes = 'paused', None  # stopped and disabled: `autowork resume`
+        if runner.has_service and runner.service not in ('running', 'start', 'reload'):
+            if not runner.enabled and paused_marker(env_dir, runner.name).exists():
+                runner.state, runner.minutes = 'paused', None  # paused on purpose: `autowork resume`
+            else:
+                runner.state, runner.minutes = 'not running', None  # its records may say otherwise
     return sorted(found.values(), key=lambda r: r.name)
 
 
