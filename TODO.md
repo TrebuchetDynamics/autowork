@@ -135,6 +135,7 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: None.
 - Ownership: Toolset coordinator. Supersedes TOOLSET-141-c4; reconcile TOOLSET-161-17 output in the shared coordinator and integration files first.
 - Exclusions: No implementation of product code by the maintainer, no worker cap change, no polling loop, no direct edits to fleet repositories outside their own runner's integration.
+- Evidence (2026-10-17 15:05 monitor pass, `waiting_groups` across the fleet): four of eight runners had been stalled for 1–2.5 hours, and `not runnable as written` (a TODO entry the engine will not run: missing or malformed fields, a ledger disposition that holds it) appears in four runners' waiting groups (4, 3, 2 and 1 tasks), each also an owner question. A worker that repairs entries from the repository's own evidence would turn most of these into runnable work.
 - Planner's call: second in Now, behind TOOLSET-161-17. Most holds need a restated contract, not the owner; one event-driven writer of planning files also removes the coordinator/owner write races.
 
 ### TOOLSET-143-62 — Add the conversational tasks skill and host commands
