@@ -230,6 +230,21 @@ class IntegrationTests(unittest.TestCase):
         self.holder(self.repo / 'A.txt')  # or holds it open for writing
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'BUSY')
 
+    def test_a_main_checkout_session_blocks_a_close_only_through_the_files_it_writes(self):
+        """An integrated task could not close while any interactive session was open in the main
+        checkout, though interactive sessions work there and touched none of the close's files."""
+        session = self.session_checkout()
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.agent_process()
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # the owner edits TODO.md
+        with self.assertRaisesRegex(ValueError, 'writer|session'):
+            module.close(session, self.owner, 'A')
+        self.git('checkout', '--', 'TODO.md')
+        (self.repo / 'B.txt').write_text('owner edit\n')  # unrelated work
+        self.assertEqual(module.close(session, self.owner, 'A')['outcome'], 'CLOSED')
+
     def test_fresh_session_blocks_close_without_task_writes(self):
         self.worker()
         module = self.module()

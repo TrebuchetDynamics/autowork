@@ -288,7 +288,9 @@ class OverlapTests(unittest.TestCase):
                 ('x/, docs/notes/.', ['x/', 'docs/notes/']),
                 ('a.py.', ['a.py']), ('a/.b/', ['a/.b/']),
                 ('a.py., b.py', ['a.py.', 'b.py']),
-                ('a..', ['a..']), ('a/...', ['a/...'])):
+                ('a..', ['a..']), ('a/...', ['a/...']),
+                ('src/, migrations/<new compatible provenance migration path>', ['src/', 'migrations/']),
+                ('docs/<name>.md', ['docs/<name>.md'])):  # only a whole last segment is a placeholder
             with self.subTest(value=value):
                 self.assertEqual(paths(value), expected)
         for path in ('../a', '/abs', './src/a.py', 'src//a.py', 'a/./b', 'a/../b',

@@ -195,7 +195,9 @@ review timeouts (90 and 30 minutes), `PI_AUTOWORK_VALIDATE` (a command that must
 on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
 review), retries, the failure limit, the fallback cooldown, total runtime,
 `PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24), the
-free memory each worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000) and
+memory one more worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000; twice it must be
+available), how long `/tmp` scratch may sit unused before it is removed
+(`PI_AUTOWORK_TMP_STALE`, default 7200 seconds, `0` off) and
 `PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
 
 The default way to run pi-autowork is a **systemd user service** per repository,

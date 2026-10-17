@@ -29,7 +29,10 @@ def paths(value):
         return not (path.startswith('/') or '\\' in path or '\x00' in path
                     or any(part in ('.', '..', '') for part in path.rstrip('/').split('/')))
 
-    result = [p.strip() for p in value.split(',') if p.strip()]
+    # A planner's placeholder for a file that does not exist yet, `migrations/<new … migration>`,
+    # names new files under that directory: read it as the directory, or the worker's real new
+    # file is outside Touches.
+    result = [re.sub(r'^(.*/)<[^<>/]*>$', r'\1', p.strip()) for p in value.split(',') if p.strip()]
     # Prose often ends the last item with a period. Remove just that one,
     # never a parent segment or a dot inside a path, and only if it is safe.
     if result and result[-1].endswith('.') and not result[-1].endswith('..') and valid(result[-1][:-1]):

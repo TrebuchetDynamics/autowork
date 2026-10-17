@@ -589,11 +589,19 @@ def require_task_contract(items, expected, *, archived=False):
         raise ValueError(CONTRACT_CHANGED)
 
 
+def close_files(repo):
+    """The files a close writes, repository-relative where they can be."""
+    archive = archive_path(repo)
+    return ['TODO.md', 'goals.json', archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
+
+
 def close(repo, owner_pid, task):
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
-        require_no_writers(repo)
+        # Only the files a close writes: a person's session in the main checkout that is not
+        # editing them does not keep finished work open (interactive sessions work there).
+        require_no_writers(repo, close_files(repo))
         slot = slot_for(common, task)
         if not slot or slot['state'] not in ('integrated', 'closed'):
             raise ValueError('close requires an integrated slot with passing validation')
@@ -654,11 +662,11 @@ def _close_writes(repo, slot, task, indexed, goals):
             # IDs may be bold or code: `- [ ] **T-1 — Title**` (sierra).
             body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\][ \t]+(?:\*\*)?`?' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
             body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
-            require_no_writers(repo)
+            require_no_writers(repo, close_files(repo))
             goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
     live = live_items((slot.get('report') or {}).get('pending_live'))
     followup = live_followup(repo, task, live, indexed) if live else None
-    require_no_writers(repo)
+    require_no_writers(repo, close_files(repo))
     archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
     # Read back exact target before journaling closure; archive can fail safely
     # after task mutation, in which case slot stays integrated and is retryable.
@@ -862,7 +870,7 @@ def cleanup_worker(repo, common, slot):
         if (git(root, 'status', '--porcelain', '--untracked-files=all')
                 or git(root, 'rev-parse', 'HEAD') != slot['commit']):
             return False
-        require_no_writers(root)
+        require_no_writers(root, [])  # a session only in the main checkout never touches this worktree
         execution.save(path, intent)  # Durable before either destructive operation.
         git(repo, 'worktree', 'remove', str(root))
     elif previous != intent:

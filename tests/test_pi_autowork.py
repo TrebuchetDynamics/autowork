@@ -171,6 +171,8 @@ elif behavior == 'push':
 elif behavior == 'blocked':
     report(None, ['needs a device'])
     finish(text='blocked')
+elif behavior == 'nothing':  # stops with no commit, no change and no report
+    finish(text='done')
 elif behavior == 'extra':  # also changes a file its Touches did not foresee
     open(task + '.txt', 'w').write('done ' + task + '\n')
     open(task + '-extra.txt', 'w').write('helper\n')
@@ -231,6 +233,7 @@ class Fixture(unittest.TestCase):
         self.env = {**os.environ, 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
+                    'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
         for name in ('GIT_CONFIG_COUNT', 'PI_AUTOWORK_TOOLSET', 'PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK',
@@ -676,7 +679,8 @@ class EngineTests(Fixture):
         self.assertNotIn('failed tasks in a row', again.stdout)
 
     def test_a_service_pauses_after_a_failure_streak_instead_of_exiting(self):
-        self.plan({'worker:A': ['blocked'], 'worker:B': ['blocked']})  # a success would end the streak
+        # Workers that produce nothing, twice: something is broken for every task.
+        self.plan({'worker:A': ['nothing', 'nothing'], 'worker:B': ['nothing', 'nothing']})
         env = {**self.env, 'PI_AUTOWORK_MAX_FAILURES': '1', 'PI_AUTOWORK_FAILURE_PAUSE': '3600'}
         runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -692,6 +696,14 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
+
+    def test_holds_about_one_task_do_not_pause_the_runner(self):
+        """Three overlap and validation holds in a row paused a whole runner for an hour."""
+        self.plan({'worker:A': ['blocked'], 'worker:B': ['blocked']})
+        self.env['PI_AUTOWORK_MAX_FAILURES'] = '1'
+        result = self.run_runner('--until-empty')
+        self.assertNotIn('in a row; pausing new tasks', result.stdout)
+        self.assertIn('A: failed — worker reported a blocker', result.stdout)
 
     def test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why(self):
         """2026-10-16: four services sat idle for seven hours and only logged a poll line."""
@@ -882,6 +894,22 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt)', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_inferred_touches_a_person_edited_since_still_get_the_bounded_widening(self):
+        """A held task's Touches were inferred once, then rewritten by hand: the inferred
+        widening refused and nothing else was tried, so one file waited for the owner."""
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', ''))
+        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'docs(tasks): declare Touches for A (pi-autowork)')
+        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', '  Touches: A.txt, notes.md\n'))
+        self.git(self.repo, 'commit', '-qam', 'a person edits A')
+        self.plan({'worker:A': ['needs_file', 'extra']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its worker needs files outside Touches (A-extra.txt); widened them once', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
     def test_a_worker_asking_for_files_outside_authored_touches_resumes_after_one_widening(self):

@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The memory gate needs room for one more worker only (twice `PI_AUTOWORK_MIN_FREE_MB`), however many
+  run, and each runner removes `/tmp` scratch that nothing has used for two hours
+  (`PI_AUTOWORK_TMP_STALE`, at most every 30 minutes per host): the double-counted reservation and
+  39 GB of leftover copies had capped runners at two or three workers (TOOLSET-162-d2).
+- A person's session in the main checkout no longer keeps finished work from closing unless it is
+  editing TODO.md, goals.json or the archive; only failures that point at something systemic (a
+  crash, an empty run, a launch or a failed review) count toward the one-hour failure pause.
+- A runner-inferred Touches list a person edited since still gets the bounded widening, and a
+  Touches placeholder such as `migrations/<new migration>` means new files under `migrations/`.
 - A review no longer prunes every stale worktree registration in the repository. It unregisters only
   the scratch worktrees it made under its own `$TMPDIR`, so a session worktree the runner restores,
   or anyone else's registration, survives the review.

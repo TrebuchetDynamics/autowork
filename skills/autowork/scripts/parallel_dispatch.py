@@ -103,9 +103,12 @@ def available_memory_mb():
 
 
 def resource_gate(running, min_free_mb):
+    # Available memory already excludes what running workers use: one more worker needs its own
+    # budget plus as much spare, however many run (TOOLSET-162-d2). Reserving a budget for each
+    # running worker again capped every runner at two or three workers.
     memory = available_memory_mb()
-    if memory < min_free_mb * (running + 1):
-        return f'resource gate: {memory} MB available, need {min_free_mb * (running + 1)} MB'
+    if memory < 2 * min_free_mb:
+        return f'resource gate: {memory} MB available, need {2 * min_free_mb} MB for one more worker'
     load, cpus = os.getloadavg()[0], os.cpu_count() or 1
     if load >= cpus:
         return f'resource gate: load average {load:.2f} >= {cpus} CPUs'

@@ -870,14 +870,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-162-d2",
-      "section": "Now",
-      "status": "open",
-      "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-163-f7",
       "section": "Now",
       "status": "open",
@@ -2118,6 +2110,14 @@
       "section": "Done",
       "status": "done",
       "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-162-d2",
+      "section": "Done",
+      "status": "done",
+      "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
     },
     {
       "depends_on": [],

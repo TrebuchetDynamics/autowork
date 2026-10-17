@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 
-from . import health, pi_runtime, questions, release, touches_inference, workspaces
+from . import health, janitor, pi_runtime, questions, release, touches_inference, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -496,6 +496,17 @@ class Coordinator:
                 + (f'; left untracked as possible secrets: {", ".join(kept)}' if kept else ''))
         return ''
 
+    def sweep_tmp(self):
+        """Stale agent scratch in RAM-backed /tmp goes, at most every 30 minutes per host
+        (janitor.py, TOOLSET-162-d2), so it cannot keep new workers from starting."""
+        try:
+            result = janitor.sweep_if_due(Path(self.state).parent)
+        except OSError:
+            return
+        if result and result[0]:
+            LOG.say(f'Removed {result[0]} stale /tmp entries ({result[1] / 2 ** 30:.1f} GB) that nothing had '
+                    f'used for {janitor.stale_after() // 60} min')
+
     def publishable(self, paths):
         """publishable(), with each held-back path logged once per commit."""
         keep, held = publishable(self.repo, paths)
@@ -581,8 +592,14 @@ class Coordinator:
             return
         LOG.say(f'{task}: {word}' + (f' — {reason}' if reason else ''))
 
-    def count_failure(self, task):
-        if self.seen.get('counted-' + task):
+    # Holds that say something is broken for every task (a worker that dies or produces nothing,
+    # a launch or a review that fails), and so earn the failure-streak pause. Holds shaped by the
+    # queue (overlap, scope, a conflict, a changed entry, a worker's own blocker) are about one
+    # task: three of them paused a whole runner for an hour.
+    SYSTEMIC = ('crash', 'empty', 'launch', 'validation', None, '')
+
+    def count_failure(self, task, cause=None):
+        if cause not in self.SYSTEMIC or self.seen.get('counted-' + task):
             return
         self.seen['counted-' + task] = True
         self.failures += 1
@@ -648,7 +665,7 @@ class Coordinator:
             # Only a failure this run watched happen counts toward the streak; holds found
             # at start (say after a self-restart) were counted by the run that saw them.
             if state == 'held' and before and before != 'failed':
-                self.count_failure(task)
+                self.count_failure(task, row.get('cause'))
         self.known_at_start = True
         if self.stop:
             return
@@ -681,7 +698,7 @@ class Coordinator:
                     if row and self.resolve_task_conflict(row):
                         continue
                 self.note_state(task, 'held', reason)
-                self.count_failure(task)
+                self.count_failure(task, result.get('cause'))
                 if task == self.once_task:
                     self.draining = True
             elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
@@ -766,7 +783,9 @@ class Coordinator:
             return self.widen_from_evidence(task, outside, requested)
         widened = self.helper('widen', self.integ, self.toolset, task, recorded, outside)
         if widened is None:
-            return False
+            # A person edited the list since the runner inferred it: the bounded grant still
+            # applies (a held task's Touches had been inferred once, then rewritten by hand).
+            return self.widen_from_evidence(task, outside, requested)
         if requested:
             self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
                         f'Its worker needs {outside}, outside the inferred Touches; it resumes in its worktree.')
@@ -1108,6 +1127,7 @@ class Coordinator:
         self.restart_if_updated()
         self.ensure_session()
         self.follow_base()
+        self.sweep_tmp()
         if not self.draining:
             if self.max_cycles and self.started_workers >= self.max_cycles:
                 self.draining = True

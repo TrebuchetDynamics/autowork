@@ -395,6 +395,16 @@ class DispatchTests(unittest.TestCase):
         _, retry = self.apply()
         self.assertEqual([(d['task'], d['attempt']) for d in retry['dispatched']], [('A', 2)])
 
+    def test_the_memory_gate_counts_only_what_one_more_worker_needs(self):
+        """TOOLSET-162-d2: running workers' memory is already out of MemAvailable."""
+        with patch.object(dispatch, 'available_memory_mb', return_value=7000), \
+                patch.object(dispatch.os, 'getloadavg', return_value=(0.0, 0.0, 0.0)):
+            self.assertEqual(dispatch.resource_gate(2, 3000), '')
+            self.assertEqual(dispatch.resource_gate(7, 3000), '')
+        with patch.object(dispatch, 'available_memory_mb', return_value=5900):
+            self.assertEqual(dispatch.resource_gate(0, 3000),
+                             'resource gate: 5900 MB available, need 6000 MB for one more worker')
+
     def test_low_memory_holds_dispatch(self):
         with patch.object(dispatch, 'available_memory_mb', return_value=1000):
             _, result = self.apply()

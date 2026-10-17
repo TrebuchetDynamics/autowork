@@ -234,9 +234,11 @@ nothing parallel was claimed or started.
 - **Name collisions:** a worktree is adopted only when the journal shows Autowork
   created it. A user branch or folder with the target name is left untouched and
   dispatch returns `ACTION_REQUIRED` until it is resolved by hand.
-- **Resources:** a worker starts only while MemAvailable is at least
-  `--min-free-mem-mb` (default 1500) times running workers plus one, and the
-  1-minute load average is below the CPU count.
+- **Resources:** a worker starts only while MemAvailable is at least twice
+  `--min-free-mem-mb` (default 1500): one worker's budget plus as much spare, however
+  many already run, since their memory is already out of MemAvailable. The 1-minute
+  load average must also be below the CPU count. pi-autowork removes stale agent
+  scratch from a RAM-backed `/tmp` (`PI_AUTOWORK_TMP_STALE`) so it cannot hold this.
 - **Authority** is unchanged: workers inherit no publication, push or deployment
   authority, and the canonical checkout is only ever fast-forwarded.
 
