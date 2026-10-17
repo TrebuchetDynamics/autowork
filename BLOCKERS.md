@@ -8,6 +8,13 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
+### Q-TOOLSET-140-f4 — USER_INPUT — effort input — unblocks 0
+
+- Task: TOOLSET-140-f4 — Give workers a short temporary directory that browsers and sockets accept
+- Needs: worker reported a blocker: Widen Touches to include skills/autowork/scripts/parallel_integrate.py so temporary-directory cleanup can run at slot retirement. That file owns _retire (set-aside/requeue, removing the slot and moving attempt metadata) and close/cleanup_worker; the permitted dispatcher has no retirement hook. Implementing cleanup only on a later dispatch would leave directories behind when retirement ends the run…
+- Since: 2026-10-17T09:32:20Z
+- Answer: Answer in TOOLSET-140-f4's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
+
 ### Q-TOOLSET-148-88 — USER_INPUT — effort input — unblocks 0
 
 - Task: TOOLSET-148-88 — One malformed Touches field holds its task, not the whole engine
