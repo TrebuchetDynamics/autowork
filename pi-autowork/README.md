@@ -20,7 +20,7 @@ repository, under `${XDG_STATE_HOME:-~/.local/state}/pi-autowork/<repository key
 | `pi_autowork/workspaces.py` | Mirrors `PI_AUTOWORK_LINK_PATHS` gitignored dependencies into task and review worktrees (real directories, hard-linked files) |
 | `pi_autowork/fleet_view.py` | Every runner on the machine (tmux sessions, `pi-autowork@` services, `status.json` health), its worker lanes (engine slots in flight, the runner's latest phase line, the Pi transcript's last action), its blockers grouped by kind, recent logs, and the exact existing command behind each action; standard library only |
 | `bin/autowork`, `pi_autowork/command.py` | The `autowork` command (below), standard library only |
-| `pi_autowork/tui.py` | The `autowork` TUI (Textual, run through `uv`): live runners, worker lanes, blockers, model and log, a directory browser that starts services, and keys that run `autowork` commands; `--view-only` disables the keys |
+| `pi_autowork/tui.py` | The `autowork` TUI (Textual, run through `uv`): live runners with what each needs (the owner's open BLOCKERS.md questions, else its first blocker), worker lanes, model and log, stacked full width so it reads on an 80-column terminal, a directory browser that starts services, and keys that run `autowork` commands; `--view-only` disables the keys |
 | `pi_autowork/tui_web.py` | `autowork web`: serves the TUI to a browser with textual-serve, on 127.0.0.1 by default |
 | `pi_autowork/questions.py` | The owner's questions block in `BLOCKERS.md`, built from the engine status without a model |
 | `pi_autowork/release.py` | Safe-checkpoint test before a self-update: fleet idle, and the new release reads current state |

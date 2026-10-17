@@ -14,7 +14,7 @@ import re
 import subprocess
 import time
 
-from pi_autowork import health
+from pi_autowork import health, questions as owner_questions
 
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'entry changed',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
@@ -89,6 +89,7 @@ class Runner:
     enabled: bool = False     # its service starts at login; paused also needs `autowork pause`'s marker
     model: str = ''
     fallback: str = ''
+    questions: list = field(default_factory=list)  # the owner's open questions in BLOCKERS.md
 
     @property
     def color(self):
@@ -257,6 +258,63 @@ def short(text, limit=32):
     return cut + '...'
 
 
+@dataclass
+class Question:
+    id: str
+    effort: str
+    unblocks: int
+    needs: str
+
+
+def read_questions(repo, state_dir=''):
+    """The open questions the runner wrote in BLOCKERS.md, easiest first. They are committed on
+    its session branch first and reach the repository when the session merges, so the session
+    worktree's copy is the current one."""
+    block = None
+    try:
+        session = json.loads((Path(state_dir) / 'session.json').read_text())['path'] if state_dir else ''
+    except (OSError, ValueError, KeyError, TypeError):
+        session = ''
+    for folder in (session, repo):
+        try:
+            block = owner_questions.block_of((Path(folder) / 'BLOCKERS.md').read_text()) if folder else None
+        except OSError:
+            continue
+        if block is not None:
+            break
+    found = []
+    for line in (block or '').splitlines():
+        head = re.match(r'^### Q-(.+?) — \S+ — effort (\S+) — unblocks (\d+)', line)
+        if head:
+            found.append(Question(head[1], head[2], int(head[3]), ''))
+        elif found and line.startswith('- Needs: '):
+            found[-1].needs = line[len('- Needs: '):].strip()
+    return found
+
+
+def needs(runner):
+    """What would move this runner, in a few words: the owner's questions, else its first blocker."""
+    if runner.state in ('paused', 'not running'):
+        return 'start it' if runner.state == 'not running' else 'resume it'
+    if runner.questions:
+        first = runner.questions[0]
+        count = len(runner.questions)
+        return f"{count} question{'s' if count > 1 else ''}, easiest {first.id}"
+    groups = blockers(runner)
+    if groups:
+        kind, items = groups[0]
+        return f'{kind}: {items}'
+    return ''
+
+
+PENDING_LINE = re.compile(r'^\[\d\d:\d\d\] \S+: pending — ')
+
+
+def quiet_log(text):
+    """The log without the per-task `pending —` lines the runner prints every cycle."""
+    return '\n'.join(line for line in text.splitlines() if not PENDING_LINE.match(line))
+
+
 def blockers(runner, limit=6):
     """[(kind label, 'ID cause (n), ...')] in a fixed order: what a person can unblock."""
     groups = {}
@@ -339,6 +397,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
     for runner in found.values():
         runner.lanes = lanes(runner, now)
+        runner.questions = read_questions(runner.repo, runner.state_dir) if runner.repo else []
         if runner.has_service and runner.service not in ('running', 'start', 'reload'):
             if not runner.enabled and paused_marker(env_dir, runner.name).exists():
                 runner.state, runner.minutes = 'paused', None  # paused on purpose: `autowork resume`

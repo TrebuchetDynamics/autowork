@@ -28,6 +28,7 @@ from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, L
 
 REFRESH = 3.0
 LOG_REFRESH = 5.0
+QUESTIONS_SHOWN = 3
 
 
 class Confirm(ModalScreen[bool]):
@@ -217,12 +218,13 @@ class BrowseScreen(Screen):
 
 class FleetApp(App):
     TITLE = 'autowork'
+    # Stacked, each part full width: a side-by-side split left a ~30-column pane on an
+    # 80-column terminal, which wrapped the detail and cut the log.
     CSS = '''
-    #runners { width: auto; max-width: 60%; }
-    #side { width: 1fr; }
-    #detail { height: auto; max-height: 40%; padding: 0 1; }
-    #lanes { height: auto; max-height: 12; border-top: solid $panel; border-bottom: solid $panel; }
-    #log { height: 1fr; }
+    #runners { height: auto; max-height: 40%; }
+    #detail { height: auto; max-height: 50%; padding: 0 1; border-top: solid $panel; }
+    #lanes { height: auto; max-height: 12; border-top: solid $panel; }
+    #log { height: 1fr; min-height: 4; border-top: solid $panel; }
     '''
     BINDINGS = [
         Binding('enter', 'run("enter")', 'log'),
@@ -268,19 +270,18 @@ class FleetApp(App):
     # -- layout -----------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
-        with Horizontal():
-            yield DataTable(id='runners', cursor_type='row', zebra_stripes=True)
-            with Vertical(id='side'):
-                yield Static(id='detail')
-                yield DataTable(id='lanes', cursor_type='none', zebra_stripes=True)
-                yield RichLog(id='log', wrap=False, highlight=False, markup=False)
+        yield DataTable(id='runners', cursor_type='row', zebra_stripes=True)
+        yield Static(id='detail')
+        yield DataTable(id='lanes', cursor_type='none', zebra_stripes=True)
+        yield RichLog(id='log', wrap=True, highlight=False, markup=False)
         yield Footer()
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
-        table.add_columns('Runner', 'Mode', 'State', 'For', 'Run', 'Wait', 'Held', 'Now')
+        table.add_columns('Runner', 'State', 'Needs', 'Tasks', 'Now')
         self.query_one('#lanes', DataTable).add_columns('Task', 'Phase', 'Try', 'For', 'Last activity')
         self.action_refresh()
+        self.refresh_log()
         self.set_interval(REFRESH, self.action_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
 
@@ -294,9 +295,12 @@ class FleetApp(App):
             now = ', '.join(f'{lane.task} {lane.phase}' for lane in runner.lanes[:2])
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
-            table.add_row(runner.name, runner.mode or '-', Text(runner.state, style=f'bold {runner.color}'),
-                          fleet_view.duration(runner.minutes), str(runner.running), str(runner.waiting),
-                          str(len(runner.held)), fleet_view.short(now or '-', 40), key=runner.name)
+            state = f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip()
+            tasks = f'{runner.running} run  {runner.waiting} wait  {len(runner.held)} held'
+            table.add_row(runner.name, Text(state, style=f'bold {runner.color}'),
+                          Text(fleet_view.short(fleet_view.needs(runner) or '-', 44),
+                               style='yellow' if runner.questions else ''),
+                          tasks, fleet_view.short(now or '-', 40), key=runner.name)
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0
@@ -333,16 +337,29 @@ class FleetApp(App):
         text.append(runner.name, style='bold')
         text.append(f'  {runner.mode or "no service"}  ')
         text.append(f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), style=f'bold {runner.color}')
-        text.append(f'\n{runner.repo or "(repository unknown)"}\n', style='dim')
-        text.append(f'{runner.running} running, {runner.waiting} waiting, {len(runner.held)} held\n')
+        text.append(f'  {runner.running} running, {runner.waiting} waiting, {len(runner.held)} held\n')
+        text.append(f'{runner.repo or "(repository unknown)"}\n', style='dim')
         if runner.model:
             text.append('model ', style='dim')
             text.append(runner.model)
             text.append('  fallback ', style='dim')
             text.append(runner.fallback + '\n')
-        for kind, items in fleet_view.blockers(runner):
-            text.append(f'{kind}: ', style='bold yellow')
-            text.append(items + '\n')
+        width = max(40, self.size.width - 4)  # one line per question
+        if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
+            count = len(runner.questions)
+            text.append(f"{count} question{'s' if count > 1 else ''} for you in BLOCKERS.md", style='bold yellow')
+            text.append('  (b answers them)\n' if self.agent and not self.view_only else '\n', style='dim')
+            for q in runner.questions[:QUESTIONS_SHOWN]:
+                head = f'  {q.id}  {q.effort}, unblocks {q.unblocks}: '
+                text.append(f'  {q.id}', style='bold')
+                text.append(head[len(q.id) + 2:], style='dim')
+                text.append(fleet_view.short(q.needs, max(20, width - len(head))) + '\n')
+            if count > QUESTIONS_SHOWN:
+                text.append(f'  +{count - QUESTIONS_SHOWN} more\n', style='dim')
+        else:
+            for kind, items in fleet_view.blockers(runner):
+                text.append(f'{kind}: ', style='bold yellow')
+                text.append(items + '\n')
         if runner.held and runner.state == 'working':
             text.append('held: ', style='bold yellow')
             text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
@@ -374,7 +391,7 @@ class FleetApp(App):
         runner = self.current()
         log.clear()
         if runner is not None:
-            log.write(self.logs(runner) or '(no output yet)')
+            log.write(fleet_view.quiet_log(self.logs(runner)) or '(no output yet)')
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner, task=None):

@@ -33,7 +33,8 @@ async def main():
                              '[[ $2 == list-units ]] && echo "pi-autowork@india.service loaded active running x"\n'
                              '[[ $2 == is-enabled ]] && exit 0\nexit 0\n')
         journal = base / 'journalctl'
-        journal.write_text('#!/usr/bin/env bash\necho "[16:00] TASK-036: waiting"\n')
+        journal.write_text('#!/usr/bin/env bash\necho "[16:00] TASK-036: waiting"\n'
+                           'echo "[16:00] TASK-034: pending — dependency: TASK-035"\n')
         for path in (systemctl, journal):
             path.chmod(0o755)
         tree = base / 'git'
@@ -57,6 +58,11 @@ async def main():
             assert app.query_one('#runners').row_count == 1
             detail = str(app.query_one('#detail').render())
             assert 'outside Now/Next: TASK-036 (19)' in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            runners = app.query_one('#runners')
+            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Needs', 'Tasks', 'Now']
+            assert 'outside Now/Next: TASK-036 (19)' in str(runners.get_row_at(0)[2])
+            log = '\n'.join(line.text for line in app.query_one('#log').lines)
+            assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
             await pilot.pause()
             await pilot.press('n')
