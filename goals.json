@@ -651,7 +651,9 @@
         "TOOLSET-153-64",
         "TOOLSET-154-d3",
         "TOOLSET-155-e2",
-        "TOOLSET-156-75"
+        "TOOLSET-156-75",
+        "TOOLSET-157-cd",
+        "TOOLSET-158-08"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -659,6 +661,8 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-157-cd",
+      "TOOLSET-158-08",
       "TOOLSET-155-e2",
       "TOOLSET-148-88",
       "TOOLSET-154-d3",
@@ -822,6 +826,22 @@
       "section": "Now",
       "status": "open",
       "title": "Keep owner-listed private terms out of public commits, pushes and runner integrations"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-157-cd",
+      "section": "Now",
+      "status": "open",
+      "title": "Held slots release file ownership so holds cannot deadlock the queue"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-158-08",
+      "section": "Now",
+      "status": "open",
+      "title": "A rejected push with a conflicting upstream is resolved, not left to diverge silently"
     },
     {
       "depends_on": [],
