@@ -236,6 +236,10 @@ class FleetViewTests(unittest.TestCase):
             (R('a', state='paused'), 'Paused — p resumes it'),
             (R('a', state='not running'), 'Not running — a starts its service'),
             (R('a', state='idle'), 'Idle — nothing left to run in Now/Next'),
+            (R('a', state='working', minutes=5, job={'role': 'maintainer', 'task': 'DOCS-MAINTAINER'}),
+             'Working — DOCS-MAINTAINER repairing task docs (5m)'),
+            (R('a', state='working', minutes=2, job={'role': 'provision', 'task': 'T-1'}),
+             'Working — installing what the review of T-1 needs (2m)'),
         ]
         for runner, sentence in cases:
             with self.subTest(state=runner.state, sentence=sentence):

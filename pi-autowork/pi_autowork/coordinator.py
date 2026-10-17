@@ -175,6 +175,9 @@ class Coordinator:
         """Runs one Pi job in a child (so a second Ctrl+C can reach it); returns (ok, text)."""
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='job.', delete=False)
         out.close()
+        # The loop waits on this job: say what it is, or the fleet reads the stale status as
+        # `not cycling` (TOOLSET-177-d0).
+        health.job_started(self.state, role, task)
         env = dict(os.environ, PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
         try:
             with open(out.name, 'w') as stream:
@@ -189,6 +192,7 @@ class Coordinator:
         finally:
             self.child = None
             Path(out.name).unlink(missing_ok=True)
+            health.job_finished(self.state)
         for note in result.get('notes') or []:
             LOG.say(note)
         return bool(result.get('ok')), result.get('text') or ''

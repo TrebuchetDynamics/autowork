@@ -104,6 +104,7 @@ class Runner:
     gate: str = ''            # the latest resource-gate reason, when the last cycle was gated
     maintainer: dict = field(default_factory=dict)  # the DOCS-MAINTAINER's last run (TOOLSET-164-f1)
     main_check: dict = field(default_factory=dict)  # main's full offline check (TOOLSET-176-98)
+    job: dict | None = None   # the runner's own Pi job running now (TOOLSET-177-d0)
 
     @property
     def color(self):
@@ -316,6 +317,16 @@ def recent_events(runner, now=None):
     return restarting, gate
 
 
+JOB_WORDS = {'maintainer': 'DOCS-MAINTAINER repairing task docs', 'provision': 'installing what the review of {task} needs',
+             'merge': 'resolving a merge', 'touches': 'planning the file scope of {task}'}
+
+
+def job_text(job):
+    """'DOCS-MAINTAINER repairing task docs', 'installing what the review of A needs', …"""
+    words = JOB_WORDS.get(job.get('role'), '{role} {task}')
+    return words.format(role=job.get('role', 'job'), task=job.get('task') or '').strip()
+
+
 def verdict(runner):
     """(sentence, style): whether this runner is stuck, and why, in one line."""
     count = len(runner.questions)
@@ -326,6 +337,8 @@ def verdict(runner):
         return 'Paused — p resumes it', 'bold yellow'
     if runner.state == 'not running':
         return 'Not running — a starts its service', 'bold red'
+    if runner.state == 'working' and runner.job and not runner.lanes:
+        return f"Working — {job_text(runner.job)} ({duration(runner.minutes) or '0m'})", 'bold green'
     if runner.state == 'working':
         busy = sum(lane.phase not in ('waiting to integrate',) for lane in runner.lanes) or runner.running
         of = f' of {runner.max_workers}' if runner.max_workers else ''
@@ -644,6 +657,9 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.max_workers = row.get('max_workers')
         runner.maintainer = row.get('maintainer') or {}
         runner.main_check = row.get('main_check') or {}
+        runner.job = row.get('job')
+        if runner.job and runner.job.get('started'):
+            runner.minutes = int((now - runner.job['started']) // 60)
     for runner in found.values():
         runner.lanes = lanes(runner, now)
         runner.restarting, runner.gate = recent_events(runner, now)

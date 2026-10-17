@@ -124,6 +124,22 @@ class HealthTests(unittest.TestCase):
         self.assertIn('pid 2353411 pi (the runner cannot proceed, holds 3)', line)
         self.assertEqual(health.classify(snap, stuck=2), 'working')  # one still progresses
 
+    def test_a_runner_busy_with_its_own_job_is_working_not_silent(self):
+        """TOOLSET-177-d0: a five-minute DOCS-MAINTAINER run read as `not cycling 3h46m`."""
+        folder = self.state / 'busy'
+        folder.mkdir()
+        (folder / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': '/x/busy'}))
+        (folder / 'status.json').write_text(json.dumps({'state': 'stalled', 'since': 0, 'repo': '/x/busy',
+                                                        'updated_at': 1000 - health.STALE_AFTER - 1}))
+        health.job_started(folder, 'maintainer', 'DOCS-MAINTAINER', now=700)
+        row = health.fleet(self.state, now=1000, service=lambda name: 'active')[0]
+        self.assertEqual((row['state'], row['job']['role']), ('working', 'maintainer'))
+        job = json.loads((folder / 'job.json').read_text())
+        (folder / 'job.json').write_text(json.dumps(dict(job, pid=2 ** 22 + 7)))  # its runner died mid-job
+        self.assertEqual(health.fleet(self.state, now=1000, service=lambda name: 'active')[0]['state'], 'not cycling')
+        health.job_finished(folder)
+        self.assertFalse((folder / 'job.json').exists())
+
     def test_fleet_flags_dead_and_silent_runners(self):
         def runner(key, repo, pid, updated, state='working'):
             folder = self.state / key

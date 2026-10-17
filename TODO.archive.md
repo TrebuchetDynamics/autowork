@@ -2731,3 +2731,24 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No full check on every task integration (too slow on loaded hosts); no automatic revert of landed work.
 - Planner's call: check main after landing rather than before every integration: the full check takes about 25 minutes here, and one red result per main revision is enough to start the repair.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-177-d0 — A runner busy with its own job shows that job, not 'not cycling'
+
+- [x] TOOLSET-177-d0 — A runner busy with its own job shows that job, not 'not cycling'
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (`pi_job`, `maintain`, `provision_and_reverify`, `resolve_task_conflict`, `merge_main`), [health](pi-autowork/pi_autowork/health.py) (`fleet`, `STALE_AFTER`), [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`collect`, `verdict`).
+- Evidence (2026-10-17 16:05 monitor pass): a runner whose DOCS-MAINTAINER job had been running for five minutes showed `not cycling 3h46m` in `autowork ls`. The coordinator runs its own Pi jobs (docs maintainer, toolchain provisioning, merge resolution) synchronously, so `status.json` is not refreshed during them; after `STALE_AFTER` the fleet view reads the old record as `not cycling`, and the age came from a stall record hours old.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/health.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/tests/test_health.py
+- Scope: (1) Before each of its own Pi jobs the coordinator writes a `job` record into status (`{role: DOCS-MAINTAINER | provision | merge, task, started, pid}`) and clears it after. (2) `health.fleet` treats a live job pid as cycling, whatever `updated_at` says; the fleet view shows state `working` with Now `DOCS-MAINTAINER 5m` (or `provisioning <task>`, `resolving a merge`), and the verdict says `Working — DOCS-MAINTAINER repairing <tasks> (5m)`. (3) A dead job pid with a stale record is `not cycling` as today.
+- Acceptance: In fixtures, a status record older than `STALE_AFTER` with a live job pid reads `working` with the job named; with a dead pid it reads `not cycling`; the job record is gone after the job.
+- Checks: python3 -m unittest discover -s pi-autowork/tests; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how the jobs run; making them asynchronous is separate.
+- Planner's call: report the job rather than make the jobs asynchronous now: the jobs are short and rare, and the false `not cycling` is the user-visible problem.

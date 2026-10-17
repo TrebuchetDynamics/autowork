@@ -174,6 +174,28 @@ def _service(name):
     return result.stdout.strip() or '-'
 
 
+def job_started(state_dir, role, task, now=None):
+    """The runner's own Pi job (docs maintainer, provisioning, merge resolution) is running."""
+    path = Path(state_dir) / 'job.json'
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps({'role': role, 'task': task, 'started': time.time() if now is None else now,
+                               'pid': os.getpid()}) + '\n')
+    os.replace(tmp, path)
+
+
+def job_finished(state_dir):
+    (Path(state_dir) / 'job.json').unlink(missing_ok=True)
+
+
+def current_job(folder):
+    """The runner's own job while its process lives, else None."""
+    try:
+        job = json.loads((Path(folder) / 'job.json').read_text())
+    except (OSError, ValueError):
+        return None
+    return job if isinstance(job, dict) and _alive(job.get('pid')) else None
+
+
 def fleet(state_root, *, now=None, service=_service):
     """Rows for every runner state directory that has a status or runner record."""
     now = time.time() if now is None else now
@@ -192,8 +214,11 @@ def fleet(state_root, *, now=None, service=_service):
             continue
         name = Path(repo).name
         state = status.get('state', 'unknown')
+        job = current_job(folder)
         if not _alive(runner.get('pid')):
             state = 'not running'
+        elif job:
+            state = 'working'  # busy with its own job: the status is old because the loop waits on it
         elif now - float(status.get('updated_at', 0)) > STALE_AFTER and state != 'working':
             state = 'not cycling'
         rows.append(dict(name=name, repo=repo, service=service(name), state=state,
@@ -202,7 +227,7 @@ def fleet(state_root, *, now=None, service=_service):
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
                          blocker=status.get('blocker', ''), updated_at=status.get('updated_at'),
                          max_workers=status.get('max_workers'), maintainer=status.get('maintainer') or {},
-                         main_check=status.get('main_check') or {}))
+                         main_check=status.get('main_check') or {}, job=job))
     return rows
 
 

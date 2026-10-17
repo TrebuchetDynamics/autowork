@@ -327,6 +327,8 @@ class FleetApp(App):
         rows = []
         for runner in self.runners:
             now = ', '.join(f'{lane.task} {lane.phase}' for lane in runner.lanes[:2])
+            if runner.job:
+                now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
             state = f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip()

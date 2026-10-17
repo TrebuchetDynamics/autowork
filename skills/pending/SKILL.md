@@ -1,6 +1,6 @@
 ---
 name: pending
-description: "Use to see what is pending or done in a repository's task ledger, read-only."
+description: "Use to see what is pending or done in a task ledger."
 license: MIT
 metadata:
   version: 0.1.0

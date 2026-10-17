@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A runner busy with its own Pi job (DOCS-MAINTAINER, toolchain provisioning, merge resolution) says so:
+  `autowork ls` and the runner view show it working on that job instead of `not cycling`, which its
+  stale status read as while the loop waited (TOOLSET-177-d0).
 - A repository can declare its full offline check (`PI_AUTOWORK_MAIN_CHECK`). The runner runs it on
   main in the background, once per main revision, when the host has room; a red result names the
   failing tests and the commits since the last green main, and the DOCS-MAINTAINER adds one repair
