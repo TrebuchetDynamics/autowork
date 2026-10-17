@@ -55,6 +55,23 @@ def env_paths(env=os.environ):
     }
 
 
+PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
+
+
+def package_script():
+    """pi-autowork.sh in the Pi package installed from PI_SOURCE (`pi list`), or None."""
+    try:
+        lines = subprocess.run([os.environ.get('AUTOWORK_PI', 'pi'), 'list'], capture_output=True, text=True,
+                               timeout=60).stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for i, line in enumerate(lines[:-1]):
+        if line.split()[:1] == [PI_SOURCE]:
+            found = Path(lines[i + 1].strip()) / 'scripts' / 'pi-autowork.sh'
+            return str(found) if found.is_file() else None
+    return None
+
+
 def script(paths):
     """pi-autowork.sh: the one the installed unit runs, else this release's."""
     override = os.environ.get('PI_AUTOWORK_SCRIPT')
@@ -133,6 +150,19 @@ def cmd_start(args, paths):
     unit = f'pi-autowork@{name}.service'
     fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     state = service_state(paths, name)
+    # Services run from the Pi package installed from PI_SOURCE. A unit that runs another
+    # copy (the package installed under the old hermes-toolset name) is moved onto it:
+    # reinstalling rewrites the shared unit and restarts this service, whose workers pause
+    # and resume; the other services follow when they next restart.
+    target = os.environ.get('PI_AUTOWORK_SCRIPT') or package_script()
+    runs = unit_script(paths)
+    if state != 'none' and target and runs and Path(runs).resolve() != Path(target).resolve():
+        print(f'Moving pi-autowork services from {runs} to {target}.')
+        code = subprocess.run(['bash', target, '--install-service', '--repo', ready.repo]).returncode
+        others = [r.name for r in runners(paths) if r.name != name and r.service in ('running', 'start', 'reload')]
+        if not code and others:
+            print(f'Still on the old copy until restarted: {", ".join(others)} (autowork restart NAME).')
+        return code
     if state == 'active':
         print(f'{unit} is already running {ready.repo}.')
         return 0
@@ -144,7 +174,7 @@ def cmd_start(args, paths):
         print(f'Started {unit} for {ready.repo}.')
         return 0
     # 'none', or 'stale': reinstall from this release (the unit is shared, so every service follows)
-    return subprocess.run(['bash', script(paths), '--install-service', '--repo', ready.repo]).returncode
+    return subprocess.run(['bash', target or script(paths), '--install-service', '--repo', ready.repo]).returncode
 
 
 def cmd_stop(args, paths, action='stop'):

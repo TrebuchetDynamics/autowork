@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `autowork start` moves a service onto the Pi package installed from
+  `git:github.com/TrebuchetDynamics/autowork` when its unit runs another copy, such as
+  the package still installed under the old hermes-toolset name: it reinstalls the
+  shared unit from that package and restarts the service (workers pause and resume);
+  the other services follow at their next restart, and the command names them.
 - The `autowork` TUI stacks the runner table, detail, worker lanes and log full width
   (the side-by-side split left a 30-column pane on an 80-column terminal). Each runner
   shows what it needs: the owner's open questions, read from the session's BLOCKERS.md
