@@ -56,6 +56,22 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No discarding of candidates, no forced integration of unverified work, and no change to the serial-path rule for genuinely exclusive tasks.
 - Planner's call: first in Now. A deadlock among holds stops every other self-healing fix from landing. The release is time-bounded and candidate-preserving, so it is safe to automate.
 
+### TOOLSET-160-df — A serial file conflicts only with other serial work, so one manifest task no longer idles every worker
+
+- [ ] TOOLSET-160-df — A serial file conflicts only with other serial work, so one manifest task no longer idles every worker
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "i want more workers active per repo. most only uses 1"; [admission](skills/autowork/scripts/parallel_plan.py) (`_solo`, `plan.conflict`, the `stopped` backfill rule), [integration scope check](skills/autowork/scripts/parallel_integrate.py) (`verify_scope`, protected files).
+- Evidence (2026-10-17 10:45 monitor pass): every runner allows 8 workers (`PI_AUTOWORK_WORKERS` default), but most run one. Waiting reasons across the fleet: `priority waits for <task>` 14 in this repository, 9 in a second runner and most of a third runner's queue; `serial path; must run alone (beside …)` heads each of those chains. One task whose Touches include a manifest, lockfile or build file (`SERIAL_PATHS`) is `_solo`: it conflicts with every other task, and when it waits for running work, `stopped` ends all lower-priority dispatch so the pool drains for it. Each worker has its own worktree, so a manifest change in one cannot affect another worker's build; the real conflict is only between tasks that both change serial files (two lockfile edits do not merge).
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/references/parallel-workers.md
+- Scope: (1) Split `_solo` into its two meanings. Exclusive (no Touches, or a `live`/`exclusive` resource) keeps today's behaviour: it runs alone, and while it waits for running work it stops lower dispatch. Serial (Touches include a `SERIAL_PATHS` file) conflicts only with another task that also touches a serial file, reason `serial path shared with <task>`. It does not stop backfill: independent tasks keep running beside it. (2) `_solo` keeps returning the serial reason for callers outside admission, so `verify_scope`'s protected-file check (a new manifest needs serial admission in the original contract) is unchanged. (3) Document the rule in parallel-workers.md.
+- Acceptance: In fixtures, a serial task and two independent tasks without serial files dispatch together in one cycle. Two tasks that each touch a different serial file (a manifest and a lockfile) never run at once, and the lower-priority one waits with `serial path shared with <task>`. A task without Touches, or with an exclusive resource, still runs alone and still stops lower dispatch while it waits. Integration still holds a commit that creates a new manifest without serial admission in its original contract.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator (owner session).
+- Exclusions: No change to the worker cap, the resource gate, Touches overlap, or the protected-file integration check.
+- Planner's call: narrow serial admission to serial-vs-serial instead of raising worker counts. The cap is already 8; admission is what keeps runners at one worker, and per-worker worktrees remove the reason a manifest change had to run alone.
+
 ### TOOLSET-152-d4 — Widen a held task's Touches by the exact paths its worker names, then reverify the same candidate
 
 - [ ] TOOLSET-152-d4 — Widen a held task's Touches by the exact paths its worker names, then reverify the same candidate

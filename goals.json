@@ -654,7 +654,8 @@
         "TOOLSET-156-75",
         "TOOLSET-157-cd",
         "TOOLSET-158-08",
-        "TOOLSET-159-30"
+        "TOOLSET-159-30",
+        "TOOLSET-160-df"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -663,6 +664,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-157-cd",
+      "TOOLSET-160-df",
       "TOOLSET-152-d4",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
@@ -834,6 +836,14 @@
       "section": "Now",
       "status": "open",
       "title": "A rejected push with a conflicting upstream is resolved, not left to diverge silently"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-160-df",
+      "section": "Now",
+      "status": "open",
+      "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
     },
     {
       "depends_on": [],
