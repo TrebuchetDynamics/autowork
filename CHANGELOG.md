@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Reviews no longer fill RAM-backed `/tmp`. Each review gets its own `TMPDIR` on disk, removed when it
+  ends, and reviewer and worker prompts say to keep scratch and copies under `$TMPDIR` (a scratch
+  checkout as `git worktree add --detach`) instead of copying whole repositories into `/tmp`.
 - The runner view answers whether a runner is stuck and why, and what each worker is doing. A
   verdict line comes first (`Working — 3 of 8 workers busy`, `Waiting on you — …`, `Stuck 42m — <root>`,
   `Host busy — …`, `Restarting onto <commit>`); worker rows say in plain words what each is doing, flag

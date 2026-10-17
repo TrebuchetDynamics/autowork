@@ -1,5 +1,6 @@
 """The reviewer finds what the worker provisioned under its own $TMPDIR."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -39,6 +40,41 @@ class WorkerTmpTests(unittest.TestCase):
         self.slot()
         (self.execution / 'slot-data' / 'T-1' / 'attempt-2' / 'tmp').mkdir(parents=True)
         self.assertIsNone(worker.worker_tmp(str(self.repo), 'T-1'))  # empty: nothing to point at
+
+
+class ReviewScratchTests(unittest.TestCase):
+    """Reviewers copied whole repositories into RAM-backed /tmp and left them there."""
+
+    def test_a_review_gets_its_own_tmpdir_which_is_removed_afterwards(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder) / 'repo', Path(folder) / 'state'
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                            'commit', '-q', '--allow-empty', '-m', 'base'], check=True)
+            state.mkdir()
+            seen = {}
+
+            def job(settings, role, task, checkout, prompt, *rest):
+                seen['tmp'] = Path(os.environ['TMPDIR'])
+                seen['prompt'] = prompt
+                (seen['tmp'] / 'copy.txt').write_text('scratch')
+                return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
+
+            old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
+            os.chdir(repo)
+            try:
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 0)
+            finally:
+                os.chdir(old_cwd)
+                if old_tmp is None:
+                    os.environ.pop('TMPDIR', None)
+                else:
+                    os.environ['TMPDIR'] = old_tmp
+            self.assertTrue(str(seen['tmp']).startswith(str(state / 'review-tmp')), seen['tmp'])
+            self.assertFalse(seen['tmp'].exists())
+            self.assertIn('never directly under /tmp', seen['prompt'])
 
 
 if __name__ == '__main__':

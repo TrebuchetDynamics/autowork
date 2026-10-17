@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,7 +25,10 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
           'against the acceptance criteria. Do not ask for more tests than the acceptance and Checks need; fail a '
           'change whose new tests mostly repeat existing cases or add many near-identical tests where one table '
           'would do. Do not edit, create or delete files, commit, push or change branches; '
-          'temporary files go in $TMPDIR only. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
+          'build output in gitignored paths is fine. Put every temporary file and copy under $TMPDIR, '
+          'never directly under /tmp, which is RAM on this host; $TMPDIR is removed after the review. '
+          'For a scratch copy of the checkout use git worktree add --detach "$TMPDIR/copy" HEAD, not a '
+          'file copy. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
 # pending live become their own TASK-LIVE follow-up, so they must not fail the review.
@@ -102,6 +106,19 @@ def verify(state, task):
     if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
         return 0
     head_before = git(checkout, 'rev-parse', 'HEAD')
+    # Its own scratch on disk, removed afterwards: reviewers copied whole repositories into
+    # RAM-backed /tmp and left them (39 GB on one host).
+    scratch = Path(state) / 'review-tmp' / f'{safe_name(task)}-{os.getpid()}'
+    scratch.mkdir(parents=True, exist_ok=True)
+    os.environ['TMPDIR'] = str(scratch)
+    try:
+        return review(state, task, checkout, head_before)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+        subprocess.run(['git', '-C', checkout, 'worktree', 'prune'], capture_output=True)
+
+
+def review(state, task, checkout, head_before):
     provisioned = worker_tmp(checkout, task)
     if provisioned:
         os.environ['AUTOWORK_WORKER_TMPDIR'] = str(provisioned)
