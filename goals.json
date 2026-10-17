@@ -10,6 +10,11 @@
         },
         {
           "kind": "executed",
+          "ref": "TOOLSET-121-3d at efdde94 (merged with origin/main): python3 scripts/check.py passed 619/791/217/9/37 tests, one skip, eight excluded modules; node --test tests/portable_pi.test.mjs 3 passed; docs.py check ok; rename to autowork with no compatibility layer; live reinstall remains TOOLSET-123-a0",
+          "result": "pass"
+        },
+        {
+          "kind": "executed",
           "ref": "python3 scripts/check.py (411/572/201/8 offline tests passed, includes test_every_codex_adapter_is_explicit_only) and node --test tests/portable_pi.test.mjs (3 passed); offline only",
           "result": "pass"
         }
@@ -764,14 +769,6 @@
       "section": "Next",
       "status": "open",
       "title": "Record intent before side effects in worktree creation and slot transitions"
-    },
-    {
-      "depends_on": [],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-121-3d",
-      "section": "Next",
-      "status": "open",
-      "title": "Rename the repository and plugin from hermes-toolset to autowork"
     },
     {
       "depends_on": [
@@ -1581,6 +1578,14 @@
       "section": "Done",
       "status": "done",
       "title": "Port stale-result and cancellation scenarios from reference Pi orchestrators into engine fixtures"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-121-3d",
+      "section": "Done",
+      "status": "done",
+      "title": "Rename the repository and plugin from hermes-toolset to autowork"
     },
     {
       "depends_on": [
