@@ -105,6 +105,22 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No change to which tasks are exclusive or to how they run once started; no change to the worker cap.
 - Planner's call: a time-bounded drain instead of an immediate one. It keeps the anti-starvation guarantee (an exclusive task still gets the whole pool within the grace period plus one task's run) while short independent work stops idling behind it.
 
+### TOOLSET-172-40 — A worker paused by a runner restart shows as paused, not failed
+
+- [ ] TOOLSET-172-40 — A worker paused by a runner restart shows as paused, not failed
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "find out why 165-f7 died", then "yes, plan the task"; [slot reaping and pause](skills/autowork/scripts/parallel_state.py) (`pause`, the reap that sets `EMPTY`, `change`), [status rows](skills/autowork/scripts/parallel_status.py) (`failed` count), [lifecycle words](pi-autowork/pi_autowork/common.py) (`lifecycle`), [coordinator log](pi-autowork/pi_autowork/coordinator.py) (`note_state`), [status listing](pi-autowork/pi_autowork/cli.py), [TUI words](pi-autowork/pi_autowork/fleet_view.py) (`PHASE_WORDS`, `WORD_STYLES`).
+- Evidence (2026-10-17 13:43, this repository's runner): a service restart stopped the runner five seconds after TOOLSET-165-f7's worker started. `pause` marked the slot `paused`, Pi exited with no changes, and the reap released it with `dead worker without a commit or changes`. The runner logged `TOOLSET-165-f7: failed — dead worker without a commit or changes`, and status listed it as `failed` with that reason and again as `pending`, and counted it among `4 failed`. The slot was `released`, attempt 1, `paused: true`: it resumes on the same attempt and lost nothing. The owner read it as a crash.
+- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py, skills/autowork/scripts/parallel_status.py, pi-autowork/pi_autowork/common.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py, tests/test_pi_autowork.py
+- Scope: (1) A slot that a deliberate stop paused and that ended `interrupted` or `released` gets the lifecycle word `paused`, not `failed`, in the runner log, `autowork status`, `autowork ls` and the TUI. The reap records the reason `stopped by a runner restart; resumes on attempt <n>`, plus `with uncommitted changes` when the worktree had any; the dead-worker reasons stay for unpaused slots. (2) Paused slots do not count toward `failed` in status totals and never toward the failure streak. (3) Status shows each task once: a paused slot that also waits for dispatch shows `paused` with the waiting reason appended (`…; waiting: overlapping paths with <task>`).
+- Acceptance: In fixtures, a worker stopped by `pause` and then reaped with no changes shows `paused` with the restart reason in the log line, the status row, the totals and the TUI. The same with uncommitted changes says so. An unpaused worker that dies with nothing still shows `failed — dead worker without a commit or changes`, and a second-attempt unpaused death still holds with cause `empty`. A paused slot that waits on overlap appears in one row. The resume itself is unchanged: same worktree, same attempt.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when a stop pauses workers, to resume or retry rules, or to holds.
+- Planner's call: placed after TOOLSET-171-35. It changes only words and counts, and a misread failure costs the owner an investigation, not runner time.
+
 ### TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 
 - [ ] TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
@@ -138,7 +154,7 @@ settlement/cancellation checks when refining that existing design.
 - Planner's call: Keep new query files under skills/pending and reuse existing parsing; no second task store or search dependency. Default five results and 500 relevant commits for bounded Git fallback, with explicit truncation and requested expansion. Support /pending and /done through the same helper; latest recorded completions use evidence/Git transition dates, with explicit undated/partial results and no task-number or archive-order inference.
 
 - Command refinement: The helper lives under skills/pending/scripts/ and supports both read-only frontends. Pending descriptions default to unfinished work; done descriptions to currently completed work. Default /done returns five latest dated recorded completions, or explicitly undated records when dates are unavailable; reopened/superseded tasks stay distinct. Extend the existing query fixtures for latest ordering, date provenance, ties, undated-only and bounded-history cases.
-
+- Next action: Resume candidate 958fa5cbb80f6cad2b20b9ce6ed9adf3fe4542b6 and fix the integration reviewer's concrete DST-fold failure within the existing query scope: America/New_York 2026-11-01T01:30-04:00 to 01:15-05:00 is a forward interval despite reversed local clock labels. Reproduce the case and compare/order timezone-aware UTC instants, retaining genuinely reversed-interval rejection and all date-provenance/immutability checks. Reverify the repaired candidate through the existing integration owner; do not rescope or reimplement the whole helper.
 
 ### TOOLSET-143-62 — Add the conversational tasks skill and host commands
 
@@ -225,6 +241,7 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No change to which conditions become questions (TOOLSET-129-c4 and TOOLSET-141-c4 own classification and repair); no fleet BLOCKERS.md edits by hand.
 - Planner's call: a hashed `COND-` ID rather than a truncated slug. It is stable, short, single-line and unaffected by rewrapping.
 - Planner answer (2026-10-17 09:15): run the offline inventory with `TMPDIR` set to a fresh short private directory made by `mktemp -d /tmp/aw-XXXXXX` and removed afterwards. Fixture-local Git transport inside it is allowed. This is the interim answer until TOOLSET-140-f4 makes it the default, and the same applies to every toolset task whose checks need AF_UNIX sockets.
+- Next action: Retain candidate 9074127f24cc423da758c0e7b070158a601d80db and its reports/check evidence. The prior integration tree is ambiguous and currently reused by another integration; do not reset, clean, adopt or overwrite it. After the current owner releases the integration workspace, use the supported recovery path to prepare a fresh isolated integration of this candidate, preserve old diagnostic state and rerun checks invalidated by the new tree. Candidate report passes are not a current integration pass; this is integration recovery, not a product/acceptance decision.
 
 ### TOOLSET-147-54 — Merge pending names its real cause and clears a dirty integration worktree safely
 
@@ -366,6 +383,7 @@ settlement/cancellation checks when refining that existing design.
 - Accepted continuation (2026-10-16): [docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers](docs/plans/2026-10-16-pi-autowork-coordinator.md#useful-progress-and-independent-workers). Resume the existing held candidate in place after the active coordinator writer settles. Fix the process-lifetime NONE cache overriding its expiry; add bounded concrete scopes and consistent bracketed-route escaping/matching. Prove independent dispatch/refill using existing fixtures; retain real serial-path drain, dependency, memory/load and ownership guards. Split a protected-file step only when independently verifiable, with required dependencies preserved. No cap increase or forced parallelism.
 - Additional acceptance: NONE is retried after expiry without restarting the service; bracketed concrete route paths match only the authorized path while intentional globs retain their contract; at least three independent subprocess workers overlap and refill out of order, with the existing eight-worker case retained. A genuinely exclusive task drains without starvation.
 - Focused checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_touches_inference.py; focused coordinator expiry fixture; normal offline gate for combined runtime qualification.
+- Next action: Have the existing coordinator resume the retained candidate in its recorded worktree after supplying the already-approved short task-owned temporary root outside Git and fixture-only environment isolation. Preserve uncommitted implementation and passing focused checks; rerun the full failing inventory and diagnose process-group/load failures without weakening production push guards, dropping tests or resetting consumed budget. This is an internal test-environment repair, not a new owner input.
 
 ### TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
 
