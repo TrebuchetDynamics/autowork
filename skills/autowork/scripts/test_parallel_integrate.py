@@ -149,6 +149,28 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'A'))
         self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
+    def test_an_abbreviated_commit_in_the_report_is_the_same_commit(self):
+        """A complete bootstrap was held on its last attempt because the report named `29a464c3`."""
+        module = self.module()
+        _, commit = self.worker()
+        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
+        report = execution.read(data / 'report.json')
+        execution.save(data / 'report.json', dict(report, commit=commit[:8]))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_a_report_mismatch_says_what_differs_and_a_misread_hold_is_offered_again_once(self):
+        module = self.module()
+        _, commit = self.worker()
+        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
+        report = execution.read(data / 'report.json')
+        execution.save(data / 'report.json', dict(report, commit='0' * 12))
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertIn("commit is '000000000000', the branch is at " + commit[:12], result['reason'])
+        # As an earlier release held a correct abbreviated SHA: offered again, once.
+        execution.save(data / 'report.json', dict(report, commit=commit[:8]))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_a_commit_held_for_overlap_owns_nothing_and_is_offered_again_once_free(self):
         """TOOLSET-157-cd: two commits on the same file must not hold each other forever."""
         module = self.module()

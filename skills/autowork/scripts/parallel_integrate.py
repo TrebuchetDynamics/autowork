@@ -137,15 +137,50 @@ def verify(repo, common, slot, contracts):
     if blockers:
         raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
     report['pending_live'] = live_items(report.get('pending_live'))
-    if (not isinstance(report, dict) or report.get('task') != slot['task_id']
-            or report.get('commit') != commit or not isinstance(report.get('changed_files'), list)
-            or not all(isinstance(p, str) for p in report['changed_files'])
-            or sorted(report['changed_files']) != sorted(files)
-            or report.get('blockers') != [] or not isinstance(report.get('checks'), list)
-            or any(not isinstance(c, dict) or c.get('result') != 'pass' for c in report['checks'])):
-        raise Hold('report', 'report.json does not match worker commit/files or reports failure')
+    mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
+    if mismatch:
+        raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
     verify_scope(repo, common, slot, contracts, files)
     return files, report
+
+
+def report_mismatch(repo, report, task, commit, files):
+    """What in report.json disagrees with the worker's commit, or ''. A commit written as an
+    abbreviated SHA that names the same commit is the same commit."""
+    if report.get('task') != task:
+        return f'task is {report.get("task")!r}'
+    named = report.get('commit')
+    if named != commit:
+        try:
+            same = isinstance(named, str) and len(named) >= 7 and git(repo, 'rev-parse', '--verify',
+                                                                      named + '^{commit}') == commit
+        except ValueError:
+            same = False
+        if not same:
+            return f'commit is {named!r}, the branch is at {commit[:12]}'
+    changed_files = report.get('changed_files')
+    if not isinstance(changed_files, list) or not all(isinstance(p, str) for p in changed_files):
+        return 'changed_files is not a list of paths'
+    if sorted(changed_files) != sorted(files):
+        missing, extra = sorted(set(files) - set(changed_files)), sorted(set(changed_files) - set(files))
+        return f'changed_files differ from the commit (missing {missing[:5]}, extra {extra[:5]})'
+    if report.get('blockers') != []:
+        return 'it reports blockers'
+    checks = report.get('checks')
+    if not isinstance(checks, list) or any(not isinstance(c, dict) or c.get('result') != 'pass' for c in checks):
+        return 'a check did not pass'
+    return ''
+
+
+def report_matches(repo, common, slot):
+    report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
+    if not isinstance(report, dict):
+        return False
+    try:
+        return not report_mismatch(repo, report, slot['task_id'], slot['commit'],
+                                   changed(repo, slot['baseline'], slot['commit']))
+    except ValueError:
+        return False
 
 
 def owned_elsewhere(repo, common, slot, contracts):
@@ -881,8 +916,16 @@ def retry_held(args):
                 overlapped.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
                 free = next((s for s in overlapped if unowned(repo, common, s, by_id)), None)
                 if free is not None:
-                    slot = state.reoffer_overlap(common, free)
+                    slot = state.reoffer(common, free)
                     return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # A commit held because an earlier release misread its report (an abbreviated SHA)
+            # is offered again once, when its report now matches; integration repeats every check.
+            misread = next((s for s in current if s['state'] == 'held' and s.get('cause') == 'report'
+                            and s.get('commit') and not s.get('reoffered') and not state.worker_live(s)
+                            and report_matches(repo, common, s)), None)
+            if misread is not None:
+                slot = state.reoffer(common, misread)
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
             requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'
