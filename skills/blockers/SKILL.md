@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.1
+  version: 0.1.2
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -27,9 +27,13 @@ Updating an already authorized plan needs no new owner decision.
 
 Do not announce a plan or ask whether to begin: gather and filter, then put the
 first genuine question in the same turn if one remains. Otherwise report the
-planning repairs and remaining execution work without inventing a question. Resolve the target: a path, `.` (default), or a runner name, whose
-repository is the `Repository:` line of `autowork status NAME`. Then collect, without
-a model call:
+planning repairs and remaining execution work without inventing a question.
+
+Resolve the target: a path, `.` (default), or a runner name, whose repository is the
+`Repository:` line of `autowork status NAME`. The runner's questions live in its
+session worktree, which can be ahead of the main checkout; read them there, and save
+answers in the main checkout, which the runner merges into its session. Then collect,
+without a model call:
 
 - The runner's questions block in `BLOCKERS.md`, between
   `<!-- pi-autowork:questions:start -->` and `<!-- pi-autowork:questions:end -->`,
@@ -46,9 +50,13 @@ a model call:
 
 ### Filter before asking
 
-Merge duplicates by task ID and read the current task, decisions, repository policy
-and candidate evidence. A generated `USER_DECISION` label or a worker's request for
-approval is evidence to examine, not proof that a human decision is needed.
+Merge duplicates by literal task ID and read the current task, decisions, repository
+policy and candidate evidence. A generated `USER_DECISION` label or a worker's request
+for approval is evidence to examine, not proof that a human decision is needed. A
+question can outlive its cause: compare it with the current task state and the latest
+attempt's report (a newer scope-validation failure supersedes an older missing-input
+report). Count and sort what remains programmatically, and treat an `unblocks` count
+as the notice's figure, not measured impact.
 
 - **Established answer or routine recovery:** use existing authorization. Inspect
   repository/session facts yourself. Preserve the agreed scope and acceptance;
@@ -71,6 +79,8 @@ approval is evidence to examine, not proof that a human decision is needed.
   change, unavailable external input or ungranted operation authority changes what
   can proceed. State that specific gap. Preserve explicit pauses, cancellations and
   task-specific restrictions; routine local authority does not revoke them.
+  Conditional recovery permission ("retry if it crashed") does not establish that the
+  condition holds; keep the task held until it is verified.
 
 A questions-only/read-only invocation records proposed repairs in chat rather than
 editing files. With no genuine questions left, report what was reconciled and what
@@ -133,16 +143,22 @@ Write each answer or supported planning repair where the queue reads it, right a
   runner's marked block, which the runner rewrites itself.
 
 A held task re-queues itself once its entry changes (TOOLSET-120-fc); a runner
-sees the plan change within seconds. Where it does not, request it after the edit
-with `pi-autowork.sh --repo REPO --set-aside TASK`; the runner keeps the earlier work
-on `-set-aside-N` branches.
+sees the plan change within seconds. Observe it in `autowork status NAME` rather
+than promise it. Where it does not happen, request it after the edit with
+`pi-autowork.sh --repo REPO --set-aside TASK`; the runner keeps the earlier work on
+`-set-aside-N` branches. A kept branch does not prove a fresh worker received that
+candidate: name it in the task's `Next action:` so the next attempt restores it
+instead of reimplementing. Never rewrite a running worker's contract.
 
 ## 5. Close out
 
 Commit only the planning files the answers or supported repairs changed (TODO.md, goals.json,
 TODO.archive.md, `BLOCKERS.md`) in the repository's checkout as
 `docs(tasks): owner answers to blockers`, so the runner's merge is not held by
-uncommitted edits. Never commit unrelated changes. This workflow never pushes; route separately
-requested publication through Git Commit Push with its existing authority.
+uncommitted edits. Where those files hold other uncommitted planning, stage only the
+answered tasks' hunks and their ledger rows, check the staged diff, and leave the
+rest as it was. Never commit unrelated changes. This workflow never pushes; route
+separately requested publication through Git Commit Push with its existing authority.
 Report what was reconciled without questions, answered, skipped and still open,
-and what each resolution unblocks. Planning readiness is not completed integration.
+and what each resolution unblocks. Keep apart: answer saved, picked up by the runner,
+worker running, and work done. Planning readiness is not completed integration.
