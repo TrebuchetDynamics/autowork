@@ -47,7 +47,10 @@ def triggers(rows, main=None, findings=None):
 
 
 def key(found):
-    return hashlib.sha256(json.dumps(found).encode()).hexdigest()[:16]
+    """The set's identity. A red main is the same trigger while the same tests fail: tasks now
+    land one by one, so its commits since the last green grow without anything new to repair."""
+    same = [(task, kind, why.split('; commits since')[0] if task == 'MAIN' else why) for task, kind, why in found]
+    return hashlib.sha256(json.dumps(same).encode()).hexdigest()[:16]
 
 
 def planning_only(paths):

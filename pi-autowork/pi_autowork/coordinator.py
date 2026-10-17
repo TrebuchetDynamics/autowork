@@ -447,8 +447,31 @@ class Coordinator:
             LOG.say(f'Merge pending: {self.merge_pending}. Branch {self.integ_branch} is kept; the next run retries.')
             return False
         LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s))')
-        self.push()
+        self.sync_upstream()
         return True
+
+    def sync_upstream(self):
+        """Pull, then push: merge commits the upstream gained into the session and the main
+        branch, then publish the main branch if it is ahead. Called after every landing and once
+        at start, so a backlog is published and the session never drifts behind the upstream."""
+        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
+            return
+        upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
+        if not upstream or '/' not in upstream:
+            return self.push()  # says once that there is no upstream
+        remote, branch = upstream.split('/', 1)
+        on_base = git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') == self.base
+        if on_base and git_ok(self.repo, 'fetch', '--quiet', remote, branch):
+            behind = int(git(self.repo, 'rev-list', '--count', f'{self.base}..{upstream}') or 0)
+            if behind and self.integ and not self.session_busy() and not dirty(self.integ):
+                if git_ok(self.integ, 'merge', '-q', '--no-edit', upstream) and \
+                        git_ok(self.repo, 'merge', '--ff-only', '--quiet', self.integ_branch):
+                    LOG.say(f'Pulled {behind} commit(s) from {upstream} into {self.base}')
+                else:
+                    git(self.integ, 'merge', '--abort')
+                    LOG.say(f'{upstream} has {behind} commit(s) that do not merge cleanly; the push resolves them')
+        if int(git(self.repo, 'rev-list', '--count', f'{upstream}..{self.base}') or 0):
+            self.push()
 
     def push(self, retry=True):
         """Publish the main branch to its upstream after a merge (owner decision, 2026-10-16).
@@ -622,10 +645,16 @@ class Coordinator:
             self.merge_blocker = f'the session cannot take {self.base}: {self.merge_pending}'
 
     def land(self):
-        """After a task closes, bring the session to the main branch (and push) while nothing
-        is in flight, so the session never drifts far from the owner's plan."""
-        if self.integ and not self.in_flight() and self.ahead():
+        """After every task closes: bring the session to the main branch, pull what upstream
+        gained and push (owner direction, 2026-10-17: commit, push to upstream and pull-merge
+        after every task). Workers keep their own bases, so others in flight do not wait it;
+        only a running review does (its fast-forward needs the session unchanged)."""
+        if not self.integ or self.session_busy():
+            return
+        if self.ahead():
             self.merge_main()
+        else:
+            self.sync_upstream()
 
     def commit(self, paths, *message):
         if self.session_busy():
@@ -1392,6 +1421,9 @@ class Coordinator:
             self.update_toolset()
         self.restart_if_updated()
         self.ensure_session()
+        if not self.seen.get('synced-at-start'):
+            self.seen['synced-at-start'] = True
+            self.sync_upstream()  # publish a backlog left by a run that could not push
         self.follow_base()
         self.sweep_tmp()
         self.check_main()

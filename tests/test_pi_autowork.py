@@ -542,7 +542,7 @@ class EngineTests(Fixture):
         self.assertIn('(test_other.OtherTests.test_broken)', log())
         self.assertIn('DOCS-MAINTAINER: repairing the task docs of MAIN', log())
         self.assertIn('Main is green again at', log())
-        self.assertEqual(len(self.runs('maintainer')), 1)  # one repair for one set of failures
+        self.assertEqual(len(self.runs("maintainer")), 1, log())  # one repair for one set of failures
 
     def test_a_long_review_runs_beside_the_loop_so_other_work_starts(self):
         """TOOLSET-183-d6: a 25-minute review idled a whole runner: no dispatch, no status."""
@@ -556,9 +556,12 @@ class EngineTests(Fixture):
         time.sleep(1)
         status = next(self.state.glob('*/status.json'))
         first = json.loads(status.read_text())['updated_at']
-        time.sleep(4)  # the review sleeps 8 s: the loop keeps cycling meanwhile
+        # The review sleeps 8 s: the loop keeps cycling meanwhile, so status moves before A integrates.
+        while json.loads(status.read_text())['updated_at'] <= first:
+            self.assertNotIn('A: integrated', log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
         self.assertNotIn('A: integrated', log())
-        self.assertGreater(json.loads(status.read_text())['updated_at'], first, log())
         while not ((self.repo / 'C.txt').exists() and self.done('A', 'B', 'C')):
             self.assertLess(time.monotonic(), deadline, log())
             time.sleep(0.5)
@@ -1368,6 +1371,34 @@ class EngineTests(Fixture):
         self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
         self.assertFalse(any(b.endswith('pushed') for b in self.git(bare, 'branch').split()))  # workers never push
 
+    def test_a_backlog_left_unpushed_is_published_at_start(self):
+        """Owner direction (2026-10-17): push to upstream after every task; one runner had
+        merged sixteen times without pushing."""
+        bare = self.origin()
+        (self.repo / 'local.txt').write_text('merged earlier, never pushed\n')
+        self.git(self.repo, 'add', 'local.txt')
+        self.git(self.repo, 'commit', '-qm', 'an earlier landing')
+        self.env['PI_AUTOWORK_PUSH'] = '1'
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git(bare, 'rev-parse', 'main'), self.git(self.repo, 'rev-parse', 'main'))
+        self.assertTrue(self.git(bare, 'log', '--format=%s', 'main').count('an earlier landing'))
+
+    def test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push(self):
+        bare = self.origin()
+        other = self.root / 'other'
+        subprocess.run(['git', 'clone', '-q', str(bare), str(other)], check=True)
+        (other / 'X.txt').write_text('from elsewhere\n')
+        self.git(other, 'add', 'X.txt')
+        self.git(other, 'commit', '-qm', 'someone else')
+        self.git(other, 'push', '-q', 'origin', 'main')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r'Pulled 1 commit\(s\) from origin/main into main|origin/main had moved')
+        self.assertEqual((self.repo / 'X.txt').read_text(), 'from elsewhere\n')
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
+        self.assertTrue(self.done('A', 'B', 'C'))
+
     def test_a_rejected_push_merges_the_upstream_and_pushes_again(self):
         bare = self.origin()
         other = self.root / 'other'
@@ -1378,7 +1409,8 @@ class EngineTests(Fixture):
         self.git(other, 'push', '-q', 'origin', 'main')
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('origin/main had moved; merged it and pushing again', result.stdout)
+        # Pulled before the push at start (owner direction 2026-10-17), or merged after a rejected push.
+        self.assertRegex(result.stdout, r'origin/main had moved; merged it and pushing again|Pulled 1 commit')
         self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
         self.assertEqual((self.repo / 'X.txt').read_text(), 'from elsewhere\n')
         self.assertTrue(self.done('A', 'B', 'C'))
