@@ -79,6 +79,28 @@ class InstallMenuTests(unittest.TestCase):
         self.assertRegex(result.stdout, r'hermes\s+skipped\s+hermes not found')
         self.assertRegex(result.stdout, r'tx\s+installed')
 
+    def test_no_arguments_installs_full_suite_with_verbose_output(self):
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.calls('pi install'), [f'pi install {NEW}'])
+        self.assertIn('claude plugin install autowork@autowork', self.calls('claude'))
+        self.assertIn('codex plugin add autowork@autowork-marketplace', self.calls('codex'))
+        self.assertTrue((self.home / '.local/bin/autowork').is_symlink())
+        self.assertTrue((self.home / '.local/bin/tx').is_file())
+        self.assertIn('$ codex plugin add autowork@autowork-marketplace', result.stdout)
+        self.assertRegex(result.stdout, r'hermes\s+skipped.*hermes not found')
+
+    def test_dry_run_defaults_to_the_full_suite_without_installing(self):
+        self.fake('hermes', LOGGING)
+        result = self.install('--dry-run')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for key in ('pi', 'autowork', 'tx', 'hermes', 'claude', 'codex'):
+            self.assertRegex(result.stdout, rf'{key}\s+planned')
+        self.assertEqual(self.calls('pi install'), [])
+        self.assertEqual(self.calls('codex'), [])
+        self.assertEqual(self.calls('hermes'), [])
+        self.assertFalse((self.home / '.local/bin').exists())
+
     def test_tx_keeps_an_existing_tmux_config(self):
         mine = b'set -g mouse on\n# mine\n'
         (self.home / '.tmux.conf').write_bytes(mine)
@@ -102,7 +124,7 @@ class InstallMenuTests(unittest.TestCase):
         self.assertRegex(result.stdout, r'tx\s+skipped\s+not chosen')
         self.assertRegex(result.stdout, r'pi\s+planned')
         self.assertEqual(self.calls('pi install'), [])  # a dry run runs nothing
-        self.assertIn('no terminal for the menu', self.install().stderr)
+        self.assertIn('no terminal for the menu', self.install('--menu').stderr)
 
     def test_failed_steps_remain_failures_even_when_output_says_already(self):
         self.fake('claude', LOGGING + 'echo "boom: no network" >&2; exit 1\n')
@@ -231,6 +253,13 @@ class InstallMenuTests(unittest.TestCase):
         result = self.install('--only', 'hermes', '--dry-run', '--hermes-home', '/h', '--yes-deps')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('setup_bundle.py --yes-deps --dry-run --hermes-home /h', result.stdout)
+        # Profiles with their own plugin clone (`hermes plugins install`) are updated: setup
+        # would refuse them as "another checkout".
+        clone = self.home / '.hermes/profiles/work/plugins/autowork'
+        (clone / '.git').mkdir(parents=True)
+        result = self.install('--only', 'hermes', '--dry-run')
+        self.assertIn(f"update_bundle.py --hermes-home {self.home / '.hermes'}", result.stdout)
+        self.assertNotIn('setup_bundle.py', result.stdout)
 
 
 if __name__ == '__main__':

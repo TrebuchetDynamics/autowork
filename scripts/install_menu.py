@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Install autowork's components from one menu: every item checked by default.
+"""Install the full Autowork suite with verbose output by default.
 
-    install.sh                 a checkbox menu on a terminal (arrows, Space, Enter)
+    install.sh                every available component, live output and exact commands
+    install.sh --menu         a checkbox menu on a terminal (arrows, Space, Enter)
     install.sh --full          the full suite for available hosts, no menu (--all also works)
     install.sh --only tx,pi    just these; --skip hermes leaves those out
     install.sh --list          the items and whether each host is available
@@ -34,7 +35,7 @@ class Output:
     COLORS = {'heading': '1;36', 'installed': '32', 'failed': '31',
               'skipped': '33', 'planned': '36', 'command': '2'}
 
-    def __init__(self, color='auto', verbosity=1):
+    def __init__(self, color='auto', verbosity=2):
         self.verbosity = verbosity
         self.color = color == 'always' or (color == 'auto' and sys.stdout.isatty()
                       and os.environ.get('TERM') != 'dumb' and not os.environ.get('NO_COLOR'))
@@ -180,6 +181,29 @@ def install_tx():
     return '; '.join(done)
 
 
+def hermes_installed(hermes_args):
+    """The Hermes home when a profile already has its own Autowork plugin checkout (a
+    `hermes plugins install` clone): those are updated, not linked to this checkout."""
+    given = hermes_args[hermes_args.index('--hermes-home') + 1] if '--hermes-home' in hermes_args else ''
+    home = Path(given or os.environ.get('HERMES_HOME') or HOME / '.hermes')
+    for plugin in [home / 'plugins/autowork', *home.glob('profiles/*/plugins/autowork')]:
+        if (plugin / '.git').exists() and plugin.resolve() != ROOT.resolve():
+            return home
+    return None
+
+
+def hermes_item(hermes_args):
+    label = 'Hermes plugin (sets up every live profile)'
+    home = hermes_installed(hermes_args)
+    if home:
+        argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
+        return Item('hermes', label, needs='hermes',
+                    steps=[Step(f'update_bundle.py --hermes-home {home} (the profiles\' installed plugin)', argv)])
+    return Item('hermes', label, needs='hermes',
+                steps=[Step('setup_bundle.py ' + ' '.join(hermes_args),
+                            [sys.executable, str(ROOT / 'setup_bundle.py'), *hermes_args])])
+
+
 def items(hermes_args):
     package = pi_package()
     pi = Item('pi', 'Pi package', needs='pi', note='needs Node 22+')
@@ -197,9 +221,7 @@ def items(hermes_args):
              steps=[Step(f'link {BIN}/autowork to the autowork release', run=lambda: link(command(), 'autowork'))]),
         Item('tx', 'tx tmux session launcher', note='keeps your existing ~/.tmux.conf',
              steps=[Step(f'install {BIN}/tx and completions', run=install_tx)]),
-        Item('hermes', 'Hermes plugin (sets up every live profile)', needs='hermes',
-             steps=[Step('setup_bundle.py ' + ' '.join(hermes_args), [sys.executable, str(ROOT / 'setup_bundle.py'),
-                                                                    *hermes_args])]),
+        hermes_item(hermes_args),
         Item('claude', 'Claude Code plugin and full portable skill suite', needs='claude',
              steps=[Step(f'claude plugin marketplace add {SOURCE}', ['claude', 'plugin', 'marketplace', 'add', SOURCE]),
                     Step('claude plugin install autowork@autowork', ['claude', 'plugin', 'install', 'autowork@autowork'])]),
@@ -343,14 +365,14 @@ def install(all_items, chosen, dry_run=False, output=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     selection = parser.add_mutually_exclusive_group()
-    selection.add_argument('--all', '--full', action='store_true', help='install the full suite for every available host without a menu')
+    selection.add_argument('--all', '--full', action='store_true', help='install the full suite for every available host (default)')
     selection.add_argument('--only', help='comma-separated items to install (pi,autowork,tx,hermes,claude,codex)')
     parser.add_argument('--skip', help='comma-separated items to leave out')
     parser.add_argument('--list', action='store_true', help='show the items and whether each is available')
     parser.add_argument('--dry-run', action='store_true', help='print each command instead of running it')
-    parser.add_argument('--menu', action='store_true', help='always show the menu')
+    parser.add_argument('--menu', action='store_true', help='choose components using the checkbox menu')
     verbosity = parser.add_mutually_exclusive_group()
-    verbosity.add_argument('-v', '--verbose', action='store_true', help='show exact commands as well as live output')
+    verbosity.add_argument('-v', '--verbose', action='store_true', help='show exact commands as well as live output (default)')
     verbosity.add_argument('-q', '--quiet', action='store_true', help='show summary and failures only (native terminal prompts remain visible)')
     parser.add_argument('--color', choices=('auto', 'always', 'never'), default='auto',
                         help='color output (default: auto; respects NO_COLOR)')
@@ -358,7 +380,7 @@ def main(argv=None):
         parser.add_argument(flag, action='store_true', help='passed to the Hermes item')
     parser.add_argument('--hermes-home', help='passed to the Hermes item')
     args = parser.parse_args(argv)
-    output = Output(args.color, 0 if args.quiet else 2 if args.verbose else 1)
+    output = Output(args.color, 0 if args.quiet else 2)
     hermes = [f for f, on in (('--bundle-only', args.bundle_only), ('--no-reload', args.no_reload),
                               ('--yes-deps', args.yes_deps), ('--dry-run', args.dry_run)) if on]
     if args.hermes_home:
@@ -380,7 +402,7 @@ def main(argv=None):
         chosen = {k for k in args.only.split(',') if k}
     if args.skip:
         chosen -= set(args.skip.split(','))
-    menu = args.menu or not (args.all or args.only or args.skip)
+    menu = args.menu
     if menu and not (sys.stdin.isatty() and sys.stdout.isatty()) and os.environ.get('AUTOWORK_INSTALL_UI') != 'text':
         parser.error('no terminal for the menu; choose with --all, --only or --skip (see --list)')
     if menu:
