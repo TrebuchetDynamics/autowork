@@ -9,7 +9,7 @@ From the repository root:
 
 The public command performs full setup by default: bundled skills, plugin
 installation and enablement, profile configuration, memory setup, verification,
-and live gateway command refresh. `install.sh` and `hermes autowork setup` use the
+and live gateway command refresh. `install-plugins.sh` and `hermes autowork setup` use the
 same orchestrator. `--bundle-only` limits setup to this bundle; `--no-reload`
 explicitly defers live command wiring. No separate per-profile wiring is needed.
 

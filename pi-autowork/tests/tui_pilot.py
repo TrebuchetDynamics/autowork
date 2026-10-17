@@ -49,7 +49,7 @@ async def main():
             calls.append(argv)
             return Result()
 
-        app = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env, tmux='/nonexistent',
+        app = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                        systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
                        browse_root=str(tree), list_models=lambda: ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol'])
         async with app.run_test(size=(150, 45)) as pilot:
@@ -76,7 +76,7 @@ async def main():
             await pilot.press('y')
             await pilot.pause()
             assert calls[-1] == ['aw', 'model', 'india', 'openai-codex/gpt-6-luna'], calls
-            await pilot.press('enter')                  # Enter: the full-screen log, not tmux
+            await pilot.press('enter')                  # Enter: the full-screen log
             await pilot.pause()
             assert isinstance(app.screen, LogScreen), app.screen
             await pilot.press('escape')
@@ -100,7 +100,7 @@ async def main():
             await pilot.press('y')
             await pilot.pause()
             assert calls[-1] == ['aw', 'start', str(tree / 'ready')], calls
-        viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env, tmux='/nonexistent',
+        viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)
         before = len(calls)

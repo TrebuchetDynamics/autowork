@@ -52,8 +52,8 @@ Run from a clone of this repository. The shell installers are thin wrappers.
 
 | Script | Flags | Effect |
 | --- | --- | --- |
-| `bash install.sh` | Same as `hermes autowork setup` | Executes [`setup_bundle.py`](../setup_bundle.py). |
-| `bash install-plugins.sh` | Same as `install.sh`; `--help` | Public calls, including `--help`, execute `setup_bundle.py`. The source-installer usage appears only with the internal `--sources-only --help`. |
+| `./install.sh` | `--all`, `--only a,b`, `--skip a,b`, `--list`, `--menu`, `--dry-run`; Hermes options for the Hermes item | The component menu ([`scripts/install_menu.py`](../scripts/install_menu.py)): Pi package, `autowork`, `tx`, Hermes, Claude Code, Codex. Without a terminal it needs `--all`, `--only` or `--skip`. |
+| `bash install-plugins.sh` | Same as `hermes autowork setup`; `--help` | Public calls, including `--help`, execute `setup_bundle.py`. The source-installer usage appears only with the internal `--sources-only --help`. |
 | `bash install-skills.sh` | `--dry-run`, `--hermes-home ROOT`, `--profile-home HOME` | Runs [`install_skills.py`](../install_skills.py): copies `skills/` (except retired `repo-docs` and `repo-interview`) into the default and every existing profile, or only `--profile-home`; `--hermes-home` and `--profile-home` are mutually exclusive. Never overwrites existing skill paths or changes configuration. |
 | `python3 update_bundle.py` | `--hermes-home ROOT` (required), `--check`, `--profile NAME` (repeatable with `--source`), `--source CHECKOUT`, `--revision SHA`, `--native-python PATH` | All-profile update, or with `--profile`, `--source`, `--revision` and `--native-python` (all four required) a scoped deployment of a reviewed local commit; see [installation](installation.md#deploy-an-exact-local-revision-to-selected-profiles). |
 | `python3 install-graphify.py` | `--hermes-home ROOT`, `--profile NAME` (both required), `--dry-run` | Installs Graphify's Hermes skill into selected existing profiles; installs the `graphifyy` tool with `uv tool install` when missing. |

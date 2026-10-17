@@ -95,7 +95,7 @@ policy keys that differ. Opt out first, then change them.
 ### `--dry-run` still changed configuration
 
 CLI startup can apply runtime defaults before setup's preflight runs. From a
-source checkout, `bash install.sh --yes-deps --dry-run` previews without booting
+source checkout, `bash install-plugins.sh --yes-deps --dry-run` previews without booting
 Hermes; see the [README](../README.md#first-use-in-your-project).
 
 ### Setup is BLOCKED by a memory provider, or printed `memory off`

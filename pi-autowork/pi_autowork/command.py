@@ -52,7 +52,6 @@ def env_paths(env=os.environ):
         'state_root': env.get('PI_AUTOWORK_STATE_DIR') or f'{state}/pi-autowork',
         'systemctl': env.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl'),
         'journalctl': env.get('AUTOWORK_JOURNALCTL', 'journalctl'),
-        'tmux': env.get('AUTOWORK_TMUX', 'tmux'),
     }
 
 
@@ -76,8 +75,7 @@ def self_path():
 
 
 def runners(paths):
-    return fleet_view.collect(paths['state_root'], paths['env_dir'], tmux=paths['tmux'],
-                              systemctl=paths['systemctl'])
+    return fleet_view.collect(paths['state_root'], paths['env_dir'], systemctl=paths['systemctl'])
 
 
 def resolve(target, paths):
@@ -88,7 +86,7 @@ def resolve(target, paths):
         if not ready.repo:
             raise Fail(f'not inside a Git repository: {target}')
         return ready.repo, fleet_view.instance(ready.repo)
-    name = target.removeprefix(fleet_view.PREFIX)
+    name = target
     env_file = Path(paths['env_dir']) / f'{name}.env'
     if env_file.is_file():
         match = re.search(r'(?m)^PI_AUTOWORK_REPO=(.*)$', env_file.read_text())
@@ -123,10 +121,6 @@ def cmd_start(args, paths):
         raise Fail(f'{ready.repo or ready.path} is not ready for Autowork ({ready.mark}):\n' + '\n'.join(problems))
     name = fleet_view.instance(ready.repo)
     unit = f'pi-autowork@{name}.service'
-    legacy = [r for r in runners(paths) if r.name == name and r.runs_in_tmux]
-    if legacy:
-        raise Fail(f'{name} still runs in tmux session {legacy[0].session}; stop it first '
-                   f'(autowork stop {name}: workers pause and resume on the same attempt), then start it again.')
     state = service_state(paths, name)
     if state == 'active':
         print(f'{unit} is already running {ready.repo}.')
@@ -144,33 +138,11 @@ def cmd_start(args, paths):
 def cmd_stop(args, paths, action='stop'):
     repo, name = resolve(args.target, paths)
     unit = f'pi-autowork@{name}.service'
-    legacy = next((r for r in runners(paths) if r.name == name and (r.runs_in_tmux or r.view)), None)
-    if legacy is not None and action == 'stop':
-        return stop_tmux(paths, legacy)
     if service_state(paths, name) == 'none':
         raise Fail(f'{name} has no service; start one with: autowork start {repo}')
     if systemctl(paths, action, unit, quiet=False).returncode:
         raise Fail(f'could not {action} {unit}')
     print(f'{action.capitalize()}ped {unit}.' if action == 'stop' else f'Restarted {unit}.')
-    return 0
-
-
-def stop_tmux(paths, runner):
-    """A runner left in a tmux session by an earlier release: Ctrl+C, wait, close it."""
-    import time
-    tmux, target = paths['tmux'], f'={runner.session}:'
-    if runner.runs_in_tmux:
-        subprocess.run([tmux, 'send-keys', '-t', target, 'C-c'], capture_output=True)
-        deadline = time.monotonic() + float(os.environ.get('AUTOWORK_STOP_TIMEOUT', '300'))
-        pane = subprocess.run([tmux, 'display-message', '-p', '-t', target, '#{pane_pid}'],
-                              capture_output=True, text=True).stdout.strip()
-        while pane and subprocess.run(['pgrep', '-P', pane, '-f', r'pi-autowork\.sh'],
-                                      capture_output=True).returncode == 0:
-            if time.monotonic() > deadline:
-                raise Fail(f'the runner in {runner.session} is still stopping; check: autowork logs {runner.name}')
-            time.sleep(1)
-    subprocess.run([tmux, 'kill-session', '-t', f'={runner.session}'], capture_output=True)
-    print(f'Stopped the tmux runner {runner.session}; start it as a service with: autowork start {runner.repo}')
     return 0
 
 
@@ -247,11 +219,7 @@ def cmd_status(args, paths):
 
 
 def cmd_logs(args, paths):
-    repo, name = resolve(args.target, paths)
-    runner = next((r for r in runners(paths) if r.name == name), fleet_view.Runner(name=name, repo=repo))
-    if runner.runs_in_tmux and not args.follow:
-        print(fleet_view.logs(runner, lines=args.lines, tmux=paths['tmux']))
-        return 0
+    _, name = resolve(args.target, paths)
     argv = [paths['journalctl'], '--user', '-u', f'pi-autowork@{name}.service', '-n', str(args.lines), '-o', 'cat']
     os.execvp(argv[0], argv + (['-f'] if args.follow else ['--no-pager']))
 

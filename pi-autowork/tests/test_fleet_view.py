@@ -1,4 +1,4 @@
-"""fleet_view: runners from tmux, systemd and status.json; blockers; actions. Fakes only."""
+"""fleet_view: runners from systemd and status.json; blockers; actions. Fakes only."""
 import json
 import os
 from pathlib import Path
@@ -23,7 +23,6 @@ class FleetViewTests(unittest.TestCase):
         self.base = Path(self.temp.name)
         self.state, self.env = self.base / 'state', self.base / 'env'
         self.env.mkdir()
-        self.tmux = self.fake('tmux', 'printf "%s" "${FAKE_TMUX_SESSIONS:-}"')
         self.systemctl = self.fake('systemctl', '[[ $2 == is-enabled ]] && { [[ -n ${FAKE_ENABLED:-} ]]; exit; }\n'
                                                 'printf "%s" "${FAKE_UNITS:-}"')
 
@@ -39,32 +38,34 @@ class FleetViewTests(unittest.TestCase):
         (folder / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': repo}))
         (folder / 'status.json').write_text(json.dumps({'repo': repo, 'updated_at': time.time(), **status}))
 
-    def collect(self, sessions='', units=''):
-        os.environ['FAKE_TMUX_SESSIONS'], os.environ['FAKE_UNITS'] = sessions, units
-        self.addCleanup(os.environ.pop, 'FAKE_TMUX_SESSIONS', None)
+    def collect(self, units=''):
+        os.environ['FAKE_UNITS'] = units
         self.addCleanup(os.environ.pop, 'FAKE_UNITS', None)
-        return {r.name: r for r in fleet_view.collect(self.state, self.env, tmux=self.tmux, systemctl=self.systemctl)}
+        return {r.name: r for r in fleet_view.collect(self.state, self.env, systemctl=self.systemctl)}
 
-    def test_merges_tmux_sessions_services_and_runner_state(self):
+    def test_merges_services_and_runner_state(self):
         self.runner_state('/git/india', state='stalled', since=time.time() - 341 * 60, waiting=23,
                           roots=[{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19},
                                  {'id': 'T-1', 'kind': 'running', 'blocks': 4}])
         self.runner_state('/git/sierra', state='working', since=time.time() - 600, active_workers=1, waiting=40,
                           held=[{'task': 'TASK-023', 'cause': 'blocker'}],
                           roots=[{'id': 'TASK-023', 'kind': 'held', 'cause': 'blocker', 'blocks': 2}])
-        (self.env / 'sierra.env').write_text('PI_AUTOWORK_REPO=/git/sierra\n')
-        found = self.collect(sessions='pi-autowork-india\t/git/india\trunner\nother\t\t\npi-autowork-sierra\t/git/sierra\tjournal\n',
-                             units='pi-autowork@sierra.service loaded active running pi-autowork for sierra\n')
+        for name in ('india', 'sierra'):
+            (self.env / f'{name}.env').write_text(f'PI_AUTOWORK_REPO=/git/{name}\n')
+        os.environ['FAKE_ENABLED'] = '1'
+        self.addCleanup(os.environ.pop, 'FAKE_ENABLED', None)
+        found = self.collect(units='pi-autowork@india.service loaded active running pi-autowork for india\n'
+                                   'pi-autowork@sierra.service loaded active running pi-autowork for sierra\n')
         self.assertEqual(sorted(found), ['india', 'sierra'])
         india, sierra = found['india'], found['sierra']
-        self.assertEqual((india.mode, india.state, fleet_view.duration(india.minutes), india.waiting), ('tmux', 'stalled', '5h41m', 23))
+        self.assertEqual((india.mode, india.state, fleet_view.duration(india.minutes), india.waiting),
+                         ('service', 'stalled', '5h41m', 23))
         self.assertEqual(fleet_view.blockers(india), [('outside Now/Next', 'TASK-036 (19)')])  # moving work is not a blocker
-        self.assertEqual((sierra.mode, sierra.service, sierra.view, sierra.running), ('service', 'running', True, 1))
-        self.assertEqual(sierra.held, [('TASK-023', 'blocker')])
+        self.assertEqual((sierra.service, sierra.running, sierra.held), ('running', 1, [('TASK-023', 'blocker')]))
         self.assertEqual(fleet_view.blockers(sierra), [('held', 'TASK-023 blocker (2)')])
         self.assertEqual(fleet_view.summary(found.values()), [('working', 1), ('stalled', 1)])
 
-    def test_state_without_a_session_or_service_is_history_not_a_runner(self):
+    def test_state_without_a_service_is_history_not_a_runner(self):
         self.runner_state('/git/gone', state='working', since=time.time())
         self.assertEqual(self.collect(), {})
 

@@ -1,6 +1,6 @@
 """The `autowork` command against fakes: systemctl, journalctl, pi and the runner script.
 
-No real service, tmux session or model is touched.
+No real service or model is touched.
 """
 import json
 import os
@@ -79,7 +79,7 @@ class AutoworkCommandTests(unittest.TestCase):
                         PI_AUTOWORK_UNIT_DIR=str(base / 'unit-dir'), PI_AUTOWORK_STATE_DIR=str(self.state),
                         PI_AUTOWORK_SYSTEMCTL=str(base / 'bin/systemctl'), PI_AUTOWORK_SCRIPT=str(base / 'bin/pi-autowork.sh'),
                         AUTOWORK_JOURNALCTL=str(base / 'bin/journalctl'), AUTOWORK_PI=str(base / 'bin/pi'),
-                        AUTOWORK_TMUX='/nonexistent', AUTOWORK_COLOR='never', AUTOWORK_TUI='0', COLUMNS='160')
+                        AUTOWORK_COLOR='never', AUTOWORK_TUI='0', COLUMNS='160')
 
     def make_repo(self, name, files=('TODO.md', 'goals.json')):
         repo = self.base / name

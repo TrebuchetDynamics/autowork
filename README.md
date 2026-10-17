@@ -62,6 +62,26 @@ before enabling memory capture.
 
 Start with a configured host and model; portable adapters need no Hermes installation.
 
+### Everything at once
+
+From a checkout, `install.sh` shows a checkbox menu with every component checked:
+the Pi package, the `autowork` command and TUI, the `tx` tmux launcher, the Hermes
+plugin (every live profile), the Claude Code plugin and the Codex plugin. A host whose
+CLI is missing is left unchecked and explained. Each item runs that host's own install
+command, listed below; `tx` keeps an existing `~/.tmux.conf`.
+
+```sh
+git clone https://github.com/TrebuchetDynamics/autowork && cd autowork
+./install.sh                    # the menu: arrows, Space toggles, Enter installs
+./install.sh --all              # everything available, no menu
+./install.sh --only pi,autowork,tx --dry-run   # print what it would run
+```
+
+A Pi package still installed under its earlier name, `hermes-toolset`, is replaced:
+the service unit moves to the new package, running services restart (workers resume on
+the same attempt), and only then is the old package removed. Each host can also be
+installed on its own:
+
 ### Try the native plugin in one profile
 
 Default-profile commands below; add `-p work` after `hermes` for a named profile.
@@ -134,8 +154,8 @@ not a filesystem sandbox.
 | Path | Scope | External integrations | Policy effects |
 | --- | --- | --- | --- |
 | Native Hermes plugin | Selected profile | Advisory only | Runtime defaults unless opted out |
-| `bash install.sh --bundle-only` | Every live profile | Skips external-source setup | Bundle defaults unless opted out |
-| `bash install.sh --yes-deps` | Every live profile | OMH, Ponytail, speech, Graphify | Bundle defaults and OMH setup |
+| `bash install-plugins.sh --bundle-only` | Every live profile | Skips external-source setup | Bundle defaults unless opted out |
+| `bash install-plugins.sh --yes-deps` | Every live profile | OMH, Ponytail, speech, Graphify | Bundle defaults and OMH setup |
 
 ### Fleet setup from source
 
@@ -146,13 +166,13 @@ configuration and reviewing the policy above:
 ```sh
 git clone https://github.com/TrebuchetDynamics/autowork.git
 cd autowork
-bash install.sh --bundle-only --dry-run
-bash install.sh --bundle-only
+bash install-plugins.sh --bundle-only --dry-run
+bash install-plugins.sh --bundle-only
 ```
 
 Keep the checkout: the installed plugin links to it. This targets every live
 profile, even from a named-profile invocation. Add external integrations later
-with `bash install.sh --yes-deps`. **Hermes CLI startup can apply defaults even
+with `bash install-plugins.sh --yes-deps`. **Hermes CLI startup can apply defaults even
 with `--dry-run`;** the shell preview above does not boot Hermes. See
 [preflight and activation details](docs/installation.md#preflight-before-fleet-writes).
 

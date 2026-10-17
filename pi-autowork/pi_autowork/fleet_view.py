@@ -1,11 +1,10 @@
 """The fleet as the `autowork` command and its TUI see it. Standard library only.
 
-Every runner on this machine, whichever way it runs (a tmux session from
-an earlier release's tmux session, a `pi-autowork@` systemd service), with its health from the
+Every runner on this machine (a `pi-autowork@` systemd service), with its health from the
 runner's own status.json (``health.fleet``), its blockers grouped by kind, recent
 log lines, and the exact command behind every action. Nothing here calls a model,
-and nothing here changes a runner: actions only build the argv that `tx`,
-`pi-autowork.sh` or `systemctl` already accept.
+and nothing here changes a runner: actions only build the argv that `autowork` or
+`pi-autowork.sh` already accept.
 """
 from dataclasses import dataclass, field
 import json
@@ -17,7 +16,6 @@ import time
 
 from pi_autowork import health
 
-PREFIX = 'pi-autowork-'
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'entry changed',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
 CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
@@ -78,9 +76,8 @@ def models(pi='pi', search=None, timeout=60):
 class Runner:
     name: str
     repo: str = ''
-    mode: str = ''            # tmux, service, tmux+service, or '' when only state is left
+    mode: str = ''            # 'service', or '' when only state is left
     service: str = ''         # systemd sub-state, '' when there is no unit
-    view: bool = False        # a tmux session that follows the service journal
     state: str = 'unknown'
     minutes: int | None = None
     running: int = 0
@@ -94,16 +91,8 @@ class Runner:
     fallback: str = ''
 
     @property
-    def session(self):
-        return session_name(self.name)
-
-    @property
     def color(self):
         return COLORS.get(self.state, 'red')
-
-    @property
-    def runs_in_tmux(self):
-        return 'tmux' in self.mode
 
     @property
     def has_service(self):
@@ -242,10 +231,6 @@ def ago(seconds):
     return duration(seconds // 60) + ' ago'
 
 
-def session_name(name):
-    return PREFIX + name.replace('.', '_').replace(':', '_')
-
-
 def instance(repo):
     """The name pi-autowork.sh --install-service gives the repository."""
     name = Path(repo).name
@@ -296,25 +281,14 @@ def _lines(argv, timeout=10):
     return out.stdout.splitlines() if out.returncode == 0 else []
 
 
-def collect(state_root, env_dir, *, tmux='tmux', systemctl='systemctl', now=None):
-    """Every runner: tmux sessions, pi-autowork@ services and runner state, merged by name."""
+def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
+    """Every runner: pi-autowork@ services and their runner state, merged by name."""
     now = time.time() if now is None else now
     found = {}
 
     def get(name):
         return found.setdefault(name, Runner(name=name))
 
-    for line in _lines([tmux, 'list-sessions', '-F', '#{session_name}\t#{@pi_autowork_repo}\t#{@pi_autowork_mode}']):
-        name, _, rest = line.partition('\t')
-        repo, _, kind = rest.partition('\t')
-        if not name.startswith(PREFIX):
-            continue
-        runner = get(name[len(PREFIX):])
-        runner.repo = runner.repo or repo
-        if kind == 'journal':
-            runner.view = True
-        else:
-            runner.mode = 'tmux'
     services = {}
     for line in _lines([systemctl, '--user', 'list-units', 'pi-autowork@*', '--all', '--plain', '--no-legend']):
         parts = line.split()
@@ -328,7 +302,7 @@ def collect(state_root, env_dir, *, tmux='tmux', systemctl='systemctl', now=None
     for name, sub in services.items():
         runner = get(name)
         runner.service = sub
-        runner.mode = 'tmux+service' if runner.mode == 'tmux' else 'service'
+        runner.mode = 'service'
         settings = read_env(Path(env_dir) / f'{name}.env')
         runner.repo = runner.repo or settings.get('PI_AUTOWORK_REPO', '').strip()
         runner.model = settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL
@@ -347,7 +321,7 @@ def collect(state_root, env_dir, *, tmux='tmux', systemctl='systemctl', now=None
     for row in health.fleet(state_root, now=now, service=lambda name: services.get(name, '-')):
         runner = found.get(row['name'])
         if runner is None:
-            continue  # state left behind by a runner that no longer has a session or service
+            continue  # state left behind by a runner whose service was removed
         if runner.repo and Path(runner.repo) != Path(row['repo']):
             continue
         runner.repo = runner.repo or row['repo']
@@ -359,8 +333,7 @@ def collect(state_root, env_dir, *, tmux='tmux', systemctl='systemctl', now=None
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
     for runner in found.values():
         runner.lanes = lanes(runner, now)
-        if runner.has_service and not runner.runs_in_tmux and runner.service not in ('running', 'start', 'reload') \
-                and not runner.enabled:
+        if runner.has_service and runner.service not in ('running', 'start', 'reload') and not runner.enabled:
             runner.state, runner.minutes = 'paused', None  # stopped and disabled: `autowork resume`
     return sorted(found.values(), key=lambda r: r.name)
 
@@ -373,14 +346,12 @@ def summary(runners):
     return [(state, counts[state]) for state in order + sorted(set(counts) - set(order)) if state in counts]
 
 
-def logs(runner, *, lines=200, tmux='tmux', journalctl='journalctl'):
-    """Recent output: the tmux pane of a tmux runner, else the service journal."""
-    if runner.runs_in_tmux:
-        return '\n'.join(_lines([tmux, 'capture-pane', '-p', '-J', '-S', f'-{lines}', '-t', f'={runner.session}:']))
-    if runner.has_service:
-        return '\n'.join(_lines([journalctl, '--user', '-u', f'pi-autowork@{runner.name}.service', '-n', str(lines),
-                                 '--no-pager', '-o', 'cat'], timeout=20))
-    return ''
+def logs(runner, *, lines=200, journalctl='journalctl'):
+    """Recent output: the service journal."""
+    if not runner.has_service:
+        return ''
+    return '\n'.join(_lines([journalctl, '--user', '-u', f'pi-autowork@{runner.name}.service', '-n', str(lines),
+                             '--no-pager', '-o', 'cat'], timeout=20))
 
 
 @dataclass
@@ -397,7 +368,7 @@ def actions(runner, *, command, script, agent=None, task=None):
     """What the owner can do to this runner now, as `autowork` commands (or the runner script)."""
     repo, name = runner.repo, runner.name
     out = [Action('enter', 'log', [], interactive=True)]  # the TUI's own full-screen log view
-    running = runner.runs_in_tmux or runner.service in ('running', 'start', 'reload')
+    running = runner.service in ('running', 'start', 'reload')
     if runner.has_service and running:
         out.append(Action('p', 'pause', [command, 'pause', name],
                           confirm=f'Pause {name}? Its service stops and stays off until resumed; '
@@ -490,7 +461,7 @@ def how_to_fix(ready):
 
 def blockers_agent(env=os.environ):
     """The agent command for `/autowork blockers`: AUTOWORK_AGENT, else claude, else pi."""
-    configured = (env.get('AUTOWORK_AGENT') or env.get('TX_AUTOWORK_AGENT', '')).split()
+    configured = env.get('AUTOWORK_AGENT', '').split()
     if configured:
         return configured
     for name in ('claude', 'pi'):

@@ -101,7 +101,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-123-de — One install.sh for every component, chosen with checkboxes
 
 - [ ] TOOLSET-123-de — One install.sh for every component, chosen with checkboxes
-- Status: open.
+- Status: open; offline implementation done (scripts/install_menu.py behind install.sh; owner direction 2026-10-16: no backward compatibility, so the Hermes-only setup is install-plugins.sh and the hermes-toolset Pi package is replaced). Remaining: the owner runs ./install.sh on this machine, which moves the service unit to the autowork package and removes the hermes-toolset package.
 - Goal: PORTABLE — Align portable workflow discovery.
 - Sources: owner direction (2026-10-16), [installation](docs/installation.md), [README install](README.md#install), [cross-host](docs/cross-host.md).
 - Touches: install.sh, setup_bundle.py, scripts/, tests/, README.md, docs/installation.md, docs/cross-host.md, CHANGELOG.md

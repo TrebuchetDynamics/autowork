@@ -31,7 +31,7 @@ if [[ -z "${NO_COLOR:-}" ]]; then
   esac
 fi
 
-RESERVED_ALIASES=(help ls kill kill-all init add remove edit doctor which config install completion autowork __complete_aliases __complete_commands)
+RESERVED_ALIASES=(help ls kill kill-all init add remove edit doctor which config install completion __complete_aliases __complete_commands)
 
 declare -A ALIAS_TO_PATH=()
 declare -A PATH_TO_ALIASES=()
@@ -934,10 +934,6 @@ main() {
       [[ $# -eq 1 ]] || die "which: expected exactly one alias"
       load_config
       print_alias_path "$1"
-      ;;
-    autowork)
-      # Replaced by the autowork command (pi-autowork/bin/autowork); this notice goes next release.
-      die "autowork: tx autowork is now the autowork command; run: autowork ${*:2}"
       ;;
     -l|--list|ls)
       [[ $# -eq 1 ]] || die "ls: takes no arguments"

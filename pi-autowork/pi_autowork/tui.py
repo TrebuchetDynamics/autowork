@@ -241,7 +241,7 @@ class FleetApp(App):
     ]
     CONTROL = {'run', 'set_aside', 'browse', 'pick_model'}
 
-    def __init__(self, *, command, script, state_root, env_dir, tmux='tmux', systemctl='systemctl',
+    def __init__(self, *, command, script, state_root, env_dir, systemctl='systemctl',
                  journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False, browse_root=None,
                  list_models=fleet_view.models):
         super().__init__()
@@ -249,7 +249,7 @@ class FleetApp(App):
         self.model_cache = None
         self.command, self.script = command, script
         self.state_root, self.env_dir = state_root, env_dir
-        self.tmux, self.systemctl, self.journalctl = tmux, systemctl, journalctl
+        self.systemctl, self.journalctl = systemctl, journalctl
         self.agent = agent
         self.runner_cmd = runner_cmd
         self.view_only = view_only
@@ -286,7 +286,7 @@ class FleetApp(App):
 
     # -- data -------------------------------------------------------------------
     def action_refresh(self):
-        self.runners = fleet_view.collect(self.state_root, self.env_dir, tmux=self.tmux, systemctl=self.systemctl)
+        self.runners = fleet_view.collect(self.state_root, self.env_dir, systemctl=self.systemctl)
         table = self.query_one('#runners', DataTable)
         keep = self.selected
         table.clear()
@@ -331,7 +331,7 @@ class FleetApp(App):
             return
         text = Text()
         text.append(runner.name, style='bold')
-        text.append(f'  {runner.mode or "no runner"}  ')
+        text.append(f'  {runner.mode or "no service"}  ')
         text.append(f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), style=f'bold {runner.color}')
         text.append(f'\n{runner.repo or "(repository unknown)"}\n', style='dim')
         text.append(f'{runner.running} running, {runner.waiting} waiting, {len(runner.held)} held\n')
@@ -367,7 +367,7 @@ class FleetApp(App):
         table.display = bool(runner.lanes)
 
     def logs(self, runner, lines=200):
-        return fleet_view.logs(runner, lines=lines, tmux=self.tmux, journalctl=self.journalctl)
+        return fleet_view.logs(runner, lines=lines, journalctl=self.journalctl)
 
     def refresh_log(self):
         log = self.query_one('#log', RichLog)
@@ -472,7 +472,6 @@ def main(argv=None):
     parser.add_argument('--view-only', action='store_true', help='Show runners; disable every control key.')
     args = parser.parse_args(argv)
     FleetApp(command=args.command, script=args.script, state_root=args.state_root, env_dir=args.env_dir,
-             tmux=os.environ.get('AUTOWORK_TMUX', 'tmux'),
              systemctl=os.environ.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl'),
              journalctl=os.environ.get('AUTOWORK_JOURNALCTL', 'journalctl'),
              agent=fleet_view.blockers_agent(), view_only=args.view_only, browse_root=args.browse_root).run()

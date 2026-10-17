@@ -27,7 +27,7 @@ From a local checkout, one command performs the complete installation for every
 existing live profile:
 
 ```sh
-bash install.sh --yes-deps
+bash install-plugins.sh --yes-deps
 ```
 
 `install.sh`, `install-plugins.sh`, and `hermes autowork setup` share the same
@@ -109,7 +109,7 @@ layouts fail visibly instead of being assumed compatible.
 A failed preflight exits nonzero before changing profile configuration, plugins,
 skills or memory. This guarantee starts at the setup orchestrator: invoking it
 through `hermes autowork setup` may already have loaded the plugin and applied its
-runtime defaults. Use `bash install.sh --dry-run` for a preview that does not boot
+runtime defaults. Use `bash install-plugins.sh --dry-run` for a preview that does not boot
 Hermes. The internal `--sources-only` adapter and standalone helper scripts are
 not the complete setup entry point.
 

@@ -183,6 +183,17 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `install.sh` installs every component from one checkbox menu, all checked by
+  default (TOOLSET-123-de): the Pi package, the `autowork` command (linked to the Pi
+  package's release), `tx` (keeping an existing `~/.tmux.conf`), the Hermes plugin,
+  the Claude Code plugin and the Codex plugin, each through its host's own command; a
+  missing host CLI is skipped and said. `--all`, `--only`, `--skip`, `--list` and
+  `--dry-run` work without the menu. A Pi package installed as `hermes-toolset` is
+  replaced after the service unit moves to the new package. No compatibility layer is
+  kept: the Hermes-only setup is `install-plugins.sh`, `tx autowork` is gone, `tx` is
+  pi-toolset's launcher unchanged, and the `autowork` command and TUI no longer handle
+  tmux runners.
+
 - The runner keeps the owner's questions in the repository's `BLOCKERS.md`, under
   `## Active` between `<!-- pi-autowork:questions:start -->` and `…:end -->`: one entry per
   held task no attempt can finish, unadoptable claim, unrunnable entry, outside condition
