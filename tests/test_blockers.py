@@ -63,7 +63,7 @@ class BlockersContract(unittest.TestCase):
         for phrase in ('never starts, stops, restarts or reconfigures a runner',
                        'never launches an execution or repair session', 'never kills a session',
                        'never pushes', "Edit that task's TODO.md entry", "never edit inside the runner's marked block",
-                       'Commit only the planning files', 'route separately requested publication through Git Commit Push', '--set-aside TASK'):
+                       'Commit only the planning files', 'route separately requested publication through Git Commit Push', '--set-aside TASK` belong to the runner'):
             self.assertIn(phrase, self.ref)
 
 

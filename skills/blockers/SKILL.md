@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.2
+  version: 0.1.3
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -41,10 +41,12 @@ without a model call:
   `unblocks` count, `Needs:` and `Answer:`.
 - Without that block, the engine's view:
   `python3 <autowork>/scripts/owner_cycle.py REPO --parallel-status --json`. Use
-  `roots` whose `kind` is `held`, `claim`, `outside`, `cycle` or `runner` (`blocks` is
-  how many waiting tasks depend on it) and the `tasks` rows for each held task's
-  `reason`, plus its worker's `report.json` blockers under
-  `.git/autowork-execution/slot-data/TASK/attempt-N/`.
+  `roots` whose `kind` is `held`, `claim`, `outside`, `cycle`, `runner` or `contract`
+  (a TODO/index mismatch: without it a metadata-blocked queue seems to have no
+  questions) and the `tasks` rows for each affected task's `reason`, plus its
+  worker's `report.json` blockers under
+  `.git/autowork-execution/slot-data/TASK/attempt-N/`. `blocks` counts waiting tasks
+  that depend on the root; check which IDs it counts, since it can include the root.
 - Owner-maintained entries under `## Active` in `BLOCKERS.md` and tasks in TODO.md's
   `Needs decision` section.
 
@@ -55,8 +57,11 @@ policy and candidate evidence. A generated `USER_DECISION` label or a worker's r
 for approval is evidence to examine, not proof that a human decision is needed. A
 question can outlive its cause: compare it with the current task state and the latest
 attempt's report (a newer scope-validation failure supersedes an older missing-input
-report). Count and sort what remains programmatically, and treat an `unblocks` count
-as the notice's figure, not measured impact.
+report). Exclude retired tasks, released claims and settled deferrals: a cached
+worker reason can describe an older checkout. When live status cannot be read, use
+retained reports with current queue evidence and say how fresh they are. Count and
+sort what remains programmatically, and treat an `unblocks` count as the notice's
+figure, not measured impact.
 
 - **Established answer or routine recovery:** use existing authorization. Inspect
   repository/session facts yourself. Preserve the agreed scope and acceptance;
@@ -82,6 +87,11 @@ as the notice's figure, not measured impact.
   Conditional recovery permission ("retry if it crashed") does not establish that the
   condition holds; keep the task held until it is verified.
 
+Reuse the owner's latest answers, from this conversation and the queue. An item
+the owner deferred is still open work but not an unanswered question; do not ask to
+reconfirm it because it remains under `Needs decision`. A brief approval accepts the
+recommended option only, never every alternative or permission to deploy.
+
 A questions-only/read-only invocation records proposed repairs in chat rather than
 editing files. With no genuine questions left, report what was reconciled and what
 still awaits execution. Do not turn “reuse, verify, preserve privacy, no push” into
@@ -95,7 +105,7 @@ does not override that filter:
 | Effort | Kinds | Typical answer |
 |---|---|---|
 | quick | a narrow unresolved choice after inspecting dependencies | choose between two valid dependency plans |
-| decision | an outside condition, a dependency not in Now/Next, `Needs decision` | decide; move the task into Now/Next, or mark it done or superseded |
+| decision | an outside condition, a dependency not in Now/Next, an unanswered `Needs decision`, a contract mismatch | decide placement or disposition; reconcile the plan without starting work |
 | input | a worker's blocker asking for files, inputs or authorization | widen `Touches:`, supply the input, or narrow the acceptance |
 | investigate | evidence shows recovery needs a new scope or acceptance decision | choose the supported scope change |
 
@@ -130,25 +140,39 @@ picked questions about that task only, then save it. Then go to the next blocker
 
 ## 4. Record the answer as planning
 
-Write each answer or supported planning repair where the queue reads it, right away:
+Write each answer or supported planning repair where the queue reads it, right away.
+An approved clerical index correction is planning: apply it through Docs Sync and
+record it in the task. No answer is permission to start the task, migrate a service
+or launch a repair during the interview.
 
 - Edit that task's TODO.md entry: scope, `Touches:`, acceptance, `Dependencies:`,
   `Status:`, or a short dated `Owner decision:` line. Keep the entry's shape; use
   Docs Sync `goals.py` (`section`, `task`, `supersede`, `reorder`) for ledger moves.
 - An abandoned claim established by fresh activity checks or an explicit owner
-  release: set `Status: open` only within existing task authority, retaining candidate
-  references and pending checks. A live claim stays with its current worker.
+  release: set `Status: open` only within existing task authority and clear the
+  ownership prose, keeping acceptance, dependencies, candidate references, partial
+  delivery evidence and pending checks; check the TODO body and the index agree.
+  Successors are not unlocked by this: they still need the task's acceptance. A live
+  claim stays with its current worker.
+- Retirement without completion: keep the original contract in append-only history
+  and use the repository's non-executable cancellation form. With no cancelled state
+  in the index, use open/`Needs decision` with an explicit CANCELLED gate, never
+  done, and check `goals.py next REPO --json` excludes it.
+- Rework within the same task keeps its ID, acceptance and the old candidate and
+  report as history; the runner works from current sources, never restores the old
+  snapshot or rewrites a failed report into a pass.
 - An outside condition: record the decision, or the task that now owns it.
 - Remove resolved owner entries from `BLOCKERS.md` `## Active`; never edit inside the
   runner's marked block, which the runner rewrites itself.
 
-A held task re-queues itself once its entry changes (TOOLSET-120-fc); a runner
-sees the plan change within seconds. Observe it in `autowork status NAME` rather
-than promise it. Where it does not happen, request it after the edit with
-`pi-autowork.sh --repo REPO --set-aside TASK`; the runner keeps the earlier work on
-`-set-aside-N` branches. A kept branch does not prove a fresh worker received that
-candidate: name it in the task's `Next action:` so the next attempt restores it
-instead of reimplementing. Never rewrite a running worker's contract.
+A running runner reconsiders a held task once its entry changes (TOOLSET-120-fc),
+usually within seconds. Observe that in `autowork status NAME`; do not promise it,
+and never start a paused runner to consume an answer. Retries, restarts and
+`pi-autowork.sh --set-aside TASK` belong to the runner's own workflow, not to this
+questionnaire; when a change was not picked up, report that instead. A kept branch
+does not prove a fresh worker received that candidate: name it in the task's
+`Next action:` so the next attempt restores it instead of reimplementing. Never
+rewrite a running worker's contract.
 
 ## 5. Close out
 
@@ -160,5 +184,7 @@ answered tasks' hunks and their ledger rows, check the staged diff, and leave th
 rest as it was. Never commit unrelated changes. This workflow never pushes; route
 separately requested publication through Git Commit Push with its existing authority.
 Report what was reconciled without questions, answered, skipped and still open,
-and what each resolution unblocks. Keep apart: answer saved, picked up by the runner,
-worker running, and work done. Planning readiness is not completed integration.
+and what each resolution unblocks. Validate a changed index and read the engine
+status before reporting. Keep apart: answer saved, blocker removed, picked up by the
+runner, worker running, and work done; a successor can still wait on the same
+unfinished prerequisite. Planning readiness is not completed integration.
