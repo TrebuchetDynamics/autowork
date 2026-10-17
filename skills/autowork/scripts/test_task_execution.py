@@ -174,6 +174,30 @@ class RecoveryTests(DirectExecutionTests):
                                  capture_output=True, text=True)
         self.assertEqual(json.loads(process.stdout)['outcome'], 'BUSY')
 
+    def test_a_git_timeout_under_load_answers_busy_not_action_required(self):
+        import contextlib, io
+        import parallel_integrate, task_execution
+        slow = subprocess.TimeoutExpired(['git', '-C', str(self.repo), 'worktree', 'list', '--porcelain'], 10)
+        for argv, module, target in (
+                ([str(self.repo)], task_execution, 'execute'),
+                ([str(self.repo), '--apply', '--parallel', '2', '--owner-pid', str(os.getpid())],
+                 parallel_integrate, 'dispatch_with_retries')):
+            with self.subTest(target=target), patch.object(module, target, side_effect=slow):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    code = task_execution.main(argv)
+                result = json.loads(out.getvalue())
+                self.assertEqual(code, 1)
+                self.assertEqual(result['outcome'], 'BUSY', result)
+                self.assertRegex(result['reason'], r'^host busy: git worktree took over 10s \(load ')
+                self.assertNotIn(str(self.repo), result['reason'])
+        with patch.object(task_execution, 'execute',
+                          side_effect=subprocess.CalledProcessError(1, ['git', 'status'])):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                task_execution.main([str(self.repo)])
+            self.assertEqual(json.loads(out.getvalue())['outcome'], 'ACTION_REQUIRED')
+
     def test_dead_owner_recovery_preserves_dirty_candidate_and_bad_card(self):
         from task_execution import identity
         common = self.repo / '.git/autowork-execution'
