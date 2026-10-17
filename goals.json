@@ -660,7 +660,9 @@
         "TOOLSET-162-d2",
         "TOOLSET-163-f7",
         "TOOLSET-164-f1",
-        "TOOLSET-165-f7"
+        "TOOLSET-165-f7",
+        "TOOLSET-166-b4",
+        "TOOLSET-167-03"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -672,6 +674,8 @@
       "TOOLSET-165-f7",
       "TOOLSET-164-f1",
       "TOOLSET-149-df",
+      "TOOLSET-166-b4",
+      "TOOLSET-167-03",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
       "TOOLSET-162-d2",
@@ -892,6 +896,22 @@
       "section": "Now",
       "status": "open",
       "title": "A runner's own worker processes never count as an outside session in the main checkout"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-166-b4",
+      "section": "Now",
+      "status": "in_progress",
+      "title": "The runner view says whether it is stuck and why, and what each worker is doing"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-167-03",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner's own worker is never an outside session that holds integration"
     },
     {
       "depends_on": [],
