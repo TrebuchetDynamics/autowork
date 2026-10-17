@@ -45,6 +45,38 @@ MERGE_PROMPT = (
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
 
+def publishable(repo, paths):
+    """(paths auto work may commit, [(path, key, why not)]). A submodule pointer whose new commit
+    is on no branch of the submodule's remote stays uncommitted (TOOLSET-168-ff): the main branch
+    would point at a commit no other clone can fetch. An untracked nested repository stays out
+    too: adding it would record an embedded repository, not its files."""
+    links = set()
+    for line in (git(repo, 'ls-files', '-s', '--', *paths) or '').splitlines():
+        meta, _, path = line.partition('\t')
+        if meta.split(' ', 1)[0] == '160000':
+            links.add(path)
+    keep, held = [], []
+    for path in paths:
+        folder = Path(repo) / path
+        if path.rstrip('/') in links:
+            head = git(folder, 'rev-parse', 'HEAD') or ''
+            try:
+                subprocess.run(['git', '-C', str(folder), 'fetch', '-q'], capture_output=True, timeout=30,
+                               env=dict(os.environ, GIT_TERMINAL_PROMPT='0'))
+            except subprocess.TimeoutExpired:
+                pass
+            if not head or not git(folder, 'branch', '-r', '--contains', head):
+                held.append((path, head, f'Left {path} uncommitted: submodule commit {head[:12] or "?"} is not on '
+                                         'its remote yet'))
+                continue
+        elif (folder / '.git').exists():
+            held.append((path, 'nested', f'Left {path} uncommitted: it is a separate Git repository, not files of '
+                                         'this one'))
+            continue
+        keep.append(path)
+    return keep, held
+
+
 class Finish(Exception):
     def __init__(self, code, text):
         super().__init__(text)
@@ -433,7 +465,7 @@ class Coordinator:
             paths.append(path)
             if status[0] in 'RC':
                 paths.append(next(entries, ''))  # the rename's source, so the commit records it
-        paths = [p for p in paths if p]
+        paths = self.publishable([p for p in paths if p])
         if not paths:
             return ''
         _, dispatch = touches_inference.modules(self.toolset)
@@ -463,6 +495,15 @@ class Coordinator:
         LOG.say(f'Committed uncommitted changes in {self.repo} ({shown}) so the session can merge'
                 + (f'; left untracked as possible secrets: {", ".join(kept)}' if kept else ''))
         return ''
+
+    def publishable(self, paths):
+        """publishable(), with each held-back path logged once per commit."""
+        keep, held = publishable(self.repo, paths)
+        for path, key, message in held:
+            if self.seen.get('unpublishable-' + path) != key:
+                self.seen['unpublishable-' + path] = key
+                LOG.say(message)
+        return keep
 
     def commit_session_leftovers(self):
         """The session worktree is the runner's own: anything left there uncommitted (a close

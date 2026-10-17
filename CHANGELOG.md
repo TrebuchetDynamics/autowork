@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Auto work no longer pins a submodule to a commit its remote does not have, or adds an untracked
+  nested repository as an embedded one; it leaves that path uncommitted and says why once
+  (TOOLSET-168-ff). Workers and reviewers share one toolchain cache per repository,
+  `$AUTOWORK_CACHE` (`<git common dir>/autowork-execution/cache`), so an SDK one task installs is
+  there for the next task and every review (TOOLSET-169-1d).
 - Runners pick up a new release sooner: they check for one every 2 minutes while idle
   (`PI_AUTOWORK_UPDATE_INTERVAL`, was 10 minutes) and install a release that has waited
   10 minutes for every runner to be idle (`PI_AUTOWORK_UPDATE_WAIT`, was 30 minutes).

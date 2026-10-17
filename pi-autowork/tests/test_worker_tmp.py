@@ -75,6 +75,9 @@ class ReviewScratchTests(unittest.TestCase):
             self.assertTrue(str(seen['tmp']).startswith(str(state / 'review-tmp')), seen['tmp'])
             self.assertFalse(seen['tmp'].exists())
             self.assertIn('never directly under /tmp', seen['prompt'])
+            cache = repo / '.git' / 'autowork-execution' / 'cache'
+            self.assertIn(f'are in {cache} (AUTOWORK_CACHE)', seen['prompt'])
+            self.assertTrue(cache.is_dir())
 
 
 if __name__ == '__main__':

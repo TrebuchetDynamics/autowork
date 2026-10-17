@@ -901,22 +901,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-168-ff",
-      "section": "Now",
-      "status": "open",
-      "title": "Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-169-1d",
-      "section": "Now",
-      "status": "open",
-      "title": "Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2134,6 +2118,22 @@
       "section": "Done",
       "status": "done",
       "title": "The runner view says whether it is stuck and why, and what each worker is doing"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-168-ff",
+      "section": "Done",
+      "status": "done",
+      "title": "Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-169-1d",
+      "section": "Done",
+      "status": "done",
+      "title": "Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse"
     },
     {
       "depends_on": [

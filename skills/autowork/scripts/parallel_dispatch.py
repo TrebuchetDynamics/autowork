@@ -150,7 +150,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
         '  holds the task). Put every temporary file and copy under $TMPDIR, never directly under',
         '  /tmp: /tmp may be RAM. For a scratch copy of this checkout use',
-        '  `git worktree add --detach "$TMPDIR/copy" HEAD`, not a file copy. Use only',
+        '  `git worktree add --detach "$TMPDIR/copy" HEAD`, not a file copy. Install SDKs, toolchains',
+        '  and package caches under $AUTOWORK_CACHE/<name>-<version>, shared by this repository\'s',
+        '  tasks and reviews (reuse one that is already there); $TMPDIR goes with the task. Use only',
         '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
         f'- When done, commit once on {branch}. Never push, merge, rebase, switch branches, or touch',
         '  another worktree. A finished commit is not task completion; the coordinator integrates.',
@@ -215,7 +217,11 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     (data / 'tmp').mkdir(exist_ok=True, mode=0o700)
     env = {k: v for k, v in os.environ.items()
            if k != 'AUTOWORK_EXECUTION_COMMON' and not k.startswith('GIT_')}
-    env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_SLOT=str(slot_index),
+    # One cache per repository (<git common dir>/autowork-execution/cache), kept across tasks:
+    # a pinned SDK one task installs is the next task's and every reviewer's too (TOOLSET-169-1d).
+    cache = data.parents[2] / 'cache'
+    cache.mkdir(exist_ok=True, mode=0o700)
+    env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:

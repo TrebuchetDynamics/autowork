@@ -120,7 +120,10 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(times[tid, 'start']['slot'], slot_no)
             self.assertEqual(times[tid, 'start']['port_base'], str(20000 + 100 * int(slot_no)))
             self.assertTrue(times[tid, 'start']['tmpdir'].startswith(str(self.common / 'slot-data' / tid)))
+            # TOOLSET-169-1d: one toolchain cache for every task of the repository, kept after they close.
+            self.assertEqual(times[tid, 'start']['cache'], str(self.common / 'cache'))
             self.assertFalse(times[tid, 'start']['marker'])
+        self.assertTrue((self.common / 'cache').is_dir())
         prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
         for text in ('Task: A', 'Touches: a.txt', 'Never edit TODO.md', 'Report file: ', '- Touches: a.txt'):
             self.assertIn(text, prompt)

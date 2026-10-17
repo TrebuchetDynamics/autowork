@@ -83,6 +83,24 @@ PROVISIONED = (' Toolchains, SDKs and caches the worker provisioned for this tas
                'under $TMPDIR, instead of downloading again; do not write there.')
 
 
+CACHE = (' SDKs, toolchains and package caches this repository\'s tasks installed are in {path} '
+         '(AUTOWORK_CACHE): use them instead of downloading again, and add one there only if a check needs it.')
+
+
+def repository_cache(checkout):
+    """The repository's shared toolchain cache (TOOLSET-169-1d), created if missing."""
+    try:
+        common = Path(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+    except (OSError, ValueError, TypeError):
+        return None
+    cache = common / 'autowork-execution' / 'cache'
+    try:
+        cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError:
+        return None
+    return cache
+
+
 def worker_tmp(checkout, task):
     """The finished worker's $TMPDIR (slot data), where it may have provisioned a toolchain the
     task's checks need; the reviewer gets its own $TMPDIR and would not find it otherwise."""
@@ -122,9 +140,13 @@ def review(state, task, checkout, head_before):
     provisioned = worker_tmp(checkout, task)
     if provisioned:
         os.environ['AUTOWORK_WORKER_TMPDIR'] = str(provisioned)
+    cache = repository_cache(checkout)
+    if cache:
+        os.environ['AUTOWORK_CACHE'] = str(cache)
     result = pi_runtime.job(pi_runtime.Settings(state), 'verify', task, checkout,
                             REVIEW.format(task=task, checkout=checkout)
-                            + (PROVISIONED.format(path=provisioned) if provisioned else '') + (
+                            + (PROVISIONED.format(path=provisioned) if provisioned else '')
+                            + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
                             os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800'),
