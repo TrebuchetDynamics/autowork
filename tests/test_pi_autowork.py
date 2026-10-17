@@ -407,6 +407,18 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('B'))  # independent work still lands
         self.assertNotIn('- [x] A', (self.repo / 'TODO.md').read_text())
 
+    def test_invalid_touches_hold_the_task_while_independent_work_finishes(self):
+        text = (self.repo / 'TODO.md').read_text().replace('Touches: A.txt', 'Touches: a/../b')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A has invalid Touches')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual([r['task'] for r in self.runs('worker')], ['B'])
+        self.assertTrue(self.done('B'))
+        self.assertIn('A: invalid Touches: a/../b', result.stdout)
+        self.assertNotIn('engine needs attention', result.stdout)
+        self.assertIn('invalid Touches: a/../b', self.run_runner('--status').stdout)
+
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
         result = self.run_runner('--once')

@@ -258,11 +258,20 @@ class OverlapTests(unittest.TestCase):
                 for left, right in ((a, b), (b, a)):
                     self.assertEqual(parallel_plan._shared([left], [right]), expected)
 
-    def test_invalid_path_declarations_refuse_instead_of_becoming_disjoint(self):
-        from parallel_plan import plan
-        for path in ('../src/a.py', '/src/a.py', './src/a.py', 'src//a.py', 'src/../a.py'):
+    def test_path_declarations_tolerate_only_a_final_sentence_period(self):
+        from parallel_plan import paths
+        for value, expected in (
+                ('x/, docs/notes/.', ['x/', 'docs/notes/']),
+                ('a.py.', ['a.py']), ('a/.b/', ['a/.b/']),
+                ('a.py., b.py', ['a.py.', 'b.py']),
+                ('a..', ['a..']), ('a/...', ['a/...'])):
+            with self.subTest(value=value):
+                self.assertEqual(paths(value), expected)
+        for path in ('../a', '/abs', './src/a.py', 'src//a.py', 'a/./b', 'a/../b',
+                     'a/..', '..', '.', 'a/., b.py', 'a/../.', '/abs.',
+                     'a\\b', 'a\x00b'):
             with self.subTest(path=path), self.assertRaises(ValueError):
-                plan([task('A', path)])
+                paths(path)
 
 
 if __name__ == '__main__':
