@@ -796,14 +796,6 @@
       "title": "Give workers a short temporary directory that browsers and sockets accept"
     },
     {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-142-85",
-      "section": "Now",
-      "status": "open",
-      "title": "Query pending and completed tasks from repository evidence without writes"
-    },
-    {
       "depends_on": [
         "TOOLSET-142-85"
       ],
@@ -2090,6 +2082,14 @@
       "section": "Done",
       "status": "done",
       "title": "Audit this repository's suite against the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-142-85",
+      "section": "Done",
+      "status": "done",
+      "title": "Query pending and completed tasks from repository evidence without writes"
     },
     {
       "depends_on": [],

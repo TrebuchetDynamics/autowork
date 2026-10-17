@@ -2644,3 +2644,27 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator.
 - Exclusions: No test edits, no new dependency (coverage runs from a scratch environment), no mutation tool added.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
+
+- [x] TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
+- Status: done
+- Goal: BACKLOG
+- Payoff: Produce a usable repository backlog for Autowork.
+- Sources: [accepted tasks query plan](docs/workflows.md#tasks-query-skill), [priority and task parsing](skills/docs-sync/scripts/goals.py), [archive ownership and entries](skills/docs-sync/scripts/todo_archive.py).
+- Touches: skills/pending/scripts/task_query.py, skills/pending/scripts/test_task_query.py, skills/pending/references/query-contract.md
+- Scope: Add a standard-library read-only helper with structured pending/detail/search/history modes, ID/text, date bounds, timezone and limit. Reuse existing pure Docs Sync parsers/order functions without invoking mutations. Preserve TODO human ordering and blocked work while explaining eligible selection separately. Support TODO-only repositories, current/legacy archives and bounded local Git completion-transition evidence. Return records, source/date provenance and partial-result warnings for the skill to explain. Use explicit date evidence first; Git recording time and undated history remain distinct. Resolve the defaults and degraded cases exactly as recorded in the accepted plan.
+- Acceptance: Fixtures demonstrate five-item pending output with totals and blocked/focus/drift distinctions; exact-ID and ambiguous-description lookup; current/legacy archive lookup; reopened/superseded records never falsely completed; timezone-correct date filtering and explicitly undated/partial Git history. Conflicting/malformed/changing sources remain attributed and cannot yield a false confirmed completion or runnable claim. All modes leave repository bytes and Git refs unchanged; hostile query/task text remains data. No dependency, index, cache, network, source repair or live worker inference.
+- Checks: python3 -m unittest discover -s skills/pending/scripts -p test_task_query.py (new, unrun); python3 -m unittest discover -s skills/docs-sync/scripts -p test_todo_archive.py; git diff --check. Use compact behavioral fixtures and a temporary local Git history; no per-phrase assertions or full-suite benchmark project.
+- Dependencies: None.
+- Ownership: Toolset coordinator; helper work is independent of the planner-quality batch and preserves active worker contracts.
+- Exclusions: No task mutations, new required ledger fields, host registration, installation, fleet scans, remote lookups, service changes or publication. Conversational packaging is TOOLSET-143-62.
+- Planner's call: Keep new query files under skills/pending and reuse existing parsing; no second task store or search dependency. Default five results and 500 relevant commits for bounded Git fallback, with explicit truncation and requested expansion. Support /pending and /done through the same helper; latest recorded completions use evidence/Git transition dates, with explicit undated/partial results and no task-number or archive-order inference.
+
+- Command refinement: The helper lives under skills/pending/scripts/ and supports both read-only frontends. Pending descriptions default to unfinished work; done descriptions to currently completed work. Default /done returns five latest dated recorded completions, or explicitly undated records when dates are unavailable; reopened/superseded tasks stay distinct. Extend the existing query fixtures for latest ordering, date provenance, ties, undated-only and bounded-history cases.
+- Next action: Resume candidate 958fa5cbb80f6cad2b20b9ce6ed9adf3fe4542b6 and fix the integration reviewer's concrete DST-fold failure within the existing query scope: America/New_York 2026-11-01T01:30-04:00 to 01:15-05:00 is a forward interval despite reversed local clock labels. Reproduce the case and compare/order timezone-aware UTC instants, retaining genuinely reversed-interval rejection and all date-provenance/immutability checks. Reverify the repaired candidate through the existing integration owner; do not rescope or reimplement the whole helper.
