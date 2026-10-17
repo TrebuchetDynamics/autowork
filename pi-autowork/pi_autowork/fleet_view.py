@@ -19,7 +19,7 @@ from pi_autowork import health, questions as owner_questions
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
 CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
-          'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed',
+          'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed', 'empty': 'no result',
           'launch': 'launch failed', 'contract_changed': 'entry changed', 'moved': 'main moved'}
 ORDER = ['runner', 'cycle', 'held', 'contract', 'claim', 'outside']
 COLORS = {'working': 'green', 'idle': 'green', 'blocked': 'yellow', 'paused': 'yellow', 'starting': 'yellow'}

@@ -406,13 +406,14 @@ class Coordinator:
     SECRET = re.compile(r'(^|/)(\.env(\..*)?|.*\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa)(\.pub)?|'
                         r'.*credentials.*|.*secret.*|.*\.token)$', re.I)
 
-    def commit_owner_changes(self):
+    def commit_owner_changes(self, planning_only=False):
         """Auto work: uncommitted changes never keep finished work from merging. When the
         main checkout's changes have been quiet for PI_AUTOWORK_PLANNING_QUIET seconds and
         no process holds them open for writing, commit them all before merging (planning
         files alone keep their planning message). Untracked files that look like secrets
         stay untracked; a merge, rebase or cherry-pick in progress is left alone.
-        Returns '' when committed or nothing was uncommitted, else why it waited."""
+        With ``planning_only``, only planning files are committed, and only when nothing
+        else is uncommitted. Returns '' when committed or nothing was uncommitted, else why it waited."""
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
         for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'):
@@ -435,6 +436,14 @@ class Coordinator:
         paths = [p for p in paths if p]
         if not paths:
             return ''
+        _, dispatch = touches_inference.modules(self.toolset)
+        try:
+            archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
+        except (ValueError, OSError):
+            archive = None
+        planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
+        if planning_only and not set(paths) <= planning:
+            return 'other uncommitted changes wait for a merge'
         quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
         files = [Path(self.repo) / p for p in paths]
         recent = [p for p, f in zip(paths, files) if f.exists() and time.time() - f.stat().st_mtime < quiet]
@@ -443,12 +452,6 @@ class Coordinator:
         held = open_for_writing([f for f in files if f.exists()])
         if held:
             return f'{", ".join(sorted(os.path.relpath(h, self.repo) for h in held))} is open for writing'
-        _, dispatch = touches_inference.modules(self.toolset)
-        try:
-            archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
-        except (ValueError, OSError):
-            archive = None
-        planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
         subject = ('docs(tasks): owner planning (pi-autowork)' if set(paths) <= planning
                    else 'chore: uncommitted work in the main checkout (pi-autowork)')
         git(self.repo, 'add', '-A', '--', *paths)
@@ -481,6 +484,10 @@ class Coordinator:
         TODO.md edit against the session's own bookkeeping) is resolved at once through the
         session merge, not left for a final merge a stalled runner never reaches; a merge
         that still fails is a runner blocker the owner sees."""
+        if self.integ and not self.in_flight():
+            # The owner's quiet planning edits (answers to held tasks) are committed even when
+            # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
+            self.commit_owner_changes(planning_only=True)
         if not git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') or dirty(self.integ) \
                 or self.in_flight():
             return
@@ -591,6 +598,9 @@ class Coordinator:
                 if not self.stop and self.widen_inferred(task, ', '.join(row.get('requested') or []), requested=True):
                     self.settled = True
                     continue
+            if state == 'held' and row.get('cause') == 'conflict' and self.resolve_task_conflict(row):
+                self.settled = True
+                continue
             self.note_state(task, state, reason, quiet=not self.known_at_start)
             if task == self.once_task and state == 'held':
                 self.draining = True
@@ -625,6 +635,10 @@ class Coordinator:
                 self.settled = True
                 if result.get('cause') == 'scope' and self.widen_inferred(task, ', '.join(result.get('outside') or [])):
                     continue  # the next refill verifies the same commit again (RESCOPED)
+                if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
+                    row = next((r for r in self.tasks() if r.get('task') == task), None)
+                    if row and self.resolve_task_conflict(row):
+                        continue
                 self.note_state(task, 'held', reason)
                 self.count_failure(task)
                 if task == self.once_task:
@@ -702,11 +716,13 @@ class Coordinator:
     def widen_inferred(self, task, outside, requested=False):
         """Touches this runner inferred are a guess: widen them once to the files a held
         commit changed (the engine verifies it again) or a worker asked for (the engine
-        resumes it in place). Touches a person wrote, or edited since, are never changed:
-        the helper refuses."""
-        recorded = self.recorded_touches(task)
-        if not recorded or not outside or dirty(self.integ) or self.seen.get('widened-' + task):
+        resumes it in place). Touches a person wrote, or edited since, only get the bounded
+        widening from worker evidence."""
+        if not outside or dirty(self.integ) or self.seen.get('widened-' + task):
             return False
+        recorded = self.recorded_touches(task)
+        if not recorded:
+            return self.widen_from_evidence(task, outside, requested)
         widened = self.helper('widen', self.integ, self.toolset, task, recorded, outside)
         if widened is None:
             return False
@@ -724,6 +740,57 @@ class Coordinator:
                     'resuming it in its worktree')
         else:
             LOG.say(f'{task}: its commit changed files outside the inferred Touches ({outside}); widened them and verifying again')
+        return True
+
+    def resolve_task_conflict(self, row):
+        """A commit held for a merge conflict with the session is merged with it in its own
+        worktree, Pi resolving the conflict, and the engine judges the merge from there
+        (TOOLSET-157-cd): once per session revision, instead of reimplementing the task."""
+        task, root = row.get('task'), row.get('worktree')
+        if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or dirty(root):
+            return False
+        head = git(self.integ, 'rev-parse', 'HEAD')
+        if not head or self.seen.get('resolved-' + task) == head:
+            return False
+        self.seen['resolved-' + task] = head
+        if not git_ok(root, 'merge', '-q', '--no-edit', head):
+            files = ' '.join((git(root, 'diff', '--name-only', '--diff-filter=U') or '').split())
+            LOG.say(f'{task}: its commit conflicts with the session in: {files}; asking Pi to resolve the merge '
+                    'in its worktree')
+            branch = git(root, 'symbolic-ref', '--short', '-q', 'HEAD') or task
+            self.pi_job('merge', task, root, MERGE_PROMPT.format(branch=branch, base=head[:12], files=files,
+                                                                 goals=self.goals, repo=self.repo),
+                        f'pi-autowork-merge-{task}-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+            marker = git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
+            if (marker and Path(marker).exists()) or dirty(root) or not git_ok(root, 'merge-base', '--is-ancestor',
+                                                                              head, 'HEAD'):
+                git(root, 'merge', '--abort')
+                LOG.say(f'{task}: the merge could not be resolved; it is retried fresh instead')
+                return False
+        result = self.engine('--parallel-merged', task)
+        if result.get('outcome') != 'MERGED':
+            LOG.say(f'{task}: could not adopt its merged commit: {result.get("reason") or result.get("outcome")}')
+            return False
+        LOG.say(f'{task}: merged the session into its commit; verifying again')
+        return True
+
+    def widen_from_evidence(self, task, outside, requested):
+        """Touches a person wrote are widened once, by at most three exact files the worker
+        named and no other slot's task declares (TOOLSET-152-d4); the helper refuses the
+        rest, which stays a question. The engine then resumes or reverifies the same work."""
+        added = self.helper('grant', self.integ, self.toolset, task, outside)
+        if added is None:
+            return False
+        why = ('Its worker needs ' if requested else "The worker's commit changed ") + added
+        self.commit(['TODO.md'], f'docs(tasks): widen Touches for {task} from worker evidence (pi-autowork)',
+                    f'{why}, outside Touches; widened once, without a person.')
+        self.seen['widened-' + task] = True
+        if requested:
+            self.seen['awaiting-' + task] = True
+            LOG.say(f'{task}: its worker needs files outside Touches ({added}); widened them once and resuming it '
+                    'in its worktree')
+        else:
+            LOG.say(f'{task}: its commit changed files outside Touches ({added}); widened them once and verifying again')
         return True
 
     # --- Touches proposals ------------------------------------------------------------

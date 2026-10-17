@@ -255,11 +255,17 @@ retried within the hour.
 
 Touches the runner inferred are a guess. When a worker's commit is held only for
 changing files outside them, the runner widens its own guess to those files once and
-the engine verifies the same commit again; Touches a person wrote or edited are never
-widened, and the hold then waits for a person with its cause shown by `--fleet`. The
-same applies when a worker stops to ask for files outside its inferred Touches: the
-runner widens them and the worker resumes in its worktree with its changes intact.
-Touches inferred by older runs are recognized from the runner's own commits.
+the engine verifies the same commit again. The same applies when a worker stops to ask
+for files outside its inferred Touches: the runner widens them and the worker resumes in
+its worktree with its changes intact. Touches inferred by older runs are recognized from
+the runner's own commits.
+
+Touches a person wrote are widened at most once per task, and only by at most three exact
+files the worker named. Globs, directories, `TODO.md`, `goals.json`, `BLOCKERS.md` and files
+declared by another task with a live or held slot are refused. The entry then records
+`Touches widened by the runner from worker evidence: <paths>`; a serial file such as a
+manifest makes the task run alone, as any serial path does. Anything outside those bounds,
+or a second request, waits for a person with its cause shown by `--fleet`.
 
 When the reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW`), the
 runner sends every commit an earlier reviewer held back for review once, by itself,

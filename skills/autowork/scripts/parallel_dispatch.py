@@ -339,6 +339,39 @@ def retry_plan(repo, current, requested=None, plan_path=None):
                               protected_files=protected_files(repo))
 
 
+def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected):
+    """Admission in two passes, so it agrees with integration about who owns a file
+    (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
+    held commit that only conflicts with them at integration does not stop them, or each
+    would wait on the other. One that does not start this cycle still owns its declared
+    files against fresh work, as integration counts it as an owner. (A commit held for
+    overlap is parked by the caller, so it never stops either pass.)"""
+    slotted = {s['task_id'] for s in occupying}
+    resumable = [t for t in candidates if t['id'] in restartable]
+    fresh = [t for t in candidates if t['id'] not in slotted and t['id'] not in restartable]
+    options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected)
+    first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
+    resumed = {t['id'] for t in first['dispatch']}
+    second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
+    by_id = {t['id']: t for t in everything}
+    waiting_owners = [by_id[tid] for tid in restartable if tid not in resumed and tid in by_id]
+    dispatch, waiting = [], first['waiting'] + second['waiting']
+    def shares(task, other):
+        try:
+            return parallel_plan._shared(parallel_plan._touches(task), parallel_plan._touches(other))
+        except ValueError:  # invalid Touches hold their own task (plan); they reserve nothing
+            return False
+
+    for task in second['dispatch']:
+        owner = next((o['id'] for o in waiting_owners if shares(task, o)), None)
+        if owner:
+            waiting.append({'id': task['id'], 'reason': 'overlapping paths with interrupted ' + owner,
+                            'blocked_by': [owner]})
+        else:
+            dispatch.append(task)
+    return {'dispatch': first['dispatch'] + dispatch, 'waiting': waiting}
+
+
 def dispatch(args):
     repo = Path(execution.git(Path(args.consumer).expanduser().resolve(), 'rev-parse', '--show-toplevel')).resolve()
     count = capacity(args)
@@ -364,8 +397,10 @@ def dispatch_locked(args, repo, common, count, template, host):
     occupying = [s for s in current if s['state'] in OCCUPYING
                  and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
-    # A second failure gets no further attempt: it waits for a person, not the pool.
-    parked = [s for s in occupying if state.exhausted(s)]
+    # A second failure gets no further attempt: it waits for a person, not the pool. A commit
+    # held for overlap owns nothing while it waits either (integration agrees): it is offered
+    # again once its files are free, and a real conflict goes to the merge resolver.
+    parked = [s for s in occupying if state.exhausted(s) or state.overlap_held(s)]
     running = [contract(s) for s in occupying if s not in parked]
     live = [s for s in current if s['state'] in ('dispatched', 'running') and state.worker_live(s)]
     restartable = {s['task_id']: s for s in current if s['state'] in ('interrupted', 'released')
@@ -376,10 +411,8 @@ def dispatch_locked(args, repo, common, count, template, host):
     claimed = [t['id'] for t in candidates if t['id'] not in slotted
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
-    planned = parallel_plan.plan([t for t in candidates if t['id'] not in {s['task_id'] for s in occupying}
-                                  or t['id'] in restartable], running, all_tasks=everything,
-                                 parked=[contract(s) for s in parked], adopted=set(idle),
-                                 protected_files=protected_files(repo))
+    planned = admit(candidates, running, restartable, occupying, everything=everything,
+                    parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo))
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

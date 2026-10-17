@@ -130,10 +130,11 @@ class DispatchTests(unittest.TestCase):
         self.assertLess(moment['B', 'running'], moment['A', 'reported'])
         self.assertLess(moment['A', 'running'], moment['B', 'reported'])
 
-    def test_directory_containing_manifest_remains_exclusive(self):
+    def test_directory_containing_manifest_is_serial_beside_independent_work(self):
+        """TOOLSET-160-df: it never runs beside other serial work, but no longer alone."""
         for tracked in (True, False):
             with self.subTest(tracked=tracked):
-                self.write_todo(task('A', 'component/'), task('B', 'other/'))
+                self.write_todo(task('A', 'component/'), task('B', 'other/'), task('C', 'go.sum'))
                 (self.repo / 'component').mkdir(exist_ok=True)
                 manifest = self.repo / 'component/go.mod'
                 manifest.write_text('module example.invalid/component\n')
@@ -145,7 +146,8 @@ class DispatchTests(unittest.TestCase):
                 self.assertEqual(dispatch.protected_files(self.repo), ['component/go.mod'])
                 planned = dispatch.parallel_plan.plan(execution.select_all(self.repo),
                                                       protected_files=dispatch.protected_files(self.repo))
-                self.assertEqual([t['id'] for t in planned['dispatch']], ['A'])
+                self.assertEqual([t['id'] for t in planned['dispatch']], ['A', 'B'])
+                self.assertEqual(planned['waiting'][0]['reason'], 'serial path shared with A')
 
     def test_eight_disjoint_directory_workers_launch_together(self):
         self.write_todo(*(task(f'T{i}', f'component{i}/') for i in range(8)))
@@ -520,6 +522,50 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(json.loads(out.getvalue())['outcome'], 'ACTION_REQUIRED')
         code, result = self.apply('5', '--max-workers', '6')
         self.assertEqual((code, result['max_workers']), (0, 5))
+
+
+def contract(tid, touches):
+    return {'id': tid, 'fields': {'Touches': touches, 'Status': 'open', 'Dependencies': 'None.'}}
+
+
+class AdmitTests(unittest.TestCase):
+    """TOOLSET-157-cd: admission and integration agree about interrupted slots."""
+
+    def admit(self, candidates, running=(), restartable=(), occupying=(), parked=()):
+        return dispatch.admit(list(candidates), list(running), {t: {} for t in restartable},
+                              [{'task_id': t} for t in occupying], everything=list(candidates) + list(running)
+                              + list(parked), parked=list(parked), adopted=set(), protected=None)
+
+    def test_an_interrupted_candidate_resumes_before_fresh_work_on_its_files(self):
+        fresh, interrupted = contract('FRESH', 'lib/x.dart'), contract('OLD', 'lib/x.dart, test/x_test.dart')
+        result = self.admit([fresh, interrupted], restartable={'OLD'}, occupying={'OLD'})
+        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD'])
+        self.assertEqual({w['id']: w['reason'] for w in result['waiting']},
+                         {'FRESH': 'overlapping paths with OLD'})
+
+    def test_an_interrupted_task_that_cannot_start_still_owns_its_files(self):
+        blocker = contract('LIVE', 'lib/y.dart, lib/x.dart')
+        interrupted, fresh, other = contract('OLD', 'lib/x.dart'), contract('FRESH', 'lib/x.dart'), contract('C', 'c.py')
+        result = self.admit([interrupted, fresh, other], running=[blocker], restartable={'OLD'},
+                            occupying={'OLD', 'LIVE'})
+        self.assertEqual([t['id'] for t in result['dispatch']], ['C'])
+        reasons = {w['id']: w['reason'] for w in result['waiting']}
+        self.assertEqual(reasons['OLD'], 'overlapping paths with LIVE')
+        self.assertIn(reasons['FRESH'], ('overlapping paths with LIVE', 'overlapping paths with interrupted OLD'))
+
+    def test_a_commit_held_for_overlap_stops_nothing_but_its_dependents(self):
+        held, interrupted = contract('HELD', 'lib/x.dart'), contract('OLD', 'lib/x.dart')
+        fresh, other = contract('FRESH', 'lib/y.dart'), contract('DEP', 'z.py')
+        other['fields']['Dependencies'] = 'HELD.'
+        result = self.admit([interrupted, fresh, other], restartable={'OLD'}, occupying={'OLD', 'HELD'},
+                            parked=[held])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD', 'FRESH'])
+        self.assertEqual(result['waiting'], [{'id': 'DEP', 'reason': 'dependency: held HELD', 'blocked_by': ['HELD']}])
+
+    def test_only_a_commit_held_for_overlap_counts_as_overlap_held(self):
+        self.assertTrue(state.overlap_held({'state': 'held', 'cause': 'overlap'}))
+        for slot in ({'state': 'held', 'cause': 'scope'}, {'state': 'reported', 'cause': 'overlap'}):
+            self.assertFalse(state.overlap_held(slot))
 
 
 if __name__ == '__main__':

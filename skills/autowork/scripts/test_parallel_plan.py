@@ -85,22 +85,41 @@ class PlanTests(unittest.TestCase):
         from parallel_plan import plan
         tasks = [task('A', 'test/shaders/'), task('B', 'lib/models/'), task('C', 'docs/research/')]
         self.assertEqual(plan(tasks, protected_files=[])['dispatch'], tasks)
-        result = plan(tasks, protected_files=['lib/models/go.mod'])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['A'])
-        self.assertIn('serial path', result['waiting'][0]['reason'])
+        # TOOLSET-160-df: a serial directory runs beside independent work, never beside
+        # other serial work.
+        result = plan(tasks + [task('D', 'go.sum')], protected_files=['lib/models/go.mod'])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['A', 'B', 'C'])
+        self.assertEqual(result['waiting'][0]['reason'], 'serial path shared with B')
         for scope in ('src/package.json', 'db/migrations/', 'scripts/research/schemas/',
                       '.github/workflows/', 'src/go.mod'):
             with self.subTest(scope=scope):
-                candidates = [task('A', scope), task('B', 'independent.py')]
-                self.assertEqual(plan(candidates, protected_files=[])['dispatch'], candidates[:1])
+                candidates = [task('A', scope), task('B', 'independent.py'), task('C', 'yarn.lock')]
+                result = plan(candidates, protected_files=[])
+                self.assertEqual(result['dispatch'], candidates[:2])
+                self.assertEqual(result['waiting'][0]['reason'], 'serial path shared with A')
 
-    def test_glob_directory_containing_manifest_remains_exclusive(self):
+    def test_glob_directory_containing_manifest_is_serial(self):
         from parallel_plan import plan
         for scope, manifest in [('packages/*/', 'packages/api/package.json'),
                                 ('components/[ab]/', 'components/a/go.mod')]:
             with self.subTest(scope=scope):
-                tasks = [task('A', scope), task('B', 'independent.py')]
-                self.assertEqual(plan(tasks, protected_files=[manifest])['dispatch'], tasks[:1])
+                tasks = [task('A', scope), task('B', 'independent.py'), task('C', 'Cargo.lock')]
+                result = plan(tasks, protected_files=[manifest])
+                self.assertEqual(result['dispatch'], tasks[:2])
+                self.assertEqual([w['id'] for w in result['waiting']], ['C'])
+
+    def test_only_exclusive_tasks_run_alone_and_stop_lower_dispatch(self):
+        """TOOLSET-160-df: one manifest task idled every worker in three runners."""
+        from parallel_plan import plan
+        result = plan([task('S', 'package.json'), task('B', 'b.py'), task('C', 'c.py')], [task('RUN', 'run.py')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S', 'B', 'C'])
+        result = plan([task('S', 'package.json'), task('B', 'b.py')], [task('RUN', 'yarn.lock')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B'])  # a serial S waits, but stops nothing
+        self.assertEqual(result['waiting'][0]['reason'], 'serial path shared with RUN')
+        for alone in (task('X', ''), task('X', 'x.py', resources='exclusive')):
+            with self.subTest(alone=alone['fields']):
+                result = plan([alone, task('B', 'b.py')], [task('RUN', 'run.py')])
+                self.assertEqual(result['dispatch'], [])  # still drains the pool for it
 
     def test_conflicts_serialize_in_priority_order(self):
         from parallel_plan import plan
@@ -119,7 +138,7 @@ class PlanTests(unittest.TestCase):
                 result = plan([a, b, task('C', 'other/c.py')])
                 # C shares nothing with A or the waiting B, so it does not wait behind B
                 # (unless A must run alone).
-                alone = bool(_solo(a))
+                alone = False  # TOOLSET-160-df: none of these is exclusive; a serial one runs beside C
                 self.assertEqual([t['id'] for t in result['dispatch']], ['A'] if alone else ['A', 'C'])
                 self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
@@ -143,13 +162,13 @@ class PlanTests(unittest.TestCase):
         # so the pool drains; a waiting T1 does not keep it from running alone now.
         result = plan([task('S', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
         self.assertEqual(result['dispatch'], [])
+        # A serial S is not exclusive (TOOLSET-160-df): independent T3 runs beside it.
         tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
-        result = plan(tasks, all_tasks=[claim, *tasks])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
-        self.assertEqual([w['id'] for w in result['waiting']], ['T1', 'T3'])
-        # Once T1 runs, S waits on running work and stops lower dispatch until the pool drains.
+        result = plan(tasks, all_tasks=[claim, *tasks], protected_files=[])  # shared/ holds no manifest
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S', 'T3'])
+        self.assertEqual([w['id'] for w in result['waiting']], ['T1'])
         result = plan([task('S', 'package.json'), task('T3', 'free.py')], [tasks[0]])
-        self.assertEqual(result['dispatch'], [])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S', 'T3'])
 
     def test_transitive_dependencies_include_nonrunnable_contracts(self):
         from parallel_plan import plan
@@ -161,15 +180,20 @@ class PlanTests(unittest.TestCase):
     def test_solo_task_drains_pool_and_blocks_lower_priorities(self):
         from parallel_plan import plan
         for solo in (task('A', ''), task('A', 'a.py', resources='live'),
-                     task('A', 'a.py', resources='exclusive'), task('A', 'package.json'),
-                     task('A', 'sub/uv.lock'), task('A', 'db/migrations/'),
-                     task('A', 'schema/*.sql'), task('A', '.github/workflows/test.yml')):
+                     task('A', 'a.py', resources='exclusive')):
             with self.subTest(solo=solo):
                 tasks = [solo, task('B', 'b.py')]
                 self.assertEqual([t['id'] for t in plan(tasks)['dispatch']], ['A'])
                 result = plan(tasks, [task('RUN', 'run.py')])
                 self.assertEqual(result['dispatch'], [])
                 self.assertEqual([w['id'] for w in result['waiting']], ['A', 'B'])
+        # Serial files are not exclusive (TOOLSET-160-df): they run beside independent work.
+        for serial in (task('A', 'package.json'), task('A', 'sub/uv.lock'), task('A', 'db/migrations/'),
+                       task('A', 'schema/*.sql'), task('A', '.github/workflows/test.yml')):
+            with self.subTest(serial=serial):
+                tasks = [serial, task('B', 'b.py')]
+                self.assertEqual([t['id'] for t in plan(tasks)['dispatch']], ['A', 'B'])
+                self.assertEqual([t['id'] for t in plan(tasks, [task('RUN', 'run.py')])['dispatch']], ['A', 'B'])
 
     def test_an_exhausted_hold_blocks_only_its_dependents(self):
         from parallel_plan import plan
@@ -177,7 +201,7 @@ class PlanTests(unittest.TestCase):
         tasks = [task('S', 'package.json'), task('B', 'b.py'), task('D', 'd.py', deps='H.'),
                  task('O', 'h.py')]
         result = plan(tasks, parked=[held])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['S'])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['S', 'B', 'O'])
         result = plan(tasks[1:], parked=[held])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'O'])
         self.assertEqual(result['waiting'], [{'id': 'D', 'reason': 'dependency: held H', 'blocked_by': ['H']}])

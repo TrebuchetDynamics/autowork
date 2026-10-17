@@ -38,8 +38,9 @@ def classify(snapshot, *, paused=False, stuck=0):
 
 CAUSES = {'blocker': 'its worker reported a blocker', 'scope': 'changed files outside Touches',
           'scope_request': 'its worker needs files outside Touches',
-          'overlap': "changed another task's files", 'report': 'report did not match its commit',
+          'overlap': "changed another task's files; offered again once they are free", 'report': 'report did not match its commit',
           'conflict': 'merge conflict', 'validation': 'validation failed', 'crash': 'worker died twice',
+          'empty': 'its worker stopped without a commit, changes or report',
           'launch': 'worker could not start', 'contract_changed': 'its TODO entry changed',
           'moved': 'main kept moving during validation'}
 
@@ -56,6 +57,8 @@ def describe(root):
             'outside': 'outside condition or task not in Now/Next', 'cycle': 'dependency cycle',
             'running': 'running', 'integrating': 'being integrated', 'restarting': 'restarting'}
     kind = what.get(root['kind'], root['kind'])
+    if root['kind'] == 'held' and root.get('cause') == 'overlap':
+        kind = 'held'  # the engine offers it again by itself; no person is needed
     if root['kind'] == 'held' and root.get('cause'):
         kind += ': ' + CAUSES.get(root['cause'], root['cause'])
     return f"{label(root)} ({kind}, holds {root['blocks']})"
@@ -93,7 +96,11 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
     announce = None
     if state == 'stalled' and (previous.get('state') != 'stalled' or previous.get('stall_roots') != keys):
         minutes = int((now - since) // 60)
-        announce = (f"STALLED for {minutes} min: no task can run. Root blockers: "
+        # Holds alone, each for another slot's files: the engine offers each commit again once
+        # its files are free, so name it rather than leave it looking like a person's job.
+        deadlock = all(r.get('kind') == 'held' and r.get('cause') == 'overlap' for r in stuck)
+        announce = (f"STALLED for {minutes} min: no task can run"
+                    + (' (held-ownership deadlock; resolving itself)' if deadlock else '') + ". Root blockers: "
                     + '; '.join(describe(r) for r in stuck[:5])
                     + (f' (+{len(stuck) - 5} more)' if len(stuck) > 5 else '')
                     + '. See pi-autowork.sh --status.')

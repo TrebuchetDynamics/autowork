@@ -40,6 +40,18 @@ class HealthTests(unittest.TestCase):
         self.assertIsNone(health.update(self.state, snapshot(), now=1000 + 4000))  # not again
         self.assertEqual(self.status()['since'], 1000)
 
+    def test_holds_that_only_own_each_others_files_are_named_a_deadlock(self):
+        """TOOLSET-157-cd: two commits held for overlap looked like work for a person."""
+        overlap = dict(HELD, cause='overlap')
+        health.update(self.state, snapshot(roots=(overlap,)), now=0)
+        line = health.update(self.state, snapshot(roots=(overlap,)), now=1800)
+        self.assertTrue(line.startswith('STALLED for 30 min: no task can run (held-ownership deadlock; '
+                                        'resolving itself). Root blockers: T-9 (held: '
+                                        "changed another task's files; offered again once they are free"), line)
+        mixed = health.update(self.state, snapshot(roots=(overlap, {'id': 'T-5', 'kind': 'claim', 'blocks': 1})),
+                              now=1900)
+        self.assertNotIn('deadlock', mixed)
+
     def test_an_unanswered_status_read_keeps_the_stall_clock(self):
         """A --status reader holding the engine lock made the runner look idle and reset the clock."""
         health.update(self.state, snapshot(), now=0)

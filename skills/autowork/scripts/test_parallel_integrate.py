@@ -149,6 +149,28 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'A'))
         self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
+    def test_a_commit_held_for_overlap_owns_nothing_and_is_offered_again_once_free(self):
+        """TOOLSET-157-cd: two commits on the same file must not hold each other forever."""
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('  Touches: B.txt\n', '  Touches: B.txt, A.txt\n'))
+        self.git('commit', '-qam', 'B declares A.txt too')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker('A')
+        self.worker('B', {'A.txt': 'b\n'})
+        slot = next(s for s in state.slots(self.common) if s['task_id'] == 'B')
+        execution.save(state.slot_path(self.common, 'B'),
+                       dict(slot, state='held', cause='overlap', reason='changed files violate Touches or ownership'))
+        first = module.retry_held(self.retry_args())
+        self.assertNotEqual(first.get("outcome"), "REOFFERED", first)  # A still owns A.txt
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        result = module.retry_held(self.retry_args())
+        self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'B'))
+        again = dict(next(s for s in state.slots(self.common) if s['task_id'] == 'B'), state='held', cause='overlap')
+        execution.save(state.slot_path(self.common, 'B'), again)
+        self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REOFFERED')  # once only
+
     def session_checkout(self):
         """Integrate in a separate session worktree, as pi-autowork does."""
         session = Path(self.temp.name) / 'session'
@@ -374,6 +396,25 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(len(slot['previous_attempts']), 2)
         result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
+
+    def test_an_earlier_interruption_of_the_first_attempt_does_not_stop_its_readoption(self):
+        """A retry ran for 19 seconds without a result, and the first commit was never offered again."""
+        args, commit = self.readopt_fixture()
+        slot = state.slots(self.common)[0]
+        first = slot['previous_attempts'][0]
+        paused = dict(first, state='interrupted', paused=True, reason='dead worker with uncommitted changes')
+        paused.pop('commit', None)
+        execution.save(state.slot_path(self.common, 'A'), dict(slot, previous_attempts=[paused, first]))
+        result = self.module().retry_held(args)
+        self.assertEqual(result, {'outcome': 'READOPTED', 'task': 'A', 'commit': commit})
+
+    def test_a_retry_that_stops_with_nothing_is_not_called_a_crash(self):
+        self.readopt_fixture()
+        slot = state.slots(self.common)[0]
+        value = dict(slot, state='running')
+        execution.save(state.slot_path(self.common, 'A'), value)
+        state.reconcile(self.repo, self.owner)
+        self.assertEqual(state.slots(self.common)[0]['cause'], 'empty')
 
     def test_a_readopted_commit_is_judged_by_the_scope_it_was_dispatched_with(self):
         args, _ = self.readopt_fixture()
@@ -736,10 +777,13 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(state.rescopable(slot, 'A.txt, extra.py'))  # other.py still outside
         self.assertTrue(state.rescopable(slot, 'A.txt, extra.py, other.py'))
         self.assertFalse(state.rescopable(dict(slot, rescoped=True), 'A.txt, extra.py, other.py'))  # once only
+        # A scope hold waits for a person: a fresh retry with the same Touches cannot pass,
+        # and a partial widening does not cover the commit, so nothing is started.
+        self.assertTrue(state.exhausted(slot))
         self.widen('A.txt, extra.py')
         from unittest.mock import patch
         with patch.object(dispatch, 'resource_gate', return_value=''):
-            self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RETRIED')  # the ordinary path
+            self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
 
     def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
         """flutter TASK-006: an old reviewer failed it for want of a device; the fix should count."""

@@ -7,6 +7,25 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- More workers run at once. A task touching a manifest, lockfile, migration or CI file
+  used to run alone, and while it waited it stopped every lower-priority task, so most
+  runners used one of their eight workers. It now runs beside independent work and only
+  never beside other serial work; only a task without Touches or with an exclusive
+  resource still runs alone (TOOLSET-160-df).
+- An interrupted task resumes before fresh work on its files and owns them until it does,
+  and a commit held for overlap owns nothing while it waits and is offered again once its
+  files are free, so two tasks no longer hold each other for good (TOOLSET-157-cd).
+- A worker that needs one to three exact files outside Touches a person wrote no
+  longer waits for the owner. The runner adds those files to the task's Touches once,
+  notes it in the entry, and resumes the worker in its worktree (or verifies its commit
+  again). Globs, directories, coordinator files, files another live or held task
+  declares, more than three files and a second request still become a question
+  (TOOLSET-152-d4).
+- A Touches list ending in a sentence period is read without the period, and a task
+  whose Touches stay invalid waits alone instead of stopping the whole engine
+  (TOOLSET-148-88). A git command that outruns its timeout on a loaded host is reported
+  as `host busy`, not as an engine fault (TOOLSET-159-30). `scripts/check.py` allows
+  1800 s per test directory (was 600).
 - Runners update Pi's autowork package on their own again. The update waited for a
   moment when no runner on the machine had work in flight; with four busy runners that
   never came, and none had updated for hours. A new release now waits for that moment

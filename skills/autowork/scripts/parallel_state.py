@@ -31,7 +31,9 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
           'outside', 'requested', 'reviewed_by'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
-NEEDS_PERSON = ('blocker', 'scope_request')
+# scope: a commit changed files outside Touches the runner could not widen; a fresh retry
+# with the same Touches cannot pass, so the files go to the owner as a question.
+NEEDS_PERSON = ('blocker', 'scope_request', 'scope')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
@@ -265,13 +267,22 @@ def change(common, old, target, updates):
         execution.active_owner({'owner': updates['worker']})
     if target in ('interrupted', 'released') and old['attempt'] == 2 and not updates.get('paused', old.get('paused')):
         target = 'held'
-        updates.setdefault('cause', 'crash')
+        # A worker that stopped with nothing at all did not necessarily crash: say so.
+        updates.setdefault('cause', 'empty' if str(updates.get('reason', '')).startswith(EMPTY) else 'crash')
     value.update(updates)
     value['state'] = target
     return write_slot(common, value, old)
 
 
 SCOPE_HOLD = 'changed files violate Touches'
+EMPTY = 'dead worker without a commit or changes'
+
+
+def held_first_attempt(slot):
+    """The first attempt's held record. Its history may also hold a pause or an
+    interruption of that attempt, which an earlier rule mistook for a second attempt."""
+    held = [h for h in slot.get('previous_attempts') or [] if h.get('state') == 'held']
+    return held[0] if len(held) == 1 else {}
 
 
 def readoptable(slot):
@@ -280,8 +291,7 @@ def readoptable(slot):
     Scope can change after a hold (recorded Touches, ownership rules), and a retry
     usually cannot fix a scope hold itself; other holds keep the fresh-retry rule.
     """
-    history = slot.get('previous_attempts') or []
-    first = history[0] if len(history) == 1 else {}
+    first = held_first_attempt(slot)
     return (slot['state'] == 'held' and slot['attempt'] == 2 and not slot.get('commit')
             and not slot.get('readopted') and not worker_live(slot)
             and first.get('state') == 'held' and bool(first.get('commit'))
@@ -301,6 +311,20 @@ def rescopable(slot, touches):
     return (slot['state'] == 'held' and slot.get('cause') == 'scope' and bool(slot.get('commit'))
             and not slot.get('rescoped') and not worker_live(slot) and bool(outside) and bool(declared)
             and not parallel_plan.overlap(outside, declared, [])['outside'])
+
+
+def overlap_held(slot):
+    """A commit held only because another slot owned some of its files (TOOLSET-157-cd)."""
+    return slot['state'] == 'held' and slot.get('cause') == 'overlap' and not worker_live(slot)
+
+
+def reoffer_overlap(common, old):
+    """Offer an overlap-held commit to integration again, once, after the slots it
+    conflicted with have settled. Integration merges current main and checks every
+    owner again. Caller holds writer.lock."""
+    value = {k: v for k, v in old.items() if k not in ('reason', 'cause')}
+    value.update(state='reported', reoffered=True)
+    return write_slot(common, value, old)
 
 
 def rescope(common, old, touches):
@@ -374,7 +398,7 @@ def readopt(common, old):
     """
     if not readoptable(old):
         raise ValueError('only a held retry without a commit can readopt its first attempt')
-    first = old['previous_attempts'][0]
+    first = held_first_attempt(old)
     workspace(common, first['worktree'], first['branch'], first['baseline'])
     value = {k: v for k, v in first.items() if k not in ('reason', 'checks', 'integration', 'report')}
     # Judge the commit by the scope its worker was given, not by Touches recorded
@@ -436,7 +460,7 @@ def reconcile(repo, owner_pid):
                 elif dirty:
                     target, updates = 'interrupted', {'reason': 'dead worker with uncommitted changes'}
                 else:
-                    target, updates = 'released', {'reason': 'dead worker without a commit or changes'}
+                    target, updates = 'released', {'reason': EMPTY}
             if target != slot['state']:
                 slot = change(common, slot, target, updates)
             result.append(slot)

@@ -25,6 +25,12 @@ def git(repo, *argv):
     return result.stdout if '-z' in argv else result.stdout.strip()
 
 
+def ancestor(repo, older, newer):
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    return subprocess.run(['git', '-C', str(repo), 'merge-base', '--is-ancestor', older, newer], env=env,
+                          capture_output=True, timeout=60).returncode == 0
+
+
 def changed(repo, baseline, commit):
     # Disable rename folding so both the deleted source and new destination are checked.
     value = git(repo, 'diff', '--name-only', '--no-renames', '-z', baseline + '..' + commit)
@@ -142,17 +148,32 @@ def verify(repo, common, slot, contracts):
     return files, report
 
 
-def verify_scope(repo, common, slot, contracts, files):
-    task = contracts[slot['task_id']]
-    others: list[list[str]] = [list(dispatch.COORDINATOR_FILES)]
+def owned_elsewhere(repo, common, slot, contracts):
+    """What every other unsettled slot owns: its commit's files, else its declared Touches."""
+    others: list[list[str]] = []
     for other in state.slots(common):
         # An exhausted hold waits for a person; the planner already lets overlap past it.
-        if other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed') or state.exhausted(other):
+        # A commit held for overlap waits for the others to settle and is then offered
+        # again on current main: it owns nothing meanwhile, or two could hold each other.
+        if (other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed') or state.exhausted(other)
+                or state.overlap_held(other)):
             continue
         if other.get('commit'):
             others.append(changed(repo, other['baseline'], other['commit']))
         else:
             others.append(plan.paths(contracts.get(other['task_id'], {}).get('fields', {}).get('Touches', '')))
+    return others
+
+
+def unowned(repo, common, slot, contracts):
+    """No other unsettled slot owns any file this slot's commit changed."""
+    files = changed(repo, slot['baseline'], slot['commit'])
+    return not plan.overlap(files, files, owned_elsewhere(repo, common, slot, contracts))['conflicts']
+
+
+def verify_scope(repo, common, slot, contracts, files):
+    task = contracts[slot['task_id']]
+    others = [list(dispatch.COORDINATOR_FILES), *owned_elsewhere(repo, common, slot, contracts)]
     declared = plan.paths(slot['touches'] if 'touches' in slot else task['fields'].get('Touches', ''))
     # A broad directory alone does not reserve hypothetical future manifests.
     # Require an explicit serial declaration before accepting newly created shared
@@ -750,6 +771,37 @@ def reverify(repo, owner_pid, task, version):
         return {'outcome': 'REVERIFY', 'task': task, 'commit': slot['commit'], 'version': version}
 
 
+def merged(repo, owner_pid, task):
+    """Adopt a conflict-held commit whose worktree has since merged canonical HEAD (the
+    coordinator's merge resolver, TOOLSET-157-cd), once: the merge commit is judged from
+    that HEAD as its new baseline, so only the task's own changes and its resolution count.
+    A fresh retry would otherwise reimplement work that already exists."""
+    repo, common = context(repo, owner_pid)
+    with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
+        state.require_owner(common, owner_pid)
+        slot = slot_for(common, task)
+        if (slot is None or slot['state'] != 'held' or slot.get('cause') != 'conflict' or not slot.get('commit')
+                or slot.get('merged_base') or state.worker_live(slot)):
+            raise ValueError('merged is only for a conflict-held commit, once')
+        root = execution.safe_path(slot['worktree'])
+        base = git(repo, 'rev-parse', 'HEAD')
+        head = git(root, 'rev-parse', 'HEAD')
+        if (git(root, 'symbolic-ref', '--short', '-q', 'HEAD') != slot['branch']
+                or git(root, 'status', '--porcelain', '--untracked-files=no')
+                or not ancestor(repo, slot['commit'], head) or not ancestor(repo, base, head)):
+            raise ValueError('the task worktree must be clean on its branch with both its commit and canonical HEAD merged')
+        data = dispatch.data_dir(common, slot)
+        report = execution.read(data / 'report.json')
+        if not isinstance(report, dict) or report.get('task') != task:
+            raise ValueError('merged needs the held commit\'s report.json')
+        report.update(commit=head, changed_files=changed(repo, base, head))
+        execution.save(data / 'report.json', report)
+        value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'checks', 'integration')}
+        value.update(state='reported', baseline=base, commit=head, merged_base=True)
+        slot = state.write_slot(common, value, slot)
+        return {'outcome': 'MERGED', 'task': task, 'commit': head, 'baseline': base}
+
+
 def cleanup_worker(repo, common, slot):
     """Independent idempotent cleanup; never repeat the archive/closed transition."""
     root = execution.safe_path(slot['worktree'])
@@ -818,6 +870,19 @@ def retry_held(args):
                     slot = state.rescope(common, widened, touches[widened['task_id']])
                     return {'outcome': 'RESCOPED', 'task': slot['task_id'], 'commit': slot['commit'],
                             'touches': slot['touches']}
+            # A commit held only because another slot owned some of its files is offered
+            # again, once, when no unsettled slot owns them any more (TOOLSET-157-cd): the
+            # slot it waited for has integrated or was released. A fresh retry would only
+            # reimplement the same change.
+            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and not s.get('reoffered')]
+            if overlapped:
+                by_id = {t['id']: t for t in dispatch.contracts(repo)}
+                order = list(by_id)  # TODO.md priority: of two such commits the higher one goes first
+                overlapped.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
+                free = next((s for s in overlapped if unowned(repo, common, s, by_id)), None)
+                if free is not None:
+                    slot = state.reoffer_overlap(common, free)
+                    return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
             requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'
