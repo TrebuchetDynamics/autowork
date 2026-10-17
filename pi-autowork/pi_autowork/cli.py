@@ -19,7 +19,7 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import health, pi_runtime, service, worker  # noqa: E402
+from pi_autowork import health, main_check, pi_runtime, service, worker  # noqa: E402
 from pi_autowork.common import LOG, die, dirty, git, git_ok, lifecycle, model_of, provider_of, push_guard  # noqa: E402
 from pi_autowork.coordinator import Coordinator  # noqa: E402
 
@@ -481,6 +481,9 @@ def status_view(repo, base, toolset, state):
             line += '; blocked by ' + '; '.join(
                 f"{' '.join(str(r['id']).split())[:60]} ({r['kind']}, holds {r['blocks']})" for r in roots)
         print(line)
+        checked = main_check.line(record.get('main_check') or {})
+        if checked:
+            print(f'Main:       {checked}')
         run = record.get('maintainer') or {}
         if run.get('at'):  # the DOCS-MAINTAINER's last run (TOOLSET-164-f1)
             print(f"Maintainer: DOCS-MAINTAINER {run.get('outcome', '?')} at "

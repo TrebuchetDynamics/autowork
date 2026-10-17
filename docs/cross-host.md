@@ -196,7 +196,9 @@ on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
 review), retries, the failure limit, the fallback cooldown, total runtime,
 `PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24), the
 memory one more worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000; twice it must be
-available), how long `/tmp` scratch may sit unused before it is removed
+available), the repository's full offline check to run on main after each landing
+(`PI_AUTOWORK_MAIN_CHECK`, for example `python3 scripts/check.py`; a red result gets one
+repair task from the DOCS-MAINTAINER), how long `/tmp` scratch may sit unused before it is removed
 (`PI_AUTOWORK_TMP_STALE`, default 7200 seconds, `0` off) and
 `PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
 

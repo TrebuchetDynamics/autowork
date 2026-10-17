@@ -131,7 +131,9 @@ class EnvironmentMarkerTests(unittest.TestCase):
                             'commit', '-q', '--allow-empty', '-m', 'base'], check=True)
             state.mkdir()
             verdicts = iter(['PI_AUTOWORK_VERIFY: fail environment — flutter SDK 3.44 (ENVIRONMENT.md)',
-                             'PI_AUTOWORK_VERIFY: pass all good'])
+                             'PI_AUTOWORK_VERIFY: pass all good',
+                             'PI_AUTOWORK_VERIFY: fail — the Back behaviour is not verified',
+                             'PI_AUTOWORK_VERIFY: pass now'])
             job = lambda *a: {'ok': True, 'text': next(verdicts)}
             old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
             os.chdir(repo)
@@ -142,6 +144,12 @@ class EnvironmentMarkerTests(unittest.TestCase):
                     self.assertEqual(json.loads(marker.read_text())['missing'], 'flutter SDK 3.44 (ENVIRONMENT.md)')
                     self.assertEqual(worker.verify(str(state), 'T-1'), 0)
                     self.assertFalse(marker.exists())
+                    self.assertEqual(worker.review_findings(state, 'T-1'), '')  # an environment miss is no finding
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 1)
+                    self.assertEqual(worker.review_findings(state, 'T-1'),
+                                     'PI_AUTOWORK_VERIFY: fail — the Back behaviour is not verified')
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 0)
+                    self.assertEqual(worker.review_findings(state, 'T-1'), '')
             finally:
                 os.chdir(old_cwd)
                 if old_tmp is None:

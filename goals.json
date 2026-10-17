@@ -929,22 +929,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-175-2b",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-176-98",
-      "section": "Now",
-      "status": "open",
-      "title": "A red main after a landing opens its own repair task, naming the failing tests and the commits since green"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2210,6 +2194,22 @@
       "section": "Done",
       "status": "done",
       "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-175-2b",
+      "section": "Done",
+      "status": "done",
+      "title": "Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-176-98",
+      "section": "Done",
+      "status": "done",
+      "title": "A red main after a landing opens its own repair task, naming the failing tests and the commits since green"
     },
     {
       "depends_on": [

@@ -24,6 +24,14 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(maintainer.key(found), maintainer.key(maintainer.triggers(list(reversed(rows)))))
         self.assertEqual(maintainer.triggers([r for r in rows if r['task'] in 'DEFG']), [])
 
+    def test_a_last_attempt_reviewed_and_found_wanting_is_a_trigger_with_its_findings(self):
+        rows = [{'task': 'A', 'state': 'held', 'cause': 'validation', 'attempt': 2},
+                {'task': 'B', 'state': 'held', 'cause': 'validation', 'attempt': 1},   # it gets a fresh retry
+                {'task': 'C', 'state': 'held', 'cause': 'validation', 'attempt': 2}]   # no findings recorded
+        found = maintainer.triggers(rows, findings={'A': 'PI_AUTOWORK_VERIFY: fail — Back is not handled',
+                                                    'B': 'PI_AUTOWORK_VERIFY: fail — x'})
+        self.assertEqual(found, [('A', 'review findings', 'PI_AUTOWORK_VERIFY: fail — Back is not handled')])
+
     def test_only_planning_files_may_change(self):
         self.assertTrue(maintainer.planning_only(['TODO.md', 'goals.json', 'docs/tasks/A.md']))
         self.assertFalse(maintainer.planning_only(['TODO.md', 'src/app.py']))
