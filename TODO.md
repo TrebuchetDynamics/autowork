@@ -52,6 +52,7 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: None.
 - Ownership: Toolset coordinator. Reconcile the owner session's in-progress TOOLSET-157-cd output in the same engine files first; the same applies to TOOLSET-152-d4 (worker-named widening), which the owner session is implementing in these files. Let both land; this task then deletes what they add here that (4) removes, as superseded, not reverted by hand.
 - Exclusions: No change to the worker cap, the serial and exclusive rules, the protected-file rules, required checks or review, and no force integration of unverified work.
+- Evidence (2026-10-17 11:25 monitor pass, after the 5b240c1 restart): with serial files no longer exclusive, the largest remaining parallelism loss is wide declared Touches. One runner's running task declared 12 whole directories (app, tests, integration tests, docs) and held 42 of 51 waiting tasks with `overlapping paths with` it; most could not have touched the same files. Under (1) they would be admitted and integrate by merge.
 - Planner's call: first in Now. Holds from Touches predictions are the main reason runners go idle; making integration decide by merge and checks removes the class instead of patching each shape.
 
 ### TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
@@ -107,6 +108,22 @@ settlement/cancellation checks when refining that existing design.
 - Ownership: Toolset coordinator (owner session). TOOLSET-118-68 keeps cgroup budgets and process-tree stops; TOOLSET-140-f4 keeps the short socket-safe TMPDIR.
 - Exclusions: No deletion of anything recent, in use or not owned by the runner's user; no change to the worker cap or load check.
 - Planner's call: fix the double-counted reservation and clean the scratch that caused it, rather than lower `PI_AUTOWORK_MIN_FREE_MB`. The gate's purpose stays; only its arithmetic and the leak change.
+
+### TOOLSET-163-f7 — A claim question says why the claim is kept and quotes the note that holds it
+
+- [ ] TOOLSET-163-f7 — A claim question says why the claim is kept and quotes the note that holds it
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [claims](skills/autowork/scripts/parallel_claims.py) (`HOLD_NOTE`, `hold_note`, `idle_claims`), [status roots](skills/autowork/scripts/parallel_status.py), [questions](pi-autowork/pi_autowork/questions.py) (the `claim` question).
+- Evidence (2026-10-17 11:25 monitor pass, after the 5b240c1 restart): one runner's three `in_progress` claims hold 13 waiting tasks, and BLOCKERS.md says the same for each: "marked in_progress by another session and will not be adopted automatically". `idle_claims` tells them apart. One is kept by a note in its own entry ("canonical inclusion requires authority permitting canonical HEAD/index changes", which `HOLD_NOTE` matches), so the owner must answer that note, which the question never shows. Two are idle and adoptable after 6 hours, so the question is wrong for them. One of those two says in its entry that its status "remains in_progress to preserve the existing hold", a hold `HOLD_NOTE` misses.
+- Touches: skills/autowork/scripts/parallel_claims.py, skills/autowork/scripts/test_parallel_claims.py, skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_status.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py
+- Scope: (1) `HOLD_NOTE` also matches stated intent to keep a hold: `preserve (the )?(existing )?hold`, `remains in_progress to`, `keep(s)? the hold`. (2) Status roots of kind `claim` carry `held_by` (the note excerpt from `hold_note`) or `adoptable_after` (seconds until `idle_claims` would adopt it, 0 when it already would). (3) The claim question uses them: a note-held claim quotes the note and asks the owner to answer it or set `Status: open`; an adoptable claim is not a question at all, and the root says `adopted when a worker slot frees` instead; a claim still inside the idle window says when it becomes adoptable. Hold notes keep winning over idleness.
+- Acceptance: In fixtures, a claim whose entry says it "remains in_progress to preserve the existing hold" is not adopted; a claim held by an authority note yields a question that contains the note's text; an idle claim past the threshold yields no question and a root saying it will be adopted; a recent claim's question names the hour it becomes adoptable.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_c*.py'; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_status.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: TOOLSET-154-d3 (it rewrites questions.py IDs and rendering first).
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the idle threshold or to which claims are adopted beyond the new hold phrases; no edits to fleet TODO entries.
+- Planner's call: show the evidence the engine already has instead of a generic sentence. The owner answers one quoted note rather than reading the entry to guess why the runner waits.
 
 ### TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
 

@@ -657,7 +657,8 @@
         "TOOLSET-159-30",
         "TOOLSET-160-df",
         "TOOLSET-161-17",
-        "TOOLSET-162-d2"
+        "TOOLSET-162-d2",
+        "TOOLSET-163-f7"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -669,6 +670,7 @@
       "TOOLSET-142-85",
       "TOOLSET-143-62",
       "TOOLSET-162-d2",
+      "TOOLSET-163-f7",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
       "TOOLSET-154-d3",
@@ -855,6 +857,14 @@
       "section": "Now",
       "status": "open",
       "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-163-f7",
+      "section": "Now",
+      "status": "open",
+      "title": "A claim question says why the claim is kept and quotes the note that holds it"
     },
     {
       "depends_on": [],
