@@ -67,7 +67,8 @@ class Coordinator:
         self.claim_idle = cfg['claim_idle']
         self.max_runtime = int(env.get('PI_AUTOWORK_MAX_RUNTIME', '0'))
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
-        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '3600'))
+        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '600'))
+        self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '1800'))
         self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
@@ -88,6 +89,7 @@ class Coordinator:
         self.last_waiting, self.runner_blocker = '', ''
         self.pause_until = 0.0
         self.seen, self.touches_tried = {}, set()
+        self.known_at_start = False  # the first status read records task states without logging them
         self.drift_tried = self.drift_last_reason = self.drift_reason = ''
         self.last_update, self.last_update_note = time.monotonic(), ''
         self.settled = False
@@ -475,12 +477,16 @@ class Coordinator:
         raise Finish(code, text)
 
     # --- Coordinator -------------------------------------------------------------------
-    def note_state(self, task, state, reason=''):
-        """Log each task's lifecycle change once."""
+    def note_state(self, task, state, reason='', quiet=False):
+        """Log each task's lifecycle change once. A waiting task is not news (the runner's
+        one `No task can start now` line covers them), and states already reached when the
+        runner started are not replayed (quiet)."""
         word = lifecycle(state)
         if self.seen.get(task) == word:
             return
         self.seen[task] = word
+        if quiet or word == 'pending':
+            return
         LOG.say(f'{task}: {word}' + (f' — {reason}' if reason else ''))
 
     def count_failure(self, task):
@@ -541,13 +547,14 @@ class Coordinator:
                 if not self.stop and self.widen_inferred(task, ', '.join(row.get('requested') or []), requested=True):
                     self.settled = True
                     continue
-            self.note_state(task, state, reason)
+            self.note_state(task, state, reason, quiet=not self.known_at_start)
             if task == self.once_task and state == 'held':
                 self.draining = True
             # Only a failure this run watched happen counts toward the streak; holds found
             # at start (say after a self-restart) were counted by the run that saw them.
             if state == 'held' and before and before != 'failed':
                 self.count_failure(task)
+        self.known_at_start = True
         if self.stop:
             return
         self.reverify_held(rows)
@@ -879,14 +886,19 @@ class Coordinator:
                     if time.monotonic() > deadline:
                         return
                     time.sleep(1)
-            check = release.check(self.cfg['state_root'], self.state, self.toolset)
+            check = release.check(self.cfg['state_root'], self.state, self.toolset, wait=self.update_wait)
             if not check['ok']:
                 # Another runner's work in flight, or a release that cannot read this state.
-                if not check.get('current') and check['reason'] != self.last_update_note:
+                note = check['reason'].split(';')[0]
+                if not check.get('current') and note != self.last_update_note:
                     LOG.say(f'Toolset update deferred: {check["reason"]}')
-                self.last_update_note = check['reason']
+                self.last_update_note = note
+                if not check.get('current'):  # a release is waiting: look again within minutes
+                    self.last_update -= max(0, self.update_interval - min(300, self.update_interval))
                 return
             self.last_update_note = ''
+            if check.get('note'):
+                LOG.say(f'Toolset update: {check["note"]}')
             with open(self.state / 'engine.err', 'a') as err:
                 rc = subprocess.run(['timeout', '300', self.cfg['pi'], 'update', source], stdout=err,
                                     stderr=err).returncode

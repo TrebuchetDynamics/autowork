@@ -238,12 +238,15 @@ repository at once. Each service has its own model (`PI_AUTOWORK_PRIMARY` and
 `PI_AUTOWORK_FALLBACK` in its settings file, set with `autowork model`), so one
 repository can run on `openai-codex/gpt-6-luna` and another on
 `openrouter/deepseek/deepseek-v4.1-flash`; a reinstall keeps the chosen model.
-Reinstall after changing settings. The runner keeps itself current: while no task is
-in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
-turns it off) it runs `pi update` for its autowork package, one runner at a time
-across repositories. It updates only when no runner on the machine has work in flight
-and the new release, read from Git first, declares it can read the current
-execution state; otherwise it logs why once and keeps the running release. When the toolset revision changed, by that or any other update,
+Reinstall after changing settings. The runner keeps itself current: while it has no
+task in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 600;
+`0` turns it off) it checks for a new release and runs `pi update` for its autowork
+package, one runner at a time across repositories. It installs only a release that,
+read from Git first, declares it can read the current execution state. It prefers a
+moment when no runner on the machine has work in flight, but waits for one at most
+`PI_AUTOWORK_UPDATE_WAIT` seconds (default 1800) from when the release was first seen,
+looking again every 5 minutes; busy runners rarely all pause at once, and they would
+otherwise never update. It logs why it waits once. When the toolset revision changed, by that or any other update,
 a running runner restarts itself on the new release at its next cycle and resumes its
 session; an update whose script does not parse is logged and the running code kept.
 Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
@@ -313,8 +316,10 @@ Questions for the owner live in the repository's `BLOCKERS.md`, in a block the r
 maintains under `## Active` (between `<!-- pi-autowork:questions:start -->` and
 `<!-- pi-autowork:questions:end -->`), never in a chat. Each names the task, what it
 needs and exactly how to answer, easiest first; `/blockers` (also `/autowork blockers`)
-asks about each one with options to pick. Answering is editing the task's TODO.md
-entry; the question leaves the block once its cause is gone. Writing the block costs no model call.
+treats these entries as evidence, reconciles routine planning issues and asks only
+for genuinely missing owner decisions or inputs. It preserves candidate work and
+existing integration authority instead of asking which session should own delivery.
+Resolving an entry means editing the task's TODO.md entry; the question leaves the block once its cause is gone. Writing the block costs no model call.
 
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not

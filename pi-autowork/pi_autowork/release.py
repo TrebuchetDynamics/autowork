@@ -1,19 +1,24 @@
 """Decide whether the shared toolset package may be updated now.
 
 `pi update` replaces the one package every runner on the machine loads, and the
-engine is re-read on each call, so an update under a task in flight mixes two
-releases. An update is safe only at a fleet-wide checkpoint, and only to a
-release that can read the current execution state:
+engine is re-read on each call, so an update under a task in flight hands that task
+to the new release. An update goes only to a release that can read the current
+execution state, and preferably at a fleet-wide checkpoint:
 
-- no other live runner has a task dispatched, running, reported, integrating or
-  integrated (from its status.json; this runner's caller checks itself);
 - the new release, read from Git before anything is installed, lists the current
-  STATE_SCHEMA in its STATE_SCHEMA_READS.
+  STATE_SCHEMA in its STATE_SCHEMA_READS (always required);
+- no other live runner has a task dispatched, running, reported, integrating or
+  integrated (from its status.json; this runner's caller checks itself). Busy
+  runners defer an update for at most WAIT seconds from when the release was first
+  seen (state_root/toolset-update.json): with several runners always busy a
+  checkpoint may never come, and they would never update. After the wait it
+  updates anyway; every runner restarts onto the new release and adopts its workers.
 
     release.py check STATE_ROOT OWN_STATE_DIR TOOLSET   # prints JSON; exit 0 when safe
 """
 import ast
 import json
+import time
 import os
 from pathlib import Path
 import re
@@ -57,10 +62,24 @@ def _git(toolset, *argv):
     return subprocess.run(['git', '-C', str(toolset), *argv], capture_output=True, text=True, timeout=120)
 
 
-def check(state_root, own, toolset):
-    busy = busy_runners(state_root, own)
-    if busy:
-        return dict(ok=False, reason='other runners have work in flight: ' + ', '.join(busy))
+def first_seen(state_root, rev, now):
+    """When this release was first found waiting, shared by every runner."""
+    path = Path(state_root) / 'toolset-update.json'
+    try:
+        record = json.loads(path.read_text())
+        if record.get('rev') == rev:
+            return float(record['since'])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        path.write_text(json.dumps({'rev': rev, 'since': now}) + '\n')
+    except OSError:
+        pass
+    return now
+
+
+def check(state_root, own, toolset, wait=1800, now=None):
+    now = time.time() if now is None else now
     fetched = _git(toolset, 'fetch', '-q', 'origin', 'HEAD')
     if fetched.returncode:
         return dict(ok=False, reason='could not fetch the toolset: ' + fetched.stderr.strip()[:200])
@@ -77,6 +96,14 @@ def check(state_root, own, toolset):
         return dict(ok=False, reason='could not read the state schema declarations')
     if current not in tuple(reads):
         return dict(ok=False, reason=f'release {new_rev} cannot read this state (schema {current}; it reads {list(reads)})')
+    busy = busy_runners(state_root, own)
+    if busy:
+        left = wait - (now - first_seen(state_root, new_rev, now))
+        if left > 0:
+            return dict(ok=False, reason=f'other runners have work in flight: {", ".join(busy)}; '
+                                         f'updating to {new_rev} anyway in {max(1, round(left / 60))} min')
+        return dict(ok=True, new_rev=new_rev, schema=current,
+                    note=f'updating to {new_rev} with work in flight ({", ".join(busy)}); it continues on {new_rev}')
     return dict(ok=True, new_rev=new_rev, schema=current)
 
 

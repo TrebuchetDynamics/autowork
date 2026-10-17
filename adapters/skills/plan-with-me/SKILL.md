@@ -25,8 +25,8 @@ than facts already in the repo. Play each understood part back with guesses mark
 Decide routine engineering details yourself and say them as your calls. Honor
 questions-only/read-only without writing files.
 
-`/plan_with_me blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): a picked
-question per blocked task, easiest first; a task that needs replanning is planned here
+`/plan_with_me blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): routine
+planning repairs first, then genuine owner questions, easiest first; replanning happens here
 before the next question.
 
 Save explicit answers in existing requirement/spec documents when permitted. At

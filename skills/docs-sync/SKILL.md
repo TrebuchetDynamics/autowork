@@ -193,6 +193,11 @@ replacement evidence. Notice-only edits must reproduce original bytes after remo
 only this pass's notices; preserve pre-existing annotations. Label authorized redaction; no rewritten history or reactivated proposals.
 Keep public skills profile-independent, operational receipts private and fixtures
 neutral. Relocation does not purge Git history. Never copy secrets/production data.
+When asked to save supplied operational notes, preserve the source under a short
+provenance notice and link it from existing documentation navigation. Keep its
+host/version qualifications and distinguish reported measurements from checks you
+actually repeated. Saving a runbook does not authorize its install/configuration
+commands or convert its checklist into executable backlog work.
 
 ## 4. Core document owners
 
@@ -335,7 +340,13 @@ number with a two-hex-digit hash, such as `T-012-c4`, so parallel clones do not 
    on an unchanged second render using the actual selected archive path. Check that
    the old archive is an exact prefix of the new one, each moved body is verbatim and
    open contracts are unchanged; compare ledger rows by ID so reordering cannot hide
-   status, evidence, dependency or ownership changes. Include
+   status, evidence, dependency or ownership changes. Compare serialized task arrays
+   as ID-keyed records after formatting, while checking `priority_order` separately:
+   a section edit can legitimately relocate a serialized row without changing human
+   priority. Do not reject that normalization or restore a stale snapshot. Compare
+   TODO bodies outside the generated coverage block; explain a refreshed stale
+   coverage row from its existing indexed state rather than claiming new progress.
+   Include
    attributable TODO/archive changes together in handoffs and authorized commits.
    Match every open/in_progress ID to a full body outside the coverage block;
    done bodies may live in the archive and are not missing work. Restore missing

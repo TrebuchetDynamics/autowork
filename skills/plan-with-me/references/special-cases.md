@@ -29,8 +29,8 @@ coverage, not necessarily redundant test identities. Planning launches nothing.
 ## Blockers and recovery
 
 `/plan_with_me blockers [repo|runner name]`, or a request to work through what blocks
-the queue, is [`/blockers`](../../blockers/SKILL.md): a picked question per blocked
-task, easiest first, one question at a time. An
+the queue, is [`/blockers`](../../blockers/SKILL.md): routine planning repairs first, then
+genuine owner decisions, easiest first, one question at a time. An
 answer that needs replanning is planned here, with the planning craft, and saved
 through Docs Sync before the next question. The rest of this section applies to a
 broader blockers question.

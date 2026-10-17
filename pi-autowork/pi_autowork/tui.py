@@ -344,6 +344,9 @@ class FleetApp(App):
             text.append(runner.model)
             text.append('  fallback ', style='dim')
             text.append(runner.fallback + '\n')
+        if runner.toolset:  # a development checkout instead of the Pi package: say so
+            text.append('toolset ', style='dim')
+            text.append(f'{runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
         width = max(40, self.size.width - 4)  # one line per question
         if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
             count = len(runner.questions)
@@ -391,7 +394,11 @@ class FleetApp(App):
         runner = self.current()
         log.clear()
         if runner is not None:
-            log.write(fleet_view.quiet_log(self.logs(runner)) or '(no output yet)')
+            lines = fleet_view.log_lines(self.logs(runner))
+            for line, style in lines:
+                log.write(Text(line, style=style))
+            if not lines:
+                log.write('(no output yet)')
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner, task=None):
