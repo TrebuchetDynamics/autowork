@@ -38,6 +38,38 @@ settlement/cancellation checks when refining that existing design.
 
 ## Now
 
+### TOOLSET-175-2b — Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard
+
+- [ ] TOOLSET-175-2b — Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [/pending query](skills/pending/scripts/task_query.py) (TOOLSET-142-85, landed as f7cb607 and closed as 9ea176b), [skill installer](install_skills.py), [preflight](tests/test_preflight.py), [priority guard test](skills/docs-sync/scripts/test_priority_order.py) (`test_selection_entry_points_use_the_shared_guard`).
+- Evidence (2026-10-17 15:30, `python3 scripts/check.py` on main): five failures, one cause. `skills/pending/` has `references/` and `scripts/` but no `SKILL.md`, so `install_skills.install` raises `Invalid skill folder or missing SKILL.md: …/skills/pending` (test_preflight ×2, test_impeccable_bundle, test_ui_taste_bundle), and `skills/pending/scripts/task_query.py` selects tasks without `goals.queue(data, todo_text)` (test_priority_order: `call goals.queue(data, todo_text) so drift cannot be bypassed`). TOOLSET-142-85's review ran only its own Checks.
+- Touches: skills/pending/, skills/docs-sync/scripts/test_priority_order.py, install_skills.py, tests/test_preflight.py
+- Scope: (1) Give `skills/pending/` a real `SKILL.md` (name, description and use of `task_query.py`, in the style of the other skills), or, if TOOLSET-143-62 owns the skill's entry point, a minimal one that 143-62 then extends; do not special-case the folder in the installer. (2) Make `task_query.py` read the queue through `goals.queue(data, todo_text)` like every other selection entry point, keeping its read-only, no-write behaviour and its existing tests. (3) No other change.
+- Acceptance: `python3 scripts/check.py` passes on main (all five test directories), `/pending` behaves as TOOLSET-142-85's acceptance says, and the priority guard test passes without an allow-list entry.
+- Checks: python3 -m unittest discover -s skills/pending/scripts; python3 -m unittest discover -s skills/docs-sync/scripts -p test_priority_order.py; python3 -m unittest tests/test_preflight.py tests/test_impeccable_bundle.py tests/test_ui_taste_bundle.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No installer or guard exceptions for this folder.
+- Planner's call: first in Now. A red main makes every reviewer's full check fail and hides new regressions behind old ones.
+
+### TOOLSET-176-98 — A red main after a landing opens its own repair task, naming the failing tests and the commits since green
+
+- [ ] TOOLSET-176-98 — A red main after a landing opens its own repair task, naming the failing tests and the commits since green
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (`merge_main`, `land`), [DOCS-MAINTAINER](pi-autowork/pi_autowork/maintainer.py) (TOOLSET-164-f1), `PI_AUTOWORK_VALIDATE`.
+- Evidence (2026-10-17 15:30): TOOLSET-142-85 integrated and closed after its own Checks passed, but main then failed five tests in other directories; nothing noticed, and the next tasks' reviewers would have met the same failures.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: (1) A repository may declare its full offline check (`PI_AUTOWORK_MAIN_CHECK`, for this repository `python3 scripts/check.py`). After the session lands on main, and at most once per main revision while nothing else needs the host (load below the CPU count, no verification running), the runner runs it in a disposable checkout of main with a short private TMPDIR. (2) A pass records `main green at <commit>`. A failure records the failing test names and the commits since the last green revision, and gives the DOCS-MAINTAINER a trigger to add one repair task first in Now, with that evidence, unless one is already open for the same failures. (3) Status and the runner view show `main red since <commit>: N failing` until it is green again.
+- Acceptance: In fixtures, a landing that breaks an unrelated test yields exactly one repair task with the failing test and the commit range; a second landing with the same failures adds none; a green run clears the status line; a repository without `PI_AUTOWORK_MAIN_CHECK` runs nothing.
+- Checks: python3 -m unittest discover -s pi-autowork/tests; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: TOOLSET-164-f1 (the maintainer writes the repair task).
+- Ownership: Toolset coordinator.
+- Exclusions: No full check on every task integration (too slow on loaded hosts); no automatic revert of landed work.
+- Planner's call: check main after landing rather than before every integration: the full check takes about 25 minutes here, and one red result per main revision is enough to start the repair.
+
 ### TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
 
 - [ ] TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
@@ -124,7 +156,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
 
 - [ ] TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
-- Status: open
+- Status: in_progress; (3) open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [review](pi-autowork/pi_autowork/worker.py) (`verify`, the `PI_AUTOWORK_VERIFY: fail` reason), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`reverify_held`), [toolchain cache](skills/autowork/scripts/parallel_dispatch.py) (`AUTOWORK_CACHE`, TOOLSET-169-1d).
 - Evidence (2026-10-17 14:34 monitor pass): one runner has been stalled 1h34m on a task held on its second attempt for validation. Its reviewer, and the reviewer of the same commit after the reviewer changed, failed it with `no pinned … SDK was available, so the analyze and test checks could not be run`: a missing toolchain, not a defect in the change. The repository's `AUTOWORK_CACHE` is empty because the task that installed the SDK ran before the cache existed. Three dependent tasks wait; the owner question says only `investigate`.
@@ -132,6 +164,7 @@ settlement/cancellation checks when refining that existing design.
 - Scope: (1) The review prompt asks the reviewer to say `PI_AUTOWORK_VERIFY: fail environment — <what is missing>` when it could not run a required check because a tool, SDK or service is missing, distinct from a failure of the change. The hold records cause `environment` and the missing item. (2) For an `environment` hold the coordinator runs one provisioning job (a Pi worker with read-only access to the checkout and write access only to `$AUTOWORK_CACHE`) that follows the repository's own setup docs to install what is missing there, then reverifies the same commit once. (3) If provisioning fails or the second review fails for the same reason, the owner question names the missing item and the setup command tried, instead of `investigate`. (4) An `environment` hold never counts toward the failure pause (TOOLSET-162-d2's systemic rule treats it as not the task's fault, but it is reported).
 - Acceptance: In fixtures, a reviewer reporting `fail environment — flutter SDK` holds with cause `environment`; a provisioning job that writes to the cache is followed by one reverify that integrates; a failing provisioning yields one question naming the missing item; a plain `fail` keeps today's validation hold.
 - Checks: python3 -m unittest discover -s pi-autowork/tests; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Done by the owner session (2026-10-17): (1), (2) and (4). Reviews report `PI_AUTOWORK_VERIFY: fail environment — <missing>` (a marker under the runner state); the coordinator provisions into `$AUTOWORK_CACHE` from the repository's setup docs in a disposable checkout, records it in `PROVISIONED.md` and reverifies once (reviewer version `<version>-env`), before a fresh retry; environment holds never count toward the failure pause. Still open: (3), the owner question naming the missing item (the runner log names it today).
 - Dependencies: None.
 - Ownership: Toolset coordinator.
 - Exclusions: No provisioning outside `$AUTOWORK_CACHE`; no network-heavy installs without the repository's setup docs naming them; no change to what counts as a passing review.
@@ -140,7 +173,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 
 - [ ] TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
-- Status: open
+- Status: in_progress; first slice done
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [accepted docs maintainer plan](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17); [coordinator](pi-autowork/pi_autowork/coordinator.py), [question block](pi-autowork/pi_autowork/questions.py), [worker launch](pi-autowork/pi_autowork/worker.py), [status](pi-autowork/pi_autowork/health.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [goals.py](skills/docs-sync/scripts/goals.py), [blockers](skills/blockers/SKILL.md).
 - Evidence (2026-10-17): of this repository's recent holds, most were resolved by restating the task (Touches, scope wording, a named file) and running it again, by hand or through `/blockers`. TOOLSET-147-54 only moved after its entry was edited. Planning repair currently has three partial owners (141-c4, 146-bc, `/blockers`).
@@ -148,6 +181,7 @@ settlement/cancellation checks when refining that existing design.
 - Scope: Implement decisions 1-5 of the accepted plan. (1) Each runner has one `DOCS-MAINTAINER` worker outside the task worker cap, shown with its last trigger, outcome and changed tasks in `autowork status`, `autowork ls` and the TUI; it is never a TODO entry. (2) Triggers: a hold whose cause is planning (contract, scope, Touches, checks, dependencies) or a worker blocker; an admission reason for an incomplete or duplicate contract; priority drift that `goals.py reorder` refuses; a closed task (conditional Docs Sync, the closeout pass TOOLSET-146-bc planned); questions in `BLOCKERS.md` older than the runner's latest status. Pending triggers are batched into one run; an unchanged trigger set never reruns; no trigger means no model call. (3) The maintainer is the only writer of `TODO.md`, `goals.json`, `BLOCKERS.md` and `docs/tasks/`, except the mechanical `goals.py` writes the coordinator already makes (reorder record, closeout archive). It works in its own worktree with the docs-sync and plan-for-me skills and the runner's primary model, merges around newer or uncommitted owner edits, never reverts them, and integrates through the normal verified merge with `goals.py validate` and backlog-check. (4) Allowed repairs, from the task's Sources, accepted plans, the worker report and the candidate: restate a held contract and requeue it so the existing candidate is reverified or re-prompted rather than reimplemented; correct Touches, checks and dependencies; split an oversized task; re-sort to unblock dependency chains with a reason per move in the commit; supersede duplicates through `goals.py supersede`. Product scope, acceptance, authority and credentials, and moving a task above the owner's top picks are never changed; those become one `BLOCKERS.md` question each, only after a repair attempt failed. (5) `/blockers` keeps only genuine owner questions and points routine repair to the maintainer.
 - Acceptance: In fixtures with fake Pi: a task held for a wrong Touches list is restated by one maintainer run and its existing candidate reverifies without a new implementation run; three holds arriving together cost one maintainer run; an idle runner and an unchanged trigger set make zero model calls; an uncommitted owner edit to `TODO.md` survives a maintainer run byte for byte; a hold needing a product decision produces exactly one question after a failed repair, and none before; a closed task triggers Docs Sync once; the coordinator no longer writes planning files outside the `goals.py` mechanical writes; status and the TUI show `DOCS-MAINTAINER` beside the task workers.
 - Checks: python3 -m unittest discover -s pi-autowork/tests; python3 -m unittest tests/test_pi_autowork.py; python3 skills/docs-sync/scripts/goals.py validate .; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Done by the owner session (2026-10-17), first slice: decisions 1, 2 (planning holds and `not runnable` tasks as triggers) and 4, and the planner's calls. `maintainer.py` builds the triggers and their key; when nothing is in flight the coordinator runs one DOCS-MAINTAINER job per distinct trigger set in a disposable checkout and merges its commit into the session only if it changed planning files alone and `goals.py validate` passes; the last run shows in status.json, `autowork status` and the runner view. Still open: decision 3 (sole writer: the coordinator still writes widening and question commits itself), the other triggers (priority drift refused by reorder, closeout Docs Sync, stale questions), decision 5 (`/blockers` keeps only owner questions) and 6 (`docs/tasks/`).
 - Dependencies: None.
 - Ownership: Toolset coordinator. Supersedes TOOLSET-141-c4; reconcile TOOLSET-161-17 output in the shared coordinator and integration files first.
 - Exclusions: No implementation of product code by the maintainer, no worker cap change, no polling loop, no direct edits to fleet repositories outside their own runner's integration.

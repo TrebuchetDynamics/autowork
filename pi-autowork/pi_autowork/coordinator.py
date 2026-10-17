@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 
-from . import health, janitor, pi_runtime, questions, release, touches_inference, workspaces
+from . import health, janitor, maintainer, pi_runtime, questions, release, touches_inference, worker, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -75,6 +75,16 @@ def publishable(repo, paths):
             continue
         keep.append(path)
     return keep, held
+
+
+PROVISION_PROMPT = (
+    'In {repo}, the review of task {task} could not run its checks because this is missing: {missing}. '
+    'Install what is missing so that the checks can run, following the repository\'s own setup docs '
+    '(README, docs, an ENVIRONMENT or setup file, the task\'s TODO.md entry), pinned versions included. '
+    'Install only under {cache} ($AUTOWORK_CACHE), as <name>-<version>, and reuse what is already there. '
+    'Do not edit, create or delete files in this checkout, commit, push or change branches. Check that the '
+    'installed tool runs. End with one line: PI_AUTOWORK_RESULT: completed or PI_AUTOWORK_RESULT: blocked, '
+    'then how to use it (paths and environment variables, for example FLUTTER_ROOT and PATH).')
 
 
 class Finish(Exception):
@@ -601,6 +611,8 @@ class Coordinator:
     def count_failure(self, task, cause=None):
         if cause not in self.SYSTEMIC or self.seen.get('counted-' + task):
             return
+        if cause == 'validation' and self.environment_hold(task):
+            return  # it could not be checked here: the runner provisions it (TOOLSET-173-94)
         self.seen['counted-' + task] = True
         self.failures += 1
 
@@ -693,6 +705,9 @@ class Coordinator:
                 self.settled = True
                 if result.get('cause') == 'scope' and self.widen_inferred(task, ', '.join(result.get('outside') or [])):
                     continue  # the next refill verifies the same commit again (RESCOPED)
+                if (result.get('cause') == 'validation' and self.environment_hold(task)
+                        and self.provision_and_reverify(task, self.reviewer_version())):
+                    continue  # reviewed again before a refill can start a fresh retry
                 if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
                     row = next((r for r in self.tasks() if r.get('task') == task), None)
                     if row and self.resolve_task_conflict(row):
@@ -726,13 +741,106 @@ class Coordinator:
             held_by_validation = row.get('state') == 'held' and (
                 row.get('cause') == 'validation'
                 or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
-            if not held_by_validation or self.seen.get('reverify-' + task) == version or self.stop:
+            if not held_by_validation or self.stop:
+                continue
+            if self.seen.get('reverify-' + task) == version:
+                self.provision_and_reverify(task, version)
                 continue
             self.seen['reverify-' + task] = version
             if self.engine('--parallel-reverify', task, '--reviewer-version', version).get('outcome') == 'REVERIFY':
                 self.seen[task] = ''
                 self.settled = True
                 LOG.say(f'{task}: the reviewer changed since this commit was held; verifying it again')
+
+    def maintain(self):
+        """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
+        cause or are not runnable as written, one Pi job restates them from the repository's own
+        evidence in a disposable checkout. Its commit merges into the session only if it changed
+        planning files alone and goals.py validate passes. One run per distinct trigger set; no
+        trigger, no model call. True when its repair merged."""
+        if self.stop or self.in_flight() or not self.integ or dirty(self.integ):
+            return False
+        found = maintainer.triggers(self.tasks())
+        if not found:
+            return False
+        trigger_key = maintainer.key(found)
+        if maintainer.last(self.state).get('key') == trigger_key:
+            return False
+        scratch = self.scratch_checkout('maintainer')
+        if not scratch:
+            return False
+        names = [task for task, _, _ in found]
+        LOG.say(f'{maintainer.ROLE}: repairing the task docs of {", ".join(names)}')
+        outcome, changed = 'no change', []
+        try:
+            base = git(scratch, 'rev-parse', 'HEAD')
+            ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
+                                   maintainer.prompt(found, self.repo, self.goals),
+                                   f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+            head = git(scratch, 'rev-parse', 'HEAD')
+            paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
+            diff = git(scratch, 'diff', base, head) or '' if paths else ''
+            changed = [task for task in names if task in diff]
+            if not paths:
+                outcome = 'no change' if ok else 'failed'
+            elif not maintainer.planning_only(paths) or dirty(scratch):
+                outcome = 'refused: it changed more than planning files'
+            elif (Path(scratch) / 'goals.json').exists() and subprocess.run(
+                    [sys.executable, str(self.goals), 'validate', scratch], capture_output=True).returncode:
+                outcome = 'refused: goals.py validate failed'
+            elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
+                outcome = 'merged'
+                self.settled = True
+            else:
+                git(self.integ, 'merge', '--abort')
+                outcome = 'refused: it conflicts with the session'
+        finally:
+            self.drop_scratch(scratch)
+        maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed)
+        LOG.say(f'{maintainer.ROLE}: {outcome}' + (f'; changed {", ".join(changed)}' if changed else ''))
+        return outcome == 'merged'
+
+    def environment_hold(self, task):
+        """What a review of the held commit could not run without, or None (TOOLSET-173-94)."""
+        try:
+            return json.loads(worker.environment_marker(self.state, task).read_text()).get('missing') or None
+        except (OSError, ValueError, AttributeError):
+            return None
+
+    def provision_and_reverify(self, task, version):
+        """A review that could not run for a missing tool: one provisioning job installs it into
+        the repository's toolchain cache from its own setup docs, then the same commit is
+        reviewed once more. Once per task and reviewer version; True when it went back to review."""
+        missing = self.environment_hold(task)
+        key = 'provisioned-' + task
+        if not missing or self.seen.get(key) == version:
+            return False
+        self.seen[key] = version
+        cache = worker.repository_cache(self.integ)
+        scratch = self.scratch_checkout('provision') if cache else None
+        if not scratch:
+            return False
+        LOG.say(f'{task}: its review could not run ({missing}); installing it into the toolchain cache')
+        os.environ['AUTOWORK_CACHE'] = str(cache)
+        try:
+            ok, text = self.pi_job('provision', task, scratch, PROVISION_PROMPT.format(
+                task=task, missing=missing, cache=cache, repo=self.repo),
+                f'pi-autowork-provision-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+        finally:
+            self.drop_scratch(scratch)
+        done = ok and 'PI_AUTOWORK_RESULT: completed' in text
+        if not done:
+            LOG.say(f'{task}: could not install what its review needs ({missing}); it waits for a person')
+            return False
+        note = ' '.join(text.split('PI_AUTOWORK_RESULT: completed', 1)[1].split())[:600]
+        with open(cache / 'PROVISIONED.md', 'a') as record:
+            record.write(f'- {datetime.now():%Y-%m-%d %H:%M} for {task} ({missing}): {note}\n')
+        if self.engine('--parallel-reverify', task, '--reviewer-version', version + '-env').get('outcome') == 'REVERIFY':
+            self.seen[task] = ''
+            self.settled = True
+            LOG.say(f'{task}: installed what its review needed; verifying it again')
+            return True
+        return False
 
     # --- Scope: widening Touches this runner inferred ------------------------------
     def inferred(self):
@@ -1003,7 +1111,7 @@ class Coordinator:
                        + self.seen['busy-' + waiting[0]['task']])
         runner = {'repo': str(self.repo), 'pid': str(os.getpid()), 'toolset_rev': self.toolset_rev,
                   'mode': self.mode, 'paused_until': str(paused), 'blocker': blocker,
-                  'stuck_integrations': str(len(waiting))}
+                  'stuck_integrations': str(len(waiting)), 'maintainer': maintainer.last(self.state)}
         try:
             line = health.update(self.state, snapshot, runner=runner, stall_after=int(self.stall_after))
         except (OSError, ValueError):
@@ -1216,6 +1324,9 @@ class Coordinator:
                 if blocked != self.last_waiting:
                     LOG.say(f'No task can start now: {blocked}')
                 self.last_waiting = blocked
+                if self.maintain():  # nothing runs: repair the task docs that keep it so
+                    self.last_waiting = ''
+                    return  # dispatch again on the repaired docs first
         elif outcome in ('DRAINING', 'PAUSED'):
             pass
         elif outcome == 'BUSY':

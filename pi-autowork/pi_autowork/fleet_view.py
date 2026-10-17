@@ -102,6 +102,7 @@ class Runner:
     max_workers: int | None = None
     restarting: str = ''      # 'onto <commit>' or 'service' while it stops and starts again
     gate: str = ''            # the latest resource-gate reason, when the last cycle was gated
+    maintainer: dict = field(default_factory=dict)  # the DOCS-MAINTAINER's last run (TOOLSET-164-f1)
 
     @property
     def color(self):
@@ -351,6 +352,20 @@ def verdict(runner):
     if runner.state == 'not cycling':
         return f'{head} — its status has not been refreshed; the runner may be busy or hung', 'bold red'
     return head, 'bold yellow'
+
+
+def maintainer_line(runner, now=None):
+    """'DOCS-MAINTAINER: merged 12m ago; changed A, B (triggered by A, B, C)', or ''."""
+    run = runner.maintainer
+    if not run.get('at'):
+        return ''
+    now = time.time() if now is None else now
+    text = f"DOCS-MAINTAINER: {run.get('outcome', '?')} {ago(int(now - run['at']))}"
+    if run.get('changed'):
+        text += '; changed ' + ', '.join(run['changed'])
+    if run.get('triggers'):
+        text += ' (for ' + ', '.join(run['triggers'][:6]) + (' …' if len(run['triggers']) > 6 else '') + ')'
+    return text
 
 
 def waiting_line(runner, limit=4):
@@ -626,6 +641,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.waiting_groups = row.get('waiting_groups') or []
         runner.blocker = row.get('blocker') or ''
         runner.max_workers = row.get('max_workers')
+        runner.maintainer = row.get('maintainer') or {}
     for runner in found.values():
         runner.lanes = lanes(runner, now)
         runner.restarting, runner.gate = recent_events(runner, now)

@@ -396,6 +396,9 @@ class FleetApp(App):
                 text.append(q.needs + '\n')
             if count > QUESTIONS_SHOWN:
                 text.append(f'  +{count - QUESTIONS_SHOWN} more\n', style='dim')
+        repair = fleet_view.maintainer_line(runner)
+        if repair:
+            text.append(repair + '\n', style='cyan')
         if runner.held:
             text.append('held: ', style='bold yellow')
             text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')

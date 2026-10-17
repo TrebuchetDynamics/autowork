@@ -670,7 +670,9 @@
         "TOOLSET-171-35",
         "TOOLSET-172-40",
         "TOOLSET-173-94",
-        "TOOLSET-174-1d"
+        "TOOLSET-174-1d",
+        "TOOLSET-175-2b",
+        "TOOLSET-176-98"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -678,6 +680,8 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-175-2b",
+      "TOOLSET-176-98",
       "TOOLSET-165-f7",
       "TOOLSET-170-f6",
       "TOOLSET-174-1d",
@@ -880,7 +884,7 @@
       "goal": "PI-RUNNER",
       "id": "TOOLSET-164-f1",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs"
     },
     {
@@ -912,7 +916,7 @@
       "goal": "PI-RUNNER",
       "id": "TOOLSET-173-94",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "A review that fails only for a missing toolchain gets a provisioning run, then one more review"
     },
     {
@@ -922,6 +926,22 @@
       "section": "Now",
       "status": "open",
       "title": "Restarting a runner keeps its workers running"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-175-2b",
+      "section": "Now",
+      "status": "open",
+      "title": "Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-176-98",
+      "section": "Now",
+      "status": "open",
+      "title": "A red main after a landing opens its own repair task, naming the failing tests and the commits since green"
     },
     {
       "depends_on": [],

@@ -77,14 +77,19 @@ elif message.startswith('Plan the file scope of task'):
     role, task = 'touches', re.search(r'of task (\S+) ', message)[1]
 elif message.startswith('/skill:git-commit-push'):
     role, task = 'merge', None
+elif 'could not run its checks because this is missing' in message:
+    role, task = 'provision', re.search(r'review of task (\S+) ', message)[1]
+elif message.startswith('You are the DOCS-MAINTAINER'):
+    role, task = 'maintainer', None
 else:
     role, task = 'worker', field('Task')
-key = role if role == 'merge' else f'{role}:{task}'
+key = role if role in ('merge', 'maintainer') else f'{role}:{task}'
 with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
     fcntl.flock(stream, fcntl.LOCK_EX)
     plan = json.load(stream)
     queue = plan.get(key) or []
-    behavior = queue.pop(0) if queue else {'worker': 'complete', 'verify': 'pass', 'merge': 'resolve', 'touches': 'own'}[role]
+    behavior = queue.pop(0) if queue else {'worker': 'complete', 'verify': 'pass', 'merge': 'resolve', 'touches': 'own',
+                                           'maintainer': 'nothing', 'provision': 'block'}[role]
     plan[key] = queue
     stream.seek(0); stream.truncate(); json.dump(plan, stream)
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
@@ -118,7 +123,29 @@ if role == 'touches':
 elif role == 'verify':
     if behavior == 'tamper':
         open('tampered.txt', 'w').write('x\n')
-    finish(text='Checked.\nPI_AUTOWORK_VERIFY: ' + ('fail acceptance not met' if behavior == 'fail' else 'pass all checks'))
+    if behavior == 'env':  # a required check cannot run: a tool is missing here
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: fail environment — fake-sdk 1.0 (docs/SETUP.md)')
+    elif behavior == 'needs_cache':  # passes only once the runner installed the tool
+        ok = os.path.isdir(os.path.join(os.environ.get('AUTOWORK_CACHE', '/nonexistent'), 'fake-sdk-1.0'))
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: ' + ('pass all checks' if ok else 'fail environment — fake-sdk 1.0'))
+    else:
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: ' + ('fail acceptance not met' if behavior == 'fail' else 'pass all checks'))
+elif role == 'maintainer':
+    if behavior == 'add_checks':  # restate A's contract: the Checks line it was missing
+        text = open('TODO.md').read().replace('  Acceptance: A.txt says done\n',
+                                              '  Acceptance: A.txt says done\n  Checks: test -s A.txt\n', 1)
+        open('TODO.md', 'w').write(text)
+        git('commit', '-qam', 'docs(tasks): restate A with the Checks line its sources give')
+    elif behavior == 'code':  # oversteps: edits product code
+        open('A.txt', 'w').write('maintainer wrote code\n')
+        git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
+    finish(text='PI_AUTOWORK_RESULT: completed A')
+elif role == 'provision':
+    if behavior == 'install':
+        os.makedirs(os.path.join(os.environ['AUTOWORK_CACHE'], 'fake-sdk-1.0'), exist_ok=True)
+        finish(text='Installed.\nPI_AUTOWORK_RESULT: completed — use $AUTOWORK_CACHE/fake-sdk-1.0')
+    else:
+        finish(text='PI_AUTOWORK_RESULT: blocked — no setup doc names it')
 elif role == 'merge':
     if behavior == 'resolve':
         git('checkout', '--ours', '.')
@@ -432,6 +459,54 @@ class EngineTests(Fixture):
         self.assertIn('A: invalid Touches: a/../b', result.stdout)
         self.assertNotIn('engine needs attention', result.stdout)
         self.assertIn('invalid Touches: a/../b', self.run_runner('--status').stdout)
+
+    def test_a_review_that_could_not_run_for_a_missing_tool_gets_it_installed_and_reviews_again(self):
+        """TOOLSET-173-94: a commit was held on its last attempt for want of a pinned SDK."""
+        self.plan({'verify:A': ['needs_cache', 'needs_cache'], 'provision:A': ['install']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its review could not run (fake-sdk 1.0); installing it into the toolchain cache', result.stdout)
+        self.assertIn('A: installed what its review needed; verifying it again', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # no fresh attempt
+        cache = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')) / \
+            'autowork-execution' / 'cache'
+        self.assertIn('for A (fake-sdk 1.0)', (cache / 'PROVISIONED.md').read_text())
+
+    def test_a_missing_tool_that_cannot_be_installed_waits_for_a_person_without_pausing_the_runner(self):
+        self.plan({'verify:A': ['env', 'env'], 'provision:A': ['block']})
+        self.env['PI_AUTOWORK_MAX_FAILURES'] = '1'
+        result = self.run_runner('--until-empty')
+        self.assertIn('A: could not install what its review needs (fake-sdk 1.0 (docs/SETUP.md)); it waits for a person',
+                      result.stdout)
+        self.assertNotIn('in a row; pausing new tasks', result.stdout)
+        self.assertTrue(self.done('B'))
+
+    def unrunnable_a(self):
+        text = (self.repo / 'TODO.md').read_text().replace('  Checks: test -s A.txt\n', '', 1)
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A lost its Checks line')
+
+    def test_the_docs_maintainer_restates_a_task_that_is_not_runnable_as_written(self):
+        """TOOLSET-164-f1: tasks the engine would not run waited hours for the owner."""
+        self.unrunnable_a()
+        self.plan({'maintainer': ['add_checks']})
+        result = self.run_runner('--until-empty')
+        self.assertIn('DOCS-MAINTAINER: repairing the task docs of A', result.stdout)
+        self.assertIn('DOCS-MAINTAINER: merged; changed A', result.stdout)
+        self.assertEqual(len(self.runs('maintainer')), 1)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertIn('restate A with the Checks line', self.git(self.repo, 'log', '--format=%s'))
+
+    def test_the_docs_maintainer_may_change_only_planning_files_and_runs_once_per_trigger_set(self):
+        self.unrunnable_a()
+        self.plan({'maintainer': ['code']})
+        result = self.run_runner('--until-empty')
+        self.assertIn('DOCS-MAINTAINER: refused: it changed more than planning files', result.stdout)
+        self.assertFalse((self.repo / 'A.txt').exists() and 'maintainer wrote code' in (self.repo / 'A.txt').read_text())
+        again = self.run_runner('--until-empty')  # the same trigger set: no second model call
+        self.assertNotIn('DOCS-MAINTAINER: repairing', again.stdout)
+        self.assertEqual(len(self.runs('maintainer')), 1)
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})

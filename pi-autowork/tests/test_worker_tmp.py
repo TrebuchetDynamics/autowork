@@ -76,7 +76,7 @@ class ReviewScratchTests(unittest.TestCase):
             self.assertFalse(seen['tmp'].exists())
             self.assertIn('never directly under /tmp', seen['prompt'])
             cache = repo / '.git' / 'autowork-execution' / 'cache'
-            self.assertIn(f'are in {cache} (AUTOWORK_CACHE)', seen['prompt'])
+            self.assertIn(f'are in {cache} (AUTOWORK_CACHE', seen['prompt'])
             self.assertTrue(cache.is_dir())
 
     def test_a_review_unregisters_only_its_own_scratch_worktrees(self):
@@ -117,6 +117,37 @@ class ReviewScratchTests(unittest.TestCase):
                           if line.startswith('worktree ')]
             self.assertIn(other.resolve(), [p.resolve() for p in registered])
             self.assertFalse([p for p in registered if (state / 'review-tmp').resolve() in p.resolve().parents])
+
+
+class EnvironmentMarkerTests(unittest.TestCase):
+    """TOOLSET-173-94: 'could not check' is recorded apart from 'checked and wrong'."""
+
+    def test_a_review_that_could_not_run_records_what_was_missing(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder) / 'repo', Path(folder) / 'state'
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                            'commit', '-q', '--allow-empty', '-m', 'base'], check=True)
+            state.mkdir()
+            verdicts = iter(['PI_AUTOWORK_VERIFY: fail environment — flutter SDK 3.44 (ENVIRONMENT.md)',
+                             'PI_AUTOWORK_VERIFY: pass all good'])
+            job = lambda *a: {'ok': True, 'text': next(verdicts)}
+            old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
+            os.chdir(repo)
+            try:
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 1)
+                    marker = worker.environment_marker(state, 'T-1')
+                    self.assertEqual(json.loads(marker.read_text())['missing'], 'flutter SDK 3.44 (ENVIRONMENT.md)')
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 0)
+                    self.assertFalse(marker.exists())
+            finally:
+                os.chdir(old_cwd)
+                if old_tmp is None:
+                    os.environ.pop('TMPDIR', None)
+                else:
+                    os.environ['TMPDIR'] = old_tmp
 
 
 if __name__ == '__main__':

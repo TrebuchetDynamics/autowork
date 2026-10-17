@@ -481,6 +481,11 @@ def status_view(repo, base, toolset, state):
             line += '; blocked by ' + '; '.join(
                 f"{' '.join(str(r['id']).split())[:60]} ({r['kind']}, holds {r['blocks']})" for r in roots)
         print(line)
+        run = record.get('maintainer') or {}
+        if run.get('at'):  # the DOCS-MAINTAINER's last run (TOOLSET-164-f1)
+            print(f"Maintainer: DOCS-MAINTAINER {run.get('outcome', '?')} at "
+                  f"{datetime.fromtimestamp(int(run['at'])):%H:%M}"
+                  + (f"; changed {', '.join(run['changed'])}" if run.get('changed') else ''))
     except (OSError, ValueError, KeyError):
         pass
     for row in (snapshot.get('tasks') or [])[:40]:

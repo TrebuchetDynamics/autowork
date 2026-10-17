@@ -201,7 +201,7 @@ def fleet(state_root, *, now=None, service=_service):
                          waiting=status.get('waiting', 0), roots=status.get('roots', []),
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
                          blocker=status.get('blocker', ''), updated_at=status.get('updated_at'),
-                         max_workers=status.get('max_workers')))
+                         max_workers=status.get('max_workers'), maintainer=status.get('maintainer') or {}))
     return rows
 
 

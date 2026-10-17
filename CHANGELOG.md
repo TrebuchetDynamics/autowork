@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Each runner has a DOCS-MAINTAINER: when nothing runs and tasks are held for a planning cause or are not
+  runnable as written, one Pi job restates them from the repository's own evidence, in a disposable
+  checkout; its commit merges only if it changed planning files alone and `goals.py validate` passes. One
+  run per distinct trigger set, none without a trigger; status and the runner view show its last run
+  (TOOLSET-164-f1, first slice).
+- A review that could not run for a missing tool says so (`fail environment — <missing>`); the runner
+  installs it into `$AUTOWORK_CACHE` from the repository's setup docs and reviews the same commit once
+  more, and such holds do not count toward the failure pause (TOOLSET-173-94).
 - A task that must run alone drains the pool only after it has waited beside running work for
   `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800, kept across restarts from the journal); until then
   independent work keeps starting, and waiting tasks then say `draining, waited Nm` (TOOLSET-171-35).

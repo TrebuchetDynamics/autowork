@@ -28,7 +28,10 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
           'build output in gitignored paths is fine. Put every temporary file and copy under $TMPDIR, '
           'never directly under /tmp, which is RAM on this host; $TMPDIR is removed after the review. '
           'For a scratch copy of the checkout use git worktree add --detach "$TMPDIR/copy" HEAD, not a '
-          'file copy. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
+          'file copy. If a check the task requires cannot run because a tool, SDK or service is missing '
+          'here, not because the change is wrong, end instead with: PI_AUTOWORK_VERIFY: fail environment — '
+          '<what is missing, and the setup doc that names it>. Otherwise end with exactly one line: '
+          'PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
 # pending live become their own TASK-LIVE follow-up, so they must not fail the review.
@@ -84,7 +87,15 @@ PROVISIONED = (' Toolchains, SDKs and caches the worker provisioned for this tas
 
 
 CACHE = (' SDKs, toolchains and package caches this repository\'s tasks installed are in {path} '
-         '(AUTOWORK_CACHE): use them instead of downloading again, and add one there only if a check needs it.')
+         '(AUTOWORK_CACHE; PROVISIONED.md there says how to use what the runner installed): use them instead '
+         'of downloading again, and add one there only if a check needs it.')
+ENVIRONMENT = re.compile(r'^PI_AUTOWORK_VERIFY: fail environment\s*[—:-]+\s*(.*)$')
+
+
+def environment_marker(state, task):
+    """Where a review that could not run for a missing tool records what was missing
+    (TOOLSET-173-94); the coordinator provisions it and reviews once more."""
+    return Path(state) / 'review-env' / f'{safe_name(task)}.json'
 
 
 def repository_cache(checkout):
@@ -165,6 +176,13 @@ def review(state, task, checkout, head_before):
                             ['--tools', 'read,bash,grep,find,ls'])
     line = next((l for l in result['text'].splitlines() if l.startswith('PI_AUTOWORK_VERIFY:')), '')
     verdict = (re.match(r'^PI_AUTOWORK_VERIFY: (pass|fail)', line) or [None, ''])[1]
+    marker = environment_marker(state, task)
+    missing = ENVIRONMENT.match(line)
+    if missing and verdict == 'fail':
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({'missing': ' '.join(missing.group(1).split())[:300], 'commit': head_before}))
+    else:
+        marker.unlink(missing_ok=True)
     if dirty(checkout) or git(checkout, 'rev-parse', 'HEAD') != head_before:
         # The engine owns this disposable integration worktree: it keeps the changes as a
         # patch for diagnosis and resets it before the next integration.
