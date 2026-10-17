@@ -112,6 +112,21 @@ class IdleClaimTests(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertIsNone(claims.hold_note(line + '\n', 'T-7'))  # vocabulary, a table row, a condition
 
+    def test_an_active_session_elsewhere_blocks_only_claims_whose_files_it_holds(self):
+        """TOOLSET-120-fc (3): two owner pi sessions in sierra held off every adoption."""
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] TASK-038 — Claimed\n', '- [ ] TASK-038 — Claimed\n  Touches: src/radio/\n'))
+        self.git('add', '.')
+        self.commit('TASK-038 declares its files', when=1000)
+        canonical = str(self.repo.resolve())
+        session = {'kind': 'session', 'active': True, 'workspaces': [canonical], 'written': []}
+        self.assertEqual(set(self.idle('TASK-038', workers=[session])), {'TASK-038'})  # it holds none of them
+        elsewhere = dict(session, written=[f'{canonical}/docs/notes.md'])
+        self.assertEqual(set(self.idle('TASK-038', workers=[elsewhere])), {'TASK-038'})
+        on_it = dict(session, written=[f'{canonical}/src/radio/tuner.py'])
+        self.assertEqual(self.idle('TASK-038', workers=[on_it]), {})  # it is editing the task's files
+        self.assertEqual(self.idle('T-96', workers=[session]), {})  # no Touches: its files are unknown
+
     def test_an_active_session_in_the_canonical_checkout_adopts_nothing(self):
         canonical = {'kind': 'session', 'active': True, 'workspaces': [str(self.repo.resolve())]}
         self.assertEqual(self.idle('TASK-038', workers=[canonical]), {})

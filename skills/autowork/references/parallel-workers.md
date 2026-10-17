@@ -124,7 +124,9 @@ A task runs beside others only when the planner can prove it is independent:
   Autowork run is executing it). With `--adopt-idle-claims SECONDS` a claim idle that
   long is planned like an open task: no change to its TODO/ledger entry, no commit on
   a branch named for it, no file change in such a worktree and no live agent there,
-  and no active agent session in the canonical checkout (then nothing is adopted).
+  and no active agent session in the canonical checkout holding open a file inside
+  the task's `Touches:` (a task without `Touches:` waits for every active session
+  there, its files being unknown; idle sessions never count).
   A claim a note holds is never adopted: its own entry, or any TODO.md line naming
   it (table rows aside), says to keep it open or in progress, forbids dispatch
   ("do not dispatch", "no worker dispatched"), puts it on hold, or says it requires

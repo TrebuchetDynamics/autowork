@@ -867,6 +867,62 @@ class EngineTests(Fixture):
                       "autowork/A-set-aside-1)", answered.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def owner_note(self):
+        # The owner's own planning file; TODO.md edits would meet the session's archive edits,
+        # which only the fake Pi's crude conflict resolution handles in these fixtures.
+        (self.repo / 'BLOCKERS.md').write_text('# Blockers\n\n## Active\n\n- next week, add the export task\n')
+
+    def test_uncommitted_owner_planning_is_committed_so_work_merges(self):
+        """TOOLSET-120-fc (4): every fleet main checkout held uncommitted TODO.md edits."""
+        self.owner_note()
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Committed the owner's uncommitted planning", result.stdout)
+        self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
+        self.assertIn('add the export task', (self.repo / 'BLOCKERS.md').read_text())
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
+
+    def test_planning_next_to_other_changes_is_left_alone(self):
+        self.owner_note()
+        (self.repo / 'scratch.py').write_text('print(1)\n')  # someone's work in progress
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
+        result = self.run_runner('--until-empty')
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)  # work still merges
+        self.assertNotIn('owner planning', self.git(self.repo, 'log', '--format=%s'))
+        self.assertIn('?? BLOCKERS.md', self.git(self.repo, 'status', '--porcelain'))  # left to the owner
+
+    def test_planning_held_open_for_writing_is_left_alone(self):
+        self.owner_note()
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
+        holder = subprocess.Popen([sys.executable, '-c', 'import sys, time; f = open(sys.argv[1], "a"); time.sleep(60)',
+                                   str(self.repo / 'BLOCKERS.md')])
+        self.addCleanup(lambda: (holder.kill(), holder.wait()))
+        time.sleep(0.5)
+        result = self.run_runner('--until-empty')
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertNotIn('owner planning', self.git(self.repo, 'log', '--format=%s'))
+        self.assertIn('?? BLOCKERS.md', self.git(self.repo, 'status', '--porcelain'))
+
+    def test_questions_for_the_owner_land_in_blockers_md_without_a_model(self):
+        """TOOLSET-120-fc (2): questions live in the repository; writing them costs no tokens."""
+        (self.repo / 'BLOCKERS.md').write_text('# BLOCKERS\n\n## Active\n\n### BLK-1 — Owner entry\n')
+        self.git(self.repo, 'add', 'BLOCKERS.md')
+        self.git(self.repo, 'commit', '-qm', 'owner blockers')
+        self.plan({'worker:A': ['blocked']})
+        result = self.run_runner('--until-empty')
+        self.assertIn('Questions for the owner in BLOCKERS.md: 1 open (easiest: A, input)', result.stdout)
+        text = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('### Q-A — USER_INPUT — effort input — unblocks 1', text)
+        self.assertIn('- Needs: worker reported a blocker: needs a device', text)
+        self.assertIn('### BLK-1 — Owner entry', text)  # the owner's own entries stay
+        runs = len(self.runs())
+        again = self.run_runner('--until-empty')  # nothing changed: no rewrite, no commit, no model call
+        self.assertNotIn('Questions for the owner', again.stdout)
+        self.assertEqual(len(self.runs()), runs)
+        self.assertEqual(self.git(self.repo, 'log', '--format=%s').count('questions for the owner'), 1)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

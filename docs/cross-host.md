@@ -258,7 +258,9 @@ task fresh, keeping its earlier work on `-set-aside-N` branches. No command is n
 
 Tasks other sessions marked `in_progress` are left alone until they are verifiably
 idle for `PI_AUTOWORK_CLAIM_IDLE` seconds (6 hours; `0` never adopts): no change to
-the task's entry, branches or worktrees and no live agent working there. The runner
+the task's entry, branches or worktrees and no live agent working there. An active session in
+the main checkout holds off only claims whose `Touches:` files it holds open (or
+claims without `Touches:`). The runner
 then takes the task over (never one a TODO.md note holds: kept open, on hold, not to be
 dispatched, or awaiting an authority or approval), logs `adopted an idle claim`, and its worker is pointed at
 any earlier work to reuse, which it never modifies.
@@ -281,6 +283,20 @@ Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 (`PI_AUTOWORK_ENV_DIR`), the file `--install-service` writes. Every launcher reads it:
 the service, `tx autowork` and a terminal; variables already set in the environment
 win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
+
+Planning never blocks delivery: when the main checkout's only uncommitted changes are
+planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive), untouched for
+`PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing nowhere, the runner
+commits exactly those as `docs(tasks): owner planning (pi-autowork)` before its merge.
+Any other uncommitted file keeps the merge pending, and the message says why the
+planning was left alone.
+
+Questions for the owner live in the repository's `BLOCKERS.md`, in a block the runner
+maintains under `## Active` (between `<!-- pi-autowork:questions:start -->` and
+`<!-- pi-autowork:questions:end -->`), never in a chat. Each names the task, what it
+needs and exactly how to answer, easiest first; `/autowork blockers` walks through
+them. Answering is editing the task's TODO.md entry; the question leaves the block once
+its cause is gone. Writing the block costs no model call.
 
 `pi-autowork.sh --fleet` shows every runner on the machine in one line each: its
 service state, health (`working`, `blocked`, `stalled`, `paused`, `idle`, or `not

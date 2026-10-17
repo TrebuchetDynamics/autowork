@@ -76,6 +76,9 @@ Environment (optional):
   PI_AUTOWORK_LINK_PATHS    comma-separated gitignored paths (say vendor/sdk) to mirror from the
                             main checkout into each task and review worktree with hard links;
                             only paths Git ignores there; cooperative, not write-protected
+  PI_AUTOWORK_PLANNING_QUIET seconds uncommitted planning (TODO.md, goals.json, BLOCKERS.md,
+                            the archive) must rest before the runner commits it so its merge
+                            can land; any other uncommitted file keeps the merge pending (600)
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)
