@@ -60,12 +60,9 @@ def script(paths):
     override = os.environ.get('PI_AUTOWORK_SCRIPT')
     if override:
         return override
-    try:
-        match = re.search(r'(?m)^ExecStart=\S*bash (\S*pi-autowork\.sh) ', paths['unit'].read_text())
-        if match and Path(match.group(1)).is_file():
-            return match.group(1)
-    except OSError:
-        pass
+    runs = unit_script(paths)
+    if runs and Path(runs).is_file():
+        return runs
     return str(TOOLSET / 'scripts' / 'pi-autowork.sh')
 
 
@@ -102,9 +99,22 @@ def systemctl(paths, *argv, quiet=True):
     return subprocess.run([paths['systemctl'], '--user', *argv], capture_output=quiet, text=True)
 
 
+def unit_script(paths):
+    """The script the installed unit runs, or None without a unit."""
+    try:
+        match = re.search(r'(?m)^ExecStart=\S*bash (\S*pi-autowork\.sh) ', paths['unit'].read_text())
+    except OSError:
+        return None
+    return match.group(1) if match else None
+
+
 def service_state(paths, name):
-    """'active', 'installed' (unit enabled or settings present) or 'none'."""
+    """'active', 'installed' (unit enabled or settings present), 'stale' (its unit runs a
+    script that is gone, as after removing the package it came from) or 'none'."""
     unit = f'pi-autowork@{name}.service'
+    runs = unit_script(paths)
+    if runs and not Path(runs).is_file():
+        return 'stale'
     if systemctl(paths, 'is-active', '--quiet', unit).returncode == 0:
         return 'active'
     if (Path(paths['env_dir']) / f'{name}.env').is_file() or \
@@ -132,6 +142,7 @@ def cmd_start(args, paths):
             raise Fail(f'could not start {unit}')
         print(f'Started {unit} for {ready.repo}.')
         return 0
+    # 'none', or 'stale': reinstall from this release (the unit is shared, so every service follows)
     return subprocess.run(['bash', script(paths), '--install-service', '--repo', ready.repo]).returncode
 
 

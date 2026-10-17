@@ -15,7 +15,6 @@ import argparse
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +22,6 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = 'TrebuchetDynamics/autowork'
 PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
-OLD_PI_SOURCE = 'git:github.com/TrebuchetDynamics/hermes-toolset'  # the package's name before the rename
 HOME = Path(os.environ.get('HOME', str(Path.home())))
 BIN = Path(os.environ.get('AUTOWORK_BIN_DIR') or HOME / '.local' / 'bin')
 
@@ -60,36 +58,6 @@ def pi_package(source=PI_SOURCE):
         if line.strip() == source and i + 1 < len(lines):
             return Path(lines[i + 1].strip())
     return None
-
-
-def move_services():
-    """Point the pi-autowork service unit at the autowork package and restart running services.
-
-    The package used to be installed as hermes-toolset, and the one template unit runs its
-    script from there; it must move before that package is removed. Running services
-    restart (workers pause and resume on the same attempt).
-    """
-    package = pi_package()
-    if package is None:
-        raise OSError('the autowork Pi package is not installed')
-    config = Path(os.environ.get('XDG_CONFIG_HOME') or HOME / '.config')
-    unit = config / 'systemd' / 'user' / 'pi-autowork@.service'
-    if not unit.is_file():
-        return 'no pi-autowork service unit to move'
-    text = unit.read_text()
-    script = package / 'scripts' / 'pi-autowork.sh'
-    new = re.sub(r'(?m)^(ExecStart=\S*bash )\S*pi-autowork\.sh ', rf'\g<1>{script} ', text)
-    if new == text:
-        return f'the service unit already runs {script}'
-    unit.write_text(new)
-    systemctl = os.environ.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl')
-    subprocess.run([systemctl, '--user', 'daemon-reload'], check=True)
-    active = [line.split()[0] for line in subprocess.run(
-        [systemctl, '--user', 'list-units', 'pi-autowork@*', '--state=active', '--plain', '--no-legend'],
-        capture_output=True, text=True).stdout.splitlines() if line.strip()]
-    for name in active:
-        subprocess.run([systemctl, '--user', 'restart', name], check=True)
-    return f'the service unit runs {script}' + (f'; restarted {", ".join(active)}' if active else '')
 
 
 def link(target, name):
@@ -152,16 +120,12 @@ def install_tx():
 
 
 def items(hermes_args):
-    package, old = pi_package(), pi_package(OLD_PI_SOURCE)
+    package = pi_package()
     pi = Item('pi', 'Pi package', needs='pi', note='needs Node 22+')
-    if not package:
-        pi.steps.append(Step(f'pi install {PI_SOURCE}', ['pi', 'install', PI_SOURCE]))
-    if old:
-        pi.note = f'replaces the hermes-toolset package at {old}'
-        pi.steps += [Step('point the pi-autowork service unit at the autowork package', run=move_services),
-                     Step(f'pi remove {OLD_PI_SOURCE}', ['pi', 'remove', OLD_PI_SOURCE])]
-    elif package:
+    if package:
         pi.note = f'installed at {package}; its runners update it themselves at a safe point'
+    else:
+        pi.steps.append(Step(f'pi install {PI_SOURCE}', ['pi', 'install', PI_SOURCE]))
     # The command follows the package the runners update, once it is installed.
     def command():
         installed = pi_package()

@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = ROOT / 'install.sh'
-NEW, OLD = 'git:github.com/TrebuchetDynamics/autowork', 'git:github.com/TrebuchetDynamics/hermes-toolset'
+NEW = 'git:github.com/TrebuchetDynamics/autowork'
 
 # A fake pi: `pi list` reads installed sources from a file; install and remove edit it.
 PI = r'''#!/usr/bin/env bash
@@ -86,22 +86,12 @@ class InstallMenuTests(unittest.TestCase):
         self.assertIn('kept your existing .tmux.conf', result.stdout)
         self.assertEqual(self.calls('pi install'), [])
 
-    def test_the_old_package_is_replaced_after_its_services_move(self):
-        (self.home / 'pi-installed').write_text(OLD + '\n')
-        unit = self.home / '.config/systemd/user/pi-autowork@.service'
-        unit.parent.mkdir(parents=True)
-        unit.write_text(f'[Service]\nExecStart=/bin/bash {self.home}/pkg/hermes-toolset/scripts/pi-autowork.sh '
-                        '--repo ${PI_AUTOWORK_REPO}\n')
-        self.fake('systemctl', LOGGING + '[[ $2 == list-units ]] && echo "pi-autowork@india.service loaded active running x"\n'
-                  'exit 0\n')
+    def test_an_installed_package_is_left_to_its_runners(self):
+        (self.home / 'pi-installed').write_text(NEW + '\n')
         result = self.install('--only', 'pi')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn(f'{self.home}/pkg/autowork/scripts/pi-autowork.sh --repo', unit.read_text())
-        order = [c for c in self.log.read_text().splitlines() if c.startswith(('pi install', 'pi remove', 'systemctl'))]
-        self.assertEqual([c for c in order if 'list-units' not in c],
-                         [f'pi install {NEW}', 'systemctl --user daemon-reload',
-                          'systemctl --user restart pi-autowork@india.service', f'pi remove {OLD}'])
-        self.assertEqual((self.home / 'pi-installed').read_text().split(), [NEW])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls('pi install'), [])
+        self.assertIn('its runners update it themselves', result.stdout)
 
     def test_menu_toggles_items_and_needs_a_terminal(self):
         result = self.install('--dry-run', '--menu', stdin='3 5 6\n\n', env={'AUTOWORK_INSTALL_UI': 'text'})

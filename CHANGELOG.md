@@ -188,9 +188,7 @@ claim of a tagged release, completed installation or live workflow qualification
   package's release), `tx` (keeping an existing `~/.tmux.conf`), the Hermes plugin,
   the Claude Code plugin and the Codex plugin, each through its host's own command; a
   missing host CLI is skipped and said. `--all`, `--only`, `--skip`, `--list` and
-  `--dry-run` work without the menu. A Pi package installed as `hermes-toolset` is
-  replaced after the service unit moves to the new package. No compatibility layer is
-  kept: the Hermes-only setup is `install-plugins.sh`, `tx autowork` is gone, `tx` is
+  `--dry-run` work without the menu. No compatibility layer is kept: the Hermes-only setup is `install-plugins.sh`, `tx autowork` is gone, `tx` is
   pi-toolset's launcher unchanged, and the `autowork` command and TUI no longer handle
   tmux runners.
 

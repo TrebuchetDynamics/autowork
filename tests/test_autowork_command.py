@@ -109,6 +109,19 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('Started pi-autowork@india.service', restarted.stdout)
         self.assertIn('systemctl --user enable --now pi-autowork@india.service', self.calls())  # survives a reboot
 
+    def test_start_reinstalls_a_service_whose_unit_script_is_gone(self):
+        self.aw('start', str(self.repo))
+        unit = self.base / 'unit-dir' / 'pi-autowork@.service'
+        unit.parent.mkdir(parents=True)
+        unit.write_text('[Service]\nExecStart=/bin/bash /gone/old-package/scripts/pi-autowork.sh --repo ${PI_AUTOWORK_REPO}\n')
+        self.aw('stop', 'india')
+        env = dict(self.env)
+        env.pop('PI_AUTOWORK_SCRIPT')
+        env['PI_AUTOWORK_SCRIPT'] = str(self.base / 'bin/pi-autowork.sh')  # this release's script
+        result = subprocess.run([str(AUTOWORK), 'start', str(self.repo)], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len([c for c in self.calls() if c.startswith('script --install-service')]), 2)
+
     def test_start_refuses_a_repository_that_is_not_ready(self):
         bare = self.make_repo('bare', files=('TODO.md',))
         result = self.aw('start', str(bare))

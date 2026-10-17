@@ -77,10 +77,7 @@ git clone https://github.com/TrebuchetDynamics/autowork && cd autowork
 ./install.sh --only pi,autowork,tx --dry-run   # print what it would run
 ```
 
-A Pi package still installed under its earlier name, `hermes-toolset`, is replaced:
-the service unit moves to the new package, running services restart (workers resume on
-the same attempt), and only then is the old package removed. Each host can also be
-installed on its own:
+Each host can also be installed on its own:
 
 ### Try the native plugin in one profile
 
