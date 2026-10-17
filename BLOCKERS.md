@@ -8,13 +8,6 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-155-e2 — USER_INPUT — effort input — unblocks 0
-
-- Task: TOOLSET-155-e2 — Keep owner-listed private terms out of public commits, pushes and runner integrations
-- Needs: worker reported a blocker: Provide a privacy-clean baseline for the 20 paths in needs_touches, or explicitly authorize cleanup of those paths where permitted. The new required tracked-file gate finds existing references there; the worker cannot edit outside Touches. CHANGELOG.md is explicitly coordinator-owned and needs coordinator cleanup, not merely a widened worker scope. Changes remain uncommitted as instructed. On resu…
-- Since: 2026-10-17T08:18:51Z
-- Answer: Answer in TOOLSET-155-e2's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
-
 <!-- pi-autowork:questions:end -->
 
 None.
