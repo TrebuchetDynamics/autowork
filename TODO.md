@@ -68,6 +68,7 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: None.
 - Ownership: Toolset coordinator; reconcile TOOLSET-165-f7 output in the same writer check first.
 - Exclusions: No relaxation for sessions holding a planning file, no closeout in the canonical checkout while it is being written, no change to integration's file rule.
+- Done by the owner session (2026-10-17, 14a7d11 and the commit after it): scope (1). `close`, `_close_writes` (both the indexed and the unindexed paths), `live_followup` and worktree cleanup pass the files a close writes, with a fixture that has goals.json; (3) needed no change. Still open: (2), the waiting reason naming the session and file.
 - Planner's call: second in Now, behind TOOLSET-165-f7, which changes the same writer check. Interactive sessions belong in the main checkout, so closeout must not depend on their absence.
 
 ### TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
@@ -103,23 +104,6 @@ settlement/cancellation checks when refining that existing design.
 - Ownership: Toolset coordinator. Supersedes TOOLSET-141-c4; reconcile TOOLSET-161-17 output in the shared coordinator and integration files first.
 - Exclusions: No implementation of product code by the maintainer, no worker cap change, no polling loop, no direct edits to fleet repositories outside their own runner's integration.
 - Planner's call: second in Now, behind TOOLSET-161-17. Most holds need a restated contract, not the owner; one event-driven writer of planning files also removes the coordinator/owner write races.
-
-### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
-
-- [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
-- Status: open
-- Goal: BACKLOG
-- Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: Implement an explicitly versioned linked-body mode while retaining the complete v1 machine ledger/history. Add the common repository-aware reader and guarded writer; update planning skills, Docs Sync, TODO work-center/archive guidance, portable instructions, selection/admission, receipts, claims, scope protection, integration/closeout, Pi Touches inference, wakeup/planning-adoption inventories and packaged helper closure together. Legacy inline repositories remain supported and are never converted by loading a skill or rendering. Use docs/tasks/<ID>.md as the planned default detail path, with goal/history records under docs/tasks/; keep root TODO/index entrypoints unchanged.
-- Acceptance: In opted-in fixtures a planner saves one detail record and a short TODO row; Docs Sync synchronizes it; a selected worker receives the exact real contract path/closure; verification and closeout update the correct files. Legacy read/render remains byte-stable. Task-only edits invalidate relevant receipts and become visible to claim-age/wakeup/adoption checks; workers cannot modify their own contract through docs/tasks/. Traverse/symlink/duplicate/missing record cases hold safely. Unrecognized content under docs/tasks/ is never auto-staged as planning. Copied portable/Pi packages include the resolver. No implementation instruction silently migrates a repository.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_task_store.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Dependencies: None.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No direct format change in fleet repositories (each converts later through its own runner), archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Owner decision (2026-10-17): this repository converts first, through the guarded writer this task adds; the DOCS-MAINTAINER worker (TOOLSET-164-f1) becomes the writer of `docs/tasks/` records.
-- Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
 
 ### TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
 
@@ -262,6 +246,24 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No browser installation and no per-repository Chrome configuration.
 - Planner's call: XDG_RUNTIME_DIR first, because it is per-user, 0700 and tmpfs.
 - Planner answer (2026-10-17 09:15, monitor pass): its worker asked for `skills/autowork/scripts/parallel_integrate.py`. It and its test are added to Touches. Resume or reverify the existing candidate; do not reimplement.
+
+### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+
+- [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+- Status: open
+- Goal: BACKLOG
+- Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: Implement an explicitly versioned linked-body mode while retaining the complete v1 machine ledger/history. Add the common repository-aware reader and guarded writer; update planning skills, Docs Sync, TODO work-center/archive guidance, portable instructions, selection/admission, receipts, claims, scope protection, integration/closeout, Pi Touches inference, wakeup/planning-adoption inventories and packaged helper closure together. Legacy inline repositories remain supported and are never converted by loading a skill or rendering. Use docs/tasks/<ID>.md as the planned default detail path, with goal/history records under docs/tasks/; keep root TODO/index entrypoints unchanged.
+- Acceptance: In opted-in fixtures a planner saves one detail record and a short TODO row; Docs Sync synchronizes it; a selected worker receives the exact real contract path/closure; verification and closeout update the correct files. Legacy read/render remains byte-stable. Task-only edits invalidate relevant receipts and become visible to claim-age/wakeup/adoption checks; workers cannot modify their own contract through docs/tasks/. Traverse/symlink/duplicate/missing record cases hold safely. Unrecognized content under docs/tasks/ is never auto-staged as planning. Copied portable/Pi packages include the resolver. No implementation instruction silently migrates a repository.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_task_store.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Priority note (2026-10-17 13:40 monitor pass): moved below the short self-healing fixes. As a `Resources: exclusive` task it drains the pool when it is next: this repository's status showed `26 wait behind TOOLSET-149-df, which runs alone` with one worker busy. It still runs alone, as its author requires, once those land.
+- Dependencies: None.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No direct format change in fleet repositories (each converts later through its own runner), archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Owner decision (2026-10-17): this repository converts first, through the guarded writer this task adds; the DOCS-MAINTAINER worker (TOOLSET-164-f1) becomes the writer of `docs/tasks/` records.
+- Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
 
 ### TOOLSET-153-64 — A planning hold lets repository agents repair the queue without stopping the runner
 

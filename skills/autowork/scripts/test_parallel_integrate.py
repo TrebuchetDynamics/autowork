@@ -233,6 +233,7 @@ class IntegrationTests(unittest.TestCase):
     def test_a_main_checkout_session_blocks_a_close_only_through_the_files_it_writes(self):
         """An integrated task could not close while any interactive session was open in the main
         checkout, though interactive sessions work there and touched none of the close's files."""
+        self.ledger()  # with goals.json, as every real repository: the indexed close path too
         session = self.session_checkout()
         self.worker()
         module = self.module()

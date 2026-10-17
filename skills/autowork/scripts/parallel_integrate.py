@@ -554,7 +554,7 @@ def live_followup(repo, task, items, indexed):
             at = coverage.start() if coverage else len(text)
             text = (text[:at].rstrip('\n') + '\n\n## Needs decision\n\n' + body
                     + ('\n' + text[at:] if coverage else ''))
-        require_no_writers(repo)
+        require_no_writers(repo, close_files(repo))
         goals.atomic_write(todo, text, expected_bytes=before)
     if indexed:
         # Record the follow-up's place in the priority order, or the ledger reports drift
@@ -645,7 +645,7 @@ def close(repo, owner_pid, task):
 def _close_writes(repo, slot, task, indexed, goals):
     """The close's writes to TODO.md, goals.json and the archive; (archive, live follow-up)."""
     if indexed:
-        require_no_writers(repo)
+        require_no_writers(repo, close_files(repo))
         goals_command(repo, 'task', task, 'done')
     # `goals.py task` updates the index, not the authored checkbox/body.
     # Update that exact body under the helper's own stale-write guard too.
