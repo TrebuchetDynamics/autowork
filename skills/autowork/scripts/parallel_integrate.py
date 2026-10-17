@@ -1038,7 +1038,12 @@ def dispatch_with_retries(args):
                               max_workers=dispatch.capacity(args))
         if claimed['outcome'] != 'CLAIMED':
             return dispatch.dispatch(args)  # reports the BUSY owner as before
-    result = retry_held(args)
+    try:
+        result = retry_held(args)
+    except BlockingIOError:
+        # A review holds the integration lock (it runs beside the coordinator's loop,
+        # TOOLSET-183-d6): held retries wait for it; independent fresh work still starts.
+        result = {'outcome': 'IDLE'}
     if result['outcome'] != 'IDLE':
         return result
     return dispatch.dispatch(args)

@@ -123,7 +123,10 @@ if role == 'touches':
 elif role == 'verify':
     if behavior == 'tamper':
         open('tampered.txt', 'w').write('x\n')
-    if behavior == 'env':  # a required check cannot run: a tool is missing here
+    if behavior == 'slow_review':  # a review that runs a long check
+        time.sleep(8)
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+    elif behavior == 'env':  # a required check cannot run: a tool is missing here
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: fail environment — fake-sdk 1.0 (docs/SETUP.md)')
     elif behavior == 'needs_cache':  # passes only once the runner installed the tool
         ok = os.path.isdir(os.path.join(os.environ.get('AUTOWORK_CACHE', '/nonexistent'), 'fake-sdk-1.0'))
@@ -540,6 +543,28 @@ class EngineTests(Fixture):
         self.assertIn('DOCS-MAINTAINER: repairing the task docs of MAIN', log())
         self.assertIn('Main is green again at', log())
         self.assertEqual(len(self.runs('maintainer')), 1)  # one repair for one set of failures
+
+    def test_a_long_review_runs_beside_the_loop_so_other_work_starts(self):
+        """TOOLSET-183-d6: a 25-minute review idled a whole runner: no dispatch, no status."""
+        self.plan({'verify:A': ['slow_review']})
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'A: verifying' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        time.sleep(1)
+        status = next(self.state.glob('*/status.json'))
+        first = json.loads(status.read_text())['updated_at']
+        time.sleep(4)  # the review sleeps 8 s: the loop keeps cycling meanwhile
+        self.assertNotIn('A: integrated', log())
+        self.assertGreater(json.loads(status.read_text())['updated_at'], first, log())
+        while not ((self.repo / 'C.txt').exists() and self.done('A', 'B', 'C')):
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertIn('A: integrated', log())
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
