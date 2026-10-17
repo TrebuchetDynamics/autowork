@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The `autowork` TUI stacks the runner table, detail, worker lanes and log full width
+  (the side-by-side split left a 30-column pane on an 80-column terminal). Each runner
+  shows what it needs: the owner's open questions, read from the session's BLOCKERS.md
+  before it merges, else its first blocker. The detail lists the easiest questions,
+  one line each, and the log leaves out the per-task `pending —` lines.
 - Renamed from hermes-toolset to **Autowork** (0.3.0), with no compatibility layer:
   the GitHub repository `TrebuchetDynamics/autowork`, the plugin in Hermes, Claude Code,
   Codex and Pi, its command namespace (`/autowork:plan-with-me`, skills `autowork:NAME`),

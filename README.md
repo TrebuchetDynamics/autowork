@@ -240,10 +240,10 @@ continuous/service mode, model fallback, status, stop and recovery controls, and
 ### Run and watch runners
 
 Each repository's runner is a **systemd user service**, managed with the `autowork`
-command. Bare `autowork` opens the live TUI: every runner, its workers in flight,
-blockers and log, with keys to start, stop, pause, restart and set the model; `d`
-browses directories and starts a service for any repository with `TODO.md` and
-`goals.json` on its main branch.
+command. Bare `autowork` opens the live TUI: every runner with what it needs from
+you (its open questions), its workers in flight, blockers and log, with keys to
+start, stop, pause, restart and set the model; `d` browses directories and starts a
+service for any repository with `TODO.md` and `goals.json` on its main branch.
 
 ```sh
 autowork                      # the live TUI

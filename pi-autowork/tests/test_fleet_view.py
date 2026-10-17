@@ -138,6 +138,33 @@ class FleetViewTests(unittest.TestCase):
         fleet_view.paused_marker(self.env, 'india').write_text('paused\n')  # `autowork pause` leaves this
         self.assertEqual(self.collect()['india'].state, 'paused')
 
+    def test_the_owners_questions_come_from_the_session_first_and_say_what_is_needed(self):
+        block = ('# Blockers\n\n## Active\n\n<!-- pi-autowork:questions:start -->\n\n'
+                 '### Q-TASK-036 — USER_DECISION — effort decision — unblocks 19\n\n- Task: TASK-036\n'
+                 '- Needs: 19 waiting task(s) depend on "TASK-036".\n- Since: x\n- Answer: y\n\n'
+                 '### Q-T-9 — USER_INPUT — effort input — unblocks 1\n\n- Needs: a key\n\n'
+                 '<!-- pi-autowork:questions:end -->\n')
+        repo, session, state = self.base / 'repo', self.base / 'integration', self.base / 'st'
+        for folder in (repo, session, state):
+            folder.mkdir()
+        (repo / 'BLOCKERS.md').write_text('# Blockers\n')  # not merged yet: the session has them
+        (session / 'BLOCKERS.md').write_text(block)
+        (state / 'session.json').write_text(json.dumps({'path': str(session)}))
+        found = fleet_view.read_questions(repo, state)
+        self.assertEqual([(q.id, q.effort, q.unblocks) for q in found], [('TASK-036', 'decision', 19), ('T-9', 'input', 1)])
+        self.assertEqual(found[0].needs, '19 waiting task(s) depend on "TASK-036".')
+        self.assertEqual(fleet_view.read_questions(repo), [])
+        runner = fleet_view.Runner(name='india', state='stalled', questions=found,
+                                   roots=[{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19}])
+        self.assertEqual(fleet_view.needs(runner), '2 questions, easiest TASK-036')
+        runner.questions = []
+        self.assertEqual(fleet_view.needs(runner), 'outside Now/Next: TASK-036 (19)')
+        self.assertEqual(fleet_view.needs(fleet_view.Runner(name='x', state='not running')), 'start it')
+
+    def test_the_log_drops_the_pending_line_of_every_waiting_task(self):
+        text = '[19:48] Started (PID 1).\n[19:48] TASK-034: pending — dependency: TASK-035\n[19:49] TASK-037: done'
+        self.assertEqual(fleet_view.quiet_log(text), '[19:48] Started (PID 1).\n[19:49] TASK-037: done')
+
     def test_agent_for_blockers(self):
         self.assertEqual(fleet_view.blockers_agent({'AUTOWORK_AGENT': 'pi --model x', 'PATH': ''}), ['pi', '--model', 'x'])
         bin_dir = self.base / 'bin'
