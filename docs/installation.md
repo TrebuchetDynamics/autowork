@@ -5,24 +5,25 @@ Source: [setup orchestrator](../setup_bundle.py), [source installer](../install-
 
 ## Full suite from a checkout
 
-`./install.sh` opens the component menu with every available host selected.
-For the complete suite without a menu:
+`./install.sh` installs the full suite for every available host with verbose output.
+Use `--menu` when you want to select components interactively:
 
 ```sh
-./install.sh --full --verbose
-./install.sh --full --dry-run
-./install.sh --only codex --verbose
+./install.sh
+./install.sh --menu
+./install.sh --dry-run
+./install.sh --only codex
 ```
 
 The suite includes the Pi package, `autowork` command/TUI, `tx` launcher, Hermes
 fleet setup, and Claude Code and Codex plugins with their complete portable skill
-suites. `--all` is an alias for `--full`; `--skip` excludes components. Host CLIs
+suites. `--full` (`--all`) is the default; `--skip` excludes components. Host CLIs
 must already be installed: full mode reports missing hosts as skipped, while
 `--only` reports a requested missing host as failed. The TUI/web view needs `uv`,
 and using the tmux launcher needs `tmux`.
 
-Output streams during each install step, including native prompts. `--verbose`
-adds shell-quoted commands; `--quiet` shows summaries and failure diagnostics,
+Output streams during each install step, including native prompts. Verbose output
+is on by default (`--verbose`) and shows shell-quoted commands; `--quiet` shows summaries and failure diagnostics,
 while leaving native output visible when input is a terminal. The failure
 transcript in quiet mode is limited to its last 16,384 characters. Colors are
 automatic on terminals (`NO_COLOR=1` or `TERM=dumb` disables them); use

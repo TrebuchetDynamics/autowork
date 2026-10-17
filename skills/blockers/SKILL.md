@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.3
+  version: 0.1.4
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -90,7 +90,9 @@ figure, not measured impact.
 Reuse the owner's latest answers, from this conversation and the queue. An item
 the owner deferred is still open work but not an unanswered question; do not ask to
 reconfirm it because it remains under `Needs decision`. A brief approval accepts the
-recommended option only, never every alternative or permission to deploy.
+recommended option only, never every alternative or permission to deploy. A task
+that only waits on unfinished dependencies is not a question: a release task waiting
+for features is not a request to approve publication.
 
 A questions-only/read-only invocation records proposed repairs in chat rather than
 editing files. With no genuine questions left, report what was reconciled and what
@@ -137,6 +139,12 @@ When the pick means replanning (split or rescope the task, add a task or depende
 change acceptance), plan that one task with
 [Plan With Me](../plan-with-me/SKILL.md)'s planning craft: a short round of further
 picked questions about that task only, then save it. Then go to the next blocker.
+
+When the owner defers a physical or live check, keep its criteria and access limits.
+If that check still stops independent offline work, ask separately whether offline
+development may go ahead before the final human acceptance. The answer can change
+admission dependencies; it never supplies a test result, product acceptance or
+publication authority, and never turns an unobserved check into a pass.
 
 ## 4. Record the answer as planning
 

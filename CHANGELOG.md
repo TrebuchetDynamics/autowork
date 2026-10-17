@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Runners update Pi's autowork package on their own again. The update waited for a
+  moment when no runner on the machine had work in flight; with four busy runners that
+  never came, and none had updated for hours. A new release now waits for that moment
+  at most `PI_AUTOWORK_UPDATE_WAIT` (default 30 minutes), checked every 5 minutes, then
+  installs anyway when it can read the current state; each runner restarts onto it and
+  adopts its workers. Releases are checked every 10 minutes (was hourly).
 - `install.sh --full` installs every available item without the menu (`--all` still
   works) and shows live progress (`[n/total]` per item, each command), colors on a
   terminal, a timed summary and the real failure output.
