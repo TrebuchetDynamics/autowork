@@ -662,15 +662,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-159-30",
       "TOOLSET-157-cd",
+      "TOOLSET-152-d4",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
-      "TOOLSET-148-88",
       "TOOLSET-154-d3",
       "TOOLSET-147-54",
       "TOOLSET-140-f4",
-      "TOOLSET-152-d4",
       "TOOLSET-153-64",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
