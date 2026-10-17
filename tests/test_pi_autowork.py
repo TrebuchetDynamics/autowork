@@ -979,6 +979,28 @@ class EngineTests(Fixture):
         self.assertEqual(len(self.runs()), runs)
         self.assertEqual(self.git(self.repo, 'log', '--format=%s').count('questions for the owner'), 1)
 
+    def test_a_continuous_runner_waiting_on_the_owner_merges_its_questions_into_main(self):
+        """Questions reached main only when the queue emptied, which a runner waiting on the
+        owner never sees: india's stayed on its session branch for hours."""
+        self.plan({'worker:A': ['blocked', 'blocked']})
+        (self.repo / 'TODO.md').write_text(todo([('A', None), ('B', 'A'), ('C', 'A')]))
+        self.git(self.repo, 'commit', '-qam', 'everything waits on A')
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        deadline = time.monotonic() + 90
+        blockers = self.repo / 'BLOCKERS.md'
+        while '### Q-A — ' not in (blockers.read_text() if blockers.exists() else ''):
+            self.assertIsNone(runner.poll())
+            self.assertLess(time.monotonic(), deadline, 'questions never reached main')
+            time.sleep(0.5)
+        self.assertIn('questions for the owner', self.git(self.repo, 'log', '-1', '--format=%s', 'main'))
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
+        time.sleep(3)  # a failed or done merge is not retried every cycle
+        runner.send_signal(signal.SIGINT)
+        out, err = runner.communicate(timeout=120)
+        self.assertEqual(runner.returncode, 130, out + err)
+        self.assertEqual(out.count('Merged pi-autowork/'), 1, out)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')

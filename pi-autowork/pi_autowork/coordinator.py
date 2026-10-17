@@ -82,6 +82,7 @@ class Coordinator:
         self.started = time.monotonic()
         self.integ = self.integ_branch = None
         self.merge_pending, self.resolved_for, self.merge_blocker = '', '', ''
+        self.waiting_merge = None  # what the last merge while waiting saw
         self.stop, self.paused, self.child = False, False, None
         self.started_workers = self.failures = 0
         self.draining, self.once_task, self.once_done = False, None, False
@@ -380,6 +381,21 @@ class Coordinator:
         if self.seen.get('push-note') != note:
             self.seen['push-note'] = note
             LOG.say(f'Push of {self.base} to {upstream} failed: {note}; the merge stays local and the next merge retries')
+
+    def merge_waiting(self):
+        """While every remaining task waits (on the owner, a dependency or the resource gate)
+        and nothing is in flight, the session reaches the main branch now: the owner's
+        questions and finished tasks would otherwise stay on the session branch until the
+        queue empties, which a runner waiting on the owner never sees. A merge that could
+        not happen is tried again once the session, the main branch or its checkout moves."""
+        if not self.integ or self.in_flight() or not self.ahead():
+            return
+        seen = (git(self.integ, 'rev-parse', 'HEAD'), git(self.repo, 'rev-parse', self.base),
+                git(self.repo, 'status', '--porcelain', '--untracked-files=all'))
+        if seen == self.waiting_merge:
+            return
+        self.waiting_merge = seen
+        self.merge_main()
 
     def commit_owner_planning(self):
         """Planning never blocks delivery: when the main checkout's only uncommitted changes
@@ -1066,6 +1082,7 @@ class Coordinator:
             # Tasks remain, but none can start now (held work, dependencies or the resource gate).
             if self.mode != 'continuous':
                 self.finish(1, f'No runnable task can start: {self.last_waiting or "see --status"}')
+            self.merge_waiting()
             return self.pause(self.interval)
         # Nothing running, nothing to integrate and nothing waiting: the session ends here.
         if self.draining or self.mode != 'continuous':

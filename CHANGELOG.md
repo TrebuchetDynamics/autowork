@@ -68,6 +68,11 @@ claim of a tagged release, completed installation or live workflow qualification
 - A plan commit made while a runner's cycle ran (its scan, merge or session cleanup)
   ends the following wait; the plan watch compared against the start of the wait and
   missed it until `--interval` passed (india).
+- A runner whose remaining tasks all wait (on the owner, a dependency or the resource
+  gate) merges its session into the main branch while it waits, so the owner's
+  questions in BLOCKERS.md and finished tasks reach the repository; they had stayed on
+  the session branch until the queue emptied (india, for hours). A merge that cannot
+  happen is retried only once the session, the main branch or its checkout changes.
 - A held task's `-r2` retry that a runner stop paused and the next start resumed is
   verified on its `-r2` branch; the engine had held it as "unexpected worker branch"
   (sierra TASK-026). A commit an earlier release held that way is offered for verification
