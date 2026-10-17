@@ -156,6 +156,7 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: None.
 - Ownership: Toolset coordinator (owner session). TOOLSET-118-68 keeps cgroup budgets and process-tree stops; TOOLSET-140-f4 keeps the short socket-safe TMPDIR.
 - Exclusions: No deletion of anything recent, in use or not owned by the runner's user; no change to the worker cap or load check.
+- Evidence (2026-10-17 11:49 monitor pass): 45 minutes after the cleanup, `/tmp` held 5.9 GB again (available memory 37 GB to 31 GB) with eight runners working: about 8 GB an hour, so the 3-worker memory cap returns within hours unless the janitor and the `$TMPDIR` rule land.
 - Planner's call: fix the double-counted reservation and clean the scratch that caused it, rather than lower `PI_AUTOWORK_MIN_FREE_MB`. The gate's purpose stays; only its arithmetic and the leak change.
 
 ### TOOLSET-163-f7 — A claim question says why the claim is kept and quotes the note that holds it
