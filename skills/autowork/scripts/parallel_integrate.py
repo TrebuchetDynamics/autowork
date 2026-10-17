@@ -88,6 +88,22 @@ def expected_branch(slot):
     return 'autowork/' + slot['task_id'] + ('-r2' if retried else '')
 
 
+def live_items(value):
+    """A report's pending live checks as non-empty strings, whatever shape the worker wrote:
+    a string, a list of strings, or objects with their text. A finished commit is never
+    held, and its task never rerun, over the format of this list (india, TASK-011)."""
+    items = value if isinstance(value, list) else [value] if value else []
+    texts = []
+    for item in items:
+        if isinstance(item, dict):
+            item = ' — '.join(str(item[k]) for k in ('check', 'command', 'summary', 'description', 'reason')
+                              if item.get(k)) or json.dumps(item, sort_keys=True)
+        text = ' '.join(str(item).split()) if item is not None else ''
+        if text:
+            texts.append(text)
+    return texts
+
+
 def verify(repo, common, slot, contracts):
     task = contracts.get(slot['task_id'])
     if task is None:
@@ -106,13 +122,15 @@ def verify(repo, common, slot, contracts):
             or git(repo, 'rev-parse', 'refs/heads/' + slot['branch']) != commit or not lineage):
         raise ValueError('reported commit/branch/lineage mismatch')
     report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
+    if not isinstance(report, dict):
+        # Said first: the checks below would otherwise blame a field of a report that is
+        # not there (india, TASK-011: "pending_live must be a list of strings").
+        raise Hold('report', 'the worker wrote no report.json')
     files = changed(repo, slot['baseline'], commit)
-    blockers = state.report_blockers(common, slot) if isinstance(report, dict) else None
+    blockers = state.report_blockers(common, slot)
     if blockers:
         raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
-    live = report.get('pending_live', []) if isinstance(report, dict) else None
-    if not isinstance(live, list) or not all(isinstance(item, str) for item in live):
-        raise ValueError('report.json pending_live must be a list of strings')
+    report['pending_live'] = live_items(report.get('pending_live'))
     if (not isinstance(report, dict) or report.get('task') != slot['task_id']
             or report.get('commit') != commit or not isinstance(report.get('changed_files'), list)
             or not all(isinstance(p, str) for p in report['changed_files'])
@@ -572,7 +590,7 @@ def _close_writes(repo, slot, task, indexed, goals):
             body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
             require_no_writers(repo)
             goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
-    live = [item for item in (slot.get('report') or {}).get('pending_live', []) if item.strip()]
+    live = live_items((slot.get('report') or {}).get('pending_live'))
     followup = live_followup(repo, task, live, indexed) if live else None
     require_no_writers(repo)
     archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))

@@ -935,20 +935,24 @@ class EngineTests(Fixture):
         self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("Committed the owner's uncommitted planning", result.stdout)
+        self.assertIn('Committed uncommitted changes in', result.stdout)
         self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
         self.assertIn('add the export task', (self.repo / 'BLOCKERS.md').read_text())
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
-    def test_planning_next_to_other_changes_is_left_alone(self):
+    def test_other_quiet_uncommitted_work_is_committed_too_but_not_possible_secrets(self):
+        """Owner direction (2026-10-16): auto work commits and merges all work, not only planning."""
         self.owner_note()
-        (self.repo / 'scratch.py').write_text('print(1)\n')  # someone's work in progress
+        (self.repo / 'scratch.py').write_text('print(1)\n')  # someone's quiet work
+        (self.repo / '.env').write_text('TOKEN=x\n')
         self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--until-empty')
-        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)  # work still merges
-        self.assertNotIn('owner planning', self.git(self.repo, 'log', '--format=%s'))
-        self.assertIn('?? BLOCKERS.md', self.git(self.repo, 'status', '--porcelain'))  # left to the owner
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertIn('chore: uncommitted work in the main checkout (pi-autowork)',
+                      self.git(self.repo, 'log', '--format=%s'))
+        self.assertIn('left untracked as possible secrets: .env', result.stdout)
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '?? .env')
 
     def test_planning_held_open_for_writing_is_left_alone(self):
         self.owner_note()
@@ -1227,6 +1231,19 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_changes_left_uncommitted_in_the_session_are_committed_and_merged(self):
+        """bravo: a failed close left TODO.md edits in the session worktree; every merge refused them."""
+        (self.repo / 'A.txt').write_text('my note\n')  # keeps the first run's session from merging
+        self.assertEqual(self.run_runner('--once').returncode, 4)
+        self.git(self.repo, 'checkout', '--', 'A.txt')
+        session = Path(json.loads(next(self.state.glob('*/session.json')).read_text())['path'])
+        (session / 'left-behind.txt').write_text('a write no close commits\n')  # no task close sweeps it in
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Committed uncommitted changes left in the session worktree', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual((self.repo / 'left-behind.txt').read_text(), 'a write no close commits\n')
 
     def test_a_live_hermes_sequential_owner_keeps_pi_out(self):
         sys.path.insert(0, str(ENGINE_DIR))

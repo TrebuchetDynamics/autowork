@@ -68,7 +68,10 @@ def pending_live(checkout, task):
     except (OSError, ValueError, KeyError, TypeError):
         return []
     items = report.get('pending_live') if isinstance(report, dict) else None
-    return [' '.join(i.split()) for i in items if isinstance(i, str) and i.strip()] if isinstance(items, list) else []
+    items = items if isinstance(items, list) else [items] if items else []
+    texts = [' — '.join(str(i[k]) for k in ('check', 'command', 'summary', 'description', 'reason') if i.get(k))
+             if isinstance(i, dict) else str(i) if i is not None else '' for i in items]
+    return [' '.join(t.split()) for t in texts if t.strip()]  # the engine's live_items, which the close uses
 
 
 def verify(state, task):

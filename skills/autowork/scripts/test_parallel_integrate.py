@@ -197,6 +197,28 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((self.repo / 'TODO.md').read_bytes(), before)
         self.assertFalse((self.repo / 'TODO.archive.md').exists())
 
+    def test_a_close_that_fails_after_writing_leaves_no_writes(self):
+        """bravo TASK-010: a close failed after archiving and its writes stayed in the
+        session uncommitted, where every later merge refused them."""
+        self.worker()
+        module = self.module()
+        module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        files = [self.repo / name for name in ('TODO.md', 'goals.json', 'TODO.archive.md')]
+        before = [f.read_bytes() if f.exists() else None for f in files]
+        original = module.goals_command
+        def archive_then_fail(repo, *argv):
+            out = original(repo, *argv)
+            if argv[0] == 'archive':
+                raise ValueError('fixture failure after the archive')
+            return out
+        from unittest.mock import patch
+        with patch.object(module, 'goals_command', side_effect=archive_then_fail):
+            with self.assertRaisesRegex(ValueError, 'fixture failure'):
+                module.close(self.repo, self.owner, 'A')
+        self.assertEqual([f.read_bytes() if f.exists() else None for f in files], before)
+        self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')  # retryable
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+
     def test_session_appearing_during_close_checks_blocks_first_task_write(self):
         self.worker()
         module = self.module()
@@ -284,6 +306,23 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn('A — Task A', (self.repo / 'TODO.archive.md').read_text())
         self.assertIn('B — Task B', (self.repo / 'TODO.md').read_text())
         self.assertEqual(state.slots(self.common)[0]['state'], 'closed')
+
+    def test_a_missing_report_says_so_and_object_live_checks_keep_their_text(self):
+        """india TASK-011: no report.json was held as 'pending_live must be a list of strings'."""
+        _, commit = self.worker()
+        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
+        report = execution.read(data / 'report.json')
+        (data / 'report.json').unlink()
+        held = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual((held['outcome'], held['reason']), ('HELD', 'the worker wrote no report.json'))
+        slot = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(slot, state='reported', reason=None, cause=None), slot)
+        execution.save(data / 'report.json', dict(report, pending_live=[{'check': 'run on a phone', 'reason': 'device'}]))
+        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(state.slots(self.common)[0]['report']['pending_live'], ['run on a phone — device'])
+        self.assertEqual(self.module().live_items('on a phone'), ['on a phone'])
+        self.assertEqual(self.module().live_items(['a', '', '  ', None, {'command': 'adb'}]), ['a', 'adb'])
+        self.assertEqual(self.module().live_items(None), [])
 
     def test_held_retry_is_fresh_once_and_preserves_first_branch(self):
         root, commit = self.worker()
