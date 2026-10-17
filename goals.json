@@ -932,7 +932,7 @@
       "goal": "PI-RUNNER",
       "id": "TOOLSET-175-2b",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard"
     },
     {

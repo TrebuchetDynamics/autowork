@@ -41,7 +41,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-175-2b — Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard
 
 - [ ] TOOLSET-175-2b — Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard
-- Status: open
+- Status: in_progress (owner session fixing, 2026-10-17)
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [/pending query](skills/pending/scripts/task_query.py) (TOOLSET-142-85, landed as f7cb607 and closed as 9ea176b), [skill installer](install_skills.py), [preflight](tests/test_preflight.py), [priority guard test](skills/docs-sync/scripts/test_priority_order.py) (`test_selection_entry_points_use_the_shared_guard`).
 - Evidence (2026-10-17 15:30, `python3 scripts/check.py` on main): five failures, one cause. `skills/pending/` has `references/` and `scripts/` but no `SKILL.md`, so `install_skills.install` raises `Invalid skill folder or missing SKILL.md: …/skills/pending` (test_preflight ×2, test_impeccable_bundle, test_ui_taste_bundle), and `skills/pending/scripts/task_query.py` selects tasks without `goals.queue(data, todo_text)` (test_priority_order: `call goals.queue(data, todo_text) so drift cannot be bypassed`). TOOLSET-142-85's review ran only its own Checks.
