@@ -1,4 +1,4 @@
-"""A toolset update is safe only fleet-idle and to a release that reads current state."""
+"""A toolset update goes only to a release that reads current state, preferably fleet-idle."""
 import json
 import os
 from pathlib import Path
@@ -72,7 +72,16 @@ class ReleaseCheckTests(unittest.TestCase):
         self.runner('gone', 3, 2 ** 22 + 11)  # a dead runner's record does not count
         self.assertTrue(self.check()['ok'])
         self.runner('sierra', 2, os.getpid())
-        self.assertEqual(self.check(), dict(ok=False, reason='other runners have work in flight: sierra (2 in flight)'))
+        result = release.check(self.state_root, self.own, self.toolset, wait=1800, now=1000.0)
+        self.assertFalse(result['ok'])
+        self.assertRegex(result['reason'], r'^other runners have work in flight: sierra \(2 in flight\); '
+                                           r'updating to \w+ anyway in 30 min$')
+        # Four always-busy runners never reach a checkpoint: once the wait from the first
+        # sighting (shared by every runner) is over, the update goes ahead anyway.
+        self.assertFalse(release.check(self.state_root, self.own, self.toolset, wait=1800, now=2700.0)['ok'])
+        result = release.check(self.state_root, self.own, self.toolset, wait=1800, now=2801.0)
+        self.assertTrue(result['ok'], result)
+        self.assertIn('with work in flight (sierra (2 in flight))', result['note'])
 
 
 

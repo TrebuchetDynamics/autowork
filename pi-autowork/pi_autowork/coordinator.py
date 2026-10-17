@@ -67,7 +67,8 @@ class Coordinator:
         self.claim_idle = cfg['claim_idle']
         self.max_runtime = int(env.get('PI_AUTOWORK_MAX_RUNTIME', '0'))
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
-        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '3600'))
+        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '600'))
+        self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '1800'))
         self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
@@ -885,14 +886,19 @@ class Coordinator:
                     if time.monotonic() > deadline:
                         return
                     time.sleep(1)
-            check = release.check(self.cfg['state_root'], self.state, self.toolset)
+            check = release.check(self.cfg['state_root'], self.state, self.toolset, wait=self.update_wait)
             if not check['ok']:
                 # Another runner's work in flight, or a release that cannot read this state.
-                if not check.get('current') and check['reason'] != self.last_update_note:
+                note = check['reason'].split(';')[0]
+                if not check.get('current') and note != self.last_update_note:
                     LOG.say(f'Toolset update deferred: {check["reason"]}')
-                self.last_update_note = check['reason']
+                self.last_update_note = note
+                if not check.get('current'):  # a release is waiting: look again within minutes
+                    self.last_update -= max(0, self.update_interval - min(300, self.update_interval))
                 return
             self.last_update_note = ''
+            if check.get('note'):
+                LOG.say(f'Toolset update: {check["note"]}')
             with open(self.state / 'engine.err', 'a') as err:
                 rc = subprocess.run(['timeout', '300', self.cfg['pi'], 'update', source], stdout=err,
                                     stderr=err).returncode
