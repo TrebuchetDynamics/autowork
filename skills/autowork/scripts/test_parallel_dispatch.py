@@ -112,7 +112,7 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(len([e for e in self.events() if e['event'] == 'start']), 2)
         slots = {s['task_id']: s for s in state.slots(self.common)}
         for tid, slot_no in (('A', '1'), ('B', '2')):
-            worktree = self.root / f'repo-autowork-{tid}'
+            worktree = self.repo / '.worktrees' / f'autowork-{tid}'
             self.assertEqual(Path(times[tid, 'start']['cwd']), worktree)
             self.assertEqual(slots[tid]['state'], 'reported')
             self.assertEqual(slots[tid]['commit'], self.git('rev-parse', 'HEAD', repo=worktree))
@@ -165,7 +165,7 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(slot['state'], 'interrupted')
         self.assertIn('timeout', slot['reason'])
         self.assertFalse(state.worker_live(slot))
-        self.assertEqual((self.root / 'repo-autowork-A/a.txt').read_text(), 'partial')
+        self.assertEqual((self.repo / '.worktrees/autowork-A/a.txt').read_text(), 'partial')
 
     def test_crashed_worker_restarts_once_in_the_same_worktree(self):
         self.write_todo(task('A', 'a.txt'))
@@ -382,8 +382,8 @@ class DispatchTests(unittest.TestCase):
         self.assertIn('already exists', result['reason'])
         self.assertEqual(self.git('rev-parse', 'autowork/A'), before)
         self.git('branch', '-D', 'autowork/A')
-        folder = self.root / 'repo-autowork-A'
-        folder.mkdir()
+        folder = self.repo / '.worktrees/autowork-A'
+        folder.mkdir(parents=True)
         (folder / 'mine').write_text('user data')
         _, result = self.apply()
         self.assertIn('already exists', result['reason'])
@@ -453,10 +453,10 @@ class DispatchTests(unittest.TestCase):
         with patch.object(state, 'create_slot', side_effect=ValueError('lost lease')):
             code, result = self.apply()
         self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
-        self.assertTrue((self.root / 'repo-autowork-A').is_dir())
+        self.assertTrue((self.repo / '.worktrees/autowork-A').is_dir())
         _, result = self.apply()
         self.assertEqual([(s['task'], s['attempt']) for s in result['dispatched']], [('A', 1)])
-        self.assertEqual(result['dispatched'][0]['worktree'], str(self.root / 'repo-autowork-A'))
+        self.assertEqual(result['dispatched'][0]['worktree'], str(self.repo / '.worktrees/autowork-A'))
 
     def test_launch_failure_is_held_with_its_cause_without_a_retry(self):
         self.write_todo(task('A', 'a.txt'))

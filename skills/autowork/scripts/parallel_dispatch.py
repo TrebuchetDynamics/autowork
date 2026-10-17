@@ -18,6 +18,7 @@ import parallel_claims
 import parallel_plan
 import parallel_state as state
 import task_execution as execution
+from worktree_paths import worktree_path
 
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 8
@@ -183,7 +184,7 @@ def create_worktree(repo, common, task_id, baseline):
     """Return (path, branch, baseline); adopt only a worktree the journal shows Autowork created."""
     safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
     branch = 'autowork/' + safe
-    path = (repo.parent / f'{repo.name}-autowork-{safe}').resolve()
+    path = worktree_path(repo, 'autowork-' + safe)
     exists = path.exists() or bool(execution.git(repo, 'branch', '--list', branch))
     if exists and created_by_autowork(common, path, branch) and path.is_dir():
         # A previous dispatch stopped between creating the worktree and its slot.
@@ -304,6 +305,23 @@ def contracts(repo, requested=None, plan=None):
         return execution.select_all(repo, requested, plan)
     except execution.NoEligibleTask:
         return []  # Malformed queues still raise and report ACTION_REQUIRED.
+
+
+def retry_plan(repo, current, requested=None, plan_path=None):
+    """One admission policy for the retry adapter and its lifecycle transition guard."""
+    held = {s['task_id'] for s in current if s['state'] == 'held' and s['attempt'] == 1
+            and not state.exhausted(s) and not state.worker_live(s)}
+    everything = contracts(repo)
+    by_id = {t['id']: t for t in everything}
+    tasks = contracts(repo, requested, plan_path) if (requested or plan_path) else everything
+    contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
+    occupying = [s for s in current if s['state'] in OCCUPYING and s['task_id'] not in held]
+    parked = [s for s in occupying if state.exhausted(s)]
+    # Retained slots are this coordinator's work, not outside claims. Exhausted
+    # holds reserve only dependencies, just as they do for ordinary dispatch.
+    return parallel_plan.plan([t for t in tasks if t['id'] in held],
+                              [contract(s) for s in occupying if s not in parked],
+                              all_tasks=everything, parked=[contract(s) for s in parked], adopted=held)
 
 
 def dispatch(args):

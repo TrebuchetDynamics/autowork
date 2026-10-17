@@ -128,7 +128,7 @@ class StateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             state.transition(self.repo, self.owner, 'A', 'dispatched')
 
-    def test_held_retry_requires_fresh_worktree_and_drained_pool(self):
+    def test_held_retry_requires_fresh_worktree(self):
         self.claim()
         slot = self.slot()
         state.transition(self.repo, self.owner, 'A', 'held', reason='validation')
@@ -175,7 +175,7 @@ class StateTests(unittest.TestCase):
         self.slot('LIVE', worker=execution.identity(self.owner))
         fresh = Path(self.tmp.name) / 'A-r2'
         self.git('worktree', 'add', '-qb', 'autowork/A-r2', str(fresh))
-        with self.assertRaisesRegex(ValueError, 'drained'):
+        with self.assertRaisesRegex(ValueError, 'conflicts with worker pool'):
             state.transition(self.repo, self.owner, 'A', 'dispatched',
                              worktree=str(fresh), branch='autowork/A-r2', baseline=self.base)
 

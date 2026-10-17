@@ -12,10 +12,20 @@ share contents, so a tool editing a file in place edits the original.
     workspaces.py link CANONICAL WORKTREE PATHS   # prints one line per path
 """
 from pathlib import Path, PurePosixPath
+import importlib.util
 import os
 import shutil
 import subprocess
 import sys
+
+
+def task_path(toolset, repo, name):
+    """Use the same canonical location policy as the engine and Claude hooks."""
+    source = Path(toolset) / 'skills/autowork/scripts/worktree_paths.py'
+    spec = importlib.util.spec_from_file_location('autowork_worktree_paths', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.worktree_path(repo, name)
 
 
 def _ignored(worktree, path):

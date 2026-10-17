@@ -161,10 +161,13 @@ nothing parallel was claimed or started.
 ## Conflicts, recovery and limits
 
 - **Held tasks** keep their worktree and branch for inspection. The next
-  `--apply --parallel` after no worker is running gives one held task a fresh
-  attempt alone (`RETRIED`) on `autowork/<TASK>-r2` in `<repo>-autowork-<TASK>-r2`
-  from the current canonical HEAD, keeping the first branch; until the pool
-  drains, refill returns `WAITING`. When the first commit was held only for scope
+  `--apply --parallel` gives an eligible held task one fresh attempt (`RETRIED`)
+  on `autowork/<TASK>-r2` in `<repo>/.worktrees/autowork-<TASK>-r2`, from the current
+  canonical HEAD, keeping the first branch. Retries use the same dependency,
+  Touches, resource and capacity checks as fresh tasks, and receive a free worker
+  slot. Independent retries and fresh tasks can run together; a retry with unknown
+  scope, serial paths or exclusive resources still runs alone. When the first commit
+  was held only for scope
   (`changed files violate Touches`) and the retry made no commit, refill returns
   `READOPTED` and sets the first commit back to `reported`, once: scope can change
   after a hold, and integration repeats every check, judging scope by the `Touches:`

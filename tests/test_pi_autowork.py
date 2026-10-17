@@ -547,7 +547,7 @@ class EngineTests(Fixture):
     def test_a_running_runner_restarts_on_an_updated_toolset(self):
         """A `pi update` under a live runner mixed the old script with the new engine."""
         toolset = self.root / 'toolset'
-        shutil.copytree(ROOT, toolset, ignore=shutil.ignore_patterns('.git', '.claude', '__pycache__'))
+        shutil.copytree(ROOT, toolset, ignore=shutil.ignore_patterns('.git', '.claude', '.worktrees', '__pycache__'))
         for args in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
                                                      'commit', '-qm', 'release']):
             self.git(toolset, *args)
@@ -606,7 +606,8 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         cwd = self.runs('touches')[0]['cwd']
-        self.assertIn('/scratch/touches-', cwd)
+        self.assertEqual(Path(cwd).parent, self.repo / '.worktrees')
+        self.assertTrue(Path(cwd).name.startswith('pi-scratch-touches-'))
         self.assertFalse(Path(cwd).exists())
         self.assertNotIn(cwd, self.git(self.repo, 'worktree', 'list'))
 
