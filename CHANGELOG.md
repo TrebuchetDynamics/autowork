@@ -115,6 +115,18 @@ claim of a tagged release, completed installation or live workflow qualification
   toward `PI_AUTOWORK_MAX_FAILURES`; three restarts re-counted the same old holds and
   stopped the charlie service. In continuous mode a real streak pauses
   new tasks for `PI_AUTOWORK_FAILURE_PAUSE` seconds (3600) instead of exiting.
+- README image audits skip image examples in confirmed single-line backtick spans,
+  including mixed prose (TOOLSET-116-fc). Literal backticks in HTML, autolinks,
+  destinations and quoted or multiline link titles cannot hide adjacent images.
+  Indexed delimiter lookup and a single-pass literal-region scanner preserve
+  conservative auditing for multiline code and ambiguous markup; this is not full
+  CommonMark compatibility.
+
+- Setup preflight validates runtime installation-facts structures before selecting
+  an interpreter (TOOLSET-115-aa). Malformed mappings and non-string or empty
+  environment paths return the existing safe admission error instead of crashing
+  or interpreting an empty path relative to the working directory.
+
 - Docs Sync reports array/object role statuses as validation errors instead of
   crashing in set membership (TOOLSET-113-04). `validate`, `check` and `stale`
   retain role-specific diagnostics and continue reporting independent field errors.

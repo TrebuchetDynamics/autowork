@@ -71,8 +71,122 @@ def local_target(src, readme, root):
     return (root / clean.lstrip('/')).resolve() if clean.startswith('/') else (readme.parent / clean).resolve()
 
 
+def literal_regions(text):
+    """Conservatively protect HTML/angle fragments and balanced link destinations.
+
+    Backticks in these regions are data, not Markdown openers. Scan once rather
+    than repeatedly searching suffixes for closing brackets on malformed input.
+    Regions inside an already opened code span do not affect its closing run.
+    """
+    regions, cursor = [], 0
+    while cursor < len(text):
+        start = cursor
+        if (text[cursor] == '<' and cursor + 1 < len(text)
+                and (text[cursor + 1].isalnum() or text[cursor + 1] in '/!?')):
+            ending = next((end for prefix, end in (
+                ('<!--', '-->'), ('<?', '?>'), ('<![CDATA[', ']]>')
+            ) if text.startswith(prefix, cursor)), None)
+            if ending:
+                end = text.find(ending, cursor + 2)
+                cursor = len(text) if end < 0 else end + len(ending)
+            else:
+                cursor += 1
+                quote = None
+                while cursor < len(text):
+                    char = text[cursor]
+                    cursor += 1
+                    if quote:
+                        if char == quote:
+                            quote = None
+                    elif char in '\"\'':
+                        quote = char
+                    elif char == '>':
+                        break
+            regions.append((start, cursor))
+        elif text.startswith('](', cursor):
+            cursor += 2
+            depth, quote, angle = 1, None, False
+            while cursor < len(text):
+                char = text[cursor]
+                cursor += 1
+                if char == '\\':
+                    cursor = min(cursor + 1, len(text))
+                elif quote:
+                    if char == quote:
+                        quote = None
+                elif angle:
+                    if char == '>':
+                        angle = False
+                elif char == '<':
+                    angle = True
+                elif char in '\"\'' and (cursor < 2 or text[cursor - 2].isspace()):
+                    quote = char  # optional title; apostrophes in URLs are data
+                elif char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                    if not depth:
+                        break
+            regions.append((start, cursor))
+        else:
+            cursor += 1
+    return regions
+
+
+def without_inline_code(text):
+    """Mask exact single-line code spans, retaining ambiguous markup for audit."""
+    offset = until = protected = 0
+    images = sorted(literal_regions(text) + [match.span() for pattern in (INLINE_IMAGE, DEFINITION)
+                                           for match in pattern.finditer(text)])
+    # Merge overlapping regions so a nested endpoint cannot expose a backtick.
+    merged = []
+    for start, end in images:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    images = merged
+    spans = []
+    for line in text.splitlines(keepends=True):
+        runs = list(re.finditer(r'`+', line))
+        escaped = []
+        for run in runs:
+            cursor = run.start()
+            while cursor > 0 and line[cursor - 1] == '\\':
+                cursor -= 1
+            escaped.append((run.start() - cursor) % 2)
+        following, last = {}, {}
+        # Index the next exact closing run once; unmatched openers never rescan
+        # the rest of the line. Backslashes are literal inside a code span.
+        for index in range(len(runs) - 1, -1, -1):
+            run = runs[index]
+            length = len(run.group())
+            following[index] = last.get(length - escaped[index])
+            last[length] = index
+        for index, run in enumerate(runs):
+            start = offset + run.start() + escaped[index]
+            if start < until or start >= offset + run.end():
+                continue
+            while protected < len(images) and images[protected][1] <= start:
+                protected += 1
+            if protected < len(images) and images[protected][0] < start < images[protected][1]:
+                continue  # literal backticks inside existing markup/path
+            closing = following[index]
+            if closing is not None:
+                until = offset + runs[closing].end()
+                spans.append((start, until))
+        offset += len(line)
+    pieces, previous = [], 0
+    for start, end in spans:
+        pieces.extend((text[previous:start], ' ' * (end - start)))
+        previous = end
+    pieces.append(text[previous:])
+    return ''.join(pieces)
+
+
 def collect(text, upstream):
     """Image sources in document order, undefined reference labels and alt-text warnings."""
+    text = without_inline_code(text)
     definitions = {}
     for label, raw in DEFINITION.findall(text):
         definitions.setdefault(label_key(label), destination(raw))

@@ -2311,6 +2311,26 @@ Source section: Next
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No upstream code copied (MIT notices would apply); no live Pi or fleet runs; avoid editing `pi-autowork.sh` while TOOLSET-115-bf phase 5 is active.
 
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-115-aa — Report malformed runtime installation facts without crashing
+
+- [x] TOOLSET-115-aa — Report malformed runtime installation facts without crashing
+- Status: done
+- Evidence: 21 malformed-facts subcases reproduced the defect then passed; all 12 preflight tests passed, including interpreter selection and parser fallback. Independent exact-source review approved. Python 3.12 `python3 scripts/check.py` passed 571/715/217/8 tests (one skip; eight native/model/integration modules excluded). Offline implementation only; canonical integration remains subject to the writer gate.
+- Goal: RECOVERY
+- Sources: [accepted purpose](docs/project.md#accepted-requirements), [runtime preflight](setup_preflight.py), [fixtures](tests/test_preflight.py).
+- Scope: Validate the installation-facts shape consumed by runtime_check so malformed JSON structures produce the existing safe admission diagnostic, not an uncaught TypeError. Preserve valid interpreter selection and read-only preflight behavior.
+- Touches: setup_preflight.py, tests/test_preflight.py, docs/testing.md, CHANGELOG.md
+- Acceptance: Malformed root/packages/venv/environment shapes fail preflight without traceback or metadata disclosure; valid facts select their interpreter and preserve configuration validation verdicts; fixture files remain byte-identical.
+- Checks: `python3 -m unittest discover -s tests -p test_preflight.py -v`; `python3 scripts/check.py`; independent source review; `git diff --check`.
+- Dependencies: None.
+- Ownership: Current isolated Autowork coordinator; canonical integration requires a clear writer gate.
+- Exclusions: No live setup, installed-profile writes, model runs, push or Hermes Agent changes.
+- Planner's call: Skip already separated live/fleet qualification under TOOLSET-096-7e and the other existing external-gate tasks; preserve their acceptance. Use the existing safe runtime diagnostic and explicit shape validation rather than swallowing arbitrary exceptions or silently ignoring corrupt facts.
+
 
 <!-- archived from TODO.md -->
 
@@ -2329,3 +2349,25 @@ Source section: Next
 - Dependencies: none.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: The local checkout directory rename, marketplace republication and reinstalling installed profiles and hosts are owner/live steps (TOOLSET-123-a0). No direct edits in fleet repositories; per-profile state folders (`maintenance/toolset-update/`) keep their names.
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-116-fc — Ignore inline code examples in README image audits
+
+- [x] TOOLSET-116-fc — Ignore inline code examples in README image audits
+- Status: done
+- Goal: README-DESIGN
+- Sources: [README audit adapter](skills/beautify-github-readme/SKILL.md), [auditor](skills/beautify-github-readme/scripts/audit_readme.py), [fixtures](tests/test_beautify_readme_vendor.py).
+- Scope: Exclude confirmed single-line Markdown code spans from the image inventory without modifying pinned upstream files or adding a Markdown dependency. Preserve visible image checks and source files.
+- Acceptance: Literal Markdown/HTML image examples in matched single-line backtick spans cause no missing-image, undefined-reference or alt-text errors; actual adjacent images, unmatched delimiters, mismatched delimiter runs and multiline/block-boundary ambiguities remain audited conservatively.
+- Checks: `python3 -m unittest discover -s tests -p test_beautify_readme_vendor.py -v`; `python3 scripts/check.py`; README audit and documentation check; independent source review.
+- Dependencies: None.
+- Ownership: Current autonomous Toolset coordinator; isolated branch pending canonical integration.
+- Touches: skills/beautify-github-readme/scripts/audit_readme.py, skills/beautify-github-readme/SKILL.md, tests/test_beautify_readme_vendor.py, docs/testing.md, CHANGELOG.md
+- Planner's call: Preserve the active canonical writer and continue in the existing isolated candidate. Complete remaining mixed-text single-line acceptance with a stdlib literal-region scanner before indexed delimiter masking; track angle destinations, quoted titles and balanced parentheses across continuation lines. Reuse existing image recognizers; omit new dependencies and multiline code support. This supersedes only the earlier complete-image-only restriction, not visible-image safeguards or full-parser exclusions.
+- Prior partial delivery: Complete-image-only support in 5001be3 passed 11 focused tests and the 574/715/217/8 offline gate. That evidence remains historical; mixed-text acceptance is now implemented and independently approved after three reproduced link-context review defects were repaired.
+- Current verification: All 12 focused tests pass. Exact-source independent review approved the auditor and tests, including adversarial adjacent-image probes. `python3 scripts/check.py` passed all four offline directories (one skipped test, eight excluded modules); source/test hashes match the reviewed candidate. README audit checks two local images. Offline acceptance is complete; canonical integration and installed adoption are separate.
+- Next action: Integrate the coherent reviewed branch after the canonical writer gate clears; reconcile only attributable ledger and archive deltas against fresh main. No push or installed-profile change is authorized.
+- Exclusions: No README redesign, assets, pinned upstream edits, installed-profile changes, push or live qualification.
