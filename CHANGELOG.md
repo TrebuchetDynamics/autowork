@@ -23,6 +23,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `autowork ls` and the TUI label a TODO entry the engine cannot run as written
+  `not runnable`; they said `entry changed`, which reads as a rerun already pending.
+  A runner whose worker or reviewer acted in the last 10 minutes shows `working`: the
+  status written before a long verification had kept it `stalled` (sierra TASK-026).
 - A held task's `-r2` retry that a runner stop paused and the next start resumed is
   verified on its `-r2` branch; the engine had held it as "unexpected worker branch"
   (sierra TASK-026). A commit an earlier release held that way is offered for verification

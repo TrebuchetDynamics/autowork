@@ -16,7 +16,7 @@ import time
 
 from pi_autowork import health, questions as owner_questions
 
-KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'entry changed',
+KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
 CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
           'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed',
@@ -397,6 +397,11 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
     for runner in found.values():
         runner.lanes = lanes(runner, now)
+        # The runner refreshes its status between cycles, not during a long verification it
+        # runs itself: a worker or reviewer acting now means it works, whatever the status says.
+        if runner.state in ('blocked', 'stalled', 'not cycling') and any(
+                lane.activity_age is not None and lane.activity_age < health.STALE_AFTER for lane in runner.lanes):
+            runner.state, runner.minutes = 'working', None
         runner.questions = read_questions(runner.repo, runner.state_dir) if runner.repo else []
         if runner.has_service and runner.service not in ('running', 'start', 'reload'):
             if not runner.enabled and paused_marker(env_dir, runner.name).exists():

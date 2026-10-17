@@ -9,6 +9,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view  # noqa: E402
@@ -77,7 +78,7 @@ class FleetViewTests(unittest.TestCase):
         runner = fleet_view.Runner(name='r', roots=roots)
         self.assertEqual(fleet_view.blockers(runner), [
             ('dependency cycle', 'X (1)'),
-            ('entry changed', 'D-0 (1), D-1 (1), D-2 (1), D-3 (1), D-4 (1), D-5 (1), +2 more'),
+            ('not runnable', 'D-0 (1), D-1 (1), D-2 (1), D-3 (1), D-4 (1), D-5 (1), +2 more'),
             ('claimed elsewhere', 'C-1 (13)'),
             ('outside Now/Next', 'approved physical target and... (2)')])
 
@@ -160,6 +161,16 @@ class FleetViewTests(unittest.TestCase):
         runner.questions = []
         self.assertEqual(fleet_view.needs(runner), 'outside Now/Next: TASK-036 (19)')
         self.assertEqual(fleet_view.needs(fleet_view.Runner(name='x', state='not running')), 'start it')
+
+    def test_a_runner_verifying_now_is_working_whatever_its_last_status_says(self):
+        """sierra: TASK-026's review ran for minutes while the status written before it said stalled."""
+        (self.env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\n')
+        self.runner_state('/git/india', state='stalled', since=time.time() - 3600)
+        for age, state in ((60, 'working'), (4000, 'stalled'), (None, 'stalled')):
+            lane = fleet_view.Lane(task='TASK-026', phase='verifying', activity='bash: rg', activity_age=age)
+            with mock.patch.object(fleet_view, 'lanes', return_value=[lane]), \
+                    mock.patch.object(fleet_view.Runner, 'has_service', False):
+                self.assertEqual(self.collect()['india'].state, state, age)
 
     def test_the_log_drops_the_pending_line_of_every_waiting_task(self):
         text = '[19:48] Started (PID 1).\n[19:48] TASK-034: pending — dependency: TASK-035\n[19:49] TASK-037: done'
