@@ -194,6 +194,31 @@ class Check(unittest.TestCase):
         self.assertLess(out.index('CHECK skills/docs-sync/scripts'), out.index('OUTPUT-second'))
         self.assertTrue(out.rstrip().endswith('Offline result: 2 test directories passed; 0 failed; 0 modules excluded.'))
 
+    def test_modules_of_one_directory_run_concurrently(self):
+        self.sleeper('tests/test_slow.py', 1.5, 'first')
+        self.sleeper('tests/test_also_slow.py', 1.5, 'second')
+        started = time.monotonic()
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertLess(time.monotonic() - started, 2.8, 'modules did not overlap')
+        self.assertLess(result.stdout.index('OUTPUT-second'), result.stdout.index('OUTPUT-first'))  # module order
+        self.assertIn('1 test directories passed', result.stdout)
+
+    def test_a_split_module_runs_its_tests_in_separate_processes(self):
+        body = ''.join(f'''    def test_{n}(self):
+        time.sleep(1.5)
+        Path('ran-{n}').write_text(str(os.getpid()))
+''' for n in ('a', 'b', 'c'))
+        self.write('tests/test_pi_autowork.py', 'import os, time, unittest\nfrom pathlib import Path\n'
+                   'class Runner(unittest.TestCase):\n' + body + '    def test_d(self):\n        self.fail("shard failure")\n')
+        started = time.monotonic()
+        result = self.run_check()
+        self.assertLess(time.monotonic() - started, 2.8, 'tests did not run in parallel')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)  # one shard failing fails it
+        self.assertIn('shard failure', result.stdout)
+        pids = {(self.root / 'tests' / f'ran-{n}').read_text() for n in 'abc'}
+        self.assertEqual(len(pids), 3)
+
     def test_jobs_one_runs_sequentially_with_the_same_output(self):
         self.sleeper('tests/test_slow.py', 1, 'first')
         self.sleeper('skills/docs-sync/scripts/test_fast.py', 1, 'second')
