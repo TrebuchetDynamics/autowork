@@ -647,3 +647,57 @@ every profile's `scripts/` folder (Hermes runs cron scripts only from there) and
 marker is treated as the user's and never replaced. The script never fails a run;
 a missing token, ambiguous job match or unreachable Bot API is reported in the
 run's own prompt instead.
+
+## TUI confirmation layout and refresh
+
+Status: Accepted
+
+The owner supplied a terminal capture with clipped, offset restart confirmations,
+repeated fleet frames and detail/footer text showing through the dialog. Treat it
+as a rendering/layout defect report, not authority to restart the named runner or
+answer any displayed blocker. Public fixtures use generic runner/task identities.
+
+Source findings: `Confirm` has a fixed width of 76 cells, and task/model pickers
+use 70/80 cells. The existing pilot confirms controls on a wide 150-column screen;
+its 80-column case inspects detail without an open confirmation. Fleet/log timers
+continue every 3/5 seconds, and changing rows can clear/rebuild background tables.
+These are source-backed risks; copied scrollback alone does not establish the exact
+terminal driver, viewport, external-output interference or redraw root cause.
+No live reproduction or rendering fix is claimed by this plan.
+
+Planner's call: add a bounded successor to the delivered TUI slice, not reopen its
+historical acceptance or change service semantics. Fit every existing modal inside
+the viewport with relative bounds and readable wrapping/scrolling; keep both Yes
+and No reachable on narrow/short screens. Default focus is No, Escape/n cancels,
+and only explicit affirmative input invokes the bound action once. Preserve the
+chosen runner/action identity while background order/state changes; recheck action
+preconditions before execution and require renewed confirmation if they changed.
+
+Use Textual's screen lifecycle and event-loop rendering; coalesce/defer background
+widget rebuilds while covered rather than repeatedly clear/repaint behind a modal.
+Data collection can continue, with one coherent refresh on resume. Resize, modal
+open/close, log/worker screen return and interactive subprocess suspend/resume must
+restore a clean complete frame while preserving runner selection, filters and log
+position. Capture noninteractive child output into widgets, never raw terminal
+writes from worker threads. Do not hide the defect by stopping refresh permanently,
+restarting services, loosening view-only gates or blindly upgrading dependencies.
+Keep the current pinned Textual 8.2.8 unless a reproduced upstream defect justifies
+a separately recorded compatible version change.
+
+Extend the existing headless pilot with modal-open timer updates, fake runner
+reordering/removal, long generic labels and repeated resize through 40x20, 60x24,
+80x24 and 150x45. Assert modal/button bounds and focus, readable action identity,
+no duplicate screens/commands, cancel = zero commands, affirmative = one intended
+fake command, view-only = zero mutations, and correct restoration after dismissal.
+Add a controlled PTY/cell-render trace or equivalent terminal-level regression for
+residue/ghosting: headless state assertions alone cannot prove terminal repaint.
+Use fake collectors/command runners, never real systemctl, model calls, runner
+restarts or private fleet logs. Cases are planned and unrun; missing UI test tooling
+or skipped pilot cases are coverage gaps, not passes. Current interpreter lacks
+Textual; no dependency installation was performed during planning.
+
+Sources: `pi-autowork/pi_autowork/tui.py` (`Confirm`, modal pickers, FleetApp refresh
+and execute paths), `pi-autowork/tests/tui_pilot.py`, `test_fleet_view.py`, and
+[Textual screens](https://textual.textualize.io/guide/screens/) /
+[layout](https://textual.textualize.io/guide/layout/) documentation. Retain task IDs,
+queue ordering and the separate stale-question/status and model-account plans.
