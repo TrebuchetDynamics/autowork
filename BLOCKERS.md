@@ -8,6 +8,13 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
+### Q-TOOLSET-154-d3 — USER_DECISION — effort investigate — unblocks 7
+
+- Task: TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
+- Needs: integration validation failed or changed the integration tree
+- Since: 2026-10-17T18:20:06Z
+- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-154-d3/), then rescope or split TOOLSET-154-d3 in its TODO.md entry. The runner reruns it when the entry changes.
+
 <!-- pi-autowork:questions:end -->
 
 None.
