@@ -54,6 +54,44 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No change to the worker cap, the serial and exclusive rules, the protected-file rules, required checks or review, and no force integration of unverified work.
 - Planner's call: first in Now. Holds from Touches predictions are the main reason runners go idle; making integration decide by merge and checks removes the class instead of patching each shape.
 
+### TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
+
+- [ ] TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
+- Status: open
+- Goal: BACKLOG
+- Payoff: Produce a usable repository backlog for Autowork.
+- Sources: [accepted tasks query plan](docs/workflows.md#tasks-query-skill), [priority and task parsing](skills/docs-sync/scripts/goals.py), [archive ownership and entries](skills/docs-sync/scripts/todo_archive.py).
+- Touches: skills/pending/scripts/task_query.py, skills/pending/scripts/test_task_query.py, skills/pending/references/query-contract.md
+- Scope: Add a standard-library read-only helper with structured pending/detail/search/history modes, ID/text, date bounds, timezone and limit. Reuse existing pure Docs Sync parsers/order functions without invoking mutations. Preserve TODO human ordering and blocked work while explaining eligible selection separately. Support TODO-only repositories, current/legacy archives and bounded local Git completion-transition evidence. Return records, source/date provenance and partial-result warnings for the skill to explain. Use explicit date evidence first; Git recording time and undated history remain distinct. Resolve the defaults and degraded cases exactly as recorded in the accepted plan.
+- Acceptance: Fixtures demonstrate five-item pending output with totals and blocked/focus/drift distinctions; exact-ID and ambiguous-description lookup; current/legacy archive lookup; reopened/superseded records never falsely completed; timezone-correct date filtering and explicitly undated/partial Git history. Conflicting/malformed/changing sources remain attributed and cannot yield a false confirmed completion or runnable claim. All modes leave repository bytes and Git refs unchanged; hostile query/task text remains data. No dependency, index, cache, network, source repair or live worker inference.
+- Checks: python3 -m unittest discover -s skills/pending/scripts -p test_task_query.py (new, unrun); python3 -m unittest discover -s skills/docs-sync/scripts -p test_todo_archive.py; git diff --check. Use compact behavioral fixtures and a temporary local Git history; no per-phrase assertions or full-suite benchmark project.
+- Dependencies: None.
+- Ownership: Toolset coordinator; helper work is independent of the planner-quality batch and preserves active worker contracts.
+- Exclusions: No task mutations, new required ledger fields, host registration, installation, fleet scans, remote lookups, service changes or publication. Conversational packaging is TOOLSET-143-62.
+- Planner's call: Keep new query files under skills/pending and reuse existing parsing; no second task store or search dependency. Default five results and 500 relevant commits for bounded Git fallback, with explicit truncation and requested expansion. Support /pending and /done through the same helper; latest recorded completions use evidence/Git transition dates, with explicit undated/partial results and no task-number or archive-order inference.
+
+- Command refinement: The helper lives under skills/pending/scripts/ and supports both read-only frontends. Pending descriptions default to unfinished work; done descriptions to currently completed work. Default /done returns five latest dated recorded completions, or explicitly undated records when dates are unavailable; reopened/superseded tasks stay distinct. Extend the existing query fixtures for latest ordering, date provenance, ties, undated-only and bounded-history cases.
+
+
+### TOOLSET-143-62 — Add the conversational tasks skill and host commands
+
+- [ ] TOOLSET-143-62 — Add the conversational tasks skill and host commands
+- Status: open
+- Goal: PORTABLE
+- Payoff: Align portable workflow discovery.
+- Sources: [accepted tasks query plan](docs/workflows.md#tasks-query-skill), [native registration](__init__.py), [Pi commands](adapters/pi.mjs), [portable host contract](adapters/skills/COMMON.md).
+- Touches: skills/pending/SKILL.md, adapters/skills/pending/, adapters/pi.mjs, telegram_menu_policy.py, tests/test_plugin.py, tests/test_portable_package.py, tests/portable_pi.test.mjs, tests/test_telegram_menu_policy.py, tests/fixtures/pending/, README.md, docs/workflows.md, docs/cross-host.md, skills/done/SKILL.md, adapters/skills/done/, tests/fixtures/done/
+- Scope: Create native and portable pending and done skills and Pi /pending and /done dispatch using TOOLSET-142-85's bundled query helper. No args gives a casual priority summary; task ID gives detail; descriptions and time requests search history with honest date/source labels. Follow the user's language, lead with outcomes and keep IDs accessible. Pass query text as data and preserve explicit-invocation policies. Reuse native discovery/collision protection, package link closure and Telegram menu capacity/exclusions; do not register /tasks or an Autowork tasks alias, leaving Hermes' handler untouched. Preserve other native collisions with host-qualified pending/done fallback. Ship concise examples and read-only boundaries without treating query requests as authorization to execute.
+- Acceptance: Native discovery and installed portable package fixtures resolve the helper and expose the appropriate pending and done entrypoints; Pi forwards arguments safely, existing host commands win collisions, and Telegram preferences/capacity remain intact. Disposable conversational examples cover default, ID, descriptive past-work and dated lookup with truthful partial/unknown evidence and no filesystem/Git mutation. Outputs explain why a blocked priority item differs from next eligible, and do not equate marked in progress, done, integrated and published. Unsupported model/host qualification is reported explicitly, not inferred from forwarding tests.
+- Checks: python3 -m unittest discover -s tests -p test_plugin.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; python3 -m unittest discover -s tests -p test_telegram_menu_policy.py; compact disposable conversational evaluation from the accepted plan (new, unrun); git diff --check. Extend existing behavioral fixtures rather than duplicating their coverage.
+- Dependencies: TOOLSET-142-85.
+- Ownership: Toolset coordinator; serialize overlapping adapter/menu/doc integration with other command tasks, preserving their accepted changes.
+- Exclusions: No runtime task control, automatic installation/reload, network history fetch, new dashboard, model-policy changes, real-profile messaging, paid evaluation or publication. Source/package validation alone does not establish live activation.
+- Planner's call: Qualified pending/done skills are the collision fallback; no host handler replacement. This is a conversational command with a small deterministic helper, not a new standalone task manager.
+
+- Command refinement: /pending defaults to five unfinished tasks in human queue order; /done defaults to five latest recorded completions with source/date/partial-history labels. Both share the pending query helper and stay read-only; done never closes a task. Native/portable/Pi and menu fixtures prove both names, argument forwarding, helper closure and absence of a plugin /tasks alias without replacing any Hermes handler. Registration/menu changes are implementation work, not performed by planning.
+
+
 ### TOOLSET-157-cd — Held slots release file ownership so holds cannot deadlock the queue
 
 - [ ] TOOLSET-157-cd — Held slots release file ownership so holds cannot deadlock the queue
@@ -553,44 +591,6 @@ settlement/cancellation checks when refining that existing design.
 - Dependencies: TOOLSET-135-16.
 - Ownership: Toolset coordinator; preserve active worker contracts and unrelated planning batches.
 - Exclusions: No implementation in consumer repositories during planning, automatic plugin installation, external execution, paid evaluation, CI weakening, scheduler/service changes, publication, or new mandatory task schema. No dispatch from this planning invocation.
-
-### TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
-
-- [ ] TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
-- Status: open
-- Goal: BACKLOG
-- Payoff: Produce a usable repository backlog for Autowork.
-- Sources: [accepted tasks query plan](docs/workflows.md#tasks-query-skill), [priority and task parsing](skills/docs-sync/scripts/goals.py), [archive ownership and entries](skills/docs-sync/scripts/todo_archive.py).
-- Touches: skills/pending/scripts/task_query.py, skills/pending/scripts/test_task_query.py, skills/pending/references/query-contract.md
-- Scope: Add a standard-library read-only helper with structured pending/detail/search/history modes, ID/text, date bounds, timezone and limit. Reuse existing pure Docs Sync parsers/order functions without invoking mutations. Preserve TODO human ordering and blocked work while explaining eligible selection separately. Support TODO-only repositories, current/legacy archives and bounded local Git completion-transition evidence. Return records, source/date provenance and partial-result warnings for the skill to explain. Use explicit date evidence first; Git recording time and undated history remain distinct. Resolve the defaults and degraded cases exactly as recorded in the accepted plan.
-- Acceptance: Fixtures demonstrate five-item pending output with totals and blocked/focus/drift distinctions; exact-ID and ambiguous-description lookup; current/legacy archive lookup; reopened/superseded records never falsely completed; timezone-correct date filtering and explicitly undated/partial Git history. Conflicting/malformed/changing sources remain attributed and cannot yield a false confirmed completion or runnable claim. All modes leave repository bytes and Git refs unchanged; hostile query/task text remains data. No dependency, index, cache, network, source repair or live worker inference.
-- Checks: python3 -m unittest discover -s skills/pending/scripts -p test_task_query.py (new, unrun); python3 -m unittest discover -s skills/docs-sync/scripts -p test_todo_archive.py; git diff --check. Use compact behavioral fixtures and a temporary local Git history; no per-phrase assertions or full-suite benchmark project.
-- Dependencies: None.
-- Ownership: Toolset coordinator; helper work is independent of the planner-quality batch and preserves active worker contracts.
-- Exclusions: No task mutations, new required ledger fields, host registration, installation, fleet scans, remote lookups, service changes or publication. Conversational packaging is TOOLSET-143-62.
-- Planner's call: Keep new query files under skills/pending and reuse existing parsing; no second task store or search dependency. Default five results and 500 relevant commits for bounded Git fallback, with explicit truncation and requested expansion. Support /pending and /done through the same helper; latest recorded completions use evidence/Git transition dates, with explicit undated/partial results and no task-number or archive-order inference.
-
-- Command refinement: The helper lives under skills/pending/scripts/ and supports both read-only frontends. Pending descriptions default to unfinished work; done descriptions to currently completed work. Default /done returns five latest dated recorded completions, or explicitly undated records when dates are unavailable; reopened/superseded tasks stay distinct. Extend the existing query fixtures for latest ordering, date provenance, ties, undated-only and bounded-history cases.
-
-
-### TOOLSET-143-62 — Add the conversational tasks skill and host commands
-
-- [ ] TOOLSET-143-62 — Add the conversational tasks skill and host commands
-- Status: open
-- Goal: PORTABLE
-- Payoff: Align portable workflow discovery.
-- Sources: [accepted tasks query plan](docs/workflows.md#tasks-query-skill), [native registration](__init__.py), [Pi commands](adapters/pi.mjs), [portable host contract](adapters/skills/COMMON.md).
-- Touches: skills/pending/SKILL.md, adapters/skills/pending/, adapters/pi.mjs, telegram_menu_policy.py, tests/test_plugin.py, tests/test_portable_package.py, tests/portable_pi.test.mjs, tests/test_telegram_menu_policy.py, tests/fixtures/pending/, README.md, docs/workflows.md, docs/cross-host.md, skills/done/SKILL.md, adapters/skills/done/, tests/fixtures/done/
-- Scope: Create native and portable pending and done skills and Pi /pending and /done dispatch using TOOLSET-142-85's bundled query helper. No args gives a casual priority summary; task ID gives detail; descriptions and time requests search history with honest date/source labels. Follow the user's language, lead with outcomes and keep IDs accessible. Pass query text as data and preserve explicit-invocation policies. Reuse native discovery/collision protection, package link closure and Telegram menu capacity/exclusions; do not register /tasks or an Autowork tasks alias, leaving Hermes' handler untouched. Preserve other native collisions with host-qualified pending/done fallback. Ship concise examples and read-only boundaries without treating query requests as authorization to execute.
-- Acceptance: Native discovery and installed portable package fixtures resolve the helper and expose the appropriate pending and done entrypoints; Pi forwards arguments safely, existing host commands win collisions, and Telegram preferences/capacity remain intact. Disposable conversational examples cover default, ID, descriptive past-work and dated lookup with truthful partial/unknown evidence and no filesystem/Git mutation. Outputs explain why a blocked priority item differs from next eligible, and do not equate marked in progress, done, integrated and published. Unsupported model/host qualification is reported explicitly, not inferred from forwarding tests.
-- Checks: python3 -m unittest discover -s tests -p test_plugin.py; python3 -m unittest discover -s tests -p test_portable_package.py; node --test tests/portable_pi.test.mjs; python3 -m unittest discover -s tests -p test_telegram_menu_policy.py; compact disposable conversational evaluation from the accepted plan (new, unrun); git diff --check. Extend existing behavioral fixtures rather than duplicating their coverage.
-- Dependencies: TOOLSET-142-85.
-- Ownership: Toolset coordinator; serialize overlapping adapter/menu/doc integration with other command tasks, preserving their accepted changes.
-- Exclusions: No runtime task control, automatic installation/reload, network history fetch, new dashboard, model-policy changes, real-profile messaging, paid evaluation or publication. Source/package validation alone does not establish live activation.
-- Planner's call: Qualified pending/done skills are the collision fallback; no host handler replacement. This is a conversational command with a small deterministic helper, not a new standalone task manager.
-
-- Command refinement: /pending defaults to five unfinished tasks in human queue order; /done defaults to five latest recorded completions with source/date/partial-history labels. Both share the pending query helper and stay read-only; done never closes a task. Native/portable/Pi and menu fixtures prove both names, argument forwarding, helper closure and absence of a plugin /tasks alias without replacing any Hermes handler. Registration/menu changes are implementation work, not performed by planning.
-
 
 ### TOOLSET-124-97 — Audit this repository's suite against the test budget
 

@@ -665,6 +665,8 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-161-17",
+      "TOOLSET-142-85",
+      "TOOLSET-143-62",
       "TOOLSET-157-cd",
       "TOOLSET-160-df",
       "TOOLSET-152-d4",
@@ -695,8 +697,6 @@
       "TOOLSET-135-16",
       "TOOLSET-136-0b",
       "TOOLSET-137-cd",
-      "TOOLSET-142-85",
-      "TOOLSET-143-62",
       "TOOLSET-124-97",
       "TOOLSET-125-e6",
       "TOOLSET-126-6b",
@@ -782,6 +782,24 @@
       "section": "Now",
       "status": "open",
       "title": "Give workers a short temporary directory that browsers and sockets accept"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-142-85",
+      "section": "Now",
+      "status": "open",
+      "title": "Query pending and completed tasks from repository evidence without writes"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-142-85"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-143-62",
+      "section": "Now",
+      "status": "open",
+      "title": "Add the conversational tasks skill and host commands"
     },
     {
       "depends_on": [],
@@ -1144,24 +1162,6 @@
       "section": "Next",
       "status": "open",
       "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
-    },
-    {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-142-85",
-      "section": "Next",
-      "status": "open",
-      "title": "Query pending and completed tasks from repository evidence without writes"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-142-85"
-      ],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-143-62",
-      "section": "Next",
-      "status": "open",
-      "title": "Add the conversational tasks skill and host commands"
     },
     {
       "depends_on": [],
