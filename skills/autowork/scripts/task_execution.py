@@ -121,6 +121,18 @@ def lock(path):
         os.close(fd)
 
 
+def host_busy(exc):
+    """A command that outran its timeout means a loaded host, not a broken engine."""
+    argv = [str(a) for a in exc.cmd] if isinstance(exc.cmd, (list, tuple)) else [str(exc.cmd)]
+    if argv[:2] == ['git', '-C'] and len(argv) > 3:
+        argv = ['git', argv[3]]  # the subcommand names the work; the path is noise
+    try:
+        load = f'{os.getloadavg()[0]:.0f}/{os.cpu_count()} CPUs'
+    except OSError:
+        load = 'unknown'
+    return {'outcome': 'BUSY', 'reason': f"host busy: {' '.join(argv[:2])} took over {exc.timeout:g}s (load {load})"}
+
+
 def git(repo, *args):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     result = subprocess.run(['git', '-C', str(repo), *args], env=env,
@@ -758,6 +770,8 @@ def parallel_main(args):
         result = {'outcome': 'BUSY', 'reason': 'Repository execution lock is held by a live operation.'}
     except PriorityDriftError as exc:
         result = dict(exc.status, outcome='PRIORITY_DRIFT', reason=str(exc))
+    except subprocess.TimeoutExpired as exc:
+        result = host_busy(exc)
     except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
         result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
     print(json.dumps(result, indent=2))
@@ -856,6 +870,8 @@ def main(argv=None):
         result = {'outcome': 'BUSY', 'reason': 'Repository or helper publication lock is held by a live operation.'}
     except PriorityDriftError as exc:
         result = dict(exc.status, outcome='PRIORITY_DRIFT', reason=str(exc))
+    except subprocess.TimeoutExpired as exc:
+        result = host_busy(exc)
     except (ValueError, OSError, subprocess.SubprocessError, SystemExit) as exc:
         result = {'outcome': 'ACTION_REQUIRED', 'reason': str(exc)}
     print(json.dumps(result, indent=2))

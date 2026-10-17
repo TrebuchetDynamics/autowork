@@ -2371,3 +2371,46 @@ Source section: Now
 - Current verification: All 12 focused tests pass. Exact-source independent review approved the auditor and tests, including adversarial adjacent-image probes. `python3 scripts/check.py` passed all four offline directories (one skipped test, eight excluded modules); source/test hashes match the reviewed candidate. README audit checks two local images. Offline acceptance is complete; canonical integration and installed adoption are separate.
 - Next action: Integrate the coherent reviewed branch after the canonical writer gate clears; reconcile only attributable ledger and archive deltas against fresh main. No push or installed-profile change is authorized.
 - Exclusions: No README redesign, assets, pinned upstream edits, installed-profile changes, push or live qualification.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-159-30 — A git timeout under host load waits as busy, not as an engine fault
+
+- [x] TOOLSET-159-30 — A git timeout under host load waits as busy, not as an engine fault
+- Status: done (2026-10-17)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [engine entry](skills/autowork/scripts/task_execution.py) (`git`, `parallel_main`, `main`), [claims](skills/autowork/scripts/parallel_claims.py) (`_last_change`, `_worktrees`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` and `The engine needs attention` paths).
+- Evidence (2026-10-17 09:44 monitor pass): with seven runners and their test runs on one 22-CPU host, the load average reached 124 and free memory 2 GB. A runner logged `The engine needs attention: Command '['git', …, 'worktree', 'list', '--porcelain']' timed out after 10 seconds` and, at 09:49, the same for the claim probe `git log -1 --format=%ct -E -G <task token> -- TODO.md goals.json`. Its STALLED line then named `the engine needs attention … (the runner cannot proceed, holds 44)` as the root blocker. The same probe takes 0.04 s on an idle host. `task_execution.git` has a fixed 10 s timeout, and `subprocess.TimeoutExpired` falls into the generic `SubprocessError` handler, which reports `ACTION_REQUIRED`.
+- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_task_execution.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: In `parallel_main` and `main`, catch `subprocess.TimeoutExpired` before the generic handler and answer `{'outcome': 'BUSY', 'reason': 'host busy: <command name> took over <N>s (load <1-minute load>/<CPUs> CPUs)'}`. The coordinator already waits on `BUSY` without a failure streak. Its stall summary names it as a transient host-load wait, not `the runner cannot proceed`. Nothing else changes: other `SubprocessError`s stay `ACTION_REQUIRED`, and no timeout is raised or retried in a loop.
+- Acceptance: In a fixture where `git` is replaced by a command that sleeps past the timeout, the engine prints `BUSY` with a `host busy:` reason and exit code 1. The coordinator logs `Repository busy (host busy: …)` once per change and no `engine needs attention` line, and the next cycle dispatches normally once git is fast again. A non-timeout git failure still reports `ACTION_REQUIRED`.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator. TOOLSET-118-68 owns host budgets, which keep load from getting this high; this task only stops a transient timeout from looking like an engine fault.
+- Exclusions: No change to the 10 s git timeout, the resource gate or worker counts.
+- Planner's call: report it as `BUSY`, not a new outcome. The coordinator already has a quiet, non-failing wait for it, and an owner reading the TUI sees `busy`, which is true, instead of a fault that needs them.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-148-88 — One malformed Touches field holds its task, not the whole engine
+
+- [x] TOOLSET-148-88 — One malformed Touches field holds its task, not the whole engine
+- Status: done (2026-10-17)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [Touches parser](skills/autowork/scripts/parallel_plan.py) (`paths`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `The engine needs attention` path).
+- Evidence (2026-10-16 23:50 monitor pass): runner B logs `The engine needs attention: Touches must contain repository-relative paths without dot segments; checking again in 60s`. `autowork ls` shows `runner: the engine needs attention` for all 55 waiting tasks. The cause is two task bodies on its session branch ending `Touches: …, tests/, docs/notes/.`: the sentence-final period becomes the path `docs/notes/.`. `paths()` raises for the whole plan, so no task in the repository can be admitted.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) Prose tolerance: strip exactly one sentence-final period from the last Touches item when what remains is a valid path (`docs/notes/.` becomes `docs/notes/`, and `a.py.` becomes `a.py`). Never strip interior dots or `..`, and keep everything else fail-closed. (2) Isolation: a Touches value that is still invalid holds only its own task, with reason `invalid Touches: <path>`, which TOOLSET-129-c4 shows as agent repair and TOOLSET-141-c4 can repair. Other tasks are planned and admitted as usual. The engine-wide `needs attention` state is reserved for failures that are not specific to one task.
+- Acceptance: In fixtures, `x/, docs/notes/.` parses to `['x/', 'docs/notes/']`. `../a`, `/abs`, `a/./b` and `a/../b` stay rejected, and an interior `a/.b/` is preserved as a path. A plan with one invalid task holds that task with its reason while independent tasks are admitted and dispatched in the same cycle. No `engine needs attention` line appears for a per-task contract error.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator; reconcile active TOOLSET-115-bf output in coordinator.py first. The runner B queue is not edited by hand; it recovers through the delivered release.
+- Exclusions: No widening of the safety rules for absolute, backslash, NUL or parent paths.
+- Planner's call: first in Now. It is the smallest change, and it unblocks an entire repository whose runner is otherwise dead.
+- Planner answer (2026-10-17 09:15, monitor pass): its worker asked for `skills/autowork/scripts/parallel_integrate.py`. It and its test are added to Touches. Resume or reverify the existing candidate; do not reimplement.

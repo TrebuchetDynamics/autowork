@@ -653,7 +653,8 @@
         "TOOLSET-155-e2",
         "TOOLSET-156-75",
         "TOOLSET-157-cd",
-        "TOOLSET-158-08"
+        "TOOLSET-158-08",
+        "TOOLSET-159-30"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -661,6 +662,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-159-30",
       "TOOLSET-157-cd",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
@@ -786,14 +788,6 @@
       "section": "Now",
       "status": "open",
       "title": "Merge pending names its real cause and clears a dirty integration worktree safely"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-148-88",
-      "section": "Now",
-      "status": "open",
-      "title": "One malformed Touches field holds its task, not the whole engine"
     },
     {
       "depends_on": [],
@@ -2048,6 +2042,22 @@
       "section": "Done",
       "status": "done",
       "title": "Rename the repository and plugin from hermes-toolset to autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-148-88",
+      "section": "Done",
+      "status": "done",
+      "title": "One malformed Touches field holds its task, not the whole engine"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-159-30",
+      "section": "Done",
+      "status": "done",
+      "title": "A git timeout under host load waits as busy, not as an engine fault"
     },
     {
       "depends_on": [
