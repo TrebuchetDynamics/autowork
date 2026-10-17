@@ -669,7 +669,8 @@
         "TOOLSET-170-f6",
         "TOOLSET-171-35",
         "TOOLSET-172-40",
-        "TOOLSET-173-94"
+        "TOOLSET-173-94",
+        "TOOLSET-174-1d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -679,12 +680,11 @@
     "tasks": [
       "TOOLSET-165-f7",
       "TOOLSET-170-f6",
+      "TOOLSET-174-1d",
       "TOOLSET-161-17",
-      "TOOLSET-171-35",
       "TOOLSET-172-40",
       "TOOLSET-173-94",
       "TOOLSET-164-f1",
-      "TOOLSET-142-85",
       "TOOLSET-143-62",
       "TOOLSET-163-f7",
       "TOOLSET-158-08",
@@ -914,6 +914,14 @@
       "section": "Now",
       "status": "open",
       "title": "A review that fails only for a missing toolchain gets a provisioning run, then one more review"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-174-1d",
+      "section": "Now",
+      "status": "open",
+      "title": "Restarting a runner keeps its workers running"
     },
     {
       "depends_on": [],
