@@ -792,14 +792,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-148-88",
-      "section": "Now",
-      "status": "open",
-      "title": "One malformed Touches field holds its task, not the whole engine"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-152-d4",
       "section": "Now",
       "status": "open",
@@ -844,14 +836,6 @@
       "section": "Now",
       "status": "open",
       "title": "A rejected push with a conflicting upstream is resolved, not left to diverge silently"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-159-30",
-      "section": "Now",
-      "status": "open",
-      "title": "A git timeout under host load waits as busy, not as an engine fault"
     },
     {
       "depends_on": [],
@@ -2058,6 +2042,22 @@
       "section": "Done",
       "status": "done",
       "title": "Rename the repository and plugin from hermes-toolset to autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-148-88",
+      "section": "Done",
+      "status": "done",
+      "title": "One malformed Touches field holds its task, not the whole engine"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-159-30",
+      "section": "Done",
+      "status": "done",
+      "title": "A git timeout under host load waits as busy, not as an engine fault"
     },
     {
       "depends_on": [
