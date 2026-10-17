@@ -305,12 +305,14 @@ change has been quiet for `PI_AUTOWORK_PLAN_SETTLE` seconds (default 3). The log
 and re-queues answered held ones. `--interval` is only the longest wait. Watching is
 file status checks once a second; it calls no model.
 
-Planning never blocks delivery: when the main checkout's only uncommitted changes are
-planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive), untouched for
-`PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing nowhere, the runner
-commits exactly those as `docs(tasks): owner planning (pi-autowork)` before its merge.
-Any other uncommitted file keeps the merge pending, and the message says why the
-planning was left alone.
+Auto work commits and merges all work. Before each merge the runner commits anything
+left uncommitted in its own session worktree. In the main checkout, uncommitted changes
+untouched for `PI_AUTOWORK_PLANNING_QUIET` seconds (600) and open for writing nowhere
+are committed too: planning files alone as `docs(tasks): owner planning (pi-autowork)`,
+anything else as `chore: uncommitted work in the main checkout (pi-autowork)`. Untracked
+files that look like secrets (`.env`, keys, tokens, credentials) stay untracked, and a
+merge, rebase or cherry-pick in progress is left alone; a change still being edited
+waits, and the message says why.
 
 Questions for the owner live in the repository's `BLOCKERS.md`, in a block the runner
 maintains under `## Active` (between `<!-- pi-autowork:questions:start -->` and

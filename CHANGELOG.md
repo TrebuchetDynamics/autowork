@@ -72,6 +72,19 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Auto work commits and merges all work: before each merge the runner commits whatever
+  is left uncommitted in its session worktree, and in the main checkout it commits every
+  quiet change no process holds open (not only planning files); untracked files that
+  look like secrets stay untracked. bravo's session had refused every merge for
+  hours over a failed close's uncommitted TODO.md edits ("conflicts with main in: .").
+- A task close is all or nothing: a close that fails after writing TODO.md, goals.json
+  or the archive restores them and stays retryable. Its read-back checks that the task
+  moved to the archive instead of comparing bodies the archiver and the contract parser
+  cut at different headings, which failed TASK-010's close.
+- A worker that wrote no `report.json` is held as that, not as "pending_live must be a
+  list of strings", and `pending_live` in any shape (a string, objects, empty entries)
+  becomes its text instead of holding a finished commit and rerunning the task (india
+  TASK-011).
 - The TUI runs pause, stop, restart, start and model changes in the background and
   reports when they finish. They ran on its event loop, so a restart, which waits for
   the runner to stop gracefully (30 s for bravo, up to 150 s), froze the whole
@@ -87,6 +100,11 @@ claim of a tagged release, completed installation or live workflow qualification
 - A plan commit made while a runner's cycle ran (its scan, merge or session cleanup)
   ends the following wait; the plan watch compared against the start of the wait and
   missed it until `--interval` passed (india).
+- A runner whose remaining tasks all wait (on the owner, a dependency or the resource
+  gate) merges its session into the main branch while it waits, so the owner's
+  questions in BLOCKERS.md and finished tasks reach the repository; they had stayed on
+  the session branch until the queue emptied (india, for hours). A merge that cannot
+  happen is retried only once the session, the main branch or its checkout changes.
 - A held task's `-r2` retry that a runner stop paused and the next start resumed is
   verified on its `-r2` branch; the engine had held it as "unexpected worker branch"
   (sierra TASK-026). A commit an earlier release held that way is offered for verification

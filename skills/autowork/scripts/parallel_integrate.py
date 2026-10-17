@@ -88,6 +88,22 @@ def expected_branch(slot):
     return 'autowork/' + slot['task_id'] + ('-r2' if retried else '')
 
 
+def live_items(value):
+    """A report's pending live checks as non-empty strings, whatever shape the worker wrote:
+    a string, a list of strings, or objects with their text. A finished commit is never
+    held, and its task never rerun, over the format of this list (india, TASK-011)."""
+    items = value if isinstance(value, list) else [value] if value else []
+    texts = []
+    for item in items:
+        if isinstance(item, dict):
+            item = ' — '.join(str(item[k]) for k in ('check', 'command', 'summary', 'description', 'reason')
+                              if item.get(k)) or json.dumps(item, sort_keys=True)
+        text = ' '.join(str(item).split()) if item is not None else ''
+        if text:
+            texts.append(text)
+    return texts
+
+
 def verify(repo, common, slot, contracts):
     task = contracts.get(slot['task_id'])
     if task is None:
@@ -106,13 +122,15 @@ def verify(repo, common, slot, contracts):
             or git(repo, 'rev-parse', 'refs/heads/' + slot['branch']) != commit or not lineage):
         raise ValueError('reported commit/branch/lineage mismatch')
     report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
+    if not isinstance(report, dict):
+        # Said first: the checks below would otherwise blame a field of a report that is
+        # not there (india, TASK-011: "pending_live must be a list of strings").
+        raise Hold('report', 'the worker wrote no report.json')
     files = changed(repo, slot['baseline'], commit)
-    blockers = state.report_blockers(common, slot) if isinstance(report, dict) else None
+    blockers = state.report_blockers(common, slot)
     if blockers:
         raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
-    live = report.get('pending_live', []) if isinstance(report, dict) else None
-    if not isinstance(live, list) or not all(isinstance(item, str) for item in live):
-        raise ValueError('report.json pending_live must be a list of strings')
+    report['pending_live'] = live_items(report.get('pending_live'))
     if (not isinstance(report, dict) or report.get('task') != slot['task_id']
             or report.get('commit') != commit or not isinstance(report.get('changed_files'), list)
             or not all(isinstance(p, str) for p in report['changed_files'])
@@ -531,40 +549,61 @@ def close(repo, owner_pid, task):
             archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
             require_task_contract(archived.get(task, []), expected_contract, archived=True)
         indexed = (repo / 'goals.json').exists()
-        if indexed:
-            require_no_writers(repo)
-            goals_command(repo, 'task', task, 'done')
-        # `goals.py task` updates the index, not the authored checkbox/body.
-        # Update that exact body under the helper's own stale-write guard too.
-        with goals.coordination(repo):
-            todo = repo / 'TODO.md'
-            before = todo.read_bytes()
-            text = before.decode()
-            blocks = [b for b in goals.task_blocks(text) if b['id'] == task]
-            if len(blocks) > 1:
-                raise ValueError('TODO task duplicated; no close')
-            if blocks:
-                block = blocks[0]
-                body = text[block['start']:block['end']]
-                # IDs may be bold or code: `- [ ] **T-1 — Title**` (sierra).
-                body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\][ \t]+(?:\*\*)?`?' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
-                body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
-                require_no_writers(repo)
-                goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
-        live = [item for item in (slot.get('report') or {}).get('pending_live', []) if item.strip()]
-        followup = live_followup(repo, task, live, indexed) if live else None
-        require_no_writers(repo)
-        archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
-        # Read back exact target before journaling closure; archive can fail safely
-        # after task mutation, in which case slot stays integrated and is retryable.
-        # The archive command can return null on an idempotent retry.
-        archive = repo / archived_result['archive'] if archived_result.get('archive') else archive_path(repo)
-        archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
-        require_task_contract(archived.get(task, []), expected_contract, archived=True)
+        # All or nothing: a close that fails after writing would leave these uncommitted in
+        # the session, where every later merge refuses them (bravo, TASK-010).
+        touched = [repo / 'TODO.md', repo / 'goals.json', archive_path(repo)]
+        before = {path: path.read_bytes() if path.exists() else None for path in touched}
+        try:
+            archive, followup = _close_writes(repo, slot, task, indexed, goals)
+        except BaseException:
+            for path, data in before.items():
+                if data is None:
+                    path.unlink(missing_ok=True)
+                elif not path.exists() or path.read_bytes() != data:
+                    path.write_bytes(data)
+            raise
         slot = state.change(common, slot, 'closed', {})
         files = ['TODO.md', *(['goals.json'] if indexed else []), archive.relative_to(repo).as_posix()]
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
                 'files': files, **({'live_followup': followup} if followup else {})}
+
+
+def _close_writes(repo, slot, task, indexed, goals):
+    """The close's writes to TODO.md, goals.json and the archive; (archive, live follow-up)."""
+    if indexed:
+        require_no_writers(repo)
+        goals_command(repo, 'task', task, 'done')
+    # `goals.py task` updates the index, not the authored checkbox/body.
+    # Update that exact body under the helper's own stale-write guard too.
+    with goals.coordination(repo):
+        todo = repo / 'TODO.md'
+        before = todo.read_bytes()
+        text = before.decode()
+        blocks = [b for b in goals.task_blocks(text) if b['id'] == task]
+        if len(blocks) > 1:
+            raise ValueError('TODO task duplicated; no close')
+        if blocks:
+            block = blocks[0]
+            body = text[block['start']:block['end']]
+            # IDs may be bold or code: `- [ ] **T-1 — Title**` (sierra).
+            body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\][ \t]+(?:\*\*)?`?' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
+            body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
+            require_no_writers(repo)
+            goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
+    live = live_items((slot.get('report') or {}).get('pending_live'))
+    followup = live_followup(repo, task, live, indexed) if live else None
+    require_no_writers(repo)
+    archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
+    # Read back exact target before journaling closure; archive can fail safely
+    # after task mutation, in which case slot stays integrated and is retryable.
+    # The archive command can return null on an idempotent retry.
+    archive = repo / archived_result['archive'] if archived_result.get('archive') else archive_path(repo)
+    archived = goals.task_bodies(archive.read_text()) if archive.exists() else {}
+    # The contract was checked before any write. The archiver cuts a body at the next
+    # group heading, which the contract parser keeps, so compare presence, not bytes.
+    if task not in archived or task in goals.task_bodies((repo / 'TODO.md').read_text()):
+        raise ValueError('archive did not move the task; no close')
+    return archive, followup
 
 
 CONTRACT_CHANGED = 'task contract changed since integration; no close'

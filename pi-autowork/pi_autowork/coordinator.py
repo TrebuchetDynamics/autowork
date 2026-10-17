@@ -83,6 +83,7 @@ class Coordinator:
         self.started = time.monotonic()
         self.integ = self.integ_branch = None
         self.merge_pending, self.resolved_for, self.merge_blocker = '', '', ''
+        self.waiting_merge = None  # what the last merge while waiting saw
         self.stop, self.paused, self.child = False, False, None
         self.started_workers = self.failures = 0
         self.draining, self.once_task, self.once_done = False, None, False
@@ -303,10 +304,11 @@ class Coordinator:
         self.merge_pending = ''
         if not self.integ and not self.load_session():
             return True
+        self.commit_session_leftovers()
         ahead = self.ahead()
         if ahead == 0:
             return True
-        planning_note = self.commit_owner_planning()
+        planning_note = self.commit_owner_changes()
         if not git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
             files = ' '.join((git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').split())
             base_rev = git(self.repo, 'rev-parse', self.base)
@@ -342,7 +344,7 @@ class Coordinator:
                 self.merge_pending = f'{self.base} in {self.repo} could not take {self.integ_branch}: {line}'
         if self.merge_pending:
             if planning_note:
-                self.merge_pending += f' (uncommitted planning left alone: {planning_note})'
+                self.merge_pending += f' (uncommitted changes not committed yet: {planning_note})'
             LOG.say(f'Merge pending: {self.merge_pending}. Branch {self.integ_branch} is kept; the next run retries.')
             return False
         LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s))')
@@ -386,50 +388,92 @@ class Coordinator:
             self.seen['push-note'] = note
             LOG.say(f'Push of {self.base} to {upstream} failed: {note}; the merge stays local and the next merge retries')
 
-    def commit_owner_planning(self):
-        """Planning never blocks delivery: when the main checkout's only uncommitted changes
-        are planning files (TODO.md, goals.json, BLOCKERS.md, the TODO archive), quiet for
-        PI_AUTOWORK_PLANNING_QUIET seconds and open for writing nowhere, commit exactly those
-        before merging. Any other change keeps the merge pending (TOOLSET-120-fc 4).
-        Returns '' when committed or nothing was uncommitted, else why it was left alone."""
+    def merge_waiting(self):
+        """While every remaining task waits (on the owner, a dependency or the resource gate)
+        and nothing is in flight, the session reaches the main branch now: the owner's
+        questions and finished tasks would otherwise stay on the session branch until the
+        queue empties, which a runner waiting on the owner never sees. A merge that could
+        not happen is tried again once the session, the main branch or its checkout moves."""
+        if not self.integ or self.in_flight() or not self.ahead():
+            return
+        seen = (git(self.integ, 'rev-parse', 'HEAD'), git(self.repo, 'rev-parse', self.base),
+                git(self.repo, 'status', '--porcelain', '--untracked-files=all'))
+        if seen == self.waiting_merge:
+            return
+        self.waiting_merge = seen
+        self.merge_main()
+
+    SECRET = re.compile(r'(^|/)(\.env(\..*)?|.*\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa)(\.pub)?|'
+                        r'.*credentials.*|.*secret.*|.*\.token)$', re.I)
+
+    def commit_owner_changes(self):
+        """Auto work: uncommitted changes never keep finished work from merging. When the
+        main checkout's changes have been quiet for PI_AUTOWORK_PLANNING_QUIET seconds and
+        no process holds them open for writing, commit them all before merging (planning
+        files alone keep their planning message). Untracked files that look like secrets
+        stay untracked; a merge, rebase or cherry-pick in progress is left alone.
+        Returns '' when committed or nothing was uncommitted, else why it waited."""
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
-        listing = git(self.repo, 'status', '--porcelain', '-z', '--untracked-files=all')
-        entries = [e for e in (listing or '').split('\0') if e]
-        if not entries:
+        for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'):
+            found = git(self.repo, 'rev-parse', '--path-format=absolute', '--git-path', marker)
+            if found and Path(found).exists():
+                return f'a {marker.split("_")[0].split("-")[0].lower()} is in progress in the main checkout'
+        entries = iter([e for e in (git(self.repo, 'status', '--porcelain', '-z', '--untracked-files=all') or '')
+                        .split('\0') if e])
+        paths, kept = [], []
+        for entry in entries:
+            status, path = entry[:2], entry[3:]
+            if 'U' in status or status in ('AA', 'DD'):
+                return f'{path} has an unresolved conflict'
+            if status == '??' and self.SECRET.search(path):
+                kept.append(path)
+                continue
+            paths.append(path)
+            if status[0] in 'RC':
+                paths.append(next(entries, ''))  # the rename's source, so the commit records it
+        paths = [p for p in paths if p]
+        if not paths:
             return ''
+        quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
+        files = [Path(self.repo) / p for p in paths]
+        recent = [p for p, f in zip(paths, files) if f.exists() and time.time() - f.stat().st_mtime < quiet]
+        if recent:
+            return f'{", ".join(recent[:4])} changed in the last {int(quiet // 60)} min'
+        held = open_for_writing([f for f in files if f.exists()])
+        if held:
+            return f'{", ".join(sorted(os.path.relpath(h, self.repo) for h in held))} is open for writing'
         _, dispatch = touches_inference.modules(self.toolset)
         try:
             archive = dispatch.execution.archive_file(Path(self.repo)).relative_to(self.repo).as_posix()
         except (ValueError, OSError):
             archive = None
         planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
-        paths = []
-        for entry in entries:
-            status, path = entry[:2], entry[3:]
-            if path not in planning:
-                return f'{path} is changed and is not planning'
-            if any(flag in status for flag in 'RCD'):
-                return f'{path} is renamed or deleted'
-            paths.append(path)
-        staged = set((git(self.repo, 'diff', '--cached', '--name-only') or '').split('\n')) - {''}
-        if not staged <= set(paths):
-            return 'other files are staged'
-        quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
-        files = [Path(self.repo) / p for p in paths]
-        recent = [p for p, f in zip(paths, files) if f.exists() and time.time() - f.stat().st_mtime < quiet]
-        if recent:
-            return f'{", ".join(recent)} changed in the last {int(quiet // 60)} min'
-        held = open_for_writing(files)
-        if held:
-            return f'{", ".join(sorted(os.path.relpath(h, self.repo) for h in held))} is open for writing'
-        git(self.repo, 'add', '--', *paths)
-        if not git_ok(self.repo, 'commit', '-q', '-m', 'docs(tasks): owner planning (pi-autowork)',
-                      '-m', 'Uncommitted planning in the main checkout, committed so finished work can merge.',
-                      '--', *paths):
-            return 'the planning commit failed'
-        LOG.say(f'Committed the owner\'s uncommitted planning in {self.repo} ({", ".join(paths)}) so the session can merge')
+        subject = ('docs(tasks): owner planning (pi-autowork)' if set(paths) <= planning
+                   else 'chore: uncommitted work in the main checkout (pi-autowork)')
+        git(self.repo, 'add', '-A', '--', *paths)
+        if not git_ok(self.repo, 'commit', '-q', '-m', subject,
+                      '-m', 'Uncommitted changes in the main checkout, quiet and open nowhere, committed so '
+                            'finished work can merge (auto work).', '--', *paths):
+            return 'the commit of uncommitted changes failed'
+        shown = ', '.join(paths[:6]) + (f' (+{len(paths) - 6} more)' if len(paths) > 6 else '')
+        LOG.say(f'Committed uncommitted changes in {self.repo} ({shown}) so the session can merge'
+                + (f'; left untracked as possible secrets: {", ".join(kept)}' if kept else ''))
         return ''
+
+    def commit_session_leftovers(self):
+        """The session worktree is the runner's own: anything left there uncommitted (a close
+        that failed after writing, an interrupted merge) is committed, or every later merge
+        refuses it (bravo, TASK-010)."""
+        marker = git(self.integ, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD')
+        if marker and Path(marker).exists():
+            git(self.integ, 'merge', '--abort')
+        if not dirty(self.integ):
+            return
+        git(self.integ, 'add', '-A')
+        if git_ok(self.integ, 'commit', '-q', '-m', 'chore: commit uncommitted session changes (pi-autowork)',
+                  '-m', 'Left uncommitted in the session worktree; committed so the session can merge.'):
+            LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
 
     def follow_base(self):
         """While nothing is in flight the session follows the main branch, so the owner's
@@ -1085,6 +1129,7 @@ class Coordinator:
             # Tasks remain, but none can start now (held work, dependencies or the resource gate).
             if self.mode != 'continuous':
                 self.finish(1, f'No runnable task can start: {self.last_waiting or "see --status"}')
+            self.merge_waiting()
             return self.pause(self.interval)
         # Nothing running, nothing to integrate and nothing waiting: the session ends here.
         if self.draining or self.mode != 'continuous':
