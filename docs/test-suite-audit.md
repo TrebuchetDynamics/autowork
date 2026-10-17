@@ -604,3 +604,465 @@ improvement, full-suite pass or live qualification is claimed by saving this pla
 | TOOLSET-126-6b | Trim prose-only test assertions while retaining executable contracts | TOOLSET-124-97 |
 | TOOLSET-127-b1 | Thin repeated Pi lifecycle fixtures and fixed waits | TOOLSET-124-97 |
 | TOOLSET-128-69 | Qualify suite thinning and reconcile the test budget | TOOLSET-125-e6,TOOLSET-126-6b,TOOLSET-127-b1 |
+
+## Whole-suite disposition (TOOLSET-124-97, 2026-10-17)
+
+### Scope, method and decision
+
+Audit source: `2ef55487d3dcb56e0bf3c8782fb83dbe279c6cd3`; Linux x86_64,
+Python 3.12.14, Node 26.7.0, shared runner host, not certified idle. This is a
+qualitative audit, not implementation or qualification of the thinning batches.
+No tests, runtime, dependencies, exclusions or timeouts changed. TOOLSET-073 and
+TOOLSET-102-ea above remain historical, source-bound results, byte-preserved.
+
+Docs/source map: the shared test budget and optimization protocol own the method;
+`scripts/check.py:13-54` owns discovery/exclusions; `.github/workflows/test.yml:12-21`
+owns the Python/JavaScript CI gates. No codebase map or codebase-memory tool was
+available; discovery used live files, ASTs and `rg`. Prior attempt `4146c5b`
+provided a source/assertion review at `0baf36b`; this retry rechecked inventory,
+candidates and the six changed test modules, including an independent read-only
+review of their changed detectors. It does not treat the old inventory as current.
+
+Method: import only the checker, call `discover_tests(Path.cwd())`, parse every
+returned file with `ast.parse`, count `splitlines()` and declared
+`FunctionDef`/`AsyncFunctionDef` names starting `test_`. Inspect bases, fixtures,
+assertions/helpers, embedded child scripts and sleeps. A method-body AST comparison
+ignoring locations/names finds **no identical declared-body pairs**; it cannot
+establish semantic equivalence or detect inherited/called repetition. Collect only
+the inherited-execution candidate with unittest separately. Excluded suites are
+parsed/read only, never imported. Tracked `tests/fixtures/legacy_owner_cycle.py`
+and `pi-autowork/tests/tui_pilot.py` are fixture/helper inputs, not omitted suites.
+Vendored upstream tests are outside owned executable scope.
+
+| Current offline directory | Modules | Lines | Declared test methods |
+| --- | ---: | ---: | ---: |
+| `tests` | 50 | 10,770 | 653 |
+| `skills/autowork/scripts` | 53 | 15,052 | 815 |
+| `skills/docs-sync/scripts` | 15 | 3,681 | 217 |
+| `skills/git-commit-push/scripts` | 1 | 102 | 9 |
+| `pi-autowork/tests` | 7 | 944 | 50 |
+| **Total** | **126** | **30,549** | **1,744** |
+
+JavaScript: **one file, 109 lines, three top-level `test()` cases** with many
+command/selector inputs. Excluded: **eight files, 72 declared methods** plus
+standalone assertion scripts. These are not whole-suite collected execution or
+unique behavior counts, passing-gate evidence or timings. The accepted plan's
+30,176 lines / 1,723 declarations and first attempt's 30,308 / 1,729 are historical.
+The three files over 1,000 lines are Pi runner **1,617**, parallel integration
+**1,507**, and bundle update **1,143**. Six changed modules add fifteen declarations
+since the first attempt; no reduction or speedup follows from those counts.
+
+**Decision (Judgment):** prioritize TOOLSET-125-e6's proven inherited repeats,
+then TOOLSET-127-b1's bounded fixture/cycle work. TOOLSET-126-6b can independently
+thin editorial predicates, but has little demonstrated latency payoff. Keep other
+detectors pending stronger evidence. No new task is justified by size, mocks,
+shared helpers, missing failure history or equal historical coverage. The existing
+implementation tasks remain the owners; task/index reconciliation is coordinator-owned.
+
+The earlier **600-second timeout remains nonpassing**, including process/stream
+warnings, not an idle baseline. `scripts/check.py:88` now defaults to 1,800 seconds;
+that separately shipped change does not retroactively pass the old run. No full
+Python gate is run here. Repeated comparable passing full runs are required for a
+quantitative suite-speedup claim, not this qualitative disposition.
+
+Retry evidence: the prior integration verifier exited 0, but its receipt outcome
+was **CHILDREN_TERMINATED**, `reusable_acceptance: false`, with one terminated
+descendant and unchanged recorded TODO/index inputs. Its log was empty. Neither a
+passing integration nor a particular failing test/tree mutation is established;
+the descendant's origin is unknown. This audit does not waive that guard, repair
+runner code or rerun integration in another worktree. The coordinator must obtain
+fresh valid integration evidence after the worker commit.
+
+### Findings and candidate-specific before evidence
+
+#### F1 — exact inherited executions (Fact; Low; ready to thin)
+
+`skills/autowork/scripts/test_task_execution.py:15-46,132-141` defines
+`RecoveryTests(DirectExecutionTests)` without overriding `setUp` or `call`.
+Fresh `TestLoader.getTestCaseNames` collection and object-identity checks prove
+**11 parent + 37 child = 48 executions / 37 unique methods**: eleven parent and
+**26**, not 25, unique recovery cases. Each duplicate is the identical parent
+method object. The eleven-name mapping in the accepted plan remains exact:
+remove only each second `RecoveryTests.<name>` execution and retain the matching
+`DirectExecutionTests.<name>` with all setup/actions/assertions. This removes no
+unique safety regression.
+
+The added `test_a_git_timeout_under_load_answers_busy_not_action_required`
+(`:177-199`) covers both entrypoints' BUSY classification, safe diagnostics and a
+non-timeout negative control. Keep it. **TOOLSET-125-e6 needs coordinator count
+reconciliation from 47 → 36 to 48 → 37, retaining 26 unique recovery methods**;
+never delete it to force an obsolete target.
+
+Fresh before command: `python3 -m unittest discover -s skills/autowork/scripts -p
+test_task_execution.py`: **48 passed**, unittest **16.639 s**, external wall
+**45.644 s**, one run. Wall includes startup/exit; its discrepancy with unittest's
+interval was not profiled. It is not an idle median or a suite-speedup forecast.
+Structural identity justifies the fixture-only base/helper proposal; application
+still requires same-machine focused before/after timing and unchanged retained
+line/branch seams. No new coverage or replacement implementation is claimed here.
+
+Current candidate SHA-256 (accepted-plan hashes stay historical):
+
+| File | SHA-256 |
+| --- | --- |
+| `skills/autowork/scripts/test_task_execution.py` | `2d0eeb916f6ce406fb788b56d3af68e6dbae2811145e224df2825f47af661dd2` |
+| `tests/test_pi_autowork.py` | `f383060b47ea5a5db74180a70919f579dada6992e5162b56ae39ea37771b8177` |
+| `tests/test_blockers.py` | `1790f7cbec5017dd923aa34ecb4c81ad83f1ed7287c444f51f7e6811de9e7bda` |
+| `tests/portable_pi.test.mjs` | `e8b297e909775257624e0a35bf0386bb6c4c2626bb4a02277007c2c157bdcb29` |
+
+#### F2 — prose locks versus real seams (Fact; Low; assertion-level thinning)
+
+TOOLSET-126-6b must classify individual predicates, not delete mixed modules:
+
+| Exact location / candidate | Disposition and surviving detector/obligation |
+| --- | --- |
+| `tests/test_blockers.py:24-69`, six `BlockersContract` methods | Five pure prose methods check filtering/clarification, replanning, ordering, model-free reading and planning-only authority. `test_every_entry_point_is_the_same_command` mixes spellings, links and a Pi implementation substring. Thin editorial wording, not machine-readable question markers or authorization obligations by default. |
+| `tests/test_blockers.py:78-93`, two `BlockersRouting` methods | Keep the named wrong-skill incident: five spellings load Blockers with the literal target; incidental “blockers” text must not hijack another workflow. Link/path closure remains in workflow/package tests. |
+| `tests/test_skill_descriptions.py:20-26` | Terminal punctuation at :26 is editorial. Retain parseable frontmatter, nonempty string and ≤60-character index compatibility; no whole-method deletion. |
+| `tests/test_workflow_commands.py:29,109-113` | Central-queue sentence is editorial. Retain aliases, literal arguments, origin, collisions, installed source and namespace. The negative sentence at :113 proxies foreign-namespace isolation: retain an observable augmentation-boundary oracle before dropping that obligation. |
+| `tests/test_portable_package.py:39,68-72,89` | “native tools”, heading host names and “questions-only” are wording leads. Keep resource selection, references, no-install-hooks, version alignment, explicit-only authorization metadata and nonrecursive planning topology. Forbidden helper names at :37-38 express host isolation, not mere style. |
+| `tests/test_workflow_contract.py:16-79` | Keep all three: real reference resolution, unsupported install-path lint and copied-install helper execution with spaces. Actual generated-command ledger mutations are not redundant with file existence. |
+| `tests/portable_pi.test.mjs:15,19,26,42` | Human titles/“host contract” matches are wording leads inside an executed adapter. Investigate stable resource-identity oracles while retaining selector/mode identity, literal bytes, idle/follow-up delivery and all three journeys. |
+
+A document mentioning a rule is not proof of model compliance. Blockers' no-push,
+no-runner-management, paused-job, scope and planning-only obligations cannot simply
+vanish with their phrase checks. Router/metadata tests detect wrong selection or
+implicit invocation, **not** a model choosing to push, edit a marked block or restart
+a service. Preserve an assertion-to-obligation record when thinning.
+
+Proposed bounded evaluation, **unrun**: in a disposable repository/isolated host,
+present routine repair, one genuinely missing decision, unequal-effort blockers and
+separately requested publication. Observe actual tool calls/artifacts: no runner,
+process, schedule or push mutation; at most one ordered genuine question; literal
+target and authorized planning-only edits. This is a non-executable obligation for
+this audit, not an always-on paid dependency or replacement for executable safety tests.
+
+Fresh ordinary before runs (once each, wall / unittest seconds):
+
+| `python3 -m unittest discover -s tests -p …` | Passed | Seconds |
+| --- | ---: | ---: |
+| `test_blockers.py` | 8 | 0.348 / 0.183 |
+| `test_skill_descriptions.py` | 1 | 0.066 / 0.007 |
+| `test_workflow_contract.py` | 3 | 0.765 / 0.667 |
+| `test_workflow_commands.py` | 10 | 0.363 / 0.204 |
+| `test_portable_package.py` | 7 | 0.098 / 0.016 |
+
+These are **29 Python executions**, not the JavaScript cases or a speedup. Text
+checks often record no owned Python lines; equal coverage could not establish
+instruction-compliance equivalence. Only the identified editorial predicates have
+a thinning rationale; safety obligations and mixed cases remain protected.
+
+#### F3 — Pi fixture and cycle cost (Fact; Medium; thin fixtures, not journeys)
+
+All IDs are `test_pi_autowork.EngineTests`. Each ran once in a separate ordinary
+interpreter with `python3 -c "import sys,unittest;sys.path.insert(0,'tests');
+unittest.main(module=None,argv=['audit','test_pi_autowork.EngineTests.<ID>'])"`,
+outer limit 180 seconds. They use fake Pi/local Git, no installed service, model,
+network endpoint or port. All three passed on the audit source:
+
+| ID / `tests/test_pi_autowork.py` lines | Exact before fixture/wait | Wall / unittest seconds; retained oracle |
+| --- | --- | --- |
+| `test_a_service_pauses_after_a_failure_streak_instead_of_exiting`, :678-694 | A/B block, failure threshold 1, pause 3,600 s, interval 1 s; bounded 0.2 s polling to pause log, then fixed **3 s** at :689. | **26.501 / 26.440**; later-cycle survival, no `Finished.`, SIGINT exit 130. |
+| `test_a_stalled_service_says_so_once_and_the_fleet_view_shows_why`, :696-719 | A blocks, B completes, C waits; stall threshold 2 s, interval 1 s; poll to notice, then fixed **4 s** at :707. | **29.542 / 29.491**; one notice after later cycles, root attribution, real `--fleet`/`--status` readback. |
+| `test_a_claim_idle_long_enough_is_adopted_and_finished`, :721-733 | Commit A in-progress; full first queue proves fresh-claim refusal and executes B; fixed **2 s** at :728; threshold 1 s, second queue. | **14.085 / 14.030**; fresh refusal, aged adoption and A/B/C complete. |
+
+Nine literal sleep seconds are **not nine proven removable seconds**. Alive before
+a wait is not later-cycle proof; a smaller sleep under contention is not equivalent.
+Replace with observable cycle milestones or existing explicit-time component seams,
+retaining real CLI composition. A smaller consumed-state fixture must match actual
+journal/claim/state inputs as TOOLSET-102-ea did, not arbitrarily backdate timestamps.
+No replacement fixture or candidate line/branch equivalence has been measured here.
+
+Failure-safe cleanup lead: pause/stall coordinator launches (:681-682,700-701)
+precede assertions without immediate coordinator cleanup. `Fixture.stop_workers`
+(:247-258) kills recorded workers only; `start_runner` (:290-292) registers no
+cleanup. The new quiet-planning journey (:1178-1190) has the same assertion-before-
+shutdown pattern. Include failure-safe coordinator reaping in TOOLSET-127-b1's
+existing fixture scope; no leak reproduction or attribution of the prior integration
+descendant to these tests is established by this static observation.
+
+Legacy/component matrix (legacy paths: `tests/test_pi_autowork.py`; short component
+filenames: `pi-autowork/tests/`):
+
+| Legacy seam | Lower-cost component | Why composition stays |
+| --- | --- | --- |
+| Fallback/session :386-411 | `test_pi_runtime.py:85-122` | Cooling/choice is not completion in the resumed session/worktree. |
+| Stall/fleet/status :696-719 | `test_health.py:31-107`, `test_fleet_view.py:47-83,133-173` | Explicit time/state is not continuous invocation, emitted logs or actual state readback. |
+| Questions :1032-1070, quiet planning :1172-1191 | `test_questions.py:56-94` | Rendering is not no-model restart, question commit/merge or owner-answer consumption. |
+| Release/restart :1440-1488 | `test_release.py:50-111` | Decisions are not launcher selection, no installer on rejection, code preservation or same-PID restart. |
+| Dependencies/restoration :817-834,1307-1317 | `test_workspaces.py:53-104` | Links are not worker consumption, resumed integration or selective stale-registration preservation. |
+| Touches :836-911 | `test_touches_inference.py:26-45,48-95` | Byte/provenance and bounded grant logic do not prove same-worktree resumption, same-commit re-verification or second-request refusal. |
+| Budget restart :1137-1150 | `test_pi_runtime.py:109-122` | Persisted runtime-window spending across jobs is not coordinator restart/expired-record composition. |
+| Pause/adoption :678-694,721-733 | `test_health.py:79-87`; `skills/autowork/scripts/test_parallel_claims.py:41-130` | State/claim classification is not failure-streak survival or actual aged-claim dispatch. |
+
+**No legacy/component deletion equivalence is proven.** Keep incident, no-model,
+barrier/parallel, ownership/cancellation, worker-push refusal, reviewer containment,
+dirty-main, conflict resolution, selective cleanup and update/restart journeys.
+Current changes require **once-only bounded authored-scope widening plus refusal**,
+not the prior unconditional authored-scope refusal. Likewise manifest work is serial
+with other serial work, not exclusive of all independent work. Retain these changed
+positive/negative policies (`test_parallel_dispatch.py:133-152`,
+`test_parallel_plan.py:84-123,180-208` under `skills/autowork/scripts`).
+
+#### F4 — JavaScript package-count drift (Fact; Low; repair finding)
+
+`npm pack --dry-run --json --cache "$TMPDIR/npm-cache"` succeeds and lists **13**
+portable `SKILL.md` adapters, including Blockers; Python package tests (:24-26)
+expect the same set. `tests/portable_pi.test.mjs:91` still expects **12** after
+archive extraction. This proves stale expected-count inconsistency, not a Node
+test outcome: **the Node suite was not executed or reported green here**.
+Reconcile within TOOLSET-126-6b's existing JavaScript scope (or an explicit repair
+receipt) before TOOLSET-128-69 qualifies it. Keep archive isolation/resource checks;
+deleting the detector is not a fix. No new task/framework is needed.
+
+### Per-module disposition map
+
+**K = keep** current detector, not “proved minimal”. **T = thin** only F1–F3's
+identified executions/predicates/fixtures. **I = investigate**, retaining tests now:
+missing equivalence/cost evidence means no new implementation task. Anchors name
+representative current seams, not independent coverage/mutation qualification of
+every assertion. Counts are declarations, not inherited executions/subtests.
+Directory headings supply each filename's path prefix. Totals: **104 K / six T /
+16 I** Python modules.
+
+#### `tests/` — 50 modules
+
+| File:line | Methods | Disposition; retained risk / bounded lead |
+| --- | ---: | --- |
+| `test_audit_launcher.py:13` | 1 | K — launcher forwards explicitly owned default paths. |
+| `test_autoresearch.py:20` | 6 | K — selector/alias routing, literal limits, integrity and standalone vendor execution. |
+| `test_autowork_command.py:99` | 9 | K — fake-systemctl lifecycle, readiness, package precedence and per-service settings. |
+| `test_autowork_migration.py:13` | 3 | K — receipt/lock-inode preservation, conflict and symlink refusal. |
+| `test_beautify_readme_vendor.py:34` | 12 | K — provenance and real image parser/SVG safety regressions. |
+| `test_behind_only_realign.py:73` | 26 | K — literal Git paths, hidden index flags, collisions, safety refs and local bytes. |
+| `test_blockers.py:24` | 8 | T — F2 editorial lists only; keep incident routing and authorization obligations. |
+| `test_bundle.py:51` | 33 | K — maintenance parsing, dead/concurrent update receipts, collisions and partial inventory. |
+| `test_changelog_merge.py:23` | 2 | K — real two-entry merge and narrowly owned union-driver scope. |
+| `test_check.py:37` | 12 | K — import-free discovery, symlink/live isolation, concurrency, output and nonpassing timeouts. |
+| `test_complete_setup.py:62` | 7 | K — all-profile orchestration, partial failure, preview and symlink refusal. |
+| `test_cron_autoheal.py:63` | 16 | K — exact managed job, uncertain-write no replay, pause/scope, concurrent edits and redaction. |
+| `test_cron_autowork.py:16` | 5 | I — instruction routing/reporting; Telegram/authority obligations are not disposable wording. |
+| `test_doctor_modes.py:40` | 9 | K — core/full asymmetry and foreign-command refusal; G22 table is clarity-only. |
+| `test_engineering_vendor.py:15` | 8 | K — route selection/tamper refusal, immutable hashes and install closure. |
+| `test_impeccable_bundle.py:13` | 2 | K — byte-exact provenance/license and clean-profile support installation. |
+| `test_install.py:21` | 2 | K — shell entrypoint dispatch/argument forwarding, not shell-framework tests. |
+| `test_install_graphify.py:47` | 9 | K — isolated profile/tree install, path safety and no partial publication. |
+| `test_install_menu.py:60` | 16 | K — host selection, preview, failure and streaming; terminal/color contracts remain. |
+| `test_install_omh.py:67` | 28 | K — provider/store isolation, precedence, malformed config and zero-write refusal/preview. |
+| `test_install_plugins.py:61` | 29 | K — profile scope, consent, publication, existing edits and policy opt-out. |
+| `test_install_skills.py:44` | 10 | K — support closure, repeat preservation and unsafe-destination refusal. |
+| `test_isolated_origin_clone.py:36` | 7 | K — shallow/Git-selector isolation, pins and destination bytes. |
+| `test_native_provisioning.py:17` | 4 | K — offline publication races/existing skills; no native qualification. |
+| `test_omh_trim.py:50` | 6 | K — merge preserves user disabled skills, rejects foreign provenance. |
+| `test_owner_cron.py:18` | 27 | K — generated authority/pause/scope and real wiring; G01 stays protected. |
+| `test_pi_autowork.py:309` | 78 | T — F3 fixture/cycle work only; keep composed Git/process, session conflict, quiet planning and bounded scope grant/refusal. |
+| `test_pi_touches.py:13` | 1 | K — old public script inserts Touches without unrelated byte changes. |
+| `test_plugin.py:80` | 12 | K — discovery, ownership, literal origin routing and symlink escape refusal. |
+| `test_portable_package.py:11` | 7 | T — F2 editorial predicates only; keep authorization metadata/manifests/closure. |
+| `test_preflight.py:25` | 12 | K — malformed/foreign facts and safe prerequisite refusal before profile writes. |
+| `test_profile_consult.py:50` | 45 | K — cache/expiry, secret grammars, original session and timeout tree cleanup. |
+| `test_profile_create.py:14` | 2 | I — prose plus actual discovery/argument dispatch; no blanket deletion. |
+| `test_project_status.py:34` | 5 | I — historical prose versus local link/anchor checks; keep live/offline distinction. |
+| `test_removed_memory_integration.py:13` | 2 | K — retired assets/defaults and removed-flag refusal before writes. |
+| `test_repo_docs_graphify.py:9` | 2 | I — guidance/authority phrase guards; no executable-equivalence evidence. |
+| `test_scheduled_progress.py:9` | 4 | I — outcome/recovery/paused policy, not scheduler execution evidence. |
+| `test_setup_runtime.py:35` | 10 | K — activation/registration receipts, foreign gateway refusal and explicit no-reload. |
+| `test_skill_descriptions.py:11` | 1 | T — F2 punctuation only; retain index length/metadata compatibility. |
+| `test_start_notice.py:53` | 5 | K — fake API route/topic, nonfatal error and existing-file preservation. |
+| `test_task_touches_contract.py:15` | 2 | I — task-authoring prose, not executable protected-path admission. |
+| `test_telegram_menu_policy.py:15` | 13 | K — cap/aliases, scoped API errors, opt-out and no-owner/no-call behavior. |
+| `test_tx.py:19` | 2 | K — launcher avoids Autowork injection; package exposes intended commands. |
+| `test_ui_taste_bundle.py:22` | 5 | K — immutable snapshot, license, single registration and offline provisioning. |
+| `test_update_bundle.py:46` | 95 | I — fresh Git/profile cost lead; keep history/data-loss/races, no G09/G18/G30 removals. |
+| `test_update_quiet_restart.py:48` | 24 | K — busy/unknown refusal, coalescing, real locks/readback and outcome conservation. |
+| `test_workflow_commands.py:10` | 10 | T — F2 wording only; retain aliases, collisions, namespace and installed source. |
+| `test_workflow_contract.py:16` | 3 | K — links, install paths and copied-install helper execution. |
+| `test_workflow_cycle.py:23` | 13 | I — mixed policy/executable ledger lifecycle; keep review/authority boundaries. |
+| `test_worktree_closeout.py:19` | 3 | K — policy plus documented main/master closeout invocation, distinct from helper units. |
+
+#### `skills/autowork/scripts/` — 53 modules
+
+| File:line | Methods | Disposition; retained risk / bounded lead |
+| --- | ---: | --- |
+| `test_analyze_audit_logs.py:20` | 2 | K — deduplication, chunk bounds and receipt/cursor immutability. |
+| `test_audit_profiles.py:38` | 12 | K — scope, read-only SQLite/backlog, cursor rotation and no fsmonitor execution. |
+| `test_backlog_plan.py:14` | 16 | K — observed/unknown empty queue, bounded reuse and no ownership bypass. |
+| `test_blocker_recovery.py:23` | 2 | K — attributed prerequisite recovery composed with admission. |
+| `test_budget_controller.py:166` | 35 | I — called race test adds coordination/evidence; keep capacity/uncertainty, no removal. |
+| `test_candidate_identity.py:33` | 3 | K — base/tree/prerequisite identity, no dirty-union qualification. |
+| `test_check_receipt.py:18` | 50 | K — positive/negative environment/cache/source identity, cleanup and exact reuse. |
+| `test_cli_bounds.py:9` | 1 | I — mock-only deadline/errors, but timeout is an owned boundary; no safe deletion proof. |
+| `test_collector_correctness.py:34` | 16 | K — unknown attribution, replay IDs, sparse schema and preserved projections. |
+| `test_continuation_capability.py:55` | 12 | K — legacy caps still enforce exhaustion/unknown usage/no replenishment. |
+| `test_controller_bridge.py:16` | 11 | K — real local Unix identity/deadlines, protocol rejection and uncertain reservations. |
+| `test_delivery_state.py:133` | 23 | K — exact review/source/merge policy, changed-base conservation and receipt seam. |
+| `test_discovery.py:21` | 7 | K — owned plans/docs, exclusions, root escape and dependency pruning. |
+| `test_disjoint_fallback.py:45` | 5 | K — native-compatible disjoint ownership/refusal/handoff, not default-path prerequisite. |
+| `test_disjoint_triage.py:19` | 9 | K — triage/backoff only its slice, retaining live ownership/blocked duplicates. |
+| `test_engineering_signals.py:14` | 4 | K — bounded signals, no generated/symlink scan or unsupported bug claim. |
+| `test_finish_task.py:46` | 21 | K — actual index/HEAD, literal paths, hooks, timeout writers and owned commits. |
+| `test_goal_handoff.py:19` | 27 | K — composed admission/source/identity/notification uncertainty and review; G02/G15. |
+| `test_main_only.py:47` | 6 | K — serialized lifecycle, foreign bytes, timeout release and no native launch without hook. |
+| `test_milestone_admission.py:108` | 16 | K — transaction, immutable preparation, focus/dependency races and fallback authority. |
+| `test_native_containment.py:22` | 27 | K — synthetic manifest/isolation, registration-before-release and exact cancellation evidence. |
+| `test_owner_cycle.py:32` | 47 | I — large legacy/default fixture matrix; retain recovery/bookkeeping/unknown delivery. |
+| `test_owner_unblock.py:63` | 18 | K — attributable repairs, immutable body, source/ownership refusal and foreign bytes. |
+| `test_parallel_adversarial.py:68` | 7 | K — escaped descendants, stale reports/lost receipts and exact-once landing. |
+| `test_parallel_claims.py:41` | 10 | K — claim/branch age, live session/file ownership and adoption refusal. |
+| `test_parallel_compat.py:97` | 5 | K — real CLI byte compatibility and fallback without state/worktrees. |
+| `test_parallel_dispatch.py:97` | 32 | K — isolation, capacities, original timeout, serial/exclusive distinction and interrupted/overlap-held admission. |
+| `test_parallel_e2e.py:164` | 12 | K — real CLI A/B/C composition/status/journal; delayed observation is distinct. |
+| `test_parallel_integrate.py:79` | 100 | I — mutable Git cost lead; keep closeout/races plus once-only reoffer, interrupted readoption and empty retry. |
+| `test_parallel_plan.py:15` | 16 | K — protected scope, serial/exclusive, transitive dependencies and priority-preserving backfill. |
+| `test_parallel_state.py:52` | 13 | K — shared leases, owner birth identity, recovery and retry budget preservation. |
+| `test_pass_workspace.py:46` | 23 | K — frozen candidate/ledger, start guards and no dirty-source workspace. |
+| `test_picker_policy.py:13` | 6 | I — predicates include exhaustion/authority/privacy; no safe deletion proof. |
+| `test_pipeline.py:114` | 17 | K — compatibility creation/readback and budget-history refusal, not model dispatch proof. |
+| `test_ponytail_handoff.py:13` | 2 | K — method references and worker/proposal authority in existing review lane. |
+| `test_prerequisite_recovery.py:40` | 5 | K — immutable provenance and failed-acceptance prerequisite cleanup. |
+| `test_priority_selection.py:51` | 4 | K — entrypoint order agreement, drift refusal and active continuation. |
+| `test_progress_runtime.py:19` | 10 | K — owner/session binding, idempotence, inbox conflicts and no retargeting. |
+| `test_publication_readiness.py:44` | 4 | K — destination/authority, ancestry conflict and no-force readiness. |
+| `test_reconcile.py:18` | 28 | K — original run/review/owner identity, unknown/delivered distinction; G29 transitions. |
+| `test_registered_create_cli.py:8` | 2 | K — native launcher/profile transaction argv seam, not native acceptance. |
+| `test_registration_admission.py:73` | 6 | K — transaction rollback, writer race, stale binding and attributed append. |
+| `test_response_tail.py:18` | 22 | K — frames, secret masking before truncation and job/path isolation. |
+| `test_retry_selection.py:33` | 36 | K — source/status/dependency parser, registered writers and no invented historical scope. |
+| `test_runtime_bundle.py:21` | 4 | K — immutable closure, wrong pins/symlinks and shell dependency reuse. |
+| `test_selection_cost.py:14` | 1 | K — dependency-search operation bound protects real complexity contract. |
+| `test_source_freshness.py:8` | 3 | K — source appearance/deletion/symlink/workspace identity without secrets. |
+| `test_task_execution.py:47` | 37 | T — F1's eleven repeated child executions only; retain all unique named methods. |
+| `test_worker_role_contract.py:11` | 8 | K — caller limits, proposal/publication modes, CLI validation and payload bound. |
+| `test_workflow_handoff.py:7` | 1 | I — text card/product boundary; keep obligation until thinning evidence exists. |
+| `test_worktree_closeout.py:58` | 21 | K — selective removal/archive, exact bytes, evidence/dirty/live/locked preservation. |
+| `test_worktree_paths.py:34` | 6 | K — canonical ignored placement, hook create/remove and escape refusals. |
+| `test_writer_registration.py:12` | 4 | K — bound append/provenance, read-only native observation and drift refusal. |
+
+#### `skills/docs-sync/scripts/` — 15 modules
+
+| File:line | Methods | Disposition; retained risk / bounded lead |
+| --- | ---: | --- |
+| `test_archive_policy.py:13` | 3 | I — two prose contracts plus actual history/selection preservation; no blanket deletion. |
+| `test_backlog_recovery.py:46` | 13 | K — same-task recovery, ambiguous/fenced acceptance refusal and original bytes. |
+| `test_docs_manifest.py:51` | 24 | K — real links/anchors/roles/paths, malformed shapes and symlinks; named parser regressions. |
+| `test_docs_profiles.py:40` | 5 | K — profile/CLI baselines and scaffold alignment, not arbitrary wording. |
+| `test_docs_stale.py:61` | 7 | K — real Git ancestry/environment isolation, unknown provenance explicit. |
+| `test_goal_concurrency.py:70` | 17 | K — common-dir locks, hostile Git selectors, stale revision and in-flight edits. |
+| `test_goal_redaction.py:48` | 11 | K — private archive, scope/path refusal, locking and no partial writes. |
+| `test_goals.py:70` | 43 | K — init rollback, schema/graph, stable render and named CRLF/data-loss regressions. |
+| `test_handoff_reconciliation.py:44` | 21 | K — accepted-plan/readiness parsing, fences and read-only CLI; G13 clarity-only. |
+| `test_live_harness_guard.py:11` | 1 | K — import refuses live harness before writes; not just inventory exclusion. |
+| `test_milestone_focus.py:44` | 10 | K — focus roundtrip, dependency/status refusal and legacy order. |
+| `test_priority_order.py:84` | 18 | K — human order, grouped/revision-guarded bootstrap and entrypoint drift refusal. |
+| `test_render_safety.py:29` | 5 | K — fenced/ambiguous markers, neighbor sections and injected-text preservation. |
+| `test_supersession.py:53` | 8 | K — not-completed semantics, unchecked history/dependencies and byte-stable archive. |
+| `test_todo_archive.py:45` | 31 | K — crash/concurrency/symlinks, task boundaries and source/archive byte conservation. |
+
+#### `skills/git-commit-push/scripts/` — one module
+
+| File:line | Methods | Disposition; retained risk / bounded lead |
+| --- | ---: | --- |
+| `test_delivery_scope.py:33` | 9 | I — publication/allowlist/writer phrases plus executable inventory, not publication behavior proof. |
+
+#### `pi-autowork/tests/` — seven modules
+
+| File:line | Methods | Disposition; retained risk / bounded lead |
+| --- | ---: | --- |
+| `test_fleet_view.py:47` | 15 | K — state/readiness, action confirmation, question lanes and headless TUI. |
+| `test_health.py:31` | 9 | K — explicit-time stall/dedup/reset, stuck/dead/silent and overlap-only versus mixed-blocker deadlock. |
+| `test_pi_runtime.py:75` | 5 | K — fake executable stream/timeout/fallback, redaction and persisted spending across jobs. |
+| `test_questions.py:56` | 5 | K — deterministic order, first-seen stability and owner bytes outside marked block. |
+| `test_release.py:50` | 5 | K — local compatibility, fetched code never executed, busy deferral and package precedence. |
+| `test_touches_inference.py:26` | 6 | K — byte/provenance/shim, bounded once-only authored grant and ownership/refusal cases. |
+| `test_workspaces.py:35` | 5 | K — canonical restoration, traversal, dependency links and unsafe paths. |
+
+#### JavaScript — `tests/portable_pi.test.mjs`
+
+| Case / line | Disposition; retained risk |
+| --- | --- |
+| `Pi registers workflows and all 13 research commands; routes literal arguments`, :5 | I — F2 title-text leads; keep 26 commands, selector/resource matrix, literal bytes and follow-up delivery. |
+| `npm package excludes local bytecode and keeps portable support files`, :46 | K — actual npm inventory excludes bytecode and retains support, not source-tree existence alone. |
+| `installed archive resolves portable references and commands without checkout files`, :61 | K + repair F4 — extract real archive, resolve links and run installed commands independent of checkout. |
+
+### Excluded-suite map — static review only
+
+Counts are declarations; zero means standalone assertions, **not an empty suite**.
+Keep all eight exclusions. The three `integration_*.py` files also fall outside the
+`test_*.py` glob; deleting their exclusion entries would not execute them. Offline
+mocks do not replace installed/live qualification.
+
+| File / source anchor | Methods | Disposition, retained detector and prerequisite |
+| --- | ---: | --- |
+| `skills/docs-sync/scripts/test_goal_gap_regression.py:17-79` | 0 | K — two real Docs Sync/model passes, protected inputs and byte-exact repeat; needs isolated Hermes chat/profile receipts. Import now raises SkipTest before writes; check.py's import-write reason is stale, not a reason to execute it. |
+| `skills/autowork/scripts/test_native_lifecycle_controls.py:210-265,469-553,790-883` | 43 | I, keep excluded — native contracts/history, deadlines/lifetime and real create/dedup/dry-dispatch preflight; installed Hermes interpreter/CLI/Linux needed. Fake transport does not qualify native execution. Separating portable cases needs dependency evidence. |
+| `skills/autowork/scripts/test_native_handoff.py:38-69,72-130,152-319` | 15 | I, keep excluded — three offline validation cases mixed with twelve opt-in native identity/comment/readback cases, isolated SQLite and OS workers. Requires installed Hermes and HERMES_NATIVE_HANDOFF_TEST=1. Extracting three is an unverified lead. |
+| `skills/autowork/scripts/test_native_containment_linux.py:12-285` | 8 | K — actual registration/namespaces/environment and detached-child cleanup/cancellation; opt-in backend, systemd user manager, bubblewrap, cgroup v2/fixed runtime. Live model remains NOT_RUN. |
+| `skills/autowork/scripts/test_controller_bridge_linux.py:15-17,307-482` | 6 | K — installed controller/containment, egress negative/positive controls, replay/capacity/uncertainty; opt-in backend/local listeners required, no ports bound here. No provider qualification. |
+| `tests/integration_plugin.py:17-35,105-191` | 0 | K — actual loader/provisioning/defaults/menu, captured origin/unload in temporary profile; Hermes source/interpreter required. No model or Telegram delivery proof. |
+| `tests/integration_autoresearch.py:12-80` | 0 | K — actual loader/aliases/CLI queue/captured routing; temporary profile/Hermes, explicitly no network/model calls. |
+| `tests/integration_bundle.py:1-4,15-77` | 0 | K — existing isolated installed bundle inventory/loader/skills/alias queues; requires actual isolated HERMES_HOME, unlike temporary-profile fixtures. No bot/model qualification. |
+
+### Remaining leads, protected seams and blind spots
+
+- **Fixture repetition is not behavior repetition.** `tests/test_update_bundle.py:17-38`
+  rebuilds a Git remote/clone and profiles; `skills/autowork/scripts/test_parallel_integrate.py:19-43`
+  rebuilds repository/coordinator/slot state. Distinct conflicts, interrupted writes,
+  foreign bytes and closeout races require fresh mutable fixtures. Share immutable
+  input/builders only after timing/source-consumption evidence; no new task from setup counts.
+- **Called repetition is not removal proof.** `skills/autowork/scripts/test_budget_controller.py:660-673`
+  calls another case but adds coordination, exit and source-evidence predicates.
+  Existing process/observation helpers share durable cleanup oracles. Keep SQLite
+  at-most-once, capacity, crash/uncertainty, secret omission and zero-unit exhaustion
+  (G10/G19/S5), not just common covered lines.
+- **Classify sleeps.** Thirteen offline modules contain AST `.sleep()` calls, not
+  thirteen unconditional waits. `test_check_receipt.py:497-508` and
+  `test_parallel_adversarial.py:137-154` under `skills/autowork/scripts` wait beyond
+  escaped-child effects to detect failed cleanup: keep those negative oracles.
+  Polls bound observation; embedded fake-child sleeps are outside this AST count.
+  `pi-autowork/tests/test_pi_runtime.py:40,104` interrupts a 30-second fake hang
+  with a one-second job limit; it does not pay an unconditional 30-second wait.
+  No global clock mocking in race/process tests.
+- **Retain changed incident seams.** Current cases for same-commit conflict recovery
+  and quiet owner planning (`tests/test_pi_autowork.py:1161-1191`), interrupted and
+  overlap-held admission (`skills/autowork/scripts/test_parallel_dispatch.py:538-567`),
+  once-free reoffer/history/empty retry (`test_parallel_integrate.py:152-172,400-417`
+  in that directory), overlap-only deadlock (`pi-autowork/tests/test_health.py:43-53`)
+  and bounded widening/refusal (`pi-autowork/tests/test_touches_inference.py:69-95`)
+  are new distinct protections, not dispensable duplicates of component logic.
+- **Legacy does not mean dead.** Shipped orchestration still has native consumers
+  and compatibility/refusal obligations; see `docs/project.md` current components.
+  Removing those sources/obligations is outside this task.
+- **Coverage/mutation:** no new measurement/tool/dependency. TOOLSET-073's 213
+  no-record contexts and TOOLSET-102-ea's paired union are historical, not today's
+  whole-suite equivalence. Text, shell/Git, copied sources, sanitized/isolated
+  children, alternate interpreters and killed descendants remain blind spots.
+  Replacement fixtures need focused before/after lines **and branches**, inherited
+  child caller IDs, data off sys.path and retained assertions, not static counts.
+- **Unknown history:** no CI failure-history dataset or repeated flake sample was
+  available. One pass is not a zero-flake rate. No quarantine/hidden skip or unique
+  branch/mutant detector removal is justified. Instruction compliance, native
+  loading, model behavior and delivery remain outside offline evidence.
+
+### Bounded handoff and verification
+
+| Existing task | Bounded action / acceptance and checks |
+| --- | --- |
+| [TOOLSET-125-e6](../TODO.md#toolset-125-e6--run-inherited-execution-regressions-once) | Fixture-only base/helper; keep 37 unique methods, remove only eleven second executions (F1). Coordinator corrects stale counts. Focused task-execution discovery, before/after timing, unchanged retained line/branch seams, full normal Python gate and diff check. |
+| [TOOLSET-127-b1](../TODO.md#toolset-127-b1--thin-repeated-pi-lifecycle-fixtures-and-fixed-waits) | Three F3 candidates first; keep fresh refusal, later cycles, fleet/status, signals and failure-safe reaping. Compare focused timing/subprocess coverage; run Pi module, component discovery, composed journeys and normal gate. No test-only production hook or blanket legacy deletion. |
+| [TOOLSET-126-6b](../TODO.md#toolset-126-6b--trim-prose-only-test-assertions-while-retaining-executable-contracts) | F2 predicate/obligation record; keep routing/metadata/link/archive/security seams. Repair F4 without weakening archive isolation. Five focused Python modules, Node gate, normal Python gate and diff check. No policy-compliance equivalence from line coverage. |
+| [TOOLSET-128-69](../TODO.md#toolset-128-69--qualify-suite-thinning-and-reconcile-the-test-budget) | After three batches: refresh map, unique/collected counts, fixture/test lines and retained obligations; inventory/full Python gate, Node gate, goals validation and diff check. Preserve failures/timeouts, no speedup percentages without comparable repeated passing measurements. |
+
+Unknown candidates stay **I**, not queued work. Mixed excluded suites and the stale
+goal-gap reason remain findings only; no runner policy changes. Apply the shared
+one-behavior/one-focused-test budget, no new tests for this documentation, fresh
+mutable fixtures and existing full Python/Node qualification gates. Review growth
+at the behavior seam, not against a target count.
+
+Executed on this audit source: checker `--list` (126 modules/five directories/eight
+exclusions); static AST inventory/body scan and full map accounting; narrow
+inheritance collection and 48-case run; three bounded Pi candidates; five focused
+Python prose/package modules (29 executions); npm dry-run (13 adapters); goal
+validation and diff check. Raw inventories/timings/logs stay in scratch. No full
+Python gate, Node test gate, excluded suite, live service/model or Telegram check
+ran here. This is a disposition and bounded handoff, **not a minimized or newly
+qualified suite**; integration remains the coordinator's separate guarded step.

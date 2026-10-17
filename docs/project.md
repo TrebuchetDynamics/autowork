@@ -1092,6 +1092,48 @@ Planner's call: spend the next slice on measured fixture cost, not on wrapper-on
 parametrization or deleting protected regressions. This audit is offline evidence,
 not installed adoption, model execution or live qualification.
 
+### Whole-suite budget audit (TOOLSET-124-97, 2026-10-17)
+
+The [current disposition map](test-suite-audit.md#whole-suite-disposition-toolset-124-97-2026-10-17)
+resumes the accepted thinning plan without changing tests. At `2ef5548`, static
+inventory accounts for **126 offline Python modules / 30,549 lines / 1,744 declared
+test methods**, the JavaScript suite's **three top-level cases**, and all **eight
+excluded suites** (static review only). Declarations are not collected executions
+or unique behaviors. TOOLSET-068/073 coverage and TOOLSET-102-ea fixture results
+remain historical; this refresh proves neither suite speedup nor a new full-gate pass.
+
+Prioritized bounded handoff:
+
+- **TOOLSET-125-e6:** eleven inherited executions are identical, with unchanged
+  fixture/helper objects. Fresh collection is **48 executions / 37 unique methods**,
+  not the old 47 / 36. The coordinator must reconcile counts, retaining the added
+  Git-timeout BUSY regression and all 26 unique recovery methods. A fresh focused
+  run passed 48 cases (45.644 s wall / 16.639 s unittest); no saving is claimed.
+- **TOOLSET-127-b1:** thin pause, one-time stall notice and idle-claim fixtures,
+  not composed process/Git detectors. One focused run each passed (26.501 / 29.542 /
+  14.085 s wall). Replace waits only with later-cycle evidence; preserve fresh-claim
+  refusal, CLI readback, failure-safe reaping and bounded authored-scope grants/refusals.
+  Component overlap does not prove legacy journeys removable.
+- **TOOLSET-126-6b:** trim editorial predicates, preserving executable routing,
+  installed-resource closure, authorization metadata and instruction obligations.
+  Five focused Python modules passed 29 executions. npm listing proves 13 adapters
+  while the JavaScript archive test expects 12: repair that drift, not the detector.
+  The Node test gate was not run or reported green by this audit.
+- **TOOLSET-128-69:** qualify all three batches with refreshed inventory,
+  candidate timing/line-and-branch evidence where applicable, retained-risk mapping
+  and full normal Python/Node gates. Unknown findings remain leads, not new tasks.
+
+The earlier **600-second timeout remains nonpassing**, not an idle baseline;
+changing the runner default to 1,800 seconds does not make it pass. The prior audit
+attempt's integration verifier also returned non-reusable **CHILDREN_TERMINATED**
+evidence despite exit 0, with an empty log and unknown descendant origin. Neither
+is passing integration evidence; the coordinator must rerun its guarded integration.
+No repeated full gate was needed for this qualitative audit. Quantitative suite
+claims still require comparable repeated passing runs. No new coverage/mutation
+measurement was made; shell/Git, copied or isolated children and model instruction
+compliance remain blind spots. See the audit for exact hashes, commands/times,
+all keep/thin/investigate rows and unrun behavioral-evaluation obligations.
+
 ## Gentler update rollout (2026-10-15)
 
 Status: Accepted
