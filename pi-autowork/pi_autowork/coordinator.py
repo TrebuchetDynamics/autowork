@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -20,7 +21,7 @@ import sys
 import tempfile
 import time
 
-from . import health, janitor, maintainer, pi_runtime, questions, release, touches_inference, worker, workspaces
+from . import health, janitor, main_check, maintainer, pi_runtime, questions, release, touches_inference, worker, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -752,15 +753,90 @@ class Coordinator:
                 self.settled = True
                 LOG.say(f'{task}: the reviewer changed since this commit was held; verifying it again')
 
-    def maintain(self):
+    def check_main(self):
+        """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once
+        per main revision, when the host has room and nothing is being verified (TOOLSET-176-98).
+        A red result gives the DOCS-MAINTAINER a trigger to add one repair task."""
+        cmd = main_check.command()
+        if not cmd or self.stop:
+            return
+        record = main_check.read(self.state)
+        if record.get('state') == 'running':
+            if not main_check.alive(record.get('pid')):
+                self.finish_main_check(record)
+            return
+        rev = git(self.repo, 'rev-parse', self.base)
+        if not rev or rev == record.get('rev'):
+            return
+        try:
+            if os.getloadavg()[0] >= (os.cpu_count() or 1):
+                return
+        except OSError:
+            pass
+        if any(t.get('state') == 'integrating' for t in self.tasks()):
+            return
+        path = self.scratch_checkout('main-check', rev)
+        if not path:
+            return
+        tmp = tempfile.mkdtemp(prefix='aw-main-', dir='/tmp')  # short: socket paths must fit
+        done = self.state / 'main-check.exit'
+        done.unlink(missing_ok=True)
+        with open(self.state / 'main-check.log', 'w') as log:
+            child = subprocess.Popen(['bash', '-c', f'{cmd}; echo $? > {shlex.quote(str(done))}'], cwd=path,
+                                     env=dict(os.environ, TMPDIR=tmp), stdout=log, stderr=subprocess.STDOUT,
+                                     stdin=subprocess.DEVNULL, start_new_session=True)
+        main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid, started=time.time(), path=path,
+                                          tmp=tmp, green=record.get('green'), failures=record.get('failures'),
+                                          red_since=record.get('red_since')))
+        LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
+
+    def finish_main_check(self, record):
+        """Record a finished (or aborted) main check and clean its checkout up."""
+        done = self.state / 'main-check.exit'
+        try:
+            code = int(done.read_text().strip())
+        except (OSError, ValueError):
+            code = None
+        path, tmp = record.get('path') or '', record.get('tmp') or ''
+        if path and Path(path).name.startswith('pi-scratch-main-check'):
+            git(self.repo, 'worktree', 'remove', '--force', path)
+        if tmp.startswith('/tmp/aw-main-'):
+            shutil.rmtree(tmp, ignore_errors=True)
+        rev, green = record.get('rev', ''), record.get('green')
+        if code is None:  # the runner stopped under it: check this revision again
+            main_check.write(self.state, dict(state='aborted', rev='', green=green, failures=record.get('failures'),
+                                              red_since=record.get('red_since')))
+            return
+        if code == 0:
+            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time()))
+            if record.get('failures'):
+                LOG.say(f'Main is green again at {rev[:7]}')
+            return
+        try:
+            text = (self.state / 'main-check.log').read_text(errors='replace')
+        except OSError:
+            text = ''
+        failures = main_check.failures(text) or [f'the check exited {code}']
+        commits = (git(self.repo, 'log', '--format=%h %s', '-20', f'{green}..{rev}' if green else rev) or '').splitlines()
+        red_since = record.get('red_since') if record.get('failures') else rev
+        main_check.write(self.state, dict(state='red', rev=rev, green=green, failures=failures, commits=commits,
+                                          red_since=red_since or rev, finished=time.time()))
+        LOG.say(f'Main is red at {rev[:7]}: {len(failures)} failing ({", ".join(failures[:3])}'
+                + (f', +{len(failures) - 3} more' if len(failures) > 3 else '') + ')')
+        self.maintain(main_only=True)  # one repair task, now: red main hides every later regression
+
+    def maintain(self, main_only=False):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
         planning files alone and goals.py validate passes. One run per distinct trigger set; no
         trigger, no model call. True when its repair merged."""
-        if self.stop or self.in_flight() or not self.integ or dirty(self.integ):
+        if self.stop or (self.in_flight() and not main_only) or not self.integ or dirty(self.integ):
             return False
-        found = maintainer.triggers(self.tasks())
+        rows = [] if main_only else self.tasks()
+        findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
+                    if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
+        found = maintainer.triggers(rows, main_check.read(self.state), findings)
         if not found:
             return False
         trigger_key = maintainer.key(found)
@@ -975,14 +1051,14 @@ class Coordinator:
         tmp.write_text(json.dumps(value))
         os.replace(tmp, self.touches_cache)
 
-    def scratch_checkout(self, purpose):
+    def scratch_checkout(self, purpose, rev='HEAD'):
         """A disposable detached checkout inside the canonical .worktrees directory."""
         target = workspaces.task_path(self.toolset, self.repo, 'pi-scratch-' + purpose)
         target.parent.mkdir(exist_ok=True)
         path = tempfile.mkdtemp(prefix=target.name + '-', dir=target.parent)
         os.rmdir(path)
         with open(self.state / 'engine.err', 'a') as err:
-            ok = subprocess.run(['git', '-C', self.integ, 'worktree', 'add', '-q', '--detach', path, 'HEAD'],
+            ok = subprocess.run(['git', '-C', self.integ or self.repo, 'worktree', 'add', '-q', '--detach', path, rev],
                                 stdout=subprocess.DEVNULL, stderr=err).returncode == 0
         if ok:
             self.__dict__.setdefault('_scratch_paths', set()).add(path)
@@ -1111,7 +1187,8 @@ class Coordinator:
                        + self.seen['busy-' + waiting[0]['task']])
         runner = {'repo': str(self.repo), 'pid': str(os.getpid()), 'toolset_rev': self.toolset_rev,
                   'mode': self.mode, 'paused_until': str(paused), 'blocker': blocker,
-                  'stuck_integrations': str(len(waiting)), 'maintainer': maintainer.last(self.state)}
+                  'stuck_integrations': str(len(waiting)), 'maintainer': maintainer.last(self.state),
+                  'main_check': {k: v for k, v in main_check.read(self.state).items() if k not in ('pid', 'path', 'tmp')}}
         try:
             line = health.update(self.state, snapshot, runner=runner, stall_after=int(self.stall_after))
         except (OSError, ValueError):
@@ -1236,6 +1313,7 @@ class Coordinator:
         self.ensure_session()
         self.follow_base()
         self.sweep_tmp()
+        self.check_main()
         if not self.draining:
             if self.max_cycles and self.started_workers >= self.max_cycles:
                 self.draining = True

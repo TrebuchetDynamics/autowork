@@ -22,16 +22,25 @@ PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 
 
-def triggers(rows):
-    """[(task, kind, why)] the maintainer can act on: a hold with a planning cause, or a
-    task the engine will not run as written. Sorted, so the same queue gives the same set."""
+def triggers(rows, main=None, findings=None):
+    """[(task, kind, why)] the maintainer can act on: a hold with a planning cause, a task the
+    engine will not run as written, or a red main (TOOLSET-176-98) as the item `MAIN`. Sorted,
+    so the same queue gives the same set."""
     found = []
+    if (main or {}).get('state') == 'red':
+        commits = '; '.join((main.get('commits') or [])[:10]) or 'unknown'
+        found.append(('MAIN', 'main red', f"failing: {', '.join(main.get('failures') or [])}; commits since the last "
+                                         f"green main: {commits}"[:900]))
     for row in rows:
         task, state, reason = row.get('task'), row.get('state'), ' '.join(str(row.get('reason') or '').split())
         if not task:
             continue
         if state == 'held' and not row.get('worker_live') and row.get('cause') in PLANNING_CAUSES:
             found.append((task, 'held: ' + row['cause'], reason[:400]))
+        elif (state == 'held' and not row.get('worker_live') and row.get('cause') == 'validation'
+              and int(row.get('attempt') or 0) >= 2 and (findings or {}).get(task)):
+            # Its last attempt was reviewed and found wanting: split or restate it by the findings.
+            found.append((task, 'review findings', ' '.join(findings[task].split())[:600]))
         elif state == 'waiting' and reason.startswith('not runnable'):
             found.append((task, 'not runnable', reason[:400]))
     return sorted(found)[:LIMIT]
@@ -54,7 +63,13 @@ PROMPT = (
     'an ambiguous contract; correct Touches, Checks or Dependencies (a worker that names the exact files '
     'it needs is evidence); fill a missing required field from the task\'s own sources; split an oversized '
     'task; supersede a duplicate with python3 {goals} supersede; re-sort to unblock a dependency chain '
-    '(never above the owner\'s first tasks in Now). Never change product scope or Acceptance, grant '
+    '(never above the owner\'s first tasks in Now). For MAIN (main fails its full offline check): unless an '
+    'open task already covers those failures, add one repair task first in Now with python3 {goals} add-task '
+    'and write its entry with the failing tests and the commits as Evidence, Touches from the failing tests '
+    'and the files those commits changed, and the full check as its Checks. For review findings (the last '
+    'attempt was reviewed and found wanting): split the task into what its commit already does and a follow-up '
+    'whose Acceptance lists the reviewer\'s findings, or restate it so the findings are explicit; keep every '
+    'Acceptance item, and leave it as it is if a finding needs a product decision. Never change product scope or Acceptance, grant '
     'authority, credentials or spending, or decide a product question: leave such a task as it is. Use '
     '/skill:docs-sync and its goals.py commands for TODO.md and goals.json, run python3 {goals} validate . '
     'and fix what it reports, edit only TODO.md, goals.json, BLOCKERS.md, TODO.archive.md and docs/tasks/, '

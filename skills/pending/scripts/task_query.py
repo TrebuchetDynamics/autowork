@@ -454,7 +454,9 @@ def selection(records, data, todo, unsafe):
     if result['priority']['state'] == 'drift':
         result['notes'] = ['Priority drift: human TODO order shown without reconciliation or selection.']
         return result
-    ordered = [t['id'] for t, _ in goals.eligible(normalized) if t['id'] in by_id]
+    # The shared selection guard (drift was reported above, so it cannot raise here).
+    picks, _ = goals.queue(normalized, todo)
+    ordered = [t['id'] for t, _ in picks if t['id'] in by_id]
     result['excluded'] = [tid for tid in ordered if by_id[tid]['blocked']]
     result['eligible'] = [tid for tid in ordered if tid not in result['excluded']]
     result['next_eligible'] = next(iter(result['eligible']), None)

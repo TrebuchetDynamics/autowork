@@ -136,6 +136,12 @@ elif role == 'maintainer':
                                               '  Acceptance: A.txt says done\n  Checks: test -s A.txt\n', 1)
         open('TODO.md', 'w').write(text)
         git('commit', '-qam', 'docs(tasks): restate A with the Checks line its sources give')
+    elif behavior == 'repair_main':  # the red main gets one repair task, first in its section
+        text = open('TODO.md').read().replace('## Next\n\n', '## Next\n\n- [ ] FIX — Repair main\n'
+            '  Scope: Fix test_broken.\n  Touches: FIX.txt\n  Acceptance: FIX.txt says done\n'
+            '  Checks: test -s FIX.txt\n  Dependencies: None.\n  Status: open\n', 1)
+        open('TODO.md', 'w').write(text)
+        git('commit', '-qam', 'docs(tasks): FIX repairs the red main')
     elif behavior == 'code':  # oversteps: edits product code
         open('A.txt', 'w').write('maintainer wrote code\n')
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
@@ -507,6 +513,33 @@ class EngineTests(Fixture):
         again = self.run_runner('--until-empty')  # the same trigger set: no second model call
         self.assertNotIn('DOCS-MAINTAINER: repairing', again.stdout)
         self.assertEqual(len(self.runs('maintainer')), 1)
+
+    def main_record(self):
+        found = list(self.state.glob('*/main_check.json'))
+        return json.loads(found[0].read_text()) if found else {}
+
+    def test_a_red_main_after_a_landing_gets_one_repair_task(self):
+        """TOOLSET-176-98: a landing broke unrelated tests and nothing noticed."""
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = ("echo 'FAIL: test_broken (test_other.OtherTests.test_broken)'; "
+                                              'test -s FIX.txt')
+        self.plan({'maintainer': ['repair_main']})
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+        while not ((self.repo / 'FIX.txt').exists() and self.done('FIX')):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        while self.main_record().get('state') != 'green':  # FIX.txt now exists on main: green again
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertIn('Main is red at', log())
+        self.assertIn('(test_other.OtherTests.test_broken)', log())
+        self.assertIn('DOCS-MAINTAINER: repairing the task docs of MAIN', log())
+        self.assertIn('Main is green again at', log())
+        self.assertEqual(len(self.runs('maintainer')), 1)  # one repair for one set of failures
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})

@@ -92,6 +92,18 @@ CACHE = (' SDKs, toolchains and package caches this repository\'s tasks installe
 ENVIRONMENT = re.compile(r'^PI_AUTOWORK_VERIFY: fail environment\s*[—:-]+\s*(.*)$')
 
 
+def findings_path(state, task):
+    """A failed review's verdict, for the DOCS-MAINTAINER to split or restate the task by."""
+    return Path(state) / 'review-findings' / f'{safe_name(task)}.json'
+
+
+def review_findings(state, task):
+    try:
+        return json.loads(findings_path(state, task).read_text()).get('verdict') or ''
+    except (OSError, ValueError, AttributeError):
+        return ''
+
+
 def environment_marker(state, task):
     """Where a review that could not run for a missing tool records what was missing
     (TOOLSET-173-94); the coordinator provisions it and reviews once more."""
@@ -183,6 +195,12 @@ def review(state, task, checkout, head_before):
         marker.write_text(json.dumps({'missing': ' '.join(missing.group(1).split())[:300], 'commit': head_before}))
     else:
         marker.unlink(missing_ok=True)
+    findings = findings_path(state, task)
+    if verdict == 'fail' and not missing:  # checked and found wanting: what the maintainer acts on
+        findings.parent.mkdir(parents=True, exist_ok=True)
+        findings.write_text(json.dumps({'verdict': ' '.join(line.split())[:800], 'commit': head_before}))
+    elif verdict == 'pass':
+        findings.unlink(missing_ok=True)
     if dirty(checkout) or git(checkout, 'rev-parse', 'HEAD') != head_before:
         # The engine owns this disposable integration worktree: it keeps the changes as a
         # patch for diagnosis and resets it before the next integration.

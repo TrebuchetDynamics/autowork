@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A repository can declare its full offline check (`PI_AUTOWORK_MAIN_CHECK`). The runner runs it on
+  main in the background, once per main revision, when the host has room; a red result names the
+  failing tests and the commits since the last green main, and the DOCS-MAINTAINER adds one repair
+  task first in Now. Status and the runner view show `main red since <commit>: N failing`
+  (TOOLSET-176-98). Main is green again after the `/pending` landing: its skill has a SKILL.md and
+  its query uses the shared priority guard (TOOLSET-175-2b).
 - Each runner has a DOCS-MAINTAINER: when nothing runs and tasks are held for a planning cause or are not
   runnable as written, one Pi job restates them from the repository's own evidence, in a disposable
   checkout; its commit merges only if it changed planning files alone and `goals.py validate` passes. One

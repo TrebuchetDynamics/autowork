@@ -396,6 +396,9 @@ class FleetApp(App):
                 text.append(q.needs + '\n')
             if count > QUESTIONS_SHOWN:
                 text.append(f'  +{count - QUESTIONS_SHOWN} more\n', style='dim')
+        checked = fleet_view.main_check.line(runner.main_check)
+        if checked:
+            text.append(checked + '\n', style='bold red' if checked.startswith('main red') else 'dim')
         repair = fleet_view.maintainer_line(runner)
         if repair:
             text.append(repair + '\n', style='cyan')

@@ -2689,3 +2689,45 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to which tasks are exclusive or to how they run once started; no change to the worker cap.
 - Planner's call: a time-bounded drain instead of an immediate one. It keeps the anti-starvation guarantee (an exclusive task still gets the whole pool within the grace period plus one task's run) while short independent work stops idling behind it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-175-2b — Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard
+
+- [x] TOOLSET-175-2b — Main passes the offline check again after the /pending skill landed without SKILL.md and the priority guard
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [/pending query](skills/pending/scripts/task_query.py) (TOOLSET-142-85, landed as f7cb607 and closed as 9ea176b), [skill installer](install_skills.py), [preflight](tests/test_preflight.py), [priority guard test](skills/docs-sync/scripts/test_priority_order.py) (`test_selection_entry_points_use_the_shared_guard`).
+- Evidence (2026-10-17 15:30, `python3 scripts/check.py` on main): five failures, one cause. `skills/pending/` has `references/` and `scripts/` but no `SKILL.md`, so `install_skills.install` raises `Invalid skill folder or missing SKILL.md: …/skills/pending` (test_preflight ×2, test_impeccable_bundle, test_ui_taste_bundle), and `skills/pending/scripts/task_query.py` selects tasks without `goals.queue(data, todo_text)` (test_priority_order: `call goals.queue(data, todo_text) so drift cannot be bypassed`). TOOLSET-142-85's review ran only its own Checks.
+- Touches: skills/pending/, skills/docs-sync/scripts/test_priority_order.py, install_skills.py, tests/test_preflight.py
+- Scope: (1) Give `skills/pending/` a real `SKILL.md` (name, description and use of `task_query.py`, in the style of the other skills), or, if TOOLSET-143-62 owns the skill's entry point, a minimal one that 143-62 then extends; do not special-case the folder in the installer. (2) Make `task_query.py` read the queue through `goals.queue(data, todo_text)` like every other selection entry point, keeping its read-only, no-write behaviour and its existing tests. (3) No other change.
+- Acceptance: `python3 scripts/check.py` passes on main (all five test directories), `/pending` behaves as TOOLSET-142-85's acceptance says, and the priority guard test passes without an allow-list entry.
+- Checks: python3 -m unittest discover -s skills/pending/scripts; python3 -m unittest discover -s skills/docs-sync/scripts -p test_priority_order.py; python3 -m unittest tests/test_preflight.py tests/test_impeccable_bundle.py tests/test_ui_taste_bundle.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No installer or guard exceptions for this folder.
+- Planner's call: first in Now. A red main makes every reviewer's full check fail and hides new regressions behind old ones.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-176-98 — A red main after a landing opens its own repair task, naming the failing tests and the commits since green
+
+- [x] TOOLSET-176-98 — A red main after a landing opens its own repair task, naming the failing tests and the commits since green
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (`merge_main`, `land`), [DOCS-MAINTAINER](pi-autowork/pi_autowork/maintainer.py) (TOOLSET-164-f1), `PI_AUTOWORK_VALIDATE`.
+- Evidence (2026-10-17 15:30): TOOLSET-142-85 integrated and closed after its own Checks passed, but main then failed five tests in other directories; nothing noticed, and the next tasks' reviewers would have met the same failures.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: (1) A repository may declare its full offline check (`PI_AUTOWORK_MAIN_CHECK`, for this repository `python3 scripts/check.py`). After the session lands on main, and at most once per main revision while nothing else needs the host (load below the CPU count, no verification running), the runner runs it in a disposable checkout of main with a short private TMPDIR. (2) A pass records `main green at <commit>`. A failure records the failing test names and the commits since the last green revision, and gives the DOCS-MAINTAINER a trigger to add one repair task first in Now, with that evidence, unless one is already open for the same failures. (3) Status and the runner view show `main red since <commit>: N failing` until it is green again.
+- Acceptance: In fixtures, a landing that breaks an unrelated test yields exactly one repair task with the failing test and the commit range; a second landing with the same failures adds none; a green run clears the status line; a repository without `PI_AUTOWORK_MAIN_CHECK` runs nothing.
+- Checks: python3 -m unittest discover -s pi-autowork/tests; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: TOOLSET-164-f1 (the maintainer writes the repair task).
+- Ownership: Toolset coordinator.
+- Exclusions: No full check on every task integration (too slow on loaded hosts); no automatic revert of landed work.
+- Planner's call: check main after landing rather than before every integration: the full check takes about 25 minutes here, and one red result per main revision is enough to start the repair.

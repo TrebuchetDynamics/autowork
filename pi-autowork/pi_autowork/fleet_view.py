@@ -14,7 +14,7 @@ import re
 import subprocess
 import time
 
-from pi_autowork import health, questions as owner_questions
+from pi_autowork import health, main_check, questions as owner_questions
 
 KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
@@ -103,6 +103,7 @@ class Runner:
     restarting: str = ''      # 'onto <commit>' or 'service' while it stops and starts again
     gate: str = ''            # the latest resource-gate reason, when the last cycle was gated
     maintainer: dict = field(default_factory=dict)  # the DOCS-MAINTAINER's last run (TOOLSET-164-f1)
+    main_check: dict = field(default_factory=dict)  # main's full offline check (TOOLSET-176-98)
 
     @property
     def color(self):
@@ -642,6 +643,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.blocker = row.get('blocker') or ''
         runner.max_workers = row.get('max_workers')
         runner.maintainer = row.get('maintainer') or {}
+        runner.main_check = row.get('main_check') or {}
     for runner in found.values():
         runner.lanes = lanes(runner, now)
         runner.restarting, runner.gate = recent_events(runner, now)
