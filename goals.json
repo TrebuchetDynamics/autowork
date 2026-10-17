@@ -898,14 +898,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-167-03",
-      "section": "Now",
-      "status": "open",
-      "title": "A runner's own worker is never an outside session that holds integration"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2173,6 +2165,18 @@
       ],
       "supersession_reason": "Owner decision 2026-10-17: planning repair moves to the standing DOCS-MAINTAINER worker (docs/plans/2026-10-17-docs-maintainer.md, decision 5)",
       "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-167-03",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-165-f7"
+      ],
+      "supersession_reason": "duplicate: same own-worker writer bug, planned in parallel",
+      "title": "A runner's own worker is never an outside session that holds integration"
     }
   ],
   "version": 1

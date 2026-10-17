@@ -2534,3 +2534,28 @@ Source section: Now
 - Dependencies: None.
 - Ownership: Owner session. TOOLSET-129-c4 (one evidence-backed Needs action) and TOOLSET-132-af (log search and copy) stay open for what this does not cover.
 - Exclusions: No new dependency, theme or web change; no change to actions or their confirmations; no engine call on refresh.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-165-f7
+Reason: duplicate: same own-worker writer bug, planned in parallel
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-167-03 — A runner's own worker is never an outside session that holds integration
+
+- [ ] TOOLSET-167-03 — A runner's own worker is never an outside session that holds integration
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [writers check](skills/autowork/scripts/task_execution.py) (`external_workers`, `blocking_workers`), [integration](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`).
+- Evidence (2026-10-17 11:31–11:43): this repository's runner kept a verified commit waiting with `waiting to integrate until another session leaves the main checkout (live or unknown external writer/session; preserve canonical checkout: pid … pi in …/.worktrees/autowork-<task>-r2 (running commands))`, then `pid … pi in …/.worktrees/autowork-<task> (no terminal; activity unknown)`. Both pids were this runner's own workers in their own task worktrees, not sessions in the main checkout. The commit waited 12 minutes and was then held for validation; a fleet TUI showed `runner: 1 verified commit(s) wait for…` meanwhile.
+- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_task_execution.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: A process is this runner's worker when its working directory is a worktree recorded by a live slot of this repository (journal `worktree_created`), or it carries the slot's `AUTOWORK_WORKTREE` marker; such a process never blocks integration of another slot. Sessions in the canonical checkout or the session worktree still block as today. The waiting reason names the blocking process's checkout relative to the repository.
+- Acceptance: In fixtures, a live Pi process in another slot's task worktree does not hold integration; one in the main checkout still does; the reason line names `main checkout` or the worktree.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No weakening of the canonical-checkout writer guard.
