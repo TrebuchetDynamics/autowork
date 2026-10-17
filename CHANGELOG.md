@@ -194,6 +194,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `/plan_with_me blockers [repo|name]` works through what blocks the queue from the
+  same list as `/autowork blockers`, easiest first, one question at a time; when an
+  answer needs replanning (split or rescope a task, add a task or dependency, change
+  acceptance) it plans that question with Plan With Me's planning craft and saves it
+  through Docs Sync before the next one. `/autowork blockers` stays the quick path:
+  answer, record in TODO.md, the runner re-queues.
+
 - `install.sh` installs every component from one checkbox menu, all checked by
   default (TOOLSET-123-de): the Pi package, the `autowork` command (linked to the Pi
   package's release), `tx` (keeping an existing `~/.tmux.conf`), the Hermes plugin,

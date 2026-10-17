@@ -28,6 +28,13 @@ coverage, not necessarily redundant test identities. Planning launches nothing.
 
 ## Blockers and recovery
 
+`/plan_with_me blockers [repo|runner name]`, or a request to work through what blocks
+the queue, follows [owner blockers](../../autowork/references/owner-blockers.md): the
+same list as `/autowork blockers`, easiest first, one question at a time. An
+answer that needs replanning is planned here, with the planning craft, and saved
+through Docs Sync before the next question. The rest of this section applies to a
+broader blockers question.
+
 For a broad "blockers" request, separate owner-input blockers from everything
 preventing delivery; an empty BLOCKERS.md does not prove execution is unblocked.
 If scope is unclear, ask whether it means the current task, repository-wide

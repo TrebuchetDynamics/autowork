@@ -1,10 +1,17 @@
-# Owner blockers: `/autowork blockers`
+# Owner blockers: `/autowork blockers` and `/plan_with_me blockers`
 
 The owner plans and answers questions; runners do the rest (owner direction,
-2026-10-16). `/autowork blockers [repo|runner name]` is where the answering happens:
-an interview that resolves what blocks a repository's queue, one question at a time,
-easiest first, and records each answer as planning. It runs only when the owner
-starts it; no runner or schedule invokes it, so an idle queue still costs no tokens.
+2026-10-16). Two commands answer them, from the same list in the same order: an
+interview that resolves what blocks a repository's queue, one question at a time,
+easiest first, and records each answer as planning. They run only when the owner
+starts one; no runner or schedule invokes them, so an idle queue still costs no tokens.
+
+- `/autowork blockers [repo|runner name]` stays quick: each answer becomes a TODO.md
+  edit (step 4) and the runner re-queues the task.
+- `/plan_with_me blockers [repo|runner name]` uses the same list and order, and when an
+  answer means real replanning (split or rescope a task, add a task or dependency,
+  change acceptance), it plans that one question with Plan With Me's planning craft,
+  saves it through Docs Sync, then returns to the next question.
 
 It changes plans, not runners: it never starts, stops, restarts or reconfigures a
 runner or service, never kills a session, and never pushes.
