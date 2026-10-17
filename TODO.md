@@ -601,20 +601,6 @@ settlement/cancellation checks when refining that existing design.
 - Ownership: Toolset coordinator; preserve active worker contracts and unrelated planning batches.
 - Exclusions: No implementation in consumer repositories during planning, automatic plugin installation, external execution, paid evaluation, CI weakening, scheduler/service changes, publication, or new mandatory task schema. No dispatch from this planning invocation.
 
-### TOOLSET-124-97 — Audit this repository's suite against the test budget
-
-- [ ] TOOLSET-124-97 — Audit this repository's suite against the test budget
-- Status: open
-- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
-- Sources: owner direction (2026-10-16: "make less tests and thinner; if a project has many tests we have to optimize"), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget), [protocol](skills/engineering/local/test-suite-optimization/PROTOCOL.md), [earlier audit](docs/test-suite-audit.md), [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16).
-- Touches: docs/test-suite-audit.md, docs/project.md
-- Scope: Resume the accepted whole-suite thinning plan, preserving TOOLSET-073's historical results. Build a keep/thin/investigate disposition for all 126 current offline Python modules, the JavaScript suite and the eight excluded suites (static review only for excluded suites); refresh counts at execution. Inspect inherited repeats, prose-only assertions, duplicated fixture setup, fixed sleeps and legacy/component overlap. Prioritize the named implementation batches and record further tasks only for proven findings. This is qualitative thinning: use focused timings/coverage for candidate equivalence; repeated idle full-gate measurements are required only for quantitative suite-speedup claims, not to re-plan this work. Retain the 600-second timeout as nonpassing evidence, never as a successful baseline.
-- Acceptance: docs/test-suite-audit.md accounts for every owned suite, distinguishes proven removals from unverified leads, names retained detection seams and coverage blind spots, records the precise candidate-specific before evidence, and keeps named safety/data-loss/authorization/composed regressions. The linked implementation tasks have bounded scope and checks; unknown candidates stay findings. No tests changed and no speedup claimed from static counts.
-- Checks: `python3 scripts/check.py --list`; static AST inventory and narrow candidate collection; bounded candidate checks only where needed; `python3 skills/docs-sync/scripts/goals.py validate .`; `git diff --check`.
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No test edits, no new dependency (coverage runs from a scratch environment), no mutation tool added.
-
 ### TOOLSET-125-e6 — Run inherited execution regressions once
 
 - [ ] TOOLSET-125-e6 — Run inherited execution regressions once

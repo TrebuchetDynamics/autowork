@@ -2625,3 +2625,22 @@ Source section: Now
 - Evidence (2026-10-17 12:10 monitor pass): `/tmp` reached 16 GB 70 minutes after the cleanup (about 13 GB an hour); the largest entries were review copies of whole repositories (`<task>-review.XXXXXX`, up to 4.7 GB each) made by reviewers with explicit `/tmp` paths although their `TMPDIR` was on disk.
 - Done by the owner session (2026-10-17): part of (2). Each review runs with its own `TMPDIR` under the runner's state directory, removed (and `git worktree prune`d) when the review ends; reviewer and worker prompts say never to write directly under `/tmp` and to make a scratch copy with `git worktree add --detach "$TMPDIR/copy" HEAD`. Still open: (1) the gate arithmetic and (3) the janitor.
 - Planner's call: fix the double-counted reservation and clean the scratch that caused it, rather than lower `PI_AUTOWORK_MIN_FREE_MB`. The gate's purpose stays; only its arithmetic and the leak change.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-124-97 — Audit this repository's suite against the test budget
+
+- [x] TOOLSET-124-97 — Audit this repository's suite against the test budget
+- Status: done
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: owner direction (2026-10-16: "make less tests and thinner; if a project has many tests we have to optimize"), [test budget](skills/shared/ENGINEERING-CYCLE.md#test-budget), [protocol](skills/engineering/local/test-suite-optimization/PROTOCOL.md), [earlier audit](docs/test-suite-audit.md), [accepted thinning plan](docs/test-suite-audit.md#suite-thinning-plan-2026-10-16).
+- Touches: docs/test-suite-audit.md, docs/project.md
+- Scope: Resume the accepted whole-suite thinning plan, preserving TOOLSET-073's historical results. Build a keep/thin/investigate disposition for all 126 current offline Python modules, the JavaScript suite and the eight excluded suites (static review only for excluded suites); refresh counts at execution. Inspect inherited repeats, prose-only assertions, duplicated fixture setup, fixed sleeps and legacy/component overlap. Prioritize the named implementation batches and record further tasks only for proven findings. This is qualitative thinning: use focused timings/coverage for candidate equivalence; repeated idle full-gate measurements are required only for quantitative suite-speedup claims, not to re-plan this work. Retain the 600-second timeout as nonpassing evidence, never as a successful baseline.
+- Acceptance: docs/test-suite-audit.md accounts for every owned suite, distinguishes proven removals from unverified leads, names retained detection seams and coverage blind spots, records the precise candidate-specific before evidence, and keeps named safety/data-loss/authorization/composed regressions. The linked implementation tasks have bounded scope and checks; unknown candidates stay findings. No tests changed and no speedup claimed from static counts.
+- Checks: `python3 scripts/check.py --list`; static AST inventory and narrow candidate collection; bounded candidate checks only where needed; `python3 skills/docs-sync/scripts/goals.py validate .`; `git diff --check`.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No test edits, no new dependency (coverage runs from a scratch environment), no mutation tool added.

@@ -1025,14 +1025,6 @@
     },
     {
       "depends_on": [],
-      "goal": "TEST-SUITE",
-      "id": "TOOLSET-124-97",
-      "section": "Next",
-      "status": "open",
-      "title": "Audit this repository's suite against the test budget"
-    },
-    {
-      "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-125-3c",
       "section": "Next",
@@ -2070,6 +2062,14 @@
       "section": "Done",
       "status": "done",
       "title": "Rename the repository and plugin from hermes-toolset to autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-124-97",
+      "section": "Done",
+      "status": "done",
+      "title": "Audit this repository's suite against the test budget"
     },
     {
       "depends_on": [],
