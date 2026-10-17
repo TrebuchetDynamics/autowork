@@ -8,13 +8,6 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-148-88 — USER_INPUT — effort input — unblocks 0
-
-- Task: TOOLSET-148-88 — One malformed Touches field holds its task, not the whole engine
-- Needs: worker reported a blocker: Widen Touches to skills/autowork/scripts/parallel_integrate.py: retry_held parses current Touches in the scope and scope_request recovery paths before planner admission, so a malformed contract can still raise ValueError and block independent dispatch. Independent review reproduced both branches; the current parser/planner-only fix cannot satisfy whole-engine isolation without repairing this calle… (+2 more in report.json)
-- Since: 2026-10-17T08:34:00Z
-- Answer: Answer in TOOLSET-148-88's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
-
 ### Q-TOOLSET-154-d3 — USER_INPUT — effort input — unblocks 0
 
 - Task: TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
