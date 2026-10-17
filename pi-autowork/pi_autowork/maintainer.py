@@ -95,9 +95,25 @@ def last(state):
     return value if isinstance(value, dict) else {}
 
 
+RETRYABLE = 'refused: it conflicts with the session'
+TRIES = 2
+
+
+def due(state, trigger_key):
+    """Whether this trigger set still needs a run: a new set, or one whose last run was refused
+    only because the session moved under it, tried fewer than TRIES times (one runner stalled
+    for hours: the same set never reran after such a refusal)."""
+    run = last(state)
+    if run.get('key') != trigger_key:
+        return True
+    return run.get('outcome') == RETRYABLE and int(run.get('tries') or 1) < TRIES
+
+
 def remember(state, *, trigger_key, found, outcome, changed=(), now=None):
+    previous = last(state)
+    tries = int(previous.get('tries') or 1) + 1 if previous.get('key') == trigger_key else 1
     value = dict(role=ROLE, key=trigger_key, at=time.time() if now is None else now, outcome=outcome,
-                 triggers=[task for task, _, _ in found], changed=list(changed))
+                 triggers=[task for task, _, _ in found], changed=list(changed), tries=tries)
     path = record_path(state)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(value) + '\n')

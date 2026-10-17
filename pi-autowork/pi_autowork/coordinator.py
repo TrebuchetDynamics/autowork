@@ -844,7 +844,7 @@ class Coordinator:
         if not found:
             return False
         trigger_key = maintainer.key(found)
-        if maintainer.last(self.state).get('key') == trigger_key:
+        if not maintainer.due(self.state, trigger_key):
             return False
         scratch = self.scratch_checkout('maintainer')
         if not scratch:
@@ -873,7 +873,7 @@ class Coordinator:
                 self.settled = True
             else:
                 git(self.integ, 'merge', '--abort')
-                outcome = 'refused: it conflicts with the session'
+                outcome = maintainer.RETRYABLE
         finally:
             self.drop_scratch(scratch)
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed)

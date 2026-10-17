@@ -32,6 +32,18 @@ class MaintainerTests(unittest.TestCase):
                                                     'B': 'PI_AUTOWORK_VERIFY: fail — x'})
         self.assertEqual(found, [('A', 'review findings', 'PI_AUTOWORK_VERIFY: fail — Back is not handled')])
 
+    def test_a_run_refused_because_the_session_moved_is_tried_again_once(self):
+        with tempfile.TemporaryDirectory() as state:
+            found = [('A', 'held: scope', 'x')]
+            self.assertTrue(maintainer.due(state, 'k1'))
+            maintainer.remember(state, trigger_key='k1', found=found, outcome=maintainer.RETRYABLE)
+            self.assertTrue(maintainer.due(state, 'k1'))       # the session moved: try again
+            maintainer.remember(state, trigger_key='k1', found=found, outcome=maintainer.RETRYABLE)
+            self.assertFalse(maintainer.due(state, 'k1'))      # twice is enough
+            maintainer.remember(state, trigger_key='k2', found=found, outcome='merged')
+            self.assertFalse(maintainer.due(state, 'k2'))      # done: never again for the same set
+            self.assertTrue(maintainer.due(state, 'k3'))
+
     def test_only_planning_files_may_change(self):
         self.assertTrue(maintainer.planning_only(['TODO.md', 'goals.json', 'docs/tasks/A.md']))
         self.assertFalse(maintainer.planning_only(['TODO.md', 'src/app.py']))
@@ -42,7 +54,8 @@ class MaintainerTests(unittest.TestCase):
             found = [('A', 'held: scope', 'x')]
             maintainer.remember(state, trigger_key='k1', found=found, outcome='merged', changed=['A'], now=100)
             self.assertEqual(maintainer.last(state), {'role': 'DOCS-MAINTAINER', 'key': 'k1', 'at': 100,
-                                                      'outcome': 'merged', 'triggers': ['A'], 'changed': ['A']})
+                                                      'outcome': 'merged', 'triggers': ['A'], 'changed': ['A'],
+                                                      'tries': 1})
             self.assertIn('- A (held: scope): x', maintainer.prompt(found, '/repo', 'goals.py'))
 
 
