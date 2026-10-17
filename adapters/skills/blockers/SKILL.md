@@ -1,6 +1,6 @@
 ---
 name: blockers
-description: "Answer what blocks a repository's Autowork queue: one picked option per blocked task, easiest first, saved as planning."
+description: "Use when reviewing blocked Autowork tasks and resolving missing owner decisions or inputs."
 disable-model-invocation: true
 ---
 
@@ -8,9 +8,13 @@ disable-model-invocation: true
 
 Read the [host contract](../COMMON.md), then follow the
 [blockers protocol](../../../skills/blockers/SKILL.md) in this session. Start at
-once: gather read-only, then ask the first question in the same turn. Ask each
-question with this host's option picker (Claude Code `AskUserQuestion`, Codex
-`request_user_input`; in Pi, numbered options in chat), two to four concrete plan
+once: gather read-only, apply its filter and existing authorization, then ask only
+about genuinely missing owner decisions or inputs. Record routine planning repairs
+without asking who should integrate an idle reviewed candidate; retain all candidate,
+verification, privacy and publication constraints. If no question remains, report
+the repairs and pending execution. Use this host's available picker (Claude Code
+`AskUserQuestion`, Codex `request_user_input` in a mode that permits it or
+`request_user_input_async`; otherwise numbered options in chat), two to four concrete plan
 changes with the recommended one first. Plan a task that needs replanning with
 [Plan With Me](../plan-with-me/SKILL.md) before the next question.
 

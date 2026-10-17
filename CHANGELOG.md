@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `install.sh --full` installs every available item without the menu (`--all` still
+  works) and shows live progress (`[n/total]` per item, each command), colors on a
+  terminal, a timed summary and the real failure output.
+- `/blockers` filters before asking: established answers and routine recovery (an idle
+  reviewed candidate awaiting integration, a failed check) become planning repairs for
+  the runner; only missing product intent, scope changes, unavailable inputs or
+  ungranted authority become picked questions.
 - A runner's log is its events: a restart no longer prints every earlier result again,
   and waiting tasks get no `pending —` line each (the one `No task can start now` line
   covers them). The `autowork` TUI log drops systemd's unit lines and the start banner,
