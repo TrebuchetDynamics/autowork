@@ -824,7 +824,7 @@
       "goal": "PI-RUNNER",
       "id": "TOOLSET-157-cd",
       "section": "Now",
-      "status": "open",
+      "status": "in_progress",
       "title": "Held slots release file ownership so holds cannot deadlock the queue"
     },
     {

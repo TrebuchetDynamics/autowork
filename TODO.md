@@ -41,7 +41,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-157-cd — Held slots release file ownership so holds cannot deadlock the queue
 
 - [ ] TOOLSET-157-cd — Held slots release file ownership so holds cannot deadlock the queue
-- Status: open
+- Status: in_progress (owner session implementing (1), (6) and (7) directly, 2026-10-17)
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [admission](skills/autowork/scripts/parallel_plan.py), [integration](skills/autowork/scripts/parallel_integrate.py), [slot state](skills/autowork/scripts/parallel_state.py).
 - Evidence (2026-10-17 09:11 monitor pass): this repository's own runner was STALLED with 0 running, 46 waiting and 5 held. The single root was one held task whose candidate conflicts on two files with another held slot's ownership; it blocked 45 tasks. Every other hold was waiting for a planning answer, so no worker could start and the fixes that would heal the fleet could not land. The other six runners were stalled at the same time on their own holds.
