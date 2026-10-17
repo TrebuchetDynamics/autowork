@@ -4,11 +4,11 @@ Status: Proposed. Research/planning only; no file migration or implementation is
 
 ## User direction and scope
 
-The user wants continued study of open-source orchestrators, comparison against our existing pipeline, and a coherent place for tooling belonging to the Pi Autowork runner. Pi performs heavy automated coding; the component remains part of Hermes Toolset. `TODO.md` and `goals.json` remain the project work queue and its synchronized index.
+The user wants continued study of open-source orchestrators, comparison against our existing pipeline, and a coherent place for tooling belonging to the Pi Autowork runner. Pi performs heavy automated coding; the component remains part of Autowork. `TODO.md` and `goals.json` remain the project work queue and its synchronized index.
 
 The requested name is interpreted as **Pi Autowork**. My reversible naming choice is `pi-autowork/` for the source component and `pi_autowork` for its Python import package.
 
-This is a layout/refinement proposal for the existing [TOOLSET-115-bf coordinator redesign](https://github.com/TrebuchetDynamics/hermes-toolset/blob/0e6f67b1a7d49e59868885d3312bbe9bc91361ee/docs/plans/2026-10-16-pi-autowork-coordinator.md), not another redesign or a replacement task. The accepted design currently names `scripts/pi_autowork/`; changing that destination is proposed here and must not rewrite an active worker's assigned contract. The [reference study](../research/pi-autowork-reference-architectures.md) provides the reuse evidence.
+This is a layout/refinement proposal for the existing [TOOLSET-115-bf coordinator redesign](https://github.com/TrebuchetDynamics/autowork/blob/0e6f67b1a7d49e59868885d3312bbe9bc91361ee/docs/plans/2026-10-16-pi-autowork-coordinator.md), not another redesign or a replacement task. The accepted design currently names `scripts/pi_autowork/`; changing that destination is proposed here and must not rewrite an active worker's assigned contract. The [reference study](../research/pi-autowork-reference-architectures.md) provides the reuse evidence.
 
 ## Recommendation
 
@@ -19,7 +19,7 @@ Do not put every related file into one undifferentiated directory. Ownership mat
 ### Proposed source tree
 
 ```text
-hermes-toolset/
+autowork/
 ├── pi-autowork/                    # Pi runner component; ships with Toolset
 │   ├── README.md                   # component entry points and ownership map
 │   ├── cli.py                      # tiny Python launcher; no task state

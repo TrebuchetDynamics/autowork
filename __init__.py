@@ -38,13 +38,13 @@ def _discover_skills():
     return skills
 
 
-def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
+def _invoke(ctx, name, path, raw_args, namespace="autowork"):
     from gateway.session_context import get_session_env
 
     if not path.is_file():
         return f"Skill {name!r} no longer exists. Update the plugin and restart Hermes."
     public = name
-    if namespace == "hermes-toolset" and name == "grill-me" and (SKILLS_DIR / "plan-with-me/SKILL.md").is_file():
+    if namespace == "autowork" and name == "grill-me" and (SKILLS_DIR / "plan-with-me/SKILL.md").is_file():
         public = "plan-with-me"
         raw_args = "Challenge mode: read ../grill-me/SKILL.md and stress-test the plan.\n\n" + raw_args
     prompt = (
@@ -54,7 +54,7 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
         "Resolve supporting files relative to that skill's directory.\n\n"
         f"User arguments:\n{raw_args}"
     )
-    if namespace == "hermes-toolset" and name in {"autoresearch", "plan-for-me"}:
+    if namespace == "autowork" and name in {"autoresearch", "plan-for-me"}:
         prompt = (
             "TODO.md is the central work queue. By default, persist actionable "
             "research/planning findings there through docs_sync and synchronize "
@@ -81,9 +81,17 @@ def _invoke(ctx, name, path, raw_args, namespace="hermes-toolset"):
         return None
     return (
         f"Skill {name!r} was not started. For Telegram/gateway use, set "
-        "plugins.entries.hermes-toolset.allow_gateway_injection: true in this profile's "
+        "plugins.entries.autowork.allow_gateway_injection: true in this profile's "
         "config.yaml and restart its gateway. If already enabled, check Hermes gateway logs."
     )
+
+
+def _autowork(run_skill, raw_args):
+    """`/autowork update|status|list` maintain the bundle; any other arguments run the skill."""
+    from .bundle import maintenance_reply
+
+    reply = maintenance_reply(raw_args)
+    return run_skill(raw_args) if reply is None else reply
 
 
 def register(ctx):
@@ -114,11 +122,14 @@ def register(ctx):
         if name in {"docs-sync", "plan-with-me", "plan-for-me"}:
             continue  # workflow_commands reserves both public spellings atomically.
         if resolve_command(command) is not None or command in existing:
-            logger.warning("Skipping /%s: command already exists; use skill_view('hermes-toolset:%s').",
+            logger.warning("Skipping /%s: command already exists; use skill_view('autowork:%s').",
                            command, name)
             continue
+        handler = partial(_invoke, ctx, name, path)
+        if name == "autowork":
+            handler = partial(_autowork, handler)
         ctx.register_command(
-            command, partial(_invoke, ctx, name, path),
+            command, handler,
             description=f"Run the {name} skill",
             args_hint="<instructions>" if name in {"autoresearch", "grill-me"} else "[instructions]",
         )

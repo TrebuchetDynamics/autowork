@@ -13,7 +13,7 @@ loaded skill file. The canonical primary workflows are Plan With Me, Plan For Me
 Docs Sync and Autowork. Autoresearch remains independently discoverable with all
 13 research selectors. Grill Me is Plan With Me's challenge mode, not a separate
 public skill; Pi retains `/grill_me` as a compatibility command. In native skill
-invocation (`/hermes-toolset:plan-with-me` in Claude Code), select `plan-with-me`
+invocation (`/autowork:plan-with-me` in Claude Code), select `plan-with-me`
 and request challenge mode.
 Shared source files are reference material; this contract takes
 precedence over Hermes-specific execution procedures in linked upstream material.

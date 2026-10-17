@@ -98,8 +98,8 @@ never relabel it Accepted merely because the engineering choice is reversible.
 
 ## Load the skill needed at the current step
 
-Resolve bundled skills through `hermes-toolset:docs-sync`, `hermes-toolset:autowork`
-and [hermes-toolset:engineering](../engineering/SKILL.md), or their actual loaded
+Resolve bundled skills through `autowork:docs-sync`, `autowork:autowork`
+and [autowork:engineering](../engineering/SKILL.md), or their actual loaded
 SKILL.md paths. The engineering adapter's pinned Addy snapshot is the default;
 select one technique with `scripts/route.py --protocol NAME` when a method is needed.
 Phase bundles are optional; load selected support only. This works without

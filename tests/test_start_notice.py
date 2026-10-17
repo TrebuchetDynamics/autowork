@@ -96,7 +96,7 @@ class ProvisionTests(unittest.TestCase):
         self.assertEqual(defaults.provision_cron_scripts(ROOT / 'skills', self.home), [])
         self.assertEqual(self.target.read_bytes(), SCRIPT.read_bytes())
         self.assertTrue(self.target.stat().st_mode & 0o100)
-        self.target.write_text('#!/usr/bin/env python3\n# hermes-toolset: old copy\n')
+        self.target.write_text('#!/usr/bin/env python3\n# autowork: old copy\n')
         defaults.provision_cron_scripts(ROOT / 'skills', self.home)
         self.assertEqual(self.target.read_bytes(), SCRIPT.read_bytes())
         self.target.write_text('my own script\n')

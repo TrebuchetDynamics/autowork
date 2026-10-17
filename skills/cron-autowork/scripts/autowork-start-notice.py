@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# hermes-toolset: autowork-start-notice (bundle-managed; local edits are replaced)
+# autowork: autowork-start-notice (bundle-managed; local edits are replaced)
 """Cron pre-run script: tell the job's Telegram destination that a run started.
 
 Hermes runs a job's script before the agent, from the job's workdir, and injects

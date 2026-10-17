@@ -1,14 +1,14 @@
 # Troubleshooting
 
-Symptom-first fixes for installing and using Hermes Toolset. Each entry links to
+Symptom-first fixes for installing and using Autowork. Each entry links to
 the owning guide; procedures are not repeated here. Start with the diagnostics:
 
 ```sh
-hermes toolset doctor --core     # bundled skills and commands only
-hermes toolset doctor --json     # full stack, machine-readable
+hermes autowork doctor --core     # bundled skills and commands only
+hermes autowork doctor --json     # full stack, machine-readable
 ```
 
-In chat, `/toolset` shows load status and `/toolset list` shows which of this
+In chat, `/autowork status` shows load status and `/autowork list` shows which of this
 bundle's plugins (or a skill) owns each command; Hermes' `/commands` lists only
 built-in and skill commands, not plugin commands. Diagnostics check registration only: they never prove that a model
 ran, a worker is available or a Telegram message was delivered.
@@ -17,13 +17,13 @@ ran, a worker is available or a Telegram message was delivered.
 
 ### A workflow command is not recognized
 
-- **Check:** `/toolset list` and `hermes toolset doctor --core`.
+- **Check:** `/autowork list` and `hermes autowork doctor --core`.
 - **Plugin not loaded or not enabled in this profile:** plugins are enabled per
-  profile. Run `hermes -p PROFILE plugins enable hermes-toolset`; see
+  profile. Run `hermes -p PROFILE plugins enable autowork`; see
   [first use](onboarding.md).
 - **Name owned by another plugin:** an existing command keeps its name. The
   bundle logs `Skipping /NAME: command already exists` (with a `skill_view` hint
-  for most skills) and the skill stays available as `hermes-toolset:NAME`; see [workflows](workflows.md#commands).
+  for most skills) and the skill stays available as `autowork:NAME`; see [workflows](workflows.md#commands).
 - **Running gateway predates the update:** updating source does not refresh a
   running gateway's registry. Reload the plugin or restart the gateway, then
   open a new conversation.
@@ -31,18 +31,18 @@ ran, a worker is available or a Telegram message was delivered.
 ### A command is missing from Telegram's picker but works when typed
 
 This is expected. Menu capacity is limited, and compatibility spellings such as
-`/autoresearch_plan` are deliberately not advertised. `/toolset list` shows them
+`/autoresearch_plan` are deliberately not advertised. `/autowork list` shows them
 (Hermes' `/commands` omits plugin commands); see [workflow commands in the picker](onboarding.md#workflow-commands-in-telegrams-picker).
 
 ### Telegram still shows retired or old commands
 
 Handlers refresh on plugin reload, but the bot menu refreshes only when the
-gateway reconnects. `/toolset update` restarts the running root gateway once when it
+gateway reconnects. `/autowork update` restarts the running root gateway once when it
 changed anything and every profile activated cleanly, but only while no chat turn is
 in flight (`gateway_restart: requested`); otherwise it reports `deferred` and a
 waiter restarts at the first quiet moment within 6 hours, never forcing
 (`deferred_expired` if none came; `pending` while an earlier restart is
-outstanding). Profile-dedicated gateways are not detected. `/toolset update status`
+outstanding). Profile-dedicated gateways are not detected. `/autowork update status`
 shows `gateway_restart_progress` with what it is waiting on. It also
 clears leftover per-chat lists that still contain retired commands for the owner and
 home chats configured in each profile's `.env` (`chat_menus_healed`). Otherwise
@@ -83,7 +83,7 @@ them, or keep using the core workflows; see [installation](installation.md#insta
 
 This is the bundle's documented runtime policy (`approvals.mode: off` and related
 keys), applied on every plugin load. Set
-`plugins.entries.hermes-toolset.settings.apply_runtime_defaults` to `false`
+`plugins.entries.autowork.settings.apply_runtime_defaults` to `false`
 first, then restore your values; see [reference](reference.md#plugin-settings)
 and [removal and recovery](uninstall.md#restore-configuration-deliberately).
 
@@ -110,9 +110,9 @@ take the empty slot; check `hermes -p PROFILE memory status`. See
 
 ## Updates
 
-### `/toolset update` replied “requested” but nothing seems to change
+### `/autowork update` replied “requested” but nothing seems to change
 
-The reply only starts the background updater. Use `/toolset update status` for
+The reply only starts the background updater. Use `/autowork update status` for
 the durable result. If status says the process stopped without a receipt, inspect
 `maintenance/toolset-update/run.log` at the Hermes root and rerun.
 
@@ -134,14 +134,14 @@ See [update all profiles](installation.md#update-all-profiles) for the full rule
 ### A restart rolled out changes no update released
 
 Profiles linked to a working checkout load its current files at every gateway
-restart. `/toolset update status` lists them; pin the ones that should change only
-through updates with `hermes toolset pin NAME` (preview with `--dry-run`).
+restart. `/autowork update status` lists them; pin the ones that should change only
+through updates with `hermes autowork pin NAME` (preview with `--dry-run`).
 See [linked profiles](installation.md#linked-profiles-and-pinned-clones).
 
 ### The bundle broke after moving or deleting its checkout
 
 Source installs link each profile to the checkout. Restore it at the same path,
-or delete the now-dangling `plugins/hermes-toolset` link in each profile and rerun
+or delete the now-dangling `plugins/autowork` link in each profile and rerun
 setup from the new location (setup and update refuse a dangling link); see [update or remove](onboarding.md#update-or-remove).
 
 ## Workflows
@@ -170,6 +170,6 @@ baseline role that is neither mapped nor recorded as not applicable. Fix the doc
 
 ## Still stuck
 
-Collect `hermes toolset doctor --json`, the relevant receipt or log and the exact
+Collect `hermes autowork doctor --json`, the relevant receipt or log and the exact
 command you ran. Run `python3 scripts/check.py` from a source checkout to rule out
 a local bundle regression; see [testing](testing.md).

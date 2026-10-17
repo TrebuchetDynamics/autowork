@@ -18,9 +18,9 @@ class DoctorModes(unittest.TestCase):
         spec.loader.exec_module(self.bundle)
         names = [p.parent.name for p in (ROOT / 'skills').glob('*/SKILL.md')]
         self.report = {
-            'plugins': [{'name': 'hermes-toolset', 'enabled': True, 'error': None}],
-            'plugin_skills': ['hermes-toolset:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme')],
-            'commands': [{'command': name.replace('_', '-'), 'source': 'hermes-toolset', 'kind': 'plugin'}
+            'plugins': [{'name': 'autowork', 'enabled': True, 'error': None}],
+            'plugin_skills': ['autowork:' + name for name in ('autowork', 'cron-autowork', 'docs-sync', 'plan-with-me', 'plan-for-me', 'autoresearch', 'engineering', 'git-commit-push', 'impeccable', 'lgtm', 'profile-create', 'ui-taste', 'beautify-github-readme')],
+            'commands': [{'command': name.replace('_', '-'), 'source': 'autowork', 'kind': 'plugin'}
                          for name in names],
             'missing_plugins': ['omh'], 'missing_skills': ['graphify'],
             'unchecked_skill_sources': ['https://example.invalid/skills'],
@@ -38,14 +38,14 @@ class DoctorModes(unittest.TestCase):
         return code, output.getvalue()
 
     def test_doctor_lists_linked_profiles_without_failing(self):
-        rows = [{'profile': 'work', 'target': '/src/hermes-toolset', 'link': '/src/hermes-toolset',
+        rows = [{'profile': 'work', 'target': '/src/autowork', 'link': '/src/autowork',
                  'revision': 'a' * 40, 'dirty': False, 'released': True}]
         with patch.object(self.bundle, 'linked_profiles', return_value=rows):
             code, output = self.run_doctor('--core', '--json')
             self.assertEqual((code, json.loads(output)['linked_profiles']), (0, rows))
             code, output = self.run_doctor('--core')
         self.assertIn('any gateway restart loads its current files: work', output)
-        self.assertIn('hermes toolset pin NAME --dry-run', output)
+        self.assertIn('hermes autowork pin NAME --dry-run', output)
 
     def test_pin_command_runs_the_updater_for_one_profile(self):
         parser = argparse.ArgumentParser()
@@ -89,7 +89,7 @@ class DoctorModes(unittest.TestCase):
     def test_disabled_or_failed_plugin_fails_core(self):
         for change in ({'enabled': False}, {'error': 'load failed'}):
             with self.subTest(change=change):
-                self.report['plugins'][0] = dict(name='hermes-toolset', enabled=True, error=None)
+                self.report['plugins'][0] = dict(name='autowork', enabled=True, error=None)
                 self.report['plugins'][0].update(change)
                 code, _ = self.run_doctor('--core', '--json')
                 self.assertEqual(code, 1)

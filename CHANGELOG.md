@@ -5,6 +5,17 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ## Unreleased
 
+### Changed
+
+- Renamed from hermes-toolset to **Autowork** (0.3.0), with no compatibility layer:
+  the GitHub repository `TrebuchetDynamics/autowork`, the plugin in Hermes, Claude Code,
+  Codex and Pi, its command namespace (`/autowork:plan-with-me`, skills `autowork:NAME`),
+  its Hermes settings key (`plugins.entries.autowork`) and the maintenance commands:
+  `/toolset …` is now `/autowork update|status|list` and `hermes toolset …` is
+  `hermes autowork …`. Other `/autowork` arguments still run the next task. Existing
+  installations must be removed and installed again; see
+  [the rename note](README.md#renamed-from-hermes-toolset). TOOLSET-121-3d.
+
 ### Fixed
 
 - An active agent session in the main checkout no longer holds off every idle-claim

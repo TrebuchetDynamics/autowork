@@ -4,9 +4,9 @@ For an existing Hermes profile, the native plugin manager avoids maintaining a
 source checkout. Replace `work` with your actual profile; omit `-p work` for default:
 
 ```sh
-hermes -p work plugins install TrebuchetDynamics/hermes-toolset
-hermes -p work plugins enable hermes-toolset
-hermes -p work toolset doctor --core
+hermes -p work plugins install TrebuchetDynamics/autowork
+hermes -p work plugins enable autowork
+hermes -p work autowork doctor --core
 ```
 
 This path affects the selected profile. Loading the plugin still applies its
@@ -22,7 +22,7 @@ external plugins, imported skills or skill sources are unavailable. Those gaps
 remain visible. A missing core skill or a command owned only by another plugin
 fails the check.
 
-Plain `hermes toolset doctor` checks the full stack and exits nonzero for external
+Plain `hermes autowork doctor` checks the full stack and exits nonzero for external
 gaps too. Both modes use one inventory snapshot; `--json` adds machine-readable
 `scope`, `status`, `core_status`, `core_errors`, `integrations_status` and
 `integration_gaps` alongside the existing inventory fields. Neither mode proves
@@ -42,7 +42,7 @@ hermes -p work
 In that chat:
 
 ```text
-/toolset list
+/autowork list
 /plan_with_me questions only: help me clarify a caching improvement; ask one question, then stop
 ```
 
@@ -81,7 +81,7 @@ hermes -p work gateway status
 Apply config/session changes through your normal gateway service procedure after
 ongoing work is accounted for. Do not assume an already-running session picked up
 the changed directory. In the intended bot chat, request a read-only terminal `pwd`
-and inspect its actual tool result, then invoke `/toolset list` and the same
+and inspect its actual tool result, then invoke `/autowork list` and the same
 questions-only command as `/plan_with_me`. Confirm the reply arrives in that
 chat and that no project files changed. A registered command or successful CLI
 probe does not establish Telegram delivery.
@@ -118,10 +118,10 @@ These are operator-run live checks, not recorded model or Telegram test results.
 
 ## Update or remove
 
-For a native Git install, use `hermes -p work plugins update hermes-toolset`, then
+For a native Git install, use `hermes -p work plugins update autowork`, then
 reload or restart the gateway through your normal service procedure and reopen CLI
 sessions. `plugins update` does not refresh skill copies already in the profile's
-skill directory; `/toolset update` synchronizes them. Recheck `doctor --core` and
+skill directory; `/autowork update` synchronizes them. Recheck `doctor --core` and
 first use.
 
 For a source install, the profile plugin links to your checkout. Keep its path
@@ -143,7 +143,7 @@ The picker advertises the current workflow commands: `/plan_with_me`,
 Hermes' menu priority, keep your own entries, mode and cap, and remove compatibility
 entries this bundle added earlier. Compatibility spellings such as `/autoresearch`,
 `/autoresearch_plan` and `/autoresearch_debug` still run when typed but are not
-advertised; `/toolset list` lists them (Hermes' `/commands` shows only built-in and
+advertised; `/autowork list` lists them (Hermes' `/commands` shows only built-in and
 skill commands).
 Command registration and Telegram's stored menu are separate: a gateway plugin
 reload wires handlers, while a gateway reconnect refreshes the bot menu. Tests use

@@ -50,7 +50,7 @@ def decide(cycle, state):
     if (cycle.get('scope') == 'repository' and gate in
             ('consumer_readiness','owner_authority','source_freshness','prerequisites','candidate')):
         return {'action':'discover_repository_work', 'execution_required':True,
-                'skill':'hermes-toolset:plan-for-me', 'subcommand':'plan',
+                'skill':'autowork:plan-for-me', 'subcommand':'plan',
                 'reason':'The selected task is held; repository development authority still covers independent work',
                 'handoff':'Choose an evidence-backed independent maintenance slice, reconcile canonical tasks and execute it in this occurrence',
                 'boundary':'Preserve the held task, ownership and live gates; this decision is not discovery execution or completion'}
@@ -89,7 +89,7 @@ def planning_decision(cycle, state, reason):
             handoff=('Read the saved evidence, verify changed inputs, then retry canonical selection without re-planning'
                      if receipt['outcome'] == 'canonical_reconciled' else
                      'Read the saved evidence and complete the pending supported integration before retrying selection; preserve active writers'))
-    return {'action':'plan','input_key':token,'skill':'hermes-toolset:plan-for-me',
+    return {'action':'plan','input_key':token,'skill':'autowork:plan-for-me',
             'subcommand':'plan','reason':reason,'execution_required':True,
             'handoff':'Run bounded planning now -> docs_sync canonical TODO/goals -> retry selection and supported handoff in this occurrence',
             'boundary':'Keep the authorized scope, explicit exclusions and live writers; never import forbidden edits. This instruction is not model execution or task completion'}

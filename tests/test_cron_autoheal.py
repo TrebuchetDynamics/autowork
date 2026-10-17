@@ -70,7 +70,7 @@ class AutohealTests(unittest.TestCase):
         after = self.read()
         self.assertTrue(after['prompt'].startswith('Scope: ONLY A-1; no push.'))
         self.assertIn('heal-owner-cron.py', after['prompt'])
-        self.assertEqual(after['skills'], ['hermes-toolset:autowork', 'custom'])
+        self.assertEqual(after['skills'], ['autowork:autowork', 'custom'])
         for key in ('schedule', 'enabled', 'deliver', 'model', 'workdir', 'script'):
             self.assertEqual(self.job[key], after[key])
         self.assertEqual(json.loads(self.path.read_text())['jobs'][1], {'id': 'unrelated', 'prompt': 'retain'})

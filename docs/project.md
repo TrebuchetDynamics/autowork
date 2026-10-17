@@ -1,6 +1,6 @@
 # Product scope and architecture
 
-Hermes Toolset coordinates repository planning, documentation and development.
+Autowork (formerly hermes-toolset) coordinates repository planning, documentation and development.
 This document records accepted scope and the current implementation. Operator
 procedures belong in [installation](installation.md), [cross-host setup](cross-host.md)
 and [removal/recovery](uninstall.md); outstanding work belongs in [TODO.md](../TODO.md).
@@ -40,7 +40,7 @@ helpers outside the direct path (`ready_preflight.py`, `publication.py`) still i
 
 | Component | Source | Responsibility |
 | --- | --- | --- |
-| Hermes registration | [entry point](../__init__.py), [workflow aliases](../workflow_commands.py), [research aliases](../autoresearch_commands.py) | Discover skill folders, provision them and `skills/shared` into the profile, apply runtime defaults and cron scripts, publish current skill IDs, register commands (with `/toolset` and imported-skill aliases from [bundle](../bundle.py)) and route conversation arguments |
+| Hermes registration | [entry point](../__init__.py), [workflow aliases](../workflow_commands.py), [research aliases](../autoresearch_commands.py) | Discover skill folders, provision them and `skills/shared` into the profile, apply runtime defaults and cron scripts, publish current skill IDs, register commands (with `/autowork status` and imported-skill aliases from [bundle](../bundle.py)) and route conversation arguments |
 | Hermes diagnostics | [bundle](../bundle.py), [menu policy](../telegram_menu_policy.py) | Distinguish core registration from integration readiness and prioritize public commands |
 | Fleet installation | [orchestrator](../setup_bundle.py), [preflight](../setup_preflight.py), [finalization](../setup_runtime.py) | Validate prerequisites, install resources/configuration, check profiles and refresh supported gateways |
 | Autowork execution | [cycle](../skills/autowork/scripts/owner_cycle.py), [task execution](../skills/autowork/scripts/task_execution.py) | Select repository tasks and coordinate direct execution with live-writer protection; the agent implements and reports actual results |
@@ -50,7 +50,7 @@ helpers outside the direct path (`ready_preflight.py`, `publication.py`) still i
 | Portable behavior | [host contract](../adapters/skills/COMMON.md) | Use the current host's tools; preserve permissions, memory and credentials |
 
 Hermes workflow commands inject a skill-loading request into the current conversation
-(`/toolset` answers directly). The model performs the workflow; command registration alone does not run it. Codex
+(`/autowork status` answers directly). The model performs the workflow; command registration alone does not run it. Codex
 loads portable skills directly. Pi commands read adapter instructions and send a
 user message, queued as a follow-up when the session is busy.
 
@@ -684,7 +684,7 @@ Lower-ranked reproduced findings stay recorded here for later tasks: merged loca
 skill edits reported as drift on the next update (larger fix), `Label:` sub-bullets
 replacing the `Acceptance:` field, archiving unindented section prose with the
 preceding checkbox task, `check_receipt` timeout tracebacks and wrapper bypass of
-the shell-status guard, nested worktrees blocking the parent checkout, `/toolset`
+the shell-status guard, nested worktrees blocking the parent checkout, `/autowork status`
 argument case sensitivity, executable-bit removal not propagated, malformed
 `facts.json` tracebacks and untracked leftover skill folders aborting installs.
 
@@ -795,7 +795,7 @@ Windows is not a documented target.
 
 Status: Accepted
 
-Decision: On 2026-10-15 the user asked for support for installing hermes-toolset
+Decision: On 2026-10-15 the user asked for support for installing Autowork
 skills in Claude Code. It ships as a Claude Code plugin marketplace at the repository
 root, exposing the same 13 portable adapters as Codex and Pi.
 
@@ -809,7 +809,7 @@ Findings (Claude Code 2.1.300 and its plugin documentation):
 - Claude Code and Pi both honor `disable-model-invocation: true` in skill frontmatter.
 
 Planner's calls (reversible): one marketplace and plugin both named
-`hermes-toolset`; no hooks, agents, MCP servers or settings; every adapter carries
+`autowork` (renamed from `hermes-toolset` on 2026-10-16); no hooks, agents, MCP servers or settings; every adapter carries
 `disable-model-invocation: true`, so Claude Code matches the Codex explicit-only
 policy and Pi skills also stop being selected automatically (Pi's registered
 commands read `SKILL.md` directly and are unaffected); the host contract names all
@@ -826,7 +826,7 @@ A live Claude Code workflow run stays a separate task.
 Status: Accepted
 
 Request (user, 2026-10-15): add a way to optimize and minimize test suites that fits
-the Hermes Toolset pipeline, considering Matt Pocock's
+the Autowork pipeline, considering Matt Pocock's
 [TDD skill](https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/SKILL.md).
 
 Findings:
@@ -962,12 +962,12 @@ Findings from the 2026-10-15 rollouts (Telegram menu changes TOOLSET-070/071/074
   recovered on startup.
 - Small updates produced four gateway restarts in about an hour (10:49, 10:55,
   11:46, 11:50); one restart reloads every profile.
-- Seven profiles link `plugins/hermes-toolset` to the canonical checkout and three
+- Seven profiles link `plugins/autowork` (then `plugins/hermes-toolset`) to the canonical checkout and three
   use pinned clones. Any restart deploys the checkout's current state to the linked
   seven, including another writer's unreleased commits (`/git_pull_merge`
   disappeared there before any update rolled it out), while the clones change only
   through an update.
-- `hermes toolset update --check` during another update returns that run's
+- `hermes autowork update --check` during another update returns that run's
   `running` record with no owner or wait; the result stays `gateway_restart:
   requested` after the restart finished, without the new PID or whether each bot
   re-sent its menu.
@@ -1008,7 +1008,7 @@ guidance in real use but no demonstrated value from the rest of its catalog, kee
 selectively and plan trimming its footprint.
 
 Findings:
-- Hermes Toolset installs OMH 3.0.0 with `omh setup --full` (`plugins/defaults.json`
+- Autowork installs OMH 3.0.0 with `omh setup --full` (`plugins/defaults.json`
   `omh.full: true`), so 9 profiles register all 142 OMH skills. Hermes lists every
   registered skill in each request's skill index; the audit sampled 11,832 characters of
   OMH/ULW index entries per prompt.
@@ -1027,10 +1027,10 @@ Findings:
   writes `files_removed=False`, so the skills stay in Hermes' index and the context
   cost is unchanged. Both used skills sit in `delegate_coding_and_ship` (37 skills).
 - Hermes' prompt builder omits skills named in `skills.disabled`
-  (`agent/prompt_builder.py`, `get_disabled_skill_names`). Hermes Toolset's setup
+  (`agent/prompt_builder.py`, `get_disabled_skill_names`). Autowork's setup
   currently resets `skills.disabled` and `skills.platform_disabled` to empty in every
   profile, so a trim made there would be undone by the next setup; plugin load and
-  `/toolset update` do not touch them.
+  `/autowork update` do not touch them.
 - Nine profiles use OMH as their memory provider; the provider is the OMH plugin, not
   these skills.
 
@@ -1043,11 +1043,11 @@ Planner's calls (reversible; reject any of them):
   `wiki`), 41 in all. Record it in `plugins/defaults.json` as top-level `omh_keep_skills`
   (the `omh` block must keep exactly the keys `install-omh.py` validates); every other
   OMH-managed skill (101 of 142) is disabled. Re-measure usage before widening or shrinking it.
-- Hermes Toolset owns only the OMH entries it adds: setup and runtime defaults merge them
+- Autowork owns only the OMH entries it adds: setup and runtime defaults merge them
   with the user's own `skills.disabled` entries instead of resetting the list, and drop
   only managed entries that are no longer OMH skills or are now kept. The existing
   runtime-defaults opt-out disables the trim.
-- Qualify on one profile with a paused cron first, then roll out with `/toolset update`.
+- Qualify on one profile with a paused cron first, then roll out with `/autowork update`.
 
 Anti-goals: uninstalling OMH, touching the memory provider or its stores, deleting OMH
 files, removing a user's own disabled-skill entries, or judging the trim by catalog
@@ -1097,7 +1097,7 @@ Findings (source as of `89549d2`):
   `<git-common-dir>/autowork-execution/active.json`, under `writer.lock`; a live lease
   returns `BUSY`. Owner liveness is `/proc` identity (PID, start ticks, boot ID), with
   no heartbeat; a dead owner's lease is superseded. Processes carrying
-  `HERMES_TOOLSET_EXECUTION_COMMON` count as Autowork and block every worktree.
+  `AUTOWORK_EXECUTION_COMMON` count as Autowork and block every worktree.
 - `BUSY` already suggests an isolated worktree (`<parent>/<repo>-autowork-<TASK>`,
   branch `autowork/<TASK>`), and `--writers` gates merging back. There is no merge
   helper: integration is manual Git. `delivery_state.integration_state()` verifies
@@ -1175,7 +1175,7 @@ Decisions (all planner's calls; reversible; reject any of them):
 
   All writes happen under the existing `writer.lock`. A sequential claim returns
   `BUSY` while a live parallel coordinator exists, and the reverse is also true.
-  Worker processes do not carry `HERMES_TOOLSET_EXECUTION_COMMON`, so they don't
+  Worker processes do not carry `AUTOWORK_EXECUTION_COMMON`, so they don't
   block the coordinator. Slot states: `dispatched`, `running`, `reported`,
   `integrating`, `integrated`, `closed`, `held` (reason), `interrupted`, `released`.
 - **Recovery is idempotent.** A new coordinator, run in either mode, first
@@ -1337,7 +1337,7 @@ from the repository, candidate branches and the installed hosts:
   coordinator to check that writer first.
 - TOOLSET-013 measured the native `start_goal` admission path, which Autowork no
   longer uses; it is superseded by TOOLSET-091-00, which times real host runs.
-- TOOLSET-019's deployment outcome was met by fleet-wide `/toolset update` runs;
+- TOOLSET-019's deployment outcome was met by fleet-wide `/autowork update` runs;
   only the selected-profile updater mode remains to qualify once.
 - TOOLSET-066 can run now: `claude --plugin-dir` on a clean clone of the published
   commit loads the plugin for one session without a marketplace install or settings
@@ -1347,10 +1347,37 @@ from the repository, candidate branches and the installed hosts:
 - Unchanged and waiting on the owner or an external environment: TOOLSET-091-00
   (owner-observed real workers), TOOLSET-096-7e (owner picks a fleet repository),
   TOOLSET-029 (stop-all instruction), TOOLSET-011 (original host and profile gone).
-- Not planned: the profile-local skill edits kept by `/toolset update` are
+- Not planned: the profile-local skill edits kept by `/autowork update` are
   agent-learned lessons; the one in the toolset profile is already being ported by
   another session.
 
 New priority order: 064, 082, 097-41, 072, 073, 066, 091-00, 003, 098-5d, 019,
 096-7e, 029, 011. The first five are offline work Autowork can do without new
 authority.
+
+## Rename to Autowork (2026-10-16)
+
+Status: Accepted
+
+Decision (owner, 2026-10-16): the repository, plugin and command namespace are renamed
+from `hermes-toolset` to `autowork`. Planning works in Hermes, Claude Code, Codex and Pi,
+and pi-autowork builds the queued work, so the name no longer names one host. The
+GitHub repository is `TrebuchetDynamics/autowork`.
+
+- No backwards compatibility (owner direction): no aliases, no migration code and no
+  legacy names in source. Hermes keys a plugin by its manifest `name`, so an installation
+  from before the rename must be removed and installed again; its
+  `plugins.entries.hermes-toolset` settings and `hermes-toolset:` cron skills are not
+  read or rewritten automatically.
+- The chat and terminal maintenance commands move under `autowork`:
+  `/autowork update|status|list` (exact forms only; any other arguments still run the
+  Autowork skill, so `/autowork update the README` is a task) and
+  `hermes autowork update|setup|finalize|pin|doctor`. `/toolset` and `hermes toolset`
+  are gone.
+- The internal process marker is `AUTOWORK_EXECUTION_COMMON`; bundle-managed cron
+  scripts carry `# autowork:`.
+- Kept: the per-profile state folders `maintenance/toolset-update/` and
+  `.toolset-imports.json`, which hold existing receipts, pins and import records, and
+  historical changelog, archived task and evidence text.
+- Reinstalling the live profiles and hosts is an owner step, recorded as a pending
+  follow-up rather than claimed by the source change.

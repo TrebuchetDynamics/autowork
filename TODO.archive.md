@@ -2310,3 +2310,22 @@ Source section: Next
 - Dependencies: None.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No upstream code copied (MIT notices would apply); no live Pi or fleet runs; avoid editing `pi-autowork.sh` while TOOLSET-115-bf phase 5 is active.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+### TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
+
+- [x] TOOLSET-121-3d — Rename the repository and plugin from hermes-toolset to autowork
+- Status: done offline (efdde94: full offline gate passed); owner decisions (2026-10-16): the new name is `autowork`, the maintenance commands become `/autowork update|status|list` and `hermes autowork …`, and there is no backwards compatibility. Source rename implemented on `autowork/TOOLSET-121-3d`; GitHub repository renamed to `TrebuchetDynamics/autowork` by the owner's approval. Reinstalling live installs is TOOLSET-123-a0 below.
+- Goal: PORTABLE — Align portable workflow discovery.
+- Sources: [README host table](README.md), [cross-host adapters](docs/cross-host.md), [project contract](docs/project.md).
+- Touches: README.md, CHANGELOG.md, AGENTS.md, plugin.yaml, package.json, .claude-plugin/, adapters/, update_bundle.py, update_bundle_native.py, setup_runtime.py, setup_preflight.py, install.sh, install-plugins.sh, install-skills.sh, install_skills.py, scripts/, skills/, tmux/, pi-autowork/, docs/, tests/
+- Scope: Planning happens in any host (Hermes, Claude Code, Codex, Pi); pi-autowork builds the queued work, so the name should not name one host. Rename the project, the plugin and the command namespace to `autowork` in every manifest (`plugin.yaml`, `package.json`, `.claude-plugin/plugin.json` and `marketplace.json`, the Codex and Pi adapters), the upstream URL in `update_bundle.py`, install scripts, docs and tests (about 78 files reference `hermes-toolset`; inventory them with `rg -l hermes-toolset` first). Keep host-specific parts named for their host: the Hermes plugin's fleet, scheduler and Telegram features are documented as Hermes-only. No compatibility layer (owner direction): no aliases, legacy fallbacks or migration code; an installation from before the rename is removed and installed again. The `/toolset` maintenance command moves to exact `/autowork update|status|list` forms and `hermes toolset` to `hermes autowork`. Record the rename in CHANGELOG.md.
+- Acceptance: `rg -i 'hermes[ -]toolset'` returns only historical text (CHANGELOG past entries, archive, evidence, the rename notes); each host's registration test finds the plugin as `autowork`; `/autowork update|status|list` reach maintenance and other `/autowork` arguments run the skill; README and the hero use the new name.
+- Checks: `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`; adapter registration tests; `docs.py check`. Registration checks do not prove live installs on the hosts.
+- Dependencies: none.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: The local checkout directory rename, marketplace republication and reinstalling installed profiles and hosts are owner/live steps (TOOLSET-123-a0). No direct edits in fleet repositories; per-profile state folders (`maintenance/toolset-update/`) keep their names.

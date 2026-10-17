@@ -1,6 +1,6 @@
 # Claude Code, Codex and Pi installation
 
-Hermes Toolset provides native packages for four hosts. Claude Code, Codex and Pi
+Autowork provides native packages for four hosts. Claude Code, Codex and Pi
 use the portable adapters, not the Hermes plugin loader. None requires Hermes installed.
 These adapters expose 12 skills: Plan With Me, Plan For Me, Docs Sync, Autowork,
 Cron Autowork, Autoresearch, Engineering, Impeccable, UI Taste, Beautify GitHub README,
@@ -19,39 +19,39 @@ Requires Claude Code with plugin marketplaces. From this checkout:
 
 ```sh
 claude plugin marketplace add .
-claude plugin install hermes-toolset@hermes-toolset
+claude plugin install autowork@autowork
 ```
 
 Install the published Git source with:
 
 ```sh
-claude plugin marketplace add TrebuchetDynamics/hermes-toolset
-claude plugin install hermes-toolset@hermes-toolset
+claude plugin marketplace add TrebuchetDynamics/autowork
+claude plugin install autowork@autowork
 ```
 
-Inside a session, `/plugin marketplace add TrebuchetDynamics/hermes-toolset` and
-`/plugin install hermes-toolset@hermes-toolset` do the same; run `/reload-plugins` or
+Inside a session, `/plugin marketplace add TrebuchetDynamics/autowork` and
+`/plugin install autowork@autowork` do the same; run `/reload-plugins` or
 start a new session. Add `--scope project` to the install to record it in the
 repository's `.claude/settings.json` for everyone who works there. Invoke the
 namespaced skills:
 
 ```text
-/hermes-toolset:plan-with-me questions only: ask one question about this project
-/hermes-toolset:plan-with-me challenge this plan; read-only, no implementation
-/hermes-toolset:plan-for-me investigate the next useful improvement; save the plan
-/hermes-toolset:docs-sync update the docs and TODO.md
-/hermes-toolset:autowork complete the next ready task; commit locally, no push
-/hermes-toolset:autoresearch debug the failing test
+/autowork:plan-with-me questions only: ask one question about this project
+/autowork:plan-with-me challenge this plan; read-only, no implementation
+/autowork:plan-for-me investigate the next useful improvement; save the plan
+/autowork:docs-sync update the docs and TODO.md
+/autowork:autowork complete the next ready task; commit locally, no push
+/autowork:autoresearch debug the failing test
 ```
 
 The marketplace entry lists `./adapters/skills/` as the plugin's only skills folder,
 so the Hermes-only skills in the repository's root `skills/` folder are never loaded;
 the plugin itself ships no hooks, agents, MCP servers or settings. Claude Code copies
 the whole repository into its plugin cache, so adapter links into `skills/` resolve
-there. Update with `claude plugin marketplace update hermes-toolset` and then
-`claude plugin update hermes-toolset@hermes-toolset`; remove with
-`claude plugin uninstall hermes-toolset@hermes-toolset` (add the same `--scope` used
-to install) and `claude plugin marketplace remove hermes-toolset`. Removal does not
+there. Update with `claude plugin marketplace update autowork` and then
+`claude plugin update autowork@autowork`; remove with
+`claude plugin uninstall autowork@autowork` (add the same `--scope` used
+to install) and `claude plugin marketplace remove autowork`. Removal does not
 undo repository work or delete plans.
 
 ## Codex
@@ -60,28 +60,28 @@ Requires a Codex CLI with `codex plugin` support. From this checkout:
 
 ```sh
 codex plugin marketplace add .
-codex plugin add hermes-toolset@hermes-toolset-marketplace
+codex plugin add autowork@autowork-marketplace
 ```
 
 Install the published Git source with:
 
 ```sh
-codex plugin marketplace add TrebuchetDynamics/hermes-toolset --ref main
-codex plugin add hermes-toolset@hermes-toolset-marketplace
+codex plugin marketplace add TrebuchetDynamics/autowork --ref main
+codex plugin add autowork@autowork-marketplace
 ```
 
 Start a new Codex session in your project. Invoke the namespaced native skills:
 
 ```text
-$hermes-toolset:plan-with-me questions only: ask one question about this project
-$hermes-toolset:plan-with-me challenge this plan; read-only, no implementation
-$hermes-toolset:plan-for-me investigate the next useful improvement; save the plan
-$hermes-toolset:docs-sync update the docs and TODO.md
-$hermes-toolset:autowork complete the next ready task; commit locally, no push
-$hermes-toolset:autoresearch debug the failing test
+$autowork:plan-with-me questions only: ask one question about this project
+$autowork:plan-with-me challenge this plan; read-only, no implementation
+$autowork:plan-for-me investigate the next useful improvement; save the plan
+$autowork:docs-sync update the docs and TODO.md
+$autowork:autowork complete the next ready task; commit locally, no push
+$autowork:autoresearch debug the failing test
 ```
 
-Use `$hermes-toolset:docs-sync` in Codex; the Hermes spelling `/docs_sync`
+Use `$autowork:docs-sync` in Codex; the Hermes spelling `/docs_sync`
 is not a Codex slash command. Adding package files to a Git repository does not
 install that plugin into your Codex configuration. After installation, use the
 next turn if the client refreshes skill discovery; otherwise start a new session.
@@ -89,11 +89,11 @@ next turn if the client refreshes skill discovery; otherwise start a new session
 Codex uses skill invocation, not Hermes slash-command registration. The adapters
 are explicit-only in Codex (`allow_implicit_invocation: false` in each
 `agents/openai.yaml`) so installation does not automatically invoke a workflow.
-Update a Git install with `codex plugin marketplace upgrade hermes-toolset-marketplace`
+Update a Git install with `codex plugin marketplace upgrade autowork-marketplace`
 (it refreshes Git marketplace snapshots only); remove with
-`codex plugin remove hermes-toolset@hermes-toolset-marketplace`. Removal does not
+`codex plugin remove autowork@autowork-marketplace`. Removal does not
 undo repository work or delete plans. The marketplace registration remains until
-`codex plugin marketplace remove hermes-toolset-marketplace`.
+`codex plugin marketplace remove autowork-marketplace`.
 
 ## Pi coding agent
 
@@ -107,7 +107,7 @@ pi install .
 Install the published Git source with:
 
 ```sh
-pi install git:github.com/TrebuchetDynamics/hermes-toolset
+pi install git:github.com/TrebuchetDynamics/autowork
 ```
 
 Use `/reload` in an existing Pi session, or start a new one inside your project.
@@ -130,7 +130,7 @@ upstream changes). Native `/skill:<name>` invocation is also
 available; skill names use hyphens. Command arguments remain literal prompt text.
 `/grill_me` loads Plan With Me with explicit challenge mode and preserves the
 request unchanged. The old standalone `grill-me` skill is no longer discoverable;
-use `$hermes-toolset:plan-with-me` in Codex or `/skill:plan-with-me` in Pi with
+use `$autowork:plan-with-me` in Codex or `/skill:plan-with-me` in Pi with
 `challenge` in the request. Autoresearch stays independent; its `plan` selector
 routes to Plan For Me, which reads the pinned plan protocol directly, never back
 through Autoresearch. All other selectors retain their shipped protocols.
@@ -165,14 +165,14 @@ Run it from the checkout of the repository's main branch (`main`, `master` or
 `origin/HEAD`'s branch), or name that checkout; it refuses any other branch:
 
 ```sh
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --dry-run
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --status
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --dry-run
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --status
 ```
 
-It uses the hermes-toolset package Pi has installed (found with `pi list`) for the
+It uses the autowork package Pi has installed (found with `pi list`) for the
 engine and skills; the banner shows that package's path and revision. Install it from
-the Git source (`pi install git:github.com/TrebuchetDynamics/hermes-toolset`) and
+the Git source (`pi install git:github.com/TrebuchetDynamics/autowork`) and
 advance it with `pi update`: a local-path install loads whatever your working
 checkout holds, unreleased commits included.
 
@@ -217,8 +217,8 @@ autowork remove my-project     # stop and remove the service; state and worktree
 (run it from the repository, or add `--repo PATH`):
 
 ```sh
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
-~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --remove-service
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --install-service
+~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --remove-service
 ```
 
 Each repository gets `pi-autowork@<repository name>.service`, for example
@@ -240,7 +240,7 @@ repository can run on `openai-codex/gpt-6-luna` and another on
 `openrouter/deepseek/deepseek-v4.1-flash`; a reinstall keeps the chosen model.
 Reinstall after changing settings. The runner keeps itself current: while no task is
 in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
-turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
+turns it off) it runs `pi update` for its autowork package, one runner at a time
 across repositories. It updates only when no runner on the machine has work in flight
 and the new release, read from Git first, declares it can read the current
 execution state; otherwise it logs why once and keeps the running release. When the toolset revision changed, by that or any other update,

@@ -67,7 +67,7 @@ separate approval. Creation does not authorize repository changes, commits or pu
    step 1 without duplicating shared workflow policy. Preserve Hermes/Nous
    attribution and existing safety rules.
 
-3. **Install hermes-toolset, not copied prompt policy.** Inventory the new
+3. **Install autowork, not copied prompt policy.** Inventory the new
    profile immediately after native creation with targeted `plugins show NAME`
    calls and resolved plugin paths; creation may already provision shared links.
    Preserve a discovered installation and use supported enablement rather than
@@ -78,7 +78,7 @@ separate approval. Creation does not authorize repository changes, commits or pu
    spaces. Do not hand-copy or symlink around a blocked security scan.
    ```sh
    hermes -p "<name>" plugins install "<bundle file URI>" --enable --yes-deps
-   hermes -p "<name>" plugins show hermes-toolset
+   hermes -p "<name>" plugins show autowork
    ```
    Inspect `<bundle>/plugin.yaml`, `plugins/defaults.json` and `plugins/PLUGINS.md`
    for the CURRENT required plugin set and source identifiers. Install/enable and
@@ -126,7 +126,7 @@ separate approval. Creation does not authorize repository changes, commits or pu
    ```sh
    hermes -p "<name>" config get terminal.cwd
    hermes profile show "<name>"
-   hermes -p "<name>" plugins show hermes-toolset
+   hermes -p "<name>" plugins show autowork
    hermes -p "<name>" memory status
    ```
    Verify every required plugin is enabled in the named profile, the repository

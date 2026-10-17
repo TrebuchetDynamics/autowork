@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pi-autowork.sh: run Hermes Toolset's Parallel Autowork engine with Pi workers.
+# pi-autowork.sh: run Autowork's Parallel Autowork engine with Pi workers.
 #
 # The engine (skills/autowork/scripts/owner_cycle.py --parallel) plans, dispatches,
 # verifies and closes tasks; the pi-autowork component (pi-autowork/pi_autowork/)
@@ -27,7 +27,7 @@ if ! { [[ -n $COMPONENT ]] && is_component "$COMPONENT"; }; then
   fi
 fi
 if [[ -z $COMPONENT ]]; then
-  printf 'pi-autowork: Hermes Toolset not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/hermes-toolset) or set PI_AUTOWORK_TOOLSET.\n' >&2
+  printf 'pi-autowork: Autowork not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/autowork) or set PI_AUTOWORK_TOOLSET.\n' >&2
   exit 2
 fi
 command -v python3 >/dev/null 2>&1 || { printf 'pi-autowork: Missing required command: python3\n' >&2; exit 2; }

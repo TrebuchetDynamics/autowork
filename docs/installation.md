@@ -17,10 +17,10 @@ store keeps an explicitly stored mode); no external
 memory server or connection JSON is required.
 
 ```sh
-hermes plugins install TrebuchetDynamics/hermes-toolset
-hermes plugins enable hermes-toolset
-hermes toolset setup --yes-deps
-hermes toolset doctor
+hermes plugins install TrebuchetDynamics/autowork
+hermes plugins enable autowork
+hermes autowork setup --yes-deps
+hermes autowork doctor
 ```
 
 From a local checkout, one command performs the complete installation for every
@@ -30,7 +30,7 @@ existing live profile:
 bash install.sh --yes-deps
 ```
 
-`install.sh`, `install-plugins.sh`, and `hermes toolset setup` share the same
+`install.sh`, `install-plugins.sh`, and `hermes autowork setup` share the same
 complete setup path: bundled skills, plugin installation/enablement, profile
 configuration, OMH setup, per-profile readiness checks, and running-gateway command
 refresh. No manual symlinks or per-profile enable commands are needed. Use
@@ -40,17 +40,17 @@ and native security scans still apply; a blocked dependency or failed readiness
 check returns nonzero and reports setup as incomplete.
 
 Plugins are enabled per profile. For a named profile, use that profile's home for
-the link and `hermes -p PROFILE plugins enable hermes-toolset` to enable it.
-`hermes toolset setup` installs and enables the sources in
+the link and `hermes -p PROFILE plugins enable autowork` to enable it.
+`hermes autowork setup` installs and enables the sources in
 [plugins/PLUGINS.md](../plugins/PLUGINS.md), including any external skill repositories
 it lists (currently none), Graphify's Hermes integration, and OMH's full memory setup. It also links and enables
-hermes-toolset itself in every existing live profile, preserving existing plugin
+autowork itself in every existing live profile, preserving existing plugin
 installations. After creating another profile, rerun setup or, from this checkout,
 run `bash install-plugins.sh --bundle-only` to add just this bundle and its defaults
 across profiles. The links depend on keeping this checkout installed. It applies
 [our defaults](../plugins/defaults.json): select OMH with `auto-safe` memory in independent stores, keep the
 current TUI, disable the optional menubar, allow toolset gateway injection, and
-set `approvals.mode` to `off` for profiles with hermes-toolset installed. This
+set `approvals.mode` to `off` for profiles with autowork installed. This
 disables terminal command approval prompts throughout those profiles, including
 CLI and messaging sessions. The plugin itself applies these approval and gateway
 injection defaults whenever it loads, including disabling `/new`, `/clear`,
@@ -65,11 +65,11 @@ measured keep list (`omh_keep_skills` in `plugins/defaults.json`, 41 skills incl
 code review, verification, the core and memory skills) to `skills.disabled`, so Hermes
 leaves them out of every prompt's skill index. Your own `skills.disabled` entries stay;
 the bundle removes only names it added (recorded in
-`plugins.entries.hermes-toolset.omh_trim`) and never leaves its own skills disabled. OMH
+`plugins.entries.autowork.omh_trim`) and never leaves its own skills disabled. OMH
 itself, its files and its memory provider are untouched. Setup also clears per-platform
 skill disable lists.
 To opt out of automatic policy application, first run
-`hermes -p PROFILE config set plugins.entries.hermes-toolset.settings.apply_runtime_defaults false`,
+`hermes -p PROFILE config set plugins.entries.autowork.settings.apply_runtime_defaults false`,
 then restore the desired settings, for example
 `hermes -p PROFILE config set approvals.mode manual` and
 `hermes -p PROFILE config set approvals.destructive_slash_confirm true`.
@@ -84,7 +84,7 @@ those steps. Saving interview decisions through docs-sync additionally requires
 the relevant file/terminal tools. Direct source evidence is sufficient for routine
 task and document repairs; Graphify is useful for uncertain cross-component
 relationships, or required when the request explicitly calls for it.
-Use `hermes toolset setup --dry-run` to preview target profiles.
+Use `hermes autowork setup --dry-run` to preview target profiles.
 
 ## Preflight before fleet writes
 
@@ -108,7 +108,7 @@ layouts fail visibly instead of being assumed compatible.
 
 A failed preflight exits nonzero before changing profile configuration, plugins,
 skills or memory. This guarantee starts at the setup orchestrator: invoking it
-through `hermes toolset setup` may already have loaded the plugin and applied its
+through `hermes autowork setup` may already have loaded the plugin and applied its
 runtime defaults. Use `bash install.sh --dry-run` for a preview that does not boot
 Hermes. The internal `--sources-only` adapter and standalone helper scripts are
 not the complete setup entry point.
@@ -128,7 +128,7 @@ updated/removed, avoiding finalization through stale code.
 mattpocock/skills grilling guidance, preserving their attribution. `/grill-me` (CLI)
 and `/grill_me` (Telegram) remain typeable compatibility commands that run
 `plan-with-me` in challenge mode with this skill as its reference; `/grill_me` is not
-shown in the Telegram menu. Enabling/loading hermes-toolset installs missing bundled
+shown in the Telegram menu. Enabling/loading autowork installs missing bundled
 skills and shared support files into that profile's native skill directory, using
 the same offline provisioner as full setup. Existing flat and categorized skills
 are preserved; an incomplete existing slot is never replaced and is logged as a
@@ -145,7 +145,7 @@ not as a tested messaging connection.
 
 ## Telegram setup
 
-Enabling/loading hermes-toolset applies its gateway-injection setting in the
+Enabling/loading autowork applies its gateway-injection setting in the
 owning profile. There is no YAML wiring step. This lets a skill command queue an
 agent turn in the chat where it was invoked. Full setup refreshes running gateway
 commands and verifies activation receipts; `--no-reload` explicitly defers that.
@@ -200,11 +200,11 @@ provisioning; verify `/autowork` is present and the retired command is absent.
 
 ## Update all profiles
 
-Run `/toolset update` in an authorized Hermes CLI or gateway chat. It starts a
-background updater; use `/toolset update status` for its durable result, not the
+Run `/autowork update` in an authorized Hermes CLI or gateway chat. It starts a
+background updater; use `/autowork update status` for its durable result, not the
 initial “requested” message as proof of completion. The status is a short summary that
 fits one chat message (outcome, revisions, files written, local edits, healed settings
-and menus, gateway restart); `/toolset update status full` shows the whole receipt as JSON. `/toolset update --check`
+and menus, gateway restart); `/autowork update status full` shows the whole receipt as JSON. `/autowork update --check`
 fetches upstream and previews changes without advancing checkouts or writing
 profile skills/configuration. It still writes Git fetch metadata and its receipt.
 
@@ -234,10 +234,10 @@ reports `pending` and joins it instead of starting another one, so a burst of
 updates restarts the gateway once; that restart loads the newest release, and its
 outcome reaches the latest receipt with `gateway_restart_covers`, the number of
 updates it covers. The waiter never restarts while an update is still applying
-files: it shares the update lock and waits for the next check. `/toolset update status` then shows the waiter's latest chat-turn
+files: it shares the update lock and waits for the next check. `/autowork update status` then shows the waiter's latest chat-turn
 count, or the seconds left and turns a requested restart is draining
 (`gateway_restart_progress` in the full receipt). Once a requested restart has
-finished, the next `/toolset update status` or update records its outcome on the receipt:
+finished, the next `/autowork update status` or update records its outcome on the receipt:
 `completed` with `gateway_restart_result` (the new gateway's PID and start time,
 which profiles' Telegram bots logged a menu resend after the restart and which did
 not, and any forced-drain interruptions from the gateway log), or `restart_failed`
@@ -261,26 +261,26 @@ same way when only some chats fail; an unreachable Bot API is reported and never
 fails the update.
 
 `status` is the chat form handled by the plugin; it is not a positional argument
-to the terminal command `hermes toolset update`. Terminal update forms below wait
+to the terminal command `hermes autowork update`. Terminal update forms below wait
 for completion. The durable result is stored at the Hermes installation root in
 `maintenance/toolset-update/latest.json`; named profiles share that update status.
 
 Terminal equivalents wait for completion:
 
 ```sh
-hermes toolset update --check
-hermes toolset update
+hermes autowork update --check
+hermes autowork update
 ```
 
 Only one update or check runs at a time. A second one waits up to 10 seconds (a
 deferred-restart waiter holds the lock only briefly per check), then exits with
 code 3 and `{"status": "busy", "running": {...}}` naming the running update's PID,
 mode (`update` or `check`) and start time; it changes nothing and leaves that
-update's receipt in place. In chat, `/toolset update` says which update is running
+update's receipt in place. In chat, `/autowork update` says which update is running
 and starts nothing.
 
 A named-profile invocation still targets every existing live profile under the
-same Hermes root. The updater fetches the official Hermes Toolset `main` branch,
+same Hermes root. The updater fetches the official Autowork `main` branch,
 checks each distinct installed Git checkout, and accepts only clean fast-forward
 updates. Dirty checkouts, local commits absent upstream, unsafe paths and skill
 merge conflicts stop preflight before checkout/profile writes. Review and commit
@@ -331,23 +331,23 @@ Historical byte matching does not establish compatibility with an active run or
 its pinned execution files, manifests or evidence; update receipts do not qualify
 that compatibility. Existing conversations may
 retain already-loaded instructions; open a new conversation to load updated skills.
-The new `/toolset update` handler itself first needs the normal plugin reload if
+The new `/autowork update` handler itself first needs the normal plugin reload if
 upgrading from a version that does not register it.
 
 ### Linked profiles and pinned clones
 
-A source install links each profile's `plugins/hermes-toolset` to the checkout, so
+A source install links each profile's `plugins/autowork` to the checkout, so
 the profile loads whatever that checkout holds at the next gateway restart,
 including commits that were never released. A profile whose plugin is its own clone
-changes only when an update advances it. `/toolset update status` and
-`hermes toolset doctor` list the linked profiles; nothing converts them
+changes only when an update advances it. `/autowork update status` and
+`hermes autowork doctor` list the linked profiles; nothing converts them
 automatically.
 
 To pin one profile, preview it, then run it:
 
 ```sh
-hermes toolset pin NAME --dry-run
-hermes toolset pin NAME
+hermes autowork pin NAME --dry-run
+hermes autowork pin NAME
 ```
 
 Pinning clones the checkout at the revision the link resolves to now, saves the
@@ -356,7 +356,7 @@ place, so the profile stays on the same revision. It refuses, writing nothing, w
 the checkout has uncommitted changes (the profile would lose them on its next
 restart), when that revision is not yet on upstream `main` as last fetched (the next
 update could not advance the clone), or while an update runs. The gateway loads the
-clone at its next restart. `hermes toolset pin --unpin NAME` restores the
+clone at its next restart. `hermes autowork pin --unpin NAME` restores the
 saved link and moves the clone beside it instead of deleting it; it also takes
 `--dry-run`.
 
@@ -367,7 +367,7 @@ the selected profile, including Impeccable, Beautify GitHub README, Autoresearch
 Grill Me and the pinned engineering protocols. No separate hub installation is needed for these skills.
 Fleet setup provisions the same bundle across existing live profiles. Existing
 local or categorized skill installations are preserved rather than overwritten.
-`hermes toolset doctor --core` checks registration; full setup and full diagnostics
+`hermes autowork doctor --core` checks registration; full setup and full diagnostics
 still apply to external integrations such as Graphify and OMH. This does not install
 the entire public skill catalog or guarantee optional browser/service readiness.
 Impeccable’s upstream launcher may download its versioned engine on first use
@@ -376,7 +376,7 @@ or attest that external binary; instruction loading has a documented fallback.
 
 ## Deploy an exact local revision to selected profiles
 
-The legacy `/toolset update` remains the all-profile upstream update. For an
+The legacy `/autowork update` remains the all-profile upstream update. For an
 already reviewed local fix, use the scoped updater from a clean checkout:
 
 ```bash

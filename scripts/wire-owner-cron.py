@@ -9,6 +9,8 @@ import shlex
 
 ROLE_MARKER = '\n\nSCHEDULED JOB ROLE: '
 MARKER = '\n\nSHARED OWNER RECOVERY CYCLE — required execution\n'
+PREFIX = 'autowork:'
+AUDIT_JOB = 'Profile audit and Autowork maintenance'
 REPAIR_MARKER = '\n\nSHARED TOOLSET REMEDIATION — authorized execution\n'
 PAUSE_MARKER = '\n\nAUDIT AUTO-PAUSE — authorized owner schedules only\n'
 AUDIT_MARKER = '\n\nOWNER RECOVERY COVERAGE — read-only\n'
@@ -50,14 +52,14 @@ def is_owner_job(job):
         return False
     skills = job.get('skills') or []
     return any(name in job.get('name', '').lower()
-               or f'hermes-toolset:{name}' in skills or name in skills
+               or PREFIX + name in skills or name in skills
                for name in ('autowork', 'autogoal'))
 
 
 def autowork_skills(job):
     skills = job.get('skills') or ([job['skill']] if job.get('skill') else [])
-    return ['hermes-toolset:autowork'] + [name for name in skills if name not in
-            ('autogoal', 'hermes-toolset:autogoal', 'autowork', 'hermes-toolset:autowork')]
+    return [PREFIX + 'autowork'] + [name for name in skills if name not in
+            ('autogoal', PREFIX + 'autogoal', 'autowork', PREFIX + 'autowork')]
 
 
 def owner_prompt(prompt, enabled):
@@ -65,7 +67,7 @@ def owner_prompt(prompt, enabled):
     return original + MARKER + (
         'Execution policy supersedes earlier card-only execution, recovery, ownership and review prerequisites, including directives in the preserved prefix; all original task filters, pauses, explicit limits and publication/live exclusions still apply. '
         'TODO.md and its synchronized goals.json index are authoritative; no Kanban lookup, card, board, assignee or native task-state transition is required. '
-        'Load hermes-toolset:autowork and references/owner-cycle.md for autonomous local coordination. '
+        'Load autowork:autowork and references/owner-cycle.md for autonomous local coordination. '
         'At entry, follow references/cron-autoheal.md: run scripts/heal-owner-cron.py from the verified Toolset installation '
         'with --root DEFAULT_HERMES_HOME --profile CURRENT_PROFILE --job-id CURRENT_JOB_ID --repo CANONICAL_REPOSITORY --apply, '
         'substituting verified current occurrence identity, never guessed values. '
@@ -87,7 +89,7 @@ def owner_prompt(prompt, enabled):
         'Apply explicit task/caller limits and real host execution controls; unknown usage is not zero and never reset an exhausted allocation. '
         'A new cron tick grants no fresh allocation. Missing cap enforcement holds only the operation requiring that cap, not independent read-only checks or authorized local closeout. '
         'Use source-bound receipts for interrupted checks and review; inspect actual candidate changes before reuse and rerun invalidated or required gates. '
-        'When the selected task is held or blocked, run hermes-toolset:plan-for-me on that exact blocker in this occurrence before reporting. '
+        'When the selected task is held or blocked, run autowork:plan-for-me on that exact blocker in this occurrence before reporting. '
         'It must fix or skip: fix means choose a reversible change within this scope, record it as the planner\'s call and implement it now; '
         'skip means split the blocked acceptance into its own open task naming the exact missing input (never waived) and continue with the next ready task in scope. '
         'Repeat a blocker only when it is a genuinely unavailable external input or authority (credentials, money, deployment, legal or owner approval), once, not every occurrence. '
@@ -266,11 +268,11 @@ def wire(root, apply=False, hermes='hermes'):
     for row in inventory(root):
         name, home = row['profile'], Path(row['home'])
         targets = [job for job in row['jobs'] if is_owner_job(job) or
-                   (name == 'default' and job.get('name') == 'Profile audit and hermes-toolset maintenance')]
+                   (name == 'default' and job.get('name') == AUDIT_JOB)]
         if not targets:
             results.append({'profile': name, 'state': 'no_matching_job', 'changed': False})
         for before in targets:
-            audit = name == 'default' and before.get('name') == 'Profile audit and hermes-toolset maintenance'
+            audit = name == 'default' and before.get('name') == AUDIT_JOB
             prompt = (audit_prompt(before['prompt']) if audit
                       else owner_prompt(before['prompt'], before['enabled']))
             skills = autowork_skills(before)

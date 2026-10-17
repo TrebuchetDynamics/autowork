@@ -522,7 +522,7 @@ These references do not grant commit, push, cleanup or execution authority.
 
 ## Skill policy regression checks
 
-For changes to this delivery policy, run through `terminal` from the Hermes Toolset
+For changes to this delivery policy, run through `terminal` from the Autowork
 repository: `python3 skills/git-commit-push/scripts/test_delivery_scope.py -v`.
 `python3 scripts/check.py` discovers this offline suite. These checks pin scope,
 cross-agent eligibility, live-writer exclusions and stale-ledger reconciliation;

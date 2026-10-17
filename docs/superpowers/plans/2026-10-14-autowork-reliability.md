@@ -4,7 +4,7 @@
 
 ## Accepted scope
 
-Harden Hermes Toolset and Autowork itself. Do not repair profile projects, modify
+Harden Autowork itself. Do not repair profile projects, modify
 upstream Hermes Agent, change live jobs, contact profiles, deploy private copies,
 or start native/model workers. Preserve unrelated TODO.md and goals.json edits.
 Existing authorization covers these bounded source repairs and local integration.

@@ -132,7 +132,7 @@ failed=0
 installed=0
 skipped=0
 planned=0
-# Honor plugins.entries.hermes-toolset.settings.apply_runtime_defaults: false
+# Honor plugins.entries.autowork.settings.apply_runtime_defaults: false
 # (legacy config.*) with the same rule the plugin runtime uses.
 runtime_opt_out() {
     local config=$hermes_root
@@ -177,7 +177,7 @@ for key in ('allow_gateway_injection', 'destructive_slash_confirm', 'mcp_reload_
 assert cfg['max_turns'] == 'unlimited' or (type(cfg['max_turns']) is int and cfg['max_turns'] > 0), 'Invalid turn budget default'
 assert isinstance(cfg['skills_platform_disabled'], dict)
 for setting, key in (
-    ('plugins.entries.hermes-toolset.allow_gateway_injection', 'allow_gateway_injection'),
+    ('plugins.entries.autowork.allow_gateway_injection', 'allow_gateway_injection'),
     ('approvals.mode', 'approvals_mode'),
     ('approvals.destructive_slash_confirm', 'destructive_slash_confirm'),
     ('approvals.mcp_reload_confirm', 'mcp_reload_confirm'),
@@ -195,7 +195,7 @@ if $setup; then
     for profile in "${profiles[@]}"; do
         profile_dir=$hermes_root
         [[ $profile == default ]] || profile_dir=$hermes_root/profiles/$profile
-        target=$profile_dir/plugins/hermes-toolset
+        target=$profile_dir/plugins/autowork
         if [[ -e $target || -L $target ]]; then
             if [[ ! -f $target/plugin.yaml ]]; then
                 printf 'Error: existing bundle path is not a plugin: %s\n' "$target" >&2
@@ -203,7 +203,7 @@ if $setup; then
                 continue
             fi
         elif $dry_run; then
-            printf 'Plan: link hermes-toolset into %s\n' "$profile"
+            printf 'Plan: link autowork into %s\n' "$profile"
         else
             mkdir -p -- "$profile_dir/plugins"
             ln -s -- "$script_dir" "$target"
@@ -213,8 +213,8 @@ if $setup; then
             continue
         fi
         if $dry_run; then
-            printf 'Plan: enable hermes-toolset (%s)\n' "$profile"
-        elif ! HERMES_HOME=$hermes_root hermes -p "$profile" plugins enable hermes-toolset; then
+            printf 'Plan: enable autowork (%s)\n' "$profile"
+        elif ! HERMES_HOME=$hermes_root hermes -p "$profile" plugins enable autowork; then
             failed=$((failed + 1))
         fi
     done
@@ -377,7 +377,7 @@ if $setup && ! $bundle_only; then
     for profile in "${profiles[@]}"; do
         profile_dir=$hermes_root
         [[ $profile == default ]] || profile_dir=$hermes_root/profiles/$profile
-        if [[ -f $profile_dir/plugins/hermes-toolset/plugin.yaml ]] || $dry_run; then
+        if [[ -f $profile_dir/plugins/autowork/plugin.yaml ]] || $dry_run; then
             apply_bundle_defaults "$profile" || failed=$((failed + 1))
         fi
     done

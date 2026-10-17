@@ -28,7 +28,7 @@ Sources: [plugin manifest](../plugin.yaml), [installation inventory](../plugins/
 | textual-serve 1.1.3 (MIT), `autowork web` only | Pinned in [`command.py`](../pi-autowork/pi_autowork/command.py) (`AUTOWORK_TEXTUAL_SERVE`), fetched by `uv run --with` like Textual | Not a runner dependency; only the browser view uses it. |
 | Textual 8.2.8 (MIT), the `autowork` TUI only | Pinned in [`command.py`](../pi-autowork/pi_autowork/command.py) (`AUTOWORK_TEXTUAL`); fetched by `uv run --with` into uv's cache on first use | Not a runner dependency: pi-autowork itself stays standard-library Python, and every other `autowork` command works without it. |
 
-Ordinary installation skips existing resources. `/toolset update` updates bundled
+Ordinary installation skips existing resources. `/autowork update` updates bundled
 content, including the pinned engineering pack, while preserving conflicts. External
 imports are not upgraded by that command. A checkout revision alone does not prove
 that native profile copies match it. The updater recognizes exact same-path
@@ -56,7 +56,7 @@ remain unimplemented. This page makes the limitation explicit; it is not a lockf
 
 ## Licensing
 
-Hermes Toolset is licensed under the [MIT License](../LICENSE), copyright
+Autowork is licensed under the [MIT License](../LICENSE), copyright
 2026 TrebuchetDynamics. Third-party components retain their respective licenses
 and copyright notices.
 
@@ -90,7 +90,7 @@ the diff before committing; `test_engineering_vendor.py` does not catch their lo
 run the full offline checks and the native registration test
 (`skills/autowork/scripts/test_registration_admission.py` with
 `HERMES_NATIVE_REGISTRATION_TEST=1`), then ship with the bundle.
-`/toolset update` consumes that reviewed snapshot; it never fetches Addy latest.
+`/autowork update` consumes that reviewed snapshot; it never fetches Addy latest.
 Existing profile-level Addy imports remain untouched as optional alternatives.
 
 ## Refresh the vendored UI Taste skill

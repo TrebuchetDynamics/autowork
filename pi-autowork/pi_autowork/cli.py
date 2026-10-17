@@ -25,7 +25,7 @@ from pi_autowork.coordinator import Coordinator  # noqa: E402
 
 USAGE = """Usage: pi-autowork.sh [options]
 
-Runs Hermes Toolset Autowork through Pi until stopped: the toolset's Parallel
+Runs Autowork through Pi until stopped: the toolset's Parallel
 Autowork engine runs up to N tasks at once (default 8), each Pi worker in its own Git
 worktree, and integrates verified results one at a time. Targets the Git repository
 of the current directory (or of this script, when it was copied into a repository),
@@ -88,7 +88,7 @@ Environment (optional):
   PI_AUTOWORK_COST_WINDOW   budget window in hours, counted across restarts (default 24)
   PI_AUTOWORK_MIN_FREE_MB   free memory each running worker needs (default 3000)
   PI_AUTOWORK_STATE_DIR     state root (default ${XDG_STATE_HOME:-~/.local/state}/pi-autowork)
-  PI_AUTOWORK_TOOLSET       hermes-toolset checkout or Pi package path (default: auto)
+  PI_AUTOWORK_TOOLSET       autowork checkout or Pi package path (default: auto)
   PI_AUTOWORK_ALLOW_HERMES  1 to run although a Hermes Autowork cron job targets this repository
   PI_BIN                    Pi command (default pi)
 
@@ -104,7 +104,7 @@ def is_toolset(path):
 
 
 def installed_toolset(pi):
-    """The hermes-toolset package Pi loads, from `pi list`."""
+    """The autowork package Pi loads, from `pi list`."""
     try:
         listing = subprocess.run([pi, 'list'], capture_output=True, text=True, timeout=60).stdout
     except (OSError, subprocess.SubprocessError):
@@ -243,7 +243,7 @@ def main(argv):
         if not shutil.which(tool):
             die(2, f'Missing required command: {tool}')
     if not shutil.which(pi):
-        die(2, f'Pi not found ({pi}). Install Pi, then: pi install git:github.com/TrebuchetDynamics/hermes-toolset')
+        die(2, f'Pi not found ({pi}). Install Pi, then: pi install git:github.com/TrebuchetDynamics/autowork')
     state_root = os.environ.get('PI_AUTOWORK_STATE_DIR') or \
         os.path.join(os.environ.get('XDG_STATE_HOME') or str(Path.home() / '.local/state'), 'pi-autowork')
     if opts['fleet']:
@@ -287,7 +287,7 @@ def main(argv):
     skill_args = []
     if os.environ.get('PI_AUTOWORK_TOOLSET'):
         if not is_toolset(os.environ['PI_AUTOWORK_TOOLSET']):
-            die(2, f'PI_AUTOWORK_TOOLSET is not a hermes-toolset checkout: {os.environ["PI_AUTOWORK_TOOLSET"]}')
+            die(2, f'PI_AUTOWORK_TOOLSET is not an Autowork checkout: {os.environ["PI_AUTOWORK_TOOLSET"]}')
         toolset = str(Path(os.environ['PI_AUTOWORK_TOOLSET']).resolve())
         if installed_toolset(pi) != toolset:
             skill_args = ['--skill', f'{toolset}/adapters/skills/git-commit-push']
@@ -296,15 +296,15 @@ def main(argv):
     elif is_toolset(Path(script).resolve().parents[1]):
         toolset = str(Path(script).resolve().parents[1])
         skill_args = ['--skill', f'{toolset}/adapters/skills/git-commit-push']
-        print(f'pi-autowork: hermes-toolset is not installed in Pi; using {toolset}. Install the package: '
-              'pi install git:github.com/TrebuchetDynamics/hermes-toolset', file=sys.stderr, flush=True)
+        print(f'pi-autowork: autowork is not installed in Pi; using {toolset}. Install the package: '
+              'pi install git:github.com/TrebuchetDynamics/autowork', file=sys.stderr, flush=True)
     else:
-        die(2, 'Hermes Toolset not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/hermes-toolset) '
+        die(2, 'Autowork not found. Install it in Pi (pi install git:github.com/TrebuchetDynamics/autowork) '
                'or set PI_AUTOWORK_TOOLSET.')
     component = Path(toolset) / 'pi-autowork'
     if not (component / 'pi_autowork/cli.py').is_file():
         die(2, f'{toolset} has no pi-autowork component; update the toolset '
-               '(pi update git:github.com/TrebuchetDynamics/hermes-toolset)')
+               '(pi update git:github.com/TrebuchetDynamics/autowork)')
     if component.resolve() != COMPONENT:
         # Continue in the resolved release's own component: one release per run.
         os.environ['PI_AUTOWORK_SCRIPT'] = script

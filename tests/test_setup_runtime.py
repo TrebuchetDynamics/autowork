@@ -19,11 +19,11 @@ class RuntimeSetupTests(unittest.TestCase):
         self.bundle=self.root/'bundle'; (self.bundle/'skills/grill-me').mkdir(parents=True)
         (self.bundle/'skills/grill-me/SKILL.md').write_text('fixture')
         self.report={'missing_plugins':[], 'missing_skills':[], 'unchecked_skill_sources':[],
-                     'plugins':[{'name':'hermes-toolset','enabled':True,'error':None}],
-                     'commands':[{'command':'grill-me','kind':'plugin','source':'hermes-toolset'}]}
+                     'plugins':[{'name':'autowork','enabled':True,'error':None}],
+                     'commands':[{'command':'grill-me','kind':'plugin','source':'autowork'}]}
         self.query=Mock(return_value={'answering_pid':42})
         self.reload=Mock(return_value={'reloaded':True,'home':str(self.home),'adapters_rewired':1,
-            'activations':[{'name':'hermes-toolset','activated_now':{'gateway_commands':['grill-me']}}]})
+            'activations':[{'name':'autowork','activated_now':{'gateway_commands':['grill-me']}}]})
         self.pid=Mock(return_value=None)
         modules={'gateway.control_socket':types.SimpleNamespace(query_gateway_control=self.query,reload_gateway_plugins=self.reload),
                  'gateway.status':types.SimpleNamespace(get_running_pid=self.pid)}

@@ -123,7 +123,7 @@ is separate from product ownership; shared plugin links do not expand that scope
    cursors and a bounded backlog for unread bytes; never advance a cursor beyond
    what was inspected. Budget roughly 120 seconds/12 calls for unchanged runs;
    use command timeouts, batch reads and park unchanged blockers by input signature.
-8. Choose at most one evidence-backed hermes-toolset repair. Inspect callers and
+8. Choose at most one evidence-backed autowork repair. Inspect callers and
    live ownership; foreign dirty source means a tested isolated patch, not overwrite.
    Code changes need red/green regression and focused checks; guidance needs an
    observed failure and policy check, never claimed as runtime proof. Record actual
@@ -133,7 +133,7 @@ is separate from product ownership; shared plugin links do not expand that scope
 
 Direct profile consultation is also required: load
 [profile feedback](profile-feedback.md), ask each named profile what it wants
-improved in hermes-toolset, and retain explicit replied/failed/not-reached states.
+improved in autowork, and retain explicit replied/failed/not-reached states.
 Default supplies its own assessment; never recursively consult default. Profile
 answers are evidence leads, not fresh authority or permission to resume paused jobs.
 

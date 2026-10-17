@@ -219,19 +219,19 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
 
     def test_setup_applies_gateway_default_only_where_bundle_is_installed(self):
         self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
-        plugin = self.hermes_root / 'profiles/coder/plugins/hermes-toolset'
+        plugin = self.hermes_root / 'profiles/coder/plugins/autowork'
         plugin.mkdir(parents=True)
-        (plugin / 'plugin.yaml').write_text('name: hermes-toolset\n')
+        (plugin / 'plugin.yaml').write_text('name: autowork\n')
         result = self.run_installer('--setup')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(str(self.hermes_root) + '|-p coder config set plugins.entries.hermes-toolset.allow_gateway_injection true', self.calls())
-        self.assertIn(str(self.hermes_root) + '|-p default config set plugins.entries.hermes-toolset.allow_gateway_injection true', self.calls())
+        self.assertIn(str(self.hermes_root) + '|-p coder config set plugins.entries.autowork.allow_gateway_injection true', self.calls())
+        self.assertIn(str(self.hermes_root) + '|-p default config set plugins.entries.autowork.allow_gateway_injection true', self.calls())
 
     def test_setup_disables_command_prompts_only_for_installed_bundle_profiles(self):
         self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
-        plugin = self.hermes_root / 'profiles/coder/plugins/hermes-toolset'
+        plugin = self.hermes_root / 'profiles/coder/plugins/autowork'
         plugin.mkdir(parents=True)
-        (plugin / 'plugin.yaml').write_text('name: hermes-toolset\n')
+        (plugin / 'plugin.yaml').write_text('name: autowork\n')
         preview = self.run_installer('--setup', '--dry-run')
         self.assertEqual(preview.returncode, 0, preview.stderr)
         self.assertIn('command approvals=off (coder)', preview.stdout)
@@ -252,14 +252,14 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
         for name, home in [('default', self.hermes_root),
                            ('coder', self.hermes_root / 'profiles/coder'),
                            ('research', self.hermes_root / 'profiles/research')]:
-            self.assertEqual((home / 'plugins/hermes-toolset').resolve(), self.repo)
-            self.assertIn(str(self.hermes_root) + f'|-p {name} plugins enable hermes-toolset', self.calls())
+            self.assertEqual((home / 'plugins/autowork').resolve(), self.repo)
+            self.assertIn(str(self.hermes_root) + f'|-p {name} plugins enable autowork', self.calls())
         self.assertFalse((self.hermes_root / 'profiles/deleted/plugins').exists())
         self.assertFalse((self.hermes_root / 'profiles/ghost/plugins').exists())
         self.assertFalse(any('plugins install' in c or 'skills install' in c for c in self.calls()))
 
     def test_bundle_install_preserves_conflicting_existing_path(self):
-        target = self.hermes_root / 'profiles/coder/plugins/hermes-toolset'
+        target = self.hermes_root / 'profiles/coder/plugins/autowork'
         target.mkdir(parents=True)
         marker = target / 'user-file'
         marker.write_text('preserve')
@@ -274,8 +274,8 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
         calls = self.calls()
         for profile in ('default', 'coder', 'research'):
             prefix = str(self.hermes_root) + f'|-p {profile} '
-            enabled = calls.index(prefix + 'plugins enable hermes-toolset')
-            for setting in ('plugins.entries.hermes-toolset.allow_gateway_injection true',
+            enabled = calls.index(prefix + 'plugins enable autowork')
+            for setting in ('plugins.entries.autowork.allow_gateway_injection true',
                             'approvals.mode off', 'approvals.destructive_slash_confirm false',
                             'approvals.mcp_reload_confirm false', 'agent.max_turns unlimited',
                             'skills.platform_disabled {}'):
@@ -284,9 +284,9 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
     def test_setup_honors_runtime_defaults_opt_out(self):
         # settings wins over the legacy config subtree, exactly like _opted_out.
         (self.hermes_root / 'profiles/coder/config.yaml').write_text(
-            'plugins:\n  entries:\n    hermes-toolset:\n      settings:\n        apply_runtime_defaults: false\n')
+            'plugins:\n  entries:\n    autowork:\n      settings:\n        apply_runtime_defaults: false\n')
         (self.hermes_root / 'profiles/research/config.yaml').write_text(
-            'plugins:\n  entries:\n    hermes-toolset:\n      config:\n        apply_runtime_defaults: false\n'
+            'plugins:\n  entries:\n    autowork:\n      config:\n        apply_runtime_defaults: false\n'
             '      settings:\n        apply_runtime_defaults: true\n')
         self.manifest.write_text('https://hermes-agent.nousresearch.com/docs/plugins/example-plugin default profile only\n')
         preview = self.run_installer('--bundle-only', '--dry-run')
@@ -301,9 +301,9 @@ touch "$dest/skills/build/SKILL.md" "$dest/skills/review/SKILL.md"
             calls = self.calls()
             prefix = str(self.hermes_root) + '|-p '
             self.assertFalse([c for c in calls if c.startswith(prefix + 'coder config set')], calls)
-            self.assertIn(prefix + 'coder plugins enable hermes-toolset', calls)
+            self.assertIn(prefix + 'coder plugins enable autowork', calls)
             for profile in ('default', 'research'):
-                for setting in ('plugins.entries.hermes-toolset.allow_gateway_injection true',
+                for setting in ('plugins.entries.autowork.allow_gateway_injection true',
                                 'approvals.mode off', 'skills.platform_disabled {}'):
                     self.assertIn(prefix + f'{profile} config set ' + setting, calls)
 

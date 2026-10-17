@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 
 OMH_PACKAGE = 'oh-my-hermes'
+PLUGIN = 'autowork'
 BUNDLE_SKILLS = Path(__file__).resolve().parent / 'skills'
 
 
@@ -66,6 +67,13 @@ def skills_patch(raw, keep, previous):
     return disabled, trim
 
 
+def plugin_entry(raw):
+    """This plugin's `plugins.entries` block."""
+    entries = ((raw.get('plugins') or {}).get('entries') or {}) if isinstance(raw, dict) else {}
+    entry = entries.get(PLUGIN) if isinstance(entries, dict) else None
+    return entry if isinstance(entry, dict) else {}
+
+
 def expected_settings(raw):
     """Bundle policy for one profile's raw config: approvals, turn budget, injection and menu."""
     from .bundle import defaults
@@ -81,21 +89,21 @@ def expected_settings(raw):
         },
         # Hermes quick setup writes a 90-iteration cap that cuts Autowork turns short.
         'agent': {'max_turns': wanted['max_turns']},
-        'plugins': {'entries': {'hermes-toolset': {
+        'plugins': {'entries': {PLUGIN: {
             'allow_gateway_injection': wanted['allow_gateway_injection'],
         }}},
     }
     patch.update(menu_patch(raw))
     keep = settings.get('omh_keep_skills')
-    entry = (((raw.get('plugins') or {}).get('entries') or {}).get('hermes-toolset') or {}) if isinstance(raw, dict) else {}
-    previous = entry.get('omh_trim') if isinstance(entry, dict) and isinstance(entry.get('omh_trim'), list) else []
+    entry = plugin_entry(raw)
+    previous = entry.get('omh_trim') if isinstance(entry.get('omh_trim'), list) else []
     disabled, trim = skills_patch(raw, set(keep) if isinstance(keep, list) else None, previous)
     current = (raw.get('skills') or {}).get('disabled') if isinstance(raw, dict) and isinstance(raw.get('skills'), dict) else None
     # Write only what changes, so profiles without OMH gain no new keys.
     if disabled != (current or []):
         patch['skills'] = {'disabled': disabled}
     if trim or previous:
-        patch['plugins']['entries']['hermes-toolset']['omh_trim'] = trim
+        patch['plugins']['entries'][PLUGIN]['omh_trim'] = trim
     return patch
 
 
@@ -122,9 +130,7 @@ def _leaf_paths(expected, prefix=()):
 
 def _opted_out(raw):
     """Mirror Hermes' ctx.get_config: `settings.<key>`, then the legacy `config.<key>`."""
-    entry = (((raw.get('plugins') or {}).get('entries') or {}).get('hermes-toolset') or {}) if isinstance(raw, dict) else {}
-    if not isinstance(entry, dict):
-        return False
+    entry = plugin_entry(raw)
     for subtree in ('settings', 'config'):
         values = entry.get(subtree)
         if isinstance(values, dict) and 'apply_runtime_defaults' in values:
@@ -182,7 +188,7 @@ def verify_runtime_defaults():
 
 
 CRON_SCRIPTS = ('cron-autowork/scripts/autowork-start-notice.py',)
-MANAGED = b'# hermes-toolset: '
+MANAGED = b'# autowork: '
 
 
 def provision_cron_scripts(skills_dir, home):

@@ -6,6 +6,7 @@ skill content, CLI queues and captured gateway routing. Missing imports fail.
 
 import json
 from pathlib import Path
+import sys
 from queue import Queue
 from types import SimpleNamespace
 
@@ -19,9 +20,9 @@ def main():
     manager = get_plugin_manager()
     manager.discover_and_load()
     commands = get_plugin_commands()
-    assert 'toolset' in commands, 'hermes-toolset did not load'
-    # The command's globals belong to the actual loaded bundle module.
-    report = commands['toolset']['handler'].__globals__['inventory']()
+    assert 'autowork' in commands, 'autowork did not load'
+    # The command's module is the actual loaded plugin package; its bundle module is loaded.
+    report = sys.modules[commands['autowork']['handler'].func.__module__ + '.bundle'].inventory()
     checked_skills = 0
     for name, info in get_skill_commands().items():
         assert resolve_skill_command_key(name.lstrip('/').replace('-', '_')) == name, name
@@ -39,7 +40,7 @@ def main():
     checked_aliases = 0
     try:
         for name, info in commands.items():
-            if info.get('plugin') != 'hermes-toolset' or name == 'toolset':
+            if info.get('plugin') != 'autowork':
                 continue
             manager._cli_ref = cli
             tokens = set_session_vars()

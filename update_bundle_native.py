@@ -11,8 +11,8 @@ import sys
 import tempfile
 
 # Hermes reads plugin options from `settings` (ctx.get_config), so the opt-out lives there.
-PROBE_CONFIG = ('plugins:\n  enabled: [hermes-toolset]\n  entries:\n'
-                '    hermes-toolset:\n      settings:\n        apply_runtime_defaults: false\n')
+PROBE_CONFIG = ('plugins:\n  enabled: [autowork]\n  entries:\n'
+                '    autowork:\n      settings:\n        apply_runtime_defaults: false\n')
 
 
 def main():
@@ -38,18 +38,17 @@ def main():
         with tempfile.TemporaryDirectory(prefix='toolset-registration-') as directory:
             probe = Path(directory)
             (probe / 'plugins').mkdir()
-            (probe / 'plugins/hermes-toolset').symlink_to(source, target_is_directory=True)
+            (probe / 'plugins/autowork').symlink_to(source, target_is_directory=True)
             (probe / 'config.yaml').write_text(PROBE_CONFIG)
             os.environ['HERMES_HOME'] = str(probe)
             os.chdir(probe)  # avoid project plugin discovery from the caller's cwd
             from hermes_cli.plugins import get_plugin_manager, get_plugin_commands
             get_plugin_manager().discover_and_load()
             commands = sorted(name for name, row in get_plugin_commands().items()
-                              if row.get('plugin') == 'hermes-toolset')
+                              if row.get('plugin') == 'autowork')
             expected = {path.parent.name.replace('_', '-')
                         for path in (source / 'skills').glob('*/SKILL.md')
                         if path.parent.name not in ('repo-docs', 'repo-interview')}
-            expected.add('toolset')
             if not expected.issubset(commands):
                 raise ValueError('Native registration probe missing: ' + ', '.join(sorted(expected - set(commands))))
             print(json.dumps({'commands': commands, 'scope': 'isolated native registration probe'}))

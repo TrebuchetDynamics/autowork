@@ -262,7 +262,7 @@ def external_workers(repo):
                   if line.startswith('worktree ')]
     own = ancestors()
     workers = []
-    marker = ('HERMES_TOOLSET_EXECUTION_COMMON=' + git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).encode()
+    marker = ('AUTOWORK_EXECUTION_COMMON=' + git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).encode()
     for entry in Path('/proc').glob('[0-9]*'):
         pid = int(entry.name)
         found = identity(pid)
@@ -570,7 +570,7 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
     terminated = []
     try:
         with os.fdopen(os.open(safe_path(log), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as stream:
-            env = dict(os.environ, HERMES_TOOLSET_EXECUTION_COMMON=str(common.parent))
+            env = dict(os.environ, AUTOWORK_EXECUTION_COMMON=str(common.parent))
             child = subprocess.Popen([resolved, *argv[1:]], cwd=repo, env=env, stdout=stream, stderr=subprocess.STDOUT,
                                      start_new_session=True, pass_fds=pass_fds)
             try:

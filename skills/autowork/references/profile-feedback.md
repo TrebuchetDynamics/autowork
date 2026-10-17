@@ -1,7 +1,7 @@
 # Direct profile feedback for shared-toolset maintenance
 
 The default maintenance audit asks the explicitly requested named profiles what
-would improve hermes-toolset; without a target scope, discover every named profile.
+would improve autowork; without a target scope, discover every named profile.
 File/log inspection alone is not consultation. Use `--profiles NAME ...` for a
 bounded scope, preserve other profiles' pauses, and never contact excluded targets.
 Discover profiles read-only each occurrence; include default self-assessment and
@@ -97,9 +97,9 @@ one bounded read; omitted history and individual content truncation stay unknown
 
 Send each profile this bounded question, with its literal profile name:
 
-> Shared hermes-toolset feedback only; do not implement anything or change any
+> Shared autowork feedback only; do not implement anything or change any
 > file, cron, board/task, profile configuration or worker. In at most 150 words,
-> name up to two concrete improvements you want in hermes-toolset, based on your
+> name up to two concrete improvements you want in autowork, based on your
 > existing local evidence. For each: failing helper/command or workflow seam,
 > expected behavior, smallest safe shared-source fix, and an evidence pointer.
 > Separate product intent/owner decisions from tooling defects. Preserve all

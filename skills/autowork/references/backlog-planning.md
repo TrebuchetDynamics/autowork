@@ -1,6 +1,6 @@
 # Automatic Plan For Me recovery
 
-Autowork invokes `hermes-toolset:plan-for-me` only for a consequential unresolved
+Autowork invokes `autowork:plan-for-me` only for a consequential unresolved
 choice or missing decomposition that prevents execution. Routine debugging,
 candidate drift with a known recovery, missing fixtures and reversible approach
 changes stay in execution; difficulty alone does not require another plan.
@@ -60,7 +60,7 @@ Do not duplicate its unchanged plan or evade a shared integration conflict.
    Otherwise record the current repository revision, TODO/goals state and planning
    reason in a new or reused research receipt at the authorized research location;
    do not fabricate a cycle or task ID.
-   Then load `hermes-toolset:plan-for-me` with
+   Then load `autowork:plan-for-me` with
    `Selected subcommand: plan` and follow its link to the pinned
    [plan protocol](../../autoresearch/upstream/plan.md). This is skill
    execution in the current agent, not a shell command or a new scheduled job.

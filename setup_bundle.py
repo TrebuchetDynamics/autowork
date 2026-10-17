@@ -83,7 +83,7 @@ def main(argv=None):
         if args.dry_run:
             print(f'Plan: verify bundled skills/plugins and refresh gateway ({profile})')
             continue
-        command = ['hermes', '-p', profile, 'toolset', 'finalize', '--hermes-home', str(root)]
+        command = ['hermes', '-p', profile, 'autowork', 'finalize', '--hermes-home', str(root)]
         if args.bundle_only: command.append('--bundle-only')
         if args.no_reload: command.append('--no-reload')
         # Even partially failed installs must refresh successful registrations and

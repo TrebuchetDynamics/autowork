@@ -375,11 +375,11 @@ class ConsultationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as d:
             root = Path(d)
             original = ('original', 'telegram', 'Project repair', '/repo/one', '/repo/one', 'one', None, 1)
-            rows = [original] + [(str(i), 'oneshot', 'Shared hermes-toolset feedback', '/maintenance', None, 'one', None, i) for i in range(2, 502)]
+            rows = [original] + [(str(i), 'oneshot', 'Shared Autowork toolset feedback', '/maintenance', None, 'one', None, i) for i in range(2, 502)]
             rows += [('older', 'cli', 'Older project', None, None, 'one', None, 0),
                      ('cron', 'cron', 'Project repair', None, None, 'one', None, 600),
                      ('worker', 'kanban', 'Project repair', None, None, 'one', None, 601),
-                     ('synthetic-cli', 'cli', 'Propose shared hermes-toolset improvements', None, None, 'one', None, 602),
+                     ('synthetic-cli', 'cli', 'Propose shared Autowork toolset improvements', None, None, 'one', None, 602),
                      ('foreign', 'cli', 'Foreign project', None, None, 'two', None, 603),
                      ('child', 'telegram', 'Project repair', None, None, 'one', 'original', 604)]
             db = self.history(root, 'one', rows)

@@ -44,7 +44,7 @@ class PreflightTests(unittest.TestCase):
             home = Path(tmp)
             (home / 'skills/docs-sync').mkdir(parents=True)
             (home / 'plugins').mkdir()
-            (home / 'plugins/hermes-toolset').write_text('owned')
+            (home / 'plugins/autowork').write_text('owned')
             before = sorted(str(p) for p in home.rglob('*'))
             report = self.check(home)
             self.assertTrue(report['errors'])
@@ -63,7 +63,7 @@ class PreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             (home / 'config.yaml').write_text(
-                'plugins:\n  entries:\n    hermes-toolset:\n      settings:\n        apply_runtime_defaults: false\n')
+                'plugins:\n  entries:\n    autowork:\n      settings:\n        apply_runtime_defaults: false\n')
             report = self.check(home)
             self.assertEqual(report['errors'], [])
             plan = '\n'.join(report['plan'])
@@ -124,7 +124,7 @@ class ConfigProbeTests(unittest.TestCase):
                 self.assertEqual(list(Path(tmp).iterdir()), [path])
 
     def test_empty_sections_hermes_treats_as_absent_are_accepted(self):
-        for config in ('memory:\n  # provider: omh\nplugins:\n  enabled: [hermes-toolset]\n',
+        for config in ('memory:\n  # provider: omh\nplugins:\n  enabled: [autowork]\n',
                        'plugins:\n  entries:\n    foo:\n',
                        'plugins:\n  entries:\n', 'plugins:\napprovals:\nskills:\n',
                        '\ufeffmemory: {}\n'):
