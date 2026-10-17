@@ -1098,6 +1098,30 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(state.slots(self.common)[0]['checks']['outcome'], 'TIMED_OUT')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
+    def test_a_build_daemon_left_behind_by_a_passing_validation_does_not_fail_it(self):
+        """A Flutter task's checks passed, but the Gradle and Kotlin daemons they started held it."""
+        self.worker()
+        daemon = 'import subprocess, sys; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])'
+        module = self.module()
+        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', daemon], 20)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(state.slots(self.common)[0]['checks']['outcome'], 'CHILDREN_TERMINATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+
+    def test_a_failing_validation_with_a_daemon_still_holds_and_old_daemon_holds_are_offered_again(self):
+        self.worker()
+        module = self.module()
+        failing = 'import subprocess, sys; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"]); sys.exit(1)'
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', failing], 20)['outcome'],
+                         'HELD')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['checks']['outcome'], 'CHILDREN_TERMINATED')
+        self.assertFalse(module.passed(slot['checks']))  # exit 1: a real failure, never offered again
+        # As an earlier release held a passing run that left a daemon: offered again, once.
+        checks = dict(slot['checks'], command_receipt=dict(slot['checks']['command_receipt'], exit_code=0))
+        execution.save(state.slot_path(self.common, 'A'), dict(slot, checks=checks))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+
     def test_cli_integrate_and_close(self):
         self.worker()
         cli = Path(__file__).with_name('owner_cycle.py')

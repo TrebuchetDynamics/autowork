@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A validation that passes is not failed by build daemons it leaves behind. Gradle, Kotlin and Flutter
+  daemons outlive a build by design; they are still killed at the boundary, and the integration tree
+  is still checked, but a run that exited 0 with unchanged inputs now counts as passed. Holds an earlier
+  release made this way are offered to integration once more.
 - The reviewer can use what the worker provisioned. A task's docs placed its pinned SDK under the
   worker's `$TMPDIR`; the reviewer had its own and failed every check for want of it. The review prompt
   now names the worker's `$TMPDIR` (also `AUTOWORK_WORKER_TMPDIR`) for read-only use, and the changed

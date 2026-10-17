@@ -172,6 +172,16 @@ def report_mismatch(repo, report, task, commit, files):
     return ''
 
 
+def passed(check):
+    """A validation run passed: it exited 0 with its inputs unchanged. Build daemons it left
+    behind (Gradle, Kotlin, Flutter) were killed at the boundary before anything is judged,
+    and the integration tree is checked separately, so they alone do not fail it."""
+    receipt = (check or {}).get('command_receipt') or {}
+    return (check or {}).get('outcome') == 'EXECUTED' or (
+        check.get('outcome') == 'CHILDREN_TERMINATED' and receipt.get('exit_code') == 0
+        and receipt.get('inputs_match') is True)
+
+
 def report_matches(repo, common, slot):
     report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
     if not isinstance(report, dict):
@@ -400,7 +410,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
                             receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
-                if (check['outcome'] != 'EXECUTED' or git(root, 'rev-parse', 'HEAD') != merge
+                if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
                     raise Hold('validation', 'integration validation failed or changed the integration tree')
                 with execution.lock(common / 'writer.lock'):
@@ -443,7 +453,7 @@ def validated_receipt(repo, common, slot):
     if receipt_path.parent != common or receipt_path.suffix != '.json':
         raise ValueError('validation receipt must be in repository execution state')
     saved = execution.read(receipt_path)
-    if (saved != checks or checks.get('outcome') != 'EXECUTED'
+    if (saved != checks or not passed(checks)
             or checks.get('context', {}).get('integration_commit') != info.get('commit')
             or checks.get('command_receipt', {}).get('exit_code') != 0
             or checks['command_receipt'].get('task_id') != slot['task_id']
@@ -918,11 +928,14 @@ def retry_held(args):
                 if free is not None:
                     slot = state.reoffer(common, free)
                     return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
-            # A commit held because an earlier release misread its report (an abbreviated SHA)
-            # is offered again once, when its report now matches; integration repeats every check.
-            misread = next((s for s in current if s['state'] == 'held' and s.get('cause') == 'report'
-                            and s.get('commit') and not s.get('reoffered') and not state.worker_live(s)
-                            and report_matches(repo, common, s)), None)
+            # A commit an earlier release held by misreading its evidence is offered again once:
+            # a report naming its commit by an abbreviated SHA, or a validation that passed but
+            # left build daemons behind. Integration repeats every check.
+            misread = next((s for s in current if s['state'] == 'held' and s.get('commit')
+                            and not s.get('reoffered') and not state.worker_live(s)
+                            and ((s.get('cause') == 'report' and report_matches(repo, common, s))
+                                 or (s.get('cause') == 'validation' and (s.get('checks') or {}).get('outcome')
+                                     == 'CHILDREN_TERMINATED' and passed(s.get('checks'))))), None)
             if misread is not None:
                 slot = state.reoffer(common, misread)
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
