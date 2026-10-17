@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run owned offline unittest suites; never import tests while building inventory."""
 import argparse
+import ast
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import math
@@ -30,6 +31,9 @@ EXCLUSIONS = {
     'tests/integration_bundle.py':
         ('integration', 'requires an existing isolated Hermes installation'),
 }
+# Modules whose tests run in several processes: tests/test_pi_autowork.py alone took
+# 764s of a 1324s run as one process, while its tests are independent runner fixtures.
+SPLIT = {'tests/test_pi_autowork.py': 12, 'skills/autowork/scripts/test_parallel_integrate.py': 4}
 LIVE_FLAGS = ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX',
               'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST')
 
@@ -52,12 +56,37 @@ def discover_tests(root):
     return tests
 
 
-def run_directory(directory, tests, env, timeout):
+def test_ids(path):
+    """`module.Class.test_name` for each test method, read with ast so nothing is imported;
+    empty when the module defines none that way."""
+    try:
+        tree = ast.parse(path.read_text(encoding='utf-8'), str(path))
+    except (OSError, SyntaxError, ValueError):
+        return []
+    return [f'{path.stem}.{node.name}.{item.name}' for node in tree.body if isinstance(node, ast.ClassDef)
+            for item in node.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and item.name.startswith('test')]
+
+
+def units(root, tests):
+    """Each module runs in its own process; a module in SPLIT spreads its tests round-robin
+    over that many processes."""
+    for path in tests:
+        shards = SPLIT.get(path.relative_to(root).as_posix(), 1)
+        ids = test_ids(path) if shards > 1 else []
+        if len(ids) > 1:
+            for index in range(min(shards, len(ids))):
+                yield path.parent, ids[index::shards]
+        else:
+            yield path.parent, [path.stem]
+
+
+def run_unit(directory, names, env, timeout):
     """Use the module runner so multiprocessing spawn has a real entry point.
 
-    Returns (passed, output); the caller prints output so concurrent directories
+    Returns (passed, output); the caller prints output so concurrent processes
     never interleave."""
-    command = [sys.executable, '-m', 'unittest', *[path.stem for path in tests]]
+    command = [sys.executable, '-m', 'unittest', *names]
     with subprocess.Popen(command, cwd=directory, env=env, text=True,
                           encoding='utf-8', errors='replace',
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -84,9 +113,9 @@ def positive_int(value):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
-    # tests/ alone takes ~620s on a loaded runner host; 600 failed it before any test did.
-    parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test directory (default: 1800)')
-    parser.add_argument('--jobs', type=positive_int, help='test directories run at once (default: all; 1 runs them in order)')
+    parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test process (default: 1800)')
+    parser.add_argument('--jobs', type=positive_int,
+                        help='test processes run at once (default: CPU count, at most 16; 1 runs them in order)')
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be positive')
@@ -113,15 +142,18 @@ def main(argv=None):
     for flag in LIVE_FLAGS:
         env.pop(flag, None)
     passed = failed = 0
-    items = list(groups.items())
-    # Directories are independent processes; output is still printed whole and in order.
-    with ThreadPoolExecutor(max_workers=args.jobs or len(items)) as pool:
-        runs = [pool.submit(run_directory, directory, modules, env, args.timeout)
-                for directory, modules in items]
-        for (directory, modules), run in zip(items, runs):
+    work = list(units(root, tests))
+    # Modules (and shards of split ones) are independent processes; output is still printed
+    # whole, by directory and in order.
+    with ThreadPoolExecutor(max_workers=args.jobs or min(16, os.cpu_count() or 1)) as pool:
+        runs = [(directory, pool.submit(run_unit, directory, names, env, args.timeout)) for directory, names in work]
+        for directory, modules in groups.items():
             print(f'CHECK {directory.relative_to(root)} ({len(modules)} modules)', flush=True)
-            ok, output = run.result()
-            print(output, end='', flush=True)
+            ok = True
+            for result in [run for where, run in runs if where == directory]:
+                unit_ok, output = result.result()
+                print(output, end='', flush=True)
+                ok = ok and unit_ok
             if ok:
                 passed += 1
             else:
