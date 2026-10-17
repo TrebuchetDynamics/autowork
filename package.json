@@ -2,6 +2,7 @@
   "name": "hermes-toolset",
   "version": "0.2.0",
   "bin": {
+    "autowork": "pi-autowork/bin/autowork",
     "tx": "tmux/tx"
   },
   "description": "Hermes Toolset workflows for the Pi coding agent",
@@ -20,6 +21,7 @@
     "scripts/pi-autowork.sh",
     "scripts/pi_autowork_touches.py",
     "pi-autowork/pi_autowork/",
+    "pi-autowork/bin/",
     "pi-autowork/README.md",
     "!**/__pycache__",
     "LICENSE",

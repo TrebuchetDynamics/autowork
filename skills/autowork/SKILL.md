@@ -193,7 +193,7 @@ ordinary way. Follow [parallel workers](references/parallel-workers.md).
 
 `/autowork blockers [repo|name]` walks the owner through queue blockers, easiest
 first; answers become planning: [owner blockers](references/owner-blockers.md).
-Tasks may read runners (`tx autowork ls|status`), never start, stop or reconfigure them.
+Tasks may read runners (`autowork ls|status`), never start, stop or reconfigure them.
 
 ## Scheduled work and reporting
 

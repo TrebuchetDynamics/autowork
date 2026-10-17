@@ -78,7 +78,7 @@ explicit read-only runs write nothing.
 `/autowork blockers [repo|name]` is the owner's interview on what blocks the queue,
 easiest first, one question at a time; answers become TODO.md planning. Follow
 [owner blockers](../../../skills/autowork/references/owner-blockers.md). A task may
-read runner state (`tx autowork ls`, `tx autowork status NAME`); it never starts,
+read runner state (`autowork ls`, `autowork status NAME`); it never starts,
 stops or reconfigures runners.
 
 Parallel workers are opt-in: only when the user asks, run the bundled

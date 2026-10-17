@@ -222,28 +222,28 @@ continuous/service mode, model fallback, status, stop and recovery controls, and
 
 ### Run and watch runners
 
-Run pi-autowork with **`tx`/tmux by default**. From the project's main-branch
-checkout, `tx autowork start` starts or attaches to its runner. See
-[`tmux/`](tmux/README.md) for installation and command details:
+Each repository's runner is a **systemd user service**, managed with the `autowork`
+command. Bare `autowork` opens the live TUI: every runner, its workers in flight,
+blockers and log, with keys to start, stop, pause, restart and set the model; `d`
+browses directories and starts a service for any repository with `TODO.md` and
+`goals.json` on its main branch.
 
 ```sh
-tx autowork                   # the live TUI: runners, worker lanes, blockers, logs, keys to act
-tx autowork web               # the same TUI in a browser, http://127.0.0.1:8765
-tx autowork start             # run this repository in tmux session pi-autowork-<name>
-tx autowork ls                # one colored line per runner; --long: what each waits on
-tx autowork status india       # tasks, workers and what blocks them
-tx pi-autowork-sierra          # open sierra's runner session
-tx autowork stop my-project   # Ctrl+C: workers pause and resume later on the same attempt
+autowork                      # the live TUI
+autowork start                # this repository: install (if needed) and start its service
+autowork ls                   # one colored line per runner; --long: workers, blockers, model
+autowork status india          # tasks, workers and what blocks them
+autowork pause india           # stop it and keep it off; autowork resume india starts it again
+autowork model india openai-codex/gpt-6-luna   # per-service model, from: autowork models
+autowork web                  # the TUI in a browser, http://127.0.0.1:8765
+autowork blockers india        # answer what blocks the queue (/autowork blockers)
 ```
 
-A target is a runner name, a repository path or `.`. For a repository its service
-runs, the session follows the service journal instead of starting a second runner,
-and the runner's per-repository lock keeps two runners off one repository in any
-case. Install `tx` with `sh tmux/install.sh`.
-
-A **systemd user service** is optional when you want service supervision and
-restart after a crash. See the [service setup](docs/cross-host.md#run-autowork-continuously)
-for installation and logout behavior.
+A target is a runner name, a repository path or `.`. Workers pause and resume on
+the same attempt whenever a runner stops. See the
+[pi-autowork component](pi-autowork/README.md#the-autowork-command) for every command
+and the [service setup](docs/cross-host.md#run-autowork-continuously) for logout
+behavior and settings.
 
 ## What you can do
 
@@ -388,7 +388,7 @@ output quality, Git delivery or live Telegram execution.
 - [Command and configuration reference](docs/reference.md) · [Troubleshooting](docs/troubleshooting.md)
 - [Memory capture, inspection and existing stores](docs/memory.md)
 - [Speech-to-text: faster-whisper medium setup notes](docs/FASTER-WHISPER-MEDIUM-SETUP.md)
-- [`tx` and `tx autowork`: tmux sessions and pi-autowork runners](tmux/README.md)
+- [`autowork`: run and watch pi-autowork runners](pi-autowork/README.md#the-autowork-command) · [`tx`: tmux sessions](tmux/README.md)
 - [Removal and recovery](docs/uninstall.md)
 - [Dependencies, reproducibility and licensing](docs/dependencies.md)
 - [Adding skills](docs/contributing.md) · [Testing and compatibility](docs/testing.md)
