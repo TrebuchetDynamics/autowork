@@ -1068,6 +1068,93 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A'))
         self.assertEqual(self.branches(), ['main'])
 
+    def origin(self):
+        """A bare upstream for main, as a real repository has."""
+        bare = self.root / 'origin.git'
+        subprocess.run(['git', 'init', '-q', '--bare', '-b', 'main', str(bare)], check=True)
+        self.git(self.repo, 'remote', 'add', 'origin', str(bare))
+        self.git(self.repo, 'push', '-q', '-u', 'origin', 'main')
+        return bare
+
+    def test_merged_work_is_pushed_to_main_upstream(self):
+        bare = self.origin()
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertIn('Pushed main to origin/main', result.stdout)
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
+        self.assertFalse(any(b.endswith('pushed') for b in self.git(bare, 'branch').split()))  # workers never push
+
+    def test_a_rejected_push_merges_the_upstream_and_pushes_again(self):
+        bare = self.origin()
+        other = self.root / 'other'
+        subprocess.run(['git', 'clone', '-q', str(bare), str(other)], check=True)
+        (other / 'X.txt').write_text('from elsewhere\n')
+        self.git(other, 'add', 'X.txt')
+        self.git(other, 'commit', '-qm', 'someone else')
+        self.git(other, 'push', '-q', 'origin', 'main')
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('origin/main had moved; merged it and pushing again', result.stdout)
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
+        self.assertEqual((self.repo / 'X.txt').read_text(), 'from elsewhere\n')
+        self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_a_conflicting_owner_plan_is_landed_after_each_task(self):
+        """india: the owner's plan commit conflicted with the session's own TODO.md commits, and
+        the runner kept planning from its stale copy without saying so."""
+        (self.repo / 'TODO.md').write_text(todo([('A', None), ('B', None)]))
+        self.git(self.repo, 'commit', '-qam', 'A and B')
+        self.plan({'worker:A': ['slow'], 'worker:B': ['blocked'] * 5})
+        runner = self.start_runner('--interval', '300')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A')
+        session = json.loads(next(self.state.glob('*/session.json')).read_text())
+        integ = Path(session['path'])
+        with open(integ / 'TODO.md', 'a') as out:
+            out.write('\nSession note.\n')
+        self.git(integ, 'commit', '-qam', 'session bookkeeping')
+        with open(self.repo / 'TODO.md', 'a') as out:
+            out.write('\nOwner decision: A needs no device.\n')
+        self.git(self.repo, 'commit', '-qam', 'owner plan')
+        deadline = time.monotonic() + 60
+        while log().count('Merged ') < 1:
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertTrue(self.done('A'))
+        self.assertIn('session bookkeeping', self.git(self.repo, 'log', '--format=%s', 'main'))
+        # A second conflict in the same runner process is resolved too, not left as a stale session.
+        (self.root / 'busy-A').unlink()
+        self.plan({'worker:C': ['slow'], 'worker:B': ['blocked'] * 5})
+        entry = todo([('C', None)]).split('## Next\n\n')[1]
+        current = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(current.replace('## Next\n\n', '## Next\n\n' + entry, 1))
+        self.git(self.repo, 'commit', '-qam', 'add C')
+        deadline = time.monotonic() + 60
+        while not (self.root / 'busy-C').exists():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        session = json.loads(next(self.state.glob('*/session.json')).read_text())
+        integ = Path(session['path'])
+        with open(integ / 'TODO.md', 'a') as out:
+            out.write('\nSecond session note.\n')
+        self.git(integ, 'commit', '-qam', 'second bookkeeping')
+        with open(self.repo / 'TODO.md', 'a') as out:
+            out.write('\nSecond owner decision.\n')
+        self.git(self.repo, 'commit', '-qam', 'second owner plan')
+        deadline = time.monotonic() + 60
+        while 'second bookkeeping' not in self.git(self.repo, 'log', '--format=%s', 'main'):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertEqual(log().count('asking Pi to resolve the merge'), 2, log())
+        self.assertNotIn('Merge pending', log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+        self.assertIn('Not pushed: main has no upstream branch', log())
+
     def test_an_unresolved_conflict_keeps_the_session(self):
         self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
         result = self.run_runner('--once')

@@ -7,6 +7,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- pi-autowork runners land and push their work (owner decision, 2026-10-16): after
+  each closed task the session merges into main, Pi resolving a conflict with the
+  owner's newer plan once per main revision (it was once per runner process, so a
+  second conflict left the session planning from a stale TODO.md), and main is pushed
+  to its upstream, fast-forward only, with one fetch-merge-retry on rejection. A merge
+  that cannot land shows as the runner's blocker. Workers still cannot push;
+  `PI_AUTOWORK_PUSH=0` keeps main local.
+
 - The `autowork` TUI stacks the runner table, detail, worker lanes and log full width
   (the side-by-side split left a 30-column pane on an 80-column terminal). Each runner
   shows what it needs: the owner's open questions, read from the session's BLOCKERS.md
@@ -23,6 +31,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A plan commit made while a runner's cycle ran (its scan, merge or session cleanup)
+  ends the following wait; the plan watch compared against the start of the wait and
+  missed it until `--interval` passed (india).
 - A held task's `-r2` retry that a runner stop paused and the next start resumed is
   verified on its `-r2` branch; the engine had held it as "unexpected worker branch"
   (sierra TASK-026). A commit an earlier release held that way is offered for verification

@@ -32,8 +32,9 @@ of the current directory (or of this script, when it was copied into a repositor
 which must have its main branch checked out and a TODO.md.
 
 Each session builds on an integration branch (pi-autowork/<session>) in its own
-worktree; when the queue drains or the runner stops, the session is merged into the
-main branch. Nothing is pushed.
+worktree; after each closed task, and when the queue drains or the runner stops, the
+session is merged into the main branch (Pi resolves conflicts with newer main commits)
+and main is pushed to its upstream, fast-forward only. Workers never push.
 
 Options:
   --once               Run at most one task, then exit
@@ -82,6 +83,7 @@ Environment (optional):
                             can land; any other uncommitted file keeps the merge pending (600)
   PI_AUTOWORK_PLAN_SETTLE   seconds a plan change must be quiet before an idle runner reads it
                             (default 3)
+  PI_AUTOWORK_PUSH          0 keeps merged main local; otherwise it is pushed to its upstream
   PI_AUTOWORK_STALL_AFTER   seconds with nothing running while work waits before the runner
                             announces STALLED with its root blockers (default 1800)
   PI_AUTOWORK_COOLDOWN      seconds on the fallback before trying the primary again (default 1800)

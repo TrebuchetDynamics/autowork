@@ -218,9 +218,12 @@ main/master or Merge pending
   without a model call rather than inventing tasks.
 - **Evidence before closure.** Worker commits and reports are claims. Project checks
   and, by default, a separate Pi review gate integration and task closure.
-- **Delivery stays explicit.** A task closed on the session branch is not yet on
-  `main`/`master`. The runner delivers the session when it drains or stops, cleans
-  up the completed session, or reports `Merge pending` and retains it. Nothing is pushed.
+- **Delivery is automatic and visible.** After each closed task the runner merges its
+  session into `main`/`master` (Pi resolves a conflict with the owner's newer plan),
+  fast-forwards the main checkout and pushes it to its upstream: fast-forward only,
+  never forced; a rejected push merges the upstream and tries once more. What cannot
+  land is reported as `Merge pending` and shown as the runner's blocker; the session
+  is retained. Workers never push. `PI_AUTOWORK_PUSH=0` keeps main local.
 
 From your project's main-branch checkout, after the Pi installation above:
 
