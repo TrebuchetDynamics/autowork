@@ -657,7 +657,15 @@
         "TOOLSET-159-30",
         "TOOLSET-160-df",
         "TOOLSET-161-17",
-        "TOOLSET-162-d2"
+        "TOOLSET-162-d2",
+        "TOOLSET-163-f7",
+        "TOOLSET-164-f1",
+        "TOOLSET-165-f7",
+        "TOOLSET-166-b4",
+        "TOOLSET-167-03",
+        "TOOLSET-168-ff",
+        "TOOLSET-169-1d",
+        "TOOLSET-170-f6"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -665,10 +673,15 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-165-f7",
+      "TOOLSET-170-f6",
+      "TOOLSET-162-d2",
       "TOOLSET-161-17",
+      "TOOLSET-164-f1",
+      "TOOLSET-149-df",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
-      "TOOLSET-162-d2",
+      "TOOLSET-163-f7",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
       "TOOLSET-154-d3",
@@ -681,7 +694,6 @@
       "TOOLSET-099-87",
       "TOOLSET-115-bf",
       "TOOLSET-120-fc",
-      "TOOLSET-141-c4",
       "TOOLSET-146-bc",
       "TOOLSET-156-75",
       "TOOLSET-125-3c",
@@ -715,7 +727,6 @@
       "TOOLSET-029",
       "TOOLSET-011",
       "TOOLSET-144-c0",
-      "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
       "TOOLSET-129-6c",
@@ -810,6 +821,14 @@
     },
     {
       "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-149-df",
+      "section": "Now",
+      "status": "open",
+      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
+    },
+    {
+      "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-153-64",
       "section": "Now",
@@ -851,10 +870,34 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-162-d2",
+      "id": "TOOLSET-163-f7",
       "section": "Now",
       "status": "open",
-      "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
+      "title": "A claim question says why the claim is kept and quotes the note that holds it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-164-f1",
+      "section": "Now",
+      "status": "open",
+      "title": "A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-165-f7",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner's own worker processes never count as an outside session in the main checkout"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-170-f6",
+      "section": "Now",
+      "status": "open",
+      "title": "Closeout waits only for a main-checkout session that holds the files it writes"
     },
     {
       "depends_on": [],
@@ -1141,14 +1184,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-141-c4",
-      "section": "Next",
-      "status": "open",
-      "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-144-c0",
       "section": "Next",
       "status": "open",
@@ -1161,14 +1196,6 @@
       "section": "Next",
       "status": "open",
       "title": "Run conditional Docs Sync during verified Autowork closeout"
-    },
-    {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-149-df",
-      "section": "Next",
-      "status": "open",
-      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
     },
     {
       "depends_on": [
@@ -2085,6 +2112,38 @@
       "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
     },
     {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-162-d2",
+      "section": "Done",
+      "status": "done",
+      "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-166-b4",
+      "section": "Done",
+      "status": "done",
+      "title": "The runner view says whether it is stuck and why, and what each worker is doing"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-168-ff",
+      "section": "Done",
+      "status": "done",
+      "title": "Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-169-1d",
+      "section": "Done",
+      "status": "done",
+      "title": "Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse"
+    },
+    {
       "depends_on": [
         "TOOLSET-012"
       ],
@@ -2121,6 +2180,30 @@
       ],
       "supersession_reason": "Accepted TODO-first execution decision retires native-card-only recovery; shipped fixes and unpassed historical acceptance remain preserved.",
       "title": "Bind original-card continuation to supported budget enforcement"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-141-c4",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-164-f1"
+      ],
+      "supersession_reason": "Owner decision 2026-10-17: planning repair moves to the standing DOCS-MAINTAINER worker (docs/plans/2026-10-17-docs-maintainer.md, decision 5)",
+      "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-167-03",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-165-f7"
+      ],
+      "supersession_reason": "duplicate: same own-worker writer bug, planned in parallel",
+      "title": "A runner's own worker is never an outside session that holds integration"
     }
   ],
   "version": 1

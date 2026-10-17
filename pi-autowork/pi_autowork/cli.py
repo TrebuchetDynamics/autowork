@@ -64,9 +64,9 @@ Environment (optional):
   PI_AUTOWORK_WORKERS       default for --workers (default 8)
   PI_AUTOWORK_INFER_TOUCHES 0 to stop proposing Touches: for tasks that lack them
   PI_AUTOWORK_UPDATE_INTERVAL seconds between idle `pi update` checks of the toolset package;
-                            new toolset code restarts the runner (default 600; 0 off)
+                            new toolset code restarts the runner (default 120; 0 off)
   PI_AUTOWORK_UPDATE_WAIT   seconds a new release waits for no runner to have work in
-                            flight before it is installed anyway (default 1800)
+                            flight before it is installed anyway (default 600)
   PI_AUTOWORK_TASK_TIMEOUT  seconds per worker (default 5400)
   PI_AUTOWORK_VERIFY_TIMEOUT seconds for verifying one task (default 1800)
   PI_AUTOWORK_VALIDATE      command run before the Pi reviewer on every integrated task
@@ -93,7 +93,8 @@ Environment (optional):
   PI_AUTOWORK_MAX_RUNTIME   stop starting tasks after this many seconds (default 0, unlimited)
   PI_AUTOWORK_MAX_COST      USD limit on reported cost within the budget window (default 0, unlimited)
   PI_AUTOWORK_COST_WINDOW   budget window in hours, counted across restarts (default 24)
-  PI_AUTOWORK_MIN_FREE_MB   free memory each running worker needs (default 3000)
+  PI_AUTOWORK_MIN_FREE_MB   memory one more worker needs; twice it must be available (default 3000)
+  PI_AUTOWORK_TMP_STALE     remove /tmp scratch untouched this many seconds (default 7200, 0 off)
   PI_AUTOWORK_STATE_DIR     state root (default ${XDG_STATE_HOME:-~/.local/state}/pi-autowork)
   PI_AUTOWORK_TOOLSET       autowork checkout or Pi package path (default: auto)
   PI_AUTOWORK_ALLOW_HERMES  1 to run although a Hermes Autowork cron job targets this repository

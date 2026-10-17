@@ -78,7 +78,7 @@ def first_seen(state_root, rev, now):
     return now
 
 
-def check(state_root, own, toolset, wait=1800, now=None):
+def check(state_root, own, toolset, wait=600, now=None):
     now = time.time() if now is None else now
     fetched = _git(toolset, 'fetch', '-q', 'origin', 'HEAD')
     if fetched.returncode:

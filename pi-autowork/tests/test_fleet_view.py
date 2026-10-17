@@ -191,11 +191,88 @@ class FleetViewTests(unittest.TestCase):
             '[22:37] Questions for the owner in BLOCKERS.md: 4 open (easiest: TASK-036, decision)'])
         self.assertEqual(fleet_view.log_lines(text), [
             ('[22:26] TASK-011: running — worker started', 'cyan'),
-            ('[22:36] ── stopping: workers pause and resume on the next start ──', 'bold'),
-            ('[22:37] ── stopped ──', 'bold'),
-            ('[22:37] ── started ──', 'bold'),
+            ('[22:36] ── restarted ──', 'bold'),
             ('[22:37] TASK-011: failed — report.json pending_live must be a list of strings', 'bold red'),
             ('[22:37] Questions for the owner in BLOCKERS.md: 4 open (easiest: TASK-036, decision)', 'yellow')])
+
+    def test_an_update_restart_is_one_line_and_repeats_are_counted(self):
+        """TOOLSET-166-b4: the log opened on restart blocks and copies of the same line."""
+        text = '\n'.join([
+            '[10:09] No task can start now: TASK-012: not runnable',
+            '[10:15] Toolset updated to 03d8f5b; restarting on it',
+            '[10:15] Stopping: pausing workers so they resume on the next start, then merging finished work',
+            '[10:15] Stopped. Unfinished tasks keep their worktrees and resume on the next start.',
+            '[10:15] Started (PID 1). Stop with Ctrl+C.',
+            '[10:15] Session pi-autowork/20261017-101500 started from main',
+            '[10:15] No task can start now: TASK-012: not runnable',
+            '[10:16] No task can start now: TASK-012: not runnable',
+            '[10:17] No task can start now: TASK-012: not runnable',
+            '[10:20] Toolset updated to 5caf145; restarting on it'])
+        self.assertEqual(fleet_view.log_lines(text), [
+            ('[10:09] No task can start now: TASK-012: not runnable', 'yellow'),
+            ('[10:15] ── restarted onto 03d8f5b ──', 'bold'),
+            ('[10:15] No task can start now: TASK-012: not runnable  ×3', 'yellow'),
+            ('[10:20] ── restarting onto 5caf145 ──', 'bold')])
+
+    def test_the_verdict_says_whether_it_is_stuck_and_why(self):
+        """TOOLSET-166-b4: one sentence per state, from the runner's own status."""
+        R, Q, L = fleet_view.Runner, fleet_view.Question, fleet_view.Lane
+        root = {'id': 'TASK-140', 'kind': 'held', 'cause': 'overlap', 'blocks': 23}
+        cases = [
+            (R('a', state='working', running=2, max_workers=8, lanes=[L('T1', 'implementing'), L('T2', 'verifying')]),
+             'Working — 2 of 8 workers busy'),
+            (R('a', state='working', running=1, lanes=[L('T1', 'implementing')], gate='load average 27 >= 24 CPUs',
+               questions=[Q('X', 'quick', 4, 'answer it')]),
+             'Working — 1 worker busy; no more start: load average 27 >= 24 CPUs; 1 question for you'),
+            (R('a', state='stalled', minutes=42, questions=[Q('TOOLSET-157-cd', 'quick', 4, 'widen Touches')]),
+             'Waiting on you — 1 question, easiest TOOLSET-157-cd (unblocks 4): widen Touches'),
+            (R('a', state='stalled', minutes=42, roots=[root]),
+             "Stuck 42m — TASK-140 (held: changed another task's files; offered again once they are free, holds 23)"),
+            (R('a', state='blocked', minutes=3, blocker='no usable model: quota'), 'Stuck 3m — no usable model: quota'),
+            (R('a', state='blocked', gate='memory 2900 MB available, need 6000 MB'),
+             'Host busy — memory 2900 MB available, need 6000 MB'),
+            (R('a', state='restarting', restarting='onto 0c41776'), 'Restarting onto 0c41776'),
+            (R('a', state='restarting', restarting='service'), 'Restarting'),
+            (R('a', state='paused'), 'Paused — p resumes it'),
+            (R('a', state='not running'), 'Not running — a starts its service'),
+            (R('a', state='idle'), 'Idle — nothing left to run in Now/Next'),
+        ]
+        for runner, sentence in cases:
+            with self.subTest(state=runner.state, sentence=sentence):
+                self.assertEqual(fleet_view.verdict(runner)[0], sentence)
+
+    def test_workers_say_what_they_are_doing_in_plain_words(self):
+        L = fleet_view.Lane
+        for lane, doing in (
+                (L('T', 'implementing', activity='bash: cd x && python3 -m unittest discover -s y'),
+                 'running tests: python3 -m unittest discover -s y'),
+                (L('T', 'implementing', activity='edit: skills/a.py'), 'editing skills/a.py'),
+                (L('T', 'implementing', activity='read: TODO.md'), 'reading TODO.md'),
+                (L('T', 'implementing', activity='subagent_wait: '), 'waiting on a sub-agent'),
+                (L('T', 'implementing', activity='bash: cd rig && staticcheck ./...'), 'checking: staticcheck ./...'),
+                (L('T', 'verifying', activity='bash: flutter test'), 'reviewer: running tests: flutter test'),
+                (L('T', 'waiting to integrate', detail='until another session leaves the main checkout'),
+                 'waiting to integrate: until another session leaves the main checkout'),
+                (L('T', 'implementing'), 'starting')):
+            with self.subTest(doing=doing):
+                self.assertEqual(fleet_view.doing(lane), doing)
+        self.assertEqual(fleet_view.quiet(L('T', 'implementing', activity_age=12 * 60)), 'quiet 12m')
+        self.assertEqual(fleet_view.quiet(L('T', 'implementing', activity_age=60)), '')
+
+    def test_a_self_update_shows_restarting_not_not_running(self):
+        state = self.base / 'state-r'
+        state.mkdir()
+        stamp = lambda ago: time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(time.time() - ago)) + \
+            time.strftime('%z')[:3] + ':' + time.strftime('%z')[3:]
+        (state / 'runner.log').write_text(
+            f'{stamp(400)} No task can start now: A: resource gate: load average 30 >= 24 CPUs\n'
+            f'{stamp(30)} Toolset updated to 0c41776; restarting on it\n')
+        runner = fleet_view.Runner('a', state_dir=str(state))
+        self.assertEqual(fleet_view.recent_events(runner), ('onto 0c41776', ''))  # the gate line is too old
+        (state / 'runner.log').write_text(f'{stamp(30)} Toolset updated to 0c41776; restarting on it\n'
+                                          f'{stamp(10)} Started (PID 1). Stop with Ctrl+C.\n'
+                                          f'{stamp(5)} No task can start now: A: resource gate: load 30 >= 24 CPUs\n')
+        self.assertEqual(fleet_view.recent_events(runner), ('', 'load 30 >= 24 CPUs'))
 
     def test_agent_for_blockers(self):
         self.assertEqual(fleet_view.blockers_agent({'AUTOWORK_AGENT': 'pi --model x', 'PATH': ''}), ['pi', '--model', 'x'])

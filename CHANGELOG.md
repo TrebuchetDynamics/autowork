@@ -7,6 +7,51 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The memory gate needs room for one more worker only (twice `PI_AUTOWORK_MIN_FREE_MB`), however many
+  run, and each runner removes `/tmp` scratch that nothing has used for two hours
+  (`PI_AUTOWORK_TMP_STALE`, at most every 30 minutes per host): the double-counted reservation and
+  39 GB of leftover copies had capped runners at two or three workers (TOOLSET-162-d2).
+- A person's session in the main checkout no longer keeps finished work from closing unless it is
+  editing TODO.md, goals.json or the archive; only failures that point at something systemic (a
+  crash, an empty run, a launch or a failed review) count toward the one-hour failure pause.
+- A runner-inferred Touches list a person edited since still gets the bounded widening, and a
+  Touches placeholder such as `migrations/<new migration>` means new files under `migrations/`.
+- A review no longer prunes every stale worktree registration in the repository. It unregisters only
+  the scratch worktrees it made under its own `$TMPDIR`, so a session worktree the runner restores,
+  or anyone else's registration, survives the review.
+- Auto work no longer pins a submodule to a commit its remote does not have, or adds an untracked
+  nested repository as an embedded one; it leaves that path uncommitted and says why once
+  (TOOLSET-168-ff). Workers and reviewers share one toolchain cache per repository,
+  `$AUTOWORK_CACHE` (`<git common dir>/autowork-execution/cache`), so an SDK one task installs is
+  there for the next task and every review (TOOLSET-169-1d).
+- Runners pick up a new release sooner: they check for one every 2 minutes while idle
+  (`PI_AUTOWORK_UPDATE_INTERVAL`, was 10 minutes) and install a release that has waited
+  10 minutes for every runner to be idle (`PI_AUTOWORK_UPDATE_WAIT`, was 30 minutes).
+- `install.sh` no longer writes through a symlinked `~/.local/bin/tx` into the file it points at;
+  the link is moved aside. Replaced files keep every earlier backup (`.bak`, `.bak.1`, …).
+  `--no-reload`, `--bundle-only` and `--yes-deps` fail the Hermes item when profiles have their
+  own plugin clone (updated by `update_bundle.py`, which cannot honor them) instead of being
+  dropped. A Pi package listed as `(filtered)` counts as installed, so `autowork` links to the
+  package rather than the checkout. Hermes without a Hermes home is unavailable, not a failed setup.
+- Reviews no longer fill RAM-backed `/tmp`. Each review gets its own `TMPDIR` on disk, removed when it
+  ends, and reviewer and worker prompts say to keep scratch and copies under `$TMPDIR` (a scratch
+  checkout as `git worktree add --detach`) instead of copying whole repositories into `/tmp`.
+- The runner view answers whether a runner is stuck and why, and what each worker is doing. A
+  verdict line comes first (`Working — 3 of 8 workers busy`, `Waiting on you — …`, `Stuck 42m — <root>`,
+  `Host busy — …`, `Restarting onto <commit>`); worker rows say in plain words what each is doing, flag
+  `quiet Nm`, and Enter shows a worker's last actions; waiting tasks are grouped by cause (the runner
+  writes `waiting_groups` to status.json); the log shows the last hour with each restart as one line
+  and repeats counted; panes redraw only when they change. A self-update shows `restarting`, not
+  `not running` (TOOLSET-166-b4).
+- A validation that passes is not failed by build daemons it leaves behind. Gradle, Kotlin and Flutter
+  daemons outlive a build by design; they are still killed at the boundary, and the integration tree
+  is still checked, but a run that exited 0 with unchanged inputs now counts as passed. Holds an earlier
+  release made this way are offered to integration once more.
+- The reviewer can use what the worker provisioned. A task's docs placed its pinned SDK under the
+  worker's `$TMPDIR`; the reviewer had its own and failed every check for want of it. The review prompt
+  now names the worker's `$TMPDIR` (also `AUTOWORK_WORKER_TMPDIR`) for read-only use, and the changed
+  reviewer re-verifies such holds once. Integration also accepts an abbreviated commit in `report.json`
+  and says what differs when a report really mismatches.
 - More workers run at once. A task touching a manifest, lockfile, migration or CI file
   used to run alone, and while it waited it stopped every lower-priority task, so most
   runners used one of their eight workers. It now runs beside independent work and only

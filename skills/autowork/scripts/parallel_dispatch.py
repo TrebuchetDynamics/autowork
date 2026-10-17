@@ -103,9 +103,12 @@ def available_memory_mb():
 
 
 def resource_gate(running, min_free_mb):
+    # Available memory already excludes what running workers use: one more worker needs its own
+    # budget plus as much spare, however many run (TOOLSET-162-d2). Reserving a budget for each
+    # running worker again capped every runner at two or three workers.
     memory = available_memory_mb()
-    if memory < min_free_mb * (running + 1):
-        return f'resource gate: {memory} MB available, need {min_free_mb * (running + 1)} MB'
+    if memory < 2 * min_free_mb:
+        return f'resource gate: {memory} MB available, need {2 * min_free_mb} MB for one more worker'
     load, cpus = os.getloadavg()[0], os.cpu_count() or 1
     if load >= cpus:
         return f'resource gate: load average {load:.2f} >= {cpus} CPUs'
@@ -148,7 +151,11 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  task\'s Checks, not the whole suite after every edit.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
         '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
-        '  holds the task). Use $TMPDIR for temporary files and only',
+        '  holds the task). Put every temporary file and copy under $TMPDIR, never directly under',
+        '  /tmp: /tmp may be RAM. For a scratch copy of this checkout use',
+        '  `git worktree add --detach "$TMPDIR/copy" HEAD`, not a file copy. Install SDKs, toolchains',
+        '  and package caches under $AUTOWORK_CACHE/<name>-<version>, shared by this repository\'s',
+        '  tasks and reviews (reuse one that is already there); $TMPDIR goes with the task. Use only',
         '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
         f'- When done, commit once on {branch}. Never push, merge, rebase, switch branches, or touch',
         '  another worktree. A finished commit is not task completion; the coordinator integrates.',
@@ -213,7 +220,11 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     (data / 'tmp').mkdir(exist_ok=True, mode=0o700)
     env = {k: v for k, v in os.environ.items()
            if k != 'AUTOWORK_EXECUTION_COMMON' and not k.startswith('GIT_')}
-    env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_SLOT=str(slot_index),
+    # One cache per repository (<git common dir>/autowork-execution/cache), kept across tasks:
+    # a pinned SDK one task installs is the next task's and every reviewer's too (TOOLSET-169-1d).
+    cache = data.parents[2] / 'cache'
+    cache.mkdir(exist_ok=True, mode=0o700)
+    env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:

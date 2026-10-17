@@ -27,7 +27,9 @@ async def main():
         (state / 'status.json').write_text(json.dumps({
             'repo': '/git/india', 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(),
             'waiting': 23, 'held': [{'task': 'T-9', 'cause': 'blocker'}],
-            'roots': [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19}]}))
+            'roots': [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19}],
+            'waiting_groups': [{'label': 'wait for TASK-036 (overlapping files)', 'count': 19, 'tasks': ['TASK-040']},
+                               {'label': 'on dependencies', 'count': 4, 'tasks': ['TASK-034']}]}))
         systemctl = base / 'systemctl'
         systemctl.write_text('#!/usr/bin/env bash\n'
                              '[[ $2 == list-units ]] && echo "pi-autowork@india.service loaded active running x"\n'
@@ -58,7 +60,10 @@ async def main():
             await pilot.pause()
             assert app.query_one('#runners').row_count == 1
             detail = str(app.query_one('#detail').render())
-            assert 'outside Now/Next: TASK-036 (19)' in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
+            assert detail.lstrip().startswith('india  Stuck 1h00m — TASK-036'), detail
+            assert 'holds 19' in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Needs', 'Tasks', 'Now']
             assert 'outside Now/Next: TASK-036 (19)' in str(runners.get_row_at(0)[2])
@@ -114,6 +119,12 @@ async def main():
             await pilot.pause()
             await app.workers.wait_for_complete()
             assert calls[-1] == ['aw', 'start', str(tree / 'ready')], calls
+        narrow = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
+                          systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run)
+        async with narrow.run_test(size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
+            await pilot.pause()
+            words = ' '.join(str(narrow.query_one('#detail').render()).split())
+            assert 'Stuck 1h00m — TASK-036' in words and 'holds 19' in words, words
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)

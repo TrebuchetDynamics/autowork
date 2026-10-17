@@ -52,6 +52,24 @@ class HealthTests(unittest.TestCase):
                               now=1900)
         self.assertNotIn('deadlock', mixed)
 
+    def test_waiting_tasks_are_grouped_by_why_they_wait(self):
+        """TOOLSET-166-b4: the view shows why tasks wait without calling the engine."""
+        reasons = ['overlapping paths with TASK-140', 'overlapping paths with in_progress TASK-140',
+                   'dependency: TASK-1', 'dependency: TASK-2, TASK-3', 'priority waits for TASK-9',
+                   'resource gate: load average 27.16 >= 24 CPUs', 'all 8 worker slots busy', 'something new']
+        tasks = [{'task': f'W{i}', 'state': 'waiting', 'reason': r} for i, r in enumerate(reasons)]
+        tasks.append({'task': 'R', 'state': 'running'})
+        groups = health.waiting_groups(tasks)
+        self.assertEqual([(g['label'], g['count']) for g in groups[:2]],
+                         [('wait for TASK-140 (overlapping files)', 2), ('on dependencies', 2)])
+        self.assertEqual(sum(g['count'] for g in groups), len(reasons))
+        labels = {g['label'] for g in groups}
+        self.assertTrue({'wait behind TASK-9, which runs alone', 'on host memory or load', 'for a free worker slot',
+                         'something new'} <= labels, labels)
+        health.update(self.state, dict(snapshot(), tasks=tasks, max_workers=8), now=0)
+        self.assertEqual(self.status()['waiting_groups'], groups)
+        self.assertEqual(self.status()['max_workers'], 8)
+
     def test_an_unanswered_status_read_keeps_the_stall_clock(self):
         """A --status reader holding the engine lock made the runner look idle and reset the clock."""
         health.update(self.state, snapshot(), now=0)

@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,7 +25,10 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
           'against the acceptance criteria. Do not ask for more tests than the acceptance and Checks need; fail a '
           'change whose new tests mostly repeat existing cases or add many near-identical tests where one table '
           'would do. Do not edit, create or delete files, commit, push or change branches; '
-          'temporary files go in $TMPDIR only. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
+          'build output in gitignored paths is fine. Put every temporary file and copy under $TMPDIR, '
+          'never directly under /tmp, which is RAM on this host; $TMPDIR is removed after the review. '
+          'For a scratch copy of the checkout use git worktree add --detach "$TMPDIR/copy" HEAD, not a '
+          'file copy. End with exactly one line: PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
 # pending live become their own TASK-LIVE follow-up, so they must not fail the review.
@@ -74,6 +78,42 @@ def pending_live(checkout, task):
     return [' '.join(t.split()) for t in texts if t.strip()]  # the engine's live_items, which the close uses
 
 
+PROVISIONED = (' Toolchains, SDKs and caches the worker provisioned for this task (its $TMPDIR) are in {path}, '
+               'also exported as AUTOWORK_WORKER_TMPDIR. Use them read-only, for example an SDK the task\'s docs place '
+               'under $TMPDIR, instead of downloading again; do not write there.')
+
+
+CACHE = (' SDKs, toolchains and package caches this repository\'s tasks installed are in {path} '
+         '(AUTOWORK_CACHE): use them instead of downloading again, and add one there only if a check needs it.')
+
+
+def repository_cache(checkout):
+    """The repository's shared toolchain cache (TOOLSET-169-1d), created if missing."""
+    try:
+        common = Path(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+    except (OSError, ValueError, TypeError):
+        return None
+    cache = common / 'autowork-execution' / 'cache'
+    try:
+        cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError:
+        return None
+    return cache
+
+
+def worker_tmp(checkout, task):
+    """The finished worker's $TMPDIR (slot data), where it may have provisioned a toolchain the
+    task's checks need; the reviewer gets its own $TMPDIR and would not find it otherwise."""
+    try:
+        common = Path(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        slot = json.loads((common / 'autowork-execution' / 'slots' / f'{task}.json').read_text())
+        attempt = slot.get('data_attempt', slot['attempt'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    path = common / 'autowork-execution' / 'slot-data' / task / f'attempt-{attempt}' / 'tmp'
+    return path if path.is_dir() and any(path.iterdir()) else None
+
+
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
@@ -84,8 +124,41 @@ def verify(state, task):
     if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
         return 0
     head_before = git(checkout, 'rev-parse', 'HEAD')
+    # Its own scratch on disk, removed afterwards: reviewers copied whole repositories into
+    # RAM-backed /tmp and left them (39 GB on one host).
+    scratch = Path(state) / 'review-tmp' / f'{safe_name(task)}-{os.getpid()}'
+    scratch.mkdir(parents=True, exist_ok=True)
+    os.environ['TMPDIR'] = str(scratch)
+    try:
+        return review(state, task, checkout, head_before)
+    finally:
+        drop_scratch_worktrees(checkout, scratch)
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def drop_scratch_worktrees(checkout, scratch):
+    """Unregister the worktrees a review made under its scratch (`git worktree add --detach
+    "$TMPDIR/copy"`), and nothing else: a repository-wide prune also drops other stale
+    registrations, such as a session worktree the runner restores."""
+    scratch = Path(scratch).resolve()
+    for line in (git(checkout, 'worktree', 'list', '--porcelain') or '').splitlines():
+        path = Path(line[len('worktree '):]).resolve() if line.startswith('worktree ') else None
+        if path and (path == scratch or scratch in path.parents):
+            subprocess.run(['git', '-C', checkout, 'worktree', 'remove', '--force', '--force', str(path)],
+                           capture_output=True)
+
+
+def review(state, task, checkout, head_before):
+    provisioned = worker_tmp(checkout, task)
+    if provisioned:
+        os.environ['AUTOWORK_WORKER_TMPDIR'] = str(provisioned)
+    cache = repository_cache(checkout)
+    if cache:
+        os.environ['AUTOWORK_CACHE'] = str(cache)
     result = pi_runtime.job(pi_runtime.Settings(state), 'verify', task, checkout,
-                            REVIEW.format(task=task, checkout=checkout) + (
+                            REVIEW.format(task=task, checkout=checkout)
+                            + (PROVISIONED.format(path=provisioned) if provisioned else '')
+                            + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
                             os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800'),

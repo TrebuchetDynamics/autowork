@@ -120,7 +120,10 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(times[tid, 'start']['slot'], slot_no)
             self.assertEqual(times[tid, 'start']['port_base'], str(20000 + 100 * int(slot_no)))
             self.assertTrue(times[tid, 'start']['tmpdir'].startswith(str(self.common / 'slot-data' / tid)))
+            # TOOLSET-169-1d: one toolchain cache for every task of the repository, kept after they close.
+            self.assertEqual(times[tid, 'start']['cache'], str(self.common / 'cache'))
             self.assertFalse(times[tid, 'start']['marker'])
+        self.assertTrue((self.common / 'cache').is_dir())
         prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
         for text in ('Task: A', 'Touches: a.txt', 'Never edit TODO.md', 'Report file: ', '- Touches: a.txt'):
             self.assertIn(text, prompt)
@@ -391,6 +394,16 @@ class DispatchTests(unittest.TestCase):
         self.wait_until_idle()  # this unpaused death spends attempt 1 as before
         _, retry = self.apply()
         self.assertEqual([(d['task'], d['attempt']) for d in retry['dispatched']], [('A', 2)])
+
+    def test_the_memory_gate_counts_only_what_one_more_worker_needs(self):
+        """TOOLSET-162-d2: running workers' memory is already out of MemAvailable."""
+        with patch.object(dispatch, 'available_memory_mb', return_value=7000), \
+                patch.object(dispatch.os, 'getloadavg', return_value=(0.0, 0.0, 0.0)):
+            self.assertEqual(dispatch.resource_gate(2, 3000), '')
+            self.assertEqual(dispatch.resource_gate(7, 3000), '')
+        with patch.object(dispatch, 'available_memory_mb', return_value=5900):
+            self.assertEqual(dispatch.resource_gate(0, 3000),
+                             'resource gate: 5900 MB available, need 6000 MB for one more worker')
 
     def test_low_memory_holds_dispatch(self):
         with patch.object(dispatch, 'available_memory_mb', return_value=1000):

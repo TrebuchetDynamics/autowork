@@ -2480,3 +2480,148 @@ Source section: Now
 - Exclusions: No change to acceptance, checks or dependencies; no widening by a model; no direct edits in fleet repositories outside the runner's own planning commit.
 - Evidence (2026-10-17 10:21 monitor pass): after the fleet restart onto the 148-88/159-30 release, one runner's only runnable chain (one task holding four dependants) is held by a worker blocker before any edit: it names two exact build files it must change and asks for them in Touches. This is the same shape as the earlier examples and now the most common reason a working runner goes idle. The `worker blocker naming paths` case in (Scope) covers it: no candidate exists, so after widening the task is simply rerun, not reverified.
 - Planner's call: bounded auto-widening (exact files, once, non-protected, unowned). A worker naming an exact file it must change is engineering evidence, not a product decision. The bounds keep the scope check meaningful.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-164-f1
+Reason: Owner decision 2026-10-17: planning repair moves to the standing DOCS-MAINTAINER worker (docs/plans/2026-10-17-docs-maintainer.md, decision 5)
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-141-c4 — Repair incomplete fleet task contracts with a bounded planning worker instead of stalling
+
+- [ ] TOOLSET-141-c4 — Repair incomplete fleet task contracts with a bounded planning worker instead of stalling
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [automatic recovery continuation](docs/plans/2026-10-16-pi-autowork-coordinator.md#automatic-stall-recovery-and-conditional-docs-sync), [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [admission reasons](skills/autowork/scripts/task_execution.py) (`needs unique Scope, Acceptance and Checks fields`, `missing TODO contract`, `duplicate task contract fields`), [design](docs/plans/2026-10-16-pi-autowork-coordinator.md) (deferred causes with automatic actions), [Docs Sync](adapters/skills/docs-sync/SKILL.md).; [manual blocker contract repair](docs/plans/2026-10-16-pi-autowork-coordinator.md#blockers-repairs-for-malformed-task-contracts).
+- Evidence (2026-10-16 23:40 monitor pass): runner B has been STALLED for 7h26m with 0 running, 53 waiting and 4 held. Its roots are ledger tasks without full bodies (for example `a fleet task: needs unique Scope, Acceptance and Checks fields`), and its runner.log repeats that reason 414 times. a fleet task is held because TODO.md lacks the a fleet task body. TOOLSET-129-c4 labels these as agent repairs, but no agent performs them.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py, skills/blockers/, skills/docs-sync/, adapters/skills/
+- Scope: When a runner is STALLED and its root causes include those three contract reasons, the coordinator dispatches one planning-repair worker for the affected task IDs. The worker is Pi with the docs-sync skill, `Touches: TODO.md, goals.json`, exclusive on planning files. It completes the bodies only from each task's own Sources, goal and accepted plan section. It fills only the fields those sources support and never invents product acceptance, scope or authority. If the sources cannot support a field, that becomes one BLOCKERS question naming the field. The result integrates like any task: `goals.py validate` passes and the admission reasons clear. Attempt each task-body fingerprint at most once. An unchanged fingerprint becomes a question rather than a loop. Log a repeated admission reason once per change, not every cycle.
+- Acceptance: In a fixture repository, three ledger tasks lack fields but have sources. A fake Pi repair adds the fields, and the tasks are admitted on the next cycle. A task without a supporting source produces exactly one question. The same fingerprint is never retried. Edits outside TODO.md or goals.json fail integration. A runner with no contract roots, idle or stalled, makes zero model calls. A repeated reason appears once in runner.log.
+- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py; planned focused repair regressions: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_backlog_recovery.py` (new cases unrun).
+- Design (planner's call, after the builder check): no deferred-cause action hook exists in `coordinator.py` yet. Add one small dispatch point for stall causes; the lifecycle redesign reuses it instead of adding another. The repair is a coordinator job using the existing `pi_job` pattern (as the merge resolver does). It runs in a disposable worktree off the session branch, outside engine admission. It takes one slot, consumes no task attempt and creates no TODO entry. The coordinator integrates it by checking that the diff touches only TODO.md and goals.json and that `goals.py validate` passes, then commits it on the session branch, as `commit_owner_planning` does. Fingerprints of attempted bodies live in the state directory as `contract-repairs.json`.
+- Dependencies: None. Overlapping coordinator Touches already serialize it behind the active lifecycle redesign.
+- Ownership: Toolset coordinator; preserve TOOLSET-120-fc's question block format.
+- Exclusions: No repair of product decisions and no edits beyond the fleet repository's TODO.md and goals.json, made through its own runner's integration. A human or toolset session never edits the fleet repository directly. No model call when the runner is idle.
+- Planner's call: a repair spends tokens only when a stall's root is a repairable contract. That keeps "idle = zero tokens" intact.
+
+- Accepted refinement (2026-10-16): Trigger on an observed repairable blocked root at the next cycle, including when unrelated workers are active; do not wait for STALLED. Use the existing lifecycle repair hook and serialize planning-file writers, not all repository work. Bind the single attempt to task plus accepted source/candidate and relevant recovery-handler evidence, so restart/cosmetic edits cannot reset it but corrected source can. Validate full bodies and actual admission after repair. An unchanged failed repair stays an internal repair failure with its candidate/evidence and next retry condition; only an actual unavailable owner decision/input creates a question. This supersedes the earlier blanket unchanged-fingerprint-becomes-question behavior. Observe source movement and stop/budget limits before applying. No second watchdog or independent coordinator.
+- Additional acceptance: A corrected accepted source permits one new repair; unchanged loops and crash recovery do not duplicate a model invocation. Conflicting acceptance is not guessed. An unrelated task continues while planning-file repair is serialized, and an exhausted internal attempt produces no fake owner decision. Preserve existing zero-token idle/no-contract cases.
+
+- Manual blocker repair refinement: Implement the cited accepted repair contract in the blockers skill and shared Docs Sync operation, reused by the automatic hook. A target-repository agent may apply source-supported clerical duplicate-field repairs within documentation-only scope, without asking to code or restart a runner. Identical fields collapse losslessly; Checks plus historical Verification evidence is normalized without discarding required checks or fabricating an execution pass. Conflicting values are reconciled only from accepted sources; unresolved intent remains held. This prospectively refines the no-direct-fleet-edit exclusion only for the target repository's own authorized agent, never the Toolset monitoring session. Preserve all other boundaries.
+- Repair proof required: Add multiline/fence, alias-collision, conflicting-source, dry-run/idempotence and stale/live-owner negative fixtures; demonstrate documentation-only repair through actual admission without a model call or service mutation. Ledger validation alone is not proof of admission or runner pickup. Do not rewrite already-done or archived example tasks.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-166-b4 — The runner view says whether it is stuck and why, and what each worker is doing
+
+- [x] TOOLSET-166-b4 — The runner view says whether it is stuck and why, and what each worker is doing
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17, plan-with-me): "tui for individual runners needs a lot of work"; the two questions a runner view must answer: "is it stuck and why, and what each worker is doing". [TUI](pi-autowork/pi_autowork/tui.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [health](pi-autowork/pi_autowork/health.py).
+- Evidence (2026-10-17 owner capture): panes repainted over each other; the log opened on lines two hours old with repeated `No task can start now` and restart blocks; Needs and question previews were cut at the part that says what to do (`runner: 1 verified commit(s) wait fo…`); runners restarting onto a new toolset showed `not running — start it`; worker rows showed a truncated shell command or `subagent_wait: 7m ago`; waiting tasks and their reasons appeared only in log lines.
+- Touches: pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/tests/test_health.py, pi-autowork/tests/tui_pilot.py
+- Scope (owner decisions, 2026-10-17): (1) A verdict line at the top, wrapped, never cut, from the runner's own status: `Working — N of M workers busy`, `Waiting on you — N questions, easiest X (unblocks k)`, `Stuck <age> — <root> holds N (<why>)`, `Host busy — <resource gate reason>`, `Restarting onto <commit>`, `Paused`, `Not running`, `Idle`. Model and fallback move into the dim details line. (2) One row per worker with a plain-words `Doing` column (`running tests: …`, `editing <path>`, `reading <path>`, `searching`, `waiting on a sub-agent`, `reviewer: …`, `waiting to integrate: <reason>`), phase, try, elapsed, and `quiet Nm` when its last action is 5+ minutes old; Enter on a row shows its last 10 actions. (3) The runner writes waiting tasks grouped by cause into status.json (`waiting_groups`: reason, count, tasks), and the view shows them as one line (`23 wait for X (overlapping files) · 12 on dependencies · …`) without calling the engine. (4) The inline log covers the last hour, folds each restart into one `restarted onto <commit>` line and collapses consecutive repeats (`×N`). (5) Planner's calls: panes update only when their content changed (no clear-and-rewrite every refresh), text wraps instead of being cut, the fleet table shows `restarting` instead of `not running` while a service stops or starts or within 3 minutes of a `restarting on it` line, no model calls and no new dependency.
+- Acceptance: In fixtures, each verdict case renders its sentence from status, service state and log; `doing` maps tool calls to the plain phrases and flags quiet workers; `health.update` writes `waiting_groups` with counts that add up to the waiting total; `log_lines` folds a stop/start/update sequence into one line and collapses three identical `No task can start now` lines into one with `×3`; the 80-column headless pilot shows the verdict, a worker row with `Doing`, the waiting groups and the action list, and Enter on a worker opens its recent actions.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p 'test_fleet_view.py'; python3 -m unittest discover -s pi-autowork/tests -p 'test_health.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Owner session. TOOLSET-129-c4 (one evidence-backed Needs action) and TOOLSET-132-af (log search and copy) stay open for what this does not cover.
+- Exclusions: No new dependency, theme or web change; no change to actions or their confirmations; no engine call on refresh.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-165-f7
+Reason: duplicate: same own-worker writer bug, planned in parallel
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-167-03 — A runner's own worker is never an outside session that holds integration
+
+- [ ] TOOLSET-167-03 — A runner's own worker is never an outside session that holds integration
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [writers check](skills/autowork/scripts/task_execution.py) (`external_workers`, `blocking_workers`), [integration](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`).
+- Evidence (2026-10-17 11:31–11:43): this repository's runner kept a verified commit waiting with `waiting to integrate until another session leaves the main checkout (live or unknown external writer/session; preserve canonical checkout: pid … pi in …/.worktrees/autowork-<task>-r2 (running commands))`, then `pid … pi in …/.worktrees/autowork-<task> (no terminal; activity unknown)`. Both pids were this runner's own workers in their own task worktrees, not sessions in the main checkout. The commit waited 12 minutes and was then held for validation; a fleet TUI showed `runner: 1 verified commit(s) wait for…` meanwhile.
+- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_task_execution.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: A process is this runner's worker when its working directory is a worktree recorded by a live slot of this repository (journal `worktree_created`), or it carries the slot's `AUTOWORK_WORKTREE` marker; such a process never blocks integration of another slot. Sessions in the canonical checkout or the session worktree still block as today. The waiting reason names the blocking process's checkout relative to the repository.
+- Acceptance: In fixtures, a live Pi process in another slot's task worktree does not hold integration; one in the main checkout still does; the reason line names `main checkout` or the worktree.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No weakening of the canonical-checkout writer guard.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-168-ff — Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit
+
+- [x] TOOLSET-168-ff — Auto-commit of quiet main-checkout work never pins a submodule to an unpushed commit
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (`commit_owner_changes`), owner direction (2026-10-16) that auto work commits all quiet work.
+- Evidence (2026-10-17 12:18 monitor pass): a runner committed 18 quiet paths from its main checkout as `chore: uncommitted work in the main checkout (pi-autowork)`, including two submodule pointer changes. One submodule now points at a commit that is on no branch of the submodule's remote. The push failed for an unrelated reason (non-fast-forward, TOOLSET-158-08); once that resolves, the superproject's main would reference a submodule commit no other clone can fetch.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: Before committing, `commit_owner_changes` finds gitlink paths (mode 160000 in the index or in `git diff --raw`). A submodule pointer change is committed only when its new commit is reachable from a remote-tracking branch of that submodule (after a quiet `git fetch` limited to 30 seconds); otherwise the path is left uncommitted and logged once per commit: `left <path> uncommitted: submodule commit <sha> is not on its remote yet`. Everything else commits as today. The pointer is committed in a later cycle once the submodule commit is pushed.
+- Acceptance: In fixtures with a submodule, a pointer to a pushed commit is committed with the other quiet work; a pointer to a local-only commit stays uncommitted, is logged once, and is committed after the submodule commit reaches its remote; a repository without submodules behaves exactly as before.
+- Checks: python3 -m unittest tests/test_pi_autowork.py (the owner-planning and uncommitted-work tests); python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which other files auto work commits; no pushing of submodules by the runner.
+- Planner's call: hold back only the unpublishable pointer, not the whole commit; the rest of the owner's quiet work still lands.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-169-1d — Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse
+
+- [x] TOOLSET-169-1d — Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`, the worker environment), [review](pi-autowork/pi_autowork/worker.py) (`verify`, `worker_tmp`).
+- Evidence (2026-10-17 12:15 monitor pass): one runner's bootstrap task installed a pinned SDK under its worker's `$TMPDIR` as its own docs say; the next task in its chain and that task's reviewer each started with a fresh `$TMPDIR`, found no SDK, and the reviewer failed the commit with `no pinned … SDK was available, so the analyze and test checks could not be run`. The earlier fix (the reviewer reads the finished worker's `$TMPDIR`) only covers the same task.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, skills/autowork/references/parallel-workers.md
+- Scope: Every worker and reviewer gets `AUTOWORK_CACHE`, one directory per repository on disk (`<git common dir>/autowork-execution/cache`), kept across tasks and runs. Prompts say: download or extract SDKs, toolchains and package caches into `$AUTOWORK_CACHE/<name>-<version>` (reuse one that is already there), and keep only scratch in `$TMPDIR`. The reviewer is told the same and may use the cache read-only. The cache is never committed, has a size note in status (`cache N GB`), and is removed only by `autowork` housekeeping when a person asks.
+- Acceptance: In fixtures, a worker's prompt and environment carry `AUTOWORK_CACHE`, the same path for two tasks of one repository and a different one for another repository; a reviewer's prompt names it; the cache directory survives a task's close and set-aside.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No edits to fleet repositories' docs; no automatic deletion of the cache.
+- Planner's call: a per-repository cache rather than sharing one task's `$TMPDIR` with the next: tasks run in parallel and are removed when they close, while a pinned SDK is a repository-wide prerequisite.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-162-d2 — The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp
+
+- [x] TOOLSET-162-d2 — The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "i want more workers active per repo"; [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`), [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`pi_job`).
+- Evidence (2026-10-17 11:01 monitor pass): `/tmp` is a 48 GB tmpfs, so files there are RAM. It held 39 GB in 7,839 entries, none touched for 2+ hours or open by any process: review and verify copies of whole repositories (`<task>-review.XXXXXX`, `<task>-verify.XXXXXX`), capture databases, SQL probes and logs that Pi workers and reviewers made with explicit `mktemp -d /tmp/...` paths, which ignore `TMPDIR`. MemAvailable read 7 GB. `resource_gate` refuses a new worker unless `available >= PI_AUTOWORK_MIN_FREE_MB * (running + 1)` (3000 MB each), though the memory running workers use is already subtracted from `available`: it reserved it twice, and with 7 GB no runner could start a third worker. The owner approved removing the stale entries; that freed 39 GB (available 7 GB to 36 GB).
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/janitor.py, pi-autowork/tests/test_janitor.py, skills/autowork/references/parallel-workers.md
+- Scope: (1) `resource_gate` needs `2 * PI_AUTOWORK_MIN_FREE_MB` available for one more worker (its budget plus one spare), whatever this runner already runs, and keeps the load check. The waiting reason names both numbers. (2) Worker, reviewer and resolver prompts say: put scratch files and copies under `$TMPDIR`, never directly under `/tmp`; every Pi job already gets a per-job `TMPDIR` on disk, which is removed when the job's slot closes. (3) A janitor, run by each runner at most every 15 minutes, removes top-level `/tmp` entries owned by the runner's user that nothing inside has changed for `PI_AUTOWORK_TMP_STALE` seconds (default 7200), that no process uses as its working directory or holds open, excluding sockets and system directories (`.X11-unix`, `.ICE-unix`, `tmux-*`, `ssh-*`, `systemd-*`). It logs one line with the count and size freed. `PI_AUTOWORK_TMP_STALE=0` turns it off.
+- Acceptance: In fixtures, with 7 GB available and two workers running, a third starts when `PI_AUTOWORK_MIN_FREE_MB=3000`, and none starts below 6 GB. The janitor removes a stale fixture directory, keeps one changed within the window, one that is a process's working directory and one with an open file, and never touches an excluded name or another user's entry. Prompts carry the `$TMPDIR` rule.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_janitor.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator (owner session). TOOLSET-118-68 keeps cgroup budgets and process-tree stops; TOOLSET-140-f4 keeps the short socket-safe TMPDIR.
+- Exclusions: No deletion of anything recent, in use or not owned by the runner's user; no change to the worker cap or load check.
+- Evidence (2026-10-17 11:49 monitor pass): 45 minutes after the cleanup, `/tmp` held 5.9 GB again (available memory 37 GB to 31 GB) with eight runners working: about 8 GB an hour, so the 3-worker memory cap returns within hours unless the janitor and the `$TMPDIR` rule land.
+- Evidence (2026-10-17 12:10 monitor pass): `/tmp` reached 16 GB 70 minutes after the cleanup (about 13 GB an hour); the largest entries were review copies of whole repositories (`<task>-review.XXXXXX`, up to 4.7 GB each) made by reviewers with explicit `/tmp` paths although their `TMPDIR` was on disk.
+- Done by the owner session (2026-10-17): part of (2). Each review runs with its own `TMPDIR` under the runner's state directory, removed (and `git worktree prune`d) when the review ends; reviewer and worker prompts say never to write directly under `/tmp` and to make a scratch copy with `git worktree add --detach "$TMPDIR/copy" HEAD`. Still open: (1) the gate arithmetic and (3) the janitor.
+- Planner's call: fix the double-counted reservation and clean the scratch that caused it, rather than lower `PI_AUTOWORK_MIN_FREE_MB`. The gate's purpose stays; only its arithmetic and the leak change.

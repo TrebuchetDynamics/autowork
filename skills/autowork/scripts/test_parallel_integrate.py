@@ -149,6 +149,28 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'A'))
         self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
+    def test_an_abbreviated_commit_in_the_report_is_the_same_commit(self):
+        """A complete bootstrap was held on its last attempt because the report named `29a464c3`."""
+        module = self.module()
+        _, commit = self.worker()
+        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
+        report = execution.read(data / 'report.json')
+        execution.save(data / 'report.json', dict(report, commit=commit[:8]))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_a_report_mismatch_says_what_differs_and_a_misread_hold_is_offered_again_once(self):
+        module = self.module()
+        _, commit = self.worker()
+        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
+        report = execution.read(data / 'report.json')
+        execution.save(data / 'report.json', dict(report, commit='0' * 12))
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertIn("commit is '000000000000', the branch is at " + commit[:12], result['reason'])
+        # As an earlier release held a correct abbreviated SHA: offered again, once.
+        execution.save(data / 'report.json', dict(report, commit=commit[:8]))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_a_commit_held_for_overlap_owns_nothing_and_is_offered_again_once_free(self):
         """TOOLSET-157-cd: two commits on the same file must not hold each other forever."""
         module = self.module()
@@ -207,6 +229,21 @@ class IntegrationTests(unittest.TestCase):
         (self.repo / 'A.txt').write_text('base\n')
         self.holder(self.repo / 'A.txt')  # or holds it open for writing
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'BUSY')
+
+    def test_a_main_checkout_session_blocks_a_close_only_through_the_files_it_writes(self):
+        """An integrated task could not close while any interactive session was open in the main
+        checkout, though interactive sessions work there and touched none of the close's files."""
+        session = self.session_checkout()
+        self.worker()
+        module = self.module()
+        self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.agent_process()
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # the owner edits TODO.md
+        with self.assertRaisesRegex(ValueError, 'writer|session'):
+            module.close(session, self.owner, 'A')
+        self.git('checkout', '--', 'TODO.md')
+        (self.repo / 'B.txt').write_text('owner edit\n')  # unrelated work
+        self.assertEqual(module.close(session, self.owner, 'A')['outcome'], 'CLOSED')
 
     def test_fresh_session_blocks_close_without_task_writes(self):
         self.worker()
@@ -1075,6 +1112,45 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result['outcome'], 'HELD', result)
         self.assertEqual(state.slots(self.common)[0]['checks']['outcome'], 'TIMED_OUT')
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+
+    def test_a_build_daemon_left_behind_by_a_passing_validation_does_not_fail_it(self):
+        """A Flutter task's checks passed, but the Gradle and Kotlin daemons they started held it."""
+        self.worker()
+        daemon = 'import subprocess, sys; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])'
+        module = self.module()
+        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', daemon], 20)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(state.slots(self.common)[0]['checks']['outcome'], 'CHILDREN_TERMINATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+
+    def test_a_failing_validation_with_a_daemon_still_holds_and_old_daemon_holds_are_offered_again(self):
+        self.worker()
+        module = self.module()
+        failing = 'import subprocess, sys; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"]); sys.exit(1)'
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', failing], 20)['outcome'],
+                         'HELD')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['checks']['outcome'], 'CHILDREN_TERMINATED')
+        self.assertFalse(module.passed(slot['checks']))  # exit 1: a real failure, never offered again
+        # As an earlier release held a passing run that left a daemon: offered again, once.
+        checks = dict(slot['checks'], command_receipt=dict(slot['checks']['command_receipt'], exit_code=0))
+        execution.save(state.slot_path(self.common, 'A'), dict(slot, checks=checks))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+
+    def test_each_hold_cause_is_offered_again_once(self):
+        """A commit offered again for a misread report was then held by the daemon rule, and its
+        one-time flag kept it from the second, unrelated, offer."""
+        self.worker()
+        module = self.module()
+        slot = state.slots(self.common)[0]
+        checks = {'outcome': 'CHILDREN_TERMINATED', 'command_receipt': {'exit_code': 0, 'inputs_match': True}}
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(slot, state='held', cause='validation', checks=checks, reoffered=True))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['reoffered'], ['overlap', 'report', 'validation'])
+        execution.save(state.slot_path(self.common, 'A'), dict(slot, state='held', cause='validation', checks=checks))
+        self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REOFFERED')
 
     def test_cli_integrate_and_close(self):
         self.worker()

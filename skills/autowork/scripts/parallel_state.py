@@ -318,12 +318,19 @@ def overlap_held(slot):
     return slot['state'] == 'held' and slot.get('cause') == 'overlap' and not worker_live(slot)
 
 
-def reoffer_overlap(common, old):
-    """Offer an overlap-held commit to integration again, once, after the slots it
-    conflicted with have settled. Integration merges current main and checks every
-    owner again. Caller holds writer.lock."""
+def reoffered(slot):
+    """The hold causes this slot was already offered again for. ``True`` is the record of the
+    first releases, which offered again only for overlap or a misread report."""
+    value = slot.get('reoffered')
+    return {'overlap', 'report'} if value is True else set(value or [])
+
+
+def reoffer(common, old):
+    """Offer a held commit to integration again, once per hold cause: an overlap hold after
+    the slots it conflicted with have settled, or a report or validation an earlier release
+    misread. Integration repeats every check on current main. Caller holds writer.lock."""
     value = {k: v for k, v in old.items() if k not in ('reason', 'cause')}
-    value.update(state='reported', reoffered=True)
+    value.update(state='reported', reoffered=sorted(reoffered(old) | {old.get('cause')}))
     return write_slot(common, value, old)
 
 

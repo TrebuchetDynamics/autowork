@@ -1403,8 +1403,8 @@ Decisions (all planner's calls; reversible; reject any of them):
   only for an `integrated` and validated slot. The coordinator edits the TODO body
   and CHANGELOG and commits that metadata. A refill follows, so dependents (task C
   after A) become eligible only after A closes.
-- **Resource gate.** No new worker starts while `MemAvailable` is below
-  `--min-free-mem-mb` (default 1500 per running worker plus one), or while the
+- **Resource gate.** No new worker starts while `MemAvailable` is below twice
+  `--min-free-mem-mb` (default 1500; running workers' memory is already out of it), or while the
   1-minute load average is at or above the CPU count. Such a slot waits rather than
   failing. Token or provider spend is not metered: unknown usage is not zero, so the
   only caps are wall time (`--worker-timeout`, Hermes `--run-budget`) and the
@@ -1453,8 +1453,8 @@ Builder-check answers (planner's calls, 2026-10-15):
   coordinator session, like sequential `--apply`. Every refill, wait, integrate and
   close call passes the same PID, and `coordinator.json` records that identity.
   A run with no persistent ancestor gets `ACTION_REQUIRED`.
-- **Memory gate.** Dispatch needs `MemAvailable` ≥ `--min-free-mem-mb` ×
-  (running workers + 1).
+- **Memory gate.** Dispatch needs `MemAvailable` ≥ 2 × `--min-free-mem-mb`, however many
+  workers run.
 
 Anti-goals: a second task board, remote queue or database; in-process subagent
 fleets without per-worker folders; dispatching lower-priority work ahead of a

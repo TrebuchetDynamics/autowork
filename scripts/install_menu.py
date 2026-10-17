@@ -9,8 +9,9 @@
     install.sh --dry-run ...   print each command instead of running it
 
 Each item runs the host's own supported install command; a host whose CLI is not
-installed is skipped and says so. Hermes options (--hermes-home, --bundle-only,
---no-reload, --yes-deps) apply to the Hermes item. Standard library only.
+installed is skipped and says so, and fails when named with --only. Hermes options
+(--hermes-home, --bundle-only, --no-reload, --yes-deps) apply to the Hermes item.
+Standard library only.
 """
 import argparse
 import codecs
@@ -102,10 +103,12 @@ class Item:
     needs: str = ''                 # the host CLI this item needs, '' for none
     note: str = ''                  # why it is unavailable or what is special
     steps: list = field(default_factory=list)
+    missing: str = ''               # what else it needs that is absent, '' for nothing
+    refuse: str = ''                # why the selected options cannot be honored
 
     @property
     def available(self):
-        return not self.needs or shutil.which(self.needs) is not None
+        return not self.missing and (not self.needs or shutil.which(self.needs) is not None)
 
 
 def pi_package(source=PI_SOURCE):
@@ -117,23 +120,29 @@ def pi_package(source=PI_SOURCE):
     except (OSError, subprocess.SubprocessError):
         return None
     for i, line in enumerate(lines):
-        if line.strip() == source and i + 1 < len(lines):
+        # Pi marks a package with a filter as `<source> (filtered)`.
+        if line.split()[:1] == [source] and i + 1 < len(lines):
             return Path(lines[i + 1].strip())
     return None
 
 
+def set_aside(path):
+    """Move a file or symlink out of the way as <name>.bak, or .bak.N if that is taken,
+    so an earlier backup is never overwritten. Return where it went."""
+    backup, n = path.with_name(path.name + '.bak'), 1
+    while backup.exists() or backup.is_symlink():
+        backup, n = path.with_name(f'{path.name}.bak.{n}'), n + 1
+    os.replace(path, backup)
+    return backup
+
+
 def link(target, name):
-    """~/.local/bin/<name> -> target; an existing different file is kept as <name>.bak."""
+    """~/.local/bin/<name> -> target; an existing different file is kept as a backup."""
     BIN.mkdir(parents=True, exist_ok=True)
     path = BIN / name
     if path.is_symlink() and Path(os.readlink(path)) == target:
         return f'{path} already links to {target}'
-    if path.exists() or path.is_symlink():
-        backup = path.with_name(name + '.bak')
-        os.replace(path, backup)
-        note = f' (the old one is {backup})'
-    else:
-        note = ''
+    note = f' (the old one is {set_aside(path)})' if path.exists() or path.is_symlink() else ''
     path.symlink_to(target)
     return f'{path} -> {target}{note}'
 
@@ -147,11 +156,12 @@ def install_tx():
     if target.is_file() and target.read_bytes() == source.read_bytes():
         done.append(f'{target} is current')
     else:
-        if target.exists():
-            shutil.copy2(target, target.with_name('tx.bak'))
+        # Move the old one, a symlink included, rather than write through it: a link
+        # may point into another checkout.
+        note = f' (the old one is {set_aside(target)})' if target.exists() or target.is_symlink() else ''
         shutil.copy2(source, target)
         target.chmod(0o755)
-        done.append(f'installed {target}')
+        done.append(f'installed {target}{note}')
     for shell, folder, name in (('bash', HOME / '.local/share/bash-completion/completions', 'tx'),
                                 ('zsh', HOME / '.zsh/completions', '_tx'),
                                 ('fish', HOME / '.config/fish/completions', 'tx.fish')):
@@ -181,15 +191,24 @@ def install_tx():
     return '; '.join(done)
 
 
+def hermes_home(hermes_args):
+    """(home, given): the Hermes home the item works on, and whether it was named."""
+    given = hermes_args[hermes_args.index('--hermes-home') + 1] if '--hermes-home' in hermes_args else ''
+    named = given or os.environ.get('HERMES_HOME')
+    return Path(named or HOME / '.hermes'), bool(named)
+
+
 def hermes_installed(hermes_args):
     """The Hermes home when a profile already has its own Autowork plugin checkout (a
     `hermes plugins install` clone): those are updated, not linked to this checkout."""
-    given = hermes_args[hermes_args.index('--hermes-home') + 1] if '--hermes-home' in hermes_args else ''
-    home = Path(given or os.environ.get('HERMES_HOME') or HOME / '.hermes')
+    home, _ = hermes_home(hermes_args)
     for plugin in [home / 'plugins/autowork', *home.glob('profiles/*/plugins/autowork')]:
         if (plugin / '.git').exists() and plugin.resolve() != ROOT.resolve():
             return home
     return None
+
+
+SETUP_ONLY = ('--bundle-only', '--no-reload', '--yes-deps')
 
 
 def hermes_item(hermes_args):
@@ -197,11 +216,21 @@ def hermes_item(hermes_args):
     home = hermes_installed(hermes_args)
     if home:
         argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
-        return Item('hermes', label, needs='hermes',
+        item = Item('hermes', label, needs='hermes',
                     steps=[Step(f'update_bundle.py --hermes-home {home} (the profiles\' installed plugin)', argv)])
-    return Item('hermes', label, needs='hermes',
+        # update_bundle.py has none of these and restarts gateways, so it cannot honor them.
+        unsupported = [flag for flag in SETUP_ONLY if flag in hermes_args]
+        if unsupported:
+            item.refuse = (f'{", ".join(unsupported)} cannot apply: profiles here have their own plugin clone, '
+                           f'which update_bundle.py updates; rerun without them')
+        return item
+    item = Item('hermes', label, needs='hermes',
                 steps=[Step('setup_bundle.py ' + ' '.join(hermes_args),
                             [sys.executable, str(ROOT / 'setup_bundle.py'), *hermes_args])])
+    home, named = hermes_home(hermes_args)
+    if not named and not home.is_dir():  # a named home is checked by setup_bundle.py itself
+        item.missing = f'no Hermes home at {home}; start hermes once first'
+    return item
 
 
 def items(hermes_args):
@@ -234,9 +263,9 @@ def items(hermes_args):
 
 
 def describe(item):
-    if not item.available:
+    if item.needs and shutil.which(item.needs) is None:
         return f'{item.needs} not found'
-    return item.note
+    return item.missing or item.note
 
 
 # -- choosing ---------------------------------------------------------------------
@@ -311,8 +340,10 @@ def install(all_items, chosen, dry_run=False, output=None):
         current += 1
         if output.verbosity or dry_run:
             output.line(f'\n[{current}/{total}] {item.label}', 'heading')
-        if not item.available:
-            results.append((item.key, 'failed', describe(item)))
+        if not item.available or item.refuse:
+            results.append((item.key, 'failed', item.refuse or describe(item)))
+            if item.refuse:
+                output.line(f'  FAILED: {item.refuse}', 'failed')
             continue
         if not item.steps:
             results.append((item.key, 'skipped', item.note))

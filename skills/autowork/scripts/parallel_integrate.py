@@ -137,15 +137,60 @@ def verify(repo, common, slot, contracts):
     if blockers:
         raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
     report['pending_live'] = live_items(report.get('pending_live'))
-    if (not isinstance(report, dict) or report.get('task') != slot['task_id']
-            or report.get('commit') != commit or not isinstance(report.get('changed_files'), list)
-            or not all(isinstance(p, str) for p in report['changed_files'])
-            or sorted(report['changed_files']) != sorted(files)
-            or report.get('blockers') != [] or not isinstance(report.get('checks'), list)
-            or any(not isinstance(c, dict) or c.get('result') != 'pass' for c in report['checks'])):
-        raise Hold('report', 'report.json does not match worker commit/files or reports failure')
+    mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
+    if mismatch:
+        raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
     verify_scope(repo, common, slot, contracts, files)
     return files, report
+
+
+def report_mismatch(repo, report, task, commit, files):
+    """What in report.json disagrees with the worker's commit, or ''. A commit written as an
+    abbreviated SHA that names the same commit is the same commit."""
+    if report.get('task') != task:
+        return f'task is {report.get("task")!r}'
+    named = report.get('commit')
+    if named != commit:
+        try:
+            same = isinstance(named, str) and len(named) >= 7 and git(repo, 'rev-parse', '--verify',
+                                                                      named + '^{commit}') == commit
+        except ValueError:
+            same = False
+        if not same:
+            return f'commit is {named!r}, the branch is at {commit[:12]}'
+    changed_files = report.get('changed_files')
+    if not isinstance(changed_files, list) or not all(isinstance(p, str) for p in changed_files):
+        return 'changed_files is not a list of paths'
+    if sorted(changed_files) != sorted(files):
+        missing, extra = sorted(set(files) - set(changed_files)), sorted(set(changed_files) - set(files))
+        return f'changed_files differ from the commit (missing {missing[:5]}, extra {extra[:5]})'
+    if report.get('blockers') != []:
+        return 'it reports blockers'
+    checks = report.get('checks')
+    if not isinstance(checks, list) or any(not isinstance(c, dict) or c.get('result') != 'pass' for c in checks):
+        return 'a check did not pass'
+    return ''
+
+
+def passed(check):
+    """A validation run passed: it exited 0 with its inputs unchanged. Build daemons it left
+    behind (Gradle, Kotlin, Flutter) were killed at the boundary before anything is judged,
+    and the integration tree is checked separately, so they alone do not fail it."""
+    receipt = (check or {}).get('command_receipt') or {}
+    return (check or {}).get('outcome') == 'EXECUTED' or (
+        check.get('outcome') == 'CHILDREN_TERMINATED' and receipt.get('exit_code') == 0
+        and receipt.get('inputs_match') is True)
+
+
+def report_matches(repo, common, slot):
+    report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
+    if not isinstance(report, dict):
+        return False
+    try:
+        return not report_mismatch(repo, report, slot['task_id'], slot['commit'],
+                                   changed(repo, slot['baseline'], slot['commit']))
+    except ValueError:
+        return False
 
 
 def owned_elsewhere(repo, common, slot, contracts):
@@ -365,7 +410,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
                             receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
-                if (check['outcome'] != 'EXECUTED' or git(root, 'rev-parse', 'HEAD') != merge
+                if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
                     raise Hold('validation', 'integration validation failed or changed the integration tree')
                 with execution.lock(common / 'writer.lock'):
@@ -408,7 +453,7 @@ def validated_receipt(repo, common, slot):
     if receipt_path.parent != common or receipt_path.suffix != '.json':
         raise ValueError('validation receipt must be in repository execution state')
     saved = execution.read(receipt_path)
-    if (saved != checks or checks.get('outcome') != 'EXECUTED'
+    if (saved != checks or not passed(checks)
             or checks.get('context', {}).get('integration_commit') != info.get('commit')
             or checks.get('command_receipt', {}).get('exit_code') != 0
             or checks['command_receipt'].get('task_id') != slot['task_id']
@@ -544,11 +589,19 @@ def require_task_contract(items, expected, *, archived=False):
         raise ValueError(CONTRACT_CHANGED)
 
 
+def close_files(repo):
+    """The files a close writes, repository-relative where they can be."""
+    archive = archive_path(repo)
+    return ['TODO.md', 'goals.json', archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
+
+
 def close(repo, owner_pid, task):
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
-        require_no_writers(repo)
+        # Only the files a close writes: a person's session in the main checkout that is not
+        # editing them does not keep finished work open (interactive sessions work there).
+        require_no_writers(repo, close_files(repo))
         slot = slot_for(common, task)
         if not slot or slot['state'] not in ('integrated', 'closed'):
             raise ValueError('close requires an integrated slot with passing validation')
@@ -609,11 +662,11 @@ def _close_writes(repo, slot, task, indexed, goals):
             # IDs may be bold or code: `- [ ] **T-1 — Title**` (sierra).
             body = re.sub(r'(?m)^([ \t]*[-*] \[)[ xX](\][ \t]+(?:\*\*)?`?' + re.escape(task) + r'\b)', r'\g<1>x\2', body)
             body = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', body)
-            require_no_writers(repo)
+            require_no_writers(repo, close_files(repo))
             goals.atomic_write(todo, text[:block['start']] + body + text[block['end']:], expected_bytes=before)
     live = live_items((slot.get('report') or {}).get('pending_live'))
     followup = live_followup(repo, task, live, indexed) if live else None
-    require_no_writers(repo)
+    require_no_writers(repo, close_files(repo))
     archived_result = json.loads(goals_command(repo, 'archive', *([] if indexed else ['--verified-tasks', task])))
     # Read back exact target before journaling closure; archive can fail safely
     # after task mutation, in which case slot stays integrated and is retryable.
@@ -817,7 +870,7 @@ def cleanup_worker(repo, common, slot):
         if (git(root, 'status', '--porcelain', '--untracked-files=all')
                 or git(root, 'rev-parse', 'HEAD') != slot['commit']):
             return False
-        require_no_writers(root)
+        require_no_writers(root, [])  # a session only in the main checkout never touches this worktree
         execution.save(path, intent)  # Durable before either destructive operation.
         git(repo, 'worktree', 'remove', str(root))
     elif previous != intent:
@@ -874,15 +927,26 @@ def retry_held(args):
             # again, once, when no unsettled slot owns them any more (TOOLSET-157-cd): the
             # slot it waited for has integrated or was released. A fresh retry would only
             # reimplement the same change.
-            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and not s.get('reoffered')]
+            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and 'overlap' not in state.reoffered(s)]
             if overlapped:
                 by_id = {t['id']: t for t in dispatch.contracts(repo)}
                 order = list(by_id)  # TODO.md priority: of two such commits the higher one goes first
                 overlapped.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
                 free = next((s for s in overlapped if unowned(repo, common, s, by_id)), None)
                 if free is not None:
-                    slot = state.reoffer_overlap(common, free)
+                    slot = state.reoffer(common, free)
                     return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # A commit an earlier release held by misreading its evidence is offered again once:
+            # a report naming its commit by an abbreviated SHA, or a validation that passed but
+            # left build daemons behind. Integration repeats every check.
+            misread = next((s for s in current if s['state'] == 'held' and s.get('commit')
+                            and s.get('cause') not in state.reoffered(s) and not state.worker_live(s)
+                            and ((s.get('cause') == 'report' and report_matches(repo, common, s))
+                                 or (s.get('cause') == 'validation' and (s.get('checks') or {}).get('outcome')
+                                     == 'CHILDREN_TERMINATED' and passed(s.get('checks'))))), None)
+            if misread is not None:
+                slot = state.reoffer(common, misread)
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
             requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'

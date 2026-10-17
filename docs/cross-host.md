@@ -195,7 +195,9 @@ review timeouts (90 and 30 minutes), `PI_AUTOWORK_VALIDATE` (a command that must
 on every integrated task before the review), `PI_AUTOWORK_REVIEW=0` (skip the Pi
 review), retries, the failure limit, the fallback cooldown, total runtime,
 `PI_AUTOWORK_MAX_COST` with `PI_AUTOWORK_COST_WINDOW` (hours, default 24), the
-free memory each worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000) and
+memory one more worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000; twice it must be
+available), how long `/tmp` scratch may sit unused before it is removed
+(`PI_AUTOWORK_TMP_STALE`, default 7200 seconds, `0` off) and
 `PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
 
 The default way to run pi-autowork is a **systemd user service** per repository,
@@ -239,13 +241,13 @@ repository at once. Each service has its own model (`PI_AUTOWORK_PRIMARY` and
 repository can run on `openai-codex/gpt-6-luna` and another on
 `openrouter/deepseek/deepseek-v4.1-flash`; a reinstall keeps the chosen model.
 Reinstall after changing settings. The runner keeps itself current: while it has no
-task in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 600;
+task in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 120;
 `0` turns it off) it checks for a new release and runs `pi update` for its autowork
 package, one runner at a time across repositories. It installs only a release that,
 read from Git first, declares it can read the current execution state. It prefers a
 moment when no runner on the machine has work in flight, but waits for one at most
-`PI_AUTOWORK_UPDATE_WAIT` seconds (default 1800) from when the release was first seen,
-looking again every 5 minutes; busy runners rarely all pause at once, and they would
+`PI_AUTOWORK_UPDATE_WAIT` seconds (default 600) from when the release was first seen,
+looking again every 5 minutes or each check interval, whichever is shorter; busy runners rarely all pause at once, and they would
 otherwise never update. It logs why it waits once. When the toolset revision changed, by that or any other update,
 a running runner restarts itself on the new release at its next cycle and resumes its
 session; an update whose script does not parse is logged and the running code kept.

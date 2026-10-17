@@ -36,6 +36,7 @@ def note(kind):
                                  'cwd': os.getcwd(), 'tmpdir': os.environ.get('TMPDIR'),
                                  'slot': os.environ.get('AUTOWORK_SLOT'),
                                  'port_base': os.environ.get('AUTOWORK_PORT_BASE'),
+                                 'cache': os.environ.get('AUTOWORK_CACHE'),
                                  'marker': 'AUTOWORK_EXECUTION_COMMON' in os.environ}) + '\n')
 
 

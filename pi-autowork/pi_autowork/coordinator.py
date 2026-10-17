@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 
-from . import health, pi_runtime, questions, release, touches_inference, workspaces
+from . import health, janitor, pi_runtime, questions, release, touches_inference, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -45,6 +45,38 @@ MERGE_PROMPT = (
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
 
+def publishable(repo, paths):
+    """(paths auto work may commit, [(path, key, why not)]). A submodule pointer whose new commit
+    is on no branch of the submodule's remote stays uncommitted (TOOLSET-168-ff): the main branch
+    would point at a commit no other clone can fetch. An untracked nested repository stays out
+    too: adding it would record an embedded repository, not its files."""
+    links = set()
+    for line in (git(repo, 'ls-files', '-s', '--', *paths) or '').splitlines():
+        meta, _, path = line.partition('\t')
+        if meta.split(' ', 1)[0] == '160000':
+            links.add(path)
+    keep, held = [], []
+    for path in paths:
+        folder = Path(repo) / path
+        if path.rstrip('/') in links:
+            head = git(folder, 'rev-parse', 'HEAD') or ''
+            try:
+                subprocess.run(['git', '-C', str(folder), 'fetch', '-q'], capture_output=True, timeout=30,
+                               env=dict(os.environ, GIT_TERMINAL_PROMPT='0'))
+            except subprocess.TimeoutExpired:
+                pass
+            if not head or not git(folder, 'branch', '-r', '--contains', head):
+                held.append((path, head, f'Left {path} uncommitted: submodule commit {head[:12] or "?"} is not on '
+                                         'its remote yet'))
+                continue
+        elif (folder / '.git').exists():
+            held.append((path, 'nested', f'Left {path} uncommitted: it is a separate Git repository, not files of '
+                                         'this one'))
+            continue
+        keep.append(path)
+    return keep, held
+
+
 class Finish(Exception):
     def __init__(self, code, text):
         super().__init__(text)
@@ -67,8 +99,8 @@ class Coordinator:
         self.claim_idle = cfg['claim_idle']
         self.max_runtime = int(env.get('PI_AUTOWORK_MAX_RUNTIME', '0'))
         self.min_free_mb = env.get('PI_AUTOWORK_MIN_FREE_MB', '3000')
-        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '600'))
-        self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '1800'))
+        self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '120'))
+        self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '600'))
         self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
@@ -433,7 +465,7 @@ class Coordinator:
             paths.append(path)
             if status[0] in 'RC':
                 paths.append(next(entries, ''))  # the rename's source, so the commit records it
-        paths = [p for p in paths if p]
+        paths = self.publishable([p for p in paths if p])
         if not paths:
             return ''
         _, dispatch = touches_inference.modules(self.toolset)
@@ -463,6 +495,26 @@ class Coordinator:
         LOG.say(f'Committed uncommitted changes in {self.repo} ({shown}) so the session can merge'
                 + (f'; left untracked as possible secrets: {", ".join(kept)}' if kept else ''))
         return ''
+
+    def sweep_tmp(self):
+        """Stale agent scratch in RAM-backed /tmp goes, at most every 30 minutes per host
+        (janitor.py, TOOLSET-162-d2), so it cannot keep new workers from starting."""
+        try:
+            result = janitor.sweep_if_due(Path(self.state).parent)
+        except OSError:
+            return
+        if result and result[0]:
+            LOG.say(f'Removed {result[0]} stale /tmp entries ({result[1] / 2 ** 30:.1f} GB) that nothing had '
+                    f'used for {janitor.stale_after() // 60} min')
+
+    def publishable(self, paths):
+        """publishable(), with each held-back path logged once per commit."""
+        keep, held = publishable(self.repo, paths)
+        for path, key, message in held:
+            if self.seen.get('unpublishable-' + path) != key:
+                self.seen['unpublishable-' + path] = key
+                LOG.say(message)
+        return keep
 
     def commit_session_leftovers(self):
         """The session worktree is the runner's own: anything left there uncommitted (a close
@@ -540,8 +592,14 @@ class Coordinator:
             return
         LOG.say(f'{task}: {word}' + (f' — {reason}' if reason else ''))
 
-    def count_failure(self, task):
-        if self.seen.get('counted-' + task):
+    # Holds that say something is broken for every task (a worker that dies or produces nothing,
+    # a launch or a review that fails), and so earn the failure-streak pause. Holds shaped by the
+    # queue (overlap, scope, a conflict, a changed entry, a worker's own blocker) are about one
+    # task: three of them paused a whole runner for an hour.
+    SYSTEMIC = ('crash', 'empty', 'launch', 'validation', None, '')
+
+    def count_failure(self, task, cause=None):
+        if cause not in self.SYSTEMIC or self.seen.get('counted-' + task):
             return
         self.seen['counted-' + task] = True
         self.failures += 1
@@ -607,7 +665,7 @@ class Coordinator:
             # Only a failure this run watched happen counts toward the streak; holds found
             # at start (say after a self-restart) were counted by the run that saw them.
             if state == 'held' and before and before != 'failed':
-                self.count_failure(task)
+                self.count_failure(task, row.get('cause'))
         self.known_at_start = True
         if self.stop:
             return
@@ -640,7 +698,7 @@ class Coordinator:
                     if row and self.resolve_task_conflict(row):
                         continue
                 self.note_state(task, 'held', reason)
-                self.count_failure(task)
+                self.count_failure(task, result.get('cause'))
                 if task == self.once_task:
                     self.draining = True
             elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
@@ -725,7 +783,9 @@ class Coordinator:
             return self.widen_from_evidence(task, outside, requested)
         widened = self.helper('widen', self.integ, self.toolset, task, recorded, outside)
         if widened is None:
-            return False
+            # A person edited the list since the runner inferred it: the bounded grant still
+            # applies (a held task's Touches had been inferred once, then rewritten by hand).
+            return self.widen_from_evidence(task, outside, requested)
         if requested:
             self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
                         f'Its worker needs {outside}, outside the inferred Touches; it resumes in its worktree.')
@@ -1067,6 +1127,7 @@ class Coordinator:
         self.restart_if_updated()
         self.ensure_session()
         self.follow_base()
+        self.sweep_tmp()
         if not self.draining:
             if self.max_cycles and self.started_workers >= self.max_cycles:
                 self.draining = True
