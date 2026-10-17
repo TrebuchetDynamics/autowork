@@ -1,4 +1,4 @@
-"""`/blockers`: one picked question per blocked task; the owner answers, runners stay untouched.
+"""`/blockers`: only unresolved owner decisions become questions; runners stay untouched.
 
 The instruction checks are contracts only; they do not prove a model follows them.
 The routing checks run the Hermes command handlers offline.
@@ -21,9 +21,9 @@ class BlockersContract(unittest.TestCase):
     def setUp(self):
         self.ref = text(SKILL)
 
-    def test_starts_at_once_with_a_picker_per_blocked_task(self):
-        for phrase in ('starts a questionnaire at once', 'one question per blocked task',
-                       'Do not announce a plan or ask whether to begin', 'first question in the same turn',
+    def test_filters_routine_work_before_asking_for_missing_owner_decisions(self):
+        for phrase in ('Filter before asking', 'existing authorization', 'integration-only',
+                       'Do not announce a plan or ask whether to begin', 'first genuine question in the same turn',
                        'Hermes `clarify`', 'Claude Code `AskUserQuestion`', 'Codex `request_user_input`',
                        'Two to four choices', 'The recommended choice comes first', '`skip`', '`stop`'):
             self.assertIn(phrase, self.ref)
@@ -48,7 +48,7 @@ class BlockersContract(unittest.TestCase):
             self.assertIn(phrase, self.ref)
 
     def test_easiest_first_from_deterministic_effort(self):
-        for phrase in ('one question at a time', 'easiest first', 'Effort is deterministic from the kind, never guessed',
+        for phrase in ('one question at a time', 'easiest first', 'Order only the questions that survive filtering',
                        '| quick |', '| decision |', '| input |', '| investigate |',
                        'a larger `unblocks` count comes first, then the oldest'):
             self.assertIn(phrase, self.ref)
@@ -63,7 +63,7 @@ class BlockersContract(unittest.TestCase):
         for phrase in ('never starts, stops, restarts or reconfigures a runner',
                        'never launches an execution or repair session', 'never kills a session',
                        'never pushes', "Edit that task's TODO.md entry", "never edit inside the runner's marked block",
-                       'Commit only the planning files', 'do not push unless the owner asks', '--set-aside TASK'):
+                       'Commit only the planning files', 'route separately requested publication through Git Commit Push', '--set-aside TASK` belong to the runner'):
             self.assertIn(phrase, self.ref)
 
 

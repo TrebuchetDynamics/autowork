@@ -3,6 +3,38 @@
 Source: [setup orchestrator](../setup_bundle.py), [source installer](../install-plugins.sh),
 [profile defaults](../runtime_defaults.py), [native skill provisioning](../install_skills.py).
 
+## Full suite from a checkout
+
+`./install.sh` opens the component menu with every available host selected.
+For the complete suite without a menu:
+
+```sh
+./install.sh --full --verbose
+./install.sh --full --dry-run
+./install.sh --only codex --verbose
+```
+
+The suite includes the Pi package, `autowork` command/TUI, `tx` launcher, Hermes
+fleet setup, and Claude Code and Codex plugins with their complete portable skill
+suites. `--all` is an alias for `--full`; `--skip` excludes components. Host CLIs
+must already be installed: full mode reports missing hosts as skipped, while
+`--only` reports a requested missing host as failed. The TUI/web view needs `uv`,
+and using the tmux launcher needs `tmux`.
+
+Output streams during each install step, including native prompts. `--verbose`
+adds shell-quoted commands; `--quiet` shows summaries and failure diagnostics,
+while leaving native output visible when input is a terminal. The failure
+transcript in quiet mode is limited to its last 16,384 characters. Colors are
+automatic on terminals (`NO_COLOR=1` or `TERM=dumb` disables them); use
+`--color always`, `--color never`, or `--color auto` to override. Each summary
+reports installed, planned, skipped and failed components with total elapsed
+time. A failed command stops that component, continues independent components,
+and causes a nonzero exit. Even an error mentioning “already” remains a failure.
+
+`--dry-run` prints selected commands without installing. `--hermes-home`,
+`--bundle-only`, `--no-reload` and `--yes-deps` apply only to Hermes. Host security
+and dependency prompts still apply; full mode does not supply consent flags.
+
 ## Install
 
 Prerequisites: configured Hermes, Bash and Python 3.12+. Full setup also needs Git
@@ -30,8 +62,8 @@ existing live profile:
 bash install-plugins.sh --yes-deps
 ```
 
-`install.sh`, `install-plugins.sh`, and `hermes autowork setup` share the same
-complete setup path: bundled skills, plugin installation/enablement, profile
+The Hermes item in `install.sh`, `install-plugins.sh`, and `hermes autowork setup`
+share the same complete setup path: bundled skills, plugin installation/enablement, profile
 configuration, OMH setup, per-profile readiness checks, and running-gateway command
 refresh. No manual symlinks or per-profile enable commands are needed. Use
 `--dry-run` to preview, `--bundle-only` to install only this bundle and its native

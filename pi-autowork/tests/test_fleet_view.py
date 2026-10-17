@@ -172,9 +172,30 @@ class FleetViewTests(unittest.TestCase):
                     mock.patch.object(fleet_view.Runner, 'has_service', False):
                 self.assertEqual(self.collect()['india'].state, state, age)
 
-    def test_the_log_drops_the_pending_line_of_every_waiting_task(self):
-        text = '[19:48] Started (PID 1).\n[19:48] TASK-034: pending — dependency: TASK-035\n[19:49] TASK-037: done'
-        self.assertEqual(fleet_view.quiet_log(text), '[19:48] Started (PID 1).\n[19:49] TASK-037: done')
+    def test_the_log_reads_as_events(self):
+        # india's journal: systemd's unit lines, the start banner, a pending line per waiting
+        # task and a result printed again are noise; a start or a stop is one rule line.
+        text = '\n'.join([
+            '[22:26] TASK-011: running — worker started',
+            'Stopping pi-autowork@india.service - pi-autowork for india...',
+            '[22:36] Stopping: pausing workers so they resume on the next start, then merging finished work',
+            '[22:37] Stopped. Unfinished tasks keep their worktrees and resume on the next start.',
+            'pi-autowork@india.service: Consumed 9min 11.873s CPU time, 6.0G memory peak, 0B memory swap peak.',
+            'Started pi-autowork@india.service - pi-autowork for india.',
+            'PI AUTOWORK', 'Repository: /r (merges into main)', 'Toolset:    /t at 3848aaa (not a Pi package)',
+            'Mode:       continuous; state in /s',
+            '[22:37] Started (PID 244196). Stop with Ctrl+C.',
+            '[22:37] TASK-034: pending — dependency: TASK-035',
+            '[22:37] TASK-011: running — worker started',
+            '[22:37] TASK-011: failed — report.json pending_live must be a list of strings',
+            '[22:37] Questions for the owner in BLOCKERS.md: 4 open (easiest: TASK-036, decision)'])
+        self.assertEqual(fleet_view.log_lines(text), [
+            ('[22:26] TASK-011: running — worker started', 'cyan'),
+            ('[22:36] ── stopping: workers pause and resume on the next start ──', 'bold'),
+            ('[22:37] ── stopped ──', 'bold'),
+            ('[22:37] ── started ──', 'bold'),
+            ('[22:37] TASK-011: failed — report.json pending_live must be a list of strings', 'bold red'),
+            ('[22:37] Questions for the owner in BLOCKERS.md: 4 open (easiest: TASK-036, decision)', 'yellow')])
 
     def test_agent_for_blockers(self):
         self.assertEqual(fleet_view.blockers_agent({'AUTOWORK_AGENT': 'pi --model x', 'PATH': ''}), ['pi', '--model', 'x'])

@@ -90,6 +90,7 @@ class Runner:
     model: str = ''
     fallback: str = ''
     questions: list = field(default_factory=list)  # the owner's open questions in BLOCKERS.md
+    toolset: str = ''         # PI_AUTOWORK_TOOLSET: the service runs this checkout, not the Pi package
 
     @property
     def color(self):
@@ -307,12 +308,51 @@ def needs(runner):
     return ''
 
 
-PENDING_LINE = re.compile(r'^\[\d\d:\d\d\] \S+: pending — ')
+TASK_LINE = re.compile(r'^\[(\d\d:\d\d)\] (\S+): (\w+)\b')
+# systemd's own lines about the unit, and the runner's start banner (its settings are in the detail).
+UNIT_LINE = re.compile(r'^(Starting|Started|Stopping|Stopped) pi-autowork@|^pi-autowork@\S+: ')
+BANNER = re.compile(r'^(PI AUTOWORK$|Repository: |Toolset: |Engine: |Primary: |Fallback: |Budget: |Mode: )')
+WORD_STYLES = {'done': 'green', 'integrated': 'green', 'failed': 'bold red', 'running': 'cyan',
+               'verifying': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan'}
+
+
+def log_lines(text):
+    """[(line, style)]: the journal as a person reads it. Per-task `pending` lines (the
+    `No task can start now` line covers them), systemd's unit lines, the start banner and
+    the results a restart printed again are dropped; a start or stop is one rule line."""
+    out, last = [], {}
+    for line in text.splitlines():
+        if UNIT_LINE.match(line) or BANNER.match(line) or not line.strip():
+            continue
+        if ' Started (PID ' in line:
+            out.append((f'{line[:7]} ── started ──', 'bold'))
+            continue
+        if '] Stopping: ' in line:
+            out.append((f'{line[:7]} ── stopping: workers pause and resume on the next start ──', 'bold'))
+            continue
+        if '] Stopped. ' in line:
+            out.append((f'{line[:7]} ── stopped ──', 'bold'))
+            continue
+        task = TASK_LINE.match(line)
+        if task:
+            _, name, word = task.groups()
+            if word == 'pending' or last.get(name) == word:
+                continue
+            last[name] = word
+            out.append((line, WORD_STYLES.get(word, '')))
+            continue
+        if 'Questions for the owner' in line or 'No task can start' in line or 'Merge pending' in line:
+            out.append((line, 'yellow'))
+        elif 'needs attention' in line or 'failed' in line.lower():
+            out.append((line, 'red'))
+        else:
+            out.append((line, ''))
+    return out
 
 
 def quiet_log(text):
-    """The log without the per-task `pending —` lines the runner prints every cycle."""
-    return '\n'.join(line for line in text.splitlines() if not PENDING_LINE.match(line))
+    """log_lines without styles."""
+    return '\n'.join(line for line, _ in log_lines(text))
 
 
 def blockers(runner, limit=6):
@@ -371,6 +411,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.repo = runner.repo or settings.get('PI_AUTOWORK_REPO', '').strip()
         runner.model = settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL
         runner.fallback = settings.get('PI_AUTOWORK_FALLBACK') or DEFAULT_FALLBACK
+        runner.toolset = settings.get('PI_AUTOWORK_TOOLSET', '').strip()
         runner.enabled = subprocess.run([systemctl, '--user', 'is-enabled', '--quiet', f'pi-autowork@{name}.service'],
                                         capture_output=True).returncode == 0
     folders = {}

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Install autowork's components from one menu: every item checked by default.
+"""Install the full Autowork suite with verbose output by default.
 
-    install.sh                 a checkbox menu on a terminal (arrows, Space, Enter)
-    install.sh --all           everything available, no menu
+    install.sh                every available component, live output and exact commands
+    install.sh --menu         a checkbox menu on a terminal (arrows, Space, Enter)
+    install.sh --full          the full suite for available hosts, no menu (--all also works)
     install.sh --only tx,pi    just these; --skip hermes leaves those out
     install.sh --list          the items and whether each host is available
     install.sh --dry-run ...   print each command instead of running it
@@ -12,18 +13,79 @@ installed is skipped and says so. Hermes options (--hermes-home, --bundle-only,
 --no-reload, --yes-deps) apply to the Hermes item. Standard library only.
 """
 import argparse
+import codecs
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = 'TrebuchetDynamics/autowork'
 PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
 HOME = Path(os.environ.get('HOME', str(Path.home())))
 BIN = Path(os.environ.get('AUTOWORK_BIN_DIR') or HOME / '.local' / 'bin')
+
+
+class Output:
+    """Flush progress immediately; color only where requested or supported."""
+    COLORS = {'heading': '1;36', 'installed': '32', 'failed': '31',
+              'skipped': '33', 'planned': '36', 'command': '2'}
+
+    def __init__(self, color='auto', verbosity=2):
+        self.verbosity = verbosity
+        self.color = color == 'always' or (color == 'auto' and sys.stdout.isatty()
+                      and os.environ.get('TERM') != 'dumb' and not os.environ.get('NO_COLOR'))
+
+    def line(self, message='', style=''):
+        if self.color and style in self.COLORS:
+            message = f'\033[{self.COLORS[style]}m{message}\033[0m'
+        print(message, flush=True)
+
+    def raw(self, message):
+        print(message, end='', flush=True)
+
+
+def run_command(argv, output):
+    """Stream both child channels, including prompts without a trailing newline.
+
+    Keep a bounded diagnostic tail for quiet failures; stdin remains inherited.
+    Quiet mode still shows native prompts/output when input is a terminal.
+    """
+    env = dict(os.environ, PYTHONUNBUFFERED='1')
+    if not output.color:
+        env['NO_COLOR'] = '1'
+    stream = output.verbosity > 0 or sys.stdin.isatty()
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+    tail = ''
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env) as child:
+        try:
+            while chunk := child.stdout.read1(4096):
+                text = decoder.decode(chunk)
+                tail = (tail + text)[-16384:]
+                if stream:
+                    output.raw(text)
+            text = decoder.decode(b'', final=True)
+            tail = (tail + text)[-16384:]
+            if stream:
+                output.raw(text)
+            code = child.wait()
+        except BaseException:
+            child.terminate()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+            raise
+    if stream and tail and not tail.endswith('\n'):
+        output.line()
+    if code and not stream and tail:
+        output.line(tail.rstrip(), 'failed')
+    return code, tail.strip()
 
 
 @dataclass
@@ -119,6 +181,29 @@ def install_tx():
     return '; '.join(done)
 
 
+def hermes_installed(hermes_args):
+    """The Hermes home when a profile already has its own Autowork plugin checkout (a
+    `hermes plugins install` clone): those are updated, not linked to this checkout."""
+    given = hermes_args[hermes_args.index('--hermes-home') + 1] if '--hermes-home' in hermes_args else ''
+    home = Path(given or os.environ.get('HERMES_HOME') or HOME / '.hermes')
+    for plugin in [home / 'plugins/autowork', *home.glob('profiles/*/plugins/autowork')]:
+        if (plugin / '.git').exists() and plugin.resolve() != ROOT.resolve():
+            return home
+    return None
+
+
+def hermes_item(hermes_args):
+    label = 'Hermes plugin (sets up every live profile)'
+    home = hermes_installed(hermes_args)
+    if home:
+        argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
+        return Item('hermes', label, needs='hermes',
+                    steps=[Step(f'update_bundle.py --hermes-home {home} (the profiles\' installed plugin)', argv)])
+    return Item('hermes', label, needs='hermes',
+                steps=[Step('setup_bundle.py ' + ' '.join(hermes_args),
+                            [sys.executable, str(ROOT / 'setup_bundle.py'), *hermes_args])])
+
+
 def items(hermes_args):
     package = pi_package()
     pi = Item('pi', 'Pi package', needs='pi', note='needs Node 22+')
@@ -136,13 +221,11 @@ def items(hermes_args):
              steps=[Step(f'link {BIN}/autowork to the autowork release', run=lambda: link(command(), 'autowork'))]),
         Item('tx', 'tx tmux session launcher', note='keeps your existing ~/.tmux.conf',
              steps=[Step(f'install {BIN}/tx and completions', run=install_tx)]),
-        Item('hermes', 'Hermes plugin (sets up every live profile)', needs='hermes',
-             steps=[Step('setup_bundle.py ' + ' '.join(hermes_args), [sys.executable, str(ROOT / 'setup_bundle.py'),
-                                                                    *hermes_args])]),
-        Item('claude', 'Claude Code plugin', needs='claude',
+        hermes_item(hermes_args),
+        Item('claude', 'Claude Code plugin and full portable skill suite', needs='claude',
              steps=[Step(f'claude plugin marketplace add {SOURCE}', ['claude', 'plugin', 'marketplace', 'add', SOURCE]),
                     Step('claude plugin install autowork@autowork', ['claude', 'plugin', 'install', 'autowork@autowork'])]),
-        Item('codex', 'Codex plugin', needs='codex',
+        Item('codex', 'Codex plugin and full portable skill suite', needs='codex',
              steps=[Step(f'codex plugin marketplace add {SOURCE} --ref main',
                          ['codex', 'plugin', 'marketplace', 'add', SOURCE, '--ref', 'main']),
                     Step('codex plugin add autowork@autowork-marketplace',
@@ -212,56 +295,92 @@ def choose_text(all_items, chosen, read=input, write=print):
 
 
 # -- installing -------------------------------------------------------------------
-def install(all_items, chosen, dry_run=False, write=print):
+def install(all_items, chosen, dry_run=False, output=None):
+    output = output or Output()
     results = []
+    total = len(chosen)
+    current = 0
+    started = time.monotonic()
+    if output.verbosity or dry_run:
+        output.line('Autowork full suite installer' + (' — preview' if dry_run else ''), 'heading')
+        output.line('Selected: ' + (', '.join(i.key for i in all_items if i.key in chosen) or 'none'))
     for item in all_items:
         if item.key not in chosen:
             results.append((item.key, 'skipped', describe(item) if not item.available else 'not chosen'))
             continue
+        current += 1
+        if output.verbosity or dry_run:
+            output.line(f'\n[{current}/{total}] {item.label}', 'heading')
+        if not item.available:
+            results.append((item.key, 'failed', describe(item)))
+            continue
         if not item.steps:
             results.append((item.key, 'skipped', item.note))
             continue
-        write(f'\n== {item.label}')
         outcome, detail = 'installed', []
-        for step in item.steps:
-            write(f'  {step.describe}')
+        for index, step in enumerate(item.steps, 1):
+            if output.verbosity or dry_run:
+                output.line(f'  ({index}/{len(item.steps)}) {step.describe}')
+            if step.argv and (output.verbosity > 1 or dry_run):
+                output.line('  $ ' + shlex.join(step.argv), 'command')
             if dry_run:
                 detail.append('dry run')
                 continue
+            step_started = time.monotonic()
             try:
                 if step.run:
-                    detail.append(step.run())
+                    message = step.run()
+                    detail.append(message)
+                    if output.verbosity:
+                        output.line('  ' + message)
                 else:
-                    result = subprocess.run(step.argv, capture_output=True, text=True)
-                    text = (result.stdout + result.stderr).strip()
-                    if result.returncode and 'already' not in text.lower():
+                    code, text = run_command(step.argv, output)
+                    if code:
                         outcome = 'failed'
-                        detail.append(text.splitlines()[-1] if text else f'exit {result.returncode}')
+                        cause = text.splitlines()[-1] if text else 'command failed'
+                        detail.append(f'{cause} (exit {code})')
+                        output.line(f'  FAILED: {step.describe} (exit {code})', 'failed')
                         break
-                    detail.append('already there' if result.returncode else 'ok')
+                    detail.append('ok')
+                if output.verbosity:
+                    output.line(f'  Done in {time.monotonic() - step_started:.1f}s', 'installed')
             except (OSError, subprocess.SubprocessError) as exc:
                 outcome = 'failed'
                 detail.append(str(exc))
+                output.line(f'  FAILED: {exc}', 'failed')
                 break
         results.append((item.key, 'planned' if dry_run else outcome, '; '.join(d for d in detail if d)))
-    write('\nSummary:')
+    output.line('\nSummary:', 'heading')
     for key, outcome, detail in results:
-        write(f'  {key:<9} {outcome:<9} {detail}')
-    return 1 if any(outcome == 'failed' for _, outcome, _ in results) else 0
+        output.line(f'  {key:<9} {outcome:<9} {detail}', outcome)
+    counts = {state: sum(outcome == state for _, outcome, _ in results)
+              for state in ('installed', 'planned', 'skipped', 'failed')}
+    output.line('\n' + ', '.join(f'{count} {state}' for state, count in counts.items())
+                + f' — {time.monotonic() - started:.1f}s', 'failed' if counts['failed'] else 'heading')
+    if any(key in ('claude', 'codex', 'pi') and outcome == 'installed' for key, outcome, _ in results):
+        output.line('Open a new host session to discover the installed skills.')
+    return int(bool(counts['failed']))
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--all', action='store_true', help='install every available item without a menu')
-    parser.add_argument('--only', help='comma-separated items to install (pi,autowork,tx,hermes,claude,codex)')
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--all', '--full', action='store_true', help='install the full suite for every available host (default)')
+    selection.add_argument('--only', help='comma-separated items to install (pi,autowork,tx,hermes,claude,codex)')
     parser.add_argument('--skip', help='comma-separated items to leave out')
     parser.add_argument('--list', action='store_true', help='show the items and whether each is available')
     parser.add_argument('--dry-run', action='store_true', help='print each command instead of running it')
-    parser.add_argument('--menu', action='store_true', help='always show the menu')
+    parser.add_argument('--menu', action='store_true', help='choose components using the checkbox menu')
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument('-v', '--verbose', action='store_true', help='show exact commands as well as live output (default)')
+    verbosity.add_argument('-q', '--quiet', action='store_true', help='show summary and failures only (native terminal prompts remain visible)')
+    parser.add_argument('--color', choices=('auto', 'always', 'never'), default='auto',
+                        help='color output (default: auto; respects NO_COLOR)')
     for flag in ('--bundle-only', '--no-reload', '--yes-deps'):
         parser.add_argument(flag, action='store_true', help='passed to the Hermes item')
     parser.add_argument('--hermes-home', help='passed to the Hermes item')
     args = parser.parse_args(argv)
+    output = Output(args.color, 0 if args.quiet else 2)
     hermes = [f for f, on in (('--bundle-only', args.bundle_only), ('--no-reload', args.no_reload),
                               ('--yes-deps', args.yes_deps), ('--dry-run', args.dry_run)) if on]
     if args.hermes_home:
@@ -274,28 +393,33 @@ def main(argv=None):
             parser.error(f'unknown item(s): {", ".join(unknown)}; choose from {", ".join(keys)}')
     if args.list:
         for item in all_items:
-            print(f"  {item.key:<9} {'available' if item.available else 'unavailable':<12} {item.label}"
-                  + (f' ({describe(item)})' if describe(item) else ''))
+            output.line(f"  {item.key:<9} {'available' if item.available else 'unavailable':<12} {item.label}"
+                  + (f' ({describe(item)})' if describe(item) else ''),
+                        'installed' if item.available else 'skipped')
         return 0
     chosen = {i.key for i in all_items if i.available}
     if args.only:
-        chosen &= set(args.only.split(','))
+        chosen = {k for k in args.only.split(',') if k}
     if args.skip:
         chosen -= set(args.skip.split(','))
-    menu = args.menu or not (args.all or args.only or args.skip)
+    menu = args.menu
     if menu and not (sys.stdin.isatty() and sys.stdout.isatty()) and os.environ.get('AUTOWORK_INSTALL_UI') != 'text':
         parser.error('no terminal for the menu; choose with --all, --only or --skip (see --list)')
     if menu:
         try:
             go = choose_curses(all_items, chosen) if os.environ.get('AUTOWORK_INSTALL_UI') != 'text' \
-                else choose_text(all_items, chosen)
+                else choose_text(all_items, chosen, write=output.line)
         except Exception:  # no usable terminal for curses: the numbered menu
-            go = choose_text(all_items, chosen)
+            go = choose_text(all_items, chosen, write=output.line)
         if not go:
             print('Nothing installed.')
             return 0
-    return install(all_items, chosen, dry_run=args.dry_run)
+    return install(all_items, chosen, dry_run=args.dry_run, output=output)
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        print('\nInstallation interrupted; completed steps remain installed.', file=sys.stderr)
+        raise SystemExit(130)

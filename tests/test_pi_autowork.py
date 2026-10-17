@@ -475,6 +475,25 @@ class EngineTests(Fixture):
         self.assertEqual(len(sessions), 4, sessions)
         self.assertTrue(all(s.endswith('-attempt-1') for s in sessions), sessions)
 
+    def test_a_restart_does_not_replay_earlier_results(self):
+        """india: every start printed each finished task again, as if it were new."""
+        self.plan({'worker:B': ['sleep', 'complete']})
+        runner = self.start_runner()
+        self.wait_for(self.root / 'sleeping-B')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'A: done' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertNotIn('A: done', result.stdout)
+        self.assertIn('B: done', result.stdout)
+        self.assertNotIn(': pending', result.stdout)
+
     def test_a_killed_coordinator_restarts_at_once_and_adopts_live_workers(self):
         """Live qualification found a restart refused while a dead runner's helper held the lock."""
         self.plan({'worker:A': ['slow']})
