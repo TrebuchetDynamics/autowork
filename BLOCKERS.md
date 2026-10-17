@@ -8,6 +8,13 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
+### Q-TOOLSET-099-87 — USER_INPUT — effort input — unblocks 0
+
+- Task: TOOLSET-099-87 — Run as many independent tasks at once as possible
+- Needs: worker reported a blocker: Combined offline qualification cannot pass in the supplied worker environment. Coordinator must provide an approved task-owned TMPDIR outside any Git checkout, short enough for AF_UNIX socket filenames and without autowork in its path, plus an isolated offline-test environment that does not inherit worker model settings and that permits only local fixture Git transport. The current explicitly supp…
+- Since: 2026-10-17T19:43:20Z
+- Answer: Answer in TOOLSET-099-87's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
+
 ### Q-TOOLSET-142-85 — USER_DECISION — effort investigate — unblocks 1
 
 - Task: TOOLSET-142-85 — Query pending and completed tasks from repository evidence without writes
