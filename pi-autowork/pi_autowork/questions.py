@@ -19,7 +19,7 @@ import re
 START = '<!-- pi-autowork:questions:start -->'
 END = '<!-- pi-autowork:questions:end -->'
 EFFORT_ORDER = ('quick', 'decision', 'input', 'investigate')
-INPUT_CAUSES = ('blocker', 'scope_request')
+INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
 
 
 def _title(todo, task, goals):

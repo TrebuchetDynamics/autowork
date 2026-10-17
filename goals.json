@@ -656,7 +656,8 @@
         "TOOLSET-158-08",
         "TOOLSET-159-30",
         "TOOLSET-160-df",
-        "TOOLSET-161-17"
+        "TOOLSET-161-17",
+        "TOOLSET-162-d2"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -667,9 +668,7 @@
       "TOOLSET-161-17",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
-      "TOOLSET-157-cd",
-      "TOOLSET-160-df",
-      "TOOLSET-152-d4",
+      "TOOLSET-162-d2",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
       "TOOLSET-154-d3",
@@ -812,14 +811,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-152-d4",
-      "section": "Now",
-      "status": "open",
-      "title": "Widen a held task's Touches by the exact paths its worker names, then reverify the same candidate"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-153-64",
       "section": "Now",
       "status": "open",
@@ -844,14 +835,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-157-cd",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "Held slots release file ownership so holds cannot deadlock the queue"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-158-08",
       "section": "Now",
       "status": "open",
@@ -860,18 +843,18 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-160-df",
-      "section": "Now",
-      "status": "open",
-      "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-161-17",
       "section": "Now",
       "status": "open",
       "title": "Touches schedules work but never holds it: integrate by merge, rebase on conflict"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-162-d2",
+      "section": "Now",
+      "status": "open",
+      "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
     },
     {
       "depends_on": [],
@@ -2072,10 +2055,34 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-152-d4",
+      "section": "Done",
+      "status": "done",
+      "title": "Widen a held task's Touches by the exact paths its worker names, then reverify the same candidate"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-157-cd",
+      "section": "Done",
+      "status": "done",
+      "title": "Held slots release file ownership so holds cannot deadlock the queue"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-159-30",
       "section": "Done",
       "status": "done",
       "title": "A git timeout under host load waits as busy, not as an engine fault"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-160-df",
+      "section": "Done",
+      "status": "done",
+      "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
     },
     {
       "depends_on": [

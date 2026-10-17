@@ -103,13 +103,16 @@ A task runs beside others only when the planner can prove it is independent:
 - `Resources: live` or `Resources: exclusive` makes a task run alone. Other names
   (for example `Resources: port-8080, test-db`) keep tasks that share a name from
   running together.
-- A task without `Touches:`, or one touching a serial path (dependency manifests
-  and lock files, `migration(s)/` and `schema(s)/` directories, CI files such as
-  `.github/workflows/`), runs alone. Because it ran alone, a task without `Touches:`
-  may change any file except coordinator-owned ones when it integrates.
+- A task without `Touches:` runs alone. Because it ran alone, it may change any file
+  except coordinator-owned ones when it integrates.
+- A task touching a serial path (dependency manifests and lock files, `migration(s)/`
+  and `schema(s)/` directories, CI files such as `.github/workflows/`) never runs beside
+  another task that touches a serial path (`serial path shared with <task>`), but runs
+  beside independent work: each worker has its own worktree, so its manifest change
+  cannot break a neighbour's build.
   Directory scopes use the repository's tracked and nonignored untracked protected
   files: `test/shaders/` is not exclusive merely because a manifest could be created
-  there. Explicit manifest paths and schema/migration/CI directories remain exclusive
+  there. Explicit manifest paths and schema/migration/CI directories remain serial
   even before they exist. A worker introducing a new protected file through an ordinary
   directory scope is held at verification until its task explicitly reserves serial work.
 - Dependencies and TODO.md priority still apply: a task waits for its
@@ -117,8 +120,9 @@ A task runs beside others only when the planner can prove it is independent:
   prose is ignored, a first clause starting with `none` means none, and a line naming
   no task at all stays an unresolved outside condition. A lower-priority task starts past a higher-priority one
   that cannot start yet only when it shares no path, resource or dependency with it,
-  so priority still decides every overlap. A task that must run alone and waits on
-  running work stops all lower-priority dispatch so the pool drains for it.
+  so priority still decides every overlap. A task that must run alone (no `Touches:`,
+  or a `live`/`exclusive` resource) and waits on running work stops all lower-priority
+  dispatch so the pool drains for it; a serial task does not.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
   overlapping tasks until closed. A `held` or `interrupted` slot whose task is now done
   or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
@@ -171,7 +175,8 @@ nothing parallel was claimed or started.
   canonical HEAD, keeping the first branch. Retries use the same dependency,
   Touches, resource and capacity checks as fresh tasks, and receive a free worker
   slot. Independent retries and fresh tasks can run together; a retry with unknown
-  scope, serial paths or exclusive resources still runs alone. When the first commit
+  scope or exclusive resources still runs alone, and one with serial paths never runs
+  beside other serial work. When the first commit
   was held only for scope
   (`changed files violate Touches`) and the retry made no commit, refill returns
   `READOPTED` and sets the first commit back to `reported`, once: scope can change

@@ -124,6 +124,9 @@ def protected_path(path):
     return any(fnmatchcase(path, p + '*' if p.endswith('/') else p) for p in SERIAL_PATHS)
 
 
+SERIAL_REASON = 'serial path; must run alone'
+
+
 def _solo(task, protected_files=None):
     touches = _touches(task)
     if not touches:
@@ -142,7 +145,7 @@ def _solo(task, protected_files=None):
             else _shared([p], SERIAL_PATHS)
             for p in touches)
     if serial:
-        return 'serial path; must run alone'
+        return SERIAL_REASON
     return ''
 
 
@@ -199,6 +202,11 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     """
     tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
     solo = lambda task: _solo(task, protected_files)
+    # A serial file (manifest, lockfile, CI, migration) conflicts only with other serial
+    # work: each worker has its own worktree, so it cannot break a neighbour's build
+    # (TOOLSET-160-df). Only an exclusive task runs alone and stops lower dispatch.
+    serial = lambda task: solo(task) == SERIAL_REASON
+    exclusive = lambda task: '' if serial(task) else solo(task)
     known = {t['id']: t for t in [*all_tasks, *tasks, *running, *parked]}
     active = {t['id']: t for t in running}
     invalid = {}
@@ -242,10 +250,14 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
                 return 'overlapping paths with ' + other
             if _resources(a) & _resources(b):
                 return 'shared resource with ' + other
+            if serial(a) and serial(b):
+                return 'serial path shared with ' + other
             return ''
-        exclusive = solo(a) or solo(b)
-        if exclusive:
-            return exclusive + ' (beside ' + b['id'] + ')'
+        alone = exclusive(a) or exclusive(b)
+        if alone:
+            return alone + ' (beside ' + b['id'] + ')'
+        if serial(a) and serial(b):
+            return 'serial path shared with ' + b['id']
         if _shared(_touches(a), _touches(b)):
             return 'overlapping paths with ' + b['id']
         if _resources(a) & _resources(b):
@@ -254,7 +266,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
 
     # Backfill: a task may start past a waiting higher-priority one only when it shares
     # nothing with it (paths, resources, dependencies), so priority still decides every
-    # overlap. A task that must run alone and waits on running or just-dispatched work
+    # overlap. An exclusive task (it must run alone) that waits on running or just-dispatched work
     # stops all lower dispatch, or backfill would keep the pool from draining for it;
     # one waiting only on a claim or another waiting task gains nothing from a stop.
     def first(task, others, **kind):
@@ -277,12 +289,12 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
         if not reason:
             reason, by = first(task, reserved, reserved=True)
         if reason:
-            if not stopped[0] and busy[0] and solo(task):
+            if not stopped[0] and busy[0] and exclusive(task):
                 stopped = ('priority waits for ' + tid, tid)
             reserved.append(task)
             waiting.append({'id': tid, 'reason': reason, 'blocked_by': [by]})
         else:
             dispatch.append(task)
-            if solo(task):
-                stopped = ('priority task ' + tid + ': ' + solo(task), tid)
+            if exclusive(task):
+                stopped = ('priority task ' + tid + ': ' + exclusive(task), tid)
     return {'dispatch': dispatch, 'waiting': waiting}

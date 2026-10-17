@@ -147,6 +147,17 @@ elif behavior == 'move_main':  # another writer commits a conflicting file to ma
     subprocess.run(['git', '-C', main, 'add', '-A'])
     subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
     finish(text='done')
+elif behavior == 'move_session':  # the session branch changes the task's own file meanwhile
+    work()
+    listing = subprocess.run(['git', '-C', os.environ['FAKE_MAIN_REPO'], 'worktree', 'list', '--porcelain'],
+                             capture_output=True, text=True).stdout
+    session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
+                   if 'branch refs/heads/pi-autowork/' in b)
+    open(os.path.join(session, task + '.txt'), 'w').write('from the session\n')
+    subprocess.run(['git', '-C', session, 'add', '-A'])
+    subprocess.run(['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
+                    'commit', '-qm', 'session moved'])
+    finish(text='done')
 elif behavior == 'provider_error':
     open(task + '-partial.txt', 'w').write('half\n')
     finish(stop='error', error='429 rate limit exceeded (sk-secret123456789)')
@@ -834,13 +845,15 @@ class EngineTests(Fixture):
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # same commit, no rerun
         self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
 
-    def test_authored_touches_are_never_widened(self):
+    def test_a_commit_outside_authored_touches_is_widened_once_and_reverified(self):
+        """TOOLSET-152-d4: the same commit is verified again, with no new attempt."""
         self.plan({'worker:A': ['extra', 'extra']})
         result = self.run_runner('--until-empty')
-        self.assertNotIn('widened them', result.stdout)
-        self.assertIn('A: failed', result.stdout)
-        self.assertFalse((self.repo / 'A-extra.txt').exists())
-
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its commit changed files outside Touches (A-extra.txt); widened them once and verifying again',
+                      result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
     def test_a_worker_asking_for_files_outside_inferred_touches_resumes_after_widening(self):
         """sierra TASK-024, bravo TASK-005: a worker needed one more file and stopped."""
         text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
@@ -871,7 +884,26 @@ class EngineTests(Fixture):
         self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt)', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
 
-    def test_a_worker_asking_for_files_outside_authored_touches_waits_for_a_person(self):
+    def test_a_worker_asking_for_files_outside_authored_touches_resumes_after_one_widening(self):
+        """TOOLSET-152-d4: the worker names the exact file, so no person is needed."""
+        self.plan({'worker:A': ['needs_file', 'extra']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its worker needs files outside Touches (A-extra.txt); widened them once and resuming it '
+                      'in its worktree', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        workers = [r for r in self.runs('worker') if r['task'] == 'A']
+        self.assertEqual(len(workers), 2)
+        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])
+        self.assertNotIn('A: failed', result.stdout)
+        self.assertIn('Touches widened by the runner from worker evidence: A-extra.txt',
+                      self.git(self.repo, 'log', '-p', '-1', '--grep=widen Touches for A from worker evidence'))
+
+    def test_a_second_request_after_one_widening_waits_for_a_person(self):
+        text = (self.repo / 'TODO.md').read_text().replace(
+            '  Touches: A.txt\n', '  Touches: A.txt\n  Touches widened by the runner from worker evidence: A.txt\n')
+        (self.repo / 'TODO.md').write_text(text)
+        self.git(self.repo, 'commit', '-qam', 'A was widened once')
         self.plan({'worker:A': ['needs_file']})
         result = self.run_runner('--until-empty')
         self.assertNotIn('widened them', result.stdout)
@@ -1125,6 +1157,38 @@ class EngineTests(Fixture):
         self.assertIn('main moved', self.git(self.repo, 'log', '--format=%s'))
         self.assertTrue(self.done('A'))
         self.assertEqual(self.branches(), ['main'])
+
+    def test_a_task_commit_that_conflicts_with_the_session_is_merged_not_reimplemented(self):
+        """TOOLSET-157-cd (2): a conflict hold reran the whole task from scratch."""
+        self.plan({'worker:A': ['move_session'], 'merge:A': ['resolve']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: its commit conflicts with the session in: A.txt; asking Pi to resolve the merge '
+                      'in its worktree', result.stdout)
+        self.assertIn('A: merged the session into its commit; verifying again', result.stdout)
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # no fresh attempt
+        self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_a_waiting_runner_commits_the_owners_quiet_planning_without_a_merge(self):
+        """TOOLSET-157-cd (5): answers to held tasks stayed uncommitted while nothing merged."""
+        text = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
+        self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
+        runner = self.start_runner('--interval', '1')
+        deadline = time.monotonic() + 30
+        while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
+                                               if list(self.state.glob('*/runner.log')) else ''):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.2)
+        (self.repo / 'TODO.md').write_text(text)  # the owner's answer, left uncommitted
+        deadline = time.monotonic() + 60
+        while not self.done('A'):
+            self.assertLess(time.monotonic(), deadline, 'runner never saw the uncommitted answer')
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
 
     def origin(self):
         """A bare upstream for main, as a real repository has."""
