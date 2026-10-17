@@ -38,7 +38,7 @@ Installation makes skills available, not mandatory to load or invoke.
 | Affected docs, accepted decisions or task metadata | Narrow docs-sync Maintain; no repository bootstrap. |
 | User requirements that evidence cannot answer | plan-with-me; Grill Me only for requested/advisable adversarial questioning. |
 | Specific engineering method gap | Engineering reference adapter and the relevant protocol only. |
-| Slow, redundant or low-signal tests | Engineering `--protocol test-suite-optimization`: audit, then one task per change. |
+| Slow, redundant or low-signal tests, or a suite past the [test budget](#test-budget) | Engineering `--protocol test-suite-optimization`: audit, then one task per change. |
 | Material implementation or simplification choice | [Ponytail](../autowork/references/ponytail.md): smallest complete change, with concrete reuse and verification evidence. |
 | Review of that implementation | Ponytail review criteria in the existing required review lane; resolve separate versus integrated guidance from the installed version. |
 | UI/design work | Impeccable when relevant; no design pass for unrelated changes. |
@@ -52,6 +52,25 @@ A helper called by Autowork returns findings, changed paths, checks and task IDs
 that coordinator; it never starts another picker, backlog or scheduler. Reuse the
 same TODO entry and receipt. Record a skill's application only when it materially
 changes a decision or artifact; never manufacture receipts for unused skills.
+
+## Test budget
+
+Tests are evidence for a change, not a deliverable. Keep them few and thin:
+
+- One behavior change adds or extends at most one test, at its public seam,
+  preferably as a new case in an existing test or table. A bug fix gets one
+  regression test that fails without the fix.
+- No new test for documentation, prose, configuration or a pure rename, and none
+  that restates the implementation, only asserts a mock's calls or repeats a case.
+- Each test uses the smallest fixture, one action and the assertions that would
+  catch the defect. Share read-only setup; wait on an event or a bounded poll, not
+  a fixed sleep.
+- Run the focused tests for the changed code and the task's `Checks:` while working;
+  run the repository's normal check once before the commit, not after every edit.
+- A large suite is optimized, not grown: when the normal offline check takes over
+  10 minutes, a test module passes about 1,000 lines, or a change would add a
+  near-duplicate test, record one `test-suite-optimization` audit task (one open
+  per repository) and keep the change's own tests within this budget.
 
 ## Autoresearch evidence enters the same cycle
 
@@ -119,7 +138,7 @@ namespace or assume another profile's home. Existing imports are left intact.
 | Accepted work needs bounded tasks | `planning-and-task-breakdown` | Add dependencies, scope and checks to canonical `goals.json` and root `TODO.md`. |
 | A consequential planning assumption needs scrutiny | `doubt-driven-development` | Test the artifact/contract; record corrections and unresolved risks. |
 | Implement an eligible slice | `incremental-implementation` | Keep one observable result, owned files and task ID. |
-| Changed logic or a bug | `test-driven-development` | Run the repository's discriminating red/green checks. |
+| Changed logic or a bug | `test-driven-development` | One discriminating red/green test within the [test budget](#test-budget). |
 | Review an implemented slice | `code-review-and-quality` | Use its review criteria within the required project review workflow. |
 | Ambiguous new product direction | `idea-refine` | Refine the existing outcome and alternatives; do not reopen accepted scope. |
 | Missing or overloaded task context | `context-engineering` | Give the worker only relevant constraints, source, decisions and checks. |

@@ -10,6 +10,25 @@ consolidation, execution and fixture cost, and assertion quality. It audits firs
 changes nothing; every change becomes its own task. For writing new tests test-first,
 use the pinned `test-driven-development` protocol instead.
 
+## When to run it
+
+Run it when a suite passes the [test budget](../../../shared/ENGINEERING-CYCLE.md#test-budget):
+the normal offline check takes over 10 minutes, test modules pass about 1,000 lines,
+or new work keeps adding near-identical tests. One audit task per repository is open
+at a time; its findings become ordinary tasks.
+
+## Quick pass first
+
+On a large suite, start cheap and stop when it already yields clear tasks:
+
+1. Time the normal check and list the slowest 30 tests and the largest test modules.
+2. Read those modules for the candidates below: duplicates, parametrizable
+   families, rebuilt fixtures, sleeps and repeated process or repository setup.
+3. Record the speed-ups that change no assertions as tasks right away.
+
+Measure per-test coverage (below) only for the consolidation and removal candidates
+the quick pass finds, not for the whole suite.
+
 ## Measure first
 
 Record a baseline on one named commit and machine before judging anything:

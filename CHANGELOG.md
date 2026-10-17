@@ -7,6 +7,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A shared **test budget** keeps tests few and thin: one behavior change adds or extends
+  at most one test at its public seam (a bug fix, one regression test), none for docs,
+  config or renames, and focused tests while working instead of the whole suite after
+  every edit. Pi workers get it in their prompt; the reviewer no longer asks for tests
+  beyond the acceptance and fails changes that mostly repeat existing cases. Planned
+  `Checks:` name focused commands, never a test count. A suite past the budget (normal
+  check over 10 minutes, test modules past about 1,000 lines, near-duplicate tests)
+  gets one `test-suite-optimization` audit task, which now starts with a cheap quick
+  pass before any per-test coverage.
 - `autowork start` moves a service onto the Pi package installed from
   `git:github.com/TrebuchetDynamics/autowork` when its unit runs another copy, such as
   the package still installed under the old hermes-toolset name: it reinstalls the
