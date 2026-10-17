@@ -79,6 +79,45 @@ class ReviewScratchTests(unittest.TestCase):
             self.assertIn(f'are in {cache} (AUTOWORK_CACHE)', seen['prompt'])
             self.assertTrue(cache.is_dir())
 
+    def test_a_review_unregisters_only_its_own_scratch_worktrees(self):
+        from unittest.mock import patch
+        import shutil
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder) / 'repo', Path(folder) / 'state'
+            git = lambda *argv: subprocess.run(['git', '-C', str(repo), *argv], check=True,
+                                               capture_output=True, text=True).stdout
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'base')
+            state.mkdir()
+            # Someone else's registration whose directory is gone: the runner restores such
+            # worktrees, so a review must not prune it.
+            other = Path(folder) / 'someone-else'
+            git('worktree', 'add', '-q', '--detach', str(other), 'HEAD')
+            shutil.rmtree(other)
+
+            def job(settings, role, task, checkout, prompt, *rest):
+                tmp = Path(os.environ['TMPDIR'])
+                git('worktree', 'add', '-q', '--detach', str(tmp / 'copy'), 'HEAD')
+                git('worktree', 'add', '-q', '--detach', str(tmp / 'gone'), 'HEAD')
+                shutil.rmtree(tmp / 'gone')  # a reviewer that deleted its copy itself
+                return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
+
+            old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
+            os.chdir(repo)
+            try:
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 0)
+            finally:
+                os.chdir(old_cwd)
+                if old_tmp is None:
+                    os.environ.pop('TMPDIR', None)
+                else:
+                    os.environ['TMPDIR'] = old_tmp
+            registered = [Path(line[len('worktree '):]) for line in git('worktree', 'list', '--porcelain').splitlines()
+                          if line.startswith('worktree ')]
+            self.assertIn(other.resolve(), [p.resolve() for p in registered])
+            self.assertFalse([p for p in registered if (state / 'review-tmp').resolve() in p.resolve().parents])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -132,8 +132,20 @@ def verify(state, task):
     try:
         return review(state, task, checkout, head_before)
     finally:
+        drop_scratch_worktrees(checkout, scratch)
         shutil.rmtree(scratch, ignore_errors=True)
-        subprocess.run(['git', '-C', checkout, 'worktree', 'prune'], capture_output=True)
+
+
+def drop_scratch_worktrees(checkout, scratch):
+    """Unregister the worktrees a review made under its scratch (`git worktree add --detach
+    "$TMPDIR/copy"`), and nothing else: a repository-wide prune also drops other stale
+    registrations, such as a session worktree the runner restores."""
+    scratch = Path(scratch).resolve()
+    for line in (git(checkout, 'worktree', 'list', '--porcelain') or '').splitlines():
+        path = Path(line[len('worktree '):]).resolve() if line.startswith('worktree ') else None
+        if path and (path == scratch or scratch in path.parents):
+            subprocess.run(['git', '-C', checkout, 'worktree', 'remove', '--force', '--force', str(path)],
+                           capture_output=True)
 
 
 def review(state, task, checkout, head_before):

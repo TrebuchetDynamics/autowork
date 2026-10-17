@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A review no longer prunes every stale worktree registration in the repository. It unregisters only
+  the scratch worktrees it made under its own `$TMPDIR`, so a session worktree the runner restores,
+  or anyone else's registration, survives the review.
 - Auto work no longer pins a submodule to a commit its remote does not have, or adds an untracked
   nested repository as an embedded one; it leaves that path uncommitted and says why once
   (TOOLSET-168-ff). Workers and reviewers share one toolchain cache per repository,
