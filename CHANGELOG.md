@@ -28,6 +28,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- With both packages installed in Pi, the runner runs from the one installed from
+  `git:github.com/TrebuchetDynamics/autowork`; it took the first Autowork package Pi
+  listed, the copy under the old hermes-toolset name, so services moved onto the
+  renamed package still ran the old one.
 - `autowork ls` and the TUI label a TODO entry the engine cannot run as written
   `not runnable`; they said `entry changed`, which reads as a rerun already pending.
   A runner whose worker or reviewer acted in the last 10 minutes shows `working`: the

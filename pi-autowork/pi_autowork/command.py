@@ -157,7 +157,7 @@ def cmd_start(args, paths):
     target = os.environ.get('PI_AUTOWORK_SCRIPT') or package_script()
     runs = unit_script(paths)
     if state != 'none' and target and runs and Path(runs).resolve() != Path(target).resolve():
-        print(f'Moving pi-autowork services from {runs} to {target}.')
+        print(f'Moving pi-autowork services from {runs} to {target}.', flush=True)
         code = subprocess.run(['bash', target, '--install-service', '--repo', ready.repo]).returncode
         others = [r.name for r in runners(paths) if r.name != name and r.service in ('running', 'start', 'reload')]
         if not code and others:
