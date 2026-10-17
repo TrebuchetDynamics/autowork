@@ -54,6 +54,22 @@ settlement/cancellation checks when refining that existing design.
 - Exclusions: No relaxation for processes outside the pool's worktrees or in the canonical checkout itself; no change to the main-checkout session rule from TOOLSET-120-fc.
 - Planner's call: first in Now, ahead of TOOLSET-161-17 (owner, 2026-10-17). A misattributed own worker stalls every verified merge (twice in 20 minutes on 2026-10-17, the second a pi process in TOOLSET-124-97's attempt-2 worktree), and the fix is a narrow attribution rule with fail-closed defaults.
 
+### TOOLSET-170-f6 — Closeout waits only for a main-checkout session that holds the files it writes
+
+- [ ] TOOLSET-170-f6 — Closeout waits only for a main-checkout session that holds the files it writes
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "plan a task so interactive sessions don't block closeout"; [close and writer checks](skills/autowork/scripts/parallel_integrate.py) (`close`, `_close_writes`, `live_followup`, `require_no_writers`, `touches_none_of`), [coordinator closeout](pi-autowork/pi_autowork/coordinator.py) (`close_task`); the main-checkout session rule of TOOLSET-120-fc (6).
+- Evidence (2026-10-17 12:46-12:55, this repository's runner): an integrated TOOLSET-124-97 failed every minute with `could not close: live or unknown external writer/session; preserve canonical checkout: pid … claude in <repo> (running commands); pid … claude in <repo>`. Both were interactive sessions in the main checkout, which owner direction says is where interactive work happens. `close`, `_close_writes` and `live_followup` call `require_no_writers(repo)` without `files`, so `touches_none_of` returns False and any main-checkout session blocks, although integration already passes the files a merge changes and lets unrelated sessions proceed. The runner showed `paused` while 31 tasks waited.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py
+- Scope: (1) `close`, `_close_writes` and `live_followup` pass the exact files the close writes (`TODO.md`, `goals.json` when indexed, the archive file) to `require_no_writers`, so a session only in the main checkout blocks closeout only when it holds one of them open or has left one uncommitted there, the rule integration already uses. Sessions outside the main checkout, unknown writers and Autowork commands block as today. (2) When a session does block, the reason names the session and the file (`waiting to close until <session> commits or closes <file>`), so the owner knows what to do. (3) The closeout commit and its landing on main keep the existing final-merge rule, which already waits only for files a session touches.
+- Acceptance: In fixtures, an integrated task closes and its close commit lands while an idle interactive session is in the main checkout with unrelated uncommitted files. The same session with `TODO.md` uncommitted, or with the archive open for writing, keeps the close waiting with the new reason naming that file. A session in a sibling worktree and an unknown writer still block. No close is retried more than once per cycle.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator; reconcile TOOLSET-165-f7 output in the same writer check first.
+- Exclusions: No relaxation for sessions holding a planning file, no closeout in the canonical checkout while it is being written, no change to integration's file rule.
+- Planner's call: second in Now, behind TOOLSET-165-f7, which changes the same writer check. Interactive sessions belong in the main checkout, so closeout must not depend on their absence.
+
 ### TOOLSET-162-d2 — The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp
 
 - [ ] TOOLSET-162-d2 — The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp

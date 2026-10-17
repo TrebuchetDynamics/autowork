@@ -664,7 +664,8 @@
         "TOOLSET-166-b4",
         "TOOLSET-167-03",
         "TOOLSET-168-ff",
-        "TOOLSET-169-1d"
+        "TOOLSET-169-1d",
+        "TOOLSET-170-f6"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -673,9 +674,8 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-165-f7",
+      "TOOLSET-170-f6",
       "TOOLSET-162-d2",
-      "TOOLSET-168-ff",
-      "TOOLSET-169-1d",
       "TOOLSET-161-17",
       "TOOLSET-164-f1",
       "TOOLSET-149-df",
@@ -898,6 +898,14 @@
       "section": "Now",
       "status": "open",
       "title": "A runner's own worker processes never count as an outside session in the main checkout"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-170-f6",
+      "section": "Now",
+      "status": "open",
+      "title": "Closeout waits only for a main-checkout session that holds the files it writes"
     },
     {
       "depends_on": [],
