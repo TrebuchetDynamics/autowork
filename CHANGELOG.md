@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A runner's log is its events: a restart no longer prints every earlier result again,
+  and waiting tasks get no `pending —` line each (the one `No task can start now` line
+  covers them). The `autowork` TUI log drops systemd's unit lines and the start banner,
+  shows a start or stop as one rule line, and colors results; the detail names a
+  `PI_AUTOWORK_TOOLSET` override, which runs a checkout instead of the Pi package.
+
 - `/blockers [repo|runner]` is the owner's blockers command in Hermes, Claude Code
   (`/autowork:blockers`), Codex and Pi: it starts at once with one question per
   blocked task, easiest first, answered by picking one of two to four plan changes
