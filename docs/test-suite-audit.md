@@ -474,3 +474,133 @@ could otherwise be masked by the next runner's valid claim.
   journal restored it, then review required a complete historical claim payload.
 - Mutation score **not measured**; no dependency or mutation tool was added.
   Offline fixture evidence does not qualify a live model, fleet run or delivery.
+
+
+## Suite thinning plan (2026-10-16)
+
+Status: Accepted
+
+Intent: the owner's Plan For Me request, "minimize and thin all tests suite",
+authorizes this planning pass and the supported design choices below, not test
+edits, dispatch, commits or live execution in this pass. Reuse TOOLSET-124-97 as
+the one open audit. Reduce unnecessary test executions, fixture weight and
+wording-coupled maintenance while preserving defect detection. No arbitrary test
+count, percentage reduction or latency SLA is imposed.
+
+Scope: all owned offline Python tests in the five directories maintained by
+[scripts/check.py](../scripts/check.py), the JavaScript adapter tests in
+[CI](../.github/workflows/test.yml), and a static inventory of the eight excluded
+native/model/integration suites. Vendored upstream tests and live qualification
+are outside executable cleanup scope. This plan does not remove exclusions or
+launch profiles, models, services or paid tools.
+
+Acceptance: each removal maps to retained behavior or a documented non-executable
+obligation; unique branches, named regressions, authorization, privacy, data-loss
+and composed integration boundaries remain covered. Reduced test lines or counts
+alone do not satisfy acceptance. The final normal Python and JavaScript checks
+must pass; failures and timeouts stay visible. Preserve distinct case labels when
+consolidating tables and use fresh mutable fixtures. No test-only production hook,
+weakened assertion, hidden skip, or timeout increase to manufacture success.
+
+### Current evidence and limits
+
+Inspected HEAD `bbfffe2893a2832038628a3635393d50559765e1` plus the existing uncommitted
+installer edits on 2026-10-16. Static AST inventory used `discover_tests()` from
+`scripts/check.py` without importing the suite: **126 offline Python modules,
+30,176 lines, 1,723 declared test methods**. These are neither collected execution
+counts nor a passing runtime baseline; subtests and inherited methods differ.
+The largest files are `tests/test_pi_autowork.py` (1,502 lines),
+`skills/autowork/scripts/test_parallel_integrate.py` (1,424), and
+`tests/test_update_bundle.py` (1,143). Splitting them without reducing repeated
+work or improving responsibility ownership is not a success criterion.
+
+The earlier installer check on `9fb32e8` plus that task's changes timed out in
+`tests/` at 600 seconds; the other groups passed 815/217/9/46 tests (one skip,
+eight excluded modules). The run also emitted unreaped-process/unclosed-stream
+warnings. This was a shared-host, nonpassing run, not an idle baseline, not proof
+of a test defect, and not evidence that this plan made anything faster. Raw logs
+remain outside Git. Do not repeat three full runs just to plan this qualitative
+cleanup. Establish focused before/after evidence for the changed batch; comparable
+repeated passing runs are required if later reporting a performance percentage.
+
+The earlier TOOLSET-073 audit remains historical evidence: its same-line coverage
+groups mostly represented distinct assertions, and it approved no removals.
+Re-read current bodies before acting; equal coverage alone still proves nothing.
+
+### Selected approach and alternatives
+
+Choose small behavior-owned batches, beginning with proven repeated execution,
+then prose-only assertions and costly fixture orchestration. Preserve standard
+unittest and Node test tooling. Each batch identifies its public seam and the
+negative change its remaining assertion detects.
+
+Rejected: delete by coverage similarity or a count target (loses distinct contracts);
+rewrite the whole suite or switch framework (adds migration risk); split every
+large file (does not reduce work); globally mock subprocesses/time (loses the
+process and Git boundaries); weaken the default gate or simply raise its timeout
+(hides the observed problem). Sharing immutable fixture inputs is allowed;
+sharing mutable repositories, environment or process state across tests is not.
+
+### Evidence-backed batches
+
+| Batch | Evidence and change | Boundary to preserve |
+| --- | --- | --- |
+| Inherited execution | `RecoveryTests(DirectExecutionTests)` has no fixture override. Narrow unittest collection confirms 11 parent cases plus 36 child cases, including the same 11 methods. Use a fixture-only base/helper: 36 unique executions remain. | All 11 original named parent regressions and all 25 unique recovery cases, with equivalent setup/actions/assertions. |
+| Prose assertions | `tests/test_blockers.py` has six contract methods that search prose plus two actual routing tests. Review each phrase's obligation; remove pure wording checks and retain machine-consumed metadata, paths and behavior. | BlockersRouting, helper execution from an installed archive, command dispatch, required index compatibility, and real authorization/security checks. No blanket deletion of the six methods. |
+| Pi fixture cost | Service pause and stalled-notice tests wait three/four seconds after observing the event; idle adoption warms a full queue then sleeps two seconds. Component tests now exist alongside the 1,502-line legacy journey file. | Observable later-cycle proof, real process ownership/cancellation, push refusal, Git integration and safe update/restart journeys. A shorter sleep is not equivalent proof. |
+| Remaining suite | Update/history, parallel integration, receipt and document suites dominate remaining size. Earlier audit groups identify leads, not approved deletion lists. | Inventory every module under the existing audit and keep distinct refusal, recovery, parsing and data-preservation cases. Queue another change only when its value is demonstrated. |
+
+The inherited-repeat mapping is exact: each removed
+`RecoveryTests.test_*` maps to `DirectExecutionTests` with the same method name:
+
+- `test_todo_only_default_needs_no_profile_board_or_registration`
+- `test_default_import_does_not_load_native_pipeline`
+- `test_bounded_run_performs_useful_action_without_card_or_completion_claim`
+- `test_named_task_dependencies_and_decision_hold_are_respected`
+- `test_claiming_a_task_removes_finished_worktrees_and_keeps_unfinished_ones`
+- `test_live_ancestor_claim_persists_across_calls_and_releases`
+- `test_invalid_owner_never_claims`
+- `test_running_direct_command_blocks_other_profile_and_worktree`
+- `test_changed_source_does_not_create_reusable_passing_receipt`
+- `test_timeout_budget_cannot_be_refilled_by_next_tick`
+- `test_ordinary_apply_without_owner_does_not_fake_dispatch`
+
+For freshness, the reviewed `test_task_execution.py` SHA-256 is
+`3649f1091baf82f350e47c353079c6e14531de5f0c5ca169ae4c057a64e8b1ba`;
+`tests/test_pi_autowork.py` is
+`aeeda1e797e23ba0637d3a4f26b9c8ab3ba2bb4d401610d6acbc951cedc76d28`.
+Changed fixtures or inherited helpers invalidate that equivalence conclusion.
+
+### Execution and verification
+
+Keep existing Now tasks and their owners. Extend the first TEST-SUITE task in Next,
+TOOLSET-124-97, to create a per-module keep/thin/investigate map over the whole
+inventory. Do not redo the historical audit or complete it from this static pass.
+The inheritance batch already has sufficient structural evidence; the prose and
+Pi batches depend on the audit's precise disposition and focused measurements.
+Apply one bounded batch, inspect the diff, run its focused checks, and run the
+normal gate once before that batch's commit. Reuse a passing gate only when all
+bound inputs match. Do not rerun the whole suite after each prose edit.
+
+Use focused line/branch coverage for changed runtime seams when needed to establish
+equivalence, with subprocess contexts and the prior audit's blind spots recorded.
+No repository coverage or mutation dependency is added. Mutation testing remains
+optional and unmeasured unless a suitable tool is already available. Plain-text
+instruction checks are not coverage evidence of agent compliance.
+
+Final guards: `python3 scripts/check.py`, `node --test tests/portable_pi.test.mjs`,
+and `git diff --check`. A before-run failure is retained as a blocker to a claimed
+passing final gate, not addressed by deleting its test. The completed report must
+account for collected executions, unique cases, fixture/code size and actual
+commands/results, with remaining uncertainty explicit. No implementation, timing
+improvement, full-suite pass or live qualification is claimed by saving this plan.
+
+### Task order
+
+| Task | Outcome | Dependencies |
+| --- | --- | --- |
+| TOOLSET-124-97 | Whole-suite disposition and bounded candidate evidence | None |
+| TOOLSET-125-e6 | Run inherited execution regressions once | None; existing exact-duplicate evidence |
+| TOOLSET-126-6b | Trim prose-only test assertions while retaining executable contracts | TOOLSET-124-97 |
+| TOOLSET-127-b1 | Thin repeated Pi lifecycle fixtures and fixed waits | TOOLSET-124-97 |
+| TOOLSET-128-69 | Qualify suite thinning and reconcile the test budget | TOOLSET-125-e6,TOOLSET-126-6b,TOOLSET-127-b1 |

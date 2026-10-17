@@ -28,7 +28,8 @@
         "TOOLSET-035",
         "TOOLSET-121-3d",
         "TOOLSET-123-a0",
-        "TOOLSET-123-de"
+        "TOOLSET-123-de",
+        "TOOLSET-143-62"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -75,10 +76,17 @@
       "id": "BACKLOG",
       "priority": 20,
       "source": "docs/project.md#accepted-requirements",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-002",
-        "TOOLSET-024"
+        "TOOLSET-024",
+        "TOOLSET-135-16",
+        "TOOLSET-136-0b",
+        "TOOLSET-137-cd",
+        "TOOLSET-142-85",
+        "TOOLSET-149-df",
+        "TOOLSET-150-71",
+        "TOOLSET-151-01"
       ],
       "title": "Provide repeatable first-time backlog initialization"
     },
@@ -181,7 +189,13 @@
         "TOOLSET-104-cc",
         "TOOLSET-105-79",
         "TOOLSET-110-61",
-        "TOOLSET-124-97"
+        "TOOLSET-124-97",
+        "TOOLSET-125-e6",
+        "TOOLSET-126-6b",
+        "TOOLSET-127-b1",
+        "TOOLSET-128-69",
+        "TOOLSET-133-f5",
+        "TOOLSET-134-ab"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -415,14 +429,15 @@
       "id": "DOCS-COMPLETENESS",
       "priority": 80,
       "source": "docs/project.md#checkable-core-document-completeness",
-      "status": "met",
+      "status": "partial",
       "tasks": [
         "TOOLSET-030",
         "TOOLSET-031",
         "TOOLSET-032",
         "TOOLSET-107-93",
         "TOOLSET-109-f1",
-        "TOOLSET-113-04"
+        "TOOLSET-113-04",
+        "TOOLSET-146-bc"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -614,7 +629,24 @@
         "TOOLSET-118-68",
         "TOOLSET-119-2b",
         "TOOLSET-120-fc",
-        "TOOLSET-122-27"
+        "TOOLSET-122-27",
+        "TOOLSET-129-c4",
+        "TOOLSET-130-15",
+        "TOOLSET-131-ac",
+        "TOOLSET-132-af",
+        "TOOLSET-138-62",
+        "TOOLSET-139-62",
+        "TOOLSET-140-f4",
+        "TOOLSET-141-c4",
+        "TOOLSET-144-c0",
+        "TOOLSET-145-6d",
+        "TOOLSET-147-54",
+        "TOOLSET-148-88",
+        "TOOLSET-152-d4",
+        "TOOLSET-153-64",
+        "TOOLSET-154-d3",
+        "TOOLSET-155-e2",
+        "TOOLSET-156-75"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -622,10 +654,37 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-155-e2",
+      "TOOLSET-148-88",
+      "TOOLSET-154-d3",
+      "TOOLSET-147-54",
+      "TOOLSET-140-f4",
+      "TOOLSET-152-d4",
+      "TOOLSET-153-64",
+      "TOOLSET-138-62",
+      "TOOLSET-139-62",
+      "TOOLSET-129-c4",
       "TOOLSET-099-87",
       "TOOLSET-115-bf",
       "TOOLSET-120-fc",
+      "TOOLSET-141-c4",
+      "TOOLSET-146-bc",
+      "TOOLSET-156-75",
+      "TOOLSET-130-15",
+      "TOOLSET-131-ac",
+      "TOOLSET-132-af",
+      "TOOLSET-133-f5",
+      "TOOLSET-134-ab",
+      "TOOLSET-135-16",
+      "TOOLSET-136-0b",
+      "TOOLSET-137-cd",
+      "TOOLSET-142-85",
+      "TOOLSET-143-62",
       "TOOLSET-124-97",
+      "TOOLSET-125-e6",
+      "TOOLSET-126-6b",
+      "TOOLSET-127-b1",
+      "TOOLSET-128-69",
       "TOOLSET-122-27",
       "TOOLSET-123-de",
       "TOOLSET-123-a0",
@@ -639,7 +698,12 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-101-f6"
+      "TOOLSET-144-c0",
+      "TOOLSET-149-df",
+      "TOOLSET-150-71",
+      "TOOLSET-151-01",
+      "TOOLSET-101-f6",
+      "TOOLSET-145-6d"
     ]
   },
   "tasks": [
@@ -670,14 +734,84 @@
       "title": "Hands-off runners: the owner only plans and answers questions"
     },
     {
-      "depends_on": [
-        "TOOLSET-122-27"
-      ],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-123-de",
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-129-c4",
       "section": "Now",
       "status": "open",
-      "title": "One install.sh for every component, chosen with checkboxes"
+      "title": "Make Needs show one evidence-backed next action"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-138-62",
+      "section": "Now",
+      "status": "open",
+      "title": "Reconcile the fleet's unmerged parallel-admission branch into main"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-139-62",
+      "section": "Now",
+      "status": "open",
+      "title": "Heal toolset pin drift so every runner receives released fixes"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-140-f4",
+      "section": "Now",
+      "status": "open",
+      "title": "Give workers a short temporary directory that browsers and sockets accept"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-147-54",
+      "section": "Now",
+      "status": "open",
+      "title": "Merge pending names its real cause and clears a dirty integration worktree safely"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-148-88",
+      "section": "Now",
+      "status": "open",
+      "title": "One malformed Touches field holds its task, not the whole engine"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-152-d4",
+      "section": "Now",
+      "status": "open",
+      "title": "Widen a held task's Touches by the exact paths its worker names, then reverify the same candidate"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-153-64",
+      "section": "Now",
+      "status": "open",
+      "title": "A planning hold lets repository agents repair the queue without stopping the runner"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-154-d3",
+      "section": "Now",
+      "status": "open",
+      "title": "Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-155-e2",
+      "section": "Now",
+      "status": "open",
+      "title": "Keep owner-listed private terms out of public commits, pushes and runner integrations"
     },
     {
       "depends_on": [],
@@ -794,12 +928,217 @@
       "title": "Reinstall the live Hermes profiles and host plugins as autowork"
     },
     {
+      "depends_on": [
+        "TOOLSET-122-27"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-123-de",
+      "section": "Next",
+      "status": "open",
+      "title": "One install.sh for every component, chosen with checkboxes"
+    },
+    {
       "depends_on": [],
       "goal": "TEST-SUITE",
       "id": "TOOLSET-124-97",
       "section": "Next",
       "status": "open",
       "title": "Audit this repository's suite against the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-125-e6",
+      "section": "Next",
+      "status": "open",
+      "title": "Run inherited execution regressions once"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-124-97"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-126-6b",
+      "section": "Next",
+      "status": "open",
+      "title": "Trim prose-only test assertions while retaining executable contracts"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-124-97"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-127-b1",
+      "section": "Next",
+      "status": "open",
+      "title": "Thin repeated Pi lifecycle fixtures and fixed waits"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-125-e6",
+        "TOOLSET-126-6b",
+        "TOOLSET-127-b1"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-128-69",
+      "section": "Next",
+      "status": "open",
+      "title": "Qualify suite thinning and reconcile the test budget"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-130-15",
+      "section": "Next",
+      "status": "open",
+      "title": "Separate worker activity, delivery evidence and available capacity"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-131-ac",
+      "section": "Next",
+      "status": "open",
+      "title": "Open actionable blocker evidence from the selected runner"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-132-af",
+      "section": "Next",
+      "status": "open",
+      "title": "Keep log position and add follow search and copy"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-133-f5",
+      "section": "Next",
+      "status": "open",
+      "title": "Define minimum-sufficient regression protection and test budgets"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-133-f5"
+      ],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-134-ab",
+      "section": "Next",
+      "status": "open",
+      "title": "Expose test-optimization-suite across supported hosts"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-135-16",
+      "section": "Next",
+      "status": "open",
+      "title": "Keep bulk planning within its artifact and execution boundaries"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-135-16"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-136-0b",
+      "section": "Next",
+      "status": "open",
+      "title": "Make Plan With Me questions resolve consequential uncertainty"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-135-16"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-137-cd",
+      "section": "Next",
+      "status": "open",
+      "title": "Carry justified skill recommendations from plans into Autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-141-c4",
+      "section": "Next",
+      "status": "open",
+      "title": "Repair incomplete fleet task contracts with a bounded planning worker instead of stalling"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-142-85",
+      "section": "Next",
+      "status": "open",
+      "title": "Query pending and completed tasks from repository evidence without writes"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-142-85"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-143-62",
+      "section": "Next",
+      "status": "open",
+      "title": "Add the conversational tasks skill and host commands"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-144-c0",
+      "section": "Next",
+      "status": "open",
+      "title": "Choose repository models and connect Pi provider accounts in Autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc",
+      "section": "Next",
+      "status": "open",
+      "title": "Run conditional Docs Sync during verified Autowork closeout"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-149-df",
+      "section": "Next",
+      "status": "open",
+      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-149-df"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-150-71",
+      "section": "Next",
+      "status": "open",
+      "title": "Add a compact active-task index and evidence-preserving history"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-149-df",
+        "TOOLSET-150-71"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-151-01",
+      "section": "Next",
+      "status": "open",
+      "title": "Deliver opt-in ledger conversion tools and offline qualification"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-156-75",
+      "section": "Next",
+      "status": "open",
+      "title": "Split a task into subtasks when that unlocks parallel work or reduces complexity"
     },
     {
       "depends_on": [
@@ -812,6 +1151,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Deploy reviewed fleet-audit helpers through the native scanned updater"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-144-c0"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-145-6d",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Qualify Pi API-key and subscription login locally with owner credentials"
     },
     {
       "depends_on": [],
