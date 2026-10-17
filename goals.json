@@ -29,7 +29,8 @@
         "TOOLSET-121-3d",
         "TOOLSET-123-a0",
         "TOOLSET-123-de",
-        "TOOLSET-143-62"
+        "TOOLSET-143-62",
+        "TOOLSET-172-92"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -667,7 +668,8 @@
         "TOOLSET-169-1d",
         "TOOLSET-170-f6",
         "TOOLSET-171-35",
-        "TOOLSET-172-40"
+        "TOOLSET-172-40",
+        "TOOLSET-173-94"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -680,6 +682,7 @@
       "TOOLSET-161-17",
       "TOOLSET-171-35",
       "TOOLSET-172-40",
+      "TOOLSET-173-94",
       "TOOLSET-164-f1",
       "TOOLSET-142-85",
       "TOOLSET-143-62",
@@ -731,6 +734,7 @@
       "TOOLSET-144-c0",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
+      "TOOLSET-172-92",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d"
@@ -898,18 +902,18 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-171-35",
-      "section": "Now",
-      "status": "open",
-      "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-172-40",
       "section": "Now",
       "status": "open",
       "title": "A worker paused by a runner restart shows as paused, not failed"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-173-94",
+      "section": "Now",
+      "status": "open",
+      "title": "A review that fails only for a missing toolchain gets a provisioning run, then one more review"
     },
     {
       "depends_on": [],
@@ -1229,6 +1233,14 @@
       "section": "Next",
       "status": "open",
       "title": "Split a task into subtasks when that unlocks parallel work or reduces complexity"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-172-92",
+      "section": "Next",
+      "status": "open",
+      "title": "Recover verified managed Hermes checkouts when updates cannot fast-forward"
     },
     {
       "depends_on": [
@@ -2162,6 +2174,14 @@
       "section": "Done",
       "status": "done",
       "title": "Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-171-35",
+      "section": "Done",
+      "status": "done",
+      "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
     },
     {
       "depends_on": [

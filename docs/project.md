@@ -1781,3 +1781,94 @@ records the audit, linked task-record design, compatible rollout and offline che
 This accepts planning/queued implementation scope, not a direct format conversion.
 This repository stays on its current schema and inline task format; future adoption
 requires an explicit owner action after compatible tools and skills are delivered.
+
+## Managed Hermes checkout recovery
+
+Status: Accepted
+
+**Owner decision:** When the Hermes install/update cannot fast-forward a verified
+managed plugin checkout, recover automatically when safety checks pass. Preserve
+the original checkout and profile edits; defer if provenance, ownership or active
+use makes replacement unsafe. This is accepted future installer/updater work, not
+authority to install or recover the reported host during this planning session.
+
+**Evidence:** A supplied full-suite log reports five successful components and a
+Hermes failure at `Git merge-base ... (exit 1)`. In `update_bundle.prepare`, the
+existing clean standalone checkout is fetched from the fixed trusted URL and
+`git merge-base --is-ancestor before after` is called through a wrapper treating
+all nonzero exits as Git errors. The log establishes failed ancestry, not the exact
+reason on that other host. Rewritten upstream history, clean local divergence and
+incomplete/shallow ancestry must be distinguished. Do not infer corruption or
+assert a known cause without evidence. The installer reduces the multiline receipt
+to `failed } (exit 1)`, losing the actionable diagnostic.
+
+**Planner's recovery policy:** Keep the normal equal/fast-forward path. Explicitly
+classify negative ancestry (exit 1) versus actual Git failure (other exits); distinguish
+shallow/incomplete history, ahead/diverged state and unrelated histories using
+bounded trusted-source Git inspection. Where a shallow managed clone prevents a
+conclusion, permit a bounded supported history fetch/deepening from the existing
+fixed trusted upstream, then recheck; no arbitrary configured remote/helper or
+network loop. Diagnose an unknown result instead of guessing a history rewrite.
+
+Automatic replacement requires all of the following: the canonical plugin path is
+a same-user, standalone registered managed installation with the expected plugin
+identity and trusted upstream binding; tracked and untracked source contents are
+clean; its installed HEAD matches recorded managed-install provenance (for example
+a verified saved install revision or the pre-fetch trusted tracking tip); and no
+live/unknown consumer or extra linked worktree would be rebound unsafely. A URL or
+clean working tree alone does not establish provenance or absence of local commits.
+Preserve pre-fetch evidence before new fetches alter it. Ahead/local-only commits,
+unrecognized clones, dirty/untracked source, unsafe paths or uncertain ownership
+remain held with precise evidence and recovery instructions. No force flag weakens
+those checks. Customized native profile skills outside the plugin checkout are
+handled by the updater's existing evidence-based three-way merge, not discarded.
+
+For a supported rewrite/non-fast-forward case, stage a fresh checkout of the exact
+trusted fetched main revision. Preflight native admission/scanning, all affected
+profile skill merges, source identity, shared consumers and file permissions before
+activation. Preserve the complete old checkout and sufficient original source bytes
+for native-skill three-way merge in an owned backup, without copying unrelated
+profile secrets/runtime state. Publish only through the existing updater transaction,
+lock, freshness and backup/receipt machinery. Preserve additional manifest metadata,
+executable modes, user settings, opt-outs, profile selection and genuinely paused jobs.
+A shared source is recovered once, without silently expanding mutation scope to
+unselected consumers. Active consumers defer; no kill, gateway/service restart or
+runtime repin is implied. This is not a hard reset, stash, forced merge, force-push
+or arbitrary deletion of the old checkout.
+
+A failure at stage/backup/switch/profile publication keeps exact per-target evidence
+and a resumable state; resume reuses the same original backup/base and never treats a
+partially switched checkout as a clean original baseline. Guard rollback against
+newer foreign edits. Post-publication read-back verifies source HEAD, managed files
+and preserved profile edits; unchanged repeat is a no-op. Verify staged/new bytes
+before claiming recovery. An actual Git/network/native-scan failure remains a real
+failure with actionable cause; don't route every merge-base error into replacement.
+
+**Installer reporting:** Parse the updater's structured status/error/action receipt
+when available; retain a bounded useful text fallback if JSON is absent/truncated.
+The Hermes component summary names its actual failure or deferral and the supported
+next action, never just a brace. Preserve all successful component results and the
+current continue-after-component-failure behavior. Report a partial install as
+partial with nonzero aggregate failure status. A retry can target only Hermes,
+using the installer's existing selection syntax; don't rerun successful hosts merely
+to repair this component. Respect explicit skips and existing dry-run semantics;
+preview executes no recovery or network/write operation.
+
+**Acceptance and proposed offline proof:** Real disposable Git repositories and fake
+Hermes home/installer subprocesses cover equal/fast-forward, a verified clean rewritten
+history, shallow/incomplete ancestry, ahead/diverged local commits, unrelated or
+unrecognized source, dirty/untracked checkout, shared/active consumers, per-profile
+customization and native scan denial. Failure injection covers fetch/stage/backup/
+publication interruptions, stale concurrent writes and resumable/no-op retry. Prove
+exact old source/profile preservation, same trusted target revision and no unexpected
+profile, config, pause, restart or successful-component change. A mixed six-component
+fixture must show the structured Hermes failure and five preserved successes, not
+`}`. No real profiles, external installers, account credentials or upstream network
+are used. Extend `tests/test_update_bundle.py` and `tests/test_install_menu.py`; new
+cases are planned, not run here. Normal offline integration checks and independent
+review remain required.
+
+**Queue:** One bounded source-recovery/reporting task under PORTABLE, independent
+of the missing-Pi bootstrap and live reinstall tasks. Keep TOOLSET-123-de and
+TOOLSET-123-a0 and their existing IDs, order, dependencies and acceptance. This task
+implements the supported recovery behavior, not live adoption or remote publication.

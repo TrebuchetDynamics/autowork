@@ -180,7 +180,8 @@ def _dependencies(task, known=()):
     return dependency_ids(task.get('fields', {}).get('Dependencies', 'None.'), known)
 
 
-def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_files=None):
+def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_files=None, drain_after=None,
+         waited=None):
     """Plan ordered runnable contracts against running contracts/live slots.
 
     ``running`` contains task contracts held by live slots. Also pass every
@@ -202,6 +203,10 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     ``adopted`` names in_progress claims verified idle (parallel_claims): they are
     planned like open tasks.
     ``waiting`` contains {id, reason} for each non-dispatched input contract.
+    ``drain_after`` (seconds) and ``waited`` ({task: seconds waiting so far}): an exclusive
+    task that waits on running work stops lower dispatch only once it has waited that long;
+    until then it reserves what it declares, like any waiting task (TOOLSET-171-35). None
+    drains at once.
     """
     tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
     solo = lambda task: _solo(task, protected_files)
@@ -293,7 +298,11 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             reason, by = first(task, reserved, reserved=True)
         if reason:
             if not stopped[0] and busy[0] and exclusive(task):
-                stopped = ('priority waits for ' + tid, tid)
+                waited_for = (waited or {}).get(tid, 0)
+                if drain_after is None:
+                    stopped = ('priority waits for ' + tid, tid)
+                elif waited_for >= drain_after:
+                    stopped = (f'priority waits for {tid} (draining, waited {int(waited_for // 60)}m)', tid)
             reserved.append(task)
             waiting.append({'id': tid, 'reason': reason, 'blocked_by': [by]})
         else:

@@ -195,6 +195,23 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual([t['id'] for t in plan(tasks)['dispatch']], ['A', 'B'])
                 self.assertEqual([t['id'] for t in plan(tasks, [task('RUN', 'run.py')])['dispatch']], ['A', 'B'])
 
+    def test_an_exclusive_task_drains_the_pool_only_after_its_grace_period(self):
+        """TOOLSET-171-35: 28 independent tasks idled behind one exclusive task."""
+        from parallel_plan import plan
+        exclusive = task('X', 'x.py', resources='exclusive')
+        tasks = [exclusive, task('B', 'b.py'), task('C', 'x.py')]
+        running = [task('RUN', 'run.py')]
+        early = plan(tasks, running, drain_after=1800, waited={'X': 60})
+        self.assertEqual([t['id'] for t in early['dispatch']], ['B'])  # independent work backfills
+        reasons = {w['id']: w['reason'] for w in early['waiting']}
+        self.assertIn('must run alone', reasons['X'])
+        self.assertEqual(reasons['C'], 'overlapping paths with X')  # it still reserves its files
+        late = plan(tasks, running, drain_after=1800, waited={'X': 1900})
+        self.assertEqual(late['dispatch'], [])
+        self.assertEqual({w['id']: w['reason'] for w in late['waiting']}['B'],
+                         'priority waits for X (draining, waited 31m)')
+        self.assertEqual(plan(tasks, running)['dispatch'], [])  # no drain_after: drains at once, as before
+
     def test_an_exhausted_hold_blocks_only_its_dependents(self):
         from parallel_plan import plan
         held = task('H', '')  # failed twice, no Touches: would otherwise force everything to wait

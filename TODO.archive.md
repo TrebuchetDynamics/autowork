@@ -2668,3 +2668,24 @@ Source section: Now
 
 - Command refinement: The helper lives under skills/pending/scripts/ and supports both read-only frontends. Pending descriptions default to unfinished work; done descriptions to currently completed work. Default /done returns five latest dated recorded completions, or explicitly undated records when dates are unavailable; reopened/superseded tasks stay distinct. Extend the existing query fixtures for latest ordering, date provenance, ties, undated-only and bounded-history cases.
 - Next action: Resume candidate 958fa5cbb80f6cad2b20b9ce6ed9adf3fe4542b6 and fix the integration reviewer's concrete DST-fold failure within the existing query scope: America/New_York 2026-11-01T01:30-04:00 to 01:15-05:00 is a forward interval despite reversed local clock labels. Reproduce the case and compare/order timezone-aware UTC instants, retaining genuinely reversed-interval rejection and all date-provenance/immutability checks. Reverify the repaired candidate through the existing integration owner; do not rescope or reimplement the whole helper.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-171-35 — An exclusive task drains the pool only after a grace period, so short independent work keeps running
+
+- [x] TOOLSET-171-35 — An exclusive task drains the pool only after a grace period, so short independent work keeps running
+- Status: done (2026-10-17, owner session)
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [admission](skills/autowork/scripts/parallel_plan.py) (the `stopped` backfill rule in `plan`), [dispatch](skills/autowork/scripts/parallel_dispatch.py), [status groups](pi-autowork/pi_autowork/health.py) (`waiting_groups`).
+- Evidence (2026-10-17 13:49 monitor pass): this repository ran one worker while `28 wait behind TOOLSET-149-df, which runs alone`. That task is `Resources: exclusive` by its author's call. Every task above it waited on the one running task (overlap or dependency), so admission reached it, and because it waits on running work the rule stops all lower dispatch until the pool drains. Moving it down the list did not help: the tasks between it and the running one all waited too. The 28 held back were independent of both.
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/references/parallel-workers.md
+- Scope: (1) An exclusive task (no Touches, or a `live`/`exclusive` resource) that waits on running work stops lower dispatch only after it has been the first exclusive task waiting for `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800), measured from the engine's own dispatch observations (`dispatch_observed` events already record waiting tasks). Before that, independent lower tasks backfill as for any waiting task, and the exclusive task still reserves what it declares. (2) Once draining, the waiting reason says so: `draining for <task> (waited 31m)`, and `waiting_groups` shows `wait for <task>, which runs alone (draining)`. (3) When it starts, it runs alone as today.
+- Acceptance: In fixtures, an exclusive task behind running work lets an independent task dispatch in the first cycle; after the drain period (a short value in the fixture) it stops lower dispatch and is the next to start when the pool empties; a runner restart keeps the waiting clock (journal-based). Serial-file tasks are unchanged (TOOLSET-160-df).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which tasks are exclusive or to how they run once started; no change to the worker cap.
+- Planner's call: a time-bounded drain instead of an immediate one. It keeps the anti-starvation guarantee (an exclusive task still gets the whole pool within the grace period plus one task's run) while short independent work stops idling behind it.
