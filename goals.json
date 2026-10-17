@@ -614,7 +614,12 @@
         "TOOLSET-118-68",
         "TOOLSET-119-2b",
         "TOOLSET-120-fc",
-        "TOOLSET-122-27"
+        "TOOLSET-122-27",
+        "TOOLSET-125-3c",
+        "TOOLSET-126-02",
+        "TOOLSET-127-8f",
+        "TOOLSET-128-89",
+        "TOOLSET-129-6c"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -803,6 +808,40 @@
       "title": "Audit this repository's suite against the test budget"
     },
     {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-125-3c",
+      "section": "Next",
+      "status": "open",
+      "title": "Runners report unlanded work in health and BLOCKERS.md"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-126-02",
+      "section": "Next",
+      "status": "open",
+      "title": "Every runner worktree in .worktrees, none outliving its work"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-125-3c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-127-8f",
+      "section": "Next",
+      "status": "open",
+      "title": "autowork audit: the landing and worktree audit as one command"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-128-89",
+      "section": "Next",
+      "status": "open",
+      "title": "First push of a long-local or diverged main"
+    },
+    {
       "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
@@ -813,6 +852,18 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Deploy reviewed fleet-audit helpers through the native scanned updater"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-125-3c",
+        "TOOLSET-126-02",
+        "TOOLSET-128-89"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-129-6c",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Qualify landing, push and worktree placement on the live fleet"
     },
     {
       "depends_on": [],
