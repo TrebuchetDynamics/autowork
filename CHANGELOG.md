@@ -28,6 +28,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The TUI runs pause, stop, restart, start and model changes in the background and
+  reports when they finish. They ran on its event loop, so a restart, which waits for
+  the runner to stop gracefully (30 s for bravo, up to 150 s), froze the whole
+  TUI as if it had crashed.
 - With both packages installed in Pi, the runner runs from the one installed from
   `git:github.com/TrebuchetDynamics/autowork`; it took the first Autowork package Pi
   listed, the copy under the old hermes-toolset name, so services moved onto the
