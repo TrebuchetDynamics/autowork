@@ -910,14 +910,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-171-35",
-      "section": "Now",
-      "status": "open",
-      "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-172-40",
       "section": "Now",
       "status": "open",
@@ -2182,6 +2174,14 @@
       "section": "Done",
       "status": "done",
       "title": "Toolchains a task provisions are kept in a per-repository cache that later tasks and reviews reuse"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-171-35",
+      "section": "Done",
+      "status": "done",
+      "title": "An exclusive task drains the pool only after a grace period, so short independent work keeps running"
     },
     {
       "depends_on": [

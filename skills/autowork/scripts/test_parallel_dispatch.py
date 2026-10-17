@@ -541,6 +541,23 @@ def contract(tid, touches):
     return {'id': tid, 'fields': {'Touches': touches, 'Status': 'open', 'Dependencies': 'None.'}}
 
 
+class DrainClockTests(unittest.TestCase):
+    def test_the_drain_clock_counts_only_waiting_as_a_task_that_must_run_alone(self):
+        with tempfile.TemporaryDirectory() as folder:
+            common = Path(folder)
+            alone = {'id': 'X', 'reason': 'live/exclusive resource; must run alone (beside RUN)'}
+            events = [(100, [{'id': 'X', 'reason': 'dependency: Y'}, {'id': 'B', 'reason': 'dependency: Y'}]),
+                      (200, [alone]), (300, [alone]), (400, [{'id': 'B', 'reason': 'x'}, alone])]
+            (common / 'journal.jsonl').write_text(''.join(
+                json.dumps({'timestamp': t, 'event': 'dispatch_observed', 'waiting': w}) + '\n' for t, w in events))
+            self.assertEqual(dispatch.waiting_streaks(common, now=1000), {'X': 800})
+            with open(common / 'journal.jsonl', 'a') as journal:  # it ran: the streak ends
+                journal.write(json.dumps({'timestamp': 500, 'event': 'dispatch_observed', 'waiting': []}) + '\n')
+            self.assertEqual(dispatch.waiting_streaks(common, now=1000), {})
+        self.assertEqual(dispatch.drain_after({'PI_AUTOWORK_DRAIN_AFTER': '60'}), 60)
+        self.assertEqual(dispatch.drain_after({}), 1800)
+
+
 class AdmitTests(unittest.TestCase):
     """TOOLSET-157-cd: admission and integration agree about interrupted slots."""
 

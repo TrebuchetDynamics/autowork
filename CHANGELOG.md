@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A task that must run alone drains the pool only after it has waited beside running work for
+  `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800, kept across restarts from the journal); until then
+  independent work keeps starting, and waiting tasks then say `draining, waited Nm` (TOOLSET-171-35).
 - The memory gate needs room for one more worker only (twice `PI_AUTOWORK_MIN_FREE_MB`), however many
   run, and each runner removes `/tmp` scratch that nothing has used for two hours
   (`PI_AUTOWORK_TMP_STALE`, at most every 30 minutes per host): the double-counted reservation and

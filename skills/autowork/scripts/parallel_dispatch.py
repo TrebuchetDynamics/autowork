@@ -350,7 +350,45 @@ def retry_plan(repo, current, requested=None, plan_path=None):
                               protected_files=protected_files(repo))
 
 
-def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected):
+JOURNAL_TAIL = 8 * 2 ** 20  # the journal grows to tens of MB; hours of observations fit in this
+
+
+def drain_after(env=os.environ):
+    """Seconds an exclusive task waits before it drains the pool (TOOLSET-171-35)."""
+    try:
+        return max(0, int(env.get('PI_AUTOWORK_DRAIN_AFTER', '1800')))
+    except ValueError:
+        return 1800
+
+
+def waiting_streaks(common, now=None):
+    """{task: seconds it has waited without a break as a task that must run alone beside running
+    work}, from the journal's dispatch observations, so a coordinator restart keeps the clock."""
+    now = time.time() if now is None else now
+    since = {}
+    try:
+        with open(common / 'journal.jsonl', 'rb') as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - JOURNAL_TAIL))
+            lines = stream.read().decode(errors='replace').splitlines()[1:]  # the first may be cut
+    except OSError:
+        return {}
+    for line in lines:
+        if '"dispatch_observed"' not in line:
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        # The drain clock: waiting as a task that must run alone, beside running work.
+        ids = {v.get('id') for v in event.get('waiting') or []
+               if isinstance(v, dict) and 'must run alone (beside ' in str(v.get('reason', ''))}
+        since = {tid: since.get(tid, event.get('timestamp', now)) for tid in ids}
+    return {tid: now - start for tid, start in since.items()}
+
+
+def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected,
+          drain_after=None, waited=None):
     """Admission in two passes, so it agrees with integration about who owns a file
     (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
     held commit that only conflicts with them at integration does not stop them, or each
@@ -360,7 +398,8 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     slotted = {s['task_id'] for s in occupying}
     resumable = [t for t in candidates if t['id'] in restartable]
     fresh = [t for t in candidates if t['id'] not in slotted and t['id'] not in restartable]
-    options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected)
+    options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
+                   drain_after=drain_after, waited=waited)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
     resumed = {t['id'] for t in first['dispatch']}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
@@ -423,7 +462,8 @@ def dispatch_locked(args, repo, common, count, template, host):
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = admit(candidates, running, restartable, occupying, everything=everything,
-                    parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo))
+                    parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
+                    drain_after=drain_after(), waited=waiting_streaks(common))
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

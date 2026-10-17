@@ -122,7 +122,9 @@ A task runs beside others only when the planner can prove it is independent:
   that cannot start yet only when it shares no path, resource or dependency with it,
   so priority still decides every overlap. A task that must run alone (no `Touches:`,
   or a `live`/`exclusive` resource) and waits on running work stops all lower-priority
-  dispatch so the pool drains for it; a serial task does not.
+  dispatch so the pool drains for it, once it has waited that way for
+  `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800, counted from the journal); until then
+  independent work backfills and it reserves only what it declares. A serial task never drains.
 - Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
   overlapping tasks until closed. A `held` or `interrupted` slot whose task is now done
   or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
