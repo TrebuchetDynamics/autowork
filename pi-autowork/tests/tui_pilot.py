@@ -3,17 +3,17 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view  # noqa: E402
-from pi_autowork.tui import FleetApp  # noqa: E402
+from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen  # noqa: E402
 
 
 class Result:
-    returncode, stdout, stderr = 0, 'stopped india', ''
+    returncode, stdout, stderr = 0, 'ok', ''
 
 
 async def main():
@@ -22,60 +22,98 @@ async def main():
         state, env = base / 'state' / 'india', base / 'env'
         state.mkdir(parents=True)
         env.mkdir()
+        (env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6.1-sol\n')
         (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': '/git/india'}))
         (state / 'status.json').write_text(json.dumps({
-            'repo': '/git/india', 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(), 'waiting': 23,
-            'held': [{'task': 'T-9', 'cause': 'blocker'}],
+            'repo': '/git/india', 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(),
+            'waiting': 23, 'held': [{'task': 'T-9', 'cause': 'blocker'}],
             'roots': [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19}]}))
-        tmux = base / 'tmux'
-        tmux.write_text('#!/usr/bin/env bash\n[[ $1 == list-sessions ]] && printf "pi-autowork-india\\t/git/india\\trunner\\n"\n'
-                        '[[ $1 == capture-pane ]] && echo "[16:00] TASK-036: waiting"\nexit 0\n')
-        tmux.chmod(0o755)
+        systemctl = base / 'systemctl'
+        systemctl.write_text('#!/usr/bin/env bash\n'
+                             '[[ $2 == list-units ]] && echo "pi-autowork@india.service loaded active running x"\n'
+                             '[[ $2 == is-enabled ]] && exit 0\nexit 0\n')
+        journal = base / 'journalctl'
+        journal.write_text('#!/usr/bin/env bash\necho "[16:00] TASK-036: waiting"\n')
+        for path in (systemctl, journal):
+            path.chmod(0o755)
+        tree = base / 'git'
+        for name, files in (('ready', ('TODO.md', 'goals.json')), ('half', ('TODO.md',))):
+            repo = tree / name
+            repo.mkdir(parents=True)
+            subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+            for f in files:
+                (repo / f).write_text('x\n')
         calls = []
 
         def run(argv, **kwargs):
             calls.append(argv)
             return Result()
 
-        app = FleetApp(tx='tx', script='pa.sh', state_root=base / 'state', env_dir=env, tmux=str(tmux),
-                       systemctl='/nonexistent', journalctl='/nonexistent', agent=None, runner_cmd=run)
-        async with app.run_test(size=(140, 40)) as pilot:
+        app = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env, tmux='/nonexistent',
+                       systemctl=str(systemctl), journalctl=str(journal), agent=None, runner_cmd=run,
+                       browse_root=str(tree), list_models=lambda: ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol'])
+        async with app.run_test(size=(150, 45)) as pilot:
             await pilot.pause()
             assert app.query_one('#runners').row_count == 1
-            assert app.sub_title == '1 runners: 1 stalled', app.sub_title
             detail = str(app.query_one('#detail').render())
-            assert 'outside Now/Next: TASK-036 (19)' in detail and 'tx pi-autowork-india' in detail, detail
-            await pilot.press('s')                       # stop asks first
+            assert 'outside Now/Next: TASK-036 (19)' in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            await pilot.press('s')                      # stop asks first; n declines
+            await pilot.pause()
+            await pilot.press('n')
             await pilot.pause()
             assert calls == [], calls
-            await pilot.press('n')                       # declined: nothing runs
+            await pilot.press('p')                      # pause, confirmed
             await pilot.pause()
-            assert calls == [], calls
+            await pilot.press('y')
+            await pilot.pause()
+            assert calls == [['aw', 'pause', 'india']], calls
+            await pilot.press('m')                      # model from Pi's list, filtered, then confirmed
+            await pilot.pause()
+            await pilot.press(*'luna')
+            await pilot.pause()
+            await pilot.press('enter')                  # Enter in the filter takes the first match
+            await pilot.pause()
+            await pilot.press('y')
+            await pilot.pause()
+            assert calls[-1] == ['aw', 'model', 'india', 'openai-codex/gpt-6-luna'], calls
+            await pilot.press('enter')                  # Enter: the full-screen log, not tmux
+            await pilot.pause()
+            assert isinstance(app.screen, LogScreen), app.screen
+            await pilot.press('escape')
+            await pilot.pause()
+            await pilot.press('d')                      # browse: half is not ready, ready starts after a yes
+            await pilot.pause()
+            assert isinstance(app.screen, BrowseScreen), app.screen
+            screen = app.screen
+            await pilot.press('down', 'down')
+            await pilot.pause()
+            path = screen.chosen.path if screen.chosen else ''
+            if path.endswith('half'):
+                await pilot.press('s')
+                await pilot.pause()
+                assert len(calls) == 2, calls          # not ready: nothing runs
+                await pilot.press('down')
+                await pilot.pause()
+            assert screen.chosen and screen.chosen.ready and screen.chosen.path.endswith('ready'), screen.chosen
             await pilot.press('s')
             await pilot.pause()
             await pilot.press('y')
             await pilot.pause()
-            assert calls == [['tx', 'autowork', 'stop', 'india']], calls
-            await pilot.press('x')                       # set aside: pick the held task, then confirm
-            await pilot.pause()
-            await pilot.press('enter')
-            await pilot.pause()
-            await pilot.press('y')
-            await pilot.pause()
-            assert calls[-1] == ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'], calls
-            await pilot.press('b')                       # no agent: nothing to run, a notice instead
-            await pilot.pause()
-            assert len(calls) == 2, calls
-        viewer = FleetApp(tx='tx', script='pa.sh', state_root=base / 'state', env_dir=env, tmux=str(tmux),
-                          systemctl='/nonexistent', journalctl='/nonexistent', agent=['claude'], runner_cmd=run,
+            assert calls[-1] == ['aw', 'start', str(tree / 'ready')], calls
+        viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env, tmux='/nonexistent',
+                          systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)
+        before = len(calls)
         async with viewer.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
             assert 'view only' in str(viewer.query_one('#detail').render())
-            for key in ('s', 'x', 'b', 'i', 'enter'):
+            for key in ('s', 'p', 'm', 'x', 'b', 'd'):
                 await pilot.press(key)
                 await pilot.pause()
-            assert len(calls) == 2, calls                # view-only: no key runs anything
+            assert len(calls) == before, calls          # view-only: no key runs anything
+            await pilot.press('enter')
+            await pilot.pause()
+            assert isinstance(viewer.screen, LogScreen)  # but the log can be read
     print('PILOT OK')
 
 

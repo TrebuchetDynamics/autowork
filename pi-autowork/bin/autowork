@@ -1,0 +1,9 @@
+#!/bin/sh
+# autowork: run, watch and control pi-autowork runners. Follows symlinks to its
+# release, so a link in ~/.local/bin runs the release the runners update.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+exec python3 "$(cd "$(dirname "$self")/.." && pwd)/pi_autowork/command.py" "$@"

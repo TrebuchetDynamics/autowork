@@ -160,6 +160,20 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- The `autowork` command (TOOLSET-122-27) runs, watches and controls pi-autowork
+  runners, with a systemd user service per repository as the default way to run:
+  `autowork start [dir]` installs (if needed) and starts a service, idempotently, and
+  refuses a directory without `TODO.md`, `goals.json` and its main branch, naming what
+  is missing; `stop`, `restart`, `pause`/`resume` (stopped and kept off across
+  reboots), `remove`, `run` (foreground, for debugging), `ls [--long]`, `status`,
+  `logs [-f]`, `web` and `blockers`. Each service has its own Pi model:
+  `autowork model <target> provider/model [--fallback provider/model]`, checked against
+  Pi's list (`autowork models`), and kept across reinstalls. Bare `autowork` opens the
+  TUI, now with a directory browser that marks repositories ready and starts their
+  service, a full-screen log view, pause, restart and a model picker. Paused services
+  stay listed. `tx autowork` and the tmux runners are gone (`tx autowork` points to
+  `autowork` for one release); `tx` stays the tmux session launcher.
+
 - The `tx autowork` TUI shows worker lanes: for the selected runner, one row per task
   in flight with its phase (from the runner's own log), attempt, time and the worker's
   last action from its Pi transcript (`bash: pytest -q`, `said: ...`, and how long

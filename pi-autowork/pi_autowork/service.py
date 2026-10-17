@@ -103,6 +103,14 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
     if workers != 8:
         lines.append(f'PI_AUTOWORK_WORKERS={workers}')
     lines += [f'{name}={env[name]}' for name in ENV_NAMES if env.get(name)]
+    # A model chosen with `autowork model` survives a reinstall unless this one sets its own.
+    try:
+        kept = [line for line in env_file.read_text().splitlines()
+                if line.split('=', 1)[0] in ('PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK')
+                and not env.get(line.split('=', 1)[0])]
+    except OSError:
+        kept = []
+    lines += kept
     old = os.umask(0o077)
     try:
         env_file.write_text('\n'.join(lines) + '\n')

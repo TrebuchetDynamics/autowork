@@ -198,18 +198,26 @@ review), retries, the failure limit, the fallback cooldown, total runtime,
 free memory each worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000) and
 `PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
 
-The default way to run pi-autowork is `tx`/tmux from [`tmux/`](../tmux/README.md).
-From the repository, `tx autowork start` starts its runner in session
-`pi-autowork-<repository name>` (or attaches to it). `tx autowork ls` lists runners,
-and `tx autowork stop <name>` interrupts the runner like Ctrl+C.
+The default way to run pi-autowork is a **systemd user service** per repository,
+managed with the `autowork` command ([pi-autowork](../pi-autowork/README.md#the-autowork-command)).
+Bare `autowork` opens the live TUI, where `d` browses directories and starts a
+service for a repository that has `TODO.md` and `goals.json` on its main branch:
 
-For optional systemd supervision, let the script install a user service
-for the repository (run it from that repository, or add `--repo PATH`):
+```sh
+autowork start                 # from the repository: install (if needed) and start its service
+autowork                       # the TUI: every runner, its workers, blockers and log
+autowork ls                    # one line per runner
+autowork logs -f my-project    # follow its journal
+autowork pause my-project      # stop it and keep it off (also after a reboot); resume starts it
+autowork model my-project openai-codex/gpt-6-luna   # this service's Pi model (autowork models)
+autowork remove my-project     # stop and remove the service; state and worktrees stay
+```
+
+`autowork start` runs the script's own installer, which you can also call directly
+(run it from the repository, or add `--repo PATH`):
 
 ```sh
 ~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --install-service
-journalctl --user -u pi-autowork@my-project -f
-systemctl --user stop pi-autowork@my-project
 ~/.pi/agent/git/github.com/TrebuchetDynamics/hermes-toolset/scripts/pi-autowork.sh --remove-service
 ```
 
@@ -224,10 +232,12 @@ Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
 
-`tx autowork ls` lists tmux and optional service runners together.
-For a repository its service runs, `tx pi-autowork-<name>` opens a session that
-follows the service journal instead of starting a second runner; the per-repository
-runner lock keeps two runners off one repository in any case.
+`autowork run` runs a repository's runner in the foreground of the current terminal
+for debugging; the per-repository runner lock keeps it and the service off one
+repository at once. Each service has its own model (`PI_AUTOWORK_PRIMARY` and
+`PI_AUTOWORK_FALLBACK` in its settings file, set with `autowork model`), so one
+repository can run on `openai-codex/gpt-6-luna` and another on
+`openrouter/deepseek/deepseek-v4.1-flash`; a reinstall keeps the chosen model.
 Reinstall after changing settings. The runner keeps itself current: while no task is
 in flight, at most once per `PI_AUTOWORK_UPDATE_INTERVAL` seconds (default 3600; `0`
 turns it off) it runs `pi update` for its hermes-toolset package, one runner at a time
@@ -281,7 +291,7 @@ tool that edits a file in place edits the original. List only what tasks read.
 
 Per-repository settings live in `~/.config/pi-autowork/<repository>.env`
 (`PI_AUTOWORK_ENV_DIR`), the file `--install-service` writes. Every launcher reads it:
-the service, `tx autowork` and a terminal; variables already set in the environment
+the service, `autowork run` and a terminal; variables already set in the environment
 win. Disabling a service (`systemctl --user disable --now pi-autowork@<name>`) keeps it.
 
 Planning never blocks delivery: when the main checkout's only uncommitted changes are

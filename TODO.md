@@ -87,7 +87,7 @@ settlement/cancellation checks when refining that existing design.
 ### TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
 
 - [ ] TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
-- Status: open.
+- Status: open; offline implementation done (the `autowork` command, TUI browser, log view, pause and per-service models, `tx autowork` removed; owner additions 2026-10-16: pause services and choose each service's model from Pi's list). Remaining: the live move of charlie, bravo and sierra (stopped since 17:22; india already runs as a service) waits for the owner.
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: owner direction (2026-10-16), [TUI](pi-autowork/pi_autowork/tui.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [runner guide](docs/cross-host.md#run-autowork-continuously), [tx](tmux/README.md).
 - Touches: pi-autowork/, package.json, tmux/tx, tmux/README.md, tests/test_tx_autowork.py, tests/test_autowork_command.py, README.md, docs/cross-host.md, CHANGELOG.md

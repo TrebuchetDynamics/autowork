@@ -24,7 +24,8 @@ class FleetViewTests(unittest.TestCase):
         self.state, self.env = self.base / 'state', self.base / 'env'
         self.env.mkdir()
         self.tmux = self.fake('tmux', 'printf "%s" "${FAKE_TMUX_SESSIONS:-}"')
-        self.systemctl = self.fake('systemctl', 'printf "%s" "${FAKE_UNITS:-}"')
+        self.systemctl = self.fake('systemctl', '[[ $2 == is-enabled ]] && { [[ -n ${FAKE_ENABLED:-} ]]; exit; }\n'
+                                                'printf "%s" "${FAKE_UNITS:-}"')
 
     def fake(self, name, body):
         path = self.base / name
@@ -79,31 +80,63 @@ class FleetViewTests(unittest.TestCase):
             ('claimed elsewhere', 'C-1 (13)'),
             ('outside Now/Next', 'approved physical target and... (2)')])
 
-    def test_actions_are_the_commands_that_already_exist(self):
+    def test_actions_are_autowork_commands(self):
         def keys(runner, **kw):
-            return {a.key: a for a in fleet_view.actions(runner, tx='tx', script='pa.sh', **kw)}
-        tmux = keys(fleet_view.Runner(name='india', repo='/git/india', mode='tmux'), agent=['claude'], task='T-9')
-        self.assertEqual(tmux['enter'].argv, ['tx', 'pi-autowork-india'])
-        self.assertTrue(tmux['enter'].interactive)
-        self.assertEqual(tmux['s'].argv, ['tx', 'autowork', 'stop', 'india'])
-        self.assertIn('resume', tmux['s'].confirm)
-        self.assertEqual(tmux['i'].argv, ['pa.sh', '--install-service', '--repo', '/git/india'])
-        self.assertEqual(tmux['x'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
-        self.assertEqual(tmux['b'].argv, ['claude', '/autowork blockers /git/india'])
-        self.assertNotIn('u', tmux)
-        service = keys(fleet_view.Runner(name='sierra', repo='/git/sierra', mode='service', service='running'))
-        self.assertEqual(service['s'].argv, ['systemctl', '--user', 'stop', 'pi-autowork@sierra.service'])
-        self.assertEqual(service['u'].argv, ['pa.sh', '--remove-service', '--repo', '/git/sierra'])
-        self.assertNotIn('i', service)
-        self.assertNotIn('b', service)  # no agent available
-        stopped = keys(fleet_view.Runner(name='sierra', repo='/git/sierra', mode='service', service='dead'))
-        self.assertEqual(stopped['a'].argv, ['systemctl', '--user', 'start', 'pi-autowork@sierra.service'])
-        idle = keys(fleet_view.Runner(name='new', repo='/git/new'))
-        self.assertEqual((idle['a'].argv, idle['a'].env), (['tx', 'autowork', 'start', '/git/new'], {'TX_NO_ATTACH': '1'}))
-        self.assertFalse(any(a.confirm for a in (idle['a'], tmux['enter'])))  # only changes that stop or remove ask
+            return {a.key: a for a in fleet_view.actions(runner, command='aw', script='pa.sh', **kw)}
+        running = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='running'),
+                       agent=['claude'], task='T-9')
+        self.assertTrue(running['enter'].interactive and running['enter'].argv == [])  # the TUI's own log view
+        self.assertEqual(running['s'].argv, ['aw', 'stop', 'india'])
+        self.assertEqual(running['R'].argv, ['aw', 'restart', 'india'])
+        self.assertEqual(running['p'].argv, ['aw', 'pause', 'india'])
+        self.assertEqual(running['m'].argv, ['aw', 'model', 'india'])
+        self.assertEqual(running['x'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
+        self.assertEqual(running['b'].argv, ['aw', 'blockers', '/git/india'])
+        self.assertNotIn('u', running)  # remove only a stopped service
+        for key in ('s', 'R', 'p', 'x'):
+            self.assertTrue(running[key].confirm, key)
+        paused = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='dead', state='paused'))
+        self.assertEqual(paused['p'].argv, ['aw', 'resume', 'india'])
+        self.assertEqual(paused['a'].argv, ['aw', 'start', '/git/india'])
+        self.assertEqual(paused['u'].argv, ['aw', 'remove', 'india'])
+        self.assertNotIn('b', paused)  # no agent available
+
+    def test_readiness_needs_todo_goals_and_main(self):
+        repo = self.base / 'repo'
+        subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+        ready = fleet_view.readiness(repo)
+        self.assertEqual((ready.ready, ready.problems), (False, ['TODO.md', 'goals.json']))
+        self.assertIn('Create goals.json from TODO.md', ' '.join(fleet_view.how_to_fix(ready)))
+        (repo / 'TODO.md').write_text('# TODO\n')
+        (repo / 'goals.json').write_text('{}\n')
+        self.assertTrue(fleet_view.readiness(repo).ready)
+        (repo / 'sub').mkdir()
+        self.assertIn(f'its repository root ({repo})', fleet_view.readiness(repo / 'sub').problems)
+        subprocess.run(['git', '-C', str(repo), 'checkout', '-q', '-b', 'feature'], check=True)
+        self.assertEqual(fleet_view.readiness(repo).problems, ['main checked out'])
+        self.assertEqual(fleet_view.readiness(self.base).mark, 'not a repository')
+
+    def test_models_come_from_pi_and_settings_keep_other_lines(self):
+        pi = self.fake('pi', 'echo "provider  model  context"; echo "openrouter  deepseek/deepseek-v4.1-flash  128K"')
+        self.assertEqual(fleet_view.models(pi), ['openrouter/deepseek/deepseek-v4.1-flash'])
+        settings = self.base / 'india.env'
+        settings.write_text('PI_AUTOWORK_REPO=/git/india\nPATH=/bin\nPI_AUTOWORK_PRIMARY=old/model\n')
+        fleet_view.write_env(settings, {'PI_AUTOWORK_PRIMARY': 'openai-codex/gpt-6-luna', 'PI_AUTOWORK_FALLBACK': 'x/y'})
+        self.assertEqual(settings.read_text(), 'PI_AUTOWORK_REPO=/git/india\nPATH=/bin\n'
+                                               'PI_AUTOWORK_PRIMARY=openai-codex/gpt-6-luna\nPI_AUTOWORK_FALLBACK=x/y\n')
+        self.assertEqual(oct(settings.stat().st_mode & 0o777), '0o600')
+        fleet_view.write_env(settings, {'PI_AUTOWORK_FALLBACK': None})
+        self.assertNotIn('FALLBACK', settings.read_text())
+
+    def test_a_stopped_disabled_service_is_paused_and_listed_from_its_settings(self):
+        (self.env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6-luna\n')
+        self.runner_state('/git/india', state='stalled', since=time.time() - 60)
+        india = self.collect()['india']  # systemd lists nothing: unloaded once stopped and disabled
+        self.assertEqual((india.mode, india.state, india.model, india.fallback),
+                         ('service', 'paused', 'openai-codex/gpt-6-luna', fleet_view.DEFAULT_FALLBACK))
 
     def test_agent_for_blockers(self):
-        self.assertEqual(fleet_view.blockers_agent({'TX_AUTOWORK_AGENT': 'pi --model x', 'PATH': ''}), ['pi', '--model', 'x'])
+        self.assertEqual(fleet_view.blockers_agent({'AUTOWORK_AGENT': 'pi --model x', 'PATH': ''}), ['pi', '--model', 'x'])
         bin_dir = self.base / 'bin'
         bin_dir.mkdir()
         self.fake('bin/pi', 'true')
@@ -152,9 +185,9 @@ class FleetViewTests(unittest.TestCase):
         from pi_autowork import tui_web
         self.assertTrue(tui_web.loopback('127.0.0.1') and tui_web.loopback('localhost') and tui_web.loopback('::1'))
         self.assertFalse(tui_web.loopback('0.0.0.0') or tui_web.loopback('100.64.0.5'))
-        self.assertEqual(tui_web.command('/bin/tx', '/opt/pa.sh', python='/py'),
-                         f'/py {tui_web.TUI} --tx /bin/tx --script /opt/pa.sh')
-        self.assertTrue(tui_web.command('tx', 'pa.sh', view_only=True).endswith('--view-only'))
+        self.assertEqual(tui_web.command('/bin/autowork', '/opt/pa.sh', python='/py'),
+                         f'/py {tui_web.TUI} --command /bin/autowork --script /opt/pa.sh')
+        self.assertTrue(tui_web.command('autowork', 'pa.sh', view_only=True).endswith('--view-only'))
 
     @unittest.skipUnless(shutil.which('uv'), 'uv is not installed')
     def test_the_tui_drives_the_same_actions_headless(self):

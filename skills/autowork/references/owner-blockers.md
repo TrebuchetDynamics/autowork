@@ -12,7 +12,7 @@ runner or service, never kills a session, and never pushes.
 ## 1. Gather, read-only
 
 Resolve the target: a path, `.` (default), or a runner name, whose repository is the
-`Repository:` line of `tx autowork status NAME`. Then collect, without a model call:
+`Repository:` line of `autowork status NAME`. Then collect, without a model call:
 
 - The runner's questions block in `BLOCKERS.md`, between
   `<!-- pi-autowork:questions:start -->` and `<!-- pi-autowork:questions:end -->`,

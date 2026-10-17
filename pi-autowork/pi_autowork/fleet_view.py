@@ -1,7 +1,7 @@
-"""The fleet as `tx autowork` and its TUI see it. Standard library only.
+"""The fleet as the `autowork` command and its TUI see it. Standard library only.
 
 Every runner on this machine, whichever way it runs (a tmux session from
-`tx autowork`, a `pi-autowork@` systemd service, or both), with its health from the
+an earlier release's tmux session, a `pi-autowork@` systemd service), with its health from the
 runner's own status.json (``health.fleet``), its blockers grouped by kind, recent
 log lines, and the exact command behind every action. Nothing here calls a model,
 and nothing here changes a runner: actions only build the argv that `tx`,
@@ -25,6 +25,53 @@ CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'ne
           'launch': 'launch failed', 'contract_changed': 'entry changed', 'moved': 'main moved'}
 ORDER = ['runner', 'cycle', 'held', 'contract', 'claim', 'outside']
 COLORS = {'working': 'green', 'idle': 'green', 'blocked': 'yellow', 'paused': 'yellow', 'starting': 'yellow'}
+DEFAULT_MODEL = 'openai-codex/gpt-6.1-sol'           # pi_runtime's defaults
+DEFAULT_FALLBACK = 'openrouter/deepseek/deepseek-v4.1-flash'
+MODEL_KEYS = {'model': 'PI_AUTOWORK_PRIMARY', 'fallback': 'PI_AUTOWORK_FALLBACK'}
+
+
+def read_env(path):
+    """KEY=value lines of a service settings file."""
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return {}
+    return dict(line.split('=', 1) for line in lines if '=' in line and not line.lstrip().startswith('#'))
+
+
+def write_env(path, updates):
+    """Set (or, with None, remove) keys in a settings file, keeping every other line and 0600."""
+    path = Path(path)
+    lines = path.read_text().splitlines() if path.exists() else []
+    done = set()
+    out = []
+    for line in lines:
+        key = line.split('=', 1)[0] if '=' in line else None
+        if key in updates:
+            done.add(key)
+            if updates[key] is not None:
+                out.append(f'{key}={updates[key]}')
+            continue
+        out.append(line)
+    out += [f'{k}={v}' for k, v in updates.items() if k not in done and v is not None]
+    old = os.umask(0o077)
+    try:
+        tmp = path.with_suffix('.env.tmp')
+        tmp.write_text('\n'.join(out) + '\n')
+        os.replace(tmp, path)
+    finally:
+        os.umask(old)
+
+
+def models(pi='pi', search=None, timeout=60):
+    """provider/model IDs from `pi --list-models` (Pi's own catalog)."""
+    argv = [pi, '--list-models'] + ([search] if search else [])
+    found = []
+    for line in _lines(argv, timeout=timeout):
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] != 'provider' and re.fullmatch(r'[A-Za-z0-9._-]+', parts[0]):
+            found.append(f'{parts[0]}/{parts[1]}')
+    return found
 
 
 @dataclass
@@ -42,6 +89,9 @@ class Runner:
     roots: list = field(default_factory=list)
     state_dir: str = ''       # this runner's pi-autowork state directory
     lanes: list = field(default_factory=list)
+    enabled: bool = False     # its service starts at login; a stopped, disabled service is paused
+    model: str = ''
+    fallback: str = ''
 
     @property
     def session(self):
@@ -270,14 +320,21 @@ def collect(state_root, env_dir, *, tmux='tmux', systemctl='systemctl', now=None
         parts = line.split()
         if len(parts) >= 4 and parts[0].startswith('pi-autowork@') and parts[0].endswith('.service'):
             services[parts[0][len('pi-autowork@'):-len('.service')]] = parts[3]
+    # A stopped, disabled (paused) service may not be loaded, so systemd does not list it;
+    # every installed service has a settings file.
+    for env_file in sorted(Path(env_dir).glob('*.env')):
+        if read_env(env_file).get('PI_AUTOWORK_REPO'):
+            services.setdefault(env_file.stem, 'dead')
     for name, sub in services.items():
         runner = get(name)
         runner.service = sub
         runner.mode = 'tmux+service' if runner.mode == 'tmux' else 'service'
-        env = Path(env_dir) / f'{name}.env'
-        if not runner.repo and env.is_file():
-            match = re.search(r'(?m)^PI_AUTOWORK_REPO=(.*)$', env.read_text())
-            runner.repo = match.group(1).strip() if match else ''
+        settings = read_env(Path(env_dir) / f'{name}.env')
+        runner.repo = runner.repo or settings.get('PI_AUTOWORK_REPO', '').strip()
+        runner.model = settings.get('PI_AUTOWORK_PRIMARY') or DEFAULT_MODEL
+        runner.fallback = settings.get('PI_AUTOWORK_FALLBACK') or DEFAULT_FALLBACK
+        runner.enabled = subprocess.run([systemctl, '--user', 'is-enabled', '--quiet', f'pi-autowork@{name}.service'],
+                                        capture_output=True).returncode == 0
     folders = {}
     for folder in Path(state_root).glob('*/'):
         for record in ('runner.json', 'status.json'):
@@ -302,6 +359,9 @@ def collect(state_root, env_dir, *, tmux='tmux', systemctl='systemctl', now=None
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
     for runner in found.values():
         runner.lanes = lanes(runner, now)
+        if runner.has_service and not runner.runs_in_tmux and runner.service not in ('running', 'start', 'reload') \
+                and not runner.enabled:
+            runner.state, runner.minutes = 'paused', None  # stopped and disabled: `autowork resume`
     return sorted(found.values(), key=lambda r: r.name)
 
 
@@ -333,38 +393,104 @@ class Action:
     env: dict = field(default_factory=dict)
 
 
-def actions(runner, *, tx, script, systemctl='systemctl', agent=None, task=None):
-    """What the owner can do to this runner now, as the commands that already do it."""
-    repo = runner.repo
-    out = [Action('enter', 'open session', [tx, runner.session], interactive=True)]
-    if runner.runs_in_tmux:
-        out.append(Action('s', 'stop', [tx, 'autowork', 'stop', runner.name],
-                          confirm=f'Stop the tmux runner for {runner.name}? Workers pause and resume on the next start.'))
-    elif runner.has_service and runner.service in ('running', 'start', 'reload'):
-        out.append(Action('s', 'stop service', [systemctl, '--user', 'stop', f'pi-autowork@{runner.name}.service'],
-                          confirm=f'Stop pi-autowork@{runner.name}? Workers pause and resume on the next start.'))
-    elif repo:
+def actions(runner, *, command, script, agent=None, task=None):
+    """What the owner can do to this runner now, as `autowork` commands (or the runner script)."""
+    repo, name = runner.repo, runner.name
+    out = [Action('enter', 'log', [], interactive=True)]  # the TUI's own full-screen log view
+    running = runner.runs_in_tmux or runner.service in ('running', 'start', 'reload')
+    if runner.has_service and running:
+        out.append(Action('p', 'pause', [command, 'pause', name],
+                          confirm=f'Pause {name}? Its service stops and stays off until resumed; '
+                                  'workers resume on the same attempt.'))
+    elif runner.has_service and runner.state == 'paused':
+        out.append(Action('p', 'resume', [command, 'resume', name]))
+    if runner.has_service:
+        out.append(Action('m', 'model', [command, 'model', name]))       # the TUI picks the model
+        out.append(Action('M', 'fallback model', [command, 'model', name, '--fallback']))
+    if running:
+        out.append(Action('s', 'stop', [command, 'stop', name],
+                          confirm=f'Stop {name}? Workers pause and resume on the same attempt at the next start.'))
         if runner.has_service:
-            out.append(Action('a', 'start service', [systemctl, '--user', 'start', f'pi-autowork@{runner.name}.service']))
-        else:
-            out.append(Action('a', 'start in tmux', [tx, 'autowork', 'start', repo], env={'TX_NO_ATTACH': '1'}))
-    if repo and not runner.has_service:
-        out.append(Action('i', 'install service', [script, '--install-service', '--repo', repo],
-                          confirm=f'Install and start pi-autowork@{runner.name} for {repo}?'))
-    if repo and runner.has_service:
-        out.append(Action('u', 'remove service', [script, '--remove-service', '--repo', repo],
-                          confirm=f'Stop and remove pi-autowork@{runner.name}? State and worktrees stay.'))
+            out.append(Action('R', 'restart', [command, 'restart', name],
+                              confirm=f'Restart {name}? Workers pause and resume on the same attempt.'))
+    elif repo:
+        out.append(Action('a', 'start service', [command, 'start', repo]))
+    if repo and runner.has_service and not running:
+        out.append(Action('u', 'remove service', [command, 'remove', name],
+                          confirm=f'Remove pi-autowork@{name}? Its state and worktrees stay.'))
     if repo and task:
         out.append(Action('x', f'set aside {task}', [script, '--repo', repo, '--set-aside', task],
                           confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
     if repo and agent:
-        out.append(Action('b', 'answer blockers', [*agent, f'/autowork blockers {repo}'], interactive=True))
+        out.append(Action('b', 'answer blockers', [command, 'blockers', repo], interactive=True))
     return out
 
 
+@dataclass
+class Readiness:
+    """Whether a directory can run an Autowork service, and why not."""
+    path: str
+    repo: str = ''            # the Git toplevel, '' when not in a repository
+    ready: bool = False
+    problems: list = field(default_factory=list)
+    branch: str = ''
+
+    @property
+    def mark(self):
+        if self.ready:
+            return 'ready'
+        return 'not a repository' if not self.repo else 'needs ' + ', '.join(self.problems)
+
+
+REQUIRED = ('TODO.md', 'goals.json')
+
+
+def readiness(path):
+    """A repository root with TODO.md and goals.json on its main branch is ready."""
+    path = str(Path(path).expanduser())
+    out = Readiness(path=path)
+    if not Path(path).is_dir():
+        out.problems = ['a directory']
+        return out
+    try:
+        top = subprocess.run(['git', '-C', path, 'rev-parse', '--show-toplevel'], capture_output=True, text=True,
+                             timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return out
+    if top.returncode:
+        return out
+    out.repo = top.stdout.strip()
+    if Path(out.repo).resolve() != Path(path).resolve():
+        out.problems.append(f'its repository root ({out.repo})')
+    out.problems += [name for name in REQUIRED if not (Path(out.repo) / name).is_file()]
+    branch = subprocess.run(['git', '-C', out.repo, 'symbolic-ref', '--quiet', '--short', 'HEAD'],
+                            capture_output=True, text=True, timeout=10).stdout.strip()
+    out.branch = branch
+    if branch not in ('main', 'master'):
+        out.problems.append('main checked out' if branch else 'a branch (HEAD is detached)')
+    out.ready = not out.problems
+    return out
+
+
+def how_to_fix(ready):
+    """One line per missing piece, for the TUI and `autowork start`."""
+    hints = []
+    for problem in ready.problems:
+        if problem == 'TODO.md':
+            hints.append('Create TODO.md: plan the work with /plan-with-me or Docs Sync in any host.')
+        elif problem == 'goals.json':
+            hints.append('Create goals.json from TODO.md: /docs-sync, or '
+                         'python3 <toolset>/skills/docs-sync/scripts/goals.py init <repo> --intent JSON.')
+        elif problem.startswith('main checked out') or problem.startswith('a branch'):
+            hints.append(f'Check out main in {ready.repo}: the runner works only from the main branch checkout.')
+        elif problem.startswith('its repository root'):
+            hints.append(f'Choose the repository root {ready.repo} instead of a subdirectory.')
+    return hints
+
+
 def blockers_agent(env=os.environ):
-    """The agent command for `/autowork blockers`: TX_AUTOWORK_AGENT, else claude, else pi."""
-    configured = env.get('TX_AUTOWORK_AGENT', '').split()
+    """The agent command for `/autowork blockers`: AUTOWORK_AGENT, else claude, else pi."""
+    configured = (env.get('AUTOWORK_AGENT') or env.get('TX_AUTOWORK_AGENT', '')).split()
     if configured:
         return configured
     for name in ('claude', 'pi'):
