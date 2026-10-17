@@ -84,7 +84,8 @@ def positive_int(value):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
-    parser.add_argument('--timeout', type=float, default=600, help='seconds allowed per test directory (default: 600)')
+    # tests/ alone takes ~620s on a loaded runner host; 600 failed it before any test did.
+    parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test directory (default: 1800)')
     parser.add_argument('--jobs', type=positive_int, help='test directories run at once (default: all; 1 runs them in order)')
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0:
