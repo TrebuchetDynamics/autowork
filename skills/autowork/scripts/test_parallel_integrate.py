@@ -1122,6 +1122,21 @@ class IntegrationTests(unittest.TestCase):
         execution.save(state.slot_path(self.common, 'A'), dict(slot, checks=checks))
         self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
 
+    def test_each_hold_cause_is_offered_again_once(self):
+        """A commit offered again for a misread report was then held by the daemon rule, and its
+        one-time flag kept it from the second, unrelated, offer."""
+        self.worker()
+        module = self.module()
+        slot = state.slots(self.common)[0]
+        checks = {'outcome': 'CHILDREN_TERMINATED', 'command_receipt': {'exit_code': 0, 'inputs_match': True}}
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(slot, state='held', cause='validation', checks=checks, reoffered=True))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['reoffered'], ['overlap', 'report', 'validation'])
+        execution.save(state.slot_path(self.common, 'A'), dict(slot, state='held', cause='validation', checks=checks))
+        self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REOFFERED')
+
     def test_cli_integrate_and_close(self):
         self.worker()
         cli = Path(__file__).with_name('owner_cycle.py')

@@ -919,7 +919,7 @@ def retry_held(args):
             # again, once, when no unsettled slot owns them any more (TOOLSET-157-cd): the
             # slot it waited for has integrated or was released. A fresh retry would only
             # reimplement the same change.
-            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and not s.get('reoffered')]
+            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and 'overlap' not in state.reoffered(s)]
             if overlapped:
                 by_id = {t['id']: t for t in dispatch.contracts(repo)}
                 order = list(by_id)  # TODO.md priority: of two such commits the higher one goes first
@@ -932,7 +932,7 @@ def retry_held(args):
             # a report naming its commit by an abbreviated SHA, or a validation that passed but
             # left build daemons behind. Integration repeats every check.
             misread = next((s for s in current if s['state'] == 'held' and s.get('commit')
-                            and not s.get('reoffered') and not state.worker_live(s)
+                            and s.get('cause') not in state.reoffered(s) and not state.worker_live(s)
                             and ((s.get('cause') == 'report' and report_matches(repo, common, s))
                                  or (s.get('cause') == 'validation' and (s.get('checks') or {}).get('outcome')
                                      == 'CHILDREN_TERMINATED' and passed(s.get('checks'))))), None)
