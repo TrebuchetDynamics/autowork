@@ -22,7 +22,13 @@ CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'ne
           'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed', 'empty': 'no result',
           'launch': 'launch failed', 'contract_changed': 'entry changed', 'moved': 'main moved'}
 ORDER = ['runner', 'cycle', 'held', 'contract', 'claim', 'outside']
-COLORS = {'working': 'green', 'idle': 'green', 'blocked': 'yellow', 'paused': 'yellow', 'starting': 'yellow'}
+COLORS = {'working': 'green', 'idle': 'green', 'blocked': 'yellow', 'paused': 'yellow', 'starting': 'yellow',
+          'restarting': 'cyan'}
+# systemd sub-states of a unit that is stopping or starting again, not stopped.
+RESTARTING = ('stop', 'stop-sigterm', 'stop-sigkill', 'stop-post', 'final-sigterm', 'auto-restart', 'start-pre',
+              'start-post', 'activating', 'deactivating')
+RESTART_WINDOW = 180    # seconds a `restarting on it` line keeps a stopped service `restarting`
+GATE_WINDOW = 300
 DEFAULT_MODEL = 'openai-codex/gpt-6.1-sol'           # pi_runtime's defaults
 DEFAULT_FALLBACK = 'openrouter/deepseek/deepseek-v4.1-flash'
 MODEL_KEYS = {'model': 'PI_AUTOWORK_PRIMARY', 'fallback': 'PI_AUTOWORK_FALLBACK'}
@@ -91,6 +97,11 @@ class Runner:
     fallback: str = ''
     questions: list = field(default_factory=list)  # the owner's open questions in BLOCKERS.md
     toolset: str = ''         # PI_AUTOWORK_TOOLSET: the service runs this checkout, not the Pi package
+    waiting_groups: list = field(default_factory=list)  # why tasks wait, grouped (status.json)
+    blocker: str = ''         # what keeps the runner itself from dispatching (status.json)
+    max_workers: int | None = None
+    restarting: str = ''      # 'onto <commit>' or 'service' while it stops and starts again
+    gate: str = ''            # the latest resource-gate reason, when the last cycle was gated
 
     @property
     def color(self):
@@ -154,17 +165,17 @@ def _split_phase(text):
     return ' '.join(words[:3]), '; '.join(x for x in (' '.join(words[3:]), rest) if x)
 
 
-def _activity(state_dir, task, now):
-    """The last thing the task's Pi session did: (text, seconds ago), from its transcript."""
+def _actions(state_dir, task, now):
+    """The task's Pi session actions, newest first: (text, seconds ago), from its transcript."""
     sessions = Path(state_dir) / 'sessions'
     try:
         files = [f for f in sessions.iterdir()
                  if re.search(rf'_pi-autowork-(verify-)?{re.escape(task)}-', f.name)]
     except OSError:
-        return '', None
+        return
     if not files:
-        return '', None
-    for line in reversed(_tail(max(files, key=lambda f: f.stat().st_mtime), 131072)):
+        return
+    for line in reversed(_tail(max(files, key=lambda f: f.stat().st_mtime), 262144)):
         try:
             event = json.loads(line)
         except ValueError:
@@ -193,8 +204,160 @@ def _activity(state_dir, task, now):
             age = int(now - datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00')).timestamp())
         except (KeyError, ValueError, TypeError):
             pass
+        yield text, age
+
+
+def _activity(state_dir, task, now):
+    """The last thing the task's Pi session did: (text, seconds ago)."""
+    for text, age in _actions(state_dir, task, now):
         return short(text, 90), age
     return '', None
+
+
+def recent_actions(runner, task, n=10, now=None):
+    """The task's last ``n`` actions, newest first, in plain words: [(text, seconds ago)]."""
+    now = time.time() if now is None else now
+    out = []
+    for text, age in _actions(runner.state_dir, task, now) if runner.state_dir else ():
+        out.append((doing_text(text), age))
+        if len(out) >= n:
+            break
+    return out
+
+
+TESTS = re.compile(r'\b(unittest|pytest|check\.py|go test|cargo test|npm (run )?test|flutter test|dart test|'
+                   r'vitest|jest|tox|make test|test_\w+\.py)\b')
+
+
+def doing_text(activity):
+    """A tool call as a person says it: 'bash: python3 -m unittest x' -> 'running tests: unittest x'."""
+    tool, _, arg = str(activity).partition(': ')
+    arg = ' '.join(arg.split())
+    if tool == 'said':
+        return 'said: ' + arg
+    if tool in ('edit', 'write'):
+        return 'editing ' + arg
+    if tool == 'read':
+        return 'reading ' + arg
+    if tool in ('grep', 'find', 'ls', 'glob'):
+        return 'searching ' + arg if arg else 'searching'
+    if tool.startswith('subagent'):
+        return 'waiting on a sub-agent' if 'wait' in tool else 'starting a sub-agent'
+    if tool == 'bash':
+        words = re.sub(r'^(cd \S+ && |env (\w+=\S+ )+|timeout \d+ |TMPDIR=\S+ )+', '', arg)
+        if TESTS.search(words):
+            return 'running tests: ' + words
+        if re.match(r'(git|gh) ', words):
+            return words
+        if re.search(r'\b(staticcheck|go vet|ruff|flake8|mypy|eslint|pyright|shellcheck|dart analyze|flutter analyze|'
+                     r'cargo clippy|git diff --check)\b', words):
+            return 'checking: ' + words
+        if re.match(r'(rg|grep|find|ls|sed -n|cat|head|tail) ', words):
+            return 'reading: ' + words
+        if re.search(r'\b(build|compile|tsc|gradle|flutter build|cargo build|go build|npm (ci|install))\b', words):
+            return 'building: ' + words
+        return 'running: ' + words
+    return f'{tool}: {arg}'.strip(': ')
+
+
+QUIET_AFTER = 300
+
+
+def doing(lane):
+    """What a worker is doing now, in plain words."""
+    if lane.phase == 'waiting to integrate':
+        return 'waiting to integrate: ' + (lane.detail or 'another integration first')
+    if lane.phase in ('integrating', 'integrated'):
+        return lane.phase
+    text = doing_text(lane.activity) if lane.activity else ''
+    if lane.phase == 'verifying':
+        return 'reviewer: ' + (text or 'starting')
+    return text or ('starting' if lane.phase in ('starting', 'running', 'implementing') else lane.phase)
+
+
+def quiet(lane):
+    """'quiet 12m' when the worker's last action is QUIET_AFTER seconds or older, else ''."""
+    if lane.activity_age is None or lane.activity_age < QUIET_AFTER or lane.phase == 'waiting to integrate':
+        return ''
+    return 'quiet ' + duration(lane.activity_age // 60)
+
+
+LOG_STAMP = re.compile(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d) (.*)$')
+
+
+def recent_events(runner, now=None):
+    """(restarting, gate) from the runner's own log: 'onto <commit>' when it said it restarts
+    onto an update within RESTART_WINDOW and has not started since; the last resource-gate
+    reason when the latest dispatch line, within GATE_WINDOW, was gated."""
+    now = time.time() if now is None else now
+    if not runner.state_dir:
+        return '', ''
+    from datetime import datetime
+    restarting, gate = '', ''
+    for line in _tail(Path(runner.state_dir) / 'runner.log', 32768):
+        match = LOG_STAMP.match(line)
+        if not match:
+            continue
+        try:
+            age = now - datetime.fromisoformat(match.group(1)).timestamp()
+        except ValueError:
+            continue
+        text = match.group(2)
+        update = re.match(r'Toolset updated to (\S+?);? restarting on it', text)
+        if update:
+            restarting = ('onto ' + update.group(1)) if age < RESTART_WINDOW else ''
+        elif text.startswith('Started (PID '):
+            restarting = ''
+        if text.startswith(('No task can start now', 'Waiting: ')):
+            found = re.search(r'resource gate: ([^;]+)', text)
+            gate = found.group(1).strip() if found and age < GATE_WINDOW else ''
+    return restarting, gate
+
+
+def verdict(runner):
+    """(sentence, style): whether this runner is stuck, and why, in one line."""
+    count = len(runner.questions)
+    asks = f"{count} question{'s' if count > 1 else ''}" if count else ''
+    if runner.state == 'restarting':
+        return (f"Restarting {runner.restarting}" if runner.restarting.startswith('onto') else 'Restarting', 'bold cyan')
+    if runner.state == 'paused':
+        return 'Paused — p resumes it', 'bold yellow'
+    if runner.state == 'not running':
+        return 'Not running — a starts its service', 'bold red'
+    if runner.state == 'working':
+        busy = sum(lane.phase not in ('waiting to integrate',) for lane in runner.lanes) or runner.running
+        of = f' of {runner.max_workers}' if runner.max_workers else ''
+        text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
+        if runner.gate:
+            text += f'; no more start: {runner.gate}'
+        if asks:
+            text += f'; {asks} for you'
+        return text, 'bold green'
+    if runner.state == 'idle':
+        return 'Idle — nothing left to run in Now/Next', 'bold green'
+    if runner.gate and not runner.lanes:
+        return f'Host busy — {runner.gate}', 'bold yellow'
+    if runner.questions:
+        first = runner.questions[0]
+        return (f'Waiting on you — {asks}, easiest {first.id} (unblocks {first.unblocks}): {first.needs}',
+                'bold yellow')
+    age = duration(runner.minutes)
+    head = ('Stuck ' + age).strip() if runner.state in ('stalled', 'blocked', 'not cycling') else runner.state
+    if runner.blocker:
+        return f'{head} — {runner.blocker}', 'bold red'
+    if runner.roots:
+        root = max(runner.roots, key=lambda r: r.get('blocks', 0))
+        return f"{head} — {health.describe(root)}", 'bold red'
+    if runner.state == 'not cycling':
+        return f'{head} — its status has not been refreshed; the runner may be busy or hung', 'bold red'
+    return head, 'bold yellow'
+
+
+def waiting_line(runner, limit=4):
+    """'23 wait for X (overlapping files) · 12 on dependencies · …', or ''."""
+    parts = [f"{g['count']} {g['label']}" for g in runner.waiting_groups[:limit]]
+    more = len(runner.waiting_groups) - limit
+    return ' · '.join(parts) + (f' · +{more} more reasons' if more > 0 else '')
 
 
 def lanes(runner, now=None):
@@ -295,6 +458,8 @@ def read_questions(repo, state_dir=''):
 
 def needs(runner):
     """What would move this runner, in a few words: the owner's questions, else its first blocker."""
+    if runner.state == 'restarting':
+        return ('restarting ' + runner.restarting).strip() if runner.restarting != 'service' else 'restarting'
     if runner.state in ('paused', 'not running'):
         return 'start it' if runner.state == 'not running' else 'resume it'
     if runner.questions:
@@ -318,20 +483,40 @@ WORD_STYLES = {'done': 'green', 'integrated': 'green', 'failed': 'bold red', 'ru
 
 def log_lines(text):
     """[(line, style)]: the journal as a person reads it. Per-task `pending` lines (the
-    `No task can start now` line covers them), systemd's unit lines, the start banner and
-    the results a restart printed again are dropped; a start or stop is one rule line."""
+    `No task can start now` line covers them), systemd's unit lines, the start banner, session
+    lines and the results a restart printed again are dropped; a stop and the start that
+    follows are one `restarted` line (`onto <commit>` for an update), and a line that only
+    repeats the one before gets a `×N` count instead of a copy."""
     out, last = [], {}
+    stop = None        # (time, onto) of a stop or update not yet followed by its start
+    onto = ''
+
+    def add(line, style):
+        message = line[8:] if line.startswith('[') and line[6:8] == '] ' else line
+        if out and out[-1][3] == message:
+            out[-1][2] += 1
+            return
+        out.append([line, style, 1, message])
+
     for line in text.splitlines():
         if UNIT_LINE.match(line) or BANNER.match(line) or not line.strip():
             continue
+        stamp = line[:7]
+        update = re.search(r'\] Toolset updated to (\S+?);? restarting on it', line)
+        if update:
+            onto, stop = update.group(1), stop or (stamp, update.group(1))
+            continue
+        if '] Stopping: ' in line or '] Stopped. ' in line:
+            stop = stop or (stamp, onto)
+            continue
         if ' Started (PID ' in line:
-            out.append((f'{line[:7]} ── started ──', 'bold'))
+            if stop:
+                add(f"{stop[0]} ── restarted{' onto ' + stop[1] if stop[1] else ''} ──", 'bold')
+            else:
+                add(f'{stamp} ── started ──', 'bold')
+            stop, onto = None, ''
             continue
-        if '] Stopping: ' in line:
-            out.append((f'{line[:7]} ── stopping: workers pause and resume on the next start ──', 'bold'))
-            continue
-        if '] Stopped. ' in line:
-            out.append((f'{line[:7]} ── stopped ──', 'bold'))
+        if re.match(r'^\[\d\d:\d\d\] Session \S+ started from ', line):
             continue
         task = TASK_LINE.match(line)
         if task:
@@ -339,15 +524,17 @@ def log_lines(text):
             if word == 'pending' or last.get(name) == word:
                 continue
             last[name] = word
-            out.append((line, WORD_STYLES.get(word, '')))
+            add(line, WORD_STYLES.get(word, ''))
             continue
         if 'Questions for the owner' in line or 'No task can start' in line or 'Merge pending' in line:
-            out.append((line, 'yellow'))
+            add(line, 'yellow')
         elif 'needs attention' in line or 'failed' in line.lower():
-            out.append((line, 'red'))
+            add(line, 'red')
         else:
-            out.append((line, ''))
-    return out
+            add(line, '')
+    if stop:
+        out.append([f"{stop[0]} ── {'restarting onto ' + stop[1] if stop[1] else 'stopped'} ──", 'bold', 1, ''])
+    return [(line + (f'  ×{count}' if count > 1 else ''), style) for line, style, count, _ in out]
 
 
 def quiet_log(text):
@@ -436,17 +623,25 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         runner.running, runner.waiting = row.get('workers', 0), row.get('waiting', 0)
         runner.held = [(h.get('task', '?'), h.get('cause')) for h in row.get('held', [])]
         runner.roots = [r for r in row.get('roots', []) if r.get('kind') in health.NEEDS_PERSON]
+        runner.waiting_groups = row.get('waiting_groups') or []
+        runner.blocker = row.get('blocker') or ''
+        runner.max_workers = row.get('max_workers')
     for runner in found.values():
         runner.lanes = lanes(runner, now)
+        runner.restarting, runner.gate = recent_events(runner, now)
         # The runner refreshes its status between cycles, not during a long verification it
         # runs itself: a worker or reviewer acting now means it works, whatever the status says.
         if runner.state in ('blocked', 'stalled', 'not cycling') and any(
                 lane.activity_age is not None and lane.activity_age < health.STALE_AFTER for lane in runner.lanes):
             runner.state, runner.minutes = 'working', None
         runner.questions = read_questions(runner.repo, runner.state_dir) if runner.repo else []
+        if runner.has_service and runner.service in RESTARTING:
+            runner.restarting = runner.restarting or 'service'
         if runner.has_service and runner.service not in ('running', 'start', 'reload'):
             if not runner.enabled and paused_marker(env_dir, runner.name).exists():
                 runner.state, runner.minutes = 'paused', None  # paused on purpose: `autowork resume`
+            elif runner.restarting:
+                runner.state, runner.minutes = 'restarting', None  # its own update, not a stop
             else:
                 runner.state, runner.minutes = 'not running', None  # its records may say otherwise
     return sorted(found.values(), key=lambda r: r.name)
@@ -456,16 +651,17 @@ def summary(runners):
     counts = {}
     for runner in runners:
         counts[runner.state] = counts.get(runner.state, 0) + 1
-    order = ['working', 'idle', 'paused', 'blocked', 'stalled', 'not running', 'not cycling', 'starting', 'unknown']
+    order = ['working', 'idle', 'restarting', 'paused', 'blocked', 'stalled', 'not running', 'not cycling',
+             'starting', 'unknown']
     return [(state, counts[state]) for state in order + sorted(set(counts) - set(order)) if state in counts]
 
 
-def logs(runner, *, lines=200, journalctl='journalctl'):
-    """Recent output: the service journal."""
+def logs(runner, *, lines=200, journalctl='journalctl', since=None):
+    """Recent output: the service journal (``since``: a journalctl time such as '-60min')."""
     if not runner.has_service:
         return ''
     return '\n'.join(_lines([journalctl, '--user', '-u', f'pi-autowork@{runner.name}.service', '-n', str(lines),
-                             '--no-pager', '-o', 'cat'], timeout=20))
+                             *(['--since', since] if since else []), '--no-pager', '-o', 'cat'], timeout=20))
 
 
 @dataclass

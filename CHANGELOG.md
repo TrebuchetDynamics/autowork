@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The runner view answers whether a runner is stuck and why, and what each worker is doing. A
+  verdict line comes first (`Working — 3 of 8 workers busy`, `Waiting on you — …`, `Stuck 42m — <root>`,
+  `Host busy — …`, `Restarting onto <commit>`); worker rows say in plain words what each is doing, flag
+  `quiet Nm`, and Enter shows a worker's last actions; waiting tasks are grouped by cause (the runner
+  writes `waiting_groups` to status.json); the log shows the last hour with each restart as one line
+  and repeats counted; panes redraw only when they change. A self-update shows `restarting`, not
+  `not running` (TOOLSET-166-b4).
 - A validation that passes is not failed by build daemons it leaves behind. Gradle, Kotlin and Flutter
   daemons outlive a build by design; they are still killed at the boundary, and the integration tree
   is still checked, but a run that exited 0 with unchanged inputs now counts as passed. Holds an earlier

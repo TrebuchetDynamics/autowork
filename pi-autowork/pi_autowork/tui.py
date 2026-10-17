@@ -145,9 +145,43 @@ class LogScreen(Screen):
         self.set_interval(LOG_REFRESH, self.refresh_log)
 
     def refresh_log(self):
+        lines = fleet_view.log_lines(self.logs(self.runner, 1000))
+        if lines == getattr(self, '_lines', None):
+            return
+        self._lines = lines
         log = self.query_one('#full-log', RichLog)
         log.clear()
-        log.write(self.logs(self.runner, 1000) or '(no output yet)')
+        for line, style in lines:
+            log.write(Text(line, style=style))
+        if not lines:
+            log.write('(no output yet)')
+
+
+class WorkerScreen(Screen):
+    """One worker's last actions, newest first, in plain words; refreshed."""
+    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'back')]
+
+    def __init__(self, runner, task):
+        super().__init__()
+        self.runner, self.task = runner, task
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static(id='worker-actions')
+        yield Footer()
+
+    def on_mount(self):
+        self.title = f'{self.runner.name}: {self.task}'
+        self.refresh_actions()
+        self.set_interval(LOG_REFRESH, self.refresh_actions)
+
+    def refresh_actions(self):
+        text = Text()
+        actions = fleet_view.recent_actions(self.runner, self.task)
+        for line, age in actions:
+            text.append(f'{fleet_view.ago(age):>9}  ', style='dim')
+            text.append(line + '\n')
+        self.query_one('#worker-actions', Static).update(text if actions else 'No actions recorded yet.')
 
 
 class RepoTree(DirectoryTree):
@@ -272,14 +306,14 @@ class FleetApp(App):
         yield Header()
         yield DataTable(id='runners', cursor_type='row', zebra_stripes=True)
         yield Static(id='detail')
-        yield DataTable(id='lanes', cursor_type='none', zebra_stripes=True)
+        yield DataTable(id='lanes', cursor_type='row', zebra_stripes=True)
         yield RichLog(id='log', wrap=True, highlight=False, markup=False)
         yield Footer()
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
         table.add_columns('Runner', 'State', 'Needs', 'Tasks', 'Now')
-        self.query_one('#lanes', DataTable).add_columns('Task', 'Phase', 'Try', 'For', 'Last activity')
+        self.query_one('#lanes', DataTable).add_columns('Task', 'Phase', 'Try', 'For', 'Doing')
         self.action_refresh()
         self.refresh_log()
         self.set_interval(REFRESH, self.action_refresh)
@@ -290,21 +324,28 @@ class FleetApp(App):
         self.runners = fleet_view.collect(self.state_root, self.env_dir, systemctl=self.systemctl)
         table = self.query_one('#runners', DataTable)
         keep = self.selected
-        table.clear()
+        rows = []
         for runner in self.runners:
             now = ', '.join(f'{lane.task} {lane.phase}' for lane in runner.lanes[:2])
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
             state = f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip()
             tasks = f'{runner.running} run  {runner.waiting} wait  {len(runner.held)} held'
-            table.add_row(runner.name, Text(state, style=f'bold {runner.color}'),
-                          Text(fleet_view.short(fleet_view.needs(runner) or '-', 44),
-                               style='yellow' if runner.questions else ''),
-                          tasks, fleet_view.short(now or '-', 40), key=runner.name)
+            rows.append((runner.name, state, runner.color, fleet_view.short(fleet_view.needs(runner) or '-', 44),
+                         bool(runner.questions), tasks, fleet_view.short(now or '-', 40)))
+        # Redraw only what changed: a clear-and-rewrite every refresh made panes flicker
+        # and repaint over each other.
+        if rows != getattr(self, '_rows', None):
+            self._rows = rows
+            table.clear()
+            for name, state, color, need, asked, tasks, now in rows:
+                table.add_row(name, Text(state, style=f'bold {color}'), Text(need, style='yellow' if asked else ''),
+                              tasks, now, key=name)
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0
-            table.move_cursor(row=row)
+            if table.cursor_row != row:
+                table.move_cursor(row=row)
             self.selected = names[row]
         else:
             self.selected = None
@@ -322,9 +363,12 @@ class FleetApp(App):
             self.refresh_log()
 
     def on_data_table_row_selected(self, event):
-        """Enter on a runner (the table takes the key itself): its full-screen log."""
+        """Enter on a runner (the table takes the key itself): its full-screen log; on a
+        worker: its last actions."""
         if event.data_table.id == 'runners':
             self.action_run('enter')
+        elif event.data_table.id == 'lanes' and event.row_key is not None and self.current() is not None:
+            self.push_screen(WorkerScreen(self.current(), event.row_key.value))
 
     def show_detail(self):
         detail = self.query_one('#detail', Static)
@@ -334,71 +378,82 @@ class FleetApp(App):
             self.query_one('#lanes', DataTable).display = False
             return
         text = Text()
-        text.append(runner.name, style='bold')
-        text.append(f'  {runner.mode or "no service"}  ')
-        text.append(f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), style=f'bold {runner.color}')
-        text.append(f'  {runner.running} running, {runner.waiting} waiting, {len(runner.held)} held\n')
-        text.append(f'{runner.repo or "(repository unknown)"}\n', style='dim')
-        if runner.model:
-            text.append('model ', style='dim')
-            text.append(runner.model)
-            text.append('  fallback ', style='dim')
-            text.append(runner.fallback + '\n')
-        if runner.toolset:  # a development checkout instead of the Pi package: say so
-            text.append('toolset ', style='dim')
-            text.append(f'{runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
-        width = max(40, self.size.width - 4)  # one line per question
+        # First the answer to "is it stuck, and why": one sentence, wrapped, never cut.
+        sentence, style = fleet_view.verdict(runner)
+        text.append(f'{runner.name}  ', style='bold')
+        text.append(sentence + '\n', style=style)
+        waiting = fleet_view.waiting_line(runner)
+        if waiting:
+            text.append(f'{runner.waiting} waiting: ', style='dim')
+            text.append(waiting + '\n')
         if runner.questions:  # what the owner can answer, easiest first (BLOCKERS.md)
             count = len(runner.questions)
             text.append(f"{count} question{'s' if count > 1 else ''} for you in BLOCKERS.md", style='bold yellow')
             text.append('  (b answers them)\n' if self.agent and not self.view_only else '\n', style='dim')
             for q in runner.questions[:QUESTIONS_SHOWN]:
-                head = f'  {q.id}  {q.effort}, unblocks {q.unblocks}: '
                 text.append(f'  {q.id}', style='bold')
-                text.append(head[len(q.id) + 2:], style='dim')
-                text.append(fleet_view.short(q.needs, max(20, width - len(head))) + '\n')
+                text.append(f'  {q.effort}, unblocks {q.unblocks}: ', style='dim')
+                text.append(q.needs + '\n')
             if count > QUESTIONS_SHOWN:
                 text.append(f'  +{count - QUESTIONS_SHOWN} more\n', style='dim')
-        else:
-            for kind, items in fleet_view.blockers(runner):
-                text.append(f'{kind}: ', style='bold yellow')
-                text.append(items + '\n')
-        if runner.held and runner.state == 'working':
+        if runner.held:
             text.append('held: ', style='bold yellow')
             text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
+        details = [runner.repo or '(repository unknown)']
+        if runner.model:
+            details.append(f'model {runner.model}, fallback {runner.fallback}')
+        text.append('  '.join(details) + '\n', style='dim')
+        if runner.toolset:  # a development checkout instead of the Pi package: say so
+            text.append(f'toolset {runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
         if self.view_only:
             text.append('view only', style='dim')
         else:
             text.append('  '.join(f'[{a.key}] {a.label}' for a in self.available(runner)) + '  [d] start a repository',
                         style='dim')
-        detail.update(text)
+        if text.plain != getattr(self, '_detail', None):
+            self._detail = text.plain
+            detail.update(text)
         self.show_lanes(runner)
 
     def show_lanes(self, runner):
-        """One row per task in flight: phase, attempt, how long, and the worker's last action."""
+        """One row per worker: phase, attempt, how long, and what it is doing in plain words."""
         table = self.query_one('#lanes', DataTable)
-        table.clear()
+        rows = []
         for lane in runner.lanes:
-            stale = lane.activity_age is not None and lane.activity_age > 1800
-            activity = Text(f'{lane.activity}  {fleet_view.ago(lane.activity_age)}'.strip() or '-',
-                            style='dim' if stale else '')
-            phase = Text(lane.phase, style='bold yellow' if lane.phase.startswith('waiting') else 'bold green')
-            table.add_row(lane.task, phase, str(lane.attempt), fleet_view.duration(lane.minutes), activity)
+            quiet = fleet_view.quiet(lane)
+            rows.append((lane.task, lane.phase, str(lane.attempt), fleet_view.duration(lane.minutes),
+                         fleet_view.doing(lane), quiet))
+        if rows != getattr(self, '_lane_rows', None):
+            self._lane_rows = rows
+            keep = table.cursor_row
+            table.clear()
+            for task, phase, attempt, minutes, doing, quiet in rows:
+                activity = Text(doing)
+                if quiet:
+                    activity.append(f'  {quiet}', style='bold yellow')
+                style = 'bold yellow' if phase.startswith('waiting') else 'bold green'
+                table.add_row(task, Text(phase, style=style), attempt, minutes, activity, key=task)
+            if rows:
+                table.move_cursor(row=min(keep, len(rows) - 1))
         table.display = bool(runner.lanes)
 
-    def logs(self, runner, lines=200):
-        return fleet_view.logs(runner, lines=lines, journalctl=self.journalctl)
+    def logs(self, runner, lines=200, since=None):
+        return fleet_view.logs(runner, lines=lines, journalctl=self.journalctl, since=since)
 
     def refresh_log(self):
+        """The last hour, folded and counted (fleet_view.log_lines); rewritten only when it changed."""
         log = self.query_one('#log', RichLog)
         runner = self.current()
+        lines = fleet_view.log_lines(self.logs(runner, 400, since='-60min')) if runner is not None else []
+        key = (runner.name if runner else None, lines)
+        if key == getattr(self, '_log', None):
+            return
+        self._log = key
         log.clear()
-        if runner is not None:
-            lines = fleet_view.log_lines(self.logs(runner))
-            for line, style in lines:
-                log.write(Text(line, style=style))
-            if not lines:
-                log.write('(no output yet)')
+        for line, style in lines:
+            log.write(Text(line, style=style))
+        if runner is not None and not lines:
+            log.write('(nothing in the last hour; Enter shows the whole log)')
 
     # -- actions ----------------------------------------------------------------
     def available(self, runner, task=None):

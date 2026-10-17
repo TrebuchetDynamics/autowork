@@ -10,6 +10,7 @@ of polling quietly (four runners idled for seven hours on 2026-10-16).
 """
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -64,6 +65,43 @@ def describe(root):
     return f"{label(root)} ({kind}, holds {root['blocks']})"
 
 
+# Why a task waits, as a person reads it: (pattern, group key, label). The key keeps one
+# group per blocking task; the label names it. First match wins.
+WAIT_KINDS = (
+    (r'^overlapping paths with (?:in_progress |interrupted )?(\S+)', 'overlap:{0}', 'wait for {0} (overlapping files)'),
+    (r'^serial path shared with (?:in_progress )?(\S+)', 'serial:{0}', 'wait for {0} (serial files)'),
+    (r'^priority (?:waits for|task) (\S+?):?(?:\s|$)', 'priority:{0}', 'wait behind {0}, which runs alone'),
+    (r'^shared resource with (?:in_progress )?(\S+)', 'resource:{0}', 'share a resource with {0}'),
+    (r'^dependency', 'dependency', 'on dependencies'),
+    (r'^resource gate', 'gate', 'on host memory or load'),
+    (r'^all \d+ worker slots busy', 'slots', 'for a free worker slot'),
+    (r'^already running/live slot or in_progress', 'claim', 'claimed elsewhere'),
+    (r'^sequential task in progress', 'sequential', 'behind a sequential task'),
+    (r'^not runnable', 'contract', 'not runnable as written'),
+)
+
+
+def waiting_groups(tasks, limit=8):
+    """Waiting tasks grouped by why they wait, largest group first: [{label, count, tasks}]."""
+    groups = {}
+    for task in tasks:
+        if task.get('state') != 'waiting':
+            continue
+        reason = ' '.join(str(task.get('reason') or 'waiting').split())
+        for pattern, key, label in WAIT_KINDS:
+            match = re.match(pattern, reason)
+            if match:
+                key, label = key.format(*match.groups()), label.format(*match.groups())
+                break
+        else:
+            key, label = 'other:' + reason[:60], reason[:60]
+        group = groups.setdefault(key, dict(label=label, count=0, tasks=[]))
+        group['count'] += 1
+        if len(group['tasks']) < 20:
+            group['tasks'].append(task.get('task') or task.get('id') or '?')
+    return sorted(groups.values(), key=lambda g: -g['count'])[:limit]
+
+
 def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTER):
     """Write status.json; return a line to announce, or None.
 
@@ -110,7 +148,9 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  waiting=sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])),
                  held=[dict(task=t['task'], cause=t.get('cause'), reason=t.get('reason'))
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],
-                 roots=roots[:10], stall_roots=keys if state == 'stalled' else [], **runner)
+                 roots=roots[:10], stall_roots=keys if state == 'stalled' else [],
+                 waiting_groups=waiting_groups(snapshot.get('tasks', [])),
+                 max_workers=snapshot.get('max_workers'), **runner)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(value, indent=2) + '\n')
     os.replace(tmp, path)
@@ -159,7 +199,9 @@ def fleet(state_root, *, now=None, service=_service):
         rows.append(dict(name=name, repo=repo, service=service(name), state=state,
                          since=status.get('since'), workers=status.get('active_workers', 0),
                          waiting=status.get('waiting', 0), roots=status.get('roots', []),
-                         held=status.get('held', [])))
+                         held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
+                         blocker=status.get('blocker', ''), updated_at=status.get('updated_at'),
+                         max_workers=status.get('max_workers')))
     return rows
 
 

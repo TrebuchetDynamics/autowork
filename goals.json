@@ -900,14 +900,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-166-b4",
-      "section": "Now",
-      "status": "in_progress",
-      "title": "The runner view says whether it is stuck and why, and what each worker is doing"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-167-03",
       "section": "Now",
       "status": "open",
@@ -2124,6 +2116,14 @@
       "section": "Done",
       "status": "done",
       "title": "A serial file conflicts only with other serial work, so one manifest task no longer idles every worker"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-166-b4",
+      "section": "Done",
+      "status": "done",
+      "title": "The runner view says whether it is stuck and why, and what each worker is doing"
     },
     {
       "depends_on": [
