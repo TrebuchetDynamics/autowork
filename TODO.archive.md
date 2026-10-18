@@ -3460,3 +3460,25 @@ Source section: Now
 - Exclusions: No change to how often the package is updated.
 - Recurrence (2026-10-18 05:26): the next package update did it again on this repository's runner, `AttributeError: module 'task_execution' has no attribute 'task_bodies'` from `parallel_status.py` (a function the new release added), one cycle lost. It happens on every update to every runner whose engine is mid-start.
 - Planner's call: moved to Now after the recurrence: every release now costs each runner a cycle, and a long review that imports late would lose its answer.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-209-55 — Workers run the runner suite sharded, and a worker timeout names the command it cut off
+
+- [x] TOOLSET-209-55 — Workers run the runner suite sharded, and a worker timeout names the command it cut off
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [offline check](scripts/check.py) (`SPLIT`, `units`), task `Checks:` lines in this TODO.md, [worker timeout](skills/autowork/scripts/parallel_dispatch.py) (`worker timeout after N s`), worker sessions under the runner state's `sessions/`.
+- Evidence (2026-10-18): three workers in three repositories ended `worker timeout after 5400 s` within 90 minutes; this repository's TOOLSET-204-f2 attempt 2 is one. Its session shows the work done (the full offline check passed, a reviewer subagent found nothing material) and its last tool call, at 12:57, a `bash` running `python3 -m unittest discover -s tests -p test_pi_autowork.py` among focused suites; it never returned before the kill at 13:12. That module runs serially (about 13 minutes on an idle host, longer under the fleet's load), although `scripts/check.py` already shards it 12 ways; 18 open tasks' `Checks:` lines name it that way. The hold reason says only `worker timeout after 5400 s`, so finding this took reading the session file.
+- Touches: scripts/check.py, tests/test_check.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/worker.py
+- Scope: (1) `scripts/check.py [PATH ...]` runs only the given test modules (or directories), with the same sharding, environment and summary; with no paths it runs everything as today. (2) Not for the worker: once (1) has landed, the planner rewrites this TODO.md's `Checks:` lines that run a `SPLIT` module serially to `python3 scripts/check.py <module>` (planning files are the coordinator's, and the command must exist first). (3) The worker prompt says to run the full gate once, at the end, and focused modules before. (4) A worker timeout's hold reason names the tool command running at the deadline and its age, read from the worker's session (first 120 characters), for example `worker timeout after 5400 s while running (14 min): python3 -m unittest discover ...`.
+- Acceptance: `python3 scripts/check.py tests/test_pi_autowork.py` runs only that module, sharded, and passes in a fraction of the serial time (measured in the test against the shard count, not wall time); a fixture worker killed while a fake tool runs gives a hold reason naming that command.
+- Checks: python3 -m unittest discover -s tests -p test_check.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py
+- Answer (2026-10-18, owner session, to the worker's blocker): (2) is the planner's, after this lands; the worker does (1), (3) and (4) only.
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the worker timeout value.
+- Planner's call: high in Now: a finished task that times out while re-running a serial suite costs an attempt and an hour, and three did so this morning.
