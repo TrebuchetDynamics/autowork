@@ -103,6 +103,16 @@ def run_unit(directory, names, env, timeout):
     return process.returncode == 0, output
 
 
+def default_jobs():
+    """The CPUs the host has idle, 4 to 8: tests with fixed timing limits failed when 16
+    processes ran at once on a host already at a load of 25 on 22 CPUs."""
+    try:
+        idle = (os.cpu_count() or 1) - int(os.getloadavg()[0])
+    except OSError:
+        idle = 4
+    return max(4, min(8, idle))
+
+
 def positive_int(value):
     number = int(value)
     if number <= 0:
@@ -115,7 +125,7 @@ def main(argv=None):
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
     parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test process (default: 1800)')
     parser.add_argument('--jobs', type=positive_int,
-                        help='test processes run at once (default: CPU count, at most 16; 1 runs them in order)')
+                        help='test processes run at once (default: idle CPUs, 4 to 8; 1 runs them in order)')
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error('--timeout must be positive')
@@ -138,15 +148,20 @@ def main(argv=None):
     if not tests:
         print('FAIL: no offline tests found', flush=True)
         return 1
-    env = dict(os.environ)
-    for flag in LIVE_FLAGS:
-        env.pop(flag, None)
+    # No live-test flags, and no settings of the runner whose worker or reviewer runs this:
+    # tests start their own runners, and a service's PI_AUTOWORK_MAIN_CHECK and
+    # PI_AUTOWORK_NO_FALLBACK failed them.
+    env = {k: v for k, v in os.environ.items()
+           if k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))}
     passed = failed = 0
     work = list(units(root, tests))
     # Modules (and shards of split ones) are independent processes; output is still printed
-    # whole, by directory and in order.
-    with ThreadPoolExecutor(max_workers=args.jobs or min(16, os.cpu_count() or 1)) as pool:
-        runs = [(directory, pool.submit(run_unit, directory, names, env, args.timeout)) for directory, names in work]
+    # whole, by directory and in order. Shards of split modules are the longest, so they start
+    # first.
+    order = sorted(range(len(work)), key=lambda i: len(work[i][1]) == 1 and '.' not in work[i][1][0])
+    with ThreadPoolExecutor(max_workers=args.jobs or default_jobs()) as pool:
+        futures = {i: pool.submit(run_unit, *work[i], env, args.timeout) for i in order}
+        runs = [(work[i][0], futures[i]) for i in range(len(work))]
         for directory, modules in groups.items():
             print(f'CHECK {directory.relative_to(root)} ({len(modules)} modules)', flush=True)
             ok = True

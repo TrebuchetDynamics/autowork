@@ -253,6 +253,13 @@ elif behavior == 'sleep':
 '''
 
 
+def host_environment():
+    """os.environ without runner settings. A runner's settings reach every check it runs: a
+    reviewer that inherited the service's PI_AUTOWORK_MAIN_CHECK and PI_AUTOWORK_NO_FALLBACK
+    failed eight of these fixtures."""
+    return {k: v for k, v in os.environ.items() if not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))}
+
+
 class Fixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -266,15 +273,13 @@ class Fixture(unittest.TestCase):
         self.log = self.root / 'pi.log'
         self.plan_file = self.root / 'plan.json'
         self.state = self.root / 'state'
-        self.env = {**os.environ, 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
+        self.env = {**host_environment(), 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
-        for name in ('GIT_CONFIG_COUNT', 'PI_AUTOWORK_TOOLSET', 'PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK',
-                     'PI_AUTOWORK_WORKERS', 'PI_AUTOWORK_MAX_COST'):
-            self.env.pop(name, None)
+        self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
         # nothing and these runner scenarios fail for the wrong reason. As the engine's own
         # dispatch tests do, report an idle host to the engine processes the runner starts.
@@ -596,7 +601,9 @@ class EngineTests(Fixture):
             time.sleep(0.2)
         holder.kill()
         holder.wait()
-        while 'The other runner exited; starting.' not in log.read_text():
+        # Its SIGINT handler is installed once it has started; a stop before that, on a loaded
+        # host, ended the process by the signal instead of its clean exit.
+        while not re.search(r'The other runner exited; starting\.[\s\S]*Started \(PID', log.read_text()):
             self.assertLess(time.monotonic(), deadline + 30, log.read_text()[-1500:])
             time.sleep(0.2)
         runner.send_signal(signal.SIGINT)
@@ -608,6 +615,14 @@ class EngineTests(Fixture):
         result = self.run_runner('--once')
         self.assertIn('A: failed', result.stdout)
         self.assertEqual((self.repo / 'A.txt').read_text(), '')
+
+    def test_the_hosts_runner_settings_never_reach_a_fixture(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='false', PI_AUTOWORK_NO_FALLBACK='1',
+                             AUTOWORK_CACHE='/elsewhere', HOME_MARKER='kept'):
+            env = host_environment()
+        self.assertFalse({'PI_AUTOWORK_MAIN_CHECK', 'PI_AUTOWORK_NO_FALLBACK', 'AUTOWORK_CACHE'} & set(env))
+        self.assertEqual(env['HOME_MARKER'], 'kept')
 
     def test_interrupt_and_resume(self):
         self.plan({'worker:A': ['sleep', 'complete'], 'worker:B': ['sleep', 'complete']})
