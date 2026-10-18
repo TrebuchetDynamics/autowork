@@ -25,6 +25,9 @@ from . import health, janitor, main_check, maintainer, pi_runtime, questions, re
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
+# The engine's planning files (parallel_integrate.PLANNING_FILES): a session that moves only by
+# commits to these, or under docs/, does not invalidate a running review (TOOLSET-233-ba).
+PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
 MERGE_PROMPT = (
     '/skill:git-commit-push This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
@@ -757,24 +760,49 @@ class Coordinator:
             LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
 
     def follow_base(self):
-        """While nothing is in flight the session follows the main branch, so the owner's
-        plan is seen; a running worker's base never moves under it. A conflict (the owner's
-        TODO.md edit against the session's own bookkeeping) is resolved at once through the
-        session merge, not left for a final merge a stalled runner never reaches; a merge
-        that still fails is a runner blocker the owner sees."""
+        """The session follows the main branch whenever no review is running, and takes
+        planning-only commits even beside one, so the owner's plan and toolset fixes reach
+        dispatch and validation within one review (TOOLSET-233-ba). With nothing in flight, a
+        conflict (the owner's TODO.md edit against the session's own bookkeeping) is resolved at
+        once through the session merge, not left for a final merge a stalled runner never
+        reaches; a merge that still fails is a runner blocker the owner sees."""
         if self.integ and not self.in_flight():
             # The owner's quiet planning edits (answers to held tasks) are committed even when
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes(planning_only=True)
+        behind = git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') if self.integ else ''
+        if not behind or dirty(self.integ):
+            return
         if self.session_busy():
-            return  # a review is running: the session follows main after it
-        if not git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') or dirty(self.integ) \
-                or self.in_flight():
-            return
-        if git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
+            # A review is running. Planning-only commits are taken at once: integration lands the
+            # review's merge on top without validating again (TOOLSET-233-ba). Anything else waits
+            # for the review to end, which is at most one review, not until the session lands.
+            changed = git(self.repo, 'diff', '--name-only', f'{self.integ_branch}...{self.base}').split()
+            if not changed or not all(p in PLANNING_FILES or p.startswith('docs/') for p in changed):
+                return
+        # Workers have their own worktrees and integration merges their commits into the session
+        # as it is then, so work in flight never keeps the session from following main: a stale
+        # session hid the owner's plan and every toolset fix for hours (TOOLSET-233-ba).
+        import fcntl
+        path = Path(self.cfg['git_common']) / 'autowork-execution' / 'writer.lock'
+        path.parent.mkdir(exist_ok=True)
+        with open(path, 'a') as lock:
+            try:  # the engine moves the session under this lock; never beside it
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return  # the next cycle tries again
+            merged = git_ok(self.integ, 'merge', '-q', '--no-edit', self.base)
+            if not merged:
+                git(self.integ, 'merge', '--abort')
+        if merged:
             self.merge_blocker = ''
+            rev = git(self.repo, 'rev-parse', self.base)
+            if self.seen.get('took-base') != rev:
+                self.seen['took-base'] = rev
+                LOG.say(f'Took {len(behind.split())} commit(s) from {self.base} into the session')
             return
-        git(self.integ, 'merge', '--abort')
+        if self.session_busy() or self.in_flight():
+            return  # a conflict waits for the resolver at the next landing
         if self.merge_main():
             self.merge_blocker = ''
         else:
@@ -956,6 +984,7 @@ class Coordinator:
                 continue
             if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
                 self.note_state(task, 'integrating')
+            self.follow_base()  # each review validates against the main branch as it is now
             self.start_integration(task)
             finished = self.collect_integration(wait=5)  # quick refusals are handled at once
             if finished is None:

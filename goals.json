@@ -1258,14 +1258,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-233-ba",
-      "section": "Now",
-      "status": "open",
-      "title": "The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2781,6 +2773,14 @@
       "section": "Done",
       "status": "done",
       "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-233-ba",
+      "section": "Done",
+      "status": "done",
+      "title": "The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review"
     },
     {
       "depends_on": [

@@ -153,6 +153,12 @@ elif role == 'verify':
     if behavior == 'slow_review':  # a review that runs a long check
         time.sleep(8)
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+    elif behavior == 'move_main':  # another writer commits a conflicting file to main during the review
+        main = os.environ['FAKE_MAIN_REPO']
+        open(os.path.join(main, task + '.txt'), 'w').write('from main\n')
+        subprocess.run(['git', '-C', main, 'add', '-A'])
+        subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
     elif behavior == 'env':  # a required check cannot run: a tool is missing here
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: fail environment — fake-sdk 1.0 (docs/SETUP.md)')
     elif behavior == 'needs_cache':  # passes only once the runner installed the tool
@@ -1532,6 +1538,29 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=120)
 
+    def test_the_session_takes_main_while_a_worker_runs(self):
+        """TOOLSET-233-ba: the session followed main only with nothing in flight, so a runner
+        that always had work in flight kept a three-hour-old plan and none of main's fixes."""
+        self.plan({'worker:A': ['long']})
+        runner = self.start_runner('--workers', '1', '--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A', timeout=60)
+        (self.repo / 'owner.txt').write_text('a fix on main\n')
+        self.git(self.repo, 'add', 'owner.txt')
+        self.git(self.repo, 'commit', '-qm', 'the owner fixes something on main')
+        main = self.git(self.repo, 'rev-parse', 'main')
+        deadline = time.monotonic() + 45
+        while 'Took 1 commit(s) from main into the session' not in log():
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        session = next(b for b in self.branches() if b.startswith('pi-autowork/'))
+        self.git(self.repo, 'merge-base', '--is-ancestor', main, session)  # raises if not taken
+        self.assertFalse(self.done('A'))  # taken while A still ran
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
@@ -1743,7 +1772,9 @@ class EngineTests(Fixture):
         self.assertIn('Not pushed: main has no upstream branch', log())
 
     def test_an_unresolved_conflict_keeps_the_session(self):
-        self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
+        # Main moves during the review: the session takes it only after (TOOLSET-233-ba), and the
+        # conflict is the landing's. A move while the worker runs is taken at once instead.
+        self.plan({'verify:A': ['move_main'], 'merge': ['no_progress']})
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
         self.assertIn('Merge pending', result.stdout)
@@ -1770,7 +1801,7 @@ class EngineTests(Fixture):
         self.assertTrue(self.registered(other))
 
     def test_a_missing_session_worktree_is_restored_without_pruning_others(self):
-        self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
+        self.plan({'verify:A': ['move_main'], 'merge': ['no_progress']})
         self.assertEqual(self.run_runner('--once').returncode, 4)
         session = json.loads(next(self.state.glob('*/session.json')).read_text())
         other = self.stale_registration('someone-else')

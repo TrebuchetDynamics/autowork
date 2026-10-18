@@ -83,6 +83,36 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
         return proc
 
+    def owner_commit_during_validation(self, path):
+        """A validation command that commits ``path`` to the session once while it runs, as the
+        runner does when it takes main beside a review (TOOLSET-233-ba), counting its runs."""
+        runs = Path(self.temp.name) / 'runs'
+        script = (f'echo run >> {runs}; if [ ! -e {runs}.moved ]; then touch {runs}.moved; '
+                  f'mkdir -p "$(dirname {self.repo / path})"; echo note > {self.repo / path}; '
+                  f'git -C {self.repo} add {path} && git -C {self.repo} -c user.email=o@example.invalid '
+                  f'-c user.name=Owner commit -qm "owner {path}"; fi')
+        return ['bash', '-c', script], runs
+
+    def test_a_session_moved_only_by_planning_commits_lands_the_validated_merge_without_revalidating(self):
+        self.worker()
+        module = self.module()
+        argv, runs = self.owner_commit_during_validation('docs/owner-plan.md')
+        result = module.integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(runs.read_text().count('run'), 1)  # validated once
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+        self.assertEqual((self.repo / 'docs/owner-plan.md').read_text(), 'note\n')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_a_session_moved_by_a_code_commit_is_validated_again(self):
+        self.worker()
+        module = self.module()
+        argv, runs = self.owner_commit_during_validation('src/owner.py')
+        result = module.integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(runs.read_text().count('run'), 2)  # the moved path validated again
+        self.assertTrue((self.repo / 'src/owner.py').exists())
+
     def test_new_protected_file_needs_explicit_serial_scope(self):
         module = self.module()
         slot = {'task_id': 'A', 'baseline': self.baseline, 'attempt': 1}

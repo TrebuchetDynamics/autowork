@@ -58,21 +58,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
-### TOOLSET-233-ba — The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review
-
-- [ ] TOOLSET-233-ba — The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [session merge](pi-autowork/pi_autowork/coordinator.py) (`merge_main` merges the base into the session only on its way to landing, and returns at once while `session_busy`; `land_beside_review` only fast-forwards; the integration loop starts the next review right after it collects one); [integration](skills/autowork/scripts/parallel_integrate.py) (a session that moved during validation is validated again, `integration_head_moved`); TOOLSET-218-d0 in [the archive](TODO.archive.md) (closures alone are read from the base).
-- Evidence (2026-10-18 15:04, this repository's runner): the session branch last took main at 12:00 and was 26 commits behind it, including four toolset fixes. At 12:11 the owner changed TOOLSET-172-92 from `Resources: exclusive` to `install-transaction` on main. The session's copy still said `exclusive` three hours later, so every lower task logged `priority waits for TOOLSET-172-92 (draining, waited 895m)` and the runner had 0 of 8 workers. Its reviews ran back to back with no idle gap, and landing (the only path that merges the base in) never found one. Every candidate reviewed meanwhile was validated against a base without main's fixes.
-- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
-- Scope: (1) Before starting each integration, and once per cycle when none runs, the coordinator merges the base into the session when the base has commits the session lacks. It runs only when no review is running and the merge is clean; a conflict goes to the existing Pi resolver path at the next landing, and the log says `took <n> commit(s) from <base> into the session` once per base revision. (2) While a review runs, base commits that change only planning files (`PLANNING_FILES` in parallel_integrate.py, plus `docs/`) are merged into the session at once. When the review ends with the session moved only by such commits, integration re-merges the candidate onto the new session head and fast-forwards without validating again, if the re-merge is clean and leaves every non-planning path identical to the validated tree. Otherwise the existing moved path applies. (3) Dispatch admission reads the session ledger after (1) or (2), so a priority, Resources or Touches change on main applies within one review.
-- Acceptance: In fixtures: a commit to main between two reviews is in the session before the second review starts, and the second candidate's validation sees it; a planning-only main commit during a review is in the session before the review ends, and that review's candidate integrates without a second validation run; a code commit to main during a review still triggers revalidation; a conflicting base commit leaves the session unchanged and is logged once.
-- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator. It overlaps TOOLSET-179-cf's local-plan refinement (a safe base merge with no outgoing session commits); whichever lands second reuses this merge step. TOOLSET-230-bf (off-tree integration) keeps it if it lands first.
-- Planner's call: first in Now. A stale session hid every owner planning change and every toolset fix for three hours and left the runner idle; merging between reviews costs one clean merge and no extra review. The planning-only re-merge skips the revalidation that would otherwise make merging during a review a loss.
-
 ### TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
 
 - [ ] TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout

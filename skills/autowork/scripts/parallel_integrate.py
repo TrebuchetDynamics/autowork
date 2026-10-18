@@ -242,6 +242,29 @@ def main_checkout(repo):
         return None
 
 
+def planning_only(paths):
+    """Whether every path is a planning file or under docs/ (TOOLSET-233-ba): a session that moved
+    only by such commits during validation changed nothing the validation judged."""
+    return bool(paths) and all(p in PLANNING_FILES or p.startswith('docs/') for p in paths)
+
+
+def remerge_planning(repo, root, merge, head):
+    """The validated ``merge`` on top of a session head that moved only by planning commits:
+    a merge of ``head`` into it in the integration worktree, or None when that conflicts or
+    would change anything else."""
+    try:
+        git(root, 'merge', '--no-ff', '--no-edit', head)
+    except ValueError:
+        git(root, 'merge', '--abort')
+        return None
+    remerged = git(root, 'rev-parse', 'HEAD')
+    brought = changed(repo, merge, remerged)
+    if brought and not planning_only(brought):
+        git(root, 'checkout', '-q', '--detach', merge)
+        return None
+    return remerged
+
+
 def writers_busy(slot, now=None):
     """A reported task refused for a live writer is skipped for a bounded window."""
     try:
@@ -466,11 +489,21 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                     require_no_writers(repo, changed(repo, baseline, merge))
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
                         raise ValueError('canonical branch changed during validation')
-                    if git(repo, 'rev-parse', 'HEAD') != baseline:
-                        state.event(common, 'integration_head_moved', task_id=task, attempt=attempt + 1)
-                        if attempt == 0:
-                            continue
-                        raise Hold('moved', 'canonical HEAD moved twice; fresh integration required')
+                    head = git(repo, 'rev-parse', 'HEAD')
+                    if head != baseline:
+                        # Moved only by planning commits (the runner takes main between and beside
+                        # reviews, TOOLSET-233-ba): land the validated merge on top, unvalidated again.
+                        remerged = (remerge_planning(repo, root, merge, head)
+                                    if ancestor(repo, baseline, head) and planning_only(changed(repo, baseline, head))
+                                    else None)
+                        if remerged:
+                            state.event(common, 'integration_head_moved_planning_only', task_id=task, head=head)
+                            merge = integration['remerged'] = remerged
+                        else:
+                            state.event(common, 'integration_head_moved', task_id=task, attempt=attempt + 1)
+                            if attempt == 0:
+                                continue
+                            raise Hold('moved', 'canonical HEAD moved twice; fresh integration required')
                     # This is the only canonical history-changing command. Git protects dirty files.
                     git(repo, 'merge', '--ff-only', merge)
                     if git(repo, 'rev-parse', 'HEAD') != merge:
