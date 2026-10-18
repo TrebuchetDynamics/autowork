@@ -191,7 +191,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         'own subagents for this task.',
         '',
         'Rules:',
-        f'- Work only inside {worktree}; change only paths within Touches: {touches}',
+        f'- Work only inside {worktree}. Touches names the paths this task is expected to change: {touches}.',
+        '  It guides scheduling, not a fence: change whatever else the task truly needs, keeping the',
+        '  change as small as the task allows.',
         '- New dependency manifests, lock files, schema/migration or CI files need an explicit',
         '  protected path in Touches before editing; a broad directory alone does not reserve them.',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
@@ -218,13 +220,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
-        '  "blockers": [...], "pending_live": [...], "needs_touches": [...], "changelog": "..."}.',
+        '  "blockers": [...], "pending_live": [...], "changelog": "..."}.',
         '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
-        '  what a person must decide or provide (for example a path outside Touches you need, or a',
-        '  missing dependency). If blocked, report commit null with blockers and stop.',
-        '- If you are blocked only because you must change files outside Touches, also list exactly',
-        '  those repository-relative paths in "needs_touches": [...] and leave your work uncommitted.',
-        '  If Touches are widened you resume in this worktree with your changes intact.',
+        '  what a person must decide or provide (for example a missing dependency or a decision).',
+        '  If blocked, report commit null with blockers and stop.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -237,9 +236,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
                   'Only when this task asks to keep or continue earlier work, you may merge or cherry-pick',
                   'from these tips into your assigned branch; otherwise ignore them. Inspect the diff first:',
                   'earlier work is evidence, not accepted work, and may no longer fit the current task.',
-                  'The current entry\'s Touches still apply: bring in nothing outside them, including',
-                  'coordinator-owned files or unreserved protected paths. For a mixed-scope tip, reuse only',
-                  'allowed paths instead of merging or cherry-picking the whole commit.',
+                  'Bring in no coordinator-owned files and no protected paths the entry does not declare.',
+                  'For a mixed-scope tip, reuse only what this task needs instead of the whole commit.',
                   'Keep one final task commit (for example cherry-pick --no-commit or merge --squash).',
                   'Never modify the earlier branches or their worktrees; no work is applied automatically.']
     if adopted:
@@ -577,19 +575,51 @@ def fallback(repo, args, reason):
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
 
 
-def retired(repo):
+LEDGER_ARCHIVES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md')
+
+
+def retired(repo, base=None):
     """Task IDs closed since their slot stopped: done or superseded in goals.json, or
-    checked off in TODO.md or its archive. A held or interrupted slot of such a task is
+    checked off in TODO.md or its archive, here or on the ``base`` branch. A held or interrupted slot of such a task is
     history and occupies nothing; Plan For Me's supersession of a held second attempt
     otherwise left a must-run-alone successor waiting beside it for ever."""
     ids = set()
     if (repo / 'goals.json').is_file():
         ids.update(t['id'] for t in execution.task_ledger(repo).get('tasks', [])
                    if t.get('status') in ('done', 'superseded'))
-    for name in ('TODO.md', 'TODO.archive.md', 'todo.archive.md'):
+    for name in LEDGER_ARCHIVES:
         path = repo / name
         if path.is_file():
             ids.update(key for key, items in execution.task_bodies(path).items()
+                       if items and items[0][1].lower() == 'x')
+    return ids | (closed_on(repo, base) if base else set())
+
+
+def closed_on(repo, base):
+    """Task IDs closed on the ``base`` branch (TOOLSET-218-d0). A session's ledger takes the
+    base only when the session lands, so a task the owner closed there kept its worker for
+    as long as landing waited; an unreadable base adds nothing."""
+    goals, ids = execution.goals_module(), set()
+
+    def show(name):
+        try:
+            out = subprocess.run(['git', '-C', str(repo), 'show', f'{base}:{name}'],
+                                 capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            return None
+        return out.stdout if out.returncode == 0 else None
+
+    ledger = show('goals.json')
+    if ledger:
+        try:
+            ids.update(t['id'] for t in goals.parse_ledger(ledger).get('tasks', [])
+                       if t.get('status') in ('done', 'superseded'))
+        except (ValueError, AttributeError, TypeError, KeyError):
+            pass  # a malformed base ledger is the docs maintainer's; the session's still counts
+    for name in LEDGER_ARCHIVES:
+        text = show(name)
+        if text:
+            ids.update(key for key, items in goals.task_bodies(text.replace('\r\n', '\n')).items()
                        if items and items[0][1].lower() == 'x')
     return ids
 
@@ -686,25 +716,9 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
                    drain_after=drain_after, waited=waited)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
-    resumed = {t['id'] for t in first['dispatch']}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
-    by_id = {t['id']: t for t in everything}
-    waiting_owners = [by_id[tid] for tid in restartable if tid not in resumed and tid in by_id]
-    dispatch, waiting = [], first['waiting'] + second['waiting']
-    def shares(task, other):
-        try:
-            return parallel_plan._shared(parallel_plan._touches(task), parallel_plan._touches(other))
-        except ValueError:  # invalid Touches hold their own task (plan); they reserve nothing
-            return False
-
-    for task in second['dispatch']:
-        owner = next((o['id'] for o in waiting_owners if shares(task, o)), None)
-        if owner:
-            waiting.append({'id': task['id'], 'reason': 'overlapping paths with interrupted ' + owner,
-                            'blocked_by': [owner]})
-        else:
-            dispatch.append(task)
-    return {'dispatch': first['dispatch'] + dispatch, 'waiting': waiting}
+    # Overlap with an interrupted owner never holds new work either (TOOLSET-161-17).
+    return {'dispatch': first['dispatch'] + second['dispatch'], 'waiting': first['waiting'] + second['waiting']}
 
 
 def dispatch(args):
@@ -729,9 +743,10 @@ def dispatch_locked(args, repo, common, count, template, host):
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
-    closed = retired(repo)
+    closed = retired(repo, getattr(args, 'base_ref', None))
+    candidates = [t for t in candidates if t['id'] not in closed]  # closed work never starts
     occupying = [s for s in current if s['state'] in OCCUPYING
-                 and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
+                 and not (s['state'] in ('held', 'interrupted', 'released', 'reported') and s['task_id'] in closed)]
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
     # A second failure gets no further attempt: it waits for a person, not the pool. A commit
     # held for overlap owns nothing while it waits either (integration agrees): it is offered
@@ -816,7 +831,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         state.require_owner(common, args.owner_pid)
         from parallel_status import pending_tasks
         pending_ids = {v['id'] for v in waiting}
-        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)})
+        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)} | closed)
                              if v['id'] not in pending_ids]
         state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,

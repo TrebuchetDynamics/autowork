@@ -210,8 +210,7 @@ memory one more worker needs (`PI_AUTOWORK_MIN_FREE_MB`, default 3000; twice it 
 available), the repository's full offline check to run on main after each landing
 (`PI_AUTOWORK_MAIN_CHECK`, for example `python3 scripts/check.py`; a red result gets one
 repair task from the DOCS-MAINTAINER), how long `/tmp` scratch may sit unused before it is removed
-(`PI_AUTOWORK_TMP_STALE`, default 7200 seconds, `0` off) and
-`PI_AUTOWORK_INFER_TOUCHES=0` (do not propose `Touches:`).
+(`PI_AUTOWORK_TMP_STALE`, default 7200 seconds, `0` off).
 
 The default way to run pi-autowork is a **systemd user service** per repository,
 managed with the `autowork` command ([pi-autowork](../pi-autowork/README.md#the-autowork-command)).
@@ -273,23 +272,20 @@ A running review's answer is consumed first. Existing workers and other children
 keep their old release until they exit; only newly started children use the new one.
 An update whose script does not parse is logged and the running code kept. Update
 frequency and the fleet checkpoint wait are unchanged.
-Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
-them, so a changed prompt asks those tasks again, and a pass that gave no answer is
-retried within the hour.
+Every candidate's merged tree runs the repository's full offline check before the Pi
+review (TOOLSET-180-72): `PI_AUTOWORK_VALIDATE`, else a `Full check: <command>` line in its
+AGENTS.md (`PI_AUTOWORK_VALIDATE_TIMEOUT`, default 3600 s). Only tests the base revision does
+not already fail reject it (the base result is computed once per revision and cached), and a
+test that passes when rerun alone counts as flaky. The rejection names the new failures, and the
+retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
+unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 
-Touches the runner inferred are a guess. When a worker's commit is held only for
-changing files outside them, the runner widens its own guess to those files once and
-the engine verifies the same commit again. The same applies when a worker stops to ask
-for files outside its inferred Touches: the runner widens them and the worker resumes in
-its worktree with its changes intact. Touches inferred by older runs are recognized from
-the runner's own commits.
-
-Touches a person wrote are widened at most once per task, and only by at most three exact
-files the worker named. Globs, directories, `TODO.md`, `goals.json`, `BLOCKERS.md` and files
-declared by another task with a live or held slot are refused. The entry then records
-`Touches widened by the runner from worker evidence: <paths>`; a serial file such as a
-manifest makes the task run alone, as any serial path does. Anything outside those bounds,
-or a second request, waits for a person with its cause shown by `--fleet`.
+`Touches:` only schedules work (TOOLSET-161-17): tasks whose declared files overlap are
+dispatched after independent ones, never held, and a worker may change whatever its task
+needs. Finished work integrates one task at a time in priority order; the merge settles
+overlap, and a real conflict goes to the merge resolver. Only coordinator-owned files and
+undeclared protected files (manifests, lock files, schema, migration and CI files) hold a
+commit. The runner no longer infers or widens `Touches:`.
 
 When the reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW`), the
 runner sends every commit an earlier reviewer held back for review once, by itself,

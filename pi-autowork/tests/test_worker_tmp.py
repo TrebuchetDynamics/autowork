@@ -73,6 +73,7 @@ class ReviewScratchTests(unittest.TestCase):
 
             def job(settings, role, task, checkout, prompt, *rest):
                 seen['tmp'] = Path(os.environ['TMPDIR'])
+                seen['real'] = seen['tmp'].resolve()
                 seen['prompt'] = prompt
                 (seen['tmp'] / 'copy.txt').write_text('scratch')
                 return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
@@ -80,7 +81,8 @@ class ReviewScratchTests(unittest.TestCase):
             old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
             os.chdir(repo)
             try:
-                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []), \
+                        patch.dict(os.environ, {'PI_AUTOWORK_REVIEW_ROOT': str(state)}):
                     self.assertEqual(worker.verify(str(state), 'T-1'), 0)
             finally:
                 os.chdir(old_cwd)
@@ -88,7 +90,11 @@ class ReviewScratchTests(unittest.TestCase):
                     os.environ.pop('TMPDIR', None)
                 else:
                     os.environ['TMPDIR'] = old_tmp
-            self.assertTrue(str(seen['tmp']).startswith(str(state / 'review-tmp')), seen['tmp'])
+            # A real directory, not a link: code that resolves links must get the same short path,
+            # so a socket under it fits the 108-byte AF_UNIX limit.
+            self.assertEqual(seen['real'], seen['tmp'].absolute())
+            self.assertEqual(seen['tmp'].parent, state)
+            self.assertTrue(seen['tmp'].name.startswith(f'aw-r-{os.getpid()}-'), seen['tmp'])
             self.assertFalse(seen['tmp'].exists())
             self.assertIn('never directly under /tmp', seen['prompt'])
             cache = repo / '.git' / 'autowork-execution' / 'cache'
@@ -121,7 +127,8 @@ class ReviewScratchTests(unittest.TestCase):
             old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
             os.chdir(repo)
             try:
-                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []), \
+                        patch.dict(os.environ, {'PI_AUTOWORK_REVIEW_ROOT': str(state)}):
                     self.assertEqual(worker.verify(str(state), 'T-1'), 0)
             finally:
                 os.chdir(old_cwd)
@@ -132,7 +139,8 @@ class ReviewScratchTests(unittest.TestCase):
             registered = [Path(line[len('worktree '):]) for line in git('worktree', 'list', '--porcelain').splitlines()
                           if line.startswith('worktree ')]
             self.assertIn(other.resolve(), [p.resolve() for p in registered])
-            self.assertFalse([p for p in registered if (state / 'review-tmp').resolve() in p.resolve().parents])
+            self.assertFalse([p for p in registered if p.resolve().name.startswith('aw-r-')
+                              or any(q.name.startswith('aw-r-') for q in p.resolve().parents)])
 
 
 class DeadReviewScratchTests(unittest.TestCase):
@@ -147,7 +155,7 @@ class DeadReviewScratchTests(unittest.TestCase):
             git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'base')
             dead = subprocess.Popen(['true'])
             dead.wait()
-            gone, live = scratch / f'T-1-{dead.pid}', scratch / f'T-2-{os.getpid()}'
+            gone, live = scratch / f'aw-r-{dead.pid}-abc', scratch / f'aw-r-{os.getpid()}-def'
             for path in (gone, live):
                 path.mkdir(parents=True)
             git('worktree', 'add', '-q', '--detach', str(gone / 'copy'), 'HEAD')

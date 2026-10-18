@@ -31,6 +31,10 @@ def task(tid, touches, depends='None'):
     return '\n'.join(lines) + '\n'
 
 
+# A task that must run alone. A missing Touches no longer makes one (TOOLSET-161-17).
+ALONE = task('S', 's.txt') + '- Resources: exclusive\n'
+
+
 class DispatchTests(unittest.TestCase):
     def setUp(self):
         # Bootstrap independently of the worker's inherited, potentially long TMPDIR.
@@ -109,7 +113,8 @@ class DispatchTests(unittest.TestCase):
         code, result = self.apply()
         self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
         self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
-        self.assertEqual({w['id']: w['reason'] for w in result['waiting']}['D'], 'overlapping paths with A')
+        # D shares a.txt with A: Touches only rank it, so it waits for a free slot (TOOLSET-161-17).
+        self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['E'])
         self.assertNotIn('C', [w['id'] for w in result['waiting']])  # C's dependency is unfinished
         _, again = self.apply()
@@ -333,7 +338,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
     def test_a_held_slot_of_a_closed_task_stops_occupying(self):
         """india: Plan For Me superseded a held second attempt, and its must-run-alone
         successor waited beside the dead slot for ever."""
-        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
                        'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
         for _ in range(2):  # crash, restart once, crash again: held for good
@@ -348,21 +353,77 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
 
     def test_a_retryable_slot_of_a_closed_task_stops_occupying(self):
-        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
                        'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
         self.apply()
         self.wait_until_idle()  # crashed once: interrupted, with its restart still to come
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt']), ('interrupted', 1))
-        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('S', ''))
+        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), ALONE)
         _, freed = self.apply()
         self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
+
+    def close_on_base(self, *bodies):
+        """Commit ``bodies`` as TODO.md on a separate base branch, ``trunk``, the way an owner
+        closes tasks on main while the session's own ledger lags (TOOLSET-218-d0)."""
+        base = self.root / 'base'
+        if not base.exists():
+            self.git('worktree', 'add', '-q', '-b', 'trunk', str(base), 'HEAD')
+        (base / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
+        self.git('commit', '-qam', 'close on the base', repo=base)
+
+    def test_a_worker_whose_task_closes_on_the_base_is_stopped_and_set_aside(self):
+        self.set_spec({'A': {'files': {'a.txt': 'duplicate'}, 'sleep': 30},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 30}, 'D': {'files': {'a.txt': 'd'}, 'sleep': 30}})
+        _, first = self.apply('--base-ref', 'trunk')  # no trunk yet: the session's ledger alone
+        self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
+        worker = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        _, freed = self.apply('--base-ref', 'trunk')
+        self.assertEqual(freed['closed_on_base'], ['A'], freed)
+        self.assertFalse(state.worker_live(worker))
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
+        self.assertEqual(len(freed['dispatched']), 1, freed)  # the freed slot starts the next task at once
+        self.assertNotIn('A', [d['task'] for d in freed['dispatched']])
+        history = json.loads((self.common / 'slot-history' / 'A' / '1' / 'slot.json').read_text())
+        self.assertEqual(history['cause'], 'closed_on_base')
+        kept = self.repo / '.worktrees' / 'autowork-A-set-aside-1'
+        self.assertEqual((kept / 'a.txt').read_text(), 'duplicate')  # uncommitted work is kept
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
+        self.assertIn('B', [s['task_id'] for s in state.slots(self.common)])  # open on both: untouched
+
+    def test_a_task_closed_only_on_the_base_never_starts(self):
+        self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
+                           task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))
+        _, result = self.apply('4', '--base-ref', 'trunk')
+        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B', 'D'])
+        self.assertNotIn('E', [w['id'] for w in result['waiting']])
+
+    def test_an_unreadable_base_falls_back_to_the_session_ledger(self):
+        _, result = self.apply('--base-ref', 'no-such-branch')
+        self.assertEqual([d['task'] for d in result['dispatched']], ['A', 'B'])
+        self.assertNotIn('closed_on_base', result)
+
+    def test_a_reported_commit_of_a_task_closed_on_the_base_is_set_aside_not_integrated(self):
+        import parallel_integrate as integrate
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}})
+        self.apply('1')
+        self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'reported')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        result = integrate.integrate(self.repo, self.owner, 'A', ['false'], 60, None, 'trunk')
+        self.assertEqual(result['outcome'], 'SET_ASIDE', result)
+        self.assertIn('closed on trunk', result['reason'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.git('rev-parse', 'trunk~1'))  # nothing merged
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
 
     def test_a_worker_that_reports_a_blocker_is_held_for_a_person_not_resumed(self):
         """sierra TASK-022: a worker stopped on purpose with blockers, was read as a crash,
         resumed, and spent both attempts on the same wall."""
-        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
                              'blockers': ['Needs src/other.go, outside Touches']},
                        'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
@@ -395,8 +456,10 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual([e['task_id'] for e in journal if e['event'] == 'claim_adopted'], ['A'])
         self.wait_until_idle()
 
-    def test_a_worker_asking_for_more_files_resumes_in_place_once_touches_cover_them(self):
-        """sierra TASK-024: a worker needed one test file outside Touches and could only stop."""
+    def test_a_held_scope_request_resumes_in_place_without_a_touches_check(self):
+        """sierra TASK-024: a worker needed one test file outside Touches and could only stop.
+        TOOLSET-161-17: a worker no longer asks; a request an older release held resumes in its
+        own worktree on the same attempt, with no change to Touches."""
         self.write_todo(task('A', 'a.txt'))
         self.git('add', '.')
         self.git('commit', '-qm', 'A')
@@ -406,11 +469,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.apply()
         self.wait_until_idle()
         slot = state.slots(self.common)[0]
-        self.assertEqual((slot['state'], slot['cause'], slot['requested']), ('held', 'scope_request', ['b.txt']))
-        _, again = self.apply()
-        self.assertEqual(again['outcome'], 'IDLE')  # not covered yet: waits for a person or the runner
-        self.write_todo(task('A', 'a.txt, b.txt'))
-        self.git('commit', '-qam', 'widen A')
+        self.assertEqual((slot['state'], slot['cause']), ('held', 'blocker'))  # needs_touches is not read
+        state.write_slot(self.common, {**slot, 'cause': 'scope_request', 'requested': ['b.txt']}, slot)
         _, resumed = self.apply()
         self.assertEqual(resumed['outcome'], 'RESUMED')
         slot = state.slots(self.common)[0]
@@ -422,7 +482,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt']), ('reported', 1))  # same attempt, now committed
         prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
-        self.assertIn('change only paths within Touches: a.txt, b.txt', prompt)
+        self.assertIn('It guides scheduling, not a fence', prompt)
+        self.assertNotIn('needs_touches', prompt)
 
     def test_an_answered_question_requeues_the_held_task_once(self):
         """An answered hold runs fresh and can continue its preserved candidate."""
@@ -847,21 +908,11 @@ class AdmitTests(unittest.TestCase):
                               + list(parked), parked=list(parked), adopted=set(), protected=None)
 
     def test_an_interrupted_candidate_resumes_before_fresh_work_on_its_files(self):
+        """TOOLSET-161-17: fresh work on the same files is not held; it starts after the resume."""
         fresh, interrupted = contract('FRESH', 'lib/x.dart'), contract('OLD', 'lib/x.dart, test/x_test.dart')
         result = self.admit([fresh, interrupted], restartable={'OLD'}, occupying={'OLD'})
-        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD'])
-        self.assertEqual({w['id']: w['reason'] for w in result['waiting']},
-                         {'FRESH': 'overlapping paths with OLD'})
-
-    def test_an_interrupted_task_that_cannot_start_still_owns_its_files(self):
-        blocker = contract('LIVE', 'lib/y.dart, lib/x.dart')
-        interrupted, fresh, other = contract('OLD', 'lib/x.dart'), contract('FRESH', 'lib/x.dart'), contract('C', 'c.py')
-        result = self.admit([interrupted, fresh, other], running=[blocker], restartable={'OLD'},
-                            occupying={'OLD', 'LIVE'})
-        self.assertEqual([t['id'] for t in result['dispatch']], ['C'])
-        reasons = {w['id']: w['reason'] for w in result['waiting']}
-        self.assertEqual(reasons['OLD'], 'overlapping paths with LIVE')
-        self.assertIn(reasons['FRESH'], ('overlapping paths with LIVE', 'overlapping paths with interrupted OLD'))
+        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD', 'FRESH'])
+        self.assertEqual(result['waiting'], [])
 
     def test_a_commit_held_for_overlap_stops_nothing_but_its_dependents(self):
         held, interrupted = contract('HELD', 'lib/x.dart'), contract('OLD', 'lib/x.dart')

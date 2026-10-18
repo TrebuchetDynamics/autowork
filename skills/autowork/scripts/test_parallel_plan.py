@@ -75,7 +75,7 @@ class RunnableTests(unittest.TestCase):
                             event='dispatch_observed', timestamp=1, waiting=result['waiting'])) + '\n')
                         status = parallel_status._snapshot(repo, common, 2)
                         if 'owner approved' in authorization:
-                            self.assertEqual([t['id'] for t in result['dispatch']], ['T-1'])
+                            self.assertIn('T-1', [t['id'] for t in result['dispatch']])
                             self.assertFalse(any(r['kind'] == 'outside' for r in status['roots']))
                         else:
                             self.assertEqual([t['id'] for t in result['dispatch']], ['T-2'])
@@ -215,17 +215,15 @@ class PlanTests(unittest.TestCase):
         result = plan([task('S', 'package.json'), task('B', 'b.py')], [task('RUN', 'yarn.lock')])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B'])  # a serial S waits, but stops nothing
         self.assertEqual(result['waiting'][0]['reason'], 'serial path shared with RUN')
-        for alone in (task('X', ''), task('X', 'x.py', resources='exclusive')):
-            with self.subTest(alone=alone['fields']):
-                result = plan([alone, task('B', 'b.py')], [task('RUN', 'run.py')])
-                self.assertEqual(result['dispatch'], [])  # still drains the pool for it
+        result = plan([task('X', 'x.py', resources='exclusive'), task('B', 'b.py')], [task('RUN', 'run.py')])
+        self.assertEqual(result['dispatch'], [])  # still drains the pool for it
+        # TOOLSET-161-17: missing Touches is no hint, not a reason to run alone.
+        result = plan([task('X', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'X'])  # ranked after hinted work
 
     def test_conflicts_serialize_in_priority_order(self):
         from parallel_plan import plan
-        cases = [
-            (task('A', 'src/'), task('B', 'src/b.py'), 'path'),
-            (task('A', 'src/test_[ab].txt'), task('B', 'src/test_b.txt'), 'paths'),
-            (task('A', 'src/test_b.txt'), task('B', 'src/test_[ab].txt'), 'paths'),
+        cases = [  # overlapping Touches no longer serialize (TOOLSET-161-17); these still do
             (task('A', 'a.py', resources='db:test network'),
              task('B', 'b.py', resources='db:test'), 'resource'),
             (task('A', 'a.py'), task('B', 'b.py', deps='A.'), 'dependency'),
@@ -242,30 +240,24 @@ class PlanTests(unittest.TestCase):
                 self.assertEqual([w['id'] for w in result['waiting']], ['B', 'C'] if alone else ['B'])
                 self.assertIn(reason, result['waiting'][0]['reason'])
 
-    def test_independent_work_backfills_past_a_waiting_task_but_never_takes_its_paths(self):
-        """sierra: one task blocked by another session's claim held back 33 independent tasks."""
+    def test_overlapping_touches_never_hold_a_task_and_independent_work_ranks_first(self):
+        """TOOLSET-161-17: Touches schedule work but never hold it; integration settles overlap."""
         from parallel_plan import plan
         claim = task('CL', 'shared/', status='in_progress')
         tasks = [task('T1', 'shared/x.py'), task('T2', 'shared/x.py'), task('T3', 'free.py'),
                  task('T4', 'other.py', resources='db'), task('T5', 'more.py', resources='db')]
         result = plan(tasks, all_tasks=[claim, *tasks])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['T3', 'T4'])
-        self.assertEqual([w['id'] for w in result['waiting']], ['T1', 'T2', 'T5'])
-        self.assertIn('in_progress CL', result['waiting'][0]['reason'])
-        # Sharing a path only with the waiting T1 (not with the claim) still waits for T1.
-        tasks = [task('T1', 'shared/x.py, lib/y.py'), task('T7', 'lib/y.py'), task('T3', 'free.py')]
-        result = plan(tasks, all_tasks=[claim, *tasks])
-        self.assertEqual([t['id'] for t in result['dispatch']], ['T3'])
-        self.assertEqual(result['waiting'][1], {'id': 'T7', 'reason': 'overlapping paths with T1', 'blocked_by': ['T1']})
-        # A task that must run alone and waits on running work stops everything below it
-        # so the pool drains; a waiting T1 does not keep it from running alone now.
-        result = plan([task('S', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
-        self.assertEqual(result['dispatch'], [])
+        # T2 shares T1's file: it still runs, after the independent work; T5 shares a resource.
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T1', 'T3', 'T4', 'T2'])
+        self.assertEqual([w['id'] for w in result['waiting']], ['T5'])
+        self.assertIn('shared resource', result['waiting'][0]['reason'])
+        result = plan([task('B', 'run.py'), task('C', 'c.py')], [task('RUN', 'run.py')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['C', 'B'])  # B overlaps running work: last
         # A serial S is not exclusive (TOOLSET-160-df): independent T3 runs beside it.
         tasks = [task('T1', 'shared/x.py'), task('S', 'package.json'), task('T3', 'free.py')]
         result = plan(tasks, all_tasks=[claim, *tasks], protected_files=[])  # shared/ holds no manifest
-        self.assertEqual([t['id'] for t in result['dispatch']], ['S', 'T3'])
-        self.assertEqual([w['id'] for w in result['waiting']], ['T1'])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['T1', 'S', 'T3'])
+        self.assertEqual(result['waiting'], [])
         result = plan([task('S', 'package.json'), task('T3', 'free.py')], [tasks[0]])
         self.assertEqual([t['id'] for t in result['dispatch']], ['S', 'T3'])
 
@@ -280,7 +272,7 @@ class PlanTests(unittest.TestCase):
         from parallel_plan import plan
         live = task('A', 'a.py', resources='live')
         live['fields']['Live authorization'] = 'owner approved this run on 2026-10-17'
-        for solo in (task('A', ''), live, task('A', 'a.py', resources='exclusive')):
+        for solo in (live, task('A', 'a.py', resources='exclusive')):
             with self.subTest(solo=solo):
                 tasks = [solo, task('B', 'b.py')]
                 self.assertEqual([t['id'] for t in plan(tasks)['dispatch']], ['A'])
@@ -302,10 +294,9 @@ class PlanTests(unittest.TestCase):
         tasks = [exclusive, task('B', 'b.py'), task('C', 'x.py')]
         running = [task('RUN', 'run.py')]
         early = plan(tasks, running, drain_after=1800, waited={'X': 60})
-        self.assertEqual([t['id'] for t in early['dispatch']], ['B'])  # independent work backfills
+        self.assertEqual([t['id'] for t in early['dispatch']], ['B', 'C'])  # other work backfills
         reasons = {w['id']: w['reason'] for w in early['waiting']}
         self.assertIn('must run alone', reasons['X'])
-        self.assertEqual(reasons['C'], 'overlapping paths with X')  # it still reserves its files
         late = plan(tasks, running, drain_after=1800, waited={'X': 1900})
         self.assertEqual(late['dispatch'], [])
         self.assertEqual({w['id']: w['reason'] for w in late['waiting']}['B'],
@@ -349,7 +340,8 @@ class PlanTests(unittest.TestCase):
         self.assertEqual([t['id'] for t in result['dispatch']], ['B'])
         self.assertIn('in_progress', result['waiting'][0]['reason'])
         self.assertEqual(plan([task('A', 'a.py')], [task('A', 'a.py')])['dispatch'], [])
-        self.assertEqual(plan([running, task('B', 'a.py')])['dispatch'], [])
+        # An idle claim's declared files do not hold others either (TOOLSET-161-17).
+        self.assertEqual([t['id'] for t in plan([running, task('B', 'a.py')])['dispatch']], ['B'])
         # An idle in_progress claim without Touches no longer blocks unrelated work
         # (it is not running); it still blocks dependents and declared overlap.
         running['fields']['Touches'] = ''
@@ -358,12 +350,10 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan([running, task('C', '')])['dispatch'][0]['id'], 'C')  # solo task runs alone
         self.assertEqual(plan([running, task('D', 'd.py', deps='A')])['dispatch'], [])
         running['fields']['Touches'] = 'a.py'
-        self.assertEqual(plan([running, task('E', 'a.py', status='open')])['dispatch'], [])
-        # A live slot is still running work: missing Touches keeps everything else waiting.
-        live = task('L', '')
-        result = plan([task('B', 'b.py')], [live])
-        self.assertEqual(result['dispatch'], [])
-        self.assertIn('Touches', result['waiting'][0]['reason'])
+        self.assertEqual([t['id'] for t in plan([running, task('E', 'a.py', status='open')])['dispatch']], ['E'])
+        # A live slot without Touches holds nothing either: it is no hint (TOOLSET-161-17).
+        result = plan([task('B', 'b.py')], [task('L', '')])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B'])
 
 
 class TouchesParsingTests(unittest.TestCase):
@@ -418,6 +408,46 @@ class OverlapTests(unittest.TestCase):
             with self.subTest(a=a, b=b):
                 for left, right in ((a, b), (b, a)):
                     self.assertEqual(parallel_plan._shared([left], [right]), expected)
+
+    def test_literal_short_cuts_agree_with_the_full_intersection_search(self):
+        """TOOLSET-221-8e: literal sides skip the product search; the answer must not change."""
+        import random
+        import parallel_plan
+        parts = ['a', 'b', 'ab', 'src', 'x.py', 'test_a.py']
+        globs = ['*', '*.py', 'a*', '?', 'test_[a-b].py', '[!a]']
+        rng = random.Random(221)
+
+        def path(glob):
+            items = [rng.choice(parts) for _ in range(rng.randint(1, 3))]
+            if glob:
+                items[rng.randrange(len(items))] = rng.choice(globs)
+            return '/'.join(items) + ('/' if rng.random() < 0.3 else '')
+
+        for _ in range(3000):
+            left, right = path(rng.random() < 0.3), path(rng.random() < 0.3)
+            full = lambda p: p + '*' if p.endswith('/') else p
+            with self.subTest(left=left, right=right):
+                self.assertEqual(parallel_plan._intersects(left, right),
+                                 parallel_plan._search(full(left), full(right)))
+
+    def test_a_deep_queue_plans_in_seconds(self):
+        """TOOLSET-221-8e: 58 runnable tasks took minutes to plan, almost all in path overlap."""
+        import time
+        import parallel_plan
+        shapes = ['src/mod{i}/file{j}.py', 'docs/area{i}/', 'tests/test_{i}_{j}.py', 'pkg{i}/*.go',
+                  'web/{i}/[a-c]{j}.ts', 'services/{i}/package.json']
+
+        def task(n):
+            touches = ', '.join(shapes[(n + j) % len(shapes)].format(i=n % 17, j=j) for j in range(10))
+            return {'id': f'T-{n}', 'fields': {'Touches': touches, 'Dependencies': f'T-{n - 3}.' if n % 5 == 0 and n > 3 else 'None.',
+                                               'Status': 'open'}}
+
+        everything = [task(n) for n in range(158)]
+        running, queue = everything[:8], everything[8:]
+        started = time.monotonic()
+        result = parallel_plan.plan(queue, running, all_tasks=everything, protected_files=['services/1/package.json'])
+        self.assertLess(time.monotonic() - started, 10)  # under 2 s on an idle host; 10 tolerates a busy one
+        self.assertEqual(len(result['dispatch']) + len(result['waiting']), len(queue))
 
     def test_path_declarations_tolerate_only_a_final_sentence_period(self):
         from parallel_plan import paths

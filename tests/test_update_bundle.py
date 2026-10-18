@@ -231,7 +231,7 @@ class UpdateTests(unittest.TestCase):
                 args = ['--hermes-home', str(self.home)] + (['--check'] if check else [])
                 with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
                      patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
-                     patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+                     patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles, **_: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
                      patch.object(self.mod, 'gateway_running', return_value=False), \
                      contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(self.mod.main(args), 0)
@@ -250,7 +250,7 @@ class UpdateTests(unittest.TestCase):
         for _ in range(2):
             with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
                  patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
-                 patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+                 patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles, **_: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
                  patch.object(self.mod, 'heal_chat_menus', return_value=[]), \
                  patch.object(self.mod, 'gateway_running', return_value=False), \
                  contextlib.redirect_stdout(io.StringIO()):
@@ -271,7 +271,7 @@ class UpdateTests(unittest.TestCase):
         prepare = self.mod.prepare
         stale = self.profiles[0][1] / 'config.yaml'
         stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autoresearch]}}}}\n')
-        def activate(source, root, profiles):
+        def activate(source, root, profiles, **_):
             stale.write_text('platforms: {telegram: {extra: {command_menu: {priority: [autowork]}}}}\n')
             return [{'profile': name, 'status': 'ready'} for name, _ in profiles]
         for running, expected in ((True, 'requested'), (False, 'not_running')):
@@ -315,7 +315,7 @@ class UpdateTests(unittest.TestCase):
         receipts = []
         with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
              patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
-             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles, **_: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
              patch.object(self.mod, 'chat_turns', return_value=0), \
              patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
@@ -345,7 +345,7 @@ class UpdateTests(unittest.TestCase):
             return drain.pid
         with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
              patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
-             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles, **_: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
              patch.object(self.mod, 'chat_turns', return_value=0), \
              patch.object(self.mod, 'request_gateway_restart', side_effect=spawn) as restart, \
@@ -469,6 +469,38 @@ class UpdateTests(unittest.TestCase):
         commands=[c.args[0] for c in run.call_args_list]
         self.assertEqual(sum('finalize' in c for c in commands),2)
         self.assertFalse(any(any('setup_bundle.py' in a for a in c) for c in commands))
+
+    def test_a_profile_left_incomplete_is_finalized_again_after_each_delay(self):
+        """A just-restarted gateway wires its commands a little after it serves."""
+        exits = iter([0, 0, 0, 1, 1, 0])  # enable/finalize per profile, then two retries of the second
+        result = lambda *a, **k: type('Result', (), {'returncode': next(exits)})()
+        with patch.object(self.mod.subprocess, 'run', side_effect=result) as run, \
+             patch.object(self.mod.time, 'sleep') as sleep:
+            rows = self.mod.finalize_profiles(self.repo, self.home, self.profiles, retries=(15, 30, 60))
+        self.assertEqual([r['status'] for r in rows], ['ready', 'ready'])
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [15, 30])
+        self.assertEqual(sum('finalize' in c.args[0] for c in run.call_args_list), 4)
+
+    def test_an_update_between_gateways_waits_for_the_new_one(self):
+        folder = self.home / 'maintenance/toolset-update'; folder.mkdir(parents=True, exist_ok=True)
+        states = iter(['starting', 'starting', 'running'])
+        with patch.object(self.mod, 'pending_restart', return_value={'mode': 'requested'}), \
+             patch.object(self.mod, 'gateway_state', side_effect=lambda r: next(states)), \
+             patch.object(self.mod, 'gateway_running', return_value=True), \
+             patch.object(self.mod.time, 'sleep') as sleep:
+            self.assertTrue(self.mod.wait_for_gateway(self.home, folder))
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_a_draining_or_deferred_restart_is_not_waited_for(self):
+        folder = self.home / 'maintenance/toolset-update'; folder.mkdir(parents=True, exist_ok=True)
+        for record, state in (({'mode': 'requested'}, 'draining'), ({'mode': 'deferred'}, 'starting'), (None, 'starting')):
+            with self.subTest(record=record, state=state), \
+                 patch.object(self.mod, 'pending_restart', return_value=record), \
+                 patch.object(self.mod, 'gateway_state', return_value=state), \
+                 patch.object(self.mod, 'gateway_running', return_value=True), \
+                 patch.object(self.mod.time, 'sleep') as sleep:
+                self.assertFalse(self.mod.wait_for_gateway(self.home, folder))
+                sleep.assert_not_called()
 
     def test_upstream_executable_only_change_updates_native_mode(self):
         (self.remote/'skills/demo/SKILL.md').chmod(0o755)

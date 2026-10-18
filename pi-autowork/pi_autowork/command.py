@@ -19,6 +19,9 @@
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
     autowork blockers [dir]       answer what blocks the queue (/blockers in an agent)
+    autowork scorecard [--days N] [--json] [target...]
+                                  per runner: tasks closed, held share, start to merge, owner
+                                  questions over the last N days (default 7)
 
 A systemd user service (`pi-autowork@<repository name>`) is the default way to run a
 repository's runner. A target is a runner name (sierra), a repository path, or `.`.
@@ -33,7 +36,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, service  # noqa: E402
+from pi_autowork import fleet_view, scorecard, service  # noqa: E402
 
 COMPONENT = Path(__file__).resolve().parents[1]
 TOOLSET = COMPONENT.parent
@@ -333,6 +336,20 @@ def cmd_ls(args, paths):
     return 0
 
 
+def cmd_scorecard(args, paths):
+    if args.target:
+        found = [resolve(target, paths) for target in args.target]
+    else:
+        found = [(r.repo, r.name) for r in runners(paths) if r.repo]
+    rows = {name: scorecard.measure(repo, args.days) for repo, name in found}
+    if args.json:
+        import json
+        print(json.dumps({'days': args.days, 'runners': rows}, indent=2))
+    else:
+        print('\n'.join(scorecard.table(rows, args.days)))
+    return 0
+
+
 def uv_python(*packages):
     if not shutil.which('uv'):
         raise Fail('the TUI needs uv (https://docs.astral.sh/uv/)')
@@ -401,6 +418,10 @@ def parser():
     model.add_argument('--fallback', help='the fallback provider/model')
     models = sub.add_parser('models', help="Pi's model list")
     models.add_argument('search', nargs='?')
+    card = sub.add_parser('scorecard', help='per runner: tasks closed, held share, start to merge, owner questions')
+    card.add_argument('--days', type=int, default=7)
+    card.add_argument('--json', action='store_true')
+    card.add_argument('target', nargs='*', help='runner names or repository paths (default: every runner)')
     sub.add_parser('help', help='this help')
     return top
 
@@ -409,7 +430,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'stop': cmd_stop, 'restart': cmd_restart, 'remove': cmd_remove,
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
-            'model': cmd_model, 'models': cmd_models}
+            'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard}
 
 
 def main(argv=None):

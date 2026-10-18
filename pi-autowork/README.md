@@ -46,6 +46,7 @@ name, a repository path or `.`. Nothing here calls a model.
 | `autowork run [dir]` | Run the runner in the foreground here, for debugging |
 | `autowork web [--port N] [--host H] [--view-only]` | The TUI in a browser at `http://127.0.0.1:8765` (this machine only); `--view-only` disables control keys |
 | `autowork blockers [dir]` | `/autowork blockers` in an agent (`AUTOWORK_AGENT`, else `claude`, else `pi`) |
+| `autowork scorecard [--days N] [--json] [target...]` | Per runner over the last N days (default 7): tasks closed, share of integrations held, median dispatch-to-merge time, new owner questions; no model call |
 
 In the TUI: Enter opens a runner's full log; `d` browses directories (from `~/git`,
 `AUTOWORK_BROWSE_ROOT`) and marks each repository ready or what it needs, and `s` there

@@ -252,6 +252,12 @@ An update also self-heals each profile: plugin activation re-applies the bundle'
 command menu, approval and gateway-injection settings, and finalize fails the
 profile if they did not land (profiles that opted out of runtime defaults are not
 checked). `settings_healed` lists profiles whose config changed.
+An update that starts while a restart it requested is between gateways (the old one
+gone, the new one `starting`) waits up to 5 minutes for the new one before activating
+profiles, then finalizes any profile whose commands are not wired yet again after 15,
+30 and 60 seconds, instead of reporting `incomplete`. A draining gateway still serves,
+so an update then goes ahead and joins that restart.
+
 Because Telegram menus refresh only when the gateway reconnects, an update that
 changed code, skills or settings restarts the gateway once when every profile
 activated cleanly and a gateway is running, but only while no chat or API turn is in

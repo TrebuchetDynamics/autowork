@@ -273,6 +273,7 @@ autowork pause india           # stop it and keep it off; autowork resume india 
 autowork model india openai-codex/gpt-6-luna   # per-service model, from: autowork models
 autowork web                  # the TUI in a browser, http://127.0.0.1:8765
 autowork blockers india        # answer what blocks the queue, picking options (/blockers)
+autowork scorecard            # per runner, last 7 days: closed, held share, start to merge, questions
 ```
 
 A target is a runner name, a repository path or `.`. Workers pause and resume on

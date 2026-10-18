@@ -9,7 +9,7 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen  # noqa: E402
+from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen, WorkerScreen  # noqa: E402
 
 
 class Result:
@@ -97,6 +97,11 @@ async def main():
             await pilot.press('enter')                  # Enter: the full-screen log
             await pilot.pause()
             assert isinstance(app.screen, LogScreen), app.screen
+            await pilot.press('escape')
+            await pilot.pause()
+            app.push_screen(WorkerScreen(app.current(), 'TASK-036'))  # a worker row's screen opens
+            await pilot.pause()
+            assert isinstance(app.screen, WorkerScreen) and app.screen.title == 'india: TASK-036', app.screen
             await pilot.press('escape')
             await pilot.pause()
             await pilot.press('d')                      # browse: half is not ready, ready starts after a yes

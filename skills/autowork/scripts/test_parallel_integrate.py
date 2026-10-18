@@ -83,6 +83,36 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(lambda: (proc.kill(), proc.wait()) if proc.poll() is None else None)
         return proc
 
+    def owner_commit_during_validation(self, path):
+        """A validation command that commits ``path`` to the session once while it runs, as the
+        runner does when it takes main beside a review (TOOLSET-233-ba), counting its runs."""
+        runs = Path(self.temp.name) / 'runs'
+        script = (f'echo run >> {runs}; if [ ! -e {runs}.moved ]; then touch {runs}.moved; '
+                  f'mkdir -p "$(dirname {self.repo / path})"; echo note > {self.repo / path}; '
+                  f'git -C {self.repo} add {path} && git -C {self.repo} -c user.email=o@example.invalid '
+                  f'-c user.name=Owner commit -qm "owner {path}"; fi')
+        return ['bash', '-c', script], runs
+
+    def test_a_session_moved_only_by_planning_commits_lands_the_validated_merge_without_revalidating(self):
+        self.worker()
+        module = self.module()
+        argv, runs = self.owner_commit_during_validation('docs/owner-plan.md')
+        result = module.integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(runs.read_text().count('run'), 1)  # validated once
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+        self.assertEqual((self.repo / 'docs/owner-plan.md').read_text(), 'note\n')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_a_session_moved_by_a_code_commit_is_validated_again(self):
+        self.worker()
+        module = self.module()
+        argv, runs = self.owner_commit_during_validation('src/owner.py')
+        result = module.integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(runs.read_text().count('run'), 2)  # the moved path validated again
+        self.assertTrue((self.repo / 'src/owner.py').exists())
+
     def test_new_protected_file_needs_explicit_serial_scope(self):
         module = self.module()
         slot = {'task_id': 'A', 'baseline': self.baseline, 'attempt': 1}
@@ -242,15 +272,28 @@ class IntegrationTests(unittest.TestCase):
         slot = next(s for s in state.slots(self.common) if s['task_id'] == 'B')
         execution.save(state.slot_path(self.common, 'B'),
                        dict(slot, state='held', cause='overlap', reason='changed files violate Touches or ownership'))
-        first = module.retry_held(self.retry_args())
-        self.assertNotEqual(first.get("outcome"), "REOFFERED", first)  # A still owns A.txt
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        # TOOLSET-161-17: it no longer waits for A to settle; the merge into main decides.
         result = module.retry_held(self.retry_args())
         self.assertEqual((result['outcome'], result['task']), ('REOFFERED', 'B'))
         again = dict(next(s for s in state.slots(self.common) if s['task_id'] == 'B'), state='held', cause='overlap')
         execution.save(state.slot_path(self.common, 'B'), again)
         self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REOFFERED')  # once only
+        execution.save(state.slot_path(self.common, 'B'), dict(again, state='reported'))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        held = module.integrate(self.repo, self.owner, 'B', ['true'], 10)  # both rewrote A.txt's one line
+        self.assertEqual((held['outcome'], held['cause']), ('HELD', 'conflict'), held)
+
+    def test_an_existing_overlap_hold_is_offered_again_and_integrates(self):
+        """TOOLSET-161-17: a commit an earlier release held for overlap integrates by merge."""
+        module = self.module()
+        _, commit = self.worker('B')
+        slot = state.slots(self.common)[0]
+        execution.save(state.slot_path(self.common, 'B'), dict(
+            slot, state='held', cause='overlap', reason='changed files violate Touches or coordinator/other-slot ownership'))
+        self.assertEqual(module.retry_held(self.retry_args()), {'outcome': 'REOFFERED', 'task': 'B', 'commit': commit})
+        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual((self.repo / 'B.txt').read_text(), 'worker\n')
 
     def session_checkout(self):
         """Integrate in a separate session worktree, as pi-autowork does."""
@@ -290,19 +333,20 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'BUSY')
 
     def test_a_main_checkout_session_blocks_a_close_only_through_the_files_it_writes(self):
-        """An integrated task could not close while any interactive session was open in the main
-        checkout, though interactive sessions work there and touched none of the close's files."""
+        """TOOLSET-223-8e: an uncommitted planning edit is reconciled by the landing step, so it
+        no longer blocks a close; a session holding a close file open still does."""
         self.ledger()  # with goals.json, as every real repository: the indexed close path too
         session = self.session_checkout()
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         self.agent_process()
-        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # the owner edits TODO.md
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # owner planning edit
+        held = self.holder(self.repo / 'TODO.md')  # held open for writing: still a block
         with self.assertRaisesRegex(ValueError, 'writer|session'):
             module.close(session, self.owner, 'A')
-        self.git('checkout', '--', 'TODO.md')
-        (self.repo / 'B.txt').write_text('owner edit\n')  # unrelated work
+        held.kill()
+        held.wait()
         self.assertEqual(module.close(session, self.owner, 'A')['outcome'], 'CLOSED')
 
     def test_fresh_session_blocks_close_without_task_writes(self):
@@ -367,6 +411,54 @@ class IntegrationTests(unittest.TestCase):
         with patch.object(execution, 'external_workers', return_value=[alive]), \
                 self.assertRaisesRegex(ValueError, 'live or unknown external writer'):
             module.require_no_writers(self.repo)
+
+    def test_uncommitted_planning_files_do_not_block_a_merge(self):
+        """TOOLSET-223-8e: the owner's uncommitted TODO.md made every candidate's session a
+        blocker; landing already reconciles planning edits, so only real files count."""
+        module = self.module()
+        main = module.main_checkout(self.repo)
+        proc = self.agent_process()
+        worker = {'pid': proc.pid, 'kind': 'session', 'active': True, 'written': [],
+                  'workspaces': [main], 'evidence': 'running commands',
+                  **{k: v for k, v in execution.identity(proc.pid).items() if k != 'pid'}}
+        (self.repo / 'TODO.md').write_text('# TODO\n\n## Next\n\nan owner edit\n')
+        self.assertTrue(module.touches_none_of(worker, ['TODO.md'], main))
+        (self.repo / 'A.txt').write_text('an owner edit\n')
+        self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
+        worker['written'] = [main + '/TODO.md']  # held open for writing still blocks
+        self.assertFalse(module.touches_none_of(worker, ['TODO.md'], main))
+
+    def test_a_refused_candidate_records_the_writer_window_on_its_slot(self):
+        """TOOLSET-223-8e: a WritersBusy refusal is remembered on the slot, not only in memory."""
+        module = self.module()
+        self.worker('A')
+        with patch.object(module, 'require_no_writers', side_effect=module.WritersBusy('live writer')):
+            result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'BUSY', result)
+        slot = state.slots(self.common)[0]
+        self.assertTrue(module.writers_busy(slot))
+        self.assertIn('live writer', slot.get('writers_busy_reason') or '')
+
+    def test_a_writers_busy_candidate_lets_the_next_reported_task_integrate(self):
+        """TOOLSET-223-8e: A is first in TODO order but waits for a writer; B integrates,
+        and A integrates in its place once the bounded window passes."""
+        module = self.module()
+        self.worker('A')
+        self.worker('B')
+        a = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        a.update(writers_busy_at=time.time(), writers_busy_reason='live or unknown external writer/session')
+        state.write_slot(self.common, a, a)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
+        a = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        a['writers_busy_at'] = time.time() - module.WRITERS_BUSY_SKIP - 1
+        state.write_slot(self.common, a, a)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_the_writers_busy_window_is_bounded(self):
+        module = self.module()
+        self.assertTrue(module.writers_busy({'writers_busy_at': time.time()}))
+        self.assertFalse(module.writers_busy({'writers_busy_at': time.time() - module.WRITERS_BUSY_SKIP - 1}))
+        self.assertFalse(module.writers_busy({}))
 
     def test_isolated_pool_session_does_not_block_landing(self):
         self.worker()
@@ -839,35 +931,54 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(state.slots(self.common)[1]['state'], 'reported')
 
     def test_canonical_rename_cannot_redirect_worker_delta_outside_scope(self):
+        """TOOLSET-161-17: outside Touches is no longer out of scope; a coordinator file still is."""
         self.worker()
-        self.git('mv', 'A.txt', 'outside.txt')
+        self.git('mv', 'A.txt', 'CHANGELOG.md')
         self.git('commit', '-qm', 'canonical rename')
         before = self.git('rev-parse', 'HEAD')
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('outside.txt', result['reason'])
+        self.assertIn('CHANGELOG.md', result['reason'])
         self.assertEqual(self.git('rev-parse', 'HEAD'), before)
-        self.assertEqual((self.repo / 'outside.txt').read_text(), 'base\n')
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), 'base\n')
 
     def test_head_move_retry_rechecks_actual_merge_scope(self):
         self.worker()
         marker = Path(self.temp.name) / 'renamed'
         script = ('import subprocess; from pathlib import Path; '
                   f'p=Path({str(marker)!r}); r={str(self.repo)!r}; '
-                  'subprocess.run(["git","-C",r,"mv","A.txt","outside.txt"],check=True) if not p.exists() else None; '
+                  'subprocess.run(["git","-C",r,"mv","A.txt","CHANGELOG.md"],check=True) if not p.exists() else None; '
                   'subprocess.run(["git","-C",r,"commit","-qm","rename"],check=True) if not p.exists() else None; '
                   'p.write_text("yes")')
         result = self.module().integrate(self.repo, self.owner, 'A', [sys.executable, '-c', script], 10)
         self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('outside.txt', result['reason'])
-        self.assertEqual((self.repo / 'outside.txt').read_text(), 'base\n')
+        self.assertIn('CHANGELOG.md', result['reason'])  # a coordinator file (TOOLSET-161-17)
+        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), 'base\n')
 
-    def test_outside_touches_is_held(self):
-        self.worker(files={'outside.txt': 'bad'})
+    def test_a_change_outside_touches_integrates_when_it_merges_and_passes(self):
+        """TOOLSET-161-17: Touches schedule work and never hold it."""
+        self.worker(files={'A.txt': 'worker\n', 'outside.txt': 'needed\n'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('outside.txt', result['reason'])
-        self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'outside.txt').read_text(), 'needed\n')
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_two_candidates_editing_the_same_file_integrate_in_priority_order(self):
+        """TOOLSET-161-17: the merge settles a shared file; no new implementation run."""
+        module = self.module()
+        (self.repo / 'shared.txt').write_text('one\ntwo\nthree\nfour\nfive\n')
+        self.git('add', 'shared.txt')
+        self.git('commit', '-qm', 'shared file')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker('A', {'shared.txt': 'ONE\ntwo\nthree\nfour\nfive\n'})
+        self.worker('B', {'shared.txt': 'one\ntwo\nthree\nfour\nFIVE\n'})
+        with self.assertRaisesRegex(ValueError, 'highest-priority'):
+            module.integrate(self.repo, self.owner, 'B', ['true'], 10)
+        for task in ('A', 'B'):
+            self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual((self.repo / 'shared.txt').read_text(), 'ONE\ntwo\nthree\nfour\nFIVE\n')
+        self.assertEqual([s['attempt'] for s in state.slots(self.common)], [1, 1])
+        self.assertFalse(self.git('branch', '--list', '*-r2'))
 
     def retry_args(self):
         from types import SimpleNamespace
@@ -875,60 +986,13 @@ class IntegrationTests(unittest.TestCase):
             max_workers=None, worker_command=json.dumps([sys.executable, '-c', 'pass']), worker_host='auto',
             worker_profile=None, worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
 
-    def widen(self, touches):
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: ' + touches, 1))
-        self.git('commit', '-qam', 'widen A')
-
     def test_a_scope_hold_records_its_cause_and_outside_files(self):
-        self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n'})
+        # TOOLSET-161-17: only an undeclared protected file or a coordinator file is out of scope.
+        self.worker(files={'A.txt': 'worker\n', 'go.mod': 'module x\n'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual((result['cause'], result['outside']), ('scope', ['extra.py']))
+        self.assertEqual((result['cause'], result['outside']), ('scope', ['go.mod']))
         slot = state.slots(self.common)[0]
-        self.assertEqual((slot['cause'], slot['outside']), ('scope', ['extra.py']))
-
-    def test_a_widened_scope_reverifies_the_same_commit_once(self):
-        _, commit = self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n'})
-        module = self.module()
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
-        self.widen('A.txt, extra.py')
-        result = module.retry_held(self.retry_args())
-        self.assertEqual(result, {'outcome': 'RESCOPED', 'task': 'A', 'commit': commit, 'touches': 'A.txt, extra.py'})
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-
-    def test_a_touches_only_answer_after_rescope_keeps_the_commit_and_attempt(self):
-        root, _ = self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n'})
-        module = self.module()
-        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
-        # Older attempts recorded only their prompt, not contract.txt.
-        contract = execution.goals_module().task_bodies((self.repo / 'TODO.md').read_text())['A'][0][0]
-        (data / 'prompt.md').write_text('\nTask contract from TODO.md:\n\n' + contract.strip() + '\n')
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
-        self.widen('A.txt, extra.py')
-        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
-        # The candidate gains another outside file while resolving main, after the automatic rescope.
-        (root / 'other.py').write_text('y\n')
-        self.git('add', 'other.py', cwd=root)
-        self.git('commit', '-qm', 'resolved candidate', cwd=root)
-        commit = self.git('rev-parse', 'HEAD', cwd=root)
-        slot = state.slots(self.common)[0]
-        state.write_slot(self.common, dict(slot, commit=commit), slot)
-        self.report(commit=commit, changed_files=['A.txt', 'extra.py', 'other.py'])
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outside'], ['other.py'])
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt, extra.py\n', 'Touches: A.txt, extra.py, other.py\n')
-                        .replace('  Status: open\n', '  Status: open\n'
-                                 '  Touches widened by the owner session (2026-10-18): other.py\n', 1))
-        self.git('commit', '-qam', 'owner covers the outside file')
-        result = module.retry_held(self.retry_args())
-        self.assertEqual((result['outcome'], result.get('commit')), ('RESCOPED', commit))
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
-        slot = state.slots(self.common)[0]
-        self.assertEqual((slot['commit'], slot['attempt'], slot['branch']), (commit, 1, 'autowork/A'))
-        self.assertFalse(self.git('branch', '--list', '*set-aside*'))
-        events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
-        changes = [e['changed_fields'] for e in events if e['event'] == 'task_entry_changed']
-        self.assertEqual(changes[-1], ['Touches', 'Touches widened by the owner session (2026-10-18)'])
+        self.assertEqual((slot['cause'], slot['outside']), ('scope', ['go.mod']))
 
     def test_other_contract_answers_requeue_even_when_touches_cover_the_commit(self):
         module = self.module()
@@ -940,14 +1004,14 @@ class IntegrationTests(unittest.TestCase):
                     todo.write_text(todo.read_text() + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
                                     f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
                                     '  Dependencies: None.\n  Status: open\n')
-                self.worker(task, files={task + '-extra.py': 'x\n'})
+                self.worker(task, files={'go.mod': 'x\n'})  # an undeclared protected file (TOOLSET-161-17)
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
                 contract = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
                 (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
                 self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['cause'], 'scope')
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
                 state.write_slot(self.common, dict(slot, rescoped=index % 2 == 1), slot)
-                revised = contract.replace(f'Touches: {task}.txt', f'Touches: {task}.txt, {task}-extra.py')
+                revised = contract.replace(f'Touches: {task}.txt', f'Touches: {task}.txt, go.mod')
                 revised = revised.replace(field + ': ', field + ': revised ', 1)
                 todo.write_text(todo.read_text().replace(contract, revised, 1))
                 self.git('commit', '-qam', 'answer ' + task)
@@ -960,23 +1024,6 @@ class IntegrationTests(unittest.TestCase):
                     self.assertEqual(changes[-1], sorted([field, 'Touches']))
                 finally:
                     state.slot_path(self.common, task).unlink(missing_ok=True)
-
-    def test_rescoping_needs_full_coverage_and_happens_once(self):
-        self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n', 'other.py': 'y\n'})
-        module = self.module()
-        module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        slot = state.slots(self.common)[0]
-        self.assertEqual((slot['state'], slot['cause']), ('held', 'scope'))
-        self.assertFalse(state.rescopable(slot, 'A.txt, extra.py'))  # other.py still outside
-        self.assertTrue(state.rescopable(slot, 'A.txt, extra.py, other.py'))
-        self.assertFalse(state.rescopable(dict(slot, rescoped=True), 'A.txt, extra.py, other.py'))  # once only
-        # A scope hold waits for a person: a fresh retry with the same Touches cannot pass,
-        # and a partial widening does not cover the commit, so nothing is started.
-        self.assertTrue(state.exhausted(slot))
-        self.widen('A.txt, extra.py')
-        from unittest.mock import patch
-        with patch.object(dispatch, 'resource_gate', return_value=''):
-            self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
 
     def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
         """flutter TASK-006: an old reviewer failed it for want of a device; the fix should count."""
@@ -996,7 +1043,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
     def test_only_validation_holds_are_reverified(self):
-        self.worker(files={'outside.txt': 'bad'})
+        self.worker(files={'CHANGELOG.md': 'coordinator owned'})  # a scope hold (TOOLSET-161-17)
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
         with self.assertRaisesRegex(ValueError, 'only for a commit held by validation'):
@@ -1054,17 +1101,6 @@ class IntegrationTests(unittest.TestCase):
         result = module.integrate(self.repo, self.owner, 'B', ['true'], 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual((self.repo / 'A.txt').read_text(), 'followup\n')
-
-    def test_other_slot_actual_files_are_protected(self):
-        todo = self.repo / 'TODO.md'
-        todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, B.txt'))
-        self.worker('A', {'B.txt': 'bad overlap'})
-        other, commit = self.worker('B')
-        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('B.txt', result['reason'])
-        self.assertTrue(other.exists())
-        self.assertEqual(self.git('rev-parse', 'autowork/B'), commit)
 
     def test_report_mismatch_and_non_descendant_are_held(self):
         self.worker()
@@ -1654,7 +1690,7 @@ class IntegrationTests(unittest.TestCase):
     def test_retry_adapter_and_guard_agree_on_exhausted_claims(self):
         self.claimed_retry_fixture(exhausted=True)
 
-    def retry_blocked_fixture(self, constraint):
+    def retry_blocked_fixture(self, constraint, outcome='IDLE'):
         todo = self.repo / 'TODO.md'
         content = todo.read_text()
         if constraint == 'overlap':
@@ -1672,21 +1708,28 @@ class IntegrationTests(unittest.TestCase):
         args = self.retry_args()
         if constraint == 'capacity':
             args.parallel = 1
-        result = self.module().retry_held(args)
-        self.assertEqual(result['outcome'], 'IDLE', result)
-        self.assertFalse(self.git('branch', '--list', 'autowork/A-r2'))
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):  # the host's load is not under test
+            result = self.module().retry_held(args)
+        if outcome == 'RETRIED':
+            slot = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+            self.addCleanup(dispatch.stop, slot['worker'])
+        self.assertEqual(result['outcome'], outcome, result)
+        self.assertEqual(bool(self.git('branch', '--list', 'autowork/A-r2')), outcome == 'RETRIED')
 
     def test_retry_respects_worker_capacity(self):
         self.retry_blocked_fixture('capacity')
 
-    def test_retry_waits_for_overlapping_worker(self):
-        self.retry_blocked_fixture('overlap')
+    def test_retry_runs_beside_an_overlapping_worker(self):
+        """TOOLSET-161-17: overlapping Touches never make a task wait."""
+        self.retry_blocked_fixture('overlap', 'RETRIED')
 
     def test_exclusive_retry_waits_for_worker_pool(self):
         self.retry_blocked_fixture('exclusive')
 
-    def test_unbounded_retry_waits_for_worker_pool(self):
-        self.retry_blocked_fixture('unknown')
+    def test_a_retry_without_touches_runs_beside_the_worker_pool(self):
+        """TOOLSET-161-17: a missing Touches is no hint and never makes a task run alone."""
+        self.retry_blocked_fixture('unknown', 'RETRIED')
 
     def test_validation_cannot_mutate_candidate_then_land(self):
         self.worker()

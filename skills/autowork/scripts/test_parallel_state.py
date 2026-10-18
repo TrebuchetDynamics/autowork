@@ -169,6 +169,9 @@ class StateTests(unittest.TestCase):
         self.assertEqual(journal, (self.common / 'journal.jsonl').read_bytes())
 
     def test_held_retry_cannot_overlap_live_worker(self):
+        # A missing Touches no longer makes a task run alone (TOOLSET-161-17); an exclusive one still does.
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text() + '- Touches: file\n- Resources: exclusive\n')
         self.claim()
         self.slot()
         state.transition(self.repo, self.owner, 'A', 'held')

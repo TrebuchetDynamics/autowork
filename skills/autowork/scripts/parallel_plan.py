@@ -5,6 +5,7 @@ means the whole directory. Glob intersection uses a finite product of the two
 patterns, not current files, so not-yet-created files are protected too.
 """
 from fnmatch import fnmatchcase
+from functools import lru_cache
 import re
 
 # Reversible built-in serial policy, including nested packages and CI files.
@@ -69,9 +70,31 @@ def _tokens(pattern):
     return tokens
 
 
+GLOB = re.compile(r'[*?\[]')
+
+
+@lru_cache(maxsize=1 << 16)
 def _intersects(left, right):
+    """Whether some path matches both patterns. Literal sides are decided at once; only two
+    real globs run the product search (TOOLSET-221-8e: it made one dispatch take minutes)."""
+    left_glob, right_glob = bool(GLOB.search(left)), bool(GLOB.search(right))
+    if not left_glob and not right_glob:
+        if left.endswith('/') and right.endswith('/'):
+            return left.startswith(right) or right.startswith(left)
+        if left.endswith('/') or right.endswith('/'):
+            directory, path = (left, right) if left.endswith('/') else (right, left)
+            return path.startswith(directory) and path != directory
+        return left == right
     left = left + '*' if left.endswith('/') else left
     right = right + '*' if right.endswith('/') else right
+    if not left_glob and not left.endswith('*'):
+        return fnmatchcase(left, right)
+    if not right_glob and not right.endswith('*'):
+        return fnmatchcase(right, left)
+    return _search(left, right)
+
+
+def _search(left, right):
     a, b = _tokens(left), _tokens(right)
     # Predicates change only at literal/class/range boundaries. One character
     # from each resulting interval is enough, even for negated Unicode ranges.
@@ -124,6 +147,14 @@ def _touches(task):
     return paths(task.get('fields', {}).get('Touches', ''))
 
 
+def _hint(task):
+    """Declared Touches as a scheduling hint (TOOLSET-161-17): missing or invalid is no hint."""
+    try:
+        return _touches(task)
+    except ValueError:
+        return []
+
+
 def _resources(task):
     return set(re.split(r'[,\s]+', task.get('fields', {}).get('Resources', '').strip())) - {''}
 
@@ -157,9 +188,8 @@ SERIAL_REASON = 'serial path; must run alone'
 
 
 def _solo(task, protected_files=None):
-    touches = _touches(task)
-    if not touches:
-        return 'missing Touches; must run alone'
+    # Touches only schedule (TOOLSET-161-17): a task without them runs beside other work.
+    touches = _hint(task)
     if _resources(task) & {'live', 'exclusive'}:
         return 'live/exclusive resource; must run alone'
     if protected_files is None:
@@ -235,7 +265,22 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     drains at once.
     """
     tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
-    solo = lambda task: _solo(task, protected_files)
+    # Each task's answers once per call, not once per pair (TOOLSET-221-8e).
+    solos, resource_sets, hints = {}, {}, {}
+    def solo(task):
+        if id(task) not in solos:
+            solos[id(task)] = _solo(task, protected_files)
+        return solos[id(task)]
+
+    def resources(task):
+        if id(task) not in resource_sets:
+            resource_sets[id(task)] = _resources(task)
+        return resource_sets[id(task)]
+
+    def hint(task):
+        if id(task) not in hints:
+            hints[id(task)] = _hint(task)
+        return hints[id(task)]
     # A serial file (manifest, lockfile, CI, migration) conflicts only with other serial
     # work: each worker has its own worktree, so it cannot break a neighbour's build
     # (TOOLSET-160-df). Only an exclusive task runs alone and stops lower dispatch.
@@ -243,12 +288,6 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     exclusive = lambda task: '' if serial(task) else solo(task)
     known = {t['id']: t for t in [*all_tasks, *tasks, *running, *parked]}
     active = {t['id']: t for t in running}
-    invalid = {}
-    for tid, task in known.items():
-        try:
-            _touches(task)
-        except ValueError as exc:
-            invalid[tid] = str(exc)
     claims = {}
     for t in known.values():
         status = re.split(r'[;.\s]', t.get('fields', {}).get('Status', 'open'))[0]
@@ -257,32 +296,30 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     held = {t['id'] for t in parked}
     claims.update((t['id'], t) for t in parked)
 
+    closures = {}
+
     def depends(a, b):
-        pending, seen = list(_dependencies(a, known)), set()
-        while pending:
-            tid = pending.pop()
-            if tid == b['id']:
-                return True
-            if tid not in seen:
-                seen.add(tid)
-                if tid in known:
-                    pending.extend(_dependencies(known[tid], known))
-        return False
+        if id(a) not in closures:
+            pending, seen = list(_dependencies(a, known)), set()
+            while pending:
+                tid = pending.pop()
+                if tid not in seen:
+                    seen.add(tid)
+                    if tid in known:
+                        pending.extend(_dependencies(known[tid], known))
+            closures[id(a)] = seen
+        return b['id'] in closures[id(a)]
 
     def conflict(a, b, claim=False, reserved=False):
         if b['id'] in held:  # waits for a person; only what needs it waits too
             return 'dependency: held ' + b['id'] if depends(a, b) else ''
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
-        if b['id'] in invalid:
-            # A malformed idle contract cannot reserve paths. A live slot's
-            # unknown scope still fails closed until its work has settled.
-            return invalid[b['id']] + ' (beside ' + b['id'] + ')' if b['id'] in active else ''
-        if claim or reserved:  # idle claim or waiting task: only declared overlap matters
+        # Overlapping Touches never hold a task (TOOLSET-161-17): integration merges in priority
+        # order and settles a real conflict there. Resources, serial and exclusive rules stay.
+        if claim or reserved:  # idle claim or waiting task
             other = ('in_progress ' if claim else '') + b['id']
-            if _shared(_touches(a), _touches(b)):
-                return 'overlapping paths with ' + other
-            if _resources(a) & _resources(b):
+            if resources(a) & resources(b):
                 return 'shared resource with ' + other
             if serial(a) and serial(b):
                 return 'serial path shared with ' + other
@@ -292,9 +329,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return alone + ' (beside ' + b['id'] + ')'
         if serial(a) and serial(b):
             return 'serial path shared with ' + b['id']
-        if _shared(_touches(a), _touches(b)):
-            return 'overlapping paths with ' + b['id']
-        if _resources(a) & _resources(b):
+        if resources(a) & resources(b):
             return 'shared resource with ' + b['id']
         return ''
 
@@ -314,9 +349,6 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
         tid = task['id']
         if gate := authorization_wait(task):
             waiting.append(gate)
-            continue
-        if tid in invalid:
-            waiting.append({'id': tid, 'reason': invalid[tid], 'blocked_by': [tid], 'root_kind': 'contract'})
             continue
         if tid in active or tid in claims:
             waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress', 'blocked_by': [tid]})
@@ -338,4 +370,10 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             dispatch.append(task)
             if exclusive(task):
                 stopped = ('priority task ' + tid + ': ' + exclusive(task), tid)
-    return {'dispatch': dispatch, 'waiting': waiting}
+    # Likely-independent work first: a task whose declared Touches overlap running or
+    # earlier-chosen work ranks lower for the free slots, but is not held (TOOLSET-161-17).
+    chosen, ranked = {path for t in running for path in hint(t)}, []
+    for task in dispatch:
+        ranked.append((bool(_shared(hint(task), chosen)) if hint(task) else True, task))
+        chosen.update(hint(task))
+    return {'dispatch': [task for _, task in sorted(ranked, key=lambda pair: pair[0])], 'waiting': waiting}

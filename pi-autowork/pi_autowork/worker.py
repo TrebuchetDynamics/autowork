@@ -15,8 +15,9 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 
-from . import pi_runtime, workspaces
+from . import main_check, pi_runtime, workspaces
 from .common import dirty, git, push_guard, safe_name
 
 REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, which holds a worker\'s commit '
@@ -153,21 +154,97 @@ def worker_tmp(checkout, task):
         return None
 
 
+def run_suite(command, checkout, limit, log):
+    """{code, failures, timed_out} of ``command`` in ``checkout``, its output in ``log``."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, 'w') as out:
+        process = subprocess.Popen(['bash', '-c', command], cwd=checkout, stdout=out, stderr=subprocess.STDOUT,
+                                   stdin=subprocess.DEVNULL, start_new_session=True)
+        try:
+            code, timed_out = process.wait(timeout=limit), False
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            code, timed_out = process.wait(), True
+    text = log.read_text(errors='replace')
+    return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out}
+
+
+def base_result(state, checkout, command, rev, limit):
+    """The full check on the base revision, run once per revision and cached."""
+    cache = Path(state) / 'full-check' / f'base-{rev}.json'
+    try:
+        value = json.loads(cache.read_text())
+        if value.get('command') == command:
+            return value
+    except (OSError, ValueError):
+        pass
+    scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
+    git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
+    try:
+        value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log')), command=command)
+    finally:
+        git(checkout, 'worktree', 'remove', '--force', str(scratch))
+    cache.write_text(json.dumps(value))
+    return value
+
+
+def full_suite_gate(state, task, checkout):
+    """(ok, reason) of the repository's full check on the merged tree (TOOLSET-180-72): a
+    reviewer-approved commit landed while breaking 44 tests its own checks never ran. Only what
+    the base does not already fail rejects a candidate; a test that passes when rerun alone is
+    flaky, not new."""
+    command = main_check.full_check(checkout)
+    if not command:
+        return True, ''
+    limit = float(os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or 3600)
+    log = Path(state) / 'full-check' / f'{safe_name(task)}-merged.log'
+    merged = run_suite(command, checkout, limit, log)
+    if merged['code'] == 0:
+        return True, ''
+    if merged['timed_out']:
+        return False, f'the full check ran out of time after {limit:g} s'
+    base = base_result(state, checkout, command, git(checkout, 'rev-parse', 'HEAD^1'), limit)
+    if not merged['failures']:
+        if base['code'] != 0 and not base['failures']:
+            return True, ''  # the base fails the same unnamed way: nothing new to blame on this commit
+        return False, f'the full check exits {merged["code"]} where the base passes'
+    new = merged['failures'] if base['code'] == 0 else [f for f in merged['failures'] if f not in base['failures']]
+    if new:
+        receipt = log.with_suffix('.reruns.json')
+        main_check.rerun_failures(str(log), checkout, str(receipt), 'merged')
+        try:
+            flaky = json.loads(receipt.read_text()).get('flaky') or []
+        except (OSError, ValueError):
+            flaky = []
+        new = [f for f in new if f not in flaky]
+    if not new:
+        return True, ''
+    return False, 'the full check has new failures the base does not: ' + ', '.join(new[:10]) + (
+        f' (+{len(new) - 10} more)' if len(new) > 10 else '')
+
+
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
-    validate = os.environ.get('PI_AUTOWORK_VALIDATE')
-    if validate and subprocess.run(['bash', '-c', validate]).returncode:
-        print(f'pi-autowork: PI_AUTOWORK_VALIDATE failed for {task}', file=sys.stderr)
+    ok, reason = full_suite_gate(state, task, checkout)
+    if not ok:
+        # The engine puts this line into the hold reason, which the retry's prompt quotes.
+        print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
+        findings = findings_path(state, task)
+        findings.parent.mkdir(parents=True, exist_ok=True)
+        findings.write_text(json.dumps({'verdict': reason[:800], 'commit': git(checkout, 'rev-parse', 'HEAD')}))
+        print(f'pi-autowork: the full check rejects {task}: {reason}', file=sys.stderr)
         return 1
     if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
         return 0
     head_before = git(checkout, 'rev-parse', 'HEAD')
-    # Its own scratch on disk, removed afterwards: reviewers copied whole repositories into
-    # RAM-backed /tmp and left them (39 GB on one host).
-    scratch = Path(state) / 'review-tmp' / f'{safe_name(task)}-{os.getpid()}'
-    drop_dead_scratch(checkout, scratch.parent)
-    scratch.mkdir(parents=True, exist_ok=True)
+    # Its own private scratch, removed afterwards, on disk (reviewers copied whole repositories
+    # into RAM-backed /tmp and left them, 39 GB on one host) and short: under the state directory
+    # the path was 85 characters before a test added its own, past the 108-byte AF_UNIX limit.
+    # A short link to it was not enough: code that resolves links got the long path back.
+    root = review_root()
+    drop_dead_scratch(checkout, root)
+    scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
     try:
         return review(state, task, checkout, head_before)
@@ -176,12 +253,17 @@ def verify(state, task):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def review_root():
+    """Where reviews keep their scratch: a short directory on disk (`/var/tmp`)."""
+    return Path(os.environ.get('PI_AUTOWORK_REVIEW_ROOT') or '/var/tmp')
+
+
 def drop_dead_scratch(checkout, folder):
     """Remove the scratch of reviews whose process is gone: a review killed at its timeout
-    never reaches its own cleanup (2.7 GB left on one host)."""
-    for old in folder.glob('*-*') if folder.is_dir() else ():
-        pid = old.name.rsplit('-', 1)[1]
-        if old.is_symlink() or not old.is_dir() or not pid.isdigit():
+    never reaches its own cleanup (2.7 GB left on one host). Each is `aw-r-<pid>-<random>`."""
+    for old in folder.glob('aw-r-*-*') if folder.is_dir() else ():
+        pid = old.name.split('-')[2]
+        if old.is_symlink() or not old.is_dir() or not pid.isdigit() or old.stat().st_uid != os.getuid():
             continue
         try:
             os.kill(int(pid), 0)
