@@ -2752,3 +2752,432 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to how the jobs run; making them asynchronous is separate.
 - Planner's call: report the job rather than make the jobs asynchronous now: the jobs are short and rare, and the false `not cycling` is the user-visible problem.
+
+## MAIN receipt at 3bd1d95
+
+Evidence supplement for TOOLSET-184-b3, not completion or a new executable task.
+The existing repair remains first in Now with its original Scope, Acceptance,
+Checks, Touches, Dependencies and Ownership unchanged. Its attempt-1 worker was
+still running when inspected: the recorded process birth identity and worktree
+matched the live process, and no terminal `report.json` existed. There is no
+`slot-data/MAIN/` worker report. Do not replace the active worker or repin its inputs.
+
+### Receipt binding and coverage
+
+The runner's retained `main_check.json` records red revision
+`3bd1d95a3bc6e7ba44c68109d67220da928388df`, `green: null`, and
+`red_since: 36e2b7c0ea0c6096a7b20197edcacf68dc11dfa4`.
+Its `main-check.exit` is `1`. The completed `main-check.log` lists 131 offline
+modules in five directories and ends:
+
+```text
+Offline result: 2 test directories passed; 3 failed; 8 modules excluded.
+```
+
+The 16 distinct ERROR identities in the full log exactly match the 16 names in
+this receipt. These are reported results, not tests repeated by this docs pass.
+Receipt SHA-256 bindings (files under the existing private runner-state directory):
+
+- `main_check.json`: `a39452955a1c16356aa7a955988704f0278f75abf8354e633bf66d98dfc67e55`
+- `main-check.log`: `7bfb94086d445bdd1fe2048d7d459d05342a79d83b7bb2c017a3268d6d0eaf46`
+- `main-check.exit`: `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865`
+
+Latest error inventory, retaining full unittest identities:
+
+- `test_pi_autowork.EngineTests.test_merged_work_is_pushed_to_main_upstream`
+- `test_pi_autowork.EngineTests.test_a_backlog_left_unpushed_is_published_at_start`
+- `test_pi_autowork.EngineTests.test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`
+- `test_pi_autowork.EngineTests.test_a_rejected_push_merges_the_upstream_and_pushes_again`
+- `test_pi_autowork.SetupTests.test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code`
+- `test_pi_autowork.SetupTests.test_a_release_that_cannot_read_current_state_is_never_installed`
+- `test_pi_autowork.SetupTests.test_a_broken_toolset_update_keeps_the_running_code`
+- `test_publication_readiness.PublicationReadinessTests.test_ancestry_conflict_never_becomes_force_push_readiness`
+- `test_publication_readiness.PublicationReadinessTests.test_multiple_remotes_are_resolved_by_bound_authority_not_origin_guess`
+- `test_publishable.PublishableTests.test_a_pointer_to_a_local_only_commit_stays_out_until_it_is_pushed`
+- `test_publishable.PublishableTests.test_an_untracked_nested_repository_is_not_added`
+- `test_publishable.PublishableTests.test_ordinary_files_are_unchanged`
+- `test_release.ReleaseCheckTests.test_a_compatible_release_may_be_installed`
+- `test_release.ReleaseCheckTests.test_a_release_that_cannot_read_this_state_is_refused`
+- `test_release.ReleaseCheckTests.test_another_runner_with_work_in_flight_defers_the_update`
+- `test_release.ReleaseCheckTests.test_fetched_declarations_are_parsed_never_executed`
+
+### Reconciliation with the assigned repair
+
+Fourteen identities were already named in TOOLSET-184-b3. The two additional
+EngineTests, `test_a_backlog_left_unpushed_is_published_at_start` and
+`test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`, were added
+by `ef85685`; both stop in the same `EngineTests.origin` fixture's initial local
+Git push as the existing push cases. They are covered by the repair's existing
+`tests/test_pi_autowork.py` scope and full-suite gate, not a separate product task.
+The other fourteen previously recorded identities are absent from this latest error
+inventory; their absence does not remove any original acceptance or required check.
+
+All 16 tracebacks stop at disposable-repository Git pushes with exit 128, before
+exercising the behavior their assertions would qualify. The publication-readiness
+cases also print `fatal: transport 'pi-autowork-push-disabled' not allowed`.
+This supports investigating the existing fixture-environment seam; it is not a
+verified common cause or permission to disable the production worker push guard.
+
+The latest receipt's reported history window is `3bd1d95`, `b5b4944`, `ef85685`,
+`36e2b7c`, `7b77f3d`, `99813f9`, `ce43743`, `d9e39b4`, `db2e4ba`, `69937f0`,
+`0749177`, `b40d85f`, `2f27806`, `e22cee9`, `605a302`, `1515af8`, `2e415c4`,
+`a01e061`, `6aacc26`, `6fee26e`. With no recorded green revision, this is not a
+proven since-green range or attribution of fault. Relevant file evidence from
+those commits and failing fixtures:
+
+- `3bd1d95`: `scripts/check.py`, `tests/test_check.py`, `tests/test_pi_autowork.py`;
+  changes default test concurrency and filters inherited runner settings. It does
+  not establish that the remaining Git-fixture errors are fixed.
+- `ef85685`: `pi-autowork/pi_autowork/coordinator.py`,
+  `pi-autowork/pi_autowork/maintainer.py`, `tests/test_pi_autowork.py`; includes
+  the two additional EngineTests and upstream synchronization behavior.
+- `36e2b7c`: `scripts/check.py`, `tests/test_check.py`; parallel checker/sharding.
+- `7b77f3d`: `pi-autowork/pi_autowork/coordinator.py`,
+  `skills/autowork/scripts/parallel_integrate.py`, `tests/test_pi_autowork.py`.
+- Failing fixture owners also include
+  `skills/autowork/scripts/test_publication_readiness.py`,
+  `pi-autowork/tests/test_publishable.py` and `pi-autowork/tests/test_release.py`.
+  All these files already fall within TOOLSET-184-b3's declared Touches; no widening
+  or dependency change is needed for this receipt.
+
+Reuse the existing repair, not a duplicate of it or of the completed detection
+work in TOOLSET-176-98. Its accepted source remains
+[Continuous Pi runner](docs/project.md#continuous-pi-runner-2026-10-15).
+The required full check remains the task's existing command, planned here rather
+than executed by this documentation-only pass:
+
+```sh
+tmp=$(mktemp -d /tmp/aw-XXXXXX) && (trap 'rm -rf "$tmp"' EXIT; export TMPDIR="$tmp"; python3 scripts/check.py)
+```
+
+Next action remains with the assigned repair worker: diagnose and repair the
+fixture boundary, retain every original failing case and assertion, and run the
+full gate. No live provider, publication, fleet qualification or repair completion
+is inferred from this supplemental receipt.
+
+## MAIN receipt at 3ca53ce and TOOLSET-184-b3 review
+
+Evidence supplement, not completion. TOOLSET-184-b3 still owns the full offline
+repair; no competing task is needed. Its Acceptance, status, goal, dependencies
+and queue position are unchanged. Its continuation now names the failed review's
+fixture seams and the two additional top-level test files it may need to edit.
+There is no `slot-data/MAIN/` worker report.
+
+### MAIN receipt binding
+
+The retained `main_check.json` reports red revision
+`3ca53ce5d08f8c245ea1be9073a6543e6853ae98`, `green: null`, and
+`red_since: 36e2b7c0ea0c6096a7b20197edcacf68dc11dfa4`.
+`main-check.exit` is 1. The completed log ends
+`Offline result: 2 test directories passed; 3 failed; 8 modules excluded.`
+Its 25 distinct FAIL/ERROR identities exceed the summary's first 20 names;
+retain the full inventory rather than treating the truncated user trigger as a
+complete list. Receipt SHA-256 bindings:
+
+- `main_check.json`: `426e458f20c54d33c9656b33b57836a1829e819a89ebf8a74e10f5c1868b0504`
+- `main-check.log`: `93da2aab6d99498a059dc53a387e89feee538f33d01999a466cb73151d59857e`
+- `main-check.exit`: `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865`
+
+Full failure inventory:
+
+- `test_pi_autowork.EngineTests.test_merged_work_is_pushed_to_main_upstream`
+- `test_pi_autowork.EngineTests.test_a_backlog_left_unpushed_is_published_at_start`
+- `test_pi_autowork.EngineTests.test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`
+- `test_pi_autowork.EngineTests.test_a_rejected_push_merges_the_upstream_and_pushes_again`
+- `test_pi_autowork.SetupTests.test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code`
+- `test_pi_autowork.SetupTests.test_a_release_that_cannot_read_current_state_is_never_installed`
+- `test_pi_autowork.SetupTests.test_a_broken_toolset_update_keeps_the_running_code`
+- `test_budget_controller.BudgetTests.test_failed_race_evidence_survives_assertion_and_temp_cleanup`
+- `test_budget_controller.BudgetTests.test_final_effect_read_error_fails_qualification_without_erasing_evidence`
+- `test_budget_controller.BudgetTests.test_final_snapshot_error_preserves_real_deadline_failure`
+- `test_budget_controller.BudgetTests.test_final_snapshot_error_retains_normal_process_evidence`
+- `test_budget_controller.BudgetTests.test_final_source_read_error_fails_qualification_without_erasing_evidence`
+- `test_parallel_adversarial.AdversarialWorkerTests.test_a_report_written_after_a_coordinator_restart_is_adopted`
+- `test_parallel_e2e.EndToEndTests.test_abc_real_cli`
+- `test_parallel_e2e.EndToEndTests.test_abc_with_delayed_initial_observation`
+- `test_parallel_e2e.EndToEndTests.test_serial_control`
+- `test_publication_readiness.PublicationReadinessTests.test_ancestry_conflict_never_becomes_force_push_readiness`
+- `test_publication_readiness.PublicationReadinessTests.test_multiple_remotes_are_resolved_by_bound_authority_not_origin_guess`
+- `test_publishable.PublishableTests.test_a_pointer_to_a_local_only_commit_stays_out_until_it_is_pushed`
+- `test_publishable.PublishableTests.test_an_untracked_nested_repository_is_not_added`
+- `test_publishable.PublishableTests.test_ordinary_files_are_unchanged`
+- `test_release.ReleaseCheckTests.test_a_compatible_release_may_be_installed`
+- `test_release.ReleaseCheckTests.test_a_release_that_cannot_read_this_state_is_refused`
+- `test_release.ReleaseCheckTests.test_another_runner_with_work_in_flight_defers_the_update`
+- `test_release.ReleaseCheckTests.test_fetched_declarations_are_parsed_never_executed`
+
+The five budget cases are newly recorded in this MAIN receipt. Normal fixture
+processes were killed with exit -9 instead of 0, a duplicate race exceeded its
+deadline, and the explicit deadline case took 5.265 seconds against its existing
+less-than-2-second assertion. The three end-to-end cases refused admission at
+load 25.75 against 24 CPUs. Local Git setup still failed at push with exit 128.
+These observations do not prove a common cause or permit relaxing assertions,
+timeouts, production admission or push denial.
+
+The receipt's reported history window is `3ca53ce`, `3bd1d95`, `c15b392`,
+`b5b4944`, `ef85685`, `36e2b7c`, `7b77f3d`, `99813f9`, `ce43743`, `d9e39b4`,
+`db2e4ba`, `69937f0`, `0749177`, `b40d85f`, `2f27806`, `e22cee9`, `605a302`,
+`1515af8`, `2e415c4`, `a01e061`. This is not a proven since-green range or fault
+attribution. `3bd1d95` and merge `3ca53ce` changed `scripts/check.py`,
+`tests/test_check.py` and `tests/test_pi_autowork.py`; `c15b392` changed runner
+CLI/command/coordinator/fleet/service code, command/engine tests and runner docs.
+`ef85685` changed coordinator/maintainer code and engine tests. None of these
+commits changed the five budget fixtures; their owning module is nevertheless
+inside the existing `skills/autowork/scripts/` Touches and full-suite gate.
+
+### Failed independent review and continuation
+
+Worker report `slot-data/TOOLSET-184-b3/attempt-1/report.json` names commit
+`2c23b62f63e3accd07cabf3b6fa70541ad5aad03`, based on `26018cf`, and reports
+1,807 passing tests on tree `708adc7fe41d413cf91545521dda9478899dd2f9` with a short
+private TMPDIR. This is retained worker evidence, not a repeated docs-pass check.
+The candidate adds fixture isolation, bounded checker concurrency and async-review
+in-flight tracking. It was not an ancestor of canonical main when inspected.
+
+The runner's `review-findings/TOOLSET-184-b3.json` rejects merged candidate
+`a7d3f9f791b3648635e651f23051356903b0908a` with the exact verdict:
+
+> PI_AUTOWORK_VERIFY: fail — Full offline gate exits 1: only 2/5 directories pass. Required TMPDIR exposes socket-path, worktree-cleanup and tx fixture failures; full-gate acceptance is unmet.
+
+The retained review session `pi-autowork-verify-TOOLSET-184-b3-20261017190444`
+records a completed canonical-scratch full run, exit 1, 488.41 seconds, with:
+
+- AF_UNIX path overflow in `test_native_containment.PlanTests` (two socket cases),
+  six `SyntheticLaunchTests` registration cases (including subtests), and
+  `test_janitor.JanitorTests.test_only_stale_unused_entries_are_removed`.
+- `test_worktree_closeout.WorktreeCloseoutTests.test_documented_closeout_command_on_main_and_master`
+  failing for both merged branch cases, and
+  `test_task_execution.DirectExecutionTests.test_claiming_a_task_removes_finished_worktrees_and_keeps_unfinished_ones`
+  plus the inherited `RecoveryTests` case: disposable finished worktrees were kept
+  under the real review-state ancestor as managed by the runner.
+- `test_tx.TxTests.test_tx_has_no_autowork_commands`: the help output's temporary
+  config path contained the word, while the failure did not demonstrate a new tx
+  command. Inspect the fixture/assertion seam before changing product behavior.
+
+The original review TMPDIR was 85 characters; its expected janitor socket path
+was 108. `/proc` aliases avoided that limit but produced canonical-path assertion
+failures in fleet/workspace fixtures, so those exploratory runs are not gate passes.
+An intermediate interrupt-check failure passed with default SIGINT handling.
+The reviewer also reported unreaped fixture processes during earlier runs; that
+is a launcher observation, not a proved product defect. The review scratch logs
+were removed afterwards; the session retains their commands and output, so no
+current-file hash or independent rerun is claimed for those deleted logs.
+
+Worker PID 812010 and reviewer/launcher PIDs 2589109, 2588665, 2775534 and 2775548
+were gone when inspected; the retained slot still said `integrating`. The docs
+pass changes no slot state, assigned-input hash, budget or review receipt.
+Reconcile the retained candidate through the coordinator and fix/recheck the
+explicit findings, including the mismatch between the task's short physical
+scratch and the reviewer's scratch restriction, before claiming full acceptance.
+The existing [accepted runner source](docs/project.md#continuous-pi-runner-2026-10-15)
+and every original Acceptance item remain binding; no implementation, full-gate
+rerun, live qualification or task closure was performed by this documentation pass.
+
+## MAIN receipt at 7745319
+
+Evidence supplement for TOOLSET-184-b3, not completion or a new task. The runner's
+new `main_check.json` reports red revision
+`77453195adf012f245ee44487de8cb5e4446664a`, `green: null`, and unchanged
+`red_since: 36e2b7c0ea0c6096a7b20197edcacf68dc11dfa4`. The completed
+`main-check.log` contains exactly 16 distinct ERROR identities, matching the JSON
+summary, and ends `Offline result: 2 test directories passed; 3 failed; 8 modules excluded.`
+`main-check.exit` is 1. This is retained runner evidence, not a docs-pass rerun.
+Receipt SHA-256 bindings:
+
+- `main_check.json`: `1ea7823a85aa42fb1a8637a4ae76dff6a709204bbb1d07f4d954ebb45a957cfd`
+- `main-check.log`: `a9aee7ae725734b90a9eb351a5d085ab8c6f35f1b02507c0c1acea81b37cf22a`
+- `main-check.exit`: `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865`
+
+Full failure inventory (the maintainer trigger truncated the last test name):
+
+- `test_pi_autowork.EngineTests.test_merged_work_is_pushed_to_main_upstream`
+- `test_pi_autowork.EngineTests.test_a_backlog_left_unpushed_is_published_at_start`
+- `test_pi_autowork.EngineTests.test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`
+- `test_pi_autowork.EngineTests.test_a_rejected_push_merges_the_upstream_and_pushes_again`
+- `test_pi_autowork.SetupTests.test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code`
+- `test_pi_autowork.SetupTests.test_a_release_that_cannot_read_current_state_is_never_installed`
+- `test_pi_autowork.SetupTests.test_a_broken_toolset_update_keeps_the_running_code`
+- `test_publication_readiness.PublicationReadinessTests.test_ancestry_conflict_never_becomes_force_push_readiness`
+- `test_publication_readiness.PublicationReadinessTests.test_multiple_remotes_are_resolved_by_bound_authority_not_origin_guess`
+- `test_publishable.PublishableTests.test_a_pointer_to_a_local_only_commit_stays_out_until_it_is_pushed`
+- `test_publishable.PublishableTests.test_an_untracked_nested_repository_is_not_added`
+- `test_publishable.PublishableTests.test_ordinary_files_are_unchanged`
+- `test_release.ReleaseCheckTests.test_a_compatible_release_may_be_installed`
+- `test_release.ReleaseCheckTests.test_a_release_that_cannot_read_this_state_is_refused`
+- `test_release.ReleaseCheckTests.test_another_runner_with_work_in_flight_defers_the_update`
+- `test_release.ReleaseCheckTests.test_fetched_declarations_are_parsed_never_executed`
+
+Reported commit window: `7745319`, `7e804d0`, `0de0ae6`, `c3f3230`, `3ca53ce`,
+`3bd1d95`, `c15b392`, `b5b4944`, `ef85685`, `36e2b7c`, `7b77f3d`, `99813f9`,
+`ce43743`, `d9e39b4`, `db2e4ba`, `69937f0`, `0749177`, `b40d85f`, `2f27806`,
+`e22cee9`. With no recorded green revision this is neither fault attribution nor
+a proven since-green range. The existing repair's Touches cover the failing
+modules: `tests/test_pi_autowork.py`, `skills/autowork/scripts/test_publication_readiness.py`,
+`pi-autowork/tests/test_publishable.py` and `pi-autowork/tests/test_release.py`.
+Relevant history already covered by its Touches includes `ef85685`'s coordinator,
+maintainer and engine-test changes and `3bd1d95`'s checker and fixture changes.
+`7e804d0` changes bundle/update code and tests; `0de0ae6` changes Docs Sync and its
+first-index tests. Neither is evidence that those unrelated paths must be added
+to this repair. Local bare-remote fixture pushes still exit 128 before the tested
+behavior runs; preserve production push denial and the existing fixture-only
+isolation boundary, not a broader publication permission.
+
+### Existing repair and live ownership
+
+The accepted [continuous runner source](docs/project.md#continuous-pi-runner-2026-10-15),
+TOOLSET-184-b3's full-suite Acceptance and Checks, and its explicit failed-review
+continuation already cover this inventory. All 16 names are also preserved in the
+preceding receipt. A smaller inventory at a different revision does not qualify
+that candidate or waive the socket, cleanup, tx or budget checks from its contract.
+No `add-task`, supersession, scope widening or priority change is warranted.
+
+The current slot records a running repair worker at baseline `0c420d5`, PID
+3084725, start ticks 307194372; both process birth and boot identity matched when
+inspected. There is no current `attempt-1/report.json` yet. The older report is
+retained under `slot-history/TOOLSET-184-b3/1/slot-data/attempt-1/report.json`;
+it names worker commit `2c23b62`, not a result from this running worker. That commit
+is not an ancestor of the recorded red main. The retained review finding still
+rejects merged candidate `a7d3f9f`; neither old receipt establishes current success.
+
+Only the queue overview is corrected to observe the running repair rather than
+instruct another resume of the old candidate. Every task body, Acceptance item,
+Checks command, dependency, ledger state and queue position is preserved. Collect
+the current worker's result through the existing coordinator and obtain the
+required full gate and independent review; do not repin, release, reset or start
+a competing worker. No runtime repair, full offline rerun, dispatch, live acceptance
+or task closure was performed by this documentation pass.
+
+Consumer check limitation: `backlog-check` for TOOLSET-184-b3 against the accepted
+continuous-runner heading returns `draft_saved` (exit 1) both in this candidate and
+the runner's session checkout, because two existing Sources links in TOOLSET-179-cf
+and TOOLSET-130-15 target the absent `canonical-plan-and-session-reconciliation`
+heading in the coordinator plan. Those bodies and the missing plan section are
+outside this MAIN repair; no replacement approval or plan content is invented.
+`next --json` still selects TOOLSET-184-b3 first with synchronized priority; that
+ledger eligibility does not authorize another worker or certify consumer readiness.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-174-1d — Restarting a runner keeps its workers running
+
+- [x] TOOLSET-174-1d — Restarting a runner keeps its workers running
+- Status: done 2026-10-17 by the owner session (c15b392, merged in 3ca53ce): `autowork restart` reloads in place by SIGHUP; live, six runners reloaded with their workers running and one deferred behind its review.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "plan a task so restarts don't interrupt workers"; [service commands](pi-autowork/pi_autowork/command.py) (`cmd_stop` for `restart`, the model change, the package move), [service unit](pi-autowork/pi_autowork/service.py) (`UNIT`, the install restart), [self-restart and signals](pi-autowork/pi_autowork/coordinator.py) (`restart_if_updated`, `on_signal`), [TUI restart action](pi-autowork/pi_autowork/fleet_view.py), [service docs](docs/cross-host.md).
+- Evidence (2026-10-17, this repository's runner): `autowork restart` runs `systemctl restart`. The unit stops with SIGINT and `KillMode=mixed`, so every worker pauses, and systemd kills what is left of the service's processes when the stop ends. Two restarts cut off TOOLSET-165-f7: at 13:43, five seconds after its worker started, and at 14:42, 34 seconds after the runner had already restarted itself on the new release. The second cost a 10-minute run and about 1M tokens. Both resumed only because a pause keeps the attempt. The runner's own self-update (`restart_if_updated`) re-executes in place with the same PID and adopts running workers, so a restart that only needs new code or settings does not have to stop anything.
+- Touches: pi-autowork/pi_autowork/command.py, pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/fleet_view.py, tests/test_autowork_command.py, tests/test_pi_autowork.py, pi-autowork/tests/test_fleet_view.py, docs/cross-host.md
+- Scope: (1) `autowork restart`, the TUI restart action and the model change reload the runner in place: the unit gets `ExecReload` sending SIGHUP to the main process, and on SIGHUP the runner re-executes at its next safe point exactly as `restart_if_updated` does, keeping its PID and adopting running workers and reviews. (2) A reload re-reads the service's env file, so new settings (such as a changed model) apply to every run that starts afterwards; running workers keep theirs. (3) A runner that is not running is started, as today. When the reload cannot take effect (the unit's `ExecStart` itself changed, or the runner has not re-executed within `TimeoutStopSec`), the command says so and names `autowork restart --stop-workers`, the only form that stops the service and pauses workers. (4) Installing or moving the service reloads running services instead of restarting them, unless their `ExecStart` changed. `autowork stop` and host shutdown keep the pause-and-resume behavior. (5) Output says what happened: `Reloaded <unit>; <n> workers kept running`.
+- Acceptance: In fixtures with a fake systemctl and a fake Pi, `autowork restart` during a running worker leaves the worker's process and attempt unchanged, the runner keeps its PID, the run finishes and integrates, and the log shows one reload line and no `Stopping: pausing workers`. A model change by reload starts the next worker with the new model and leaves the running one alone. `autowork restart --stop-workers` and `autowork stop` still pause and resume on the same attempt. A runner that ignores the reload past the timeout gets the clear message and is not killed.
+- Checks: python3 -m unittest discover -s tests -p test_autowork_command.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the self-update, to how a stop pauses workers, or to resume and retry rules. No worker survival across a real service stop or a reboot.
+- Planner's call: third in Now, behind TOOLSET-165-f7 and TOOLSET-170-f6. Each interrupted run is paid again, and interactive sessions restart runners after every push.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-183-d6 — A review runs beside the runner's loop, so dispatch, status and questions continue while a commit is verified
+
+- [x] TOOLSET-183-d6 — A review runs beside the runner's loop, so dispatch, status and questions continue while a commit is verified
+- Status: done 2026-10-17 by the owner session (7b77f3d, merged in b5b4944): the review runs as a child the loop polls; offline check passed apart from load-gated tests that passed on rerun.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (`settle`, which calls `self.engine('--integrate', …)` and waits), [integration](skills/autowork/scripts/parallel_integrate.py) (`integrate`, `retry_held` and their `dispatch.lock`/`integration.lock`), [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`dispatch_with_retries`).
+- Evidence (2026-10-17 16:49–17:10, this repository's runner): after a restart the runner started integrating one held commit whose review runs the full offline check (about 25 minutes, twice in parallel inside the reviewer). For the whole review the runner ran 0 workers with 56 tasks waiting, wrote no `status.json` (last at 16:19), logged nothing and could not start its new main check (TOOLSET-176-98), because `settle` waits on the engine call. The fleet view kept it `working` only through the reviewer's transcript activity.
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/test_parallel_dispatch.py, tests/test_pi_autowork.py, skills/autowork/references/parallel-workers.md
+- Scope: (1) The coordinator starts each `--integrate` as a child it tracks (like a worker), records it in `job.json`-style state (task, started, pid) and polls it each cycle; one integration at a time stays the rule. (2) While it runs, the loop goes on: dispatch of independent tasks, health and status, questions, the janitor. The engine's dispatch path must not wait on `integration.lock`: `dispatch_with_retries` skips its held-slot retry pass (which takes the integration lock) while an integration owns it, and plain dispatch never takes that lock. (3) A task being integrated keeps its files reserved for admission exactly as today, so nothing dispatched beside the review can touch them. (4) A runner restart during an integration leaves the engine's existing recovery to resume or redo it.
+- Acceptance: In fixtures with a slow reviewer, the runner dispatches an independent task and refreshes `status.json` while the review runs; the integrated result is closed as today when it ends; a task overlapping the one under review still waits; two integrations never run at once; a restart mid-review recovers as today.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator; reconcile TOOLSET-174-1d (restart keeps workers running) in the coordinator first.
+- Exclusions: No parallel integrations; no change to what a review checks.
+- Planner's call: high in Now. A review that runs a full check idles a whole runner for half an hour, every time.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-187-1d — A reload or self-update waits until the finished review's answer is collected
+
+- [x] TOOLSET-187-1d — A reload or self-update waits until the finished review's answer is collected
+- Status: done 2026-10-17 by the owner session (f4a7d11, merged in ced5a52); its regression test fails on the old code and passes now.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [re-execution](pi-autowork/pi_autowork/coordinator.py) (`reexec`, `restart_if_updated`, `session_busy`, `collect_integration`, the order of `cycle`); TOOLSET-174-1d and TOOLSET-183-d6, both done.
+- Evidence (2026-10-17, this repository's runner): `autowork restart` at 19:06 found TOOLSET-184-b3 under review and deferred the reload, as designed. The review finished; at 19:30 the next cycle re-executed (`Reloading: settings and release re-read`) before collecting it, because `reexec` waits only while `session_busy()` (the review process still runs) and `restart_if_updated` runs at the top of `cycle`, before the integration's answer is read. The answer file was dropped with the old process; at 19:35 the engine failed the task with `abandoned integration lacks exact candidate/contract/branch evidence`, and the task ran again from scratch. Every reload or self-update deferred behind a review re-executes at exactly this point, so each one loses that review.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) Re-execution is a safe point only when no integration is recorded at all: `self.integration` is None, not merely a finished process. (2) A finished integration is collected and its outcome applied (integrated, held or failed, with its log line) before the cycle re-executes, in the same cycle. (3) The same rule covers the self-update and the reload, and a Pi job (`self.child`) as today.
+- Acceptance: In a fixture, a SIGHUP sent while a slow review runs re-executes only after the log shows that task's `integrated` line, the task integrates once with no `abandoned integration` failure, and the runner keeps its PID. The same holds for a toolset update during a review. The existing reload and review-beside-the-loop tests still pass.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when a reload is requested, to the review itself or to how a stop ends a review.
+- Planner's call: first in Now, ahead of TOOLSET-186-07: each deferred reload or self-update costs a full review (about 25 minutes of model time here), and interactive sessions reload runners after every push.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-186-07 — The offline check runs tests without the runner's push guard
+
+- [x] TOOLSET-186-07 — The offline check runs tests without the runner's push guard
+- Status: done 2026-10-17 by the owner session (f4a7d11, merged in ced5a52); its regression test fails on the old code and passes now.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [push guard](pi-autowork/pi_autowork/common.py) (`push_guard`), [offline check](scripts/check.py) (the environment it gives test processes), [main check](pi-autowork/pi_autowork/main_check.py).
+- Evidence (2026-10-17, this repository's runner): its main check reported main red at 3ca53ce with 20 failing tests, and the same full gate failed TOOLSET-184-b3's review. Every failure that names a cause is a fixture's own `git push` to a temporary bare repository: `test_merged_work_is_pushed_to_main_upstream` fails in `self.origin()` on `git push -q -u origin main`, and `test_publishable` fails in `setUp` on `git push -q origin HEAD:main`. The same commit passed `python3 scripts/check.py` outside the runner (apart from load-gated tests that passed on rerun). The runner calls `push_guard()`, which sets `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n` and `GIT_CONFIG_VALUE_n` so that every push fails; the main check and every reviewer inherit them, and `scripts/check.py` strips only `PI_AUTOWORK_*` and `AUTOWORK_*`. TOOLSET-184-b3 started fixing this per test module (`local_git_env` in three modules), which leaves `tests/test_pi_autowork.py` and any new fixture exposed. A false red also makes the DOCS-MAINTAINER plan repairs for tests that are not broken.
+- Touches: scripts/check.py, tests/test_check.py
+- Scope: (1) `scripts/check.py` removes the push guard's variables (`GIT_CONFIG_COUNT` and every `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` whose key is one of `push_guard`'s) from the environment of the test processes it starts, next to the `PI_AUTOWORK_*` removal; other `GIT_CONFIG_*` entries are kept. (2) The test processes still cannot push to a real remote by accident: fixtures push only to temporary file remotes, as today. (3) Nothing else in the runner's own guard changes: the runner, its workers and Pi's tools keep failing every push.
+- Acceptance: With the push guard set in the calling environment, `python3 scripts/check.py` (or a test-sized fixture of it in `tests/test_check.py`) runs a test that pushes to a temporary bare repository and passes, and a test process sees no `pi-autowork-push-disabled` configuration. The runner's own `git push` still fails under the guard.
+- Checks: python3 -m unittest discover -s tests -p test_check.py; python3 scripts/check.py with TMPDIR set to a fresh short directory, run once with the push guard's variables exported
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to `push_guard`, to fixture code beyond what TOOLSET-184-b3 already owns, or to how the main check records results.
+- Planner's call: first in Now, ahead of TOOLSET-184-b3's retry: until it lands, every review and main check of this repository fails on fixture pushes, so 184-b3 cannot pass review however its fixtures are repaired. It shares `scripts/check.py` with 184-b3, so integrate it first and let 184-b3 rebase onto it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-185-74 — An idle runner waits out its interval instead of re-cycling on its own ref changes
+
+- [x] TOOLSET-185-74 — An idle runner waits out its interval instead of re-cycling on its own ref changes
+- Status: done 2026-10-17 by the owner session (f4a7d11, merged in ced5a52); its regression test fails on the old code and passes now.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [the idle wait](pi-autowork/pi_autowork/coordinator.py) (`pause`, `plan_signature`, the `IDLE` branch of `cycle` with `end_session`).
+- Evidence (2026-10-17, one fleet runner with an empty queue and one held task): 213 `Session pi-autowork/<stamp> started from <base>` lines in 40 minutes, each followed by `Queue empty; checking again in 60s` and, about one second later, `main changed; checking now`. The base branch's ref had not moved for 24 minutes. Its `packed-refs` held only the header line, yet its mtime was the last cycle's second: ending the empty session deletes the session branch, Git 2.43 rewrites `packed-refs` on that delete, and `plan_signature` stats `packed-refs` as part of "main", so the runner's own cleanup ends its wait. Each loop creates and deletes a branch and a worktree and runs the engine; no model is called, but the runner never rests and its log is unreadable.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) The main-branch part of `plan_signature` is the base branch's commit, not file stats: read the loose ref, or the base's line in `packed-refs` when there is no loose ref, only when either file's stat changed since the last read (still no Git subprocess per second). (2) A `packed-refs` rewrite that leaves the base's commit unchanged is not a change. (3) The planning files keep their stat comparison.
+- Acceptance: In a fixture with an empty queue, a runner started with `--interval 5` logs at most one session start and one `Queue empty` per interval over 20 seconds, while `git pack-refs` and deleting an unrelated branch run in the meantime. A commit to the base branch (loose or packed ref) still ends the wait within the settle time, as the existing plan-change tests show.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to session creation or ending, to the interval, or to how planning-file edits end the wait.
+- Planner's call: first in Now. It is small, and a runner with an empty queue spins without pause until it is fixed; the existing Now tasks keep their order behind it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-188-75 — A session's planning commits land on main within minutes, not only when a task closes
+
+- [x] TOOLSET-188-75 — A session's planning commits land on main within minutes, not only when a task closes
+- Status: done 2026-10-17 by the owner session (6e1f39a, merged in e905fb4); its regression test fails on the old code and passes now.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [landing](pi-autowork/pi_autowork/coordinator.py) (`land`, `merge_main`, `sync_upstream`, the `IDLE` branch of `cycle`, `maintain`, `update_questions`); owner direction (2026-10-17: commit, push to upstream and pull-merge after every task).
+- Evidence (2026-10-17, this repository's runner): its session `pi-autowork/<stamp>` was started at 13:43 and by 20:30 held 13 commits not on main: DOCS-MAINTAINER repairs (three `changed MAIN` runs and the restatement of TOOLSET-184-b3) and BLOCKERS.md question updates. A session lands only after a task closes (`land`) or when the queue is empty; for seven hours every task was running, held or waiting, so neither happened. The owner and other sessions read main, so they saw neither the questions nor the repaired task, and TOOLSET-184-b3 existed only on the session branch.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) After a DOCS-MAINTAINER merge, a questions commit or a Touches widening, and at least every `PI_AUTOWORK_LAND_EVERY` seconds (default 600) while the session is ahead of main, the runner calls `land()` once no review or Pi job runs, exactly as after a closed task: merge the base in, fast-forward main, pull what upstream gained and push. (2) Running workers do not prevent it: they work in their own worktrees and are unaffected by the session moving forward. (3) A landing that cannot happen (main checkout busy or on another branch) keeps today's pending reason; TOOLSET-125-3c reports it.
+- Acceptance: In a fixture whose only task runs a slow worker, a BLOCKERS.md question and a maintainer planning commit made on the session reach main (and the fixture upstream) within `PI_AUTOWORK_LAND_EVERY` (set to a few seconds) while the worker still runs; the worker then finishes and integrates normally. With a review running, the landing waits for its answer.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to what the maintainer or the questions write, to conflict resolution or to the push setting.
+- Planner's call: top of the toolset's own Now: the runner's planning, including its repairs of its own held tasks, is invisible until it lands.
