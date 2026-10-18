@@ -73,6 +73,7 @@ class ReviewScratchTests(unittest.TestCase):
 
             def job(settings, role, task, checkout, prompt, *rest):
                 seen['tmp'] = Path(os.environ['TMPDIR'])
+                seen['real'] = seen['tmp'].resolve()
                 seen['prompt'] = prompt
                 (seen['tmp'] / 'copy.txt').write_text('scratch')
                 return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
@@ -88,8 +89,11 @@ class ReviewScratchTests(unittest.TestCase):
                     os.environ.pop('TMPDIR', None)
                 else:
                     os.environ['TMPDIR'] = old_tmp
-            self.assertTrue(str(seen['tmp']).startswith(str(state / 'review-tmp')), seen['tmp'])
-            self.assertFalse(seen['tmp'].exists())
+            # The files live in the scratch on disk; $TMPDIR is a short link to it, so a
+            # socket under it fits the 108-byte AF_UNIX limit.
+            self.assertTrue(str(seen['real']).startswith(str((state / 'review-tmp').resolve())), seen['real'])
+            self.assertLessEqual(len(str(seen['tmp'])), 32, seen['tmp'])
+            self.assertFalse(seen['tmp'].exists() or seen['real'].exists() or seen['tmp'].parent.exists())
             self.assertIn('never directly under /tmp', seen['prompt'])
             cache = repo / '.git' / 'autowork-execution' / 'cache'
             self.assertIn(f'are in {cache} (AUTOWORK_CACHE', seen['prompt'])

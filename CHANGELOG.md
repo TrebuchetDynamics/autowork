@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A review's `$TMPDIR` is a short private link in `/tmp` to its scratch on disk. Under the runner's state
+  directory the path was 85 characters before a test added its own, past the 108-byte AF_UNIX limit, so
+  every socket test failed in review (and full-suite gates) while the worker's own run passed them.
 - `/autowork update` started while the gateway restarts waits for the new gateway (up to 5 minutes) and
   finalizes profiles whose commands are not wired yet again, instead of reporting `incomplete`.
 - `/plan_with_me` and `/plan_for_me` turn an audit or "is it ready?" into tasks: a one-line verdict, each

@@ -15,6 +15,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 
 from . import main_check, pi_runtime, workspaces
 from .common import dirty, git, push_guard, safe_name
@@ -242,11 +243,17 @@ def verify(state, task):
     scratch = Path(state) / 'review-tmp' / f'{safe_name(task)}-{os.getpid()}'
     drop_dead_scratch(checkout, scratch.parent)
     scratch.mkdir(parents=True, exist_ok=True)
-    os.environ['TMPDIR'] = str(scratch)
+    # $TMPDIR is a short private link to that scratch: under the state directory the path was
+    # 85 characters before a test added its own, past the 108-byte AF_UNIX limit, so every
+    # socket test failed in review while the worker's short $TMPDIR passed it.
+    short = Path(tempfile.mkdtemp(prefix='aw-r-', dir='/tmp'))
+    (short / 't').symlink_to(scratch, target_is_directory=True)
+    os.environ['TMPDIR'] = str(short / 't')
     try:
         return review(state, task, checkout, head_before)
     finally:
         drop_scratch_worktrees(checkout, scratch)
+        shutil.rmtree(short, ignore_errors=True)  # removes the link, never follows it
         shutil.rmtree(scratch, ignore_errors=True)
 
 
