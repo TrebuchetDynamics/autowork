@@ -1909,6 +1909,18 @@ class ServiceTests(Fixture):
             self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
             self.assertNotIn('bad unit file setting', check.stdout + check.stderr)
 
+    def test_the_service_path_leaves_out_uvs_temporary_environments(self):
+        """Installed from the TUI (`uv run`), a service kept uv's deleted build environment first."""
+        cache = self.root / 'uv-cache'
+        build = cache / 'builds-v0' / '.tmpabc' / 'bin'
+        build.mkdir(parents=True)
+        self.env.update(UV_CACHE_DIR=str(cache), PATH=f"{build}:{self.env['PATH']}")
+        result = self.run_runner('--install-service')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        path = next(l for l in (self.envs / 'project.env').read_text().splitlines() if l.startswith('PATH='))
+        self.assertNotIn(str(cache), path)
+        self.assertIn(str(self.bin), path)
+
     def test_a_name_used_by_another_repository_is_refused(self):
         self.envs.mkdir()
         (self.envs / 'project.env').write_text('PI_AUTOWORK_REPO=/elsewhere/project\n')
