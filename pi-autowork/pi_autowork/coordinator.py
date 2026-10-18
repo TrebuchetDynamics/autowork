@@ -982,21 +982,10 @@ class Coordinator:
                 return
             if task in handled:
                 continue
-<<<<<<< Updated upstream
             if self.reexec_due():
                 # Back-to-back reviews left no gap for a reload: one runner kept its morning
                 # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
                 self.restart_if_updated()
-=======
-            if self.reexec_pending():
-                # A re-exec waits for a moment with no review running; starting the next one
-                # would postpone it indefinitely (a reload and four releases waited 2.5 hours
-                # behind a queue of eight reviews, so the runner kept a stale reviewer).
-                if not self.seen.get('reexec-hold'):
-                    self.seen['reexec-hold'] = True
-                    LOG.say('A reload or a new release is waiting: no new review starts until the runner '
-                            'restarts on it')
->>>>>>> Stashed changes
                 return
             if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
                 self.note_state(task, 'integrating')
@@ -1552,16 +1541,6 @@ class Coordinator:
             LOG.say(f'Cannot prepare toolset {rev}: {exc}')
         LOG.say(f'Toolset changed to {rev}, but its runner does not parse; keeping the running {self.toolset_rev}')
         self.package_rev = rev
-
-    def reexec_pending(self):
-        """Whether `restart_if_updated` would re-execute once nothing runs: a reload was asked
-        for, or the package moved past the running release."""
-        if self.reload:
-            return True
-        if self.mode != 'continuous' or self.toolset_rev == 'unknown':
-            return False
-        rev = git(self.package, 'rev-parse', '--short', 'HEAD')
-        return bool(rev) and rev != self.package_rev
 
     def reexec(self, text, reload=False, revision='HEAD'):
         """Run this runner again in place: same PID, so running workers stay its children and
