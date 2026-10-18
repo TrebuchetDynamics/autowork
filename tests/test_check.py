@@ -122,6 +122,33 @@ class Check(unittest.TestCase):
         self.assertIn('1 test directories passed', result.stdout)
         self.assertNotIn('live model imported', result.stdout + result.stderr)
 
+    def test_fixtures_can_push_although_the_runner_guards_pushes(self):
+        """TOOLSET-186-07: a runner's main check reported 20 failures, all fixture pushes its
+        push guard refused; outside the runner the same tree passed."""
+        self.write('tests/test_push.py', '''import os, subprocess, tempfile, unittest
+class Push(unittest.TestCase):
+    def test_push(self):
+        with tempfile.TemporaryDirectory() as root:
+            git = lambda *a: subprocess.run(['git', '-c', 'user.email=t@example.invalid', '-c', 'user.name=T', *a],
+                                           check=True, capture_output=True)
+            git('init', '-q', '--bare', root + '/bare')
+            git('init', '-q', root + '/work')
+            git('-C', root + '/work', 'commit', '-q', '--allow-empty', '-m', 'x')
+            git('-C', root + '/work', 'push', '-q', root + '/bare', 'HEAD:refs/heads/main')
+        self.assertEqual(os.environ.get('GIT_CONFIG_KEY_0'), 'core.abbrev')  # other settings stay
+''')
+        guard = {'GIT_CONFIG_COUNT': '3', 'GIT_CONFIG_KEY_0': 'url.pi-autowork-push-disabled:///.pushInsteadOf',
+                 'GIT_CONFIG_VALUE_0': '', 'GIT_CONFIG_KEY_1': 'core.abbrev', 'GIT_CONFIG_VALUE_1': '12',
+                 'GIT_CONFIG_KEY_2': 'protocol.pi-autowork-push-disabled.allow', 'GIT_CONFIG_VALUE_2': 'never'}
+        result = self.run_check(env=dict(os.environ, **guard))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('1 test directories passed', result.stdout)
+        with tempfile.TemporaryDirectory() as root:  # the guard itself still refuses pushes
+            subprocess.run(['git', 'init', '-q', '--bare', root + '/bare'], check=True)
+            pushed = subprocess.run(['git', 'push', root + '/bare', 'HEAD:refs/heads/x'], cwd=ROOT, capture_output=True,
+                                    env=dict(os.environ, **guard))
+            self.assertNotEqual(pushed.returncode, 0)
+
     def test_failure_propagates_but_other_directory_still_runs(self):
         self.write('tests/test_failure.py', '''import unittest
 class Check(unittest.TestCase):

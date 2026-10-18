@@ -113,6 +113,29 @@ def default_jobs():
     return max(4, min(8, idle))
 
 
+PUSH_GUARD = 'pi-autowork-push-disabled'
+
+
+def without_push_guard(env):
+    """``env`` without the runner's push guard (TOOLSET-186-07): a runner's main check and its
+    reviewers inherit GIT_CONFIG_* entries that fail every push, and fixtures push to their own
+    temporary repositories. Other GIT_CONFIG_* entries are kept, renumbered."""
+    try:
+        count = int(env.get('GIT_CONFIG_COUNT') or 0)
+    except ValueError:
+        return env
+    entries = [(env.get(f'GIT_CONFIG_KEY_{i}', ''), env.get(f'GIT_CONFIG_VALUE_{i}', '')) for i in range(count)]
+    kept = [(key, value) for key, value in entries if PUSH_GUARD not in key]
+    if len(kept) == len(entries):
+        return env
+    env = {k: v for k, v in env.items() if k != 'GIT_CONFIG_COUNT' and not k.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_'))}
+    for i, (key, value) in enumerate(kept):
+        env[f'GIT_CONFIG_KEY_{i}'], env[f'GIT_CONFIG_VALUE_{i}'] = key, value
+    if kept:
+        env['GIT_CONFIG_COUNT'] = str(len(kept))
+    return env
+
+
 def positive_int(value):
     number = int(value)
     if number <= 0:
@@ -151,8 +174,8 @@ def main(argv=None):
     # No live-test flags, and no settings of the runner whose worker or reviewer runs this:
     # tests start their own runners, and a service's PI_AUTOWORK_MAIN_CHECK and
     # PI_AUTOWORK_NO_FALLBACK failed them.
-    env = {k: v for k, v in os.environ.items()
-           if k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))}
+    env = without_push_guard({k: v for k, v in os.environ.items()
+                              if k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))})
     passed = failed = 0
     work = list(units(root, tests))
     # Modules (and shards of split ones) are independent processes; output is still printed
