@@ -15,13 +15,6 @@ no extra approval step or execution authority.
 - Since: 2026-10-18T15:06:41Z
 - Answer: Answer in TOOLSET-189-96's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
 
-### Q-TOOLSET-209-55 — USER_INPUT — effort input — unblocks 0
-
-- Task: TOOLSET-209-55 — Workers run the runner suite sharded, and a worker timeout names the command it cut off
-- Needs: worker reported a blocker: The coordinator must migrate TODO.md Checks lines that run SPLIT modules serially, or explicitly authorize this worker to make that migration despite the coordinator-owned-file prohibition. Scope (2) and acceptance require this edit, but the worker rules forbid editing TODO.md even though it is in Touches. The prior integration log (.git/autowork-execution/22425219148b4d55ae247984e67cd422.log) con…
-- Since: 2026-10-18T14:58:20Z
-- Answer: Answer in TOOLSET-209-55's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
-
 ### Q-TOOLSET-165-f7 — USER_DECISION — effort investigate — unblocks 0
 
 - Task: TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
