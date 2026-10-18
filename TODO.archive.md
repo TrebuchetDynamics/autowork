@@ -2854,3 +2854,121 @@ Next action remains with the assigned repair worker: diagnose and repair the
 fixture boundary, retain every original failing case and assertion, and run the
 full gate. No live provider, publication, fleet qualification or repair completion
 is inferred from this supplemental receipt.
+
+## MAIN receipt at 3ca53ce and TOOLSET-184-b3 review
+
+Evidence supplement, not completion. TOOLSET-184-b3 still owns the full offline
+repair; no competing task is needed. Its Acceptance, status, goal, dependencies
+and queue position are unchanged. Its continuation now names the failed review's
+fixture seams and the two additional top-level test files it may need to edit.
+There is no `slot-data/MAIN/` worker report.
+
+### MAIN receipt binding
+
+The retained `main_check.json` reports red revision
+`3ca53ce5d08f8c245ea1be9073a6543e6853ae98`, `green: null`, and
+`red_since: 36e2b7c0ea0c6096a7b20197edcacf68dc11dfa4`.
+`main-check.exit` is 1. The completed log ends
+`Offline result: 2 test directories passed; 3 failed; 8 modules excluded.`
+Its 25 distinct FAIL/ERROR identities exceed the summary's first 20 names;
+retain the full inventory rather than treating the truncated user trigger as a
+complete list. Receipt SHA-256 bindings:
+
+- `main_check.json`: `426e458f20c54d33c9656b33b57836a1829e819a89ebf8a74e10f5c1868b0504`
+- `main-check.log`: `93da2aab6d99498a059dc53a387e89feee538f33d01999a466cb73151d59857e`
+- `main-check.exit`: `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865`
+
+Full failure inventory:
+
+- `test_pi_autowork.EngineTests.test_merged_work_is_pushed_to_main_upstream`
+- `test_pi_autowork.EngineTests.test_a_backlog_left_unpushed_is_published_at_start`
+- `test_pi_autowork.EngineTests.test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`
+- `test_pi_autowork.EngineTests.test_a_rejected_push_merges_the_upstream_and_pushes_again`
+- `test_pi_autowork.SetupTests.test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code`
+- `test_pi_autowork.SetupTests.test_a_release_that_cannot_read_current_state_is_never_installed`
+- `test_pi_autowork.SetupTests.test_a_broken_toolset_update_keeps_the_running_code`
+- `test_budget_controller.BudgetTests.test_failed_race_evidence_survives_assertion_and_temp_cleanup`
+- `test_budget_controller.BudgetTests.test_final_effect_read_error_fails_qualification_without_erasing_evidence`
+- `test_budget_controller.BudgetTests.test_final_snapshot_error_preserves_real_deadline_failure`
+- `test_budget_controller.BudgetTests.test_final_snapshot_error_retains_normal_process_evidence`
+- `test_budget_controller.BudgetTests.test_final_source_read_error_fails_qualification_without_erasing_evidence`
+- `test_parallel_adversarial.AdversarialWorkerTests.test_a_report_written_after_a_coordinator_restart_is_adopted`
+- `test_parallel_e2e.EndToEndTests.test_abc_real_cli`
+- `test_parallel_e2e.EndToEndTests.test_abc_with_delayed_initial_observation`
+- `test_parallel_e2e.EndToEndTests.test_serial_control`
+- `test_publication_readiness.PublicationReadinessTests.test_ancestry_conflict_never_becomes_force_push_readiness`
+- `test_publication_readiness.PublicationReadinessTests.test_multiple_remotes_are_resolved_by_bound_authority_not_origin_guess`
+- `test_publishable.PublishableTests.test_a_pointer_to_a_local_only_commit_stays_out_until_it_is_pushed`
+- `test_publishable.PublishableTests.test_an_untracked_nested_repository_is_not_added`
+- `test_publishable.PublishableTests.test_ordinary_files_are_unchanged`
+- `test_release.ReleaseCheckTests.test_a_compatible_release_may_be_installed`
+- `test_release.ReleaseCheckTests.test_a_release_that_cannot_read_this_state_is_refused`
+- `test_release.ReleaseCheckTests.test_another_runner_with_work_in_flight_defers_the_update`
+- `test_release.ReleaseCheckTests.test_fetched_declarations_are_parsed_never_executed`
+
+The five budget cases are newly recorded in this MAIN receipt. Normal fixture
+processes were killed with exit -9 instead of 0, a duplicate race exceeded its
+deadline, and the explicit deadline case took 5.265 seconds against its existing
+less-than-2-second assertion. The three end-to-end cases refused admission at
+load 25.75 against 24 CPUs. Local Git setup still failed at push with exit 128.
+These observations do not prove a common cause or permit relaxing assertions,
+timeouts, production admission or push denial.
+
+The receipt's reported history window is `3ca53ce`, `3bd1d95`, `c15b392`,
+`b5b4944`, `ef85685`, `36e2b7c`, `7b77f3d`, `99813f9`, `ce43743`, `d9e39b4`,
+`db2e4ba`, `69937f0`, `0749177`, `b40d85f`, `2f27806`, `e22cee9`, `605a302`,
+`1515af8`, `2e415c4`, `a01e061`. This is not a proven since-green range or fault
+attribution. `3bd1d95` and merge `3ca53ce` changed `scripts/check.py`,
+`tests/test_check.py` and `tests/test_pi_autowork.py`; `c15b392` changed runner
+CLI/command/coordinator/fleet/service code, command/engine tests and runner docs.
+`ef85685` changed coordinator/maintainer code and engine tests. None of these
+commits changed the five budget fixtures; their owning module is nevertheless
+inside the existing `skills/autowork/scripts/` Touches and full-suite gate.
+
+### Failed independent review and continuation
+
+Worker report `slot-data/TOOLSET-184-b3/attempt-1/report.json` names commit
+`2c23b62f63e3accd07cabf3b6fa70541ad5aad03`, based on `26018cf`, and reports
+1,807 passing tests on tree `708adc7fe41d413cf91545521dda9478899dd2f9` with a short
+private TMPDIR. This is retained worker evidence, not a repeated docs-pass check.
+The candidate adds fixture isolation, bounded checker concurrency and async-review
+in-flight tracking. It was not an ancestor of canonical main when inspected.
+
+The runner's `review-findings/TOOLSET-184-b3.json` rejects merged candidate
+`a7d3f9f791b3648635e651f23051356903b0908a` with the exact verdict:
+
+> PI_AUTOWORK_VERIFY: fail — Full offline gate exits 1: only 2/5 directories pass. Required TMPDIR exposes socket-path, worktree-cleanup and tx fixture failures; full-gate acceptance is unmet.
+
+The retained review session `pi-autowork-verify-TOOLSET-184-b3-20261017190444`
+records a completed canonical-scratch full run, exit 1, 488.41 seconds, with:
+
+- AF_UNIX path overflow in `test_native_containment.PlanTests` (two socket cases),
+  six `SyntheticLaunchTests` registration cases (including subtests), and
+  `test_janitor.JanitorTests.test_only_stale_unused_entries_are_removed`.
+- `test_worktree_closeout.WorktreeCloseoutTests.test_documented_closeout_command_on_main_and_master`
+  failing for both merged branch cases, and
+  `test_task_execution.DirectExecutionTests.test_claiming_a_task_removes_finished_worktrees_and_keeps_unfinished_ones`
+  plus the inherited `RecoveryTests` case: disposable finished worktrees were kept
+  under the real review-state ancestor as managed by the runner.
+- `test_tx.TxTests.test_tx_has_no_autowork_commands`: the help output's temporary
+  config path contained the word, while the failure did not demonstrate a new tx
+  command. Inspect the fixture/assertion seam before changing product behavior.
+
+The original review TMPDIR was 85 characters; its expected janitor socket path
+was 108. `/proc` aliases avoided that limit but produced canonical-path assertion
+failures in fleet/workspace fixtures, so those exploratory runs are not gate passes.
+An intermediate interrupt-check failure passed with default SIGINT handling.
+The reviewer also reported unreaped fixture processes during earlier runs; that
+is a launcher observation, not a proved product defect. The review scratch logs
+were removed afterwards; the session retains their commands and output, so no
+current-file hash or independent rerun is claimed for those deleted logs.
+
+Worker PID 812010 and reviewer/launcher PIDs 2589109, 2588665, 2775534 and 2775548
+were gone when inspected; the retained slot still said `integrating`. The docs
+pass changes no slot state, assigned-input hash, budget or review receipt.
+Reconcile the retained candidate through the coordinator and fix/recheck the
+explicit findings, including the mismatch between the task's short physical
+scratch and the reviewer's scratch restriction, before claiming full acceptance.
+The existing [accepted runner source](docs/project.md#continuous-pi-runner-2026-10-15)
+and every original Acceptance item remain binding; no implementation, full-gate
+rerun, live qualification or task closure was performed by this documentation pass.
