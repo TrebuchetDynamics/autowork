@@ -131,6 +131,7 @@ class Coordinator:
         self.started_workers = self.failures = 0
         self.draining, self.once_task, self.once_done = False, None, False
         self.last_waiting, self.runner_blocker = '', ''
+        self.integration = None  # the review running beside the loop (TOOLSET-183-d6)
         self.pause_until = 0.0
         self.seen, self.touches_tried = {}, set()
         self.known_at_start = False  # the first status read records task states without logging them
@@ -141,6 +142,55 @@ class Coordinator:
         self.runtime = pi_runtime.Settings(self.state)
 
     # --- Engine -----------------------------------------------------------------
+    def start_integration(self, task):
+        """Start the engine's integration of ``task`` as a child the loop polls, so a review
+        that runs a long check does not stop dispatch, status and questions (TOOLSET-183-d6)."""
+        out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='integrate.', delete=False)
+        out.close()
+        args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
+                '--integrate', task, '--timeout', self.verify_timeout, '--reviewer-version', self.reviewer_version(),
+                '--run', '/bin/bash', self.cfg['script'], '--verify', str(self.state), task]
+        with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
+            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
+        self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
+
+    def session_busy(self):
+        """A review is running: the session branch must not move or get dirty meanwhile, or
+        its fast-forward at the end fails."""
+        return bool(self.integration) and self.integration['proc'].poll() is None
+
+    def collect_integration(self, wait=0):
+        """(task, result) of the review once it ended, waiting up to ``wait`` seconds; None while it runs."""
+        job = self.integration
+        if not job:
+            return None
+        try:
+            job['proc'].wait(timeout=wait or None) if wait else None
+        except subprocess.TimeoutExpired:
+            pass
+        if job['proc'].poll() is None:
+            return None
+        self.integration = None
+        try:
+            value = json.loads(Path(job['out']).read_text())
+        except (OSError, ValueError):
+            value = {'outcome': 'ACTION_REQUIRED', 'reason': 'no answer from the engine'}
+        finally:
+            Path(job['out']).unlink(missing_ok=True)
+        return job['task'], value if isinstance(value, dict) else {}
+
+    def stop_integration(self):
+        """On a stop: end the review; the engine's recovery verifies the commit again later."""
+        job, self.integration = self.integration, None
+        if job and job['proc'].poll() is None:
+            job['proc'].terminate()
+            try:
+                job['proc'].wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                job['proc'].kill()
+        if job:
+            Path(job['out']).unlink(missing_ok=True)
+
     def engine(self, *argv, owned=True, directory=None):
         """The engine's JSON answer; {} when it printed nothing usable."""
         args = [sys.executable, str(self.engine_path), str(directory or self.integ), *argv]
@@ -349,6 +399,8 @@ class Coordinator:
         """The session into the main branch: the base into the session first (Pi resolves
         conflicts once per base revision), a fast-forward of the base in the main checkout, then a push."""
         self.merge_pending = ''
+        if self.session_busy():
+            return False  # a review is running; the session merges after it
         if not self.integ and not self.load_session():
             return True
         self.commit_session_leftovers()
@@ -395,8 +447,31 @@ class Coordinator:
             LOG.say(f'Merge pending: {self.merge_pending}. Branch {self.integ_branch} is kept; the next run retries.')
             return False
         LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s))')
-        self.push()
+        self.sync_upstream()
         return True
+
+    def sync_upstream(self):
+        """Pull, then push: merge commits the upstream gained into the session and the main
+        branch, then publish the main branch if it is ahead. Called after every landing and once
+        at start, so a backlog is published and the session never drifts behind the upstream."""
+        if os.environ.get('PI_AUTOWORK_PUSH', '1') == '0':
+            return
+        upstream = git(self.repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', f'{self.base}@{{u}}')
+        if not upstream or '/' not in upstream:
+            return self.push()  # says once that there is no upstream
+        remote, branch = upstream.split('/', 1)
+        on_base = git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') == self.base
+        if on_base and git_ok(self.repo, 'fetch', '--quiet', remote, branch):
+            behind = int(git(self.repo, 'rev-list', '--count', f'{self.base}..{upstream}') or 0)
+            if behind and self.integ and not self.session_busy() and not dirty(self.integ):
+                if git_ok(self.integ, 'merge', '-q', '--no-edit', upstream) and \
+                        git_ok(self.repo, 'merge', '--ff-only', '--quiet', self.integ_branch):
+                    LOG.say(f'Pulled {behind} commit(s) from {upstream} into {self.base}')
+                else:
+                    git(self.integ, 'merge', '--abort')
+                    LOG.say(f'{upstream} has {behind} commit(s) that do not merge cleanly; the push resolves them')
+        if int(git(self.repo, 'rev-list', '--count', f'{upstream}..{self.base}') or 0):
+            self.push()
 
     def push(self, retry=True):
         """Publish the main branch to its upstream after a merge (owner decision, 2026-10-16).
@@ -555,6 +630,8 @@ class Coordinator:
             # The owner's quiet planning edits (answers to held tasks) are committed even when
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes(planning_only=True)
+        if self.session_busy():
+            return  # a review is running: the session follows main after it
         if not git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') or dirty(self.integ) \
                 or self.in_flight():
             return
@@ -568,12 +645,20 @@ class Coordinator:
             self.merge_blocker = f'the session cannot take {self.base}: {self.merge_pending}'
 
     def land(self):
-        """After a task closes, bring the session to the main branch (and push) while nothing
-        is in flight, so the session never drifts far from the owner's plan."""
-        if self.integ and not self.in_flight() and self.ahead():
+        """After every task closes: bring the session to the main branch, pull what upstream
+        gained and push (owner direction, 2026-10-17: commit, push to upstream and pull-merge
+        after every task). Workers keep their own bases, so others in flight do not wait it;
+        only a running review does (its fast-forward needs the session unchanged)."""
+        if not self.integ or self.session_busy():
+            return
+        if self.ahead():
             self.merge_main()
+        else:
+            self.sync_upstream()
 
     def commit(self, paths, *message):
+        if self.session_busy():
+            return False  # a review is running: its fast-forward needs the session unchanged
         for path in paths:
             git(self.integ, 'add', '-A', '--', path)
         if git_ok(self.integ, 'diff', '--cached', '--quiet'):
@@ -584,6 +669,7 @@ class Coordinator:
         return git_ok(self.integ, 'commit', '-q', *args)
 
     def finish(self, code, text):
+        self.stop_integration()
         if self.integ:
             self.merge_main()
             if not self.merge_pending and not self.in_flight():
@@ -667,13 +753,14 @@ class Coordinator:
             # guess and the engine resumes it in its worktree (not counted as a failure).
             if state == 'interrupted' and row.get('paused'):
                 state = 'resuming'  # a deliberate stop or a granted request, not a failure
-            if state == 'held' and row.get('cause') == 'scope_request':
+            if state == 'held' and row.get('cause') == 'scope_request' and not self.session_busy():
                 if self.seen.get('awaiting-' + task):
                     continue  # widened already: the next refill resumes it
                 if not self.stop and self.widen_inferred(task, ', '.join(row.get('requested') or []), requested=True):
                     self.settled = True
                     continue
-            if state == 'held' and row.get('cause') == 'conflict' and self.resolve_task_conflict(row):
+            if (state == 'held' and row.get('cause') == 'conflict' and not self.session_busy()
+                    and self.resolve_task_conflict(row)):
                 self.settled = True
                 continue
             self.note_state(task, state, reason, quiet=not self.known_at_start)
@@ -686,47 +773,64 @@ class Coordinator:
         self.known_at_start = True
         if self.stop:
             return
+        if self.session_busy():
+            return  # one review at a time; it is collected when it ends
+        handled = set()
+        finished = self.collect_integration()
+        if finished:
+            handled.add(finished[0])
+            self.integrated(*finished)
+            if self.stop:
+                return
         self.reverify_held(rows)
-        for task in [r['task'] for r in rows if r.get('state') == 'integrated']:
+        for task in [r['task'] for r in rows if r.get('state') == 'integrated' and r['task'] not in handled]:
             if self.stop:
                 return
             self.close_task(task)
         for task in [r['task'] for r in rows if r.get('state') in ('reported', 'integrating')]:
             if self.stop:
                 return
+            if task in handled:
+                continue
             if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
                 self.note_state(task, 'integrating')
-            result = self.engine('--integrate', task, '--timeout', self.verify_timeout,
-                                 '--reviewer-version', self.reviewer_version(), '--run', '/bin/bash',
-                                 self.cfg['script'], '--verify', str(self.state), task)
-            outcome, reason = result.get('outcome') or 'ACTION_REQUIRED', result.get('reason') or ''
-            if outcome != 'BUSY':
-                self.seen.pop('busy-' + task, None)
-            if outcome == 'INTEGRATED':
-                self.settled = True
-                self.note_state(task, 'integrated')
-                self.close_task(task)
-            elif outcome == 'HELD':
-                self.settled = True
-                if result.get('cause') == 'scope' and self.widen_inferred(task, ', '.join(result.get('outside') or [])):
-                    continue  # the next refill verifies the same commit again (RESCOPED)
-                if (result.get('cause') == 'validation' and self.environment_hold(task)
-                        and self.provision_and_reverify(task, self.reviewer_version())):
-                    continue  # reviewed again before a refill can start a fresh retry
-                if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
-                    row = next((r for r in self.tasks() if r.get('task') == task), None)
-                    if row and self.resolve_task_conflict(row):
-                        continue
-                self.note_state(task, 'held', reason)
-                self.count_failure(task, result.get('cause'))
-                if task == self.once_task:
-                    self.draining = True
-            elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
-                if self.seen.get('busy-' + task) != reason:
-                    LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
-                self.seen['busy-' + task] = reason
-            elif 'highest-priority' not in reason:  # another reported task goes first
-                LOG.say(f'{task}: integration needs attention: {reason or outcome}')
+            self.start_integration(task)
+            finished = self.collect_integration(wait=5)  # quick refusals are handled at once
+            if finished is None:
+                return  # a real review: it runs beside the loop until it ends
+            handled.add(task)
+            self.integrated(*finished)
+
+    def integrated(self, task, result):
+        """Act on the engine's answer to integrating ``task``."""
+        outcome, reason = result.get('outcome') or 'ACTION_REQUIRED', result.get('reason') or ''
+        if outcome != 'BUSY':
+            self.seen.pop('busy-' + task, None)
+        if outcome == 'INTEGRATED':
+            self.settled = True
+            self.note_state(task, 'integrated')
+            self.close_task(task)
+        elif outcome == 'HELD':
+            self.settled = True
+            if result.get('cause') == 'scope' and self.widen_inferred(task, ', '.join(result.get('outside') or [])):
+                return  # the next refill verifies the same commit again (RESCOPED)
+            if (result.get('cause') == 'validation' and self.environment_hold(task)
+                    and self.provision_and_reverify(task, self.reviewer_version())):
+                return  # reviewed again before a refill can start a fresh retry
+            if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
+                row = next((r for r in self.tasks() if r.get('task') == task), None)
+                if row and self.resolve_task_conflict(row):
+                    return
+            self.note_state(task, 'held', reason)
+            self.count_failure(task, result.get('cause'))
+            if task == self.once_task:
+                self.draining = True
+        elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
+            if self.seen.get('busy-' + task) != reason:
+                LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
+            self.seen['busy-' + task] = reason
+        elif 'highest-priority' not in reason:  # another reported task goes first
+            LOG.say(f'{task}: integration needs attention: {reason or outcome}')
 
     def reviewer_version(self):
         """Fingerprint of this runner's validation: the reviewer's code and prompts plus the
@@ -835,7 +939,8 @@ class Coordinator:
         evidence in a disposable checkout. Its commit merges into the session only if it changed
         planning files alone and goals.py validate passes. One run per distinct trigger set; no
         trigger, no model call. True when its repair merged."""
-        if self.stop or (self.in_flight() and not main_only) or not self.integ or dirty(self.integ):
+        if (self.stop or (self.in_flight() and not main_only) or not self.integ or dirty(self.integ)
+                or self.session_busy()):
             return False
         rows = [] if main_only else self.tasks()
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
@@ -964,7 +1069,7 @@ class Coordinator:
         commit changed (the engine verifies it again) or a worker asked for (the engine
         resumes it in place). Touches a person wrote, or edited since, only get the bounded
         widening from worker evidence."""
-        if not outside or dirty(self.integ) or self.seen.get('widened-' + task):
+        if not outside or dirty(self.integ) or self.seen.get('widened-' + task) or self.session_busy():
             return False
         recorded = self.recorded_touches(task)
         if not recorded:
@@ -1204,7 +1309,8 @@ class Coordinator:
     def update_questions(self, snapshot):
         """Keep the owner's questions in BLOCKERS.md (TOOLSET-120-fc 2): built without a model,
         written only when they change, committed alone on the session branch."""
-        if not self.integ or snapshot.get('outcome') != 'PARALLEL_STATUS' or dirty(self.integ):
+        if (not self.integ or snapshot.get('outcome') != 'PARALLEL_STATUS' or dirty(self.integ)
+                or self.session_busy()):
             return
         goals, _ = touches_inference.modules(self.toolset)
         path = Path(self.integ) / 'BLOCKERS.md'
@@ -1315,6 +1421,9 @@ class Coordinator:
             self.update_toolset()
         self.restart_if_updated()
         self.ensure_session()
+        if not self.seen.get('synced-at-start'):
+            self.seen['synced-at-start'] = True
+            self.sync_upstream()  # publish a backlog left by a run that could not push
         self.follow_base()
         self.sweep_tmp()
         self.check_main()
@@ -1352,7 +1461,8 @@ class Coordinator:
         if not self.draining and time.monotonic() < self.pause_until:
             outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
         elif not self.draining:
-            self.infer_touches()
+            if not self.session_busy():
+                self.infer_touches()
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle))
