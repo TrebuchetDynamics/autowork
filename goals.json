@@ -723,7 +723,8 @@
         "TOOLSET-222-e1",
         "TOOLSET-223-8e",
         "TOOLSET-224-07",
-        "TOOLSET-225-75"
+        "TOOLSET-225-75",
+        "TOOLSET-226-d3"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1197,6 +1198,14 @@
       "section": "Now",
       "status": "open",
       "title": "A worker's own test processes in its private temp directory are the worker's, not an outside session"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-226-d3",
+      "section": "Now",
+      "status": "open",
+      "title": "Dispatch pauses while finished commits wait to merge, and resumes when the queue drains"
     },
     {
       "depends_on": [],
