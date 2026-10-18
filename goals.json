@@ -734,7 +734,8 @@
         "TOOLSET-233-ba",
         "TOOLSET-234-d4",
         "TOOLSET-235-0d",
-        "TOOLSET-236-4d"
+        "TOOLSET-236-4d",
+        "TOOLSET-234-51"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -796,6 +797,7 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-234-51",
       "TOOLSET-231-49",
       "TOOLSET-225-75",
       "TOOLSET-202-9a",
@@ -1203,7 +1205,9 @@
       "title": "Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-165-f7"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-224-07",
       "section": "Now",
@@ -1595,6 +1599,16 @@
       "section": "Next",
       "status": "open",
       "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-51",
+      "section": "Next",
+      "status": "open",
+      "title": "Make the TUI a compact fleet overview with a focused runner workspace"
     },
     {
       "depends_on": [

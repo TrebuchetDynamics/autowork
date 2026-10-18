@@ -779,6 +779,8 @@ class EngineTests(Fixture):
         text = log()
         self.assertNotIn('abandoned integration', text)
         self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        # No review starts while the reload waits, or a queue of reviews postpones it for hours.
+        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)
         self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
 
     def test_a_reload_applies_between_back_to_back_reviews(self):
