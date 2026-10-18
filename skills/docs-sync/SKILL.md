@@ -316,6 +316,13 @@ number with a two-hex-digit hash, such as `T-012-c4`, so parallel clones do not 
 2. Status is met/partial/unmet/unverified. `met` needs every owned task done and
    executed passing evidence:
    `{"kind":"executed","ref":"<exact command or CI job>","result":"pass"}`.
+   For new closeout evidence, use `goals.py evidence <repo> <GOAL> --kind executed
+   --ref "<exact command or receipt>" --result pass --task TASK --summary "Short check outcome"`.
+   `--task` names a done task of that goal; the archive receives a stable task anchor.
+   Keep the summary to 80 characters and free of scratch paths. Coverage shows this
+   summary and archive link; the exact ref stays in goals.json. Without `--task`,
+   the helper uses a completed task when available. Existing evidence rows are not
+   rewritten by this format change.
    Unrun tests mean unverified. Harness checks prove code paths, not live acceptance.
    `fmt` downgrades missing evidence to unverified and unfinished met goals to
    partial, never upgrades; `validate` checks goal/task cross-level cycles. Last-task closure needs actual
@@ -433,6 +440,28 @@ Report the first `open` selection separately from retained `in_progress` entries
 because an existing owner's task is not new work to claim.
 "No eligible follow-ups" requires all goals met with executed evidence and `next`
 printing `none`; otherwise report the actual gap.
+
+### Merge planning files
+
+Pi runner startup registers `docs-sync-goals`, `docs-sync-todo` and
+`docs-sync-archive` in repository-local Git config and commits their attributes on
+its session branch. Local executable paths stay out of tracked attributes. The
+ledger driver merges whole records by goal/task ID; different concurrent edits to
+one record remain a conflict. TODO task bodies merge with Git, excluding generated
+coverage. Archive entries union as complete units, deduplicating identical entries
+while retaining different historical versions.
+
+Drivers write only their own Git output: path order is not guaranteed and Git may
+skip a driver. Therefore merge with `git merge --no-commit --no-ff <ref>`, resolve
+real conflicts, then run `python3 <skill-directory>/scripts/goals.py merge-finalize
+<repo>` **before committing**. It rebuilds recorded priority from resolved TODO
+order, validates the ledger and re-renders coverage without archiving or changing
+completion. Stage the resulting TODO/goals changes with the merge. The runner does
+this automatically for session/main and upstream merges; remaining conflicts go
+to its existing Pi resolver. Plain Git merges outside that wrapper need the same
+finalization; a successful low-level merge alone does not certify coverage/order.
+Preserve existing archive owners; add the archive driver attribute for a custom
+linked history path as well as the standard names.
 
 ### Put deferred qualification last
 

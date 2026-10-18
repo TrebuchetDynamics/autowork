@@ -41,7 +41,8 @@ TOUCHES_PROMPT = (
 MERGE_PROMPT = (
     '/skill:git-commit-push This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
     "in: {files}. Resolve every conflict keeping both sides' work: keep both task entries in TODO.md and "
-    'TODO.archive.md, keep every task record in goals.json and run python3 {goals} validate . if it exists, then '
+    'TODO.archive.md, keep every task record in goals.json and run python3 {goals} merge-finalize . and '
+    'python3 {goals} validate . if goals.json exists, then '
     'run the checks that cover the conflicted files and conclude the merge with a commit. Do not push, rebase, '
     'switch branches or touch {repo}. End with one line: PI_AUTOWORK_RESULT: completed|blocked, then one sentence.')
 
@@ -188,6 +189,8 @@ class Coordinator:
         self.settled = False
         self.toolset_rev = cfg['toolset_rev']
         self.runtime = pi_runtime.Settings(self.state)
+        self.merge_drivers_registered = False
+        self.planning_attributes = None
 
     # --- Engine -----------------------------------------------------------------
     def start_integration(self, task):
@@ -486,8 +489,40 @@ class Coordinator:
         os.environ['PI_AUTOWORK_SESSION'] = branch
         return True
 
+    def setup_planning_merges(self):
+        """Local executable paths stay in Git config; portable attributes travel in Git."""
+        if not self.merge_drivers_registered:
+            for kind in ('goals', 'todo', 'archive'):
+                prefix = f'merge.docs-sync-{kind}'
+                command = (f'{shlex.quote(sys.executable)} {shlex.quote(str(self.goals))} '
+                           f'merge-driver {kind} %O %A %B')
+                for key, value in (('driver', command), ('recursive', 'binary')):
+                    if not git_ok(self.repo, 'config', '--local', f'{prefix}.{key}', value):
+                        raise Finish(1, 'Cannot register planning merge drivers')
+            self.merge_drivers_registered = True
+        if self.session_busy():
+            return  # restored reviews own their pinned session until they finish
+        path = Path(self.integ) / '.gitattributes'
+        if path.is_symlink():
+            raise Finish(1, 'Refusing symlink .gitattributes in session')
+        before = path.read_text() if path.exists() else ''
+        if self.planning_attributes is None:
+            result = subprocess.run([sys.executable, str(self.goals), 'merge-attributes', self.integ],
+                                    capture_output=True, text=True)
+            if result.returncode:
+                raise Finish(1, 'Cannot locate planning archive: ' + result.stderr.strip())
+            self.planning_attributes = result.stdout.splitlines()
+        missing = [line for line in self.planning_attributes if line not in before.splitlines()]
+        if missing:
+            # Never include another writer's dirty attributes in this setup commit.
+            if git(self.integ, 'status', '--porcelain', '--', '.gitattributes'):
+                raise Finish(1, 'Session .gitattributes is dirty; preserve it and reconcile planning drivers')
+            path.write_text(before + ('\n' if before and not before.endswith('\n') else '') + '\n'.join(missing) + '\n')
+            self.commit(['.gitattributes'], 'chore: register planning-file merge attributes (pi-autowork)')
+
     def ensure_session(self):
         if self.integ or self.load_session():
+            self.setup_planning_merges()
             return
         branch = f'pi-autowork/{datetime.now():%Y%m%d-%H%M%S}'
         path = str(workspaces.task_path(self.toolset, self.repo, branch.replace('/', '-')))
@@ -502,6 +537,22 @@ class Coordinator:
         self.integ, self.integ_branch = path, branch
         os.environ['PI_AUTOWORK_SESSION'] = branch
         LOG.say(f'Session {branch} started from {self.base}')
+        self.setup_planning_merges()
+
+    def merge_planning(self, ref):
+        """Complete derived planning data before Git commits, regardless of driver order."""
+        if git_ok(self.integ, 'merge-base', '--is-ancestor', ref, 'HEAD'):
+            return True
+        if not git_ok(self.integ, 'merge', '-q', '--no-commit', '--no-ff', ref):
+            return False
+        if (Path(self.integ) / 'goals.json').exists():
+            result = subprocess.run([sys.executable, str(self.goals), 'merge-finalize', self.integ],
+                                    capture_output=True, text=True)
+            if result.returncode:
+                LOG.say('Planning merge needs reconciliation: ' + (result.stderr or result.stdout).strip())
+                return False  # leave the merge for the existing Pi resolver
+            git(self.integ, 'add', '--', 'goals.json', 'TODO.md')
+        return git_ok(self.integ, 'commit', '-q', '--no-edit')
 
     def end_session(self):
         """Only a clean, fully merged session is removed."""
@@ -532,8 +583,8 @@ class Coordinator:
         if ahead == 0:
             return True
         planning_note = self.commit_owner_changes()
-        if not git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
-            files = ' '.join((git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').split())
+        if not self.merge_planning(self.base):
+            files = ' '.join((git(self.integ, 'diff', '--name-only', '--diff-filter=U') or '').split()) or 'TODO.md goals.json'
             base_rev = git(self.repo, 'rev-parse', self.base)
             if not self.stop and self.resolved_for != base_rev:  # once per main revision, not per session
                 self.resolved_for = base_rev
@@ -588,7 +639,7 @@ class Coordinator:
         if on_base and git_ok(self.repo, 'fetch', '--quiet', remote, branch):
             behind = int(git(self.repo, 'rev-list', '--count', f'{self.base}..{upstream}') or 0)
             if behind and self.integ and not self.session_busy() and not dirty(self.integ):
-                if git_ok(self.integ, 'merge', '-q', '--no-edit', upstream) and \
+                if self.merge_planning(upstream) and \
                         git_ok(self.repo, 'merge', '--ff-only', '--quiet', self.integ_branch):
                     LOG.say(f'Pulled {behind} commit(s) from {upstream} into {self.base}')
                 else:
@@ -623,7 +674,7 @@ class Coordinator:
         text = (result.stdout + result.stderr).strip()
         if retry and re.search(r'rejected|non-fast-forward|fetch first', text):
             if git_ok(self.repo, 'fetch', '--quiet', remote, branch) and self.integ \
-                    and git_ok(self.integ, 'merge', '-q', '--no-edit', upstream):
+                    and self.merge_planning(upstream):
                 if git_ok(self.repo, 'merge', '--ff-only', '--quiet', self.integ_branch):
                     LOG.say(f'{upstream} had moved; merged it and pushing again')
                     return self.push(retry=False)
@@ -786,7 +837,7 @@ class Coordinator:
         if not git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') or dirty(self.integ) \
                 or self.in_flight():
             return
-        if git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
+        if self.merge_planning(self.base):
             self.merge_blocker = ''
             return
         git(self.integ, 'merge', '--abort')
