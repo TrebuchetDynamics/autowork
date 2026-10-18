@@ -161,6 +161,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No skipping of the runner's own full-suite gate. Failures the change causes still fail the check and the task.
 - Planner's call: Now, after TOOLSET-229-d0. Under the load this fleet runs at, a full gate is rarely clean, and every finished worker that obeys the current prompt turns into a question only the runner can answer. The runner's gate already separates new failures from old and flaky ones, so the worker needs no veto.
 
+### TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
+
+- [ ] TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [maintainer prompt](pi-autowork/pi_autowork/maintainer.py) (`PROMPT`: for `MAIN (main red)` and `MAIN (flaky test)` it adds a repair or hardening task with the failing tests and commits as Evidence); [main check](pi-autowork/pi_autowork/main_check.py) (the runner state's `main-check.log`, `main-check.exit`, `main-check-reruns.log`, `main_check.json`: revision, last green, failures, flaky history); [worker launch and prompt](skills/autowork/scripts/parallel_dispatch.py) (`launch` env, `prompt`).
+- Evidence (2026-10-18 15:57, one fleet runner): its two maintainer-made main-repair tasks both ended as owner questions. One asked for "the full log of the red MAIN, including exit code, failing phase/test and attempt/retry classification", which it could not find locally (its own full reproduction exited 0). The other asked for "the original MAIN run report, with the exact test, the three revisions, and the outputs and return codes of the full and isolated runs". The runner had all of it in its state directory, but no worker can see that directory or knows it exists, and the owner cannot answer either question better than the runner's files.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_main_check.py, pi-autowork/tests/test_maintainer.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py
+- Scope: (1) After every main check, the runner writes a read-only evidence bundle at `<git common dir>/autowork-execution/main-evidence/<rev>/`. It holds `main_check.json`, the full `main-check.log`, `main-check.exit`, `main-check-reruns.log` (each isolated rerun's command, exit code and output) and `flaky_history.json`. It keeps the last five revisions. (2) Workers get `AUTOWORK_MAIN_EVIDENCE` (that directory's parent), and the prompt says that a task repairing a red or flaky main finds the runner's main-check runs there, by revision, and never asks a person for them. (3) The maintainer's MAIN prompt has the task entry name the bundle's revision directory in its Evidence. (4) A worker blocker that asks only for main-check logs, exit codes or rerun output, when a bundle exists, is resumed once with the bundle's path instead of becoming a question (the resume path of TOOLSET-232-01; whichever lands second reuses it).
+- Acceptance: In fixtures: a red main check writes the bundle with the log, exit code and rerun output, and old revisions beyond five are pruned; a worker's environment has `AUTOWORK_MAIN_EVIDENCE` and its prompt carries the rule; the maintainer's MAIN items name the bundle directory; a blocker asking for "the full log of the red MAIN" with a bundle present resumes the attempt with the path and raises no question.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py; python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No copying of the bundle into worktrees or commits. It is runner evidence, not repository content.
+- Planner's call: Now, after TOOLSET-232-01. Each maintainer-made repair task ends as an owner question today, so red mains never repair themselves. Handing workers the runner's own receipts closes the loop the maintainer opens.
+
 ### TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
 
 - [ ] TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
@@ -994,6 +1010,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 
 ## Next
+
+### TOOLSET-235-0d — One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read
+
+- [ ] TOOLSET-235-0d — One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [health](pi-autowork/pi_autowork/health.py) (`update`: any snapshot other than `PARALLEL_STATUS` writes `state='unavailable'` with `since=previous['since']`); [status and TUI](pi-autowork/pi_autowork/fleet_view.py), `autowork status`.
+- Evidence (2026-10-18 15:57, one fleet runner): `autowork status` said `Health: unavailable since 2026-10-18 14:43` while `autowork ls` showed the same runner `working 1h14m` with a worker running. The only failed read was one at 15:57, `Repository busy (Repository execution lock is held by a live operation.)`, an ordinary moment of lock contention. The `14:43` was the previous state's `since` (working since 14:43), not when reads began to fail, so one blip read as an hour-long outage.
+- Touches: pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py
+- Scope: (1) A `BUSY` snapshot keeps the previous state and its `since`, and adds `status_busy_since`. Status and the TUI show the last state with `(status read busy <n>s)` after it. (2) `unavailable` starts only after busy or failed reads have lasted 5 minutes (`PI_AUTOWORK_STATUS_GRACE`, seconds), and its `since` is `status_unavailable_since`, the first failed read. (3) A successful read clears both fields.
+- Acceptance: In fixtures: one BUSY snapshot after a working state leaves `state='working'` with its old `since` and a busy note; BUSY reads for over 5 minutes yield `unavailable` with `since` equal to the first failed read; a good read afterwards clears it; the status text never shows the previous state's `since` as when it became unavailable.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how the engine takes its locks.
+- Planner's call: Next: it misleads the owner (and the fleet monitor) about a healthy runner but blocks no work.
 
 ### TOOLSET-231-49 — A speculative merge queue validates the next queued commits stacked and lands each that passes in order
 

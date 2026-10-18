@@ -731,7 +731,9 @@
         "TOOLSET-230-bf",
         "TOOLSET-231-49",
         "TOOLSET-232-01",
-        "TOOLSET-233-ba"
+        "TOOLSET-233-ba",
+        "TOOLSET-234-d4",
+        "TOOLSET-235-0d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -739,13 +741,13 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-233-ba",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
       "TOOLSET-229-d0",
       "TOOLSET-232-01",
+      "TOOLSET-234-d4",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -791,6 +793,7 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-235-0d",
       "TOOLSET-231-49",
       "TOOLSET-225-75",
       "TOOLSET-202-9a",
@@ -1258,6 +1261,14 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-d4",
+      "section": "Now",
+      "status": "open",
+      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1574,6 +1585,14 @@
       "section": "Next",
       "status": "open",
       "title": "A speculative merge queue validates the next queued commits stacked and lands each that passes in order"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-235-0d",
+      "section": "Next",
+      "status": "open",
+      "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
     },
     {
       "depends_on": [
