@@ -1094,14 +1094,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-204-f2",
-      "section": "Now",
-      "status": "open",
-      "title": "The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-210-53",
       "section": "Now",
       "status": "open",
@@ -2500,6 +2492,14 @@
       "section": "Done",
       "status": "done",
       "title": "A finished main check is recorded even when its process is a zombie the runner never reaped"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-204-f2",
+      "section": "Done",
+      "status": "done",
+      "title": "The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky"
     },
     {
       "depends_on": [],

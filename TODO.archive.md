@@ -3482,3 +3482,26 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the worker timeout value.
 - Planner's call: high in Now: a finished task that times out while re-running a serial suite costs an attempt and an hour, and three did so this morning.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-204-f2 — The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky
+
+- [x] TOOLSET-204-f2 — The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky
+- Status: done 2026-10-18 by the owner session (91a268d), from the second worker attempt that timed out after its own checks passed; python3 scripts/check.py passed (4 tests skipped by the resource gate at load 27).
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17/18); [main check](pi-autowork/pi_autowork/main_check.py) (`failures`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`finish_main_check`, the MAIN maintainer trigger), [offline check](scripts/check.py).
+- Evidence (2026-10-17/18, this repository's runner): three consecutive main checks were red, each on different tests: at 151718f `test_an_integration_that_cannot_get_the_lock_gives_its_slot_back` and `test_a_failing_validation_with_a_daemon_still_holds_and_old_daemon_holds_are_offered_again`; at 6c8f9a5 those passed and `test_a_waiting_runner_sees_tasks_committed_to_main_later` failed on a fixture `git commit`. Every one of them passed when run alone on the same revision. Each red sent the DOCS-MAINTAINER to fold "MAIN" failures into a task, and a worker then works on tests that are not broken.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_main_check.py, tests/test_pi_autowork.py
+- Scope: (1) After a red main check, the runner reruns each failing test id alone (`python3 -m unittest <id>` in the same scratch checkout, its directory as for the full run), up to 10 ids, each with a 10-minute limit. (2) Ids that pass alone are recorded as `flaky` with the revision and do not make main red; main is red only for ids that fail alone too. (3) A test flaky on three different revisions becomes one MAIN trigger of its own kind (`flaky test`), so the maintainer plans hardening it, not repairing code; status shows `main green at <rev> (N flaky)`.
+- Acceptance: In fixtures, a main check whose one failure passes alone records green with that id as flaky and no maintainer run; a failure that also fails alone is red as today; the same flaky id on three revisions gives one `flaky test` trigger.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: TOOLSET-203-7a (the check's result must be recorded at all).
+- Ownership: Toolset coordinator.
+- Exclusions: No change to `scripts/check.py`'s own exit status; reviews keep their own judgment.
+- Planner's call: right after TOOLSET-203-7a: a false red costs a maintainer run and a worker's attempt each time, and the fleet's load makes these flakes routine.
+- Next action: Continue the preserved uncommitted implementation in .worktrees/autowork-TOOLSET-204-f2-r2 after the live TOOLSET-197-4f writer releases overlapping coordinator/maintainer files; verify no surviving owner first. The timeout is a technical continuation, not missing product intent or acceptance. Retain the five modified task files and cumulative attempt/budget history, inspect the last completed commands/results, and reconcile current main without overwriting work. Use the delivered TOOLSET-209-55 supported focused checker, python3 scripts/check.py pi-autowork/tests/test_main_check.py tests/test_pi_autowork.py, to validate the existing candidate before its original full offline gate and independent review. Do not restart discovery, rerun completed identical checks, start a second worker, extend timeouts blindly, reset budgets, weaken flaky/failure classification or change acceptance.
+- Blocker reconciliation: Planning-only technical continuation saved after comparing the session question, current canonical contract, candidate and latest retained report. No new owner intent or operation authority is required; no check is waived and no worker/claim is released by this answer. Pick-up and completed delivery still require observation.
