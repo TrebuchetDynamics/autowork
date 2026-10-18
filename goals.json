@@ -1225,14 +1225,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-227-a8",
-      "section": "Now",
-      "status": "open",
-      "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-228-0c",
       "section": "Now",
       "status": "open",
@@ -2808,6 +2800,14 @@
       "section": "Done",
       "status": "done",
       "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-227-a8",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
     },
     {
       "depends_on": [],

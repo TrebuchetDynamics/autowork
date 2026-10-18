@@ -47,7 +47,9 @@ bodies: outcome, source/plan link, bounded scope, acceptance checks, dependencie
 status and next action. `Checks:` names the focused commands that prove the
 acceptance (a test file, class or selector), plus the repository's normal check
 only when the change crosses modules; acceptance asks for behavior, never for a
-number of tests (see the [test budget](ENGINEERING-CYCLE.md#test-budget)).
+number of tests (see the [test budget](ENGINEERING-CYCLE.md#test-budget)). Under a
+runner that checks the merged tree, a `Checks:` entry for the repository's full check
+is satisfied by that run, not by the worker.
 Reconcile matching goals.json entries. Link a substantial
 plan from its tasks; do not create a separate plan file merely to satisfy a ritual.
 Every executable task you create or rewrite gets `Touches:`: the repository-relative

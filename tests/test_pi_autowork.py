@@ -902,6 +902,8 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
         self.assertTrue(list(self.state.glob('*/full-check/base-*.json')))  # the base result is cached
+        prompt = next(self.repo.glob('.git/autowork-execution/slot-data/A/attempt-1/prompt.md')).read_text()
+        self.assertIn('Do not run the full check', prompt)  # the runner's gate is the one run (TOOLSET-227-a8)
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})

@@ -1660,6 +1660,8 @@ class Coordinator:
         if not self.draining and time.monotonic() < self.pause_until:
             outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
         elif not self.draining:
+            # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
+            os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
