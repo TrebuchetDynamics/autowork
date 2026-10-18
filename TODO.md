@@ -58,6 +58,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-218-d0 — A worker whose task closes on main stops at once, and a task closed on main never starts
+
+- [ ] TOOLSET-218-d0 — A worker whose task closes on main stops at once, and a task closed on main never starts
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [retired tasks](skills/autowork/scripts/parallel_dispatch.py) (`retired(repo)` reads only the session worktree's goals.json, TODO.md and archive; `dispatch_locked` frees only held or interrupted slots of retired tasks), [session merge](pi-autowork/pi_autowork/coordinator.py) (`merge_main` brings the base into the session only when the session lands, and not while a review runs).
+- Evidence (2026-10-18 12:47, this repository's runner): TOOLSET-161-17 and TOOLSET-215-a8 were shipped and archived on main by the owner session at 12:03 and 11:48, yet both still had a live worker 45 minutes later, and TOOLSET-180-72 (closed on main at 12:44) was pending dispatch. The session branch had not taken main since 12:00: its landing was refused because the main checkout had another session's uncommitted TODO.md edits, and while it cannot land it never merges the base either. Two of eight slots spent tokens re-implementing finished work, and their candidates would land as conflicting duplicates.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/owner_cycle.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) `retired()` also counts tasks closed on the base branch: read `goals.json`, `TODO.md` and the archive at the base ref (`git show <base>:<file>`; the coordinator runs the engine on the session worktree, so it passes `--base` through owner_cycle.py), so the session's lag no longer matters. A task closed on either side is retired. (2) Each dispatch cycle, a dispatched or running slot whose task is retired is stopped (`stop(worker, worktree)`), its worktree set aside as any closed task's is (commits kept on a `-set-aside-N` branch, nothing deleted), and its slot closed with cause `closed_on_base`; the log says `<task>: closed on <base>; worker stopped`. (3) A pending or restartable task that is retired never dispatches. (4) An implemented candidate of a retired task is not integrated; it is set aside the same way.
+- Acceptance: In fixtures: a task checked off only on the base ref while its worker runs is stopped within one cycle, its slot closes with `closed_on_base`, its commits survive on a set-aside branch, and the freed slot dispatches the next task in the same cycle; a pending task closed only on the base never dispatches; a task open on both sides is unaffected; an unreadable base ref (no such branch) falls back to the session ledger alone.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest tests/test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when the session merges or lands. No reopening, rewriting or deleting of task entries. Nothing with commits of its own is deleted.
+- Planner's call: first in Now. It wastes worker slots on every repository where the owner closes tasks on main while the session lags, which happens whenever the main checkout is dirty or a review is long. Reading the base ref is cheaper and safer than merging the base into a session under running workers.
+
 ### TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
 
 - [ ] TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch

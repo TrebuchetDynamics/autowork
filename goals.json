@@ -715,7 +715,8 @@
         "TOOLSET-213-45",
         "TOOLSET-214-5b",
         "TOOLSET-215-a8",
-        "TOOLSET-216-08"
+        "TOOLSET-216-08",
+        "TOOLSET-218-d0"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1131,6 +1132,14 @@
       "section": "Now",
       "status": "open",
       "title": "/autowork update also refreshes this host's other installs through install.sh"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-218-d0",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker whose task closes on main stops at once, and a task closed on main never starts"
     },
     {
       "depends_on": [],
