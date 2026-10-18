@@ -1091,6 +1091,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Status: open; live qualification not run.
 - Goal: CLAUDE-CODE — Install the portable workflows in Claude Code.
 - Sources: [Claude Code decision](docs/project.md#claude-code-package-2026-10-15), [install guide](docs/cross-host.md#claude-code), [2026-10-15 replan](docs/project.md#backlog-replan-2026-10-15).
+- Touches: docs/cross-host.md, README.md
 - Scope: Clone the published repository at `origin/main` into a scratch directory and load it for one session with `claude --plugin-dir <clone>` (no marketplace or settings change), run `/autowork:plan-with-me questions only: ask one question about this project` in a disposable repository, and confirm the model asks one question and edits nothing.
 - Acceptance: The namespaced command loads the adapter, follows the host contract and leaves the repository unchanged; the result is recorded with the Claude Code version.
 - Checks: Session transcript or output plus `git status` of the disposable repository.
