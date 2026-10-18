@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A runner on a Git submodule places its worktrees in the submodule's checkout. `git worktree list`
+  names a submodule's Git directory (`.git/modules/NAME`) as its main worktree, so the session worktree
+  was created inside it and main-checkout sessions were not recognized.
 - Profiles that opted out of the runtime defaults (`apply_runtime_defaults: false`) still get the
   bundle's Telegram menu entries: every profile had opted out, so `/blockers` was in no bot's menu.
   Their approval, turn, injection and skill settings stay their own. `/autowork update` also deepens

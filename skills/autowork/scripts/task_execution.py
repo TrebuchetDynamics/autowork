@@ -22,7 +22,7 @@ import time
 import uuid
 
 import parallel_plan
-from worktree_paths import worktree_path
+from worktree_paths import canonical_root, worktree_path
 
 
 class NoEligibleTask(ValueError):
@@ -273,6 +273,8 @@ def external_workers(repo):
     workspaces = [Path(line[9:]).resolve() for line in
                   git(repo, 'worktree', 'list', '--porcelain').splitlines()
                   if line.startswith('worktree ')]
+    if workspaces:
+        workspaces[0] = canonical_root(repo)  # a submodule lists its Git directory there
     own = ancestors()
     workers = []
     marker = ('AUTOWORK_EXECUTION_COMMON=' + git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).encode()
