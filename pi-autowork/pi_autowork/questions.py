@@ -13,7 +13,7 @@ and nothing outside those markers changes. `/blockers` reads this block to
 resolve them with the owner, easiest first; an answered question leaves the block when
 its cause is gone (Git history keeps it).
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import re
 
 START = '<!-- pi-autowork:questions:start -->'
@@ -32,6 +32,26 @@ def _title(todo, task, goals):
     first = bodies[0][0].splitlines()[0]
     first = re.sub(r'^[-*]\s+\[[ xX]\]\s+', '', first).strip().strip('*')
     return re.sub(r'^(?:`?' + re.escape(task) + r'`?)?\s*[—–:-]\s*', '', first).strip(' *')
+
+
+def held_by(todo, task, goals, today=None):
+    """(holder, until, expired) from the entry's `Held by: <who>; until <YYYY-MM-DD>` line, the
+    answer to a claim question (TOOLSET-198-8f), or None. Without a date it holds until removed."""
+    try:
+        bodies = goals.task_bodies(todo).get(task) or []
+        value = goals.task_fields(bodies[0][0]).get('Held by') if bodies else None
+    except (ValueError, AttributeError, IndexError):
+        value = None
+    if not value:
+        return None
+    value = ' '.join(value.split())
+    found = re.search(r';?\s*until\s+(\d{4}-\d{2}-\d{2})\s*$', value)
+    holder = value[:found.start()].strip(' ;') if found else value
+    try:
+        until = date.fromisoformat(found[1]) if found else None
+    except ValueError:
+        until = None
+    return holder, until, bool(until and until < (today or date.today()))
 
 
 def exhausted(row):
@@ -72,10 +92,16 @@ def build(snapshot, todo, goals):
         title = _title(todo, qid, goals)
         line = f'{qid} — {title}' if title else qid
         if kind == 'claim':
-            add(qid, kind, 'quick', f'{qid} is marked in_progress by another session and will not be adopted '
-                f'automatically; {blocks} waiting task(s) depend on it.', (
+            answered = held_by(todo, qid, goals)
+            if answered and not answered[2]:
+                continue  # answered: its entry names who holds it, and until when
+            expired = (f'The recorded answer (Held by: {answered[0]}; until {answered[1]}) has expired. '
+                       if answered else '')
+            add(qid, kind, 'quick', f'{expired}{qid} is marked in_progress by another session and will not be '
+                f'adopted automatically; {blocks} waiting task(s) depend on it.', (
                     f"If no one is working on {qid}, set `Status: open` in its TODO.md entry (the runner then "
-                    "runs it); otherwise note who holds it and when it will be done."), line, blocks)
+                    f"runs it); otherwise add `Held by: <who>; until <YYYY-MM-DD>` to that entry, and the runner "
+                    "stops asking until that date."), line, blocks)
         elif kind == 'cycle':
             add(qid, kind, 'quick', f'{qid} is part of a dependency cycle.', (
                 f"Cut one dependency in the cycle: edit the `Dependencies:` line of {qid} or of the task it "

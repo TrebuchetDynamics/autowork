@@ -677,6 +677,16 @@ class EngineTests(Fixture):
         self.assertNotIn('changed; checking now', quiet)
         self.assertEqual(quiet.count('Queue empty'), 1, quiet)
 
+    def test_a_review_that_runs_out_of_time_is_run_again_with_a_longer_limit(self):
+        """TOOLSET-196-fb: a slow host spent a task's two attempts on review timeouts."""
+        self.plan({'verify:A': ['slow_review']})  # 8 s against a 4 s limit; the second review is quick
+        self.env['PI_AUTOWORK_VERIFY_TIMEOUT'] = '4'
+        result = self.run_runner('--until-empty', timeout=180)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertIn('A: its review ran out of time; reviewing the same commit again', result.stdout)
+        self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # no second attempt
+        self.assertNotIn('failed in a row', result.stdout)
+
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
         result = self.run_runner('--once')

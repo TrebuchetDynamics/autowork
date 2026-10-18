@@ -169,6 +169,7 @@ class Coordinator:
         self.merge_pending, self.resolved_for, self.merge_blocker = '', '', ''
         self.waiting_merge = None  # what the last merge while waiting saw
         self.stop, self.paused, self.child = False, False, None
+        self.timeout_limits = {}  # task -> review limit for its reverify after a timeout (TOOLSET-196-fb)
         self.reload = False  # SIGHUP: re-execute in place at the next safe point (TOOLSET-174-1d)
         self.settings_file = settings_file(self.repo)
         self.started_with = set(env_settings(self.settings_file)) if self.settings_file else set()
@@ -192,11 +193,35 @@ class Coordinator:
         out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='integrate.', delete=False)
         out.close()
         args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
-                '--integrate', task, '--timeout', self.verify_timeout, '--reviewer-version', self.reviewer_version(),
+                '--integrate', task, '--timeout', str(self.review_limit(task)), '--reviewer-version', self.reviewer_version(),
                 '--run', '/bin/bash', self.cfg['script'], '--verify', str(self.state), task]
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
         self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
+        self.snapshot = None
+
+    REVIEW_CAP = 4 * 3600
+
+    def review_limit(self, task=None):
+        """Seconds a review may take (TOOLSET-196-fb): PI_AUTOWORK_VERIFY_TIMEOUT, or twice the
+        longest of this repository's last five reviews if longer, capped at four hours; a task
+        reverified after running out of time gets the limit it was given."""
+        if task and task in self.timeout_limits:
+            return self.timeout_limits[task]
+        try:
+            recent = json.loads((self.state / 'review_times.json').read_text())[-5:]
+        except (OSError, ValueError):
+            recent = []
+        longest = max([float(x) for x in recent if isinstance(x, (int, float))] or [0])
+        return int(min(self.REVIEW_CAP, max(float(self.verify_timeout), 2 * longest)))
+
+    def note_review_time(self, seconds):
+        path = self.state / 'review_times.json'
+        try:
+            times = json.loads(path.read_text())
+        except (OSError, ValueError):
+            times = []
+        path.write_text(json.dumps(([t for t in times if isinstance(t, (int, float))] + [round(seconds)])[-5:]))
 
     def session_busy(self):
         """A review is running: the session branch must not move or get dirty meanwhile, or
@@ -214,18 +239,21 @@ class Coordinator:
             pass
         if job['proc'].poll() is None:
             return None
-        self.integration = None
+        self.integration = self.snapshot = None
         try:
             value = json.loads(Path(job['out']).read_text())
         except (OSError, ValueError):
             value = {'outcome': 'ACTION_REQUIRED', 'reason': 'no answer from the engine'}
         finally:
             Path(job['out']).unlink(missing_ok=True)
+        if isinstance(value, dict) and value.get('outcome') in ('INTEGRATED', 'HELD'):
+            self.note_review_time(time.time() - job['started'])  # what this repository's reviews take
         return job['task'], value if isinstance(value, dict) else {}
 
     def stop_integration(self):
         """On a stop: end the review; the engine's recovery verifies the commit again later."""
         job, self.integration = self.integration, None
+        self.snapshot = None
         if job and job['proc'].poll() is None:
             job['proc'].terminate()
             try:
@@ -240,6 +268,7 @@ class Coordinator:
         args = [sys.executable, str(self.engine_path), str(directory or self.integ), *argv]
         if owned:
             args[3:3] = ['--owner-pid', str(os.getpid())]
+        self.snapshot = None  # an engine command can change every slot
         with open(self.state / 'engine.err', 'a') as err:
             out = subprocess.run(args, stdout=subprocess.PIPE, stderr=err, text=True).stdout
         try:
@@ -248,13 +277,27 @@ class Coordinator:
             return {'outcome': 'ACTION_REQUIRED', 'reason': out.strip()[:300] or 'no answer from the engine'}
         return value if isinstance(value, dict) else {}
 
+    # One status snapshot serves the calls of one cycle step: each call was a new engine process
+    # that scanned /proc and the event journal (1.5 to 3.6 s of CPU), about 10 times in 30 s
+    # per runner. Only the runner's own engine commands start or change work; those drop it.
+    STATUS_FRESH = 5.0
+    snapshot = None  # (directory, monotonic time, engine status output)
+
     def status(self, directory=None):
-        out = subprocess.run([sys.executable, str(self.engine_path), str(directory or self.integ),
-                              '--parallel-status', '--json'], capture_output=True, text=True).stdout
+        where = str(directory or self.integ)
+        cached = self.snapshot
+        if cached and cached[0] == where and time.monotonic() - cached[1] < self.STATUS_FRESH:
+            out = cached[2]
+        else:
+            out = subprocess.run([sys.executable, str(self.engine_path), where,
+                                  '--parallel-status', '--json'], capture_output=True, text=True).stdout
+            self.snapshot = (where, time.monotonic(), out)
         try:
             value = json.loads(out)
         except ValueError:
-            return {}
+            value = None
+        if not isinstance(value, dict) or value.get('outcome') != 'PARALLEL_STATUS':
+            self.snapshot = None  # a failed read (the writer lock was held) is never reused
         return value if isinstance(value, dict) else {}
 
     def tasks(self, snapshot=None):
@@ -968,6 +1011,9 @@ class Coordinator:
         version = self.reviewer_version()
         for row in rows:
             task = row.get('task')
+            if row.get('state') == 'held' and row.get('cause') == 'timeout' and not self.stop:
+                self.reverify_after_timeout(task, version)
+                continue
             held_by_validation = row.get('state') == 'held' and (
                 row.get('cause') == 'validation'
                 or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
@@ -981,6 +1027,21 @@ class Coordinator:
                 self.seen[task] = ''
                 self.settled = True
                 LOG.say(f'{task}: the reviewer changed since this commit was held; verifying it again')
+
+    def reverify_after_timeout(self, task, version):
+        """A review that ran out of time is run again on the same commit, with twice the limit it
+        had, up to the cap: no worker reruns and no attempt is spent (TOOLSET-196-fb)."""
+        given = self.timeout_limits.get(task) or self.review_limit()
+        if given >= self.REVIEW_CAP and self.seen.get('timeout-capped-' + task):
+            return
+        limit = int(min(self.REVIEW_CAP, 2 * given))
+        if self.engine('--parallel-reverify', task, '--reviewer-version', f'{version}.t{limit}').get('outcome') != 'REVERIFY':
+            return
+        self.seen['timeout-capped-' + task] = limit >= self.REVIEW_CAP
+        self.timeout_limits[task] = limit
+        self.seen[task] = ''
+        self.settled = True
+        LOG.say(f'{task}: its review ran out of time; reviewing the same commit again with a {limit // 60}-minute limit')
 
     def check_main(self):
         """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once

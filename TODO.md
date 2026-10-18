@@ -52,6 +52,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-199-2d — A task whose Ownership needs the owner or live authorization is never dispatched unattended
+
+- [ ] TOOLSET-199-2d — A task whose Ownership needs the owner or live authorization is never dispatched unattended
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [task contracts](skills/autowork/scripts/parallel_dispatch.py) (`contracts`), [plan](skills/autowork/scripts/parallel_plan.py) (runnability and the `outside` root), [questions](pi-autowork/pi_autowork/questions.py).
+- Evidence (2026-10-17, this repository's runner): it logged `TOOLSET-123-a0: runs alone (no Touches proposed: NONE - Purely live migration of installed profiles, host plugins, cron wiring and runner sessions ...)` and queued it, although the entry's Ownership reads `Owner or a coordinator with live authorization` and its scope reinstalls the owner's live profiles, plugins and cron jobs. The owner session moved it to Needs decision by hand.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, skills/docs-sync/SKILL.md
+- Scope: (1) A task whose `Ownership:` names the owner as the only performer (`Owner`, `owner only`, `Owner or a coordinator with live authorization`) or that declares `Resources: live` without a recorded `Live authorization:` line is not runnable for an unattended runner: it waits as an `outside` root, never dispatched. (2) It becomes one owner question: run it yourself, record live authorization, or move it to Needs decision. (3) Docs Sync writes such tasks under Needs decision from the start.
+- Acceptance: In fixtures, a Now task with `Ownership: Owner or a coordinator with live authorization` is listed as waiting (outside) and never dispatched, and BLOCKERS.md gets one question; the same task with `Live authorization: <record>` runs.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to tasks with an ordinary coordinator ownership.
+- Planner's call: high in Now: an unattended worker must never change the owner's live installation.
+
 ### TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files
 
 - [ ] TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files
@@ -70,21 +86,21 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No commit of the owner's planning files by the runner at start; the submodule worktree location belongs to the other session's change.
 - Planner's call: after TOOLSET-188-75 in Now; every repository added to the fleet goes through this path, and the failure looks like an idle runner.
 
-### TOOLSET-190-bf — A landing that needs no merge goes ahead during a review
+### TOOLSET-197-4f — An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop
 
-- [ ] TOOLSET-190-bf — A landing that needs no merge goes ahead during a review
+- [ ] TOOLSET-197-4f — An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-17); [landing](pi-autowork/pi_autowork/coordinator.py) (`land_planning`, `land`, `merge_main`, `session_busy`); TOOLSET-188-75 (done).
-- Evidence (2026-10-17, this repository's runner, after TOOLSET-188-75 was deployed): other runners landed planning commits within a minute (`DOCS-MAINTAINER: merged`, then `Merged ... into main`, `Pushed main`), but this one still held 14 commits off main 40 minutes later. Its reviews run the full offline check (about 25 minutes each) back to back, and every landing waits until no review runs, because `merge_main` first merges the base into the session, which would move the branch the review fast-forwards at its end.
-- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
-- Scope: (1) While a review runs, a due landing (TOOLSET-188-75's triggers) goes ahead when the base is already an ancestor of the session, so no merge is needed: fast-forward the base in the main checkout to the session's current tip and push, without touching the session branch or its worktree. (2) When the base has moved, the landing waits for the review as today. (3) The review's own fast-forward of the session at its end is unaffected; the next landing carries it.
-- Acceptance: In a fixture with a slow review running and a questions commit on the session (base not moved), the question reaches main and the fixture upstream before the review ends, and the reviewed task then integrates and lands normally. With the base moved by an outside commit, the landing waits for the review.
-- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Sources: fleet monitoring (2026-10-17); [maintainer triggers](pi-autowork/pi_autowork/maintainer.py) (`triggers`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `ACTION_REQUIRED` branch logging `The engine needs attention`), [ledger](skills/docs-sync/scripts/goals.py) (`validate`).
+- Evidence (2026-10-17, a runner added that evening): after its planning files were committed it ran one task, then logged `The engine needs attention: invalid goals.json: <GOAL>: unverified goal has no open task; checking again in 60s` every minute and showed as blocked. Nothing repairs a ledger the engine refuses: the DOCS-MAINTAINER only reacts to held, not-runnable or review-finding tasks and to a red main, and BLOCKERS.md got no question.
+- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_maintainer.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
+- Scope: (1) When the engine answers `ACTION_REQUIRED` with a reason starting `invalid goals.json` (or `goals.py validate` fails on the session), the runner adds the item `LEDGER` with the validate errors to the maintainer's triggers, runs the maintainer once per distinct error set, and lets it change only planning files as today (a goal with no open task gets a task for its remaining proof, or its evidence and status corrected). (2) If the maintainer's change does not validate, or it makes no change, the runner writes one BLOCKERS.md question quoting the errors. (3) The log says once per error set what was tried, not every minute.
+- Acceptance: In a fixture whose goals.json has an unverified goal with no open task, the runner logs one `DOCS-MAINTAINER: repairing the task docs of LEDGER`, merges the maintainer's planning change, and dispatches afterwards; with a maintainer that changes nothing, one question appears in BLOCKERS.md and the attention line is logged once.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 -m unittest discover -s tests -p test_pi_autowork.py
 - Dependencies: None.
 - Ownership: Toolset coordinator.
-- Exclusions: No merge into the session during a review; no change to what lands.
-- Planner's call: right after TOOLSET-189-96: a runner whose reviews run long full checks otherwise keeps its planning invisible for hours, as before TOOLSET-188-75.
+- Exclusions: No change to goals.py's validation rules.
+- Planner's call: next to TOOLSET-196-fb: a refused ledger stops a whole repository and nothing tells the owner.
 
 ### TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
 
@@ -118,10 +134,42 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: (1) A process in this runner's own systemd unit (its `/proc/<pid>/cgroup` names `pi-autowork@<name>.service` for this repository), or one carrying the attribution marker, is the runner's own and never an outside writer or session, wherever it runs. (2) Without systemd (a foreground `autowork run`), every job the runner starts (main check, maintainer, provisioning, merge resolution, Touches inference) carries the marker, and test processes it starts keep it. (3) The runner's own jobs in their `pi-scratch-*` worktrees never block integration, closeout or worktree cleanup; a person's session in those worktrees still does. (4) A blocked integration names the process's kind (`runner job: main check` or `session`), so a wrong attribution is visible in the log.
 - Acceptance: In fixtures, an integration during a running main check proceeds without waiting, under systemd (a fake cgroup file) and without it (the marker). An agent process started outside the runner in the main checkout, or in a `pi-scratch-*` worktree, still blocks with the `session` reason. Fixture runners started by the test suite are not mistaken for the real runner's jobs (their cgroup is not the real unit's and they carry no real marker).
 - Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: TOOLSET-165-f7.
+- Dependencies: None.
 - Ownership: Toolset coordinator; builds on TOOLSET-165-f7's attribution of worker descendants in the same writer check.
 - Exclusions: No change to which outside sessions block, to the main check itself or to how often it runs.
 - Planner's call: the service's control group as the primary signal, because it covers every process the runner starts, including detached ones and test fixtures that drop the environment, and cannot be set by an outside process. The marker remains for foreground runs.
+
+### TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+
+- [ ] TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 1); [status snapshot](skills/autowork/scripts/parallel_status.py) (`snapshot`, which takes `writer.lock`), [lock helper](skills/autowork/scripts/task_execution.py) (`lock`, `wait=0`; the `--parallel-status` handler turns `BlockingIOError` into `ACTION_REQUIRED`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`status`, `tasks`, `in_flight` and the decisions they guard: `follow_base`, `merge_main`, `update_toolset`, closeout).
+- Evidence (2026-10-17 23:2x, this repository's session): a direct `--parallel-status --json` answered `{"outcome": "ACTION_REQUIRED", "reason": "[Errno 11] Resource temporarily unavailable"}` while an engine command held the lock. The coordinator reads any non-status answer as an empty task list, so `in_flight()` is false while workers run.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_e2e.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_status_cache.py, tests/test_pi_autowork.py
+- Scope: (1) `--parallel-status` waits up to `PI_AUTOWORK_STATUS_WAIT` seconds (default 10) for `writer.lock` before giving up, and a timed-out read answers a distinct `outcome: BUSY` rather than `ACTION_REQUIRED`. (2) In the coordinator, a status answer that is not `PARALLEL_STATUS` is unknown: `in_flight()` treats it as busy, and every step that acts on task state skips that cycle step (following main, landing, worktree cleanup, ending the session, closeout, settling, the `BLOCKED`/waiting detection and the DOCS-MAINTAINER trigger). Only display (`autowork status`, the TUI, log lines) uses the last good snapshot's tasks. (3) Three unknown reads in a row are logged once with the reason. When they are `BUSY`, nothing more happens. When they are any other failure (a corrupt slot file, an engine bug), the runner raises a runner blocker in health and `BLOCKERS.md`, and the toolset update is allowed to run even though the pool is unknown, since an update is how a fix arrives. The TUI and `autowork status` show `status busy` instead of an empty task list.
+- Acceptance: In fixtures, a status read started while another process holds `writer.lock` for 2 s returns the full snapshot; one held past the wait returns `BUSY`. With a fake engine answering `BUSY` while a worker runs, the coordinator neither follows main nor lands nor updates the toolset in that cycle, and the next good read resumes normally.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_status_cache.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_e2e.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No lock-free read of slot files; no change to how writers take the lock.
+- Planner's call: a short wait plus a conservative "unknown means busy", not a lock-free read, because slot writes and journal appends are only consistent under the lock. Waiting one cycle costs little; acting under running work can lose it. A persistent non-lock failure must not also block the update that would fix it (builder check, 2026-10-17).
+
+### TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
+
+- [ ] TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 3); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `IDLE` branch of the cycle calls `merge_main`, `--release` and `end_session`; the next cycle's `ensure_session` creates a new one).
+- Evidence (2026-10-17 23:26-23:28, one fleet runner on the current release): `Session pi-autowork/20261017-232646 started from master`, `Queue empty`, then a new session at 23:27:52 and 23:28:54. Each interval adds a worktree, a branch and engine calls for nothing.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) On an empty queue the runner lands what the session has, then keeps the session worktree and branch and follows main in place; it ends the session only on a stop, a session older than a day with nothing ahead, or a session it cannot follow (a conflict the resolver cannot fix). (2) An idle cycle that finds main unchanged makes no git writes; its engine calls are the dispatch check and the `--release` it makes today, which stays, so an interactive `owner_cycle.py` or `worktree_closeout.py` run between intervals still finds the coordinator lease free. (3) `Session … started` is logged only when a session is actually created.
+- Acceptance: In a fixture with an empty queue, ten intervals create one session, log one `Session … started` line and leave the same worktree; a task added to main afterwards dispatches from that session; a stop still ends a clean, merged session as today.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to landing, pushing or what a stop does.
+- Planner's call: keep and follow the idle session rather than remove it lazily, because following main is already the session's normal state while nothing runs.
 
 ### TOOLSET-184-b3 — Restore the full offline check after the red main at 36e2b7c
 
@@ -211,63 +259,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No relaxation for sessions holding a planning file, no closeout in the canonical checkout while it is being written, no change to integration's file rule.
 - Done by the owner session (2026-10-17, 14a7d11 and the commit after it): scope (1). `close`, `_close_writes` (both the indexed and the unindexed paths), `live_followup` and worktree cleanup pass the files a close writes, with a fixture that has goals.json; (3) needed no change. Still open: (2), the waiting reason naming the session and file.
 - Planner's call: second in Now, behind TOOLSET-165-f7, which changes the same writer check. Interactive sessions belong in the main checkout, so closeout must not depend on their absence.
-
-### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
-
-- [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
-- Status: open
-- Goal: BACKLOG
-- Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: Implement an explicitly versioned linked-body mode while retaining the complete v1 machine ledger/history. Add the common repository-aware reader and guarded writer; update planning skills, Docs Sync, TODO work-center/archive guidance, portable instructions, selection/admission, receipts, claims, scope protection, integration/closeout, Pi Touches inference, wakeup/planning-adoption inventories and packaged helper closure together. Legacy inline repositories remain supported and are never converted by loading a skill or rendering. Use docs/tasks/<ID>.md as the planned default detail path, with goal/history records under docs/tasks/; keep root TODO/index entrypoints unchanged.
-- Acceptance: In opted-in fixtures a planner saves one detail record and a short TODO row; Docs Sync synchronizes it; a selected worker receives the exact real contract path/closure; verification and closeout update the correct files. Legacy read/render remains byte-stable. Task-only edits invalidate relevant receipts and become visible to claim-age/wakeup/adoption checks; workers cannot modify their own contract through docs/tasks/. Traverse/symlink/duplicate/missing record cases hold safely. Unrecognized content under docs/tasks/ is never auto-staged as planning. Copied portable/Pi packages include the resolver. No implementation instruction silently migrates a repository.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_task_store.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Priority note (2026-10-17 13:40 monitor pass): moved below the short self-healing fixes. As a `Resources: exclusive` task it drains the pool when it is next: this repository's status showed `26 wait behind TOOLSET-149-df, which runs alone` with one worker busy. It still runs alone, as its author requires, once those land.
-- Dependencies: None.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No direct format change in fleet repositories (each converts later through its own runner), archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Owner decision (2026-10-17): this repository converts first, through the guarded writer this task adds; the DOCS-MAINTAINER worker (TOOLSET-164-f1) becomes the writer of `docs/tasks/` records.
-- Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
-- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
-
-### TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
-
-- [ ] TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
-- Status: open
-- Goal: BACKLOG
-- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: On the linked-store boundary add goals.json v2 with live task summaries, short goal summaries and exact terminal/goal evidence resolution through stable task/goal records. Make TODO coverage concise and root archive a catalogue for opted-in fixtures. Preserve status, supersession, membership, dependency, focus, met-proof and ID-reservation semantics. Retain full-history linked mode independently; do not delete historical records or replace the current repository's archive.
-- Acceptance: Full-history and active-only fixtures give identical eligible IDs/order, gates and required proof. An active successor can resolve an archived done prerequisite or met goal; superseded/missing/conflicting history cannot satisfy it. Historical IDs cannot be reused, even when absent from the root index. All receipt and goal evidence remains accessible without scanning rich history on ordinary listing. Closing many tasks grows cold records/catalogues, not the active root index or duplicated full-body coverage. Unknown formats and stale digests fail clearly.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_compact_ledger.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Dependencies: TOOLSET-149-df.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No direct format change in this repository or fleet, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Next action: Build the focused behavioral regressions on the delivered prerequisite boundary and implement only the named outcome.
-- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
-
-### TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
-
-- [ ] TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
-- Status: open
-- Goal: BACKLOG
-- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: Implement explicit, separately selectable body-relocation and compact-history migration commands, write-free previews, durable journal/recovery, resume and guarded rollback. Verify the full pipeline on disposable exact copies captured at execution and large synthetic history. Preserve original archive/ledger snapshots, all original bodies/evidence and stable links. After TOOLSET-149-df and TOOLSET-150-71 pass their required checks and review, perform the owner-authorized first guarded conversion of this repository through the supported tool. Other repositories/profiles remain excluded.
-- Acceptance: Preview writes nothing, including no transaction/cache files. Interruption at each publication boundary cannot admit a mixed snapshot; resume is idempotent, and rollback refuses newer foreign edits. Full ID/status/order/dependency/gate/contract/evidence conservation is demonstrated, original archive bytes remain intact in a verified legacy snapshot, and old anchors remain navigable. Incompatible active leases or installed consumers block conversion without stop/restart/repin. Fixture-based size targets in the plan pass or have explicit measured gaps; no fabricated token/latency improvement. The canonical repository remains schema 1 until the verified cutover; afterward demonstrate compact TODO/goals with conserved IDs, order, dependencies, contracts and history through real consumer checks.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_ledger_migration.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Dependencies: TOOLSET-149-df, TOOLSET-150-71.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No unsupported/manual format rewrite or fleet conversion, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Next action: After both support prerequisites are delivered and reviewed, run the write-free preview against a fresh snapshot of this repository, exercise recovery/conservation, and perform its guarded local cutover only when active leases and consumers are compatible. Validate actual compact bytes and archive/contract parity. Do not stop or repin a live attempt to force conversion.
-- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
-
 
 ### TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
 
@@ -423,6 +414,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Context: Builds on TOOLSET-099-87 offline work.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No push by the runner; no direct edits in fleet repositories; live fleet qualification stays with TOOLSET-096-7e.
+- Added (2026-10-17, [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) finding 5): `coordinator.py` is one 1805-line class with about 15 separate engine call sites; `task_execution`, `parallel_dispatch`, `parallel_claims`, `parallel_integrate`, `parallel_state`, `parallel_status` and `worktree_closeout` import each other in one cycle; `git()` is defined in 9 modules. Address them in this redesign, not as separate refactors.
 
 ### TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
 
@@ -746,6 +738,38 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
+### TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+
+- [ ] TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+- Status: open
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 4); [historical owner cycle](skills/autowork/references/historical-owner-cycle.md) ("retained as evidence, not current instructions"), [legacy fixture](tests/fixtures/legacy_owner_cycle.py), [live skill](skills/autowork/SKILL.md) (runs only `scripts/owner_cycle.py` and `scripts/worktree_closeout.py`), [offline check](scripts/check.py).
+- Evidence (2026-10-17 graph review): no live entry point imports or runs `start_goal`, `pass_workspace`, `writer_registration`, `registration_admission`, `runtime_bundle`, `native_lifecycle`, `controller_bridge`, `native_containment`, `budget_controller`, `delivery_state`, `check_receipt`, `ready_preflight`, `progress_runtime`, `backlog_plan`, `prepare_prerequisites`, `owner_unblock`, `disjoint_fallback`, `continuation_capability` or `gate_skip`; their callers are each other, their own tests, the legacy fixture and historical references. Together about 5k production and 8k test lines, run by every full check.
+- Touches: skills/autowork/scripts/, skills/autowork/references/, tests/fixtures/, tests/, scripts/check.py, docs/
+- Scope: (1) Compute the retired set by rule, not from this list alone: a module under `skills/autowork/scripts/` is retired when no live entry point reaches it through imports or by path. Live entry points are `owner_cycle.py`, `worktree_closeout.py`, the `pi-autowork` package, `scripts/*.py` and `scripts/*.sh`, the skills and adapters (`SKILL.md`, references they link as current), and modules those reach (which keeps `finish_task`, `candidate_identity`, `source_freshness` where still reached, `audit_profiles`, `retry_selection` (imported by `audit_profiles`), `analyze_audit_logs`, `cron_output`, `discover_sources`, `engineering_signals`, `goals.py`). A name that appears only in a comment or as a dictionary key (`check_receipt` in `parallel_integrate.py`) does not reach a module. (2) Delete the retired modules, their tests, `tests/fixtures/legacy_owner_cycle.py` and tests that exercise only it, and the `scripts/check.py` exclusions they leave unused. (3) Keep `references/historical-owner-cycle.md` and other historical references as evidence, with their links to deleted scripts replaced by the commit that removed them. (4) Record the removed modules, line counts and full-check time before and after in the task evidence.
+- Acceptance: The rule, run as a script in the task's evidence, lists the retired set, and every listed module is gone. Nothing live imports a deleted module (`python3 scripts/check.py` passes, and a grep of live files for each name finds only history). The full check is measurably shorter on the same host load.
+- Checks: python3 scripts/check.py with TMPDIR set to a fresh short directory; python3 scripts/check.py --list
+- Dependencies: None.
+- Ownership: Toolset; reconcile TOOLSET-125-e6, TOOLSET-126-6b and TOOLSET-127-b1 (test thinning), which should not spend effort on tests this deletes.
+- Exclusions: No change to live behavior, no deletion of a module a live entry point still reaches, no edits to historical evidence beyond broken links.
+- Planner's call: delete instead of disabling behind a flag (no compatibility shims), and decide by reachability rather than by this list, since references drift.
+
+### TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
+
+- [ ] TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner-session runs of `scripts/check.py` (2026-10-17); [offline check](scripts/check.py) (`run_unit`).
+- Evidence (2026-10-17): every full run started as a background job (`(python3 scripts/check.py > log &)`) failed `test_finish_task.FinishTaskTests.test_interrupted_acceptance_stops_child_writers` (`AssertionError: 0 == 0`) and `test_parallel_integrate.IntegrationTests.test_real_validation_interrupt_stops_child_before_recovery` (`'KeyboardInterrupt' not found in ''`); both passed when run in the foreground. A non-interactive shell starts background jobs with SIGINT ignored, every child inherits that, and both tests interrupt a child with SIGINT. The runner's own main check is not affected.
+- Touches: scripts/check.py, tests/test_check.py
+- Scope: `run_unit` starts each test process with SIGINT and SIGTERM at their default dispositions (a `preexec_fn` on POSIX, alongside `start_new_session`).
+- Acceptance: In `tests/test_check.py`, a check started with SIGINT ignored runs a fixture test that sends itself SIGINT and expects KeyboardInterrupt, and it passes.
+- Checks: python3 -m unittest discover -s tests -p test_check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to test selection, sharding or timeouts.
+- Planner's call: Next: it only misleads people who run the full check in the background.
+
 ### TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
 
 - [ ] TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
@@ -1053,19 +1077,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No dependency installed into services or the fleet; no change to the default worker; adoption needs an owner decision.
 
-### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
-
-- [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
-- Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer.
-- Goal: PORTABLE — Align portable workflow discovery.
-- Sources: [rename note](README.md#renamed-from-hermes-toolset), [rename decision](docs/project.md#rename-to-autowork-2026-10-16), [installation](docs/installation.md).
-- Scope: Every installed copy still carries the old identity: profiles hold `plugins/hermes-toolset`, `plugins.enabled: [hermes-toolset]`, `plugins.entries.hermes-toolset` settings and cron jobs naming `hermes-toolset:` skills, and the old `/toolset update` cannot enable the renamed plugin. Per profile: record the settings under `plugins.entries.hermes-toolset` and the cron jobs' state; remove the old plugin; install and enable `autowork`; restore those settings under `plugins.entries.autowork`; run `scripts/wire-owner-cron.py --root ROOT` and then `--apply`; refresh bundle-managed cron scripts. Reinstall the Claude Code and Codex plugins and switch the Pi package to `git:github.com/TrebuchetDynamics/autowork`, then restart pi-autowork runners when no task is in flight.
-- Acceptance: In each profile `hermes -p PROFILE autowork doctor --core` is ready and `/autowork status` answers in chat; settings and opt-outs match the recorded values; every cron job keeps its pause state, schedule, model and delivery and names `autowork:` skills; `pi list` shows the autowork source and runners resume their sessions.
-- Checks: Per-profile before/after config and job readback; `autowork doctor --core`; one `/autowork status` in a gateway chat; `pi list`; runner `--status`.
-- Dependencies: TOOLSET-121-3d.
-- Ownership: Owner or a coordinator with live authorization.
-- Exclusions: No job resumption, cadence, model or delivery change; no direct edits in fleet repositories; no unrelated profile settings changed.
-
 ### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
 
 - [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
@@ -1172,7 +1183,78 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
 - Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
 
+### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+
+- [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+- Status: open
+- Goal: BACKLOG
+- Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: Implement an explicitly versioned linked-body mode while retaining the complete v1 machine ledger/history. Add the common repository-aware reader and guarded writer; update planning skills, Docs Sync, TODO work-center/archive guidance, portable instructions, selection/admission, receipts, claims, scope protection, integration/closeout, Pi Touches inference, wakeup/planning-adoption inventories and packaged helper closure together. Legacy inline repositories remain supported and are never converted by loading a skill or rendering. Use docs/tasks/<ID>.md as the planned default detail path, with goal/history records under docs/tasks/; keep root TODO/index entrypoints unchanged.
+- Acceptance: In opted-in fixtures a planner saves one detail record and a short TODO row; Docs Sync synchronizes it; a selected worker receives the exact real contract path/closure; verification and closeout update the correct files. Legacy read/render remains byte-stable. Task-only edits invalidate relevant receipts and become visible to claim-age/wakeup/adoption checks; workers cannot modify their own contract through docs/tasks/. Traverse/symlink/duplicate/missing record cases hold safely. Unrecognized content under docs/tasks/ is never auto-staged as planning. Copied portable/Pi packages include the resolver. No implementation instruction silently migrates a repository.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_task_store.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Priority note (2026-10-17 13:40 monitor pass): moved below the short self-healing fixes. As a `Resources: exclusive` task it drains the pool when it is next: this repository's status showed `26 wait behind TOOLSET-149-df, which runs alone` with one worker busy. It still runs alone, as its author requires, once those land.
+- Dependencies: None.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No direct format change in fleet repositories (each converts later through its own runner), archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Owner decision (2026-10-17): this repository converts first, through the guarded writer this task adds; the DOCS-MAINTAINER worker (TOOLSET-164-f1) becomes the writer of `docs/tasks/` records.
+- Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
+- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
+
+
+### TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
+
+- [ ] TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
+- Status: open
+- Goal: BACKLOG
+- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: On the linked-store boundary add goals.json v2 with live task summaries, short goal summaries and exact terminal/goal evidence resolution through stable task/goal records. Make TODO coverage concise and root archive a catalogue for opted-in fixtures. Preserve status, supersession, membership, dependency, focus, met-proof and ID-reservation semantics. Retain full-history linked mode independently; do not delete historical records or replace the current repository's archive.
+- Acceptance: Full-history and active-only fixtures give identical eligible IDs/order, gates and required proof. An active successor can resolve an archived done prerequisite or met goal; superseded/missing/conflicting history cannot satisfy it. Historical IDs cannot be reused, even when absent from the root index. All receipt and goal evidence remains accessible without scanning rich history on ordinary listing. Closing many tasks grows cold records/catalogues, not the active root index or duplicated full-body coverage. Unknown formats and stale digests fail clearly.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_compact_ledger.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Dependencies: TOOLSET-149-df.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No direct format change in this repository or fleet, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Next action: Build the focused behavioral regressions on the delivered prerequisite boundary and implement only the named outcome.
+- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
+
+
+### TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
+
+- [ ] TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
+- Status: open
+- Goal: BACKLOG
+- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: Implement explicit, separately selectable body-relocation and compact-history migration commands, write-free previews, durable journal/recovery, resume and guarded rollback. Verify the full pipeline on disposable exact copies captured at execution and large synthetic history. Preserve original archive/ledger snapshots, all original bodies/evidence and stable links. After TOOLSET-149-df and TOOLSET-150-71 pass their required checks and review, perform the owner-authorized first guarded conversion of this repository through the supported tool. Other repositories/profiles remain excluded.
+- Acceptance: Preview writes nothing, including no transaction/cache files. Interruption at each publication boundary cannot admit a mixed snapshot; resume is idempotent, and rollback refuses newer foreign edits. Full ID/status/order/dependency/gate/contract/evidence conservation is demonstrated, original archive bytes remain intact in a verified legacy snapshot, and old anchors remain navigable. Incompatible active leases or installed consumers block conversion without stop/restart/repin. Fixture-based size targets in the plan pass or have explicit measured gaps; no fabricated token/latency improvement. The canonical repository remains schema 1 until the verified cutover; afterward demonstrate compact TODO/goals with conserved IDs, order, dependencies, contracts and history through real consumer checks.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_ledger_migration.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Dependencies: TOOLSET-149-df, TOOLSET-150-71.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No unsupported/manual format rewrite or fleet conversion, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Next action: After both support prerequisites are delivered and reviewed, run the write-free preview against a fresh snapshot of this repository, exercise recovery/conservation, and perform its guarded local cutover only when active leases and consumers are compatible. Validate actual compact bytes and archive/contract parity. Do not stop or repin a live attempt to force conversion.
+- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
+
+
+
 ## Needs decision
+
+### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+
+- [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+- Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer. Moved to Needs decision (2026-10-17, planner's call): it changes the owner's installed profiles, plugins and cron jobs live, and its Ownership requires the owner or live authorization, but the runner had queued it to run alone unattended.
+- Goal: PORTABLE — Align portable workflow discovery.
+- Sources: [rename note](README.md#renamed-from-hermes-toolset), [rename decision](docs/project.md#rename-to-autowork-2026-10-16), [installation](docs/installation.md).
+- Scope: Every installed copy still carries the old identity: profiles hold `plugins/hermes-toolset`, `plugins.enabled: [hermes-toolset]`, `plugins.entries.hermes-toolset` settings and cron jobs naming `hermes-toolset:` skills, and the old `/toolset update` cannot enable the renamed plugin. Per profile: record the settings under `plugins.entries.hermes-toolset` and the cron jobs' state; remove the old plugin; install and enable `autowork`; restore those settings under `plugins.entries.autowork`; run `scripts/wire-owner-cron.py --root ROOT` and then `--apply`; refresh bundle-managed cron scripts. Reinstall the Claude Code and Codex plugins and switch the Pi package to `git:github.com/TrebuchetDynamics/autowork`, then restart pi-autowork runners when no task is in flight.
+- Acceptance: In each profile `hermes -p PROFILE autowork doctor --core` is ready and `/autowork status` answers in chat; settings and opt-outs match the recorded values; every cron job keeps its pause state, schedule, model and delivery and names `autowork:` skills; `pi list` shows the autowork source and runners resume their sessions.
+- Checks: Per-profile before/after config and job readback; `autowork doctor --core`; one `/autowork status` in a gateway chat; `pi list`; runner `--status`.
+- Dependencies: TOOLSET-121-3d.
+- Ownership: Owner or a coordinator with live authorization.
+- Exclusions: No job resumption, cadence, model or delivery change; no direct edits in fleet repositories; no unrelated profile settings changed.
+
 
 ### TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
 
@@ -1249,6 +1331,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-140-f4, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-161-17, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-165-f7, TOOLSET-170-f6, TOOLSET-172-40, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-180-72, TOOLSET-181-02, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-184-b3, TOOLSET-189-96, TOOLSET-190-bf |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-140-f4, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-161-17, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-165-f7, TOOLSET-170-f6, TOOLSET-172-40, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-180-72, TOOLSET-181-02, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-184-b3, TOOLSET-189-96, TOOLSET-192-71, TOOLSET-195-ee, TOOLSET-197-4f, TOOLSET-198-8f, TOOLSET-199-2d |
 
 <!-- goals:coverage:end -->

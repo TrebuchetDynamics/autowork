@@ -436,6 +436,12 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
                             receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
+                if (check or {}).get('outcome') == 'TIMED_OUT':
+                    # The host's speed, not the task (TOOLSET-196-fb): its own cause, reverified
+                    # with a longer limit instead of spending an attempt.
+                    receipt = check.get('command_receipt') or {}
+                    raise Hold('timeout', f"integration validation ran out of time after "
+                                          f"{receipt.get('elapsed_seconds') or 0:.0f}s (limit {timeout:g}s)")
                 if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
                     raise Hold('validation', 'integration validation failed or changed the integration tree')
@@ -832,7 +838,7 @@ def reverifiable(slot, version):
     """A commit held because validation or review failed, by a validator other than ``version``
     (a hold without ``reviewed_by`` predates the record), not yet re-verified under it."""
     return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
-            and (slot.get('cause') == 'validation'
+            and (slot.get('cause') in ('validation', 'timeout')
                  or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
             and slot.get('reverified') != version and slot.get('reviewed_by') != version)
 

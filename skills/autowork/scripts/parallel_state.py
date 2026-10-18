@@ -33,7 +33,9 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
 # with the same Touches cannot pass, so the files go to the owner as a question.
-NEEDS_PERSON = ('blocker', 'scope_request', 'scope')
+# Not retried with a fresh attempt. 'timeout': the host was slow, not the task; the coordinator
+# reviews the same commit again with a longer limit (TOOLSET-196-fb).
+NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 

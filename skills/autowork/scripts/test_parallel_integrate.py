@@ -158,6 +158,19 @@ class IntegrationTests(unittest.TestCase):
         again = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(again['outcome'], 'INTEGRATED', again)
 
+    def test_a_validation_that_runs_out_of_time_holds_as_timeout_and_can_be_reverified(self):
+        """TOOLSET-196-fb: two reviews timed out on a slow host and spent both attempts."""
+        self.worker()
+        module = self.module()
+        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', 'import time; time.sleep(5)'], 1,
+                                  reviewer='r1')
+        self.assertEqual(result['outcome'], 'HELD', result)
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['cause'], slot['attempt']), ('timeout', 1))
+        self.assertIn('ran out of time', slot['reason'])
+        self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r1.t3600')['outcome'], 'REVERIFY')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_fresh_unknown_session_blocks_integration_before_writes(self):
         self.worker()
         self.agent_process()
