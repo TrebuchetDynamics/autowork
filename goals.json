@@ -713,7 +713,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-207-e4",
+      "TOOLSET-208-54",
       "TOOLSET-204-f2",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -751,7 +751,6 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
-      "TOOLSET-208-54",
       "TOOLSET-202-9a",
       "TOOLSET-192-71",
       "TOOLSET-172-92",
@@ -1100,6 +1099,14 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-208-54",
+      "section": "Now",
+      "status": "open",
+      "title": "A toolset update never mixes two releases in one running engine process"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1396,14 +1403,6 @@
       "section": "Next",
       "status": "open",
       "title": "Retire the owner-cycle engine modules no live entry point reaches"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-208-54",
-      "section": "Next",
-      "status": "open",
-      "title": "A toolset update never mixes two releases in one running engine process"
     },
     {
       "depends_on": [
