@@ -875,14 +875,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-140-f4",
-      "section": "Now",
-      "status": "open",
-      "title": "Give workers a short temporary directory that browsers and sockets accept"
-    },
-    {
-      "depends_on": [],
       "goal": "DOCS-COMPLETENESS",
       "id": "TOOLSET-146-bc",
       "section": "Now",
@@ -2204,6 +2196,14 @@
       "section": "Done",
       "status": "done",
       "title": "Audit this repository's suite against the test budget"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-140-f4",
+      "section": "Done",
+      "status": "done",
+      "title": "Give workers a short temporary directory that browsers and sockets accept"
     },
     {
       "depends_on": [],

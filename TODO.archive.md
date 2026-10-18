@@ -3181,3 +3181,27 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to what the maintainer or the questions write, to conflict resolution or to the push setting.
 - Planner's call: top of the toolset's own Now: the runner's planning, including its repairs of its own held tasks, is invisible until it lands.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-140-f4 — Give workers a short temporary directory that browsers and sockets accept
+
+- [x] TOOLSET-140-f4 — Give workers a short temporary directory that browsers and sockets accept
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [monitor findings](docs/plans/2026-10-16-pi-autowork-coordinator.md#fleet-monitor-findings-delivery-environment-and-stall-repair), [worker launch](skills/autowork/scripts/parallel_dispatch.py) (`launch` sets `TMPDIR=<slot data>/tmp`).
+- Evidence (2026-10-16 monitor pass): runner C's a fleet task is held because `/usr/bin/chromium fails with the configured long TMPDIR`. Slot paths under `~/.local/state/pi-autowork/<hash>/…` already exceed 100 characters. Unix-domain socket paths are limited to 108 bytes, which breaks Chromium's SingletonSocket and also ssh, gpg and test servers.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/references/parallel-workers.md, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py
+- Touches widened by the runner from worker evidence: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py
+- Scope: Give each slot a private temp directory at `$XDG_RUNTIME_DIR/aw/<state hash 8>/<slot>`, where the state hash is the first 8 characters of the runner's per-repository state directory name under `~/.local/state/pi-autowork/`, falling back to `/tmp/aw-<uid>-<hash8>-<slot>`. Create it with mode 0700 and owner checked; reject a pre-existing path owned by anyone else. Set `TMPDIR`, `TMP` and `TEMP` to it. A resumed worker keeps the same directory, and slot retirement removes it. Keep at least 60 bytes of headroom below the socket limit.
+- Acceptance: Fixtures show the following. TMPDIR is at most 48 characters, mode 0700 and distinct per slot. Binding an AF_UNIX socket with a 40-character name inside it succeeds. A foreign-owned pre-existing path is refused. The directory survives runner restart and adoption, and is removed on retirement. Existing dispatch and refill tests pass.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py
+- Bootstrap note (planner's call): this task's own worker still inherits the long TMPDIR. Its tests must create the short directory themselves and must not rely on the inherited one. If `scripts/check.py` fails only on AF_UNIX socket fixtures under the inherited long TMPDIR, as TOOLSET-115-bf observed, record that as the pre-existing condition this task removes, not as a regression. Run it once more with `TMPDIR` set to a short private directory and require that run to pass.
+- Dependencies: None.
+- Ownership: Toolset coordinator. The held a fleet task reruns through the runner's own retry once this is delivered; nobody edits the fleet repository by hand.
+- Exclusions: No browser installation and no per-repository Chrome configuration.
+- Planner's call (2026-10-17): moved up, next to TOOLSET-188-75: TOOLSET-184-b3's worker is held on it too (`a private physical task TMPDIR with no ancestor containing .git`); today's `<slot data>/tmp` lies inside the repository's `.git`, so no retry can satisfy that. XDG_RUNTIME_DIR first, because it is per-user, 0700 and tmpfs.
+- Planner answer (2026-10-17 09:15, monitor pass): its worker asked for `skills/autowork/scripts/parallel_integrate.py`. It and its test are added to Touches. Resume or reverify the existing candidate; do not reimplement.
