@@ -91,6 +91,31 @@ reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 
+## Worker temporary directories
+
+`TMPDIR`, `TMP` and `TEMP` all point to the same private, owner-checked directory
+(mode `0700`), outside the checkout. Prefer
+`$XDG_RUNTIME_DIR/aw/<hash8>/<temp-slot>`; if runtime storage is unset, unavailable,
+inside a checkout or too long, use `/tmp/aw-<uid>-<hash8>-<temp-slot>` instead.
+`hash8` is the first eight characters of the runner's repository state-directory
+name: SHA-256 of the absolute Git common-directory path (the same namespace for
+standalone dispatch). Paths are limited to **47 encoded bytes**, leaving at least
+60 bytes below Linux's 108-byte Unix-socket pathname limit, including its NUL.
+Foreign-owned existing directories and symlinks are refused, not adopted.
+
+The compact numeric temp slot is reserved in
+`slot-data/<TASK>/tmp.json`. It is independent of the worker lane/port number:
+refill can reuse a lane while the previous task still retains temporary files.
+Resume, retry and coordinator adoption preserve the allocation and contents,
+even if `XDG_RUNTIME_DIR` changes. Close and set-aside/requeue remove the temp
+directory and release its reservation only after the worker has stopped; ordinary
+holds, pauses and coordinator release keep it. Older workers already running with
+a long `TMPDIR` keep their environment until relaunched. Logs, reports and other
+attempt evidence remain in Git-common execution state, not in the temp directory.
+Reviewers find the worker's retained files through this reservation; slots from
+older releases without one still use their attempt-local `tmp` directory. Shared
+SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanup.
+
 ## Admission: Touches and Resources
 
 A task runs beside others only when the planner can prove it is independent:

@@ -125,16 +125,28 @@ def repository_cache(checkout):
 
 
 def worker_tmp(checkout, task):
-    """The finished worker's $TMPDIR (slot data), where it may have provisioned a toolchain the
-    task's checks need; the reviewer gets its own $TMPDIR and would not find it otherwise."""
+    """The finished worker's saved $TMPDIR; old slots used an attempt-local directory.
+
+    A durable allocation is authoritative even if empty or missing: never point
+    a reviewer at stale files from an older attempt instead.
+    """
     try:
         common = Path(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
         slot = json.loads((common / 'autowork-execution' / 'slots' / f'{task}.json').read_text())
-        attempt = slot.get('data_attempt', slot['attempt'])
+        data = common / 'autowork-execution' / 'slot-data' / task
+        allocation = data / 'tmp.json'
+        if allocation.is_symlink():
+            return None
+        if allocation.exists():
+            path = Path(json.loads(allocation.read_text())['path'])
+            if not path.is_absolute() or path.resolve() != path or path.stat().st_uid != os.getuid():
+                return None
+        else:
+            attempt = slot.get('data_attempt', slot['attempt'])
+            path = data / f'attempt-{attempt}' / 'tmp'
+        return path if path.is_dir() and any(path.iterdir()) else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
-    path = common / 'autowork-execution' / 'slot-data' / task / f'attempt-{attempt}' / 'tmp'
-    return path if path.is_dir() and any(path.iterdir()) else None
 
 
 def verify(state, task):

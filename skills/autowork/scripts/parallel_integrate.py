@@ -627,7 +627,8 @@ def close_files(repo):
 
 def close(repo, owner_pid, task):
     repo, common = context(repo, owner_pid)
-    with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
+    with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'), \
+            execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
         # Only the files a close writes: a person's session in the main checkout that is not
         # editing them does not keep finished work open (interactive sessions work there).
@@ -640,6 +641,7 @@ def close(repo, owner_pid, task):
             archive = archive_path(repo)
             archived = execution.goals_module().task_bodies(archive.read_text()) if archive.exists() else {}
             require_task_contract(archived.get(task, []), info.get('task_contract', ''), archived=True)
+            dispatch.cleanup_tmpdir(common, slot)
             return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot)}
         # The helper has no TODO-only `task` CLI. Use its same coordination and
         # atomic writer in this narrow adapter instead of creating a goals ledger.
@@ -667,6 +669,7 @@ def close(repo, owner_pid, task):
                     path.write_bytes(data)
             raise
         slot = state.change(common, slot, 'closed', {})
+        dispatch.cleanup_tmpdir(common, slot)
         files = ['TODO.md', *(['goals.json'] if indexed else []), archive.relative_to(repo).as_posix()]
         return {'outcome': 'CLOSED', 'task': task, 'cleaned': cleanup_worker(repo, common, slot),
                 'files': files, **({'live_followup': followup} if followup else {})}
@@ -745,6 +748,7 @@ def _retire(repo, common, slot, requeued):
 
     Caller holds dispatch.lock, integration.lock and writer.lock."""
     task = slot['task_id']
+    dispatch.cleanup_tmpdir(common, slot)
     history = execution.safe_path(common / 'slot-history' / task)
     number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
     target = history / str(number)

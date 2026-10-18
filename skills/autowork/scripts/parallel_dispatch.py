@@ -5,6 +5,8 @@ worktree as its working directory. Its process identity is the slot's proof of
 life, so a live worker is never replaced or duplicated. Templates never add
 flags that bypass host approvals or sandboxes.
 """
+import errno
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -217,16 +219,110 @@ def create_worktree(repo, common, task_id, baseline):
     return path, branch, baseline
 
 
+def _private_tmp_dir(path, *, create=True):
+    """Check ownership without following links before restricting permissions."""
+    path = execution.safe_path(path)
+    if create:
+        path.mkdir(mode=0o700, exist_ok=True)
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if os.fstat(fd).st_uid != os.getuid():
+            raise ValueError(f'temporary directory has a foreign owner: {path}')
+        os.fchmod(fd, 0o700)
+    finally:
+        os.close(fd)
+    return path
+
+
+def _tmp_record(common, value):
+    """Validate durable allocation before reusing or deleting an external path."""
+    key = hashlib.sha256(str(common.parent).encode()).hexdigest()[:8]
+    if (not isinstance(value, dict) or type(value.get('slot')) is not int or value['slot'] < 1
+            or not isinstance(value.get('path'), str)):
+        raise ValueError('invalid temporary directory allocation')
+    path = execution.safe_path(value['path'])
+    number = str(value['slot'])
+    runtime_suffix = ('aw', key, number)
+    fallback = Path(f'/tmp/aw-{os.getuid()}-{key}-{number}')
+    if (not Path(value['path']).is_absolute() or '..' in path.parts
+            or len(os.fsencode(path)) > 47
+            or (path != fallback and path.parts[-3:] != runtime_suffix)):
+        raise ValueError('invalid temporary directory path')
+    return path
+
+
+def worker_tmpdir(data, slot_index):
+    """Allocate under dispatch.lock; a task keeps its temp slot across attempts.
+
+    Worker lanes/ports can be reused while reported or paused tasks retain their
+    files, so the compact temp slot number has its own durable reservation.
+    """
+    common = data.parents[2]
+    record = data.parent / 'tmp.json'
+    saved = execution.read(record)
+    if saved is not None:
+        path = _tmp_record(common, saved)
+        if path.parent != Path('/tmp'):
+            for parent in (path.parents[2], path.parents[1], path.parent):
+                _private_tmp_dir(parent)
+        return _private_tmp_dir(path)
+    used = set()
+    for other in (common / 'slot-data').glob('*/tmp.json'):
+        value = execution.read(other)
+        _tmp_record(common, value)
+        used.add(value['slot'])
+    number = slot_index if slot_index not in used else next(i for i in range(1, len(used) + 2) if i not in used)
+    key = hashlib.sha256(str(common.parent).encode()).hexdigest()[:8]
+    runtime = os.environ.get('XDG_RUNTIME_DIR', '')
+    path = None
+    if runtime and Path(runtime).is_absolute():
+        candidate = Path(runtime) / 'aw' / key / str(number)
+        if (len(os.fsencode(candidate)) <= 47 and Path(runtime).is_dir()
+                and not any((p / '.git').exists() for p in candidate.parents)):
+            try:
+                for parent in (Path(runtime), candidate.parent.parent, candidate.parent, candidate):
+                    _private_tmp_dir(parent)
+                path = candidate
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.ENOENT, errno.EROFS, errno.ENOSPC, errno.EDQUOT):
+                    raise
+                # Unavailable runtime storage: use the short /tmp fallback.
+    if path is None:
+        path = Path(f'/tmp/aw-{os.getuid()}-{key}-{number}')
+        _tmp_record(common, {'path': str(path), 'slot': number})
+        _private_tmp_dir(path)
+    execution.save(record, {'path': str(path), 'slot': number})
+    return path
+
+
+def cleanup_tmpdir(common, slot):
+    """Retirement only; forget the reservation after removal, making retries safe."""
+    if state.worker_live(slot):
+        return
+    record = common / 'slot-data' / slot['task_id'] / 'tmp.json'
+    saved = execution.read(record)
+    if saved is None:
+        return  # Slots created before short temp directories have no allocation.
+    path = _tmp_record(common, saved)
+    try:
+        _private_tmp_dir(path, create=False)
+    except FileNotFoundError:
+        pass
+    else:
+        shutil.rmtree(path)
+    record.unlink()
+
+
 def launch(argv, worktree, data, slot_index, stdin_path):
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
-    (data / 'tmp').mkdir(exist_ok=True, mode=0o700)
+    temporary = str(worker_tmpdir(data, slot_index))
     env = {k: v for k, v in os.environ.items()
            if k != 'AUTOWORK_EXECUTION_COMMON' and not k.startswith('GIT_')}
     # One cache per repository (<git common dir>/autowork-execution/cache), kept across tasks:
     # a pinned SDK one task installs is the next task's and every reviewer's too (TOOLSET-169-1d).
     cache = data.parents[2] / 'cache'
     cache.mkdir(exist_ok=True, mode=0o700)
-    env.update(TMPDIR=str(data / 'tmp'), AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
+    env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
                AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
