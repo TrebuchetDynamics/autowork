@@ -92,6 +92,28 @@ reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 
+## Runner jobs versus outside sessions
+
+The [writer scan](../scripts/task_execution.py) excludes this repository's own
+runner jobs before integration, closeout and slot worktree cleanup check for outside
+sessions. The primary attribution is the process's `/proc/<pid>/cgroup`: an exact
+`pi-autowork@<canonical-repository-name>.service` component, including its child
+cgroups. A different repository's unit does not qualify.
+
+For foreground runs, the [coordinator](../../../pi-autowork/pi_autowork/coordinator.py)
+sets `AUTOWORK_EXECUTION_COMMON` to the repository's absolute Git common directory
+on every main check and Pi auxiliary job (DOCS-MAINTAINER, provisioning, merge
+resolution and Touches inference). Children inherit it. If a test harness sanitizes
+its child's environment, a still-live marked ancestor retains attribution; under
+systemd the cgroup also covers detached jobs that drop the environment. Fixture
+repositories do not match the real runner's marker or repository-specific unit.
+
+A `pi-scratch-*` name alone grants no exemption: an outside person's agent there
+still blocks, as does an otherwise blocking session in the main checkout. A blocked
+integration's process evidence explicitly says `session`, so mistaken attribution
+is visible instead of looking like an unidentified check process. These rules do
+not change which outside sessions block or how often the main check runs.
+
 ## Worker temporary directories
 
 `TMPDIR`, `TMP` and `TEMP` all point to the same private, owner-checked directory
