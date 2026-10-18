@@ -1023,14 +1023,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-180-72",
-      "section": "Now",
-      "status": "open",
-      "title": "A candidate lands only if the merged tree's full suite has no new failures"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-181-02",
       "section": "Now",
       "status": "open",
@@ -2437,6 +2429,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner busy with its own job shows that job, not 'not cycling'"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-180-72",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate lands only if the merged tree's full suite has no new failures"
     },
     {
       "depends_on": [],

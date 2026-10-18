@@ -324,23 +324,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
   remaining test_parallel_e2e and adversarial failures come from the real host load gate (load >= CPUs).
   Re-run the full check on the current main before changing any fixture.
 
-### TOOLSET-180-72 — A candidate lands only if the merged tree's full suite has no new failures
-
-- [ ] TOOLSET-180-72 — A candidate lands only if the merged tree's full suite has no new failures
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: feedback from an interactive session in one fleet repository (2026-10-17), pasted by the owner with "please plan these as tasks, folding into existing ones where they overlap" (item 3); [review and validation](pi-autowork/pi_autowork/worker.py) (`verify`, `PI_AUTOWORK_VALIDATE`), [questions](pi-autowork/pi_autowork/questions.py).
-- Evidence (one fleet repository, 2026-10-17): a reviewer-approved commit landed while breaking 44 tests. A screen read a connection provider during build and added a listener that never closed; a later fix repaired it. The task's checks covered only its own feature, the reviewer ran those, and the repository had no `PI_AUTOWORK_VALIDATE`, so nothing ran the whole suite on the merged tree. Second instance (another fleet repository, 2026-10-17): a landing changed a shared struct without updating four test fixtures in a file outside its Touches; the test build no longer compiled, and the next two workers each stopped with a blocker naming those fixtures instead of doing their tasks. That repository has no `PI_AUTOWORK_MAIN_CHECK` either, so TOOLSET-176-98's main check never ran.
-- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/main_check.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_worker_tmp.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py, docs/cross-host.md, AGENTS.md
-- Scope: (1) The full check comes from `PI_AUTOWORK_VALIDATE`, else from a `Full check:` line in the repository's AGENTS.md (documented, and added to this repository's AGENTS.md). Without either, the runner asks one owner question per repository and status shows `no full-suite gate`. (2) Verification runs it on the merged tree and compares it with the base revision's result, run once per base revision and cached: a pass that becomes a failure, or failing test names (from unittest, pytest, go test, flutter test and jest output) not failing on the base, reject the candidate. Failures the base already has do not block. (3) A rejection is a `regression` hold naming the newly failing tests, and the retry's prompt includes them. (4) `PI_AUTOWORK_VALIDATE_TIMEOUT` (default 3600 seconds) bounds each run; a timeout is a validation failure, not a pass.
-  (Folded 2026-10-17) The main check (`main_check.py`, TOOLSET-176-98) uses the same resolved full check when `PI_AUTOWORK_MAIN_CHECK` is unset, so a red main gets its repair task in every repository that declares a full check either way.
-- Acceptance: In fixtures, a candidate that breaks a test outside its own checks is rejected with that test named, and its retry prompt quotes it. A candidate in a repository whose base already fails one test lands when it adds no new failure. The base result is computed once per base revision. A repository with neither setting gets one question and a status note, not a hold on every task.
-- Checks: python3 -m unittest discover -s pi-autowork/tests -p 'test_*.py'; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to the reviewer's prompt or to how a task's own checks are chosen; no full suite in the worker's own run.
-- Planner's call: third in Now since 2026-10-17 (two fleet repositories lost tasks to a landing that broke other tests). compare against the base instead of requiring a green suite, so a repository with a known failing test still lands work; parse test names where the common runners print them and fall back to the exit status otherwise.
-
 ### TOOLSET-170-f6 — Closeout waits only for a main-checkout session that holds the files it writes
 
 - [ ] TOOLSET-170-f6 — Closeout waits only for a main-checkout session that holds the files it writes
