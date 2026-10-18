@@ -15,6 +15,13 @@ no extra approval step or execution authority.
 - Since: 2026-10-18T19:00:42Z
 - Answer: Answer in TOOLSET-215-91's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
 
+### Q-FULL-CHECK — USER_INPUT — effort input — unblocks 0
+
+- Task: the repository's whole offline test suite
+- Needs: no full-suite gate: a commit can land while breaking tests its own task never ran, and main is never checked
+- Since: 2026-10-18T19:01:11Z
+- Answer: Add one line to AGENTS.md, `Full check: <command>` (the command that runs the whole offline suite), or set PI_AUTOWORK_VALIDATE in the runner's settings.
+
 <!-- pi-autowork:questions:end -->
 
 None.
