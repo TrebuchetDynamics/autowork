@@ -944,7 +944,11 @@ class Coordinator:
                 self.draining = True
         elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
             if self.seen.get('busy-' + task) != reason:
-                LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
+                if reason.startswith(('the repository writer lock', 'Repository execution lock')):
+                    # This runner's own engine steps held it (TOOLSET-194-46): not another session.
+                    LOG.say(f'{task}: integrating again shortly; {reason}')
+                else:
+                    LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
             self.seen['busy-' + task] = reason
         elif 'highest-priority' not in reason:  # another reported task goes first
             LOG.say(f'{task}: integration needs attention: {reason or outcome}')

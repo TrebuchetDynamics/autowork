@@ -342,6 +342,30 @@ def integration_worktree(repo, common, baseline):
     return path
 
 
+# Once a slot is integrating, its later writer.lock acquisitions wait this long: the runner's own
+# loop takes the lock for a moment every cycle beside the review (TOOLSET-194-46), and a lost
+# race left the slot integrating, to be held later as an abandoned integration.
+LOCK_WAIT = float(os.environ.get('AUTOWORK_LOCK_WAIT', '60'))
+
+
+def release_unfinished(repo, common, owner_pid, task):
+    """Return an integrating slot to reported, dropping its integration checkout; BUSY. It waits
+    longer than the integration did: this review runs beside the loop, and the slot must not stay
+    integrating."""
+    try:
+        with execution.lock(common / 'writer.lock', wait=5 * LOCK_WAIT):
+            state.require_owner(common, owner_pid)
+            slot = slot_for(common, task)
+            if slot and slot['state'] == 'integrating':
+                root = (slot.get('integration') or {}).get('worktree')
+                if root and Path(root).is_dir():
+                    subprocess.run(['git', '-C', str(repo), 'worktree', 'remove', '--force', root], capture_output=True)
+                state.change(common, slot, 'reported', {'integration': None, 'checks': None})
+    except BlockingIOError:
+        pass  # still integrating: the next call revalidates it, as before
+    return {'outcome': 'BUSY', 'task': task, 'reason': 'the repository writer lock stayed busy; integrating again later'}
+
+
 def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
     if not argv or timeout is None or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('--integrate requires --run argv and a positive finite --timeout')
@@ -377,14 +401,14 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
         check = None
         def save_receipt(path, value):
             nonlocal slot
-            with execution.lock(common / 'writer.lock'):
+            with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                 state.require_owner(common, owner_pid)
                 execution.save(path, value)
                 slot = state.write_slot(common, dict(slot, checks=value), slot)
 
         try:
             for attempt in range(2):
-                with execution.lock(common / 'writer.lock'):
+                with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                     state.require_owner(common, owner_pid)
                     require_no_writers(repo, changed(repo, slot['baseline'], slot['commit']))
                     baseline = git(repo, 'rev-parse', 'HEAD')
@@ -415,7 +439,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                 if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
                     raise Hold('validation', 'integration validation failed or changed the integration tree')
-                with execution.lock(common / 'writer.lock'):
+                with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                     state.require_owner(common, owner_pid)
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.
                     fresh_contracts = {t['id']: t for t in dispatch.contracts(repo)}
@@ -440,8 +464,12 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
         except WritersBusy as exc:
             # Not a verdict: an integrating candidate is revalidated on the next call.
             return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
+        except BlockingIOError:
+            # Not a verdict either, and not an abandoned integration: give the slot back so the
+            # commit integrates afresh (TOOLSET-194-46). An OSError handler would hold it.
+            return release_unfinished(repo, common, owner_pid, task)
         except (ValueError, OSError, subprocess.SubprocessError) as exc:
-            with execution.lock(common / 'writer.lock'):
+            with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                 state.require_owner(common, owner_pid)
                 details = {'cause': exc.cause, **exc.details} if isinstance(exc, Hold) else {}
                 if reviewer:

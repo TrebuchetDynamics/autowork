@@ -16,7 +16,7 @@ TRANSITIONS = {
     'dispatched': {'running', 'reported', 'held', 'interrupted', 'released'},
     'running': {'reported', 'held', 'interrupted', 'released'},
     'reported': {'integrating', 'held'},
-    'integrating': {'integrated', 'held'},
+    'integrating': {'integrated', 'held', 'reported'},  # reported: released unfinished (TOOLSET-194-46)
     'integrated': {'closed', 'held'},
     'closed': set(),
     'held': {'dispatched'},
