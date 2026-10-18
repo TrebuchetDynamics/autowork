@@ -3286,3 +3286,24 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to worker timeouts or to what a review checks.
 - Planner's call: high in Now: a slow host should cost minutes, not a task's attempts; this repository's own tasks were held by it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-198-8f — An answered question stays answered: a task entry that names its holder ends the claim question
+
+- [x] TOOLSET-198-8f — An answered question stays answered: a task entry that names its holder ends the claim question
+- Status: done 2026-10-17 by the owner session (merged in 8ba53fe): scope (1) without the separate `held by` waiting line (the task still shows under claimed elsewhere), (2), (3) and (4); python3 scripts/check.py passed.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner report (2026-10-17: "contradiction!!!", pasting `/blockers` answering "0 new questions; the T-… and T-… notices remain covered by your earlier answers" beside the TUI showing "2 questions for you" for the same two tasks); [questions](pi-autowork/pi_autowork/questions.py) (`build`, the `claim` question and its Answer text), [Blockers](skills/blockers/SKILL.md) (where answers are saved), [fleet view](pi-autowork/pi_autowork/fleet_view.py) (the questions count and list).
+- Evidence (2026-10-17, one fleet runner): its claim question offers two answers: `set Status: open ... otherwise note who holds it and when it will be done`. The owner took the second: both task entries name their holder (an isolated continuation to preserve) and stay `in_progress`. `/blockers` reads that as answered; the runner rebuilds its questions from engine state every cycle, sees the same claim, and keeps both questions open, so the TUI and BLOCKERS.md (since 01:25 that day) ask again for what is answered.
+- Touches: pi-autowork/pi_autowork/questions.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_questions.py, pi-autowork/tests/test_fleet_view.py, skills/blockers/SKILL.md, skills/docs-sync/SKILL.md
+- Scope: (1) A task entry may carry `Held by: <who or what>; until <YYYY-MM-DD>` (the claim's answer, written by `/blockers` or the owner). While that line is present and its date has not passed, the runner writes no claim question for the task; the TUI and status show it under waiting as `held by <who> until <date>`, not as a question. After the date, the question returns once, noting the expired answer. (2) The claim question's Answer text names that field exactly. (3) `/blockers` records a "someone holds it" answer as that field, and treats an entry with a current `Held by:` as answered. (4) An entry without the field keeps today's behavior.
+- Acceptance: In fixtures, a claimed task whose entry has `Held by: isolated continuation; until <tomorrow>` yields no claim question and a `held by` waiting line; with yesterday's date the question returns, mentioning the expired answer; without the line the question is as today. The fleet view's questions count excludes such tasks.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No automatic adoption of claimed tasks; no model call to read answers.
+- Planner's call: first in Now: a runner asking the owner what is already answered breaks the one rule the owner set for questions.

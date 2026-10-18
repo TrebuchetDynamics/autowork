@@ -1073,14 +1073,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-198-8f",
-      "section": "Now",
-      "status": "open",
-      "title": "An answered question stays answered: a task entry that names its holder ends the claim question"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-199-2d",
       "section": "Now",
       "status": "open",
@@ -2439,6 +2431,14 @@
       "section": "Done",
       "status": "done",
       "title": "A review that runs out of time is retried with a longer limit, without spending the task's attempt"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-198-8f",
+      "section": "Done",
+      "status": "done",
+      "title": "An answered question stays answered: a task entry that names its holder ends the claim question"
     },
     {
       "depends_on": [
