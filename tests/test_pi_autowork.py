@@ -574,6 +574,59 @@ class EngineTests(Fixture):
         runner.communicate(timeout=60)
         self.assertIn('A: integrated', log())
 
+    def test_a_reload_during_a_review_waits_until_its_answer_is_read(self):
+        """TOOLSET-187-1d: a reload deferred behind a review re-executed as the review ended and
+        lost its answer; the task failed as an abandoned integration and ran again."""
+        self.plan({'verify:A': ['slow_review']})
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+        while 'A: verifying' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGHUP)
+        while not ('Reloading' in log() and self.done('A', 'B', 'C')):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        text = log()
+        self.assertNotIn('abandoned integration', text)
+        self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
+
+    def test_an_idle_runner_rests_when_only_other_refs_change(self):
+        """TOOLSET-185-74: an idle runner started 213 sessions in 40 minutes: ending each empty
+        session rewrote packed-refs, which counted as main changing."""
+        (self.repo / 'TODO.md').write_text(todo([]))
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        runner = self.start_runner('--interval', '300')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'Queue empty; checking again in 300s' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        for n in range(4):  # packing and deleting other branches never moves main
+            self.git(self.repo, 'branch', f'other-{n}')
+            self.git(self.repo, 'pack-refs', '--all')
+            self.git(self.repo, 'branch', '-D', f'other-{n}')
+            time.sleep(1.5)
+        time.sleep(4)  # past the settle time
+        quiet = log()
+        (self.repo / 'NOTE.md').write_text('a commit to main\n')
+        self.git(self.repo, 'add', 'NOTE.md')
+        self.git(self.repo, 'commit', '-qm', 'main moves')
+        self.git(self.repo, 'pack-refs', '--all')  # moved, and recorded only in packed-refs
+        while 'main changed; checking now' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        self.assertNotIn('changed; checking now', quiet)
+        self.assertEqual(quiet.count('Queue empty'), 1, quiet)
+
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
         result = self.run_runner('--once')

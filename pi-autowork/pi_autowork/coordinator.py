@@ -334,18 +334,47 @@ class Coordinator:
 
     def plan_signature(self):
         """What the owner's plan looks like on disk: the planning files in the main checkout
-        and the main branch's ref (a planning commit moves it). Only stat calls."""
-        paths = [Path(self.repo) / name for name in self.PLAN_FILES]
-        common = Path(self.cfg['git_common'])
-        paths += [common / 'refs' / 'heads' / self.base, common / 'packed-refs']
+        and the main branch's commit (a planning commit moves it). Stat calls, plus reading the
+        ref files when they changed."""
         found = {}
-        for path in paths:
+        for path in [Path(self.repo) / name for name in self.PLAN_FILES]:
             try:
                 info = path.stat()
                 found[path.name] = (info.st_mtime_ns, info.st_size)
             except OSError:
                 found[path.name] = None
+        found[self.base] = self.base_commit()
         return found
+
+    def base_commit(self):
+        """The main branch's commit from its loose ref or `packed-refs`, re-read only when one of
+        them changed. Its commit, not the files' stats (TOOLSET-185-74): ending an idle session
+        deletes its branch, Git rewrites `packed-refs`, and an idle runner took that for a new
+        main and started a session every second."""
+        common = Path(self.cfg['git_common'])
+        loose, packed = common / 'refs' / 'heads' / self.base, common / 'packed-refs'
+        stats = []
+        for path in (loose, packed):
+            try:
+                info = path.stat()
+                stats.append((info.st_mtime_ns, info.st_size, info.st_ino))
+            except OSError:
+                stats.append(None)
+        cached = getattr(self, '_base_commit', None)
+        if cached and cached[0] == stats:
+            return cached[1]
+        commit = None
+        try:
+            commit = loose.read_text().strip() or None
+        except OSError:
+            try:
+                line = next((line for line in packed.read_text().splitlines()
+                             if line.endswith(f' refs/heads/{self.base}')), '')
+                commit = line.split(' ', 1)[0] or None
+            except OSError:
+                pass
+        self._base_commit = (stats, commit)
+        return commit
 
     def pause(self, seconds):
         """Interruptible sleep: a stop ends it at once, and so does a change to the plan.
@@ -371,7 +400,7 @@ class Coordinator:
                 seen, changed_at = now, time.monotonic()
             elif changed_at is not None and time.monotonic() - changed_at >= self.plan_settle:
                 names = [n for n in now if now[n] != start.get(n)]
-                labels = ['main' if n in (self.base, 'packed-refs') else n for n in names]
+                labels = ['main' if n == self.base else n for n in names]
                 LOG.say(f'{", ".join(dict.fromkeys(labels)) or "the plan"} changed; checking now')
                 return
 
@@ -1439,9 +1468,10 @@ class Coordinator:
 
     def reexec(self, text, reload=False):
         """Run this runner again in place: same PID, so running workers stay its children and
-        are adopted. Not while a review or a Pi job runs: their answers would be lost, so the
-        next cycle tries again."""
-        if self.session_busy() or self.child:
+        are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
+        answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
+        moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
+        if self.integration or self.child:
             return
         if reload:
             reread_settings(self.settings_file, self.started_with)
