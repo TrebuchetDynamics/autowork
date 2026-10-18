@@ -121,13 +121,11 @@ the durable result. If status says the process stopped without a receipt, inspec
 - **Uncommitted changes or local commits in a plugin checkout:** the updater
   only fast-forwards. Commit, move or reconcile your changes; it never stashes,
   resets or force-pulls.
-- **`local_edits`:** a profile edited its installed skill copy. The edit was merged
-  onto the release (`merged`) or kept because it only adds to it (`kept`); the
-  update still completed. Port lessons that should reach every profile.
-  `kept_retired` is an edited copy of a skill file the bundle removed; delete it once
-  nothing in it is still needed.
-- **`Local skill conflict`:** an installed edit disagrees with the release. Nothing
-  was written; reconcile that file (its backup stays in place) and rerun.
+- **`local_edits`:** a profile edited its installed skill copy. `reset` means the copy
+  was replaced by the release and the edited bytes are in the update's backup (the
+  receipt's `backup`); port lessons that should reach every profile into the bundle.
+  `removed` is an edited copy of a skill file the bundle no longer ships, deleted the
+  same way. A rerun lists a file again only if something edited it since.
 
 See [update all profiles](installation.md#update-all-profiles) for the full rules.
 

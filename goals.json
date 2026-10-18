@@ -30,7 +30,8 @@
         "TOOLSET-123-a0",
         "TOOLSET-123-de",
         "TOOLSET-143-62",
-        "TOOLSET-172-92"
+        "TOOLSET-172-92",
+        "TOOLSET-215-91"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -729,6 +730,7 @@
       "TOOLSET-195-ee",
       "TOOLSET-200-c1",
       "TOOLSET-201-5e",
+      "TOOLSET-215-91",
       "TOOLSET-214-5b",
       "TOOLSET-212-0d",
       "TOOLSET-184-b3",
@@ -1121,6 +1123,14 @@
       "section": "Now",
       "status": "open",
       "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-215-91",
+      "section": "Now",
+      "status": "open",
+      "title": "Bundle skills load read-only from the plugin, so the skill review never edits them"
     },
     {
       "depends_on": [],
