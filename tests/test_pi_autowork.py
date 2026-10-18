@@ -197,6 +197,10 @@ elif behavior == 'slow':  # busy for a few seconds, then finishes normally
     open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
     subprocess.run(['sleep', '6'])  # a running tool command, as real Pi has: an active session
     work(); finish(text='done')
+elif behavior == 'long':  # busy for a minute: long enough to be stopped from outside
+    open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
+    subprocess.run(['sleep', '60'])
+    work(); finish(text='done')
 elif behavior == 'barrier':  # both A and B must be running at once
     mine = os.path.join(os.environ['FAKE_PI_ROOT'], 'ready-' + task)
     open(mine, 'w').write('ready')
@@ -1501,6 +1505,30 @@ class EngineTests(Fixture):
             self.assertIsNone(runner.poll(), log())
             self.assertLess(time.monotonic(), deadline, log())
             time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
+    def test_a_worker_whose_task_the_owner_closes_on_main_is_stopped(self):
+        """TOOLSET-218-d0: the owner shipped two tasks on main while the session could not land;
+        their workers re-implemented finished work for 45 minutes."""
+        self.plan({'worker:A': ['long']})
+        runner = self.start_runner('--workers', '1', '--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A', timeout=60)
+        worker = int((self.root / 'busy-A').read_text())
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] A — Task A', '- [x] A — Task A'))
+        self.git(self.repo, 'commit', '-qam', 'the owner closes A on main')
+        deadline = time.monotonic() + 45
+        while 'A: done — closed on main' not in log():
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(worker, 0)
+        self.assertFalse(self.done('A'))  # stopped, not finished
+        self.assertTrue(any(b.startswith('autowork/A-set-aside-') for b in self.branches()), self.branches())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=120)
 

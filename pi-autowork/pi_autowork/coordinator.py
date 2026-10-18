@@ -181,6 +181,7 @@ class Coordinator:
         out.close()
         args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
                 '--integrate', task, '--timeout', str(self.review_limit(task)), '--reviewer-version', self.reviewer_version(),
+                '--base-ref', self.base,
                 '--run', '/bin/bash', self.process_script, '--verify', str(self.state), task]
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
@@ -984,6 +985,8 @@ class Coordinator:
             self.count_failure(task, result.get('cause'))
             if task == self.once_task:
                 self.draining = True
+        elif outcome == 'SET_ASIDE':  # closed on the base meanwhile (TOOLSET-218-d0)
+            self.note_state(task, 'closed', reason)
         elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
             if self.seen.get('busy-' + task) != reason:
                 if reason.startswith(('the repository writer lock', 'Repository execution lock')):
@@ -1592,8 +1595,11 @@ class Coordinator:
         elif not self.draining:
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
-                                 '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle))
+                                 '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
+                                 '--base-ref', self.base)
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
+            for task in result.get('closed_on_base') or []:
+                self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
         else:
             outcome = 'DRAINING'
         if outcome in ('DISPATCHED', 'RETRIED'):

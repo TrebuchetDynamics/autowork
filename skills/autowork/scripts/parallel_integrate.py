@@ -346,7 +346,7 @@ def release_unfinished(repo, common, owner_pid, task):
     return {'outcome': 'BUSY', 'task': task, 'reason': 'the repository writer lock stayed busy; integrating again later'}
 
 
-def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
+def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
     if not argv or timeout is None or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('--integrate requires --run argv and a positive finite --timeout')
     repo, common = context(repo, owner_pid)
@@ -357,6 +357,12 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
             slot = slot_for(common, task)
             if not slot or slot['state'] not in ('reported', 'integrating'):
                 raise ValueError('integration requires a reported or abandoned integrating slot')
+            if slot['state'] == 'reported' and task in dispatch.retired(repo, base):
+                # Closed meanwhile (TOOLSET-218-d0): a duplicate of finished work never lands.
+                with execution.lock(common / 'dispatch.lock'):
+                    aside = _retire(repo, common, dict(slot, cause='closed_on_base'), False)
+                state.event(common, 'closed_on_base', task_id=task, base=base or '')
+                return dict(aside, reason=f'{task} is closed on {base or "this branch"}; its commit is set aside')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
             reported = {s['task_id'] for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
             first = next((t for t in contracts if t in reported), None)
@@ -1103,6 +1109,44 @@ def retry_held(args):
             return {'outcome': 'RETRIED', 'task': task['id'], 'slot': slot}
 
 
+RETIRABLE = ('dispatched', 'running', 'interrupted', 'released', 'reported')
+
+
+def retire_closed(args):
+    """Stop and set aside the work of tasks closed meanwhile, here or on the base branch
+    (TOOLSET-218-d0): a live worker is stopped, and its slot keeps every commit under a
+    -set-aside-N name. With a review holding the integration lock, setting aside waits for a
+    later cycle; the stopped slot occupies nothing and never restarts meanwhile."""
+    repo = Path(args.consumer).resolve()
+    common = state.common_dir(repo)
+    base = getattr(args, 'base_ref', None)
+    with execution.lock(common / 'dispatch.lock'):
+        slots = [s for s in state.slots(common) if s['state'] in RETIRABLE]
+        if not slots:
+            return []
+        closed = dispatch.retired(repo, base)
+        doomed = [s for s in slots if s['task_id'] in closed]
+        for slot in doomed:
+            if state.worker_live(slot):
+                dispatch.stop(slot.get('worker'), slot.get('worktree'))
+        if not doomed:
+            return []
+        try:
+            with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
+                state.require_owner(common, args.owner_pid)
+                done = []
+                for slot in doomed:
+                    slot = slot_for(common, slot['task_id'])
+                    if slot is None or slot['state'] not in RETIRABLE or state.worker_live(slot):
+                        continue
+                    _retire(repo, common, dict(slot, cause='closed_on_base'), False)
+                    state.event(common, 'closed_on_base', task_id=slot['task_id'], base=base or '')
+                    done.append(slot['task_id'])
+                return done
+        except BlockingIOError:
+            return [s['task_id'] for s in doomed]  # stopped; set aside on a later cycle
+
+
 def dispatch_with_retries(args):
     # Original dispatch owns admission/claims and never imports this adapter.
     # Only try retries when this invocation already owns an existing lease.
@@ -1117,12 +1161,13 @@ def dispatch_with_retries(args):
                               max_workers=dispatch.capacity(args))
         if claimed['outcome'] != 'CLAIMED':
             return dispatch.dispatch(args)  # reports the BUSY owner as before
+    closed = retire_closed(args)
     try:
         result = retry_held(args)
     except BlockingIOError:
         # A review holds the integration lock (it runs beside the coordinator's loop,
         # TOOLSET-183-d6): held retries wait for it; independent fresh work still starts.
         result = {'outcome': 'IDLE'}
-    if result['outcome'] != 'IDLE':
-        return result
-    return dispatch.dispatch(args)
+    if result['outcome'] == 'IDLE':
+        result = dispatch.dispatch(args)
+    return dict(result, closed_on_base=closed) if closed else result

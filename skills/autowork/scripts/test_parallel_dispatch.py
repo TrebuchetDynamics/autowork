@@ -364,6 +364,62 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         _, freed = self.apply()
         self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
 
+    def close_on_base(self, *bodies):
+        """Commit ``bodies`` as TODO.md on a separate base branch, ``trunk``, the way an owner
+        closes tasks on main while the session's own ledger lags (TOOLSET-218-d0)."""
+        base = self.root / 'base'
+        if not base.exists():
+            self.git('worktree', 'add', '-q', '-b', 'trunk', str(base), 'HEAD')
+        (base / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
+        self.git('commit', '-qam', 'close on the base', repo=base)
+
+    def test_a_worker_whose_task_closes_on_the_base_is_stopped_and_set_aside(self):
+        self.set_spec({'A': {'files': {'a.txt': 'duplicate'}, 'sleep': 30},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 30}, 'D': {'files': {'a.txt': 'd'}, 'sleep': 30}})
+        _, first = self.apply('--base-ref', 'trunk')  # no trunk yet: the session's ledger alone
+        self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
+        worker = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        _, freed = self.apply('--base-ref', 'trunk')
+        self.assertEqual(freed['closed_on_base'], ['A'], freed)
+        self.assertFalse(state.worker_live(worker))
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
+        self.assertEqual(len(freed['dispatched']), 1, freed)  # the freed slot starts the next task at once
+        self.assertNotIn('A', [d['task'] for d in freed['dispatched']])
+        history = json.loads((self.common / 'slot-history' / 'A' / '1' / 'slot.json').read_text())
+        self.assertEqual(history['cause'], 'closed_on_base')
+        kept = self.repo / '.worktrees' / 'autowork-A-set-aside-1'
+        self.assertEqual((kept / 'a.txt').read_text(), 'duplicate')  # uncommitted work is kept
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
+        self.assertIn('B', [s['task_id'] for s in state.slots(self.common)])  # open on both: untouched
+
+    def test_a_task_closed_only_on_the_base_never_starts(self):
+        self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
+                           task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))
+        _, result = self.apply('4', '--base-ref', 'trunk')
+        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B', 'D'])
+        self.assertNotIn('E', [w['id'] for w in result['waiting']])
+
+    def test_an_unreadable_base_falls_back_to_the_session_ledger(self):
+        _, result = self.apply('--base-ref', 'no-such-branch')
+        self.assertEqual([d['task'] for d in result['dispatched']], ['A', 'B'])
+        self.assertNotIn('closed_on_base', result)
+
+    def test_a_reported_commit_of_a_task_closed_on_the_base_is_set_aside_not_integrated(self):
+        import parallel_integrate as integrate
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}})
+        self.apply('1')
+        self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'reported')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        result = integrate.integrate(self.repo, self.owner, 'A', ['false'], 60, None, 'trunk')
+        self.assertEqual(result['outcome'], 'SET_ASIDE', result)
+        self.assertIn('closed on trunk', result['reason'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.git('rev-parse', 'trunk~1'))  # nothing merged
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
+
     def test_a_worker_that_reports_a_blocker_is_held_for_a_person_not_resumed(self):
         """sierra TASK-022: a worker stopped on purpose with blockers, was read as a crash,
         resumed, and spent both attempts on the same wall."""

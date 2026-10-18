@@ -527,19 +527,51 @@ def fallback(repo, args, reason):
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
 
 
-def retired(repo):
+LEDGER_ARCHIVES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md')
+
+
+def retired(repo, base=None):
     """Task IDs closed since their slot stopped: done or superseded in goals.json, or
-    checked off in TODO.md or its archive. A held or interrupted slot of such a task is
+    checked off in TODO.md or its archive, here or on the ``base`` branch. A held or interrupted slot of such a task is
     history and occupies nothing; Plan For Me's supersession of a held second attempt
     otherwise left a must-run-alone successor waiting beside it for ever."""
     ids = set()
     if (repo / 'goals.json').is_file():
         ids.update(t['id'] for t in execution.task_ledger(repo).get('tasks', [])
                    if t.get('status') in ('done', 'superseded'))
-    for name in ('TODO.md', 'TODO.archive.md', 'todo.archive.md'):
+    for name in LEDGER_ARCHIVES:
         path = repo / name
         if path.is_file():
             ids.update(key for key, items in execution.task_bodies(path).items()
+                       if items and items[0][1].lower() == 'x')
+    return ids | (closed_on(repo, base) if base else set())
+
+
+def closed_on(repo, base):
+    """Task IDs closed on the ``base`` branch (TOOLSET-218-d0). A session's ledger takes the
+    base only when the session lands, so a task the owner closed there kept its worker for
+    as long as landing waited; an unreadable base adds nothing."""
+    goals, ids = execution.goals_module(), set()
+
+    def show(name):
+        try:
+            out = subprocess.run(['git', '-C', str(repo), 'show', f'{base}:{name}'],
+                                 capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            return None
+        return out.stdout if out.returncode == 0 else None
+
+    ledger = show('goals.json')
+    if ledger:
+        try:
+            ids.update(t['id'] for t in goals.parse_ledger(ledger).get('tasks', [])
+                       if t.get('status') in ('done', 'superseded'))
+        except (ValueError, AttributeError, TypeError, KeyError):
+            pass  # a malformed base ledger is the docs maintainer's; the session's still counts
+    for name in LEDGER_ARCHIVES:
+        text = show(name)
+        if text:
+            ids.update(key for key, items in goals.task_bodies(text.replace('\r\n', '\n')).items()
                        if items and items[0][1].lower() == 'x')
     return ids
 
@@ -663,9 +695,10 @@ def dispatch_locked(args, repo, common, count, template, host):
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
-    closed = retired(repo)
+    closed = retired(repo, getattr(args, 'base_ref', None))
+    candidates = [t for t in candidates if t['id'] not in closed]  # closed work never starts
     occupying = [s for s in current if s['state'] in OCCUPYING
-                 and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
+                 and not (s['state'] in ('held', 'interrupted', 'released', 'reported') and s['task_id'] in closed)]
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
     # A second failure gets no further attempt: it waits for a person, not the pool. A commit
     # held for overlap owns nothing while it waits either (integration agrees): it is offered
@@ -746,7 +779,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         state.require_owner(common, args.owner_pid)
         from parallel_status import pending_tasks
         pending_ids = {v['id'] for v in waiting}
-        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)})
+        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)} | closed)
                              if v['id'] not in pending_ids]
         state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,

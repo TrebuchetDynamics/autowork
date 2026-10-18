@@ -1135,14 +1135,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-218-d0",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker whose task closes on main stops at once, and a task closed on main never starts"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2622,6 +2614,14 @@
       "section": "Done",
       "status": "done",
       "title": "One stuck command cannot use up a worker's attempt: tool commands get their own time limit"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-218-d0",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker whose task closes on main stops at once, and a task closed on main never starts"
     },
     {
       "depends_on": [
