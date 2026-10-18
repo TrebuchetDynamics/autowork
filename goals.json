@@ -704,9 +704,6 @@
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
-      "TOOLSET-149-df",
-      "TOOLSET-150-71",
-      "TOOLSET-151-01",
       "TOOLSET-161-17",
       "TOOLSET-172-40",
       "TOOLSET-138-62",
@@ -762,6 +759,9 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
+      "TOOLSET-149-df",
+      "TOOLSET-150-71",
+      "TOOLSET-151-01",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d"
@@ -896,35 +896,6 @@
       "section": "Now",
       "status": "open",
       "title": "Merge pending names its real cause and clears a dirty integration worktree safely"
-    },
-    {
-      "depends_on": [],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-149-df",
-      "section": "Now",
-      "status": "open",
-      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-149-df"
-      ],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-150-71",
-      "section": "Now",
-      "status": "open",
-      "title": "Add a compact active-task index and evidence-preserving history"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-149-df",
-        "TOOLSET-150-71"
-      ],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-151-01",
-      "section": "Now",
-      "status": "open",
-      "title": "Deliver opt-in ledger conversion tools and offline qualification"
     },
     {
       "depends_on": [],
@@ -1325,6 +1296,35 @@
       "section": "Next",
       "status": "open",
       "title": "Choose repository models and connect Pi provider accounts in Autowork"
+    },
+    {
+      "depends_on": [],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-149-df",
+      "section": "Next",
+      "status": "open",
+      "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-149-df"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-150-71",
+      "section": "Next",
+      "status": "open",
+      "title": "Add a compact active-task index and evidence-preserving history"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-149-df",
+        "TOOLSET-150-71"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-151-01",
+      "section": "Next",
+      "status": "open",
+      "title": "Deliver opt-in ledger conversion tools and offline qualification"
     },
     {
       "depends_on": [],

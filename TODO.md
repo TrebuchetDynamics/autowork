@@ -229,63 +229,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Done by the owner session (2026-10-17, 14a7d11 and the commit after it): scope (1). `close`, `_close_writes` (both the indexed and the unindexed paths), `live_followup` and worktree cleanup pass the files a close writes, with a fixture that has goals.json; (3) needed no change. Still open: (2), the waiting reason naming the session and file.
 - Planner's call: second in Now, behind TOOLSET-165-f7, which changes the same writer check. Interactive sessions belong in the main checkout, so closeout must not depend on their absence.
 
-### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
-
-- [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
-- Status: open
-- Goal: BACKLOG
-- Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: Implement an explicitly versioned linked-body mode while retaining the complete v1 machine ledger/history. Add the common repository-aware reader and guarded writer; update planning skills, Docs Sync, TODO work-center/archive guidance, portable instructions, selection/admission, receipts, claims, scope protection, integration/closeout, Pi Touches inference, wakeup/planning-adoption inventories and packaged helper closure together. Legacy inline repositories remain supported and are never converted by loading a skill or rendering. Use docs/tasks/<ID>.md as the planned default detail path, with goal/history records under docs/tasks/; keep root TODO/index entrypoints unchanged.
-- Acceptance: In opted-in fixtures a planner saves one detail record and a short TODO row; Docs Sync synchronizes it; a selected worker receives the exact real contract path/closure; verification and closeout update the correct files. Legacy read/render remains byte-stable. Task-only edits invalidate relevant receipts and become visible to claim-age/wakeup/adoption checks; workers cannot modify their own contract through docs/tasks/. Traverse/symlink/duplicate/missing record cases hold safely. Unrecognized content under docs/tasks/ is never auto-staged as planning. Copied portable/Pi packages include the resolver. No implementation instruction silently migrates a repository.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_task_store.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Priority note (2026-10-17 13:40 monitor pass): moved below the short self-healing fixes. As a `Resources: exclusive` task it drains the pool when it is next: this repository's status showed `26 wait behind TOOLSET-149-df, which runs alone` with one worker busy. It still runs alone, as its author requires, once those land.
-- Dependencies: None.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No direct format change in fleet repositories (each converts later through its own runner), archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Owner decision (2026-10-17): this repository converts first, through the guarded writer this task adds; the DOCS-MAINTAINER worker (TOOLSET-164-f1) becomes the writer of `docs/tasks/` records.
-- Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
-- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
-
-### TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
-
-- [ ] TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
-- Status: open
-- Goal: BACKLOG
-- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: On the linked-store boundary add goals.json v2 with live task summaries, short goal summaries and exact terminal/goal evidence resolution through stable task/goal records. Make TODO coverage concise and root archive a catalogue for opted-in fixtures. Preserve status, supersession, membership, dependency, focus, met-proof and ID-reservation semantics. Retain full-history linked mode independently; do not delete historical records or replace the current repository's archive.
-- Acceptance: Full-history and active-only fixtures give identical eligible IDs/order, gates and required proof. An active successor can resolve an archived done prerequisite or met goal; superseded/missing/conflicting history cannot satisfy it. Historical IDs cannot be reused, even when absent from the root index. All receipt and goal evidence remains accessible without scanning rich history on ordinary listing. Closing many tasks grows cold records/catalogues, not the active root index or duplicated full-body coverage. Unknown formats and stale digests fail clearly.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_compact_ledger.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Dependencies: TOOLSET-149-df.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No direct format change in this repository or fleet, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Next action: Build the focused behavioral regressions on the delivered prerequisite boundary and implement only the named outcome.
-- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
-
-### TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
-
-- [ ] TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
-- Status: open
-- Goal: BACKLOG
-- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
-- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
-- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
-- Scope: Implement explicit, separately selectable body-relocation and compact-history migration commands, write-free previews, durable journal/recovery, resume and guarded rollback. Verify the full pipeline on disposable exact copies captured at execution and large synthetic history. Preserve original archive/ledger snapshots, all original bodies/evidence and stable links. After TOOLSET-149-df and TOOLSET-150-71 pass their required checks and review, perform the owner-authorized first guarded conversion of this repository through the supported tool. Other repositories/profiles remain excluded.
-- Acceptance: Preview writes nothing, including no transaction/cache files. Interruption at each publication boundary cannot admit a mixed snapshot; resume is idempotent, and rollback refuses newer foreign edits. Full ID/status/order/dependency/gate/contract/evidence conservation is demonstrated, original archive bytes remain intact in a verified legacy snapshot, and old anchors remain navigable. Incompatible active leases or installed consumers block conversion without stop/restart/repin. Fixture-based size targets in the plan pass or have explicit measured gaps; no fabricated token/latency improvement. The canonical repository remains schema 1 until the verified cutover; afterward demonstrate compact TODO/goals with conserved IDs, order, dependencies, contracts and history through real consumer checks.
-- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_ledger_migration.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
-- Dependencies: TOOLSET-149-df, TOOLSET-150-71.
-- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
-- Exclusions: No unsupported/manual format rewrite or fleet conversion, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
-- Next action: After both support prerequisites are delivered and reviewed, run the write-free preview against a fresh snapshot of this repository, exercise recovery/conservation, and perform its guarded local cutover only when active leases and consumers are compatible. Validate actual compact bytes and archive/contract parity. Do not stop or repin a live attempt to force conversion.
-- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
-
-
 ### TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
 
 - [ ] TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
@@ -1187,6 +1130,63 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Coordinator with that access; no active claim.
 - Current evidence: Exact original profile directory and original job ID are absent from this host's root and existing-profile job stores. No replacement job, profile or message was created.
 - Next action: Restore access to the original host/profile/job and its authorized Telegram route, then inspect the setup and scheduled delivery receipts.
+
+### TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+
+- [ ] TOOLSET-149-df — Teach planning and Docs Sync linked task storage with compatible consumers
+- Status: open
+- Goal: BACKLOG
+- Sources: [accepted docs maintainer plan, decision 6](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17: "we need that now"); Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: Implement an explicitly versioned linked-body mode while retaining the complete v1 machine ledger/history. Add the common repository-aware reader and guarded writer; update planning skills, Docs Sync, TODO work-center/archive guidance, portable instructions, selection/admission, receipts, claims, scope protection, integration/closeout, Pi Touches inference, wakeup/planning-adoption inventories and packaged helper closure together. Legacy inline repositories remain supported and are never converted by loading a skill or rendering. Use docs/tasks/<ID>.md as the planned default detail path, with goal/history records under docs/tasks/; keep root TODO/index entrypoints unchanged.
+- Acceptance: In opted-in fixtures a planner saves one detail record and a short TODO row; Docs Sync synchronizes it; a selected worker receives the exact real contract path/closure; verification and closeout update the correct files. Legacy read/render remains byte-stable. Task-only edits invalidate relevant receipts and become visible to claim-age/wakeup/adoption checks; workers cannot modify their own contract through docs/tasks/. Traverse/symlink/duplicate/missing record cases hold safely. Unrecognized content under docs/tasks/ is never auto-staged as planning. Copied portable/Pi packages include the resolver. No implementation instruction silently migrates a repository.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_task_store.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Priority note (2026-10-17 13:40 monitor pass): moved below the short self-healing fixes. As a `Resources: exclusive` task it drains the pool when it is next: this repository's status showed `26 wait behind TOOLSET-149-df, which runs alone` with one worker busy. It still runs alone, as its author requires, once those land.
+- Dependencies: None.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No direct format change in fleet repositories (each converts later through its own runner), archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Owner decision (2026-10-17): this repository converts first, through the guarded writer this task adds; the DOCS-MAINTAINER worker (TOOLSET-164-f1) becomes the writer of `docs/tasks/` records.
+- Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
+- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
+
+
+### TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
+
+- [ ] TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
+- Status: open
+- Goal: BACKLOG
+- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: On the linked-store boundary add goals.json v2 with live task summaries, short goal summaries and exact terminal/goal evidence resolution through stable task/goal records. Make TODO coverage concise and root archive a catalogue for opted-in fixtures. Preserve status, supersession, membership, dependency, focus, met-proof and ID-reservation semantics. Retain full-history linked mode independently; do not delete historical records or replace the current repository's archive.
+- Acceptance: Full-history and active-only fixtures give identical eligible IDs/order, gates and required proof. An active successor can resolve an archived done prerequisite or met goal; superseded/missing/conflicting history cannot satisfy it. Historical IDs cannot be reused, even when absent from the root index. All receipt and goal evidence remains accessible without scanning rich history on ordinary listing. Closing many tasks grows cold records/catalogues, not the active root index or duplicated full-body coverage. Unknown formats and stale digests fail clearly.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_compact_ledger.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Dependencies: TOOLSET-149-df.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No direct format change in this repository or fleet, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Next action: Build the focused behavioral regressions on the delivered prerequisite boundary and implement only the named outcome.
+- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
+
+
+### TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
+
+- [ ] TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
+- Status: open
+- Goal: BACKLOG
+- Sources: Owner's ledger-size planning request and explicit no-direct-conversion clarification; [compact task ledger](docs/plans/compact-task-ledger.md#compact-task-ledger).
+- Touches: skills/docs-sync/, skills/autowork/, skills/shared/, skills/plan-for-me/, skills/plan-with-me/, adapters/, pi-autowork/, tests/, package.json, README.md, docs/
+- Resources: exclusive — coordinated ledger-schema, consumer and packaged-skill changes require one integration owner.
+- Scope: Implement explicit, separately selectable body-relocation and compact-history migration commands, write-free previews, durable journal/recovery, resume and guarded rollback. Verify the full pipeline on disposable exact copies captured at execution and large synthetic history. Preserve original archive/ledger snapshots, all original bodies/evidence and stable links. After TOOLSET-149-df and TOOLSET-150-71 pass their required checks and review, perform the owner-authorized first guarded conversion of this repository through the supported tool. Other repositories/profiles remain excluded.
+- Acceptance: Preview writes nothing, including no transaction/cache files. Interruption at each publication boundary cannot admit a mixed snapshot; resume is idempotent, and rollback refuses newer foreign edits. Full ID/status/order/dependency/gate/contract/evidence conservation is demonstrated, original archive bytes remain intact in a verified legacy snapshot, and old anchors remain navigable. Incompatible active leases or installed consumers block conversion without stop/restart/repin. Fixture-based size targets in the plan pass or have explicit measured gaps; no fabricated token/latency improvement. The canonical repository remains schema 1 until the verified cutover; afterward demonstrate compact TODO/goals with conserved IDs, order, dependencies, contracts and history through real consumer checks.
+- Checks: Planned after implementation: `python3 -m unittest discover -s skills/docs-sync/scripts -p test_ledger_migration.py`; `python3 scripts/check.py`; `node --test tests/portable_pi.test.mjs`. Add the named focused module or an equivalent explicit focused selector and exercise the composed cases in the plan; these proposed tests have not run.
+- Dependencies: TOOLSET-149-df, TOOLSET-150-71.
+- Ownership: Autowork's assigned isolated implementation worker with coordinator-owned metadata and mandatory independent review/canonical delivery; no historical active claim is a new lease.
+- Exclusions: No unsupported/manual format rewrite or fleet conversion, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
+- Next action: After both support prerequisites are delivered and reviewed, run the write-free preview against a fresh snapshot of this repository, exercise recovery/conservation, and perform its guarded local cutover only when active leases and consumers are compatible. Validate actual compact bytes and archive/contract parity. Do not stop or repin a live attempt to force conversion.
+- Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
+
+
 
 ## Needs decision
 
