@@ -1456,6 +1456,25 @@ def main():
         execute(a)
 
 
+def touches_errors(repo, data):
+    """Open tasks whose `Touches:` is not a list of paths (TOOLSET-213-45): prose or a note ran
+    into it, and the engine would hold the worker's own files as outside Touches."""
+    text = checked_bytes(Path(repo) / 'TODO.md')
+    if text is None:
+        return []
+    bodies = task_bodies(text.decode('utf-8'))
+    found = []
+    for task in data.get('tasks') or []:
+        if task.get('status') in ('done', 'superseded') or not bodies.get(task['id']):
+            continue
+        value = task_fields(bodies[task['id']][0][0]).get('Touches') or ''
+        value = re.split(r'\n(?:[ \t]*[-*][ \t]|[ \t]*#|[ \t]*\n)', value, maxsplit=1)[0]
+        bad = next((p.strip() for p in value.split(',') if '\n' in p.strip() or p.strip().count(' ') >= 3), None)
+        if bad:
+            found.append(f'{task["id"]}: Touches is not a list of paths: {" ".join(bad.split())[:80]}')
+    return found
+
+
 def execute(a):
     if a.cmd == 'init':
         initialize(a); return
@@ -1486,7 +1505,7 @@ def execute(a):
         dump(a.repo, data); print(f'ok focus -> {a.goal}'); return
 
     if a.cmd == 'validate':
-        errs = errors(data)
+        errs = errors(data) + touches_errors(a.repo, data)
         print('\n'.join(errs) if errs else 'ok')
         sys.exit(1 if errs else 0)
     if a.cmd == 'fmt':

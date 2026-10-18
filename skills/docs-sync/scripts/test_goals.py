@@ -86,6 +86,19 @@ class InitializationTests(unittest.TestCase):
             self.assertEqual(run(cmd, str(self.repo)).returncode, 0)
         self.assertEqual(self.snapshot(), first)
 
+    def test_validate_reports_a_touches_value_that_is_not_a_list_of_paths(self):
+        """TOOLSET-213-45: prose in Touches made the engine hold a worker's own files."""
+        body = self.body.replace('  Ownership: fixture owner\n',
+                                 '  Ownership: fixture owner\n  Touches: src/a.py, which the worker adjusted while merging\n')
+        self.input_todo.write_text(body)
+        self.assertEqual(self.init('--todo-file', str(self.input_todo)).returncode, 0)
+        result = run('validate', str(self.repo))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('T1: Touches is not a list of paths: which the worker adjusted while merging', result.stdout)
+        fixed = (self.repo / 'TODO.md').read_text().replace(', which the worker adjusted while merging', '')
+        (self.repo / 'TODO.md').write_text(fixed)
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+
     def test_documented_initialization_commands_on_empty_and_todo_only_git_consumers(self):
         source_root = SCRIPT.resolve().parents[3]
         scaffold = source_root / 'skills/docs-sync/references/document-scaffold.md'

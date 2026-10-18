@@ -719,7 +719,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-213-45",
+      "TOOLSET-161-17",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -732,7 +732,6 @@
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
-      "TOOLSET-161-17",
       "TOOLSET-172-40",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
@@ -1112,14 +1111,6 @@
       "section": "Now",
       "status": "open",
       "title": "Each worker gets a disk-backed scratch folder that is removed when its task retires"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-213-45",
-      "section": "Now",
-      "status": "open",
-      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
     },
     {
       "depends_on": [],
@@ -2578,6 +2569,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-213-45",
+      "section": "Done",
+      "status": "done",
+      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
     },
     {
       "depends_on": [

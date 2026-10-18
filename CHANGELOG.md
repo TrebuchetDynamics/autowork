@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/plan_with_me` opens with a short playback (what you want, what it builds on, the draft tasks) and one
+  question about what the request leaves open; it never asks to confirm what the request already says, a
+  choice carries its recommendation first, and the offer to skip the questions comes last instead of first.
 - `/blockers` reports for the owner: a first-line verdict that agrees with what the runner shows, then
   one plain line per task in three groups (needs you, the runner handles it, waits on other work), without
   commit hashes or internal terms. It resolves each runner question in a form the runner recognizes, so a
