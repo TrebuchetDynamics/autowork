@@ -4,8 +4,79 @@ Evidence supplement, not an accepted replacement plan or a passing check. The
 [existing task](../../TODO.md#toolset-184-b3--restore-the-full-offline-check-after-the-red-main-at-36e2b7c)
 retains every Acceptance item, dependency, status and priority. Its accepted source
 remains [the continuous runner](../project.md#continuous-pi-runner-2026-10-15).
-No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-151718f);
+No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-6c8f9a5);
 earlier receipt sections below retain their original revision-bound observations.
+
+## Current MAIN receipt at 6c8f9a5
+
+The supplied MAIN trigger matches the inspected runner's `main_check.json`:
+red `6c8f9a56674146ba33b1c99a3df4f810b4753b5f`, green
+`2e755cb1349c273c5b9885f267da00305bf47514`, and one ERROR identity:
+`test_pi_autowork.EngineTests.test_a_waiting_runner_sees_tasks_committed_to_main_later`.
+`main-check.exit` is 1; the completed `main-check.log` ends
+`Offline result: 4 test directories passed; 1 failed; 8 modules excluded.`
+These are retained runner results, not tests repeated by this documentation pass.
+
+The traceback is at `tests/test_pi_autowork.py:882`: the disposable fixture's
+`git commit -qam unblock` exits 128. It has already seen `No task can start now`
+and restored runnable planning text on main, but has not reached the loop asserting
+that A dispatches. The fixture's `git` helper captures stdout/stderr; the retained
+traceback does not print either. Do not infer an index-lock race, missing tasks or
+a dispatch regression from this exit code alone. Reproduce with those diagnostics
+and runner state retained, then correct the demonstrated fixture/runtime cause
+without weakening the later-main-dispatch or stop assertions or adding timeout
+increases. The current `follow_base` path can commit planning changes while idle;
+that is an inspection lead, not proof it caused the failed fixture commit.
+
+### Reported commits and bounded paths
+
+The supplied ten-entry window is:
+
+```text
+6c8f9a5 docs(tasks): reconcile TOOLSET-184-b3 with current MAIN failures
+c1e7f56 docs(blockers): questions for the owner (pi-autowork)
+151718f Merge main into pi-autowork/20261017-134358
+1b7d212 docs(tasks): close TOOLSET-140-f4 (pi-autowork)
+21fbd1e docs(tasks): plan the engine graph review, TOOLSET-200-c1, 201-5e, 202-9a
+91de6b9 fix(pi): never reuse a failed status read
+35fb7e4 docs(tasks): close TOOLSET-198-8f
+8ba53fe Merge remote-tracking branch 'up/localmain' into wip/heldby
+3885dbd fix(pi): a claim answered with its holder is not asked again
+52e0d45 perf(pi): reuse the engine status snapshot within a cycle step
+```
+
+`git show -m --name-only` corroborates runtime/test changes in
+`pi-autowork/pi_autowork/{coordinator,questions,worker}.py`,
+`pi-autowork/tests/test_{status_cache,questions,worker_tmp}.py`,
+`tests/test_pi_autowork.py`, and `skills/autowork/scripts/`'s parallel integrate,
+state and dispatch modules and tests. These all fit the existing Touches. The
+window also changes planning files, CHANGELOG.md, the parallel-workers reference
+and `skills/blockers/SKILL.md`; their presence is not evidence to expand runtime
+repair scope or change the blockers skill. This reported history is not causal
+attribution. The older integration failures remain regression requirements, not
+the current run's failure list. Retain the unchanged full `python3 scripts/check.py`
+gate and all supplied-scratch restrictions; the focused waiting-runner command
+in TODO.md supplements rather than replaces them.
+
+### Continuation and review boundary
+
+No `slot-data/MAIN/` or `slot-data/TOOLSET-184-b3/` report exists at inspection.
+The latest retained report is still history index 3: no commit, no changed files,
+no test run, and a scratch prerequisite failure predating integrated TOOLSET-140-f4.
+History index 2's set-aside checkout still contains 17 modified and two untracked
+files; index 3's checkout remains clean. Preserve that continuation and verify the
+actual supplied worker/reviewer scratch before qualification. Do not replay stale
+candidate bytes or reset attempts. Every prior review finding (socket paths,
+worktree cleanup and tx), budget requirement, Acceptance item, dependency and queue
+position remains binding. This is a same-task evidence/Checks/next-action repair,
+not a new task, product decision, execution authorization or passing gate.
+
+| Inspected receipt | SHA-256 |
+| --- | --- |
+| `main_check.json` | `5e61477ee28f8c6b57df8a9a0eaea19d1a86bbc5b80e61f7069097f62278c266` |
+| `main-check.log` | `69344c63c4b720810b24227fe4d01ef6508b97727713bcad783b9cfad7a66f62` |
+| `main-check.exit` | `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865` |
+| `slot-history/TOOLSET-184-b3/3/slot-data/attempt-1/report.json` | `0f24b08d4da76d062f0141dac65abd9e40ccf9f0fd044701759efd8c9942a4ab` |
 
 ## MAIN receipt at e5de1b4
 
