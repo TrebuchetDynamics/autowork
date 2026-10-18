@@ -1046,7 +1046,7 @@ class Coordinator:
         """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once
         per main revision, when the host has room and nothing is being verified (TOOLSET-176-98).
         A red result gives the DOCS-MAINTAINER a trigger to add one repair task."""
-        cmd = main_check.command()
+        cmd = main_check.command(repo=self.repo)
         if not cmd or self.stop:
             return
         record = main_check.read(self.state)
@@ -1407,6 +1407,9 @@ class Coordinator:
         try:
             old = path.read_text() if path.exists() else None
             found = questions.build(snapshot, (Path(self.integ) / 'TODO.md').read_text(), goals)
+            if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
+                # TOOLSET-180-72: nothing guards the suite
+                found.append(questions.full_check_question())
             new = questions.update(old, found)
         except (OSError, ValueError):
             return

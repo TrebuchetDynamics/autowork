@@ -309,6 +309,7 @@ class Fixture(unittest.TestCase):
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
+        self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
         self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
         # nothing and these runner scenarios fail for the wrong reason. As the engine's own
@@ -822,6 +823,31 @@ class EngineTests(Fixture):
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # same attempt
         logs = ''.join(p.read_text(errors='replace') for p in self.repo.glob('.git/autowork-execution/slot-data/A/*/worker.log'))
         self.assertIn('stopped a command that ran 0 min (limit 0 min): sleep 60', logs)
+
+    def test_a_candidate_that_breaks_a_test_outside_its_checks_is_held_with_that_test_named(self):
+        """TOOLSET-180-72: a reviewer-approved commit landed while breaking 44 tests its own checks
+        never ran."""
+        self.env['PI_AUTOWORK_VALIDATE'] = ('if grep -q done A.txt; then echo "FAIL: test_x (other.T.test_x)"; '
+                                            'exit 1; fi')
+        result = self.run_runner('--until-empty')
+        self.assertFalse(self.done('A'), result.stdout)
+        self.assertIn('the full check has new failures the base does not: other.T.test_x', result.stdout)
+        self.assertTrue(self.done('B'), result.stdout)  # independent work still lands
+        retry = list(self.repo.glob('.git/autowork-execution/slot-data/A/attempt-2/prompt.md'))
+        self.assertTrue(retry and 'other.T.test_x' in retry[0].read_text(), result.stdout)  # the retry is told
+
+    def test_a_repository_without_a_full_check_gets_one_question(self):
+        self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '1'
+        self.run_runner('--until-empty')
+        text = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertEqual(text.count('### Q-FULL-CHECK '), 1)
+        self.assertIn('`Full check: <command>`', text)
+
+    def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
+        self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'
+        result = self.run_runner('--until-empty')
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertTrue(list(self.state.glob('*/full-check/base-*.json')))  # the base result is cached
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})

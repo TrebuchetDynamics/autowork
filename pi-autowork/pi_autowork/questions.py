@@ -131,6 +131,16 @@ def build(snapshot, todo, goals):
     return sorted(found.values(), key=lambda q: (order[q['effort']], -q['unblocks'], q['id']))
 
 
+def full_check_question():
+    """One question for a repository that declares no full check (TOOLSET-180-72)."""
+    return dict(id='FULL-CHECK', type='USER_INPUT', effort='input', unblocks=0, kind='full_check',
+                task='the repository\'s whole offline test suite',
+                needs='no full-suite gate: a commit can land while breaking tests its own task never ran, '
+                      'and main is never checked',
+                answer='Add one line to AGENTS.md, `Full check: <command>` (the command that runs the whole '
+                       'offline suite), or set PI_AUTOWORK_VALIDATE in the runner\'s settings.')
+
+
 def previous_since(text):
     """{question id: Since} from an existing block, so a question keeps its first time."""
     block = block_of(text)

@@ -179,6 +179,18 @@ def passed(check):
         and receipt.get('inputs_match') is True)
 
 
+def validation_reason(check):
+    """': <why>' from the validation's own `AUTOWORK_HOLD_REASON: <why>` line, or '' (TOOLSET-180-72:
+    a retry, a person and the DOCS-MAINTAINER see which tests the candidate broke)."""
+    try:
+        text = Path(((check or {}).get('command_receipt') or {}).get('log') or '').read_text(errors='replace')
+    except (OSError, TypeError):
+        return ''
+    found = [line[len('AUTOWORK_HOLD_REASON: '):].strip() for line in text.splitlines()
+             if line.startswith('AUTOWORK_HOLD_REASON: ')]
+    return (': ' + found[-1][:600]) if found and found[-1] else ''
+
+
 def report_matches(repo, common, slot):
     report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
     if not isinstance(report, dict):
@@ -412,7 +424,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                                           f"{receipt.get('elapsed_seconds') or 0:.0f}s (limit {timeout:g}s)")
                 if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
-                    raise Hold('validation', 'integration validation failed or changed the integration tree')
+                    raise Hold('validation', 'integration validation failed or changed the integration tree'
+                               + validation_reason(check))
                 with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                     state.require_owner(common, owner_pid)
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.

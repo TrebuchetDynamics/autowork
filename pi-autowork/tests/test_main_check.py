@@ -26,6 +26,19 @@ class MainCheckTests(unittest.TestCase):
                                                      'test_ui_taste_bundle.UiTasteBundleTests.test_bundle',
                                                      'test_other.OtherTests.test_fixed', '/repo/tests (timed out)'])
 
+    def test_the_full_check_comes_from_validate_or_agents_md(self):
+        """TOOLSET-180-72: the repository declares its whole offline suite once."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(main_check.full_check(root, {}), '')
+            Path(root, 'AGENTS.md').write_text('# Rules\n\n- Full check: `python3 scripts/check.py`\n')
+            self.assertEqual(main_check.full_check(root, {}), 'python3 scripts/check.py')
+            self.assertEqual(main_check.full_check(root, {'PI_AUTOWORK_VALIDATE': 'make test'}), 'make test')
+            self.assertEqual(main_check.command({}, root), 'python3 scripts/check.py')  # main check falls back
+            self.assertEqual(main_check.command({'PI_AUTOWORK_MAIN_CHECK': 'x'}, root), 'x')
+        self.assertEqual(main_check.failures('FAILED tests/test_a.py::test_b - x\n    --- FAIL: TestC (0.1s)\n'),
+                         ['tests/test_a.py::test_b', 'TestC'])
+
     def test_reruns_are_alone_in_their_directory_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

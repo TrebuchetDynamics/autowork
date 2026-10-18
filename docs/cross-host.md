@@ -272,6 +272,14 @@ A running review's answer is consumed first. Existing workers and other children
 keep their old release until they exit; only newly started children use the new one.
 An update whose script does not parse is logged and the running code kept. Update
 frequency and the fleet checkpoint wait are unchanged.
+Every candidate's merged tree runs the repository's full offline check before the Pi
+review (TOOLSET-180-72): `PI_AUTOWORK_VALIDATE`, else a `Full check: <command>` line in its
+AGENTS.md (`PI_AUTOWORK_VALIDATE_TIMEOUT`, default 3600 s). Only tests the base revision does
+not already fail reject it (the base result is computed once per revision and cached), and a
+test that passes when rerun alone counts as flaky. The rejection names the new failures, and the
+retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
+unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
+
 `Touches:` only schedules work (TOOLSET-161-17): tasks whose declared files overlap are
 dispatched after independent ones, never held, and a worker may change whatever its task
 needs. Finished work integrates one task at a time in priority order; the merge settles
