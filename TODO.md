@@ -36,6 +36,11 @@ accepted phases, ownership and live qualification boundary; do not change an act
 worker's assigned contract. Review the archive-shipping, safe-update and Pi
 settlement/cancellation checks when refining that existing design.
 
+MAIN repair remains with TOOLSET-184-b3, already first in Now. The
+[MAIN receipt at 3bd1d95](TODO.archive.md#main-receipt-at-3bd1d95)
+adds the latest failure inventory and commit evidence without rewriting its live
+worker's pinned contract or opening a competing repair task.
+
 ## Now
 
 ### TOOLSET-184-b3 — Restore the full offline check after the red main at 36e2b7c

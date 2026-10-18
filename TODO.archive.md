@@ -2752,3 +2752,105 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to how the jobs run; making them asynchronous is separate.
 - Planner's call: report the job rather than make the jobs asynchronous now: the jobs are short and rare, and the false `not cycling` is the user-visible problem.
+
+## MAIN receipt at 3bd1d95
+
+Evidence supplement for TOOLSET-184-b3, not completion or a new executable task.
+The existing repair remains first in Now with its original Scope, Acceptance,
+Checks, Touches, Dependencies and Ownership unchanged. Its attempt-1 worker was
+still running when inspected: the recorded process birth identity and worktree
+matched the live process, and no terminal `report.json` existed. There is no
+`slot-data/MAIN/` worker report. Do not replace the active worker or repin its inputs.
+
+### Receipt binding and coverage
+
+The runner's retained `main_check.json` records red revision
+`3bd1d95a3bc6e7ba44c68109d67220da928388df`, `green: null`, and
+`red_since: 36e2b7c0ea0c6096a7b20197edcacf68dc11dfa4`.
+Its `main-check.exit` is `1`. The completed `main-check.log` lists 131 offline
+modules in five directories and ends:
+
+```text
+Offline result: 2 test directories passed; 3 failed; 8 modules excluded.
+```
+
+The 16 distinct ERROR identities in the full log exactly match the 16 names in
+this receipt. These are reported results, not tests repeated by this docs pass.
+Receipt SHA-256 bindings (files under the existing private runner-state directory):
+
+- `main_check.json`: `a39452955a1c16356aa7a955988704f0278f75abf8354e633bf66d98dfc67e55`
+- `main-check.log`: `7bfb94086d445bdd1fe2048d7d459d05342a79d83b7bb2c017a3268d6d0eaf46`
+- `main-check.exit`: `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865`
+
+Latest error inventory, retaining full unittest identities:
+
+- `test_pi_autowork.EngineTests.test_merged_work_is_pushed_to_main_upstream`
+- `test_pi_autowork.EngineTests.test_a_backlog_left_unpushed_is_published_at_start`
+- `test_pi_autowork.EngineTests.test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`
+- `test_pi_autowork.EngineTests.test_a_rejected_push_merges_the_upstream_and_pushes_again`
+- `test_pi_autowork.SetupTests.test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code`
+- `test_pi_autowork.SetupTests.test_a_release_that_cannot_read_current_state_is_never_installed`
+- `test_pi_autowork.SetupTests.test_a_broken_toolset_update_keeps_the_running_code`
+- `test_publication_readiness.PublicationReadinessTests.test_ancestry_conflict_never_becomes_force_push_readiness`
+- `test_publication_readiness.PublicationReadinessTests.test_multiple_remotes_are_resolved_by_bound_authority_not_origin_guess`
+- `test_publishable.PublishableTests.test_a_pointer_to_a_local_only_commit_stays_out_until_it_is_pushed`
+- `test_publishable.PublishableTests.test_an_untracked_nested_repository_is_not_added`
+- `test_publishable.PublishableTests.test_ordinary_files_are_unchanged`
+- `test_release.ReleaseCheckTests.test_a_compatible_release_may_be_installed`
+- `test_release.ReleaseCheckTests.test_a_release_that_cannot_read_this_state_is_refused`
+- `test_release.ReleaseCheckTests.test_another_runner_with_work_in_flight_defers_the_update`
+- `test_release.ReleaseCheckTests.test_fetched_declarations_are_parsed_never_executed`
+
+### Reconciliation with the assigned repair
+
+Fourteen identities were already named in TOOLSET-184-b3. The two additional
+EngineTests, `test_a_backlog_left_unpushed_is_published_at_start` and
+`test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`, were added
+by `ef85685`; both stop in the same `EngineTests.origin` fixture's initial local
+Git push as the existing push cases. They are covered by the repair's existing
+`tests/test_pi_autowork.py` scope and full-suite gate, not a separate product task.
+The other fourteen previously recorded identities are absent from this latest error
+inventory; their absence does not remove any original acceptance or required check.
+
+All 16 tracebacks stop at disposable-repository Git pushes with exit 128, before
+exercising the behavior their assertions would qualify. The publication-readiness
+cases also print `fatal: transport 'pi-autowork-push-disabled' not allowed`.
+This supports investigating the existing fixture-environment seam; it is not a
+verified common cause or permission to disable the production worker push guard.
+
+The latest receipt's reported history window is `3bd1d95`, `b5b4944`, `ef85685`,
+`36e2b7c`, `7b77f3d`, `99813f9`, `ce43743`, `d9e39b4`, `db2e4ba`, `69937f0`,
+`0749177`, `b40d85f`, `2f27806`, `e22cee9`, `605a302`, `1515af8`, `2e415c4`,
+`a01e061`, `6aacc26`, `6fee26e`. With no recorded green revision, this is not a
+proven since-green range or attribution of fault. Relevant file evidence from
+those commits and failing fixtures:
+
+- `3bd1d95`: `scripts/check.py`, `tests/test_check.py`, `tests/test_pi_autowork.py`;
+  changes default test concurrency and filters inherited runner settings. It does
+  not establish that the remaining Git-fixture errors are fixed.
+- `ef85685`: `pi-autowork/pi_autowork/coordinator.py`,
+  `pi-autowork/pi_autowork/maintainer.py`, `tests/test_pi_autowork.py`; includes
+  the two additional EngineTests and upstream synchronization behavior.
+- `36e2b7c`: `scripts/check.py`, `tests/test_check.py`; parallel checker/sharding.
+- `7b77f3d`: `pi-autowork/pi_autowork/coordinator.py`,
+  `skills/autowork/scripts/parallel_integrate.py`, `tests/test_pi_autowork.py`.
+- Failing fixture owners also include
+  `skills/autowork/scripts/test_publication_readiness.py`,
+  `pi-autowork/tests/test_publishable.py` and `pi-autowork/tests/test_release.py`.
+  All these files already fall within TOOLSET-184-b3's declared Touches; no widening
+  or dependency change is needed for this receipt.
+
+Reuse the existing repair, not a duplicate of it or of the completed detection
+work in TOOLSET-176-98. Its accepted source remains
+[Continuous Pi runner](docs/project.md#continuous-pi-runner-2026-10-15).
+The required full check remains the task's existing command, planned here rather
+than executed by this documentation-only pass:
+
+```sh
+tmp=$(mktemp -d /tmp/aw-XXXXXX) && (trap 'rm -rf "$tmp"' EXIT; export TMPDIR="$tmp"; python3 scripts/check.py)
+```
+
+Next action remains with the assigned repair worker: diagnose and repair the
+fixture boundary, retain every original failing case and assertion, and run the
+full gate. No live provider, publication, fleet qualification or repair completion
+is inferred from this supplemental receipt.
