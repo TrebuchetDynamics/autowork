@@ -61,6 +61,22 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(found[2]['task'], 'T-1 — Port the tuner')
         self.assertEqual(found[2]['needs'], 'worker reported a blocker: needs src/x.py outside Touches')
 
+    def test_a_claim_answered_with_its_holder_is_not_asked_again(self):
+        """TOOLSET-198-8f: the owner noted who holds a claimed task, as the question asks, and the
+        runner kept asking: /blockers said 0 questions, the TUI said 2."""
+        from datetime import date, timedelta
+        def todo_with(line):
+            return TODO.replace('  Status: in_progress\n', f'  Status: in_progress\n  {line}\n')
+        tomorrow, yesterday = date.today() + timedelta(days=1), date.today() - timedelta(days=1)
+        ids = lambda text: [q['id'] for q in questions.build(snapshot(), text, goals)]
+        self.assertNotIn('T-2', ids(todo_with(f'Held by: an isolated continuation; until {tomorrow}')))
+        self.assertNotIn('T-2', ids(todo_with('Held by: the release owner')))  # no date: until removed
+        expired = next(q for q in questions.build(snapshot(), todo_with(f'Held by: a continuation; until {yesterday}'),
+                                                  goals) if q['id'] == 'T-2')
+        self.assertIn(f'The recorded answer (Held by: a continuation; until {yesterday}) has expired', expired['needs'])
+        plain = next(q for q in questions.build(snapshot(), TODO, goals) if q['id'] == 'T-2')
+        self.assertIn('`Held by: <who>; until <YYYY-MM-DD>`', plain['answer'])
+
     def test_the_block_sits_under_active_and_nothing_else_changes(self):
         text = questions.update(OWNER, questions.build(snapshot(), TODO, goals), now=NOW)
         start, end = text.index(questions.START), text.index(questions.END) + len(questions.END)

@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.5
+  version: 0.1.6
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -164,7 +164,9 @@ or launch a repair during the interview.
   ownership prose, keeping acceptance, dependencies, candidate references, partial
   delivery evidence and pending checks; check the TODO body and the index agree.
   Successors are not unlocked by this: they still need the task's acceptance. A live
-  claim stays with its current worker.
+  claim stays with its current worker; record that answer as one line in the entry,
+  `Held by: <who or what>; until <YYYY-MM-DD>`, which ends the runner's claim question
+  until that date. An entry with a current `Held by:` line is answered, not open.
 - Retirement without completion: keep the original contract in append-only history
   and use the repository's non-executable cancellation form. With no cancelled state
   in the index, use open/`Needs decision` with an explicit CANCELLED gate, never
