@@ -724,7 +724,9 @@
         "TOOLSET-223-8e",
         "TOOLSET-224-07",
         "TOOLSET-225-75",
-        "TOOLSET-226-d3"
+        "TOOLSET-226-d3",
+        "TOOLSET-227-a8",
+        "TOOLSET-228-0c"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1198,6 +1200,22 @@
       "section": "Now",
       "status": "open",
       "title": "Dispatch pauses while finished commits wait to merge, and resumes when the queue drains"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-227-a8",
+      "section": "Now",
+      "status": "open",
+      "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-228-0c",
+      "section": "Now",
+      "status": "open",
+      "title": "Full checks from every runner on the host share a few check slots"
     },
     {
       "depends_on": [],
