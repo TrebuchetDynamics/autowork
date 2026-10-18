@@ -224,6 +224,28 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('workers paused', self.aw('restart', 'india').stdout)
         self.assertIn('systemctl --user restart pi-autowork@india.service', self.calls())
 
+    def test_a_runner_rewriting_its_record_is_reloaded_not_restarted(self):
+        """TOOLSET-191-0a: restarting a runner that was re-executing found no record and
+        restarted the unit, pausing its worker."""
+        self.aw('start', str(self.repo))
+        record = self.running()
+        record.unlink()  # removed by the re-executing runner; written again two seconds later
+        writer = subprocess.Popen(['sh', '-c', 'sleep 2; printf %s "$1" > "$2"', 'sh',
+                                   json.dumps({'pid': 4242, 'started': 'now', 'repo': str(self.repo), 'reloads': 1}),
+                                   str(record)])
+        result = self.aw('restart', 'india')
+        writer.wait()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Reloaded pi-autowork@india.service; 2 worker(s) kept running.', result.stdout)
+        self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
+
+    def test_a_runner_that_never_writes_its_record_is_restarted(self):
+        self.aw('start', str(self.repo))
+        self.running().unlink()
+        self.env['PI_AUTOWORK_RECORD_WAIT'] = '1'
+        self.assertIn('workers paused', self.aw('restart', 'india').stdout)
+        self.assertIn('systemctl --user restart pi-autowork@india.service', self.calls())
+
     def test_model_is_chosen_per_service_from_pis_list(self):
         self.assertEqual(self.aw('models').stdout.split(),
                          ['openai-codex/gpt-6-luna', 'openai-codex/gpt-6.1-sol', 'openrouter/deepseek/deepseek-v4.1-flash'])
