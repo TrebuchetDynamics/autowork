@@ -944,7 +944,11 @@ class Coordinator:
                 self.draining = True
         elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
             if self.seen.get('busy-' + task) != reason:
-                LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
+                if reason.startswith(('the repository writer lock', 'Repository execution lock')):
+                    # This runner's own engine steps held it (TOOLSET-194-46): not another session.
+                    LOG.say(f'{task}: integrating again shortly; {reason}')
+                else:
+                    LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
             self.seen['busy-' + task] = reason
         elif 'highest-priority' not in reason:  # another reported task goes first
             LOG.say(f'{task}: integration needs attention: {reason or outcome}')
@@ -1012,7 +1016,7 @@ class Coordinator:
                                      stdin=subprocess.DEVNULL, start_new_session=True)
         main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid, started=time.time(), path=path,
                                           tmp=tmp, green=record.get('green'), failures=record.get('failures'),
-                                          red_since=record.get('red_since')))
+                                          red_since=record.get('red_since'), gated=record.get('gated')))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
     def finish_main_check(self, record):
@@ -1032,16 +1036,25 @@ class Coordinator:
             main_check.write(self.state, dict(state='aborted', rev='', green=green, failures=record.get('failures'),
                                               red_since=record.get('red_since')))
             return
+        try:
+            log_text = (self.state / 'main-check.log').read_text(errors='replace')
+        except OSError:
+            log_text = ''
+        skipped = main_check.gate_skips(log_text)
+        if code == 0 and skipped and record.get('gated') != rev:
+            # A busy host skipped some tests (TOOLSET-193-54): check this revision once more when
+            # the load allows (check_main waits for it) before calling it green.
+            main_check.write(self.state, dict(state='recheck', rev='', gated=rev, green=green,
+                                              failures=record.get('failures'), red_since=record.get('red_since')))
+            LOG.say(f'Main at {rev[:7]} passed, but the busy host skipped {skipped} test(s); '
+                    'checking it again when the load allows')
+            return
         if code == 0:
             main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time()))
             if record.get('failures'):
                 LOG.say(f'Main is green again at {rev[:7]}')
             return
-        try:
-            text = (self.state / 'main-check.log').read_text(errors='replace')
-        except OSError:
-            text = ''
-        failures = main_check.failures(text) or [f'the check exited {code}']
+        failures = main_check.failures(log_text) or [f'the check exited {code}']
         commits = (git(self.repo, 'log', '--format=%h %s', '-20', f'{green}..{rev}' if green else rev) or '').splitlines()
         red_since = record.get('red_since') if record.get('failures') else rev
         main_check.write(self.state, dict(state='red', rev=rev, green=green, failures=failures, commits=commits,

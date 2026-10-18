@@ -110,12 +110,21 @@ def save(path, value):
 
 
 @contextmanager
-def lock(path):
+def lock(path, wait=0):
+    """Exclusive, non-blocking: BlockingIOError when held, after retrying for ``wait`` seconds."""
     path = safe_path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        end = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= end:
+                    raise
+                time.sleep(0.2)
         yield fd
     finally:
         os.close(fd)

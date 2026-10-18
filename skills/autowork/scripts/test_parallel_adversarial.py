@@ -21,6 +21,7 @@ import parallel_dispatch as dispatch
 import parallel_integrate as integrate
 import parallel_state as state
 import test_parallel_dispatch as base
+from gate_skip import skip_if_gated
 
 FAKE, task = base.FAKE, base.task
 
@@ -212,6 +213,8 @@ class AdversarialWorkerTests(unittest.TestCase):
             return [json.loads(chunk) for chunk in out.stdout.replace('}\n{', '}\x00{').split('\x00') if chunk.strip()]
 
         first = coordinator(['--apply', '--parallel', '--worker-command', worker])
+        if [d['task'] for d in first[0]['dispatched']] != ['A']:
+            skip_if_gated(first)
         self.assertEqual([d['task'] for d in first[0]['dispatched']], ['A'])
         self.assertEqual(state.live_coordinator(self.common), None)  # the first coordinator is gone
         later = coordinator(['--apply', '--parallel', '--worker-command', worker],

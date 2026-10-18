@@ -109,9 +109,11 @@ def resource_gate(running, min_free_mb):
     memory = available_memory_mb()
     if memory < 2 * min_free_mb:
         return f'resource gate: {memory} MB available, need {2 * min_free_mb} MB for one more worker'
-    load, cpus = os.getloadavg()[0], os.cpu_count() or 1
+    # AUTOWORK_GATE_CPUS lowers the threshold so a test can force a refusal (TOOLSET-193-54);
+    # scripts/check.py removes AUTOWORK_* from test processes, so a runner's value never leaks in.
+    load, cpus = os.getloadavg()[0], float(os.environ.get('AUTOWORK_GATE_CPUS') or 0) or os.cpu_count() or 1
     if load >= cpus:
-        return f'resource gate: load average {load:.2f} >= {cpus} CPUs'
+        return f'resource gate: load average {load:.2f} >= {cpus:g} CPUs'
     return ''
 
 

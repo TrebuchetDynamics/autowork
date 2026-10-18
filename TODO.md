@@ -126,6 +126,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: The existing integration owner preserves the uncommitted attribution implementation in .worktrees/autowork-TOOLSET-165-f7-r2, retains candidate a8170f5 and both reports, reconciles current main through the supported workflow and applies the bounded fixture repair if still needed. Collect the already-running main check's terminal source-bound result, do not start a duplicate check merely because this answer arrived. Reverify the retained implementation on the resulting tree through normal review/closeout, preserving cumulative attempts/budgets and real claims; no fresh implementation or manual retry/reset is authorized by this docs pass.
 
 
+### TOOLSET-195-ee — The runner's own jobs never count as outside sessions
+
+- [ ] TOOLSET-195-ee — The runner's own jobs never count as outside sessions
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "yes, plan the task"; [external workers](skills/autowork/scripts/task_execution.py) (`external_workers`, the `AUTOWORK_EXECUTION_COMMON` marker), [runner jobs](pi-autowork/pi_autowork/coordinator.py) (the background main check in `pi-scratch-main-check-*`, the DOCS-MAINTAINER, provisioning, merge resolution and Touches inference in `pi-scratch-*`), [main check](pi-autowork/pi_autowork/main_check.py).
+- Evidence (2026-10-17 22:03, this repository's runner): TOOLSET-165-f7's attempt-2 commit waited to integrate on `live or unknown external writer/session; preserve canonical checkout: pid … python3 in <repo>/.worktrees/pi-scratch-main-check-… (no terminal; activity unknown)`. Those were the runner's own background check of main, started at 22:01. `external_workers` recognizes the runner's commands only by the `AUTOWORK_EXECUTION_COMMON` marker, which only engine commands carry; the main check's test processes start fake `pi` agents, so they read as outside agent sessions. Every integration that falls during a main check (2 to 5 minutes, after every landing) waits for it. TOOLSET-165-f7 covers worker processes only.
+- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_task_execution.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, skills/autowork/references/parallel-workers.md
+- Scope: (1) A process in this runner's own systemd unit (its `/proc/<pid>/cgroup` names `pi-autowork@<name>.service` for this repository), or one carrying the attribution marker, is the runner's own and never an outside writer or session, wherever it runs. (2) Without systemd (a foreground `autowork run`), every job the runner starts (main check, maintainer, provisioning, merge resolution, Touches inference) carries the marker, and test processes it starts keep it. (3) The runner's own jobs in their `pi-scratch-*` worktrees never block integration, closeout or worktree cleanup; a person's session in those worktrees still does. (4) A blocked integration names the process's kind (`runner job: main check` or `session`), so a wrong attribution is visible in the log.
+- Acceptance: In fixtures, an integration during a running main check proceeds without waiting, under systemd (a fake cgroup file) and without it (the marker). An agent process started outside the runner in the main checkout, or in a `pi-scratch-*` worktree, still blocks with the `session` reason. Fixture runners started by the test suite are not mistaken for the real runner's jobs (their cgroup is not the real unit's and they carry no real marker).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: TOOLSET-165-f7.
+- Ownership: Toolset coordinator; builds on TOOLSET-165-f7's attribution of worker descendants in the same writer check.
+- Exclusions: No change to which outside sessions block, to the main check itself or to how often it runs.
+- Planner's call: the service's control group as the primary signal, because it covers every process the runner starts, including detached ones and test fixtures that drop the environment, and cannot be set by an outside process. The marker remains for foreground runs.
+
 ### TOOLSET-184-b3 — Restore the full offline check after the red main at 36e2b7c
 
 - [ ] TOOLSET-184-b3 — Restore the full offline check after the red main at 36e2b7c

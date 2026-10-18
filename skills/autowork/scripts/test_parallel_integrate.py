@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import parallel_dispatch as dispatch
@@ -111,6 +112,45 @@ class IntegrationTests(unittest.TestCase):
             with self.subTest(fields=fields), self.assertRaises(self.module().Hold):
                 self.module().verify_scope(self.repo, self.common, slot,
                                            {'A': {'fields': fields}}, ['src/go.mod'])
+
+    def hold_writer_lock_during_validation(self, seconds):
+        """The runner's loop takes writer.lock for a moment each cycle beside a review: a validation
+        command that announces itself, and a thread that holds the lock from then on."""
+        import fcntl, threading
+        started = Path(tempfile.mkdtemp()) / 'validating'
+        argv = [sys.executable, '-c', f'open({str(started)!r}, "w").close(); import time; time.sleep(1)']
+
+        def hold():
+            while not started.exists():
+                time.sleep(0.05)
+            fd = os.open(self.common / 'writer.lock', os.O_CREAT | os.O_RDWR)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            time.sleep(seconds)
+            os.close(fd)
+        holder = threading.Thread(target=hold)
+        holder.start()
+        self.addCleanup(holder.join)
+        return argv, holder
+
+    def test_an_integration_waits_out_the_loops_brief_hold_of_the_writer_lock(self):
+        """TOOLSET-194-46: the review lost the race for writer.lock to the loop's dispatch,
+        answered BUSY with its slot left integrating, and the work was later abandoned."""
+        self.worker()
+        argv, holder = self.hold_writer_lock_during_validation(2.5)
+        result = self.module().integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+
+    def test_an_integration_that_cannot_get_the_lock_gives_its_slot_back(self):
+        self.worker()
+        module = self.module()
+        argv, holder = self.hold_writer_lock_during_validation(1.6)  # past the wait, not past the release
+        with unittest.mock.patch.object(module, 'LOCK_WAIT', 0.4):
+            result = module.integrate(self.repo, self.owner, 'A', argv, 30)
+        self.assertEqual(result['outcome'], 'BUSY', result)
+        holder.join()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'reported')  # not left integrating
+        again = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(again['outcome'], 'INTEGRATED', again)
 
     def test_fresh_unknown_session_blocks_integration_before_writes(self):
         self.worker()

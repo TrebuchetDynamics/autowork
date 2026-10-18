@@ -14,6 +14,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import parallel_status as status
+from gate_skip import skip_if_gated
 
 CLI = Path(__file__).with_name('owner_cycle.py')
 WORKER = '''import json, os, re, subprocess, sys, time
@@ -115,12 +116,14 @@ class ABCWorkload:
         first = self.dispatch()
         expected = ['A', 'B'] if self.workers == 2 else ['A']
         if [t['task'] for t in first['dispatched']] != expected:
+            skip_if_gated(first)  # a busy host refused the dispatch: not a failure of this code
             raise AssertionError(f'Expected initial {expected}; real resource gates are not bypassed: {first}')
         self.initial = self.cli('--parallel-status', '--json')
         deadline = time.monotonic() + 60
-        closed = []
+        closed, answers = [], []
         while len(closed) < 3:
             if time.monotonic() > deadline:
+                skip_if_gated(*answers)
                 raise AssertionError('ABC coordinator exceeded deadline')
             self.cli('--parallel', str(self.workers), '--wait', '--timeout', '5', '--owner-pid', str(os.getpid()))
             snapshot = self.cli('--parallel-status', '--json')
@@ -136,7 +139,7 @@ class ABCWorkload:
                     self.git('commit', '-qm', 'close ' + task)
                     closed.append(task)
             if len(closed) < 3:
-                self.dispatch()
+                answers.append(self.dispatch())
         subprocess.run([sys.executable, 'check_fixture.py', '--complete'], cwd=self.repo, check=True, timeout=10)
         self.cli('--parallel', str(self.workers), '--release', '--owner-pid', str(os.getpid()))
         elapsed = time.perf_counter() - started
@@ -161,6 +164,17 @@ class ABCWorkload:
 
 
 class EndToEndTests(unittest.TestCase):
+    def test_a_busy_host_skips_the_workload_instead_of_failing_it(self):
+        """TOOLSET-193-54: the fleet's own load refused these dispatches and main read red."""
+        import contextlib, io
+        from unittest import mock
+        marker = io.StringIO()  # kept from the output: this skip is forced, not the host's
+        with mock.patch.dict(os.environ, AUTOWORK_GATE_CPUS='0.001'), ABCWorkload() as workload:
+            with self.assertRaisesRegex(unittest.SkipTest, 'host busy: resource gate: load average'), \
+                    contextlib.redirect_stderr(marker):
+                workload.run()
+        self.assertIn('RESOURCE_GATE_SKIP: resource gate: load average', marker.getvalue())
+
     def test_abc_real_cli(self):
         with ABCWorkload() as workload:
             workload.run()
