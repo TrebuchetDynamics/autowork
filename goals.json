@@ -705,7 +705,8 @@
         "TOOLSET-205-a1",
         "TOOLSET-206-0c",
         "TOOLSET-207-e4",
-        "TOOLSET-208-54"
+        "TOOLSET-208-54",
+        "TOOLSET-209-55"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -713,7 +714,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-208-54",
+      "TOOLSET-209-55",
       "TOOLSET-204-f2",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -1096,6 +1097,14 @@
       "section": "Now",
       "status": "open",
       "title": "The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-209-55",
+      "section": "Now",
+      "status": "open",
+      "title": "Workers run the runner suite sharded, and a worker timeout names the command it cut off"
     },
     {
       "depends_on": [],
