@@ -718,6 +718,7 @@ class Coordinator:
     def sweep_tmp(self):
         """Stale agent scratch in RAM-backed /tmp goes, at most every 30 minutes per host
         (janitor.py, TOOLSET-162-d2), so it cannot keep new workers from starting."""
+        self.prune_build_caches()
         try:
             result = janitor.sweep_if_due(Path(self.state).parent)
         except OSError:
@@ -725,6 +726,27 @@ class Coordinator:
         if result and result[0]:
             LOG.say(f'Removed {result[0]} stale /tmp entries ({result[1] / 2 ** 30:.1f} GB) that nothing had '
                     f'used for {janitor.stale_after() // 60} min')
+
+    def prune_build_caches(self):
+        """Build output of this runner's idle worktrees goes every 30 minutes, and at once when the
+        disk is low (TOOLSET-210-53): one repository's worktrees held 87 GB of it and filled the disk."""
+        try:
+            free = shutil.disk_usage(self.repo).free / 2 ** 30
+        except OSError:
+            return
+        urgent = free < 2 * float(os.environ.get('PI_AUTOWORK_MIN_FREE_DISK_GB') or 20)
+        if not urgent and time.monotonic() - self.seen.get('caches-pruned', -1e9) < janitor.SWEEP_EVERY:
+            return
+        self.seen['caches-pruned'] = time.monotonic()
+        busy = [self.integ] + [t.get('worktree') for t in self.tasks()
+                               if t.get('state') in ('dispatched', 'running', 'reported', 'integrating')]
+        try:
+            count, freed = janitor.prune_build_caches(Path(self.repo) / '.worktrees', busy, urgent=urgent)
+        except OSError:
+            return
+        if count:
+            LOG.say(f'Removed build output from {count} idle worktree(s) ({freed / 2 ** 30:.1f} GB)'
+                    + (f'; {free:.0f} GB were free' if urgent else ''))
 
     def publishable(self, paths):
         """publishable(), with each held-back path logged once per commit."""

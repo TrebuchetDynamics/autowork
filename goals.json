@@ -708,8 +708,7 @@
         "TOOLSET-208-54",
         "TOOLSET-209-55",
         "TOOLSET-210-53",
-        "TOOLSET-211-71",
-        "TOOLSET-212-0d"
+        "TOOLSET-211-71"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1108,14 +1107,6 @@
       "section": "Now",
       "status": "open",
       "title": "A leftover task branch with nothing of its own never stops dispatch"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-212-0d",
-      "section": "Now",
-      "status": "open",
-      "title": "Each worker gets a disk-backed scratch folder that is removed when its task retires"
     },
     {
       "depends_on": [],

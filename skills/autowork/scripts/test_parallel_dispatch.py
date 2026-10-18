@@ -579,6 +579,17 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
             self.assertEqual(dispatch.resource_gate(0, 3000),
                              'resource gate: 5900 MB available, need 6000 MB for one more worker')
 
+    def test_a_nearly_full_disk_holds_dispatch(self):
+        """TOOLSET-210-53: the disk filled and six runners died; dispatch now stops first."""
+        with patch.dict(os.environ, PI_AUTOWORK_MIN_FREE_DISK_GB='1e9'), \
+                patch.object(dispatch, 'available_memory_mb', return_value=99999):
+            reason = dispatch.resource_gate(0, 3000, self.repo)
+        self.assertRegex(reason, r'^resource gate: [\d.]+ GB free on the repository disk, need 1e\+09 GB$')
+        with patch.dict(os.environ, PI_AUTOWORK_MIN_FREE_DISK_GB='0'), \
+                patch.object(dispatch, 'available_memory_mb', return_value=99999), \
+                patch.object(dispatch.os, 'getloadavg', return_value=(0.0, 0.0, 0.0)):
+            self.assertEqual(dispatch.resource_gate(0, 3000, self.repo), '')
+
     def test_low_memory_holds_dispatch(self):
         with patch.object(dispatch, 'available_memory_mb', return_value=1000):
             _, result = self.apply()

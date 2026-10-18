@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
+import subprocess
 import sys
 import time
 
@@ -82,6 +83,52 @@ def size(path):
             except OSError:
                 continue
     return total if os.path.isdir(path) else (os.lstat(path).st_size if os.path.lexists(path) else 0)
+
+
+CACHE_DIRS = ('target', 'build', '.dart_tool')
+# The review's integration checkout, main-check and maintainer scratch, and session worktrees.
+NEVER_PRUNED = ('autowork-integration', 'pi-scratch-', 'pi-autowork-')
+
+
+def build_caches(worktrees, busy=(), *, stale=None, now=None, urgent=False):
+    """Regenerable build output in this runner's own worktrees that may go (TOOLSET-210-53):
+    `target/`, `build/` and `.dart_tool/` directly in a worktree under ``worktrees`` that is
+    not in ``busy`` (running or verifying slots, the session), ignored by Git there, and, unless
+    ``urgent`` (the disk is low), untouched for ``stale`` seconds. Sources are never candidates."""
+    stale = DEFAULT_STALE if stale is None else stale
+    now = time.time() if now is None else now
+    busy = {os.path.realpath(p) for p in busy if p}
+    found = []
+    try:
+        trees = sorted(Path(worktrees).iterdir())
+    except OSError:
+        return found
+    for tree in trees:
+        if (not tree.is_dir() or tree.is_symlink() or os.path.realpath(tree) in busy or not (tree / '.git').exists()
+                or tree.name.startswith(NEVER_PRUNED)):
+            continue
+        for name in CACHE_DIRS:
+            cache = tree / name
+            if not cache.is_dir() or cache.is_symlink():
+                continue
+            ignored = subprocess.run(['git', '-C', str(tree), 'check-ignore', '-q', name],
+                                     capture_output=True).returncode == 0
+            if not ignored or (not urgent and changed_since(cache, now - stale)):
+                continue
+            found.append(cache)
+    # Oldest first, so a low disk frees the least recently used output first.
+    return sorted(found, key=lambda p: os.lstat(p).st_mtime)
+
+
+def prune_build_caches(worktrees, busy=(), **options):
+    """(count, bytes) removed of build_caches()."""
+    count = freed = 0
+    for cache in build_caches(worktrees, busy, **options):
+        amount = size(cache)
+        shutil.rmtree(cache, ignore_errors=True)
+        if not cache.exists():
+            count, freed = count + 1, freed + amount
+    return count, freed
 
 
 def candidates(tmp='/tmp', *, stale=None, now=None, uid=None, used=None):

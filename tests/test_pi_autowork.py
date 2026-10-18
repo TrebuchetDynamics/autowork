@@ -2091,7 +2091,7 @@ class ServiceTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         unit = (self.units / 'pi-autowork@.service').read_text()
         for line in ('WorkingDirectory=~', f'ExecStart=/bin/bash {RUNNER} --repo ${{PI_AUTOWORK_REPO}}',
-                     'KillSignal=SIGINT', 'KillMode=mixed', 'SuccessExitStatus=130', 'Restart=on-abnormal',
+                     'KillSignal=SIGINT', 'KillMode=mixed', 'SuccessExitStatus=130', 'Restart=on-failure', 'RestartPreventExitStatus=1 3 4',
                      f'EnvironmentFile={self.envs}/%i.env', 'Description=pi-autowork for %i'):
             self.assertIn(line, unit)
         env = self.envs / 'project.env'

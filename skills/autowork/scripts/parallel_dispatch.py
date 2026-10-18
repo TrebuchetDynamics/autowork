@@ -105,10 +105,25 @@ def available_memory_mb():
     raise ValueError('MemAvailable missing from /proc/meminfo')
 
 
-def resource_gate(running, min_free_mb):
+def min_free_disk_gb(env=os.environ):
+    try:
+        return float(env.get('PI_AUTOWORK_MIN_FREE_DISK_GB') or 20)
+    except ValueError:
+        return 20.0
+
+
+def resource_gate(running, min_free_mb, path=None):
     # Available memory already excludes what running workers use: one more worker needs its own
     # budget plus as much spare, however many run (TOOLSET-162-d2). Reserving a budget for each
     # running worker again capped every runner at two or three workers.
+    if path is not None:  # a full disk stopped a whole host's fleet (TOOLSET-210-53)
+        try:
+            free = shutil.disk_usage(path).free / 2 ** 30
+        except OSError:
+            free = None
+        need = min_free_disk_gb()
+        if free is not None and free < need:
+            return f'resource gate: {free:.1f} GB free on the repository disk, need {need:g} GB'
     memory = available_memory_mb()
     if memory < 2 * min_free_mb:
         return f'resource gate: {memory} MB available, need {2 * min_free_mb} MB for one more worker'
@@ -692,7 +707,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         if len(live) + len(started) >= count:
             waiting.append({'id': task['id'], 'reason': f'all {count} worker slots busy', 'blocked_by': []})
             continue
-        gate = resource_gate(len(live) + len(started), args.min_free_mem_mb)
+        gate = resource_gate(len(live) + len(started), args.min_free_mem_mb, repo)
         if gate:
             waiting.append({'id': task['id'], 'reason': gate, 'blocked_by': []})
             continue

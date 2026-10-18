@@ -67,6 +67,35 @@ class JanitorTests(unittest.TestCase):
         self.assertEqual(janitor.candidates(str(self.tmp), uid=os.getuid() + 1, used=set()), [])
         self.assertEqual(janitor.candidates(str(self.tmp), stale=0, used=set()), [])
 
+    def test_build_output_of_idle_worktrees_goes_and_nothing_else(self):
+        """TOOLSET-210-53: one repository's worktrees held 87 GB of build output and filled the disk."""
+        with tempfile.TemporaryDirectory() as root:
+            worktrees = Path(root) / '.worktrees'
+            def tree(name, ignore='target/\nbuild/\n'):
+                path = worktrees / name
+                path.mkdir(parents=True)
+                subprocess.run(['git', 'init', '-q', str(path)], check=True)
+                (path / '.gitignore').write_text(ignore)
+                for cache in ('target', 'build'):
+                    (path / cache).mkdir()
+                    (path / cache / 'blob').write_bytes(b'x' * 1000)
+                    os.utime(path / cache / 'blob', (time.time() - 9000,) * 2)
+                    os.utime(path / cache, (time.time() - 9000,) * 2)
+                (path / 'src.rs').write_text('fn main() {}\n')
+                return path
+            idle, busy, tracked = tree('autowork-A-set-aside-1'), tree('autowork-B'), tree('autowork-C', ignore='')
+            session, fresh = tree('pi-autowork-20261018-000000'), tree('autowork-D')
+            os.utime(fresh / 'target' / 'blob', None)  # used a moment ago
+            count, freed = janitor.prune_build_caches(worktrees, busy=[str(busy)])
+            self.assertEqual(count, 3)  # idle's target/ and build/, and fresh's old build/
+            self.assertGreaterEqual(freed, 3000)
+            self.assertFalse((idle / 'target').exists() or (idle / 'build').exists())
+            self.assertTrue((idle / 'src.rs').exists())  # sources stay
+            for kept in (busy / 'target', tracked / 'target', session / 'target', fresh / 'target'):
+                self.assertTrue(kept.exists(), kept)  # running, not ignored, a session, recently used
+            self.assertEqual(janitor.prune_build_caches(worktrees, busy=[str(busy)], urgent=True)[0], 1)
+            self.assertFalse((fresh / 'target').exists())  # a low disk does not wait for its age
+
     def test_one_sweep_per_host_per_interval(self):
         state = self.tmp / 'state'
         stale = self.make('task-review.AbC123', 3)

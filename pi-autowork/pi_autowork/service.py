@@ -38,7 +38,10 @@ KillMode=mixed
 KillSignal=SIGINT
 TimeoutStopSec=150
 SuccessExitStatus=130
-Restart=on-abnormal
+# A crash (exit 70) or an OS error such as a full disk comes back; deliberate stops do not
+# (1: failures the owner must see, 3: another runner holds it, 4: needs attention).
+Restart=on-failure
+RestartPreventExitStatus=1 3 4
 RestartSec=60
 
 [Install]
