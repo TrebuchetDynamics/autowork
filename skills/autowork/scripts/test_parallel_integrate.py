@@ -371,24 +371,66 @@ class IntegrationTests(unittest.TestCase):
     def test_isolated_pool_session_does_not_block_landing(self):
         self.worker()
         root, _ = self.worker('B')
-        proc = self.agent_process(root)
+        fake = Path(self.temp.name) / 'hermes'
+        fake.write_text('''import json, os, subprocess, sys
+child = None
+try:
+    depth = int(sys.argv[1])
+    pids = [os.getpid()]
+    if depth:
+        child = subprocess.Popen([sys.executable, __file__, str(depth - 1)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, start_new_session=True)
+        pids += json.loads(child.stdout.readline())
+    print(json.dumps(pids), flush=True)
+    sys.stdin.read(1)
+finally:
+    if child:
+        child.communicate('x', timeout=5)
+''')
         slot = state.slots(self.common)[1]
-        slot.update(worker=execution.identity(proc.pid), state='running')
-        execution.save(state.slot_path(self.common, 'B'), slot)
-        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        for phase in ('running', 'dispatched'):  # resumed with a new leader after coordinator restart
+            with self.subTest(phase=phase):
+                proc = subprocess.Popen([sys.executable, str(fake), '2'], cwd=root,
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, start_new_session=True)
+                self.addCleanup(lambda p=proc: p.communicate('x', timeout=5) if p.poll() is None else None)
+                pids = json.loads(proc.stdout.readline())
+                self.assertEqual(len({os.getpgid(pid) for pid in pids}), 3)
+                self.assertTrue(set(pids) <= {w['pid'] for w in execution.external_workers(self.repo)})
+                slot.update(worker=execution.identity(proc.pid), state=phase)
+                execution.save(state.slot_path(self.common, 'B'), slot)
+                state.release(self.repo, self.owner)
+                state.claim(self.repo, self.owner)
+                state.reconcile(self.repo, self.owner)
+                try:
+                    self.module().require_no_writers(self.repo)
+                    if phase == 'dispatched':
+                        self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+                finally:
+                    proc.communicate('x', timeout=5)
 
     def test_unattributed_session_in_pool_worktree_is_not_exempt(self):
         self.worker()
         root, _ = self.worker('B')
-        self.agent_process(root)
-        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
-        self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
-        self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+        proc = self.agent_process(root)
+        leader = self.agent_process(root)  # unrelated: its parent chain cannot own proc
+        slot = state.slots(self.common)[1]
+        for fields, why in (
+                ({}, 'slot is not dispatched/running'),
+                ({'state': 'running', 'worker': None}, 'no recorded worker leader'),
+                ({'state': 'running', 'worker': execution.identity(leader.pid)}, 'parent chain'),
+                ({'state': 'running', 'worker': dict(execution.identity(proc.pid), start_ticks=1)}, 'leader identity'),
+                ({'state': 'running', 'worker': {'pid': 2 ** 22 + 13, 'start_ticks': 1, 'boot_id': 'x'}}, 'leader identity')):
+            with self.subTest(why=why):
+                execution.save(state.slot_path(self.common, 'B'), dict(slot, **fields))
+                result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+                self.assertEqual(result['outcome'], 'BUSY', result)
+                self.assertIn("unattributed process in B's worktree: " + why, result['reason'])
+                self.assertEqual(state.slots(self.common)[0]['state'], 'reported')
+                self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
     def test_pool_identity_never_exempts_a_canonical_writer(self):
         self.worker()
-        self.worker('B')
+        root, _ = self.worker('B')
         proc = self.agent_process()
         slot = state.slots(self.common)[1]
         slot.update(worker=execution.identity(proc.pid), state='running')
@@ -396,6 +438,17 @@ class IntegrationTests(unittest.TestCase):
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'BUSY', result)  # no verdict: the commit waits
         self.assertEqual(state.slot_path(self.common, 'A').exists() and state.slots(self.common)[0]['state'], 'reported')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
+        proc.kill(); proc.wait()
+        # Main cwd plus an explicit worker path: still blocks, now explains the slot mismatch.
+        mixed = subprocess.Popen([sys.executable, str(Path(self.temp.name) / 'hermes'), str(root / 'B.txt')],
+                                 cwd=self.repo, start_new_session=True)
+        self.addCleanup(lambda: (mixed.kill(), mixed.wait()) if mixed.poll() is None else None)
+        slot['worker'] = execution.identity(mixed.pid)
+        execution.save(state.slot_path(self.common, 'B'), slot)
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'BUSY', result)
+        self.assertIn("unattributed process in B's worktree: process uses workspaces outside the slot", result['reason'])
         self.assertEqual(self.git('rev-parse', 'HEAD'), self.baseline)
 
     def test_clean_merge_validates_without_sequential_lease(self):
@@ -1596,25 +1649,42 @@ class IntegrationTests(unittest.TestCase):
             state.transition(self.repo, self.owner, task, 'held', reason='failure')
         args = self.retry_args()
         args.parallel = args.max_workers = 8
-        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        # Supervise the whole bounded scenario, not the retry harness's 10-second window.
+        args.worker_timeout = 90
+        deadline = time.monotonic() + args.worker_timeout
+        signals = Path(self.temp.name) / 'signals'
+        signals.mkdir()
+        release, spec, log = (signals / name for name in ('release', 'spec.json', 'workers.jsonl'))
+        spec.write_text(json.dumps({task: {'ready': str(signals / task), 'release': str(release)}
+                                    for task in 'ABCDEFGH'}))
+        args.worker_command = json.dumps([sys.executable, str(Path(__file__).with_name('fixtures') / 'fake_worker.py'),
+                                          '{prompt_file}', '{worktree}'])
         from unittest.mock import patch
         def cleanup():
+            release.touch()
             for slot in state.slots(self.common):
                 if slot.get('worker'):
-                    dispatch.stop(slot['worker'])
+                    dispatch.stop(slot['worker'], slot['worktree'])
         self.addCleanup(cleanup)
-        with patch.object(dispatch, 'resource_gate', return_value=''):
+        with patch.dict(os.environ, FAKE_WORKER_SPEC=str(spec), FAKE_WORKER_LOG=str(log)), \
+                patch.object(dispatch, 'resource_gate', return_value=''):
             for _ in range(2):
                 result = self.module().dispatch_with_retries(args)
                 self.assertEqual(result['outcome'], 'RETRIED', result)
             result = self.module().dispatch_with_retries(args)
             self.assertEqual(result['outcome'], 'DISPATCHED', result)
             self.assertEqual(result['active_workers'], 8)
+            while not all((signals / task).exists() for task in 'ABCDEFGH'):
+                self.assertLess(time.monotonic(), deadline, 'eight workers not ready')
+                time.sleep(0.05)
             self.assertEqual(self.module().dispatch_with_retries(args)['outcome'], 'WAITING')
         slots = state.slots(self.common)
         self.assertEqual({s['task_id'] for s in slots}, set('ABCDEFGH'))
         self.assertEqual({dispatch.meta(self.common, s)['slot_index'] for s in slots}, set(range(1, 9)))
+        self.assertEqual({s['task_id']: s['attempt'] for s in slots},
+                         {'A': 2, 'B': 2, 'C': 1, 'D': 1, 'E': 1, 'F': 1, 'G': 1, 'H': 1})
         self.assertTrue(all(state.worker_live(s) for s in slots))
+        self.assertLess(time.monotonic(), deadline)
 
     def claimed_retry_fixture(self, exhausted, requested=None):
         todo = self.repo / 'TODO.md'

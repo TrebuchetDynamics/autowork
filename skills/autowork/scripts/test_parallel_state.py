@@ -113,6 +113,25 @@ class StateTests(unittest.TestCase):
         self.assertEqual(journal, (self.common / 'journal.jsonl').read_bytes())
         self.assertTrue((Path(dirty['worktree']) / 'new').exists())
 
+    def test_ancestry_requires_each_intermediate_birth_identity_to_stay_live(self):
+        proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True)
+        self.addCleanup(lambda: (proc.kill(), proc.wait()))
+        leader, found = execution.identity(os.getppid()), execution.identity(proc.pid)
+        self.assertTrue(state.owns_process(leader, found))  # proc -> this test -> leader
+        original = execution.identity
+        intermediate = original(os.getpid())
+        for changed in (None, dict(intermediate, start_ticks=intermediate['start_ticks'] + 1)):
+            calls = 0
+            def identity(pid):
+                nonlocal calls
+                if pid == os.getpid():
+                    calls += 1
+                    if calls >= 3:  # changed after reading the intermediate's parent
+                        return changed
+                return original(pid)
+            with self.subTest(changed=changed), patch.object(execution, 'identity', side_effect=identity):
+                self.assertFalse(state.owns_process(leader, found))
+
     def test_transitions_retry_once_and_preserve_previous_attempt(self):
         self.claim()
         slot = self.slot()

@@ -278,29 +278,36 @@ def require_no_writers(repo, files=None):
     blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
     pool = state.slots(common)
+    unattributed = {}
     for worker in workers:
-        if worker in blocking or worker['active'] is False:
+        if worker['active'] is False:
             continue
-        # Only a birth-identity-matched live pool leader (or its still-owned
-        # process group) in that slot's isolated checkout is exempt. An unknown
-        # agent in a sibling worktree is not evidence of pool membership.
+        # Workspace containment is necessary, not proof of pool membership. A
+        # child in a new session still belongs to its birth-checked live leader.
         attributed = False
         for slot in pool:
-            leader = slot.get('worker')
-            if (not leader or execution.identity(leader['pid']) != leader
-                    or slot['state'] not in ('dispatched', 'running')
-                    or not worker['workspaces'] or set(worker['workspaces']) != {slot['worktree']}):
+            worktree = Path(slot['worktree'])
+            inside = [Path(w).is_relative_to(worktree) for w in worker['workspaces']]
+            if not any(inside):
                 continue
-            try:
-                fields = Path(f'/proc/{worker["pid"]}/stat').read_text().rsplit(')', 1)[1].split()
-                same_group = int(fields[2]) == leader['pid']
-            except (OSError, ValueError, IndexError):
-                same_group = False
-            found = {k: worker[k] for k in ('pid', 'start_ticks', 'boot_id')}
-            if execution.identity(worker['pid']) == found and (found == leader or same_group):
+            leader = slot.get('worker')
+            if not all(inside):
+                why = 'process uses workspaces outside the slot'
+            elif slot['state'] not in ('dispatched', 'running'):
+                why = 'slot is not dispatched/running'
+            elif not leader:
+                why = 'no recorded worker leader'
+            elif execution.identity(leader['pid']) != leader:
+                why = 'leader identity is dead or changed'
+            elif not state.owns_process(leader, {k: worker[k] for k in ('pid', 'start_ticks', 'boot_id')}):
+                why = 'parent chain/group does not prove live leader ownership'
+            else:
                 attributed = True
                 break
-        if not attributed:
+            unattributed[worker['pid']] = f"unattributed process in {slot['task_id']}'s worktree: {why}"
+        # Never exempt a process already blocked by the checkout/command rule;
+        # it still benefits from slot diagnostics when it also touches a worker.
+        if not attributed and worker not in blocking:
             blocking.append(worker)
     # A process that exited during these checks (a short tool run) writes nothing; only a
     # writer still alive with the same birth identity blocks.
@@ -309,8 +316,9 @@ def require_no_writers(repo, files=None):
     if blocking:
         def describe(worker):
             name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'
+            detail = unattributed.get(worker['pid']) or worker.get('evidence') or worker.get('kind', '')
             return (f"pid {worker['pid']} {name} in {', '.join(worker.get('workspaces') or ['?'])}"
-                    f" ({worker.get('evidence') or worker.get('kind', '')})")
+                    f" ({detail})")
         raise WritersBusy('live or unknown external writer/session; preserve canonical checkout: '
                          + '; '.join(describe(w) for w in blocking[:3]))
 

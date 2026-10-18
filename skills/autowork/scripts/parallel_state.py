@@ -182,6 +182,43 @@ def strays(worktree):
     return found
 
 
+def owns_process(leader, found):
+    """Birth-checked leader/group/ancestry proof, including children that called setsid.
+
+    Snapshot each parent link and recheck it before accepting: an exited/reused PID
+    or a reparented child is not evidence of ownership. Markers alone prove nothing.
+    """
+    def link(expected):
+        try:
+            fields = Path(f'/proc/{expected["pid"]}/stat').read_text().rsplit(')', 1)[1].split()
+            if (fields[0] in ('Z', 'X') or int(fields[19]) != expected['start_ticks']
+                    or execution.identity(expected['pid']) != expected):
+                return None
+            return int(fields[1]), int(fields[2])  # parent, process group
+        except (OSError, ValueError, IndexError):
+            return None
+
+    if execution.identity(leader['pid']) != leader:
+        return False
+    chain = {}
+    current = found
+    while current['pid'] not in chain:
+        observed = link(current)
+        if observed is None:
+            return False
+        chain[current['pid']] = (current, observed)
+        parent_pid, group = observed
+        if current == leader or (current == found and group == leader['pid']):
+            return (all(link(expected) == saved for expected, saved in chain.values())
+                    and execution.identity(leader['pid']) == leader)
+        parent = execution.identity(parent_pid)
+        if (not parent or parent['boot_id'] != current['boot_id']
+                or parent['start_ticks'] > current['start_ticks']):
+            return False
+        current = parent
+    return False
+
+
 def worker_live(slot):
     """Workers lead their own process group; a surviving child keeps the slot live,
     and so does any process still carrying the slot's worker marker."""
