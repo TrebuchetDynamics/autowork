@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -25,6 +26,11 @@ class IntegrationTests(unittest.TestCase):
         previous = ctypes.c_int()
         self.assertEqual(libc.prctl(37, ctypes.byref(previous), 0, 0, 0), 0)
         self.addCleanup(lambda: libc.prctl(36, previous.value, 0, 0, 0))
+        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
+        self.addCleanup(self.runtime.cleanup)
+        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name)
+        runtime_env.start()
+        self.addCleanup(runtime_env.stop)
         self.temp = tempfile.TemporaryDirectory(prefix='toolset-088-', dir=os.environ.get('TMPDIR'))
         self.addCleanup(self.temp.cleanup)
         self.repo = Path(self.temp.name) / 'repo'
@@ -583,6 +589,31 @@ class IntegrationTests(unittest.TestCase):
         fresh, branch, _ = dispatch.create_worktree(self.repo, self.common, 'A', self.baseline)
         self.assertEqual((fresh, branch), (root, 'autowork/A'))
         self.assertEqual(self.git('rev-parse', 'HEAD', cwd=fresh), self.baseline)
+
+    def test_close_and_set_aside_remove_only_the_retired_slots_temporary_directory(self):
+        module = self.module()
+        temps = {}
+        for task in ('A', 'B'):
+            self.worker(task)
+            slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+            temps[task] = dispatch.worker_tmpdir(dispatch.data_dir(self.common, slot), 1)
+            (temps[task] / 'fixture').write_text(task)
+        self.assertNotEqual(temps['A'], temps['B'])
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertFalse(temps['A'].exists())
+        self.assertEqual((temps['B'] / 'fixture').read_text(), 'B')
+        # Repeating close must not delete another task's allocation at the old path.
+        self.worker('C')
+        slot_c = next(s for s in state.slots(self.common) if s['task_id'] == 'C')
+        reused = dispatch.worker_tmpdir(dispatch.data_dir(self.common, slot_c), 1)
+        self.assertEqual(reused, temps['A'])
+        (reused / 'keep').write_text('C')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertEqual((reused / 'keep').read_text(), 'C')
+        state.transition(self.repo, self.owner, 'B', 'held', reason='fixture blocker', cause='blocker')
+        self.assertEqual(module.set_aside(self.repo, self.owner, 'B')['outcome'], 'SET_ASIDE')
+        self.assertFalse(temps['B'].exists())
 
     def test_set_aside_refuses_a_slot_that_can_still_finish(self):
         self.worker()

@@ -29,6 +29,22 @@ class WorkerTmpTests(unittest.TestCase):
         (tmp / 'flutter-sdk').mkdir(parents=True)
         self.assertEqual(worker.worker_tmp(str(self.repo), 'T-1'), tmp)
 
+    def test_a_durable_allocation_is_authoritative_for_a_readopted_worker(self):
+        self.slot(data_attempt=1)
+        task_data = self.execution / 'slot-data' / 'T-1'
+        (task_data / 'attempt-1' / 'tmp' / 'legacy-sdk').mkdir(parents=True)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'allocated'
+            record = task_data / 'tmp.json'
+            record.write_text(json.dumps({'path': str(path), 'slot': 3}))
+            for contents, expected in (('missing', None), ('empty', None), ('sdk', path)):
+                with self.subTest(contents=contents):
+                    if contents != 'missing':
+                        path.mkdir(exist_ok=True)
+                    if contents == 'sdk':
+                        (path / 'sdk').mkdir()
+                    self.assertEqual(worker.worker_tmp(str(self.repo), 'T-1'), expected)
+
     def test_a_readopted_slot_uses_its_data_attempt(self):
         self.slot(data_attempt=1)
         tmp = self.execution / 'slot-data' / 'T-1' / 'attempt-1' / 'tmp'

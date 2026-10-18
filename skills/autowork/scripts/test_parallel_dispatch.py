@@ -1,9 +1,12 @@
 """Offline parallel dispatch checks with a deterministic fake worker CLI."""
 import contextlib
+import errno
+import hashlib
 import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,6 +33,12 @@ def task(tid, touches, depends='None'):
 
 class DispatchTests(unittest.TestCase):
     def setUp(self):
+        # Bootstrap independently of the worker's inherited, potentially long TMPDIR.
+        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
+        self.addCleanup(self.runtime.cleanup)
+        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name)
+        runtime_env.start()
+        self.addCleanup(runtime_env.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
@@ -119,7 +128,7 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(self.git('symbolic-ref', '--short', 'HEAD', repo=worktree), 'autowork/' + tid)
             self.assertEqual(times[tid, 'start']['slot'], slot_no)
             self.assertEqual(times[tid, 'start']['port_base'], str(20000 + 100 * int(slot_no)))
-            self.assertTrue(times[tid, 'start']['tmpdir'].startswith(str(self.common / 'slot-data' / tid)))
+            self.assertLessEqual(len(times[tid, 'start']['tmpdir'].encode()), 48)
             # TOOLSET-169-1d: one toolchain cache for every task of the repository, kept after they close.
             self.assertEqual(times[tid, 'start']['cache'], str(self.common / 'cache'))
             self.assertFalse(times[tid, 'start']['marker'])
@@ -132,6 +141,81 @@ class DispatchTests(unittest.TestCase):
         moment = {(e['task_id'], e['state']): e['timestamp'] for e in journal if e['event'] == 'slot_changed'}
         self.assertLess(moment['B', 'running'], moment['A', 'reported'])
         self.assertLess(moment['A', 'running'], moment['B', 'reported'])
+
+    def test_launch_exports_a_private_socket_safe_directory_with_runtime_fallback(self):
+        key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
+        cases = [(self.runtime.name, None), ('', None), (str(self.root / ('long-' * 20)), None),
+                 (self.runtime.name, errno.ENOSPC), (self.runtime.name, errno.EDQUOT)]
+        for case, (runtime, failure) in enumerate(cases):
+            with self.subTest(runtime=runtime, failure=failure), patch.dict(os.environ, XDG_RUNTIME_DIR=runtime):
+                data = self.common / 'slot-data' / f'temp-{case}' / 'attempt-1'
+                data.mkdir(parents=True)
+                prompt = data / 'prompt.md'
+                prompt.write_text('fixture')
+                output = data / 'env.json'
+                if runtime == self.runtime.name and failure is None:
+                    existing = Path(runtime) / 'aw' / key / '1'
+                    existing.mkdir(parents=True, mode=0o755)
+                    existing.chmod(0o755)
+                script = ('import json, os, socket, sys, time; '
+                          'from pathlib import Path; '
+                          'p = Path(os.environ["TMPDIR"]); '
+                          's = socket.socket(socket.AF_UNIX); s.bind(str(p / ("s" * 40))); '
+                          'Path(sys.argv[1]).write_text(json.dumps([os.environ[k] for k in '
+                          '("TMPDIR", "TMP", "TEMP")])); time.sleep(30)')
+                original_mkdir = Path.mkdir
+                def runtime_full(path, *args, **kwargs):
+                    if failure and path.is_relative_to(Path(self.runtime.name) / 'aw'):
+                        raise OSError(failure, 'fixture: runtime storage full')
+                    return original_mkdir(path, *args, **kwargs)
+                with patch.object(Path, 'mkdir', runtime_full):
+                    worker = dispatch.launch([sys.executable, '-c', script, str(output)],
+                                             self.repo, data, 1, prompt)
+                self.addCleanup(dispatch.stop, worker, str(self.repo))
+                for _ in range(200):
+                    if output.exists():
+                        break
+                    time.sleep(.01)
+                values = json.loads(output.read_text())
+                path = Path(values[0])
+                self.addCleanup(shutil.rmtree, path)
+                self.assertEqual(values, [str(path)] * 3)
+                self.assertLessEqual(len(os.fsencode(path)), 48)
+                self.assertEqual(path.stat().st_mode & 0o777, 0o700)
+                self.assertEqual(path.stat().st_uid, os.getuid())
+                expected_parent = (Path(runtime) / 'aw' / key
+                                   if runtime == self.runtime.name and failure is None else Path('/tmp'))
+                self.assertEqual(path.parent, expected_parent)
+                if not runtime:
+                    self.assertEqual(path.name, f'aw-{os.getuid()}-{key}-2')
+                dispatch.stop(worker, str(self.repo))
+
+    def test_launch_refuses_foreign_owned_or_symlinked_temporary_directory(self):
+        key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
+        path = Path(self.runtime.name) / 'aw' / key / '1'
+        path.mkdir(parents=True)
+        path.chmod(0o755)
+        data = self.common / 'slot-data' / 'A' / 'attempt-1'
+        data.mkdir(parents=True)
+        prompt = data / 'prompt.md'
+        prompt.write_text('fixture')
+        original = os.fstat
+        def foreign(fd):
+            info = original(fd)
+            if os.readlink(f'/proc/self/fd/{fd}') == str(path):
+                fields = list(info)
+                fields[4] = os.getuid() + 1
+                return os.stat_result(fields)
+            return info
+        with patch.object(os, 'fstat', side_effect=foreign):
+            with self.assertRaisesRegex(ValueError, 'owner'):
+                dispatch.launch(['true'], self.repo, data, 1, prompt)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o755)  # foreign paths were not chmod'ed
+        path.rmdir()
+        path.symlink_to(self.repo, target_is_directory=True)
+        with self.assertRaises((OSError, ValueError)):
+            dispatch.launch(['true'], self.repo, data, 1, prompt)
+        self.assertEqual(self.git('status', '--porcelain'), '')
 
     def test_directory_containing_manifest_is_serial_beside_independent_work(self):
         """TOOLSET-160-df: it never runs beside other serial work, but no longer alone."""
@@ -175,6 +259,8 @@ class DispatchTests(unittest.TestCase):
         self.wait_until_idle()
         times = {(e['task'], e['event']): e['time'] for e in self.events()}
         self.assertLess(times['E', 'start'], times['B', 'end'])
+        paths = {e['task']: e['tmpdir'] for e in self.events() if e['event'] == 'start'}
+        self.assertEqual(len(set(paths.values())), 3)  # a reused worker lane is not a reused temp slot
 
     def test_dependent_task_waits_until_its_dependency_is_done(self):
         self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))
@@ -369,12 +455,21 @@ class DispatchTests(unittest.TestCase):
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 30, 'commit': False}})
         _, second = self.apply()
         self.assertEqual([(d['task'], d['attempt']) for d in second['dispatched']], [('A', 2)])
+        temp = Path(execution.read(self.common / 'slot-data/A/tmp.json')['path'])
+        (temp / 'keep').write_text('resume state')
+        state.release(self.repo, self.owner)
+        _, adopted = self.apply()
+        self.assertEqual(adopted['dispatched'], [])  # live worker adopted, not duplicated
         self.assertEqual(self.pause_and_stop(), ['A'])
         self.wait_until_idle()
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt'], slot.get('paused')), ('interrupted', 2, True))
         self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}})
-        _, resumed = self.apply()
+        # Runtime settings can change across a service restart: reuse the saved path.
+        with patch.dict(os.environ, XDG_RUNTIME_DIR=''):
+            _, resumed = self.apply()
+        self.assertEqual(execution.read(self.common / 'slot-data/A/tmp.json')['path'], str(temp))
+        self.assertEqual((temp / 'keep').read_text(), 'resume state')
         self.assertEqual([(d['task'], d['attempt']) for d in resumed['dispatched']], [('A', 2)])
         self.assertEqual(resumed['dispatched'][0]['worktree'], slot['worktree'])
         self.assertNotIn('paused', state.slots(self.common)[0])
