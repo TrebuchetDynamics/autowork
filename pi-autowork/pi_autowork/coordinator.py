@@ -1051,9 +1051,26 @@ class Coordinator:
         if not cmd or self.stop:
             return
         record = main_check.read(self.state)
+        pid, started = record.get('pid'), record.get('start_time')
+        if pid is not None:
+            try:
+                # After re-exec there is no Popen left to reap this child. Never wait on a
+                # reused PID; old records without start ticks still need zombie recovery.
+                gone = (int(pid) <= 0 or (started is not None and main_check.start_time(pid) != str(started))
+                        or os.waitpid(int(pid), os.WNOHANG)[0] != 0)
+            except ChildProcessError:  # ECHILD: already reaped or another parent
+                gone = not main_check.alive(pid, started)
+            except (TypeError, ValueError):
+                gone = True
+            if gone:
+                record.pop('pid', None)
+                record.pop('start_time', None)
+                main_check.write(self.state, record)
         if record.get('state') == 'running':
-            if not main_check.alive(record.get('pid')):
+            if main_check.exit_code(self.state) is not None or not main_check.alive(pid, started):
                 self.finish_main_check(record)
+            return
+        if record.get('pid') is not None:  # receipt consumed just before bash exited: reap next cycle
             return
         rev = git(self.repo, 'rev-parse', self.base)
         if not rev or rev == record.get('rev'):
@@ -1075,27 +1092,26 @@ class Coordinator:
             child = subprocess.Popen(['bash', '-c', f'{cmd}; echo $? > {shlex.quote(str(done))}'], cwd=path,
                                      env=dict(os.environ, TMPDIR=tmp), stdout=log, stderr=subprocess.STDOUT,
                                      stdin=subprocess.DEVNULL, start_new_session=True)
-        main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid, started=time.time(), path=path,
+        main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid,
+                                          start_time=main_check.start_time(child.pid), started=time.time(), path=path,
                                           tmp=tmp, green=record.get('green'), failures=record.get('failures'),
                                           red_since=record.get('red_since'), gated=record.get('gated')))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
     def finish_main_check(self, record):
         """Record a finished (or aborted) main check and clean its checkout up."""
-        done = self.state / 'main-check.exit'
-        try:
-            code = int(done.read_text().strip())
-        except (OSError, ValueError):
-            code = None
+        code = main_check.exit_code(self.state)
         path, tmp = record.get('path') or '', record.get('tmp') or ''
         if path and Path(path).name.startswith('pi-scratch-main-check'):
             git(self.repo, 'worktree', 'remove', '--force', path)
         if tmp.startswith('/tmp/aw-main-'):
             shutil.rmtree(tmp, ignore_errors=True)
         rev, green = record.get('rev', ''), record.get('green')
+        # The receipt can precede bash's exit. Retain its identity until a later cycle reaps it.
+        child = {k: record[k] for k in ('pid', 'start_time') if k in record}
         if code is None:  # the runner stopped under it: check this revision again
             main_check.write(self.state, dict(state='aborted', rev='', green=green, failures=record.get('failures'),
-                                              red_since=record.get('red_since')))
+                                              red_since=record.get('red_since'), **child))
             return
         try:
             log_text = (self.state / 'main-check.log').read_text(errors='replace')
@@ -1106,12 +1122,12 @@ class Coordinator:
             # A busy host skipped some tests (TOOLSET-193-54): check this revision once more when
             # the load allows (check_main waits for it) before calling it green.
             main_check.write(self.state, dict(state='recheck', rev='', gated=rev, green=green,
-                                              failures=record.get('failures'), red_since=record.get('red_since')))
+                                              failures=record.get('failures'), red_since=record.get('red_since'), **child))
             LOG.say(f'Main at {rev[:7]} passed, but the busy host skipped {skipped} test(s); '
                     'checking it again when the load allows')
             return
         if code == 0:
-            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time()))
+            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(), **child))
             if record.get('failures'):
                 LOG.say(f'Main is green again at {rev[:7]}')
             return
@@ -1119,7 +1135,7 @@ class Coordinator:
         commits = (git(self.repo, 'log', '--format=%h %s', '-20', f'{green}..{rev}' if green else rev) or '').splitlines()
         red_since = record.get('red_since') if record.get('failures') else rev
         main_check.write(self.state, dict(state='red', rev=rev, green=green, failures=failures, commits=commits,
-                                          red_since=red_since or rev, finished=time.time()))
+                                          red_since=red_since or rev, finished=time.time(), **child))
         LOG.say(f'Main is red at {rev[:7]}: {len(failures)} failing ({", ".join(failures[:3])}'
                 + (f', +{len(failures) - 3} more' if len(failures) > 3 else '') + ')')
         self.maintain(main_only=True)  # one repair task, now: red main hides every later regression

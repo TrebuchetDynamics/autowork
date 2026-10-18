@@ -547,6 +547,57 @@ class EngineTests(Fixture):
         self.assertEqual(text.count('Checking main at'), 2, text)  # once more, then green
         self.assertNotIn('Main is red', text)
 
+    def test_a_main_check_finishes_and_is_reaped_after_a_reload(self):
+        """A re-exec loses Popen, but the next cycle must consume and reap the finished check."""
+        (self.repo / 'TODO.md').write_text(todo([]))
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        for code, result in [(0, 'green'), (1, 'red')]:
+            with self.subTest(result=result):
+                self.git(self.repo, 'commit', '-qam', 'empty queue', '--allow-empty')
+                release = self.root / f'release-{code}'
+                self.env['PI_AUTOWORK_MAIN_CHECK'] = (
+                    f'while ! test -e {shlex.quote(str(release))}; do sleep 0.05; done; '
+                    "echo 'FAIL: test_broken (test_other.OtherTests.test_broken)'; "
+                    f'(exit {code})')
+                runner = self.start_runner('--interval', '300')
+                check_pid = None
+                deadline = time.monotonic() + 60
+
+                def wait_until(predicate):
+                    while not predicate():
+                        self.assertLess(time.monotonic(), deadline, log())
+                        self.assertIsNone(runner.poll(), log())
+                        time.sleep(0.05)
+
+                try:
+                    wait_until(lambda: self.main_record().get('state') == 'running')
+                    record = self.main_record()
+                    check_pid = record['pid']
+                    self.assertIsNotNone(record.get('start_time'))
+                    starts = log().count('Started (PID')
+                    runner.send_signal(signal.SIGHUP)
+                    wait_until(lambda: log().count('Started (PID') > starts)
+                    # Keep the re-executed parent from cycling while its check becomes a zombie.
+                    runner.send_signal(signal.SIGSTOP)
+                    wait_until(lambda: Path(f'/proc/{runner.pid}/stat').read_text().rsplit(')', 1)[1].split()[0] == 'T')
+                    release.touch()
+                    wait_until(lambda: Path(f'/proc/{check_pid}/stat').read_text().rsplit(')', 1)[1].split()[0] == 'Z')
+                    self.assertEqual(Path(f'/proc/{check_pid}/stat').read_text().rsplit(')', 1)[1].split()[1],
+                                     str(runner.pid))
+                    runner.send_signal(signal.SIGHUP)  # wake its 300-second idle wait for one cycle
+                    runner.send_signal(signal.SIGCONT)
+                    wait_until(lambda: self.main_record().get('state') == result)
+                    self.assertEqual(self.main_record()['rev'], record['rev'])
+                    self.assertFalse(Path(f'/proc/{check_pid}').exists(), log())
+                finally:
+                    release.touch()
+                    if runner.poll() is None:
+                        runner.send_signal(signal.SIGCONT)
+                        runner.send_signal(signal.SIGINT)
+                    runner.communicate(timeout=60)
+                    if check_pid and Path(f'/proc/{check_pid}').exists():
+                        os.killpg(check_pid, signal.SIGKILL)
+
     def test_a_red_main_after_a_landing_gets_one_repair_task(self):
         """TOOLSET-176-98: a landing broke unrelated tests and nothing noticed."""
         self.env['PI_AUTOWORK_MAIN_CHECK'] = ("echo 'FAIL: test_broken (test_other.OtherTests.test_broken)'; "
