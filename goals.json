@@ -716,7 +716,9 @@
         "TOOLSET-214-5b",
         "TOOLSET-215-a8",
         "TOOLSET-216-08",
-        "TOOLSET-218-d0"
+        "TOOLSET-218-d0",
+        "TOOLSET-219-2c",
+        "TOOLSET-220-71"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1132,6 +1134,24 @@
       "section": "Now",
       "status": "open",
       "title": "/autowork update also refreshes this host's other installs through install.sh"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-219-2c",
+      "section": "Now",
+      "status": "open",
+      "title": "A planning task runs in the maintainer and saves the next batch, until its goal is met"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-219-2c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-220-71",
+      "section": "Now",
+      "status": "open",
+      "title": "Plan For Me and Plan With Me end a large plan's batch with a planning task"
     },
     {
       "depends_on": [],
