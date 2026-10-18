@@ -1335,6 +1335,36 @@ class EngineTests(Fixture):
         self.assertEqual(runner.returncode, 130, out + err)
         self.assertEqual(out.count('Merged pi-autowork/'), 1, out)
 
+    def test_questions_land_on_main_while_other_workers_still_run(self):
+        """TOOLSET-188-75: a session landed only when a task closed or the queue emptied; with
+        every task running, waiting or held, its questions and repairs stayed off main for hours."""
+        self.plan({'worker:A': ['blocked', 'blocked'], 'worker:B': ['slow']})
+        bare = self.origin()
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+        blockers = self.repo / 'BLOCKERS.md'
+        while '### Q-A — ' not in (blockers.read_text() if blockers.exists() else ''):
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        self.assertFalse(self.done('B'), 'B finished first; the landing did not happen beside it')
+        os.kill(int((self.root / 'busy-B').read_text()), 0)  # B's worker still runs
+        upstream = subprocess.run(['git', '--git-dir', str(bare), 'show', 'main:BLOCKERS.md'],
+                                  capture_output=True, text=True).stdout
+        while '### Q-A — ' not in upstream:  # and the push follows the landing
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+            upstream = subprocess.run(['git', '--git-dir', str(bare), 'show', 'main:BLOCKERS.md'],
+                                      capture_output=True, text=True).stdout
+        while not self.done('B'):
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
