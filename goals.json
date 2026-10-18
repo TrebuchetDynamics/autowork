@@ -733,7 +733,8 @@
         "TOOLSET-232-01",
         "TOOLSET-233-ba",
         "TOOLSET-234-d4",
-        "TOOLSET-235-0d"
+        "TOOLSET-235-0d",
+        "TOOLSET-236-4d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -741,6 +742,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-236-4d",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
       "TOOLSET-223-8e",
@@ -1266,6 +1268,14 @@
       "section": "Now",
       "status": "open",
       "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-236-4d",
+      "section": "Now",
+      "status": "open",
+      "title": "A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first"
     },
     {
       "depends_on": [],
