@@ -718,7 +718,9 @@
         "TOOLSET-216-08",
         "TOOLSET-218-d0",
         "TOOLSET-219-2c",
-        "TOOLSET-220-71"
+        "TOOLSET-220-71",
+        "TOOLSET-221-8e",
+        "TOOLSET-222-e1"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -726,7 +728,8 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-161-17",
+      "TOOLSET-221-8e",
+      "TOOLSET-222-e1",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -734,10 +737,14 @@
       "TOOLSET-195-ee",
       "TOOLSET-200-c1",
       "TOOLSET-201-5e",
+      "TOOLSET-216-08",
+      "TOOLSET-217-2d",
+      "TOOLSET-219-2c",
+      "TOOLSET-220-71",
+      "TOOLSET-215-91",
       "TOOLSET-214-5b",
       "TOOLSET-212-0d",
       "TOOLSET-184-b3",
-      "TOOLSET-180-72",
       "TOOLSET-170-f6",
       "TOOLSET-172-40",
       "TOOLSET-138-62",
@@ -1152,6 +1159,22 @@
       "section": "Now",
       "status": "open",
       "title": "Plan For Me and Plan With Me end a large plan's batch with a planning task"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-221-8e",
+      "section": "Now",
+      "status": "open",
+      "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-222-e1",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner with nothing running always gets one worker, whatever the host load"
     },
     {
       "depends_on": [],

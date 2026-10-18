@@ -58,6 +58,38 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-221-8e — Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply
+
+- [ ] TOOLSET-221-8e — Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [admission planning](skills/autowork/scripts/parallel_plan.py) (`plan`: the likely-independent ranking calls `_shared(_hint(task), chosen)` with `chosen` growing by every dispatched task's Touches; `conflict` calls `serial()`/`exclusive()`, each re-running `_solo` and its `_shared(..., SERIAL_PATHS)`, for every pair; `depends` walks the dependency graph again for every pair); `_intersects` (a glob-intersection search that tries every boundary character with `fnmatchcase` at every state pair).
+- Evidence (2026-10-18 13:16-13:23, this repository's runner, 58 runnable tasks): one `--apply` engine call ran for over 6 minutes at a full core with no child process. Rerunning `parallel_dispatch.admit` on the same ledger with stack sampling did not finish within 60 s. Every sample was in `_shared` → `_intersects` → `fnmatchcase`: 94 from `plan`'s ranking loop, 26 from `_solo`. Reading the ledger (`contracts`, `retired`, `pending_tasks`) took under 1 s together. The ranking arrived with TOOLSET-161-17 (4ec89d8), which also stopped holding tasks on path overlap, so far more tasks now reach it in one pass. Each runner's loop waits on this call, so dispatch, integration and questions all slowed, and the core it burns counts toward the host load that gates every other runner (see TOOLSET-222-e1).
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py
+- Scope: (1) `_intersects` is cached (`functools.lru_cache` on the two pattern strings) and short-cuts the common cases before the search: two literal paths compare equal or by directory prefix (`a/` covers `a/b`), and a literal path against a pattern is one `fnmatchcase`. The search runs only when both sides contain glob metacharacters. (2) In `plan`, each task's hint, resources and solo/serial/exclusive answers are computed once per call (a dict keyed by task ID), not per pair. (3) The dependency closure is computed once per call, so `depends(a, b)` is a set lookup. (4) The ranking keeps `chosen` as a set of distinct patterns. Results stay identical: same dispatch order, same waiting reasons and `blocked_by`.
+- Acceptance: In fixtures: a generated queue of 150 tasks with 10 Touches paths each (some directories, some globs, some serial paths) and 8 running tasks plans in under 2 s on an unloaded machine. Assert that it finishes within 10 s, so a busy host cannot flake it. Every existing test_parallel_plan.py and test_parallel_dispatch.py case passes unchanged. A property check over random literal/glob pairs shows the short-cuts agree with the full `_intersects` search.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which tasks dispatch or wait, or to the order. No new dependency.
+- Planner's call: first in Now. The minutes-long planning slows every runner with a deep queue, and its CPU feeds the load gate that starves the rest. Caching and literal short-cuts keep exact semantics, unlike dropping the glob search.
+
+### TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
+
+- [ ] TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`: refuses any worker while the 1-minute load average is at or above the CPU count, the same for every runner on the host); [health](pi-autowork/pi_autowork/health.py) (`blocked` when work waits and none runs).
+- Evidence (2026-10-18 13:19-13:22): a small fleet runner with two runnable tasks and no worker logged `No task can start now: <task>: resource gate: load average 27.75 >= 24 CPUs` every cycle and showed `blocked` in the TUI. The load came from another runner's six workers, its review checks and a minutes-long planning call (TOOLSET-221-8e). In the last 6 hours four runners logged 1 to 10 load-gate refusals each. The first runner to start workers keeps the load high, so the others wait whatever their queues hold.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py
+- Scope: (1) The load-average check applies only when this runner already has a live worker (`running >= 1`). A runner's first worker is refused only by memory or disk, which still apply to every worker. (2) A wait that is only the load gate shows as `waiting for the host (load L on N CPUs)` in status and the TUI, not `blocked`, and never counts toward `stalled`.
+- Acceptance: In fixtures with the load average patched above the CPU count: a runner with no live worker dispatches one task and the second waits with the load reason; a runner with one live worker dispatches nothing new; with memory below the floor, even the first worker is refused. Health reports a runner whose only waits are load-gate waits as waiting for the host, and never stalled after the stall threshold.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the memory or disk floors, or to the load threshold for a runner's second and later workers. No cross-runner coordination file.
+- Planner's call: second in Now. One worker per runner means every repository progresses; a Pi worker mostly waits on the model, and the threshold still caps everyone's extra workers. A host-wide fair-share scheduler would need state shared between runners; this rule gets most of the benefit without it.
+
 ### TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
 
 - [ ] TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
