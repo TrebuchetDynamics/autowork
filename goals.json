@@ -688,7 +688,15 @@
         "TOOLSET-188-75",
         "TOOLSET-189-96",
         "TOOLSET-190-bf",
-        "TOOLSET-195-ee"
+        "TOOLSET-191-0a",
+        "TOOLSET-192-71",
+        "TOOLSET-193-54",
+        "TOOLSET-194-46",
+        "TOOLSET-195-ee",
+        "TOOLSET-196-fb",
+        "TOOLSET-197-4f",
+        "TOOLSET-198-8f",
+        "TOOLSET-199-2d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -696,8 +704,10 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-199-2d",
+      "TOOLSET-198-8f",
       "TOOLSET-189-96",
-      "TOOLSET-190-bf",
+      "TOOLSET-197-4f",
       "TOOLSET-140-f4",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
@@ -731,6 +741,7 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-192-71",
       "TOOLSET-172-92",
       "TOOLSET-178-47",
       "TOOLSET-131-ac",
@@ -751,7 +762,6 @@
       "TOOLSET-144-c0",
       "TOOLSET-184-1d",
       "TOOLSET-117-cb",
-      "TOOLSET-123-a0",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -762,6 +772,7 @@
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
+      "TOOLSET-123-a0",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d"
@@ -1046,18 +1057,34 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-190-bf",
-      "section": "Now",
-      "status": "open",
-      "title": "A landing that needs no merge goes ahead during a review"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-195-ee",
       "section": "Now",
       "status": "open",
       "title": "The runner's own jobs never count as outside sessions"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-197-4f",
+      "section": "Now",
+      "status": "open",
+      "title": "An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-198-8f",
+      "section": "Now",
+      "status": "open",
+      "title": "An answered question stays answered: a task entry that names its holder ends the claim question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-199-2d",
+      "section": "Now",
+      "status": "open",
+      "title": "A task whose Ownership needs the owner or live authorization is never dispatched unattended"
     },
     {
       "depends_on": [],
@@ -1142,16 +1169,6 @@
       "section": "Next",
       "status": "open",
       "title": "An autowork command: the TUI home, service runners by default, no tmux"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-121-3d"
-      ],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-123-a0",
-      "section": "Next",
-      "status": "open",
-      "title": "Reinstall the live Hermes profiles and host plugins as autowork"
     },
     {
       "depends_on": [
@@ -1353,6 +1370,14 @@
       "title": "Browse all recorded tasks in the Autowork TUI"
     },
     {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-192-71",
+      "section": "Next",
+      "status": "open",
+      "title": "The offline check runs tests with SIGINT at its default, even when started in the background"
+    },
+    {
       "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
@@ -1363,6 +1388,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Deploy reviewed fleet-audit helpers through the native scanned updater"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-121-3d"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-123-a0",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Reinstall the live Hermes profiles and host plugins as autowork"
     },
     {
       "depends_on": [
@@ -2364,6 +2399,46 @@
       "section": "Done",
       "status": "done",
       "title": "A session's planning commits land on main within minutes, not only when a task closes"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-190-bf",
+      "section": "Done",
+      "status": "done",
+      "title": "A landing that needs no merge goes ahead during a review"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-191-0a",
+      "section": "Done",
+      "status": "done",
+      "title": "autowork restart reloads a runner that is re-executing, instead of restarting it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-193-54",
+      "section": "Done",
+      "status": "done",
+      "title": "A test the host's resource gate refuses is skipped, not failed, so a busy host never reads as red"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-194-46",
+      "section": "Done",
+      "status": "done",
+      "title": "An integration under way waits briefly for the writer lock instead of ending BUSY and abandoned"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-196-fb",
+      "section": "Done",
+      "status": "done",
+      "title": "A review that runs out of time is retried with a longer limit, without spending the task's attempt"
     },
     {
       "depends_on": [

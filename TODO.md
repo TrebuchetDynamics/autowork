@@ -51,6 +51,38 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-199-2d — A task whose Ownership needs the owner or live authorization is never dispatched unattended
+
+- [ ] TOOLSET-199-2d — A task whose Ownership needs the owner or live authorization is never dispatched unattended
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [task contracts](skills/autowork/scripts/parallel_dispatch.py) (`contracts`), [plan](skills/autowork/scripts/parallel_plan.py) (runnability and the `outside` root), [questions](pi-autowork/pi_autowork/questions.py).
+- Evidence (2026-10-17, this repository's runner): it logged `TOOLSET-123-a0: runs alone (no Touches proposed: NONE - Purely live migration of installed profiles, host plugins, cron wiring and runner sessions ...)` and queued it, although the entry's Ownership reads `Owner or a coordinator with live authorization` and its scope reinstalls the owner's live profiles, plugins and cron jobs. The owner session moved it to Needs decision by hand.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, skills/docs-sync/SKILL.md
+- Scope: (1) A task whose `Ownership:` names the owner as the only performer (`Owner`, `owner only`, `Owner or a coordinator with live authorization`) or that declares `Resources: live` without a recorded `Live authorization:` line is not runnable for an unattended runner: it waits as an `outside` root, never dispatched. (2) It becomes one owner question: run it yourself, record live authorization, or move it to Needs decision. (3) Docs Sync writes such tasks under Needs decision from the start.
+- Acceptance: In fixtures, a Now task with `Ownership: Owner or a coordinator with live authorization` is listed as waiting (outside) and never dispatched, and BLOCKERS.md gets one question; the same task with `Live authorization: <record>` runs.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to tasks with an ordinary coordinator ownership.
+- Planner's call: high in Now: an unattended worker must never change the owner's live installation.
+
+### TOOLSET-198-8f — An answered question stays answered: a task entry that names its holder ends the claim question
+
+- [ ] TOOLSET-198-8f — An answered question stays answered: a task entry that names its holder ends the claim question
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner report (2026-10-17: "contradiction!!!", pasting `/blockers` answering "0 new questions; the T-… and T-… notices remain covered by your earlier answers" beside the TUI showing "2 questions for you" for the same two tasks); [questions](pi-autowork/pi_autowork/questions.py) (`build`, the `claim` question and its Answer text), [Blockers](skills/blockers/SKILL.md) (where answers are saved), [fleet view](pi-autowork/pi_autowork/fleet_view.py) (the questions count and list).
+- Evidence (2026-10-17, one fleet runner): its claim question offers two answers: `set Status: open ... otherwise note who holds it and when it will be done`. The owner took the second: both task entries name their holder (an isolated continuation to preserve) and stay `in_progress`. `/blockers` reads that as answered; the runner rebuilds its questions from engine state every cycle, sees the same claim, and keeps both questions open, so the TUI and BLOCKERS.md (since 01:25 that day) ask again for what is answered.
+- Touches: pi-autowork/pi_autowork/questions.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_questions.py, pi-autowork/tests/test_fleet_view.py, skills/blockers/SKILL.md, skills/docs-sync/SKILL.md
+- Scope: (1) A task entry may carry `Held by: <who or what>; until <YYYY-MM-DD>` (the claim's answer, written by `/blockers` or the owner). While that line is present and its date has not passed, the runner writes no claim question for the task; the TUI and status show it under waiting as `held by <who> until <date>`, not as a question. After the date, the question returns once, noting the expired answer. (2) The claim question's Answer text names that field exactly. (3) `/blockers` records a "someone holds it" answer as that field, and treats an entry with a current `Held by:` as answered. (4) An entry without the field keeps today's behavior.
+- Acceptance: In fixtures, a claimed task whose entry has `Held by: isolated continuation; until <tomorrow>` yields no claim question and a `held by` waiting line; with yesterday's date the question returns, mentioning the expired answer; without the line the question is as today. The fleet view's questions count excludes such tasks.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No automatic adoption of claimed tasks; no model call to read answers.
+- Planner's call: first in Now: a runner asking the owner what is already answered breaks the one rule the owner set for questions.
+
 ### TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files
 
 - [ ] TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files
@@ -68,21 +100,21 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No commit of the owner's planning files by the runner at start; the submodule worktree location belongs to the other session's change.
 - Planner's call: after TOOLSET-188-75 in Now; every repository added to the fleet goes through this path, and the failure looks like an idle runner.
 
-### TOOLSET-190-bf — A landing that needs no merge goes ahead during a review
+### TOOLSET-197-4f — An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop
 
-- [ ] TOOLSET-190-bf — A landing that needs no merge goes ahead during a review
+- [ ] TOOLSET-197-4f — An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop
 - Status: open
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-17); [landing](pi-autowork/pi_autowork/coordinator.py) (`land_planning`, `land`, `merge_main`, `session_busy`); TOOLSET-188-75 (done).
-- Evidence (2026-10-17, this repository's runner, after TOOLSET-188-75 was deployed): other runners landed planning commits within a minute (`DOCS-MAINTAINER: merged`, then `Merged ... into main`, `Pushed main`), but this one still held 14 commits off main 40 minutes later. Its reviews run the full offline check (about 25 minutes each) back to back, and every landing waits until no review runs, because `merge_main` first merges the base into the session, which would move the branch the review fast-forwards at its end.
-- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
-- Scope: (1) While a review runs, a due landing (TOOLSET-188-75's triggers) goes ahead when the base is already an ancestor of the session, so no merge is needed: fast-forward the base in the main checkout to the session's current tip and push, without touching the session branch or its worktree. (2) When the base has moved, the landing waits for the review as today. (3) The review's own fast-forward of the session at its end is unaffected; the next landing carries it.
-- Acceptance: In a fixture with a slow review running and a questions commit on the session (base not moved), the question reaches main and the fixture upstream before the review ends, and the reviewed task then integrates and lands normally. With the base moved by an outside commit, the landing waits for the review.
-- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Sources: fleet monitoring (2026-10-17); [maintainer triggers](pi-autowork/pi_autowork/maintainer.py) (`triggers`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `ACTION_REQUIRED` branch logging `The engine needs attention`), [ledger](skills/docs-sync/scripts/goals.py) (`validate`).
+- Evidence (2026-10-17, a runner added that evening): after its planning files were committed it ran one task, then logged `The engine needs attention: invalid goals.json: <GOAL>: unverified goal has no open task; checking again in 60s` every minute and showed as blocked. Nothing repairs a ledger the engine refuses: the DOCS-MAINTAINER only reacts to held, not-runnable or review-finding tasks and to a red main, and BLOCKERS.md got no question.
+- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_maintainer.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
+- Scope: (1) When the engine answers `ACTION_REQUIRED` with a reason starting `invalid goals.json` (or `goals.py validate` fails on the session), the runner adds the item `LEDGER` with the validate errors to the maintainer's triggers, runs the maintainer once per distinct error set, and lets it change only planning files as today (a goal with no open task gets a task for its remaining proof, or its evidence and status corrected). (2) If the maintainer's change does not validate, or it makes no change, the runner writes one BLOCKERS.md question quoting the errors. (3) The log says once per error set what was tried, not every minute.
+- Acceptance: In a fixture whose goals.json has an unverified goal with no open task, the runner logs one `DOCS-MAINTAINER: repairing the task docs of LEDGER`, merges the maintainer's planning change, and dispatches afterwards; with a maintainer that changes nothing, one question appears in BLOCKERS.md and the attention line is logged once.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 -m unittest discover -s tests -p test_pi_autowork.py
 - Dependencies: None.
 - Ownership: Toolset coordinator.
-- Exclusions: No merge into the session during a review; no change to what lands.
-- Planner's call: right after TOOLSET-189-96: a runner whose reviews run long full checks otherwise keeps its planning invisible for hours, as before TOOLSET-188-75.
+- Exclusions: No change to goals.py's validation rules.
+- Planner's call: next to TOOLSET-196-fb: a refused ledger stops a whole repository and nothing tells the owner.
 
 ### TOOLSET-140-f4 — Give workers a short temporary directory that browsers and sockets accept
 
@@ -706,6 +738,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
+### TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
+
+- [ ] TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner-session runs of `scripts/check.py` (2026-10-17); [offline check](scripts/check.py) (`run_unit`).
+- Evidence (2026-10-17): every full run started as a background job (`(python3 scripts/check.py > log &)`) failed `test_finish_task.FinishTaskTests.test_interrupted_acceptance_stops_child_writers` (`AssertionError: 0 == 0`) and `test_parallel_integrate.IntegrationTests.test_real_validation_interrupt_stops_child_before_recovery` (`'KeyboardInterrupt' not found in ''`); both passed when run in the foreground. A non-interactive shell starts background jobs with SIGINT ignored, every child inherits that, and both tests interrupt a child with SIGINT. The runner's own main check is not affected.
+- Touches: scripts/check.py, tests/test_check.py
+- Scope: `run_unit` starts each test process with SIGINT and SIGTERM at their default dispositions (a `preexec_fn` on POSIX, alongside `start_new_session`).
+- Acceptance: In `tests/test_check.py`, a check started with SIGINT ignored runs a fixture test that sends itself SIGINT and expects KeyboardInterrupt, and it passes.
+- Checks: python3 -m unittest discover -s tests -p test_check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to test selection, sharding or timeouts.
+- Planner's call: Next: it only misleads people who run the full check in the background.
+
 ### TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
 
 - [ ] TOOLSET-172-92 — Recover verified managed Hermes checkouts when updates cannot fast-forward
@@ -1013,19 +1061,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No dependency installed into services or the fleet; no change to the default worker; adoption needs an owner decision.
 
-### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
-
-- [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
-- Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer.
-- Goal: PORTABLE — Align portable workflow discovery.
-- Sources: [rename note](README.md#renamed-from-hermes-toolset), [rename decision](docs/project.md#rename-to-autowork-2026-10-16), [installation](docs/installation.md).
-- Scope: Every installed copy still carries the old identity: profiles hold `plugins/hermes-toolset`, `plugins.enabled: [hermes-toolset]`, `plugins.entries.hermes-toolset` settings and cron jobs naming `hermes-toolset:` skills, and the old `/toolset update` cannot enable the renamed plugin. Per profile: record the settings under `plugins.entries.hermes-toolset` and the cron jobs' state; remove the old plugin; install and enable `autowork`; restore those settings under `plugins.entries.autowork`; run `scripts/wire-owner-cron.py --root ROOT` and then `--apply`; refresh bundle-managed cron scripts. Reinstall the Claude Code and Codex plugins and switch the Pi package to `git:github.com/TrebuchetDynamics/autowork`, then restart pi-autowork runners when no task is in flight.
-- Acceptance: In each profile `hermes -p PROFILE autowork doctor --core` is ready and `/autowork status` answers in chat; settings and opt-outs match the recorded values; every cron job keeps its pause state, schedule, model and delivery and names `autowork:` skills; `pi list` shows the autowork source and runners resume their sessions.
-- Checks: Per-profile before/after config and job readback; `autowork doctor --core`; one `/autowork status` in a gateway chat; `pi list`; runner `--status`.
-- Dependencies: TOOLSET-121-3d.
-- Ownership: Owner or a coordinator with live authorization.
-- Exclusions: No job resumption, cadence, model or delivery change; no direct edits in fleet repositories; no unrelated profile settings changed.
-
 ### TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
 
 - [ ] TOOLSET-066 — Qualify the Claude Code plugin with a live questions-only workflow
@@ -1190,6 +1225,20 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Needs decision
 
+### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+
+- [ ] TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
+- Status: open; live follow-up of TOOLSET-121-3d, which has no compatibility layer. Moved to Needs decision (2026-10-17, planner's call): it changes the owner's installed profiles, plugins and cron jobs live, and its Ownership requires the owner or live authorization, but the runner had queued it to run alone unattended.
+- Goal: PORTABLE — Align portable workflow discovery.
+- Sources: [rename note](README.md#renamed-from-hermes-toolset), [rename decision](docs/project.md#rename-to-autowork-2026-10-16), [installation](docs/installation.md).
+- Scope: Every installed copy still carries the old identity: profiles hold `plugins/hermes-toolset`, `plugins.enabled: [hermes-toolset]`, `plugins.entries.hermes-toolset` settings and cron jobs naming `hermes-toolset:` skills, and the old `/toolset update` cannot enable the renamed plugin. Per profile: record the settings under `plugins.entries.hermes-toolset` and the cron jobs' state; remove the old plugin; install and enable `autowork`; restore those settings under `plugins.entries.autowork`; run `scripts/wire-owner-cron.py --root ROOT` and then `--apply`; refresh bundle-managed cron scripts. Reinstall the Claude Code and Codex plugins and switch the Pi package to `git:github.com/TrebuchetDynamics/autowork`, then restart pi-autowork runners when no task is in flight.
+- Acceptance: In each profile `hermes -p PROFILE autowork doctor --core` is ready and `/autowork status` answers in chat; settings and opt-outs match the recorded values; every cron job keeps its pause state, schedule, model and delivery and names `autowork:` skills; `pi list` shows the autowork source and runners resume their sessions.
+- Checks: Per-profile before/after config and job readback; `autowork doctor --core`; one `/autowork status` in a gateway chat; `pi list`; runner `--status`.
+- Dependencies: TOOLSET-121-3d.
+- Ownership: Owner or a coordinator with live authorization.
+- Exclusions: No job resumption, cadence, model or delivery change; no direct edits in fleet repositories; no unrelated profile settings changed.
+
+
 ### TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
 
 - [ ] TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
@@ -1265,6 +1314,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-140-f4, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-161-17, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-165-f7, TOOLSET-170-f6, TOOLSET-172-40, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-180-72, TOOLSET-181-02, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-184-b3, TOOLSET-189-96, TOOLSET-190-bf |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-140-f4, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-161-17, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-165-f7, TOOLSET-170-f6, TOOLSET-172-40, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-180-72, TOOLSET-181-02, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-184-b3, TOOLSET-189-96, TOOLSET-192-71, TOOLSET-195-ee, TOOLSET-197-4f, TOOLSET-198-8f, TOOLSET-199-2d |
 
 <!-- goals:coverage:end -->

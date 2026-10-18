@@ -3181,3 +3181,108 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to what the maintainer or the questions write, to conflict resolution or to the push setting.
 - Planner's call: top of the toolset's own Now: the runner's planning, including its repairs of its own held tasks, is invisible until it lands.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-190-bf — A landing that needs no merge goes ahead during a review
+
+- [x] TOOLSET-190-bf — A landing that needs no merge goes ahead during a review
+- Status: done 2026-10-17 by the owner session (5c3d3aa, merged in 7039f47); pi-autowork/tests/test_landing.py fails on the old code and passes now.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [landing](pi-autowork/pi_autowork/coordinator.py) (`land_planning`, `land`, `merge_main`, `session_busy`); TOOLSET-188-75 (done).
+- Evidence (2026-10-17, this repository's runner, after TOOLSET-188-75 was deployed): other runners landed planning commits within a minute (`DOCS-MAINTAINER: merged`, then `Merged ... into main`, `Pushed main`), but this one still held 14 commits off main 40 minutes later. Its reviews run the full offline check (about 25 minutes each) back to back, and every landing waits until no review runs, because `merge_main` first merges the base into the session, which would move the branch the review fast-forwards at its end.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) While a review runs, a due landing (TOOLSET-188-75's triggers) goes ahead when the base is already an ancestor of the session, so no merge is needed: fast-forward the base in the main checkout to the session's current tip and push, without touching the session branch or its worktree. (2) When the base has moved, the landing waits for the review as today. (3) The review's own fast-forward of the session at its end is unaffected; the next landing carries it.
+- Acceptance: In a fixture with a slow review running and a questions commit on the session (base not moved), the question reaches main and the fixture upstream before the review ends, and the reviewed task then integrates and lands normally. With the base moved by an outside commit, the landing waits for the review.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No merge into the session during a review; no change to what lands.
+- Planner's call: right after TOOLSET-189-96: a runner whose reviews run long full checks otherwise keeps its planning invisible for hours, as before TOOLSET-188-75.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-191-0a — autowork restart reloads a runner that is re-executing, instead of restarting it
+
+- [x] TOOLSET-191-0a — autowork restart reloads a runner that is re-executing, instead of restarting it
+- Status: done 2026-10-17 by the owner session (cc59768); its fixture test fails on the old code and passes now.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [reload](pi-autowork/pi_autowork/service.py) (`reload_in_place`, `runner_record`), [re-execution](pi-autowork/pi_autowork/coordinator.py) (`reexec` unlinks `runner.json`; the new process writes it after taking the lock).
+- Evidence (2026-10-17): two `autowork restart` rounds a few minutes apart; in the second, one runner answered `Restarted ...; workers paused and resume on the same attempt` while the others reloaded. Between `reexec` removing `runner.json` and the re-executed process writing it again, `runner_record` finds no record, `reload_in_place` treats the runner as one from before reloads and the command restarts the unit, pausing its worker.
+- Touches: pi-autowork/pi_autowork/service.py, tests/test_autowork_command.py
+- Scope: (1) With the service active and no `runner.json`, `reload_in_place` waits up to 10 seconds for the record before deciding; a record without `reloads` still means an old runner. (2) A record that appears with a higher `reloads` than before the command (or any record while the unit's main PID is unchanged) counts as reloaded, with no second signal.
+- Acceptance: In a fixture with a fake systemctl, `autowork restart` while `runner.json` is missing and reappears with `reloads` after 2 seconds prints `Reloaded`, sends one SIGHUP and no `restart`; with no record after 10 seconds it restarts as today.
+- Checks: python3 -m unittest discover -s tests -p test_autowork_command.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to `reexec` or to the record's contents.
+- Planner's call: small and near the top: each wrong restart pauses a worker, which is what TOOLSET-174-1d removed.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-193-54 — A test the host's resource gate refuses is skipped, not failed, so a busy host never reads as red
+
+- [x] TOOLSET-193-54 — A test the host's resource gate refuses is skipped, not failed, so a busy host never reads as red
+- Status: done 2026-10-17 by the owner session (merged in 45b6320); python3 scripts/check.py passed with no failures at load 17.9; its main-check and check.py tests fail on the old code.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`), end-to-end tests that dispatch real workers (`skills/autowork/scripts/test_parallel_e2e.py`, `test_parallel_adversarial.py`), [main check](pi-autowork/pi_autowork/main_check.py), [offline check](scripts/check.py).
+- Evidence (2026-10-17, this repository's runner): `Main is red at cc59768: 4 failing`: `test_parallel_adversarial.AdversarialWorkerTests.test_a_report_written_after_a_coordinator_restart_is_adopted` and three `test_parallel_e2e.EndToEndTests` tests. All six gate lines in that log read `resource gate: load average 26.77 >= 24 CPUs`: the tests dispatch through the real gate, the host's load (the fleet's own workers) refused them, and they report it as a failure. The same four failed in every full check started at a high load that day and passed when rerun below the gate. A false red sends the DOCS-MAINTAINER to plan a repair (`changed MAIN`), and a review that runs the full check rejects a sound candidate.
+- Touches: skills/autowork/scripts/test_parallel_e2e.py, skills/autowork/scripts/test_parallel_adversarial.py, skills/autowork/scripts/offline_fixtures.py, scripts/check.py, tests/test_check.py, pi-autowork/pi_autowork/main_check.py, pi-autowork/tests/test_main_check.py
+- Scope: (1) A test that dispatches through the real gate and gets a `resource gate:` refusal raises `unittest.SkipTest` with that reason (one shared helper), instead of failing. (2) `scripts/check.py` prints the number of tests skipped by the gate in its summary, and exits non-zero only for real failures. (3) The main check records gate-skipped tests and, when any were skipped, runs the check again once the load is below the gate (at most once per main revision) before calling main green; a red from real failures is unaffected.
+- Acceptance: In a fixture with the gate forced to refuse (an environment override for the load threshold), the four tests are skipped with the gate reason, `scripts/check.py` exits 0 and reports them, and the main check reports green-pending rather than red; with the override removed they run and pass.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_e2e.py; python3 -m unittest discover -s tests -p test_check.py; python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the gate's thresholds (TOOLSET-118-68) or to production dispatch; no bypass of the real gate in these tests.
+- Planner's call: high in Now: every busy hour turns this repository's main red and wastes a maintainer run, and reviews of toolset tasks fail on a busy host.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-194-46 — An integration under way waits briefly for the writer lock instead of ending BUSY and abandoned
+
+- [x] TOOLSET-194-46 — An integration under way waits briefly for the writer lock instead of ending BUSY and abandoned
+- Status: done 2026-10-17 by the owner session (merged in 2e755cb); python3 scripts/check.py passed with no failures; the waiting-lock test fails on the old code with BlockingIOError.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [integration](skills/autowork/scripts/parallel_integrate.py) (`integrate`: the slot becomes `integrating`, then `save_receipt` and the merge take `writer.lock` again), [locks](skills/autowork/scripts/task_execution.py) (`lock` is non-blocking; `BlockingIOError` becomes `BUSY`), [loop](pi-autowork/pi_autowork/coordinator.py) (`start_integration` runs beside dispatch since TOOLSET-183-d6).
+- Evidence (2026-10-17, one fleet runner, from its journal and log): a task was `verifying` from 22:03 and its slot `integrating` from 22:03:06; at 22:05 the runner logged `waiting to integrate until another session leaves the main checkout (Repository execution lock is held by a live operation.)` and started the next reported task's review, which integrated at 22:07 and landed. The first task's slot stayed `integrating`; at 22:07:23 the engine held it with `abandoned integration tree changed or ambiguous; preserve for diagnosis` and it ran again from scratch as `-r2`. Since reviews run beside the loop (TOOLSET-183-d6), the loop's own `--apply --parallel` takes `writer.lock` each cycle while the review child also takes it, non-blocking, for every receipt and for the merge; whichever loses gets `BlockingIOError`, which the child reports as BUSY after it already marked the slot `integrating`. Another runner stalled 33 minutes on the same message that evening.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) Once a slot is `integrating`, every later `writer.lock` (and `integration.lock`) acquisition in that integration waits up to `AUTOWORK_LOCK_WAIT` seconds (default 60), retrying non-blocking every 0.2 s, before giving up; the loop's own holders release within seconds. (2) If it still cannot take the lock, the integration returns the slot to `reported` (removing its integration worktree) before answering BUSY, so it is retried, never abandoned. (3) The coordinator logs the "another session in the main checkout" message only when the holder is not this runner's own process tree (the PIDs holding the lock, as `fuser` shows them, are compared with the runner and its children); for its own contention it says nothing and retries next cycle.
+- Acceptance: In a fixture, an integration whose receipt step meets `writer.lock` held by another process for 2 seconds completes INTEGRATED with no BUSY; held for longer than the wait, the slot ends `reported`, not `integrating`, and the next integration of it succeeds with no `abandoned integration` hold. A runner fixture with a slow review and dispatch every second integrates every task once.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which operations take which lock, and no blocking wait before a slot is `integrating` (dispatch keeps its non-blocking refusal).
+- Planner's call: first in Now: since TOOLSET-183-d6 every runner with reviews and dispatch in the same minute can lose a finished task's work this way.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-196-fb — A review that runs out of time is retried with a longer limit, without spending the task's attempt
+
+- [x] TOOLSET-196-fb — A review that runs out of time is retried with a longer limit, without spending the task's attempt
+- Status: done 2026-10-17 by the owner session (9af9e76); scope (1) and (2) delivered with tests; (3), the owner question after a timeout at the four-hour cap, is not built: such a task stays held with cause timeout.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-17); [integration](skills/autowork/scripts/parallel_integrate.py) (`passed`, the validation hold), [bounded command](skills/autowork/scripts/task_execution.py) (outcome `TIMED_OUT`), [verify timeout](pi-autowork/pi_autowork/worker.py) (`PI_AUTOWORK_VERIFY_TIMEOUT`, default 1800), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`start_integration`, `count_failure`).
+- Evidence (2026-10-17, this repository's runner): TOOLSET-165-f7's reviews ended `TIMED_OUT` at 1829 s and 1925 s against the 1800 s limit, and the task was held with `missing, failed, stale or mismatched integration validation` after its second attempt: two attempts spent on the host's speed, not on the task. The repository's full check alone takes 8 to 9 minutes; the reviewer's model work and the task's own checks take the rest. The owner session raised `PI_AUTOWORK_VERIFY_TIMEOUT` for this runner by hand.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: (1) A validation that ends `TIMED_OUT` holds with cause `timeout`, kept apart from `validation`, and does not count toward the task's attempts or the runner's failure streak. (2) The runner records each finished review's duration per repository; the next review's limit is the larger of `PI_AUTOWORK_VERIFY_TIMEOUT` and twice the longest of the last five, capped at four hours, and a task held for `timeout` is reverified once with that limit doubled. (3) A second timeout at the cap becomes one owner question naming the durations. Status and the TUI show the limit in use.
+- Acceptance: In fixtures, a review that outlasts a 2-second limit holds with cause `timeout`, keeps attempt 1, and is reverified with a 4-second limit, then integrates; the failure streak is unchanged. After reviews of 3 and 5 seconds, the next limit is at least 10 seconds. Two timeouts at the cap give one question and no third run.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to worker timeouts or to what a review checks.
+- Planner's call: high in Now: a slow host should cost minutes, not a task's attempts; this repository's own tasks were held by it.
