@@ -102,6 +102,20 @@ def waiting_groups(tasks, limit=8):
     return sorted(groups.values(), key=lambda g: -g['count'])[:limit]
 
 
+def status_error(status, now):
+    """Failure text includes the age of evidence, not the age of this file write."""
+    since = status['status_unavailable_since']
+    stamp = status.get('snapshot_at')
+    age = f'last snapshot {max(0, int(now - stamp))}s old' if stamp is not None else 'no successful snapshot'
+    return f"status unavailable since {since:.0f}: {status['status_reason']}; {age}"
+
+
+def write_status(path, value):
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps(value, indent=2) + '\n')
+    os.replace(tmp, path)
+
+
 def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTER):
     """Write status.json; return a line to announce, or None.
 
@@ -116,12 +130,24 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
     except (OSError, ValueError):
         previous = {}
     if snapshot.get('outcome') != 'PARALLEL_STATUS' or not isinstance(snapshot.get('tasks'), list):
-        # The engine could not answer (say its state lock was busy with a --status
-        # reader): that is no observation, so keep the record and its stall clock.
+        # Keep the last observation and its stall clock, but explicitly mark it
+        # unavailable. A new write is not evidence that these worker rows are fresh.
+        stamp = previous.get('snapshot_at', previous.get('updated_at'))
+        value = dict(previous, **runner)
+        value.update(schema=SCHEMA, updated_at=now, state='unavailable',
+                     since=previous.get('since', now), snapshot_at=stamp,
+                     snapshot_state=previous.get('snapshot_state', previous.get('state', 'unknown')),
+                     snapshot_age_seconds=max(0, now - stamp) if stamp is not None else None,
+                     status_unavailable_since=previous.get('status_unavailable_since', now),
+                     status_reason=' '.join(str(snapshot.get('reason') or snapshot.get('outcome')
+                                               or 'no answer from the engine').split()))
+        value['status_error'] = status_error(value, now)
+        write_status(path, value)
         return None
     paused = float(runner.get('paused_until') or 0) > now
     state = classify(snapshot, paused=paused, stuck=int(runner.get('stuck_integrations') or 0))
-    since = previous.get('since', now) if previous.get('state', '').replace('stalled', 'blocked') == state else now
+    observed_state = previous.get('snapshot_state', previous.get('state', ''))
+    since = previous.get('since', now) if observed_state.replace('stalled', 'blocked') == state else now
     roots = list(snapshot.get('roots', []))
     if runner.get('blocker'):  # the runner cannot dispatch or integrate: no model, busy lease, drift
         waiting = sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])) \
@@ -132,7 +158,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         state = 'stalled'
     keys = sorted(label(r) for r in stuck)
     announce = None
-    if state == 'stalled' and (previous.get('state') != 'stalled' or previous.get('stall_roots') != keys):
+    if state == 'stalled' and (observed_state != 'stalled' or previous.get('stall_roots') != keys):
         minutes = int((now - since) // 60)
         # Holds alone, each for another slot's files: the engine offers each commit again once
         # its files are free, so name it rather than leave it looking like a person's job.
@@ -142,7 +168,8 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                     + '; '.join(describe(r) for r in stuck[:5])
                     + (f' (+{len(stuck) - 5} more)' if len(stuck) > 5 else '')
                     + '. See pi-autowork.sh --status.')
-    value = dict(schema=SCHEMA, updated_at=now, state=state, since=since,
+    value = dict(schema=SCHEMA, updated_at=now, snapshot_at=now, snapshot_age_seconds=0,
+                 state=state, since=since,
                  active_workers=snapshot.get('active_workers', 0),
                  in_flight=sum(t.get('state') in IN_FLIGHT for t in snapshot.get('tasks', [])),
                  waiting=sum(t.get('state') == 'waiting' for t in snapshot.get('tasks', [])),
@@ -151,9 +178,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  roots=roots[:10], stall_roots=keys if state == 'stalled' else [],
                  waiting_groups=waiting_groups(snapshot.get('tasks', [])),
                  max_workers=snapshot.get('max_workers'), **runner)
-    tmp = path.with_suffix('.tmp')
-    tmp.write_text(json.dumps(value, indent=2) + '\n')
-    os.replace(tmp, path)
+    write_status(path, value)
     return announce
 
 
@@ -219,13 +244,20 @@ def fleet(state_root, *, now=None, service=_service):
             state = 'not running'
         elif job:
             state = 'working'  # busy with its own job: the status is old because the loop waits on it
+        elif 'status_unavailable_since' in status:
+            state = 'unavailable'
         elif now - float(status.get('updated_at', 0)) > STALE_AFTER and state != 'working':
             state = 'not cycling'
+        error = status_error(status, now) if 'status_unavailable_since' in status else ''
         rows.append(dict(name=name, repo=repo, service=service(name), state=state,
-                         since=status.get('since'), workers=status.get('active_workers', 0),
+                         since=status.get('snapshot_at') if error else status.get('since'),
+                         workers=status.get('active_workers', 0),
                          waiting=status.get('waiting', 0), roots=status.get('roots', []),
                          held=status.get('held', []), waiting_groups=status.get('waiting_groups', []),
-                         blocker=status.get('blocker', ''), updated_at=status.get('updated_at'),
+                         blocker=error or status.get('blocker', ''), updated_at=status.get('updated_at'),
+                         snapshot_at=status.get('snapshot_at', status.get('updated_at')),
+                         snapshot_age_seconds=max(0, now - status['snapshot_at'])
+                         if status.get('snapshot_at') is not None else None,
                          max_workers=status.get('max_workers'), maintainer=status.get('maintainer') or {},
                          main_check=status.get('main_check') or {}, job=job))
     return rows
@@ -240,6 +272,8 @@ def render(rows, *, now=None):
         since = f" for {int((now - row['since']) // 60)} min" if row.get('since') else ''
         lines.append(f"{row['name']:<24} service {row['service']:<9} {row['state']}{since}; "
                      f"{row['workers']} running, {row['waiting']} waiting")
+        if row.get('blocker', '').startswith('status unavailable since '):
+            lines.append('    ' + row['blocker'])
         if row['state'] in ('stalled', 'blocked', 'not running', 'not cycling'):
             for root in [r for r in row['roots'] if r.get('kind') in NEEDS_PERSON][:3]:
                 lines.append('    blocked by ' + describe(root))

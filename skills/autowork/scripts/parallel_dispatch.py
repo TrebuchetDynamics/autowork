@@ -446,23 +446,21 @@ def retired(repo):
     checked off in TODO.md or its archive. A held or interrupted slot of such a task is
     history and occupies nothing; Plan For Me's supersession of a held second attempt
     otherwise left a must-run-alone successor waiting beside it for ever."""
-    goals = execution.goals_module()
     ids = set()
     if (repo / 'goals.json').is_file():
-        ids.update(t['id'] for t in goals.load(repo).get('tasks', [])
+        ids.update(t['id'] for t in execution.task_ledger(repo).get('tasks', [])
                    if t.get('status') in ('done', 'superseded'))
     for name in ('TODO.md', 'TODO.archive.md', 'todo.archive.md'):
         path = repo / name
         if path.is_file():
-            ids.update(key for key, items in goals.task_bodies(path.read_text()).items()
+            ids.update(key for key, items in execution.task_bodies(path).items()
                        if items and items[0][1].lower() == 'x')
     return ids
 
 
 def authorization_contract(task):
     """Retain ambiguity the field parser otherwise drops from safety declarations."""
-    prose = execution.goals_module().task_prose(task.get('contract', ''))
-    labels = re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):', prose, re.M)
+    labels = execution.contract_labels(task.get('contract', ''))
     duplicates = [label for label in ('Ownership', 'Resources', 'Live authorization')
                   if labels.count(label) > 1]
     return dict(task, authorization_duplicates=duplicates) if duplicates else task

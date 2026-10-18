@@ -96,15 +96,24 @@ def pending_tasks(repo, known=()):
     if not todo.exists():
         return []
     goals = execution.goals_module()
-    bodies = goals.task_bodies(todo.read_text())
+    bodies = execution.task_bodies(todo)
     done = {task for task, items in bodies.items() if len(items) == 1 and items[0][1].lower() == 'x'}
     done.update(execution.archived_done(repo))
     indexed = {}
     if (repo / 'goals.json').exists():
-        indexed = {t['id']: t for t in goals.normalize(goals.load(repo))['tasks']}
+        indexed = {t['id']: t for t in goals.normalize(execution.task_ledger(repo))['tasks']}
         done.update(task for task, value in indexed.items() if value['status'] == 'done')
+    # Named selection tolerates priority drift. Build its eligibility context once,
+    # retaining the historical status behavior for semantically invalid ledgers.
+    try:
+        inputs = execution.selection_inputs(repo)
+        if any(len(inputs['bodies'][key]) != 1 for key in inputs['executable'] if key in bodies):
+            inputs = None
+    except (ValueError, OSError):
+        inputs = None
+    known_ids = set(bodies) | set(indexed)
+    selection_done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'} | done
     result = []
-    import re
     for task, items in bodies.items():
         if task in known or not any(item[2] in ('Now', 'Next') for item in items):
             continue
@@ -113,27 +122,22 @@ def pending_tasks(repo, known=()):
         body, mark, section = items[0]
         if task in done or section not in ('Now', 'Next'):
             continue
-        fields = goals.task_fields(body)
+        fields = execution.contract_fields(body)
         contract = dispatch.authorization_contract(dict(id=task, fields=fields, contract=body))
         if gate := parallel_plan.authorization_wait(contract):
             result.append(gate)
             continue
-        ids = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), set(bodies) | set(indexed))
+        ids = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), known_ids)
         unresolved = sorted(ids - done)
         running = fields.get('Status', indexed.get(task, {}).get('status', '')).startswith('in_progress')
         reason = ('sequential task in progress' if running else 'dependency: ' + ', '.join(unresolved)
                   if unresolved else 'awaiting dispatch')
         row = dict(id=task, reason=reason, blocked_by=[task] if running else unresolved)
-        if reason == 'awaiting dispatch':
-            # Nothing visible holds it: ask the engine whether it would run it at all
-            # (flutter TASK-003 lacked its Scope/Acceptance/Checks fields).
-            try:
-                execution.select(repo, task, None)
-            except execution.NoEligibleTask as exc:
-                why = str(exc).split(f'{task}: ', 1)[-1]
+        if reason == 'awaiting dispatch' and inputs is not None:
+            # Same rules as named selection, evaluated once per visible row.
+            why = execution.contract_reason(repo, task, inputs, lambda: selection_done)
+            if why:
                 row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
-            except (ValueError, OSError):
-                pass
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)
     return result
