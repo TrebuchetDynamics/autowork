@@ -3438,3 +3438,25 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to selection rules or priorities.
 - Planner's call: high in Now: the largest queues are the slowest and the most wrongly displayed, and every runner pays this every cycle.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-208-54 — A toolset update never mixes two releases in one running engine process
+
+- [x] TOOLSET-208-54 — A toolset update never mixes two releases in one running engine process
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [self-update](pi-autowork/pi_autowork/release.py) and `update_toolset` in [coordinator](pi-autowork/pi_autowork/coordinator.py) (the shared Pi package checkout is updated in place with `git pull`), engine modules imported from `skills/autowork/scripts/` (some lazily, such as `execution.goals_module()`).
+- Evidence (2026-10-18): two runners logged `The engine needs attention: no answer from the engine` in the same minute; both engine.err files show `AttributeError: module 'parallel_dispatch' has no attribute 'authorization_contract'` from `parallel_status.py`, with tracebacks quoting source lines that do not match their line numbers. The shared package checkout had just been updated in place while those engine processes were importing: one module came from the old release and one from the new. Both recovered a minute later after re-executing on the new release; a long review or worker that imports a module after such an update could fail the same way mid-run.
+- Touches: pi-autowork/pi_autowork/release.py, pi-autowork/pi_autowork/coordinator.py, scripts/pi-autowork.sh, pi-autowork/tests/test_release.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: (1) Runners and their engine, worker and review processes run from an immutable release directory (a detached checkout per commit, such as `<state root>/releases/<sha>`), selected once per process start through `PI_AUTOWORK_TOOLSET`; updating the package creates the next release directory and never changes one in use. (2) A runner moves to a new release only by re-executing (self-update or reload); children started earlier keep their release. (3) Release directories no process uses and older than the last two are removed.
+- Acceptance: In a fixture, an engine process that imports one module, then has the package updated to a release where a second module changed its API, then imports the second module, still runs on one release and succeeds; a runner re-executes onto the new release; old release directories are pruned when unused.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_release.py; python3 -m unittest discover -s tests -p test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how often the package is updated.
+- Recurrence (2026-10-18 05:26): the next package update did it again on this repository's runner, `AttributeError: module 'task_execution' has no attribute 'task_bodies'` from `parallel_status.py` (a function the new release added), one cycle lost. It happens on every update to every runner whose engine is mid-start.
+- Planner's call: moved to Now after the recurrence: every release now costs each runner a cycle, and a long review that imports late would lose its answer.

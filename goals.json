@@ -1099,14 +1099,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-208-54",
-      "section": "Now",
-      "status": "open",
-      "title": "A toolset update never mixes two releases in one running engine process"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2522,6 +2514,14 @@
       "section": "Done",
       "status": "done",
       "title": "Engine status and dispatch parse the task contracts once per call, not once per pending task"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-208-54",
+      "section": "Done",
+      "status": "done",
+      "title": "A toolset update never mixes two releases in one running engine process"
     },
     {
       "depends_on": [
