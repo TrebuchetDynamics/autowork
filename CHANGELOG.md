@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/autowork update` resets every bundle skill a profile edited to the release, saving the edited copy in
+  the update's backup and listing it as `reset`; an edited copy of a skill the bundle removed is deleted the
+  same way (`removed`). Kept edits blocked releases: Hermes' skill review had rewritten 18 bundle skill
+  files across 9 profiles, so the new `/blockers` reached 2 of 11. The update is idempotent: a second run
+  with no new release writes nothing, reports nothing, leaves no backup and restarts nothing.
 - `/plan_with_me` opens with a short playback (what you want, what it builds on, the draft tasks) and one
   question about what the request leaves open; it never asks to confirm what the request already says, a
   choice carries its recommendation first, and the offer to skip the questions comes last instead of first.

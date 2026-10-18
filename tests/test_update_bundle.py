@@ -115,10 +115,14 @@ class UpdateTests(unittest.TestCase):
         self.mod.apply(plan, self.root / 'backup')
         self.assertFalse((self.home / 'skills/gone').exists())
         work = self.profiles[1][1] / 'skills/gone'
-        self.assertEqual(edited.read_text(), 'retired\nlocal lesson\n')
+        self.assertFalse(edited.exists())  # removed too; its bytes are in the backup
         self.assertFalse((work / 'scripts/helper.sh').exists())
-        self.assertEqual([(e['path'], e['action']) for e in plan['local_edits']], [(str(edited), 'kept_retired')])
-        self.assertEqual(self.plan()['writes'], [])
+        self.assertEqual([(e['path'], e['action']) for e in plan['local_edits']], [(str(edited), 'removed')])
+        manifest = json.loads((self.root / 'backup/manifest.json').read_text())
+        (saved,) = [r['backup'] for r in manifest if r['path'] == str(edited)]
+        self.assertEqual((self.root / 'backup' / saved).read_text(), 'retired\nlocal lesson\n')
+        again = self.plan()
+        self.assertEqual((again['writes'], again['local_edits']), ([], []))
 
     def test_retired_name_of_a_required_external_skill_is_never_removed(self):
         graph = self.remote / 'skills/graphify'
@@ -133,77 +137,45 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual([w for w in plan['writes'] if 'graphify' in str(w[0])], [])
         self.assertEqual(plan['local_edits'], [])
 
-    def test_edit_to_an_older_installed_copy_merges_onto_the_release_and_is_reported(self):
-        self.install_lines('a\nb\nc\nd\ne\n')
-        path = self.home / 'skills/demo/SKILL.md'
-        path.write_text('a\nb\nc\nd\ne\nlocal lesson\n')
-        self.release('A\nb\nc\nd\ne\n')
-        plan = self.plan()
-        self.assertEqual(plan['drift'], [])
-        (edit,) = plan['local_edits']
-        self.assertEqual((edit['profile'], edit['path'], edit['action']), ('default', str(path), 'merged'))
-        self.mod.apply(plan, self.home / 'backups')
-        self.assertEqual(path.read_text(), 'A\nb\nc\nd\ne\nlocal lesson\n')
-        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'A\nb\nc\nd\ne\n')
-
-    def test_copy_closest_to_release_but_missing_its_changes_is_merged_not_kept(self):
-        self.install_lines('a\nb\nc\nd\ne\nf\ng\n')
-        path = self.home / 'skills/demo/SKILL.md'
-        path.write_text('a\nb\nc\nd\ne\nf\ng\nlesson\n')
-        # The release already ported the lesson and also changed line b.
-        self.release('a\nB\nc\nd\ne\nf\ng\nlesson\n')
-        plan = self.plan()
-        self.assertEqual([e['action'] for e in plan['local_edits']], ['merged'])
-        self.mod.apply(plan, self.home / 'backups')
-        self.assertEqual(path.read_text(), 'a\nB\nc\nd\ne\nf\ng\nlesson\n')
-
-    def test_pure_addition_over_the_release_is_kept(self):
-        self.install_lines('a\nb\nc\n')
-        self.release('a\nB\nc\n')
-        path = self.home / 'skills/demo/SKILL.md'
-        path.write_text('a\nB\nc\nmine\n')
-        plan = self.plan()
-        self.assertEqual([e['action'] for e in plan['local_edits']], ['kept'])
-        self.assertFalse(any(p == path for p, *_ in plan['writes']))
-
-    def assert_stops_without_writes(self, local):
-        """The conflicting copy is kept byte for byte and reported; it is never guessed at."""
+    def assert_reset(self, local):
+        """A profile's edited copy becomes the release; its bytes stay in the backup."""
         path = self.home / 'skills/demo/SKILL.md'
         path.write_text(local)
         plan = self.plan()
-        self.assertIn({'profile': self.profiles[0][0], 'path': str(path), 'action': 'conflict', 'base': None},
+        self.assertIn({'profile': self.profiles[0][0], 'path': str(path), 'action': 'reset', 'base': None},
                       plan['local_edits'])
-        self.assertFalse(any(p == path for p, *_ in plan['writes']))
-        self.mod.apply(plan, self.home / 'backups')
-        self.assertEqual(path.read_text(), local)
+        backup = self.home / 'backups'
+        self.mod.apply(plan, backup)
+        release = (self.remote / 'skills/demo/SKILL.md').read_text()
+        self.assertEqual(path.read_text(), release)
+        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), release)
+        manifest = json.loads((backup / 'manifest.json').read_text())
+        (saved,) = [r['backup'] for r in manifest if r['path'] == str(path)]
+        self.assertEqual((backup / saved).read_text(), local)
 
-    def test_equally_close_older_versions_are_ambiguous_not_a_coin_flip(self):
-        self.install_lines('a\nb\nc\nd\ne\nf\ng\n')
-        self.release('a\nb\nc\nd\ne\nF\ng\n')
-        self.release('a\nB\nc\nd\ne\nF\ng\nZ\n')
-        self.assert_stops_without_writes('a\nb\nc\nd\ne\nq\ng\n')
+    def test_an_edit_added_to_an_older_copy_is_reset_to_the_release(self):
+        self.install_lines('a\nb\nc\nd\ne\n')
+        self.release('A\nb\nc\nd\ne\n')
+        self.assert_reset('a\nb\nc\nd\ne\nlocal lesson\n')
 
-    def test_deliberate_deletion_from_the_release_is_not_silently_undone(self):
-        self.install_lines('a\nb\nc\nd\ne\nf\n')
-        self.release('a\nX\nb\nc\nd\ne\nY\nf\n')
-        self.assert_stops_without_writes('a\nb\nc\nd\ne\nY\nf\n')
+    def test_an_addition_over_the_current_release_is_reset(self):
+        """Kept additions blocked every later release of the file (Hermes' skill review writes them)."""
+        self.install_lines('a\nb\nc\n')
+        self.release('a\nB\nc\n')
+        self.assert_reset('a\nB\nc\nmine\n')
 
-    def test_edit_of_a_release_changed_line_stops_instead_of_guessing(self):
+    def test_an_edit_of_a_release_changed_line_is_reset(self):
         self.install_lines('a\nfoo\nc\nd\ne\n')
         self.release('a\nbar\nc\nd\ne\n')
-        self.assert_stops_without_writes('a\nbaz\nc\nd\ne\n')
+        self.assert_reset('a\nbaz\nc\nd\ne\n')
 
-    def test_a_conflicting_local_edit_is_kept_and_the_other_profiles_still_update(self):
-        """One profile's conflicting copy stopped every profile's update, so none got releases."""
+    def test_an_unedited_older_copy_is_updated_without_a_report(self):
         self.install_lines('a\nb\nc\n')
-        path = self.home / 'skills/demo/SKILL.md'
-        path.write_text('local a\nb\nc\n')
-        self.release('upstream a\nb\nc\n')
+        self.release('a\nB\nc\n')
         plan = self.plan()
-        self.assertEqual([e['action'] for e in plan['local_edits'] if e['path'] == str(path)], ['conflict'])
+        self.assertEqual(plan['local_edits'], [])
         self.mod.apply(plan, self.home / 'backups')
-        self.assertEqual(path.read_text(), 'local a\nb\nc\n')
-        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'upstream a\nb\nc\n')
+        self.assertEqual((self.home / 'skills/demo/SKILL.md').read_text(), 'a\nB\nc\n')
 
     def test_history_does_not_match_other_paths_or_unreachable_branches(self):
         (self.remote / 'skills/demo/other.md').write_text('unrelated\n')
@@ -218,13 +190,14 @@ class UpdateTests(unittest.TestCase):
         self.git(self.repo, 'pull', '--ff-only')
         for (_, home), content in zip(self.profiles, ('unrelated\n', 'branch-only\n')):
             (home / 'skills/demo/SKILL.md').write_text(content)
-        # Bytes from another path or an untrusted branch never become a merge base;
-        # with no closer same-path version they are a conflict, not a silent overwrite.
-        before = [(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles]
+        # Bytes from another path or an untrusted branch are not a release of this file:
+        # each copy is an edit, reset to the release and reported.
         plan = self.plan()
-        self.assertEqual([e['action'] for e in plan['local_edits']], ['conflict'] * len(self.profiles))
+        self.assertEqual([e['action'] for e in plan['local_edits']], ['reset'] * len(self.profiles))
         self.mod.apply(plan, self.home / 'backups')
-        self.assertEqual([(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles], before)
+        release = (self.remote / 'skills/demo/SKILL.md').read_text()
+        self.assertEqual([(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles],
+                         [release] * len(self.profiles))
 
     def test_historical_lookup_is_cached_per_checkout_and_path(self):
         self.advance()
@@ -264,8 +237,33 @@ class UpdateTests(unittest.TestCase):
                     self.assertEqual(self.mod.main(args), 0)
                 receipt = json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text())
                 self.assertEqual(receipt['status'], status)
-                self.assertEqual([(e['path'], e['action']) for e in receipt['local_edits']], [(str(path), 'merged')])
-        self.assertEqual(path.read_text(), 'A\nb\nc\nd\ne\ncustom\n')
+                self.assertEqual([(e['path'], e['action']) for e in receipt['local_edits']], [(str(path), 'reset')])
+        self.assertEqual(path.read_text(), 'A\nb\nc\nd\ne\n')
+
+    def test_a_second_update_changes_nothing(self):
+        """Idempotent: once a release is in place, rerunning writes, reports and restarts nothing."""
+        self.install_lines('a\nb\nc\n')
+        (self.home / 'skills/demo/SKILL.md').write_text('a\nb\nc\nedited\n')
+        self.release('a\nB\nc\n')
+        prepare = self.mod.prepare
+        receipts = []
+        for _ in range(2):
+            with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+                 patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+                 patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, profiles: [{'profile': n, 'status': 'ready'} for n, _ in profiles]), \
+                 patch.object(self.mod, 'heal_chat_menus', return_value=[]), \
+                 patch.object(self.mod, 'gateway_running', return_value=False), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(self.mod.main(['--hermes-home', str(self.home)]), 0)
+            receipts.append(json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text()))
+        first, second = receipts
+        self.assertEqual(first['status'], 'updated')
+        self.assertEqual([e['action'] for e in first['local_edits']], ['reset'])
+        self.assertEqual((second['status'], second['skill_files'], second['local_edits'], second['gateway_restart']),
+                         ('up_to_date', 0, [], 'not_needed'))
+        self.assertNotIn('backup', second)
+        backups = [p for p in (self.home / 'maintenance/toolset-update').iterdir() if p.is_dir() and p.name[:1].isdigit()]
+        self.assertEqual(len(backups), 1)  # only the first run wrote, so only it left a backup
 
     def test_update_heals_profile_settings_and_requests_one_graceful_gateway_restart(self):
         self.advance()
@@ -416,17 +414,18 @@ class UpdateTests(unittest.TestCase):
         self.mod.apply(plan, self.home / 'backups')
         self.assertEqual((shallow / 'skills/demo/SKILL.md').read_text(), 'new\n')
 
-    def test_conflict_in_last_profile_keeps_only_that_file(self):
+    def test_an_edited_copy_in_the_last_profile_is_reset_too(self):
         self.advance();p=self.profiles[-1][1]/'skills/demo/SKILL.md';p.write_text('custom\n')
         plan=self.plan();self.mod.apply(plan,self.home/'backups')
-        self.assertEqual(p.read_text(),'custom\n')
+        self.assertEqual(p.read_text(),'new\n')
         self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(),'new\n')
-    def test_upstream_deletion_preserves_modified_local_skill(self):
+    def test_upstream_deletion_removes_an_edited_copy_too(self):
         p=self.remote/'skills/demo/SKILL.md';p.unlink()
         self.git(self.remote,'commit','-am','remove')
         (self.home/'skills/demo/SKILL.md').write_text('custom\n')
         plan=self.plan();self.mod.apply(plan,self.home/'backups')
-        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(),'custom\n')
+        self.assertFalse((self.home/'skills/demo/SKILL.md').exists())
+        self.assertIn('removed',[e['action'] for e in plan['local_edits']])
 
     def test_local_commit_ahead_is_not_discarded(self):
         self.git(self.repo,'config','user.email','fixture@example.invalid')
@@ -442,13 +441,6 @@ class UpdateTests(unittest.TestCase):
         self.profiles.append(('fresh',home));self.advance()
         plan=self.plan();self.mod.apply(plan,self.home/'backups')
         self.assertEqual((home/'skills/demo/SKILL.md').read_text(),'new\n')
-
-    def test_nonconflicting_customization_is_merged(self):
-        old=b'one\n' + b'context\n'*10 + b'two\n'
-        local=old.replace(b'one',b'custom')
-        new=old.replace(b'two',b'upstream')
-        merged=self.mod.merge_file(old,local,new,Path('SKILL.md'))
-        self.assertIn(b'custom',merged);self.assertIn(b'upstream',merged)
 
     def test_update_preserves_executable_permission(self):
         (self.home/'skills/demo/SKILL.md').chmod(0o755)

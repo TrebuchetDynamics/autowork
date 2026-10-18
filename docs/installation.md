@@ -328,25 +328,20 @@ or move local changes yourself; the updater never stashes, resets or force-pulls
 Non-Git plugin distributions need a supported Git installation before this update.
 
 Bundled native skill copies are synchronized, including shared references and
-upstream deletions of unmodified files. Compatible local edits are merged;
-conflicting edits are preserved for reconciliation. If the checkout already advanced,
-the updater can refresh a native file whose bytes exactly match that same path in
-trusted upstream history (at most 100 path-changing commits, cached per checkout).
-A profile that edited its installed copy (agents often add lessons there) no longer
-blocks the update. The updater picks the same-path version from that bounded trusted
-history that the copy is closest to, and merges the edit onto the release from it.
-A copy that only adds lines to the current release is kept as is. When the starting
-version is ambiguous (two versions equally close, or a copy closest to the release
-that also removes or changes release lines) the updater does not guess: it stops
-like a conflict. Every such file is listed under
-`local_edits` (`merged` or `kept`) in the result; port the lessons that should reach
-every profile. A conflicting edit still stops the update before any write. Check mode
-reports the same `local_edits` without applying them. History
-outside the bounded window or unavailable in a shallow checkout may require manual
-reconciliation. A skill file removed from the bundle is deleted from profiles, together
-with folders that leaves empty, whenever its installed bytes match a released version,
-even when the shared checkout had already advanced; an edited copy stays and is listed
-as `kept_retired`.
+upstream deletions of unmodified files. Every released skill file is reset to the
+release byte for byte. A profile that edited its installed copy (Hermes' background
+skill review rewrites them, agents add lessons there) gets the release; its old copy
+is saved in the update's backup and listed under `local_edits` as `reset`, so port
+any lesson that should reach every profile into the bundle. Kept edits used to block
+every later release of that file. A copy whose bytes match that same path in trusted
+upstream history (at most 100 path-changing commits, cached per checkout) is an
+older release, refreshed without a report; history unavailable in a shallow checkout
+is fetched first. Check mode reports the same `local_edits` without applying them.
+A skill file removed from the bundle is deleted from profiles, together
+with folders that leaves empty, even when the shared checkout had already advanced; an
+edited copy goes too, saved in the backup and listed as `removed`. The update is
+idempotent: a second run with no new release writes nothing, reports no local edits,
+leaves no backup and needs no gateway restart.
 An exact byte match establishes historical content, not whether someone intended
 to pin it. There is no per-file pin setting in this updater: review intentional
 pins before invoking an update, and retain them outside the managed copy if needed.
