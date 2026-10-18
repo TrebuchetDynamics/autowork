@@ -88,22 +88,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to `scripts/check.py`'s own exit status; reviews keep their own judgment.
 - Planner's call: right after TOOLSET-203-7a: a false red costs a maintainer run and a worker's attempt each time, and the fleet's load makes these flakes routine.
 
-### TOOLSET-205-a1 — A fresh attempt is told about its task's earlier work on set-aside branches and may build on it
-
-- [ ] TOOLSET-205-a1 — A fresh attempt is told about its task's earlier work on set-aside branches and may build on it
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-17/18); [dispatch](skills/autowork/scripts/parallel_dispatch.py) (the worker prompt and worktree), [set-aside](skills/autowork/scripts/parallel_integrate.py) (`entry_changed`: a held task whose entry changed runs fresh, earlier work kept on `autowork/<task>-set-aside-N`), [worker](pi-autowork/pi_autowork/worker.py).
-- Evidence (2026-10-17/18, two fleet runners): one task has five `autowork/<task>-set-aside-1..5` branches; its latest fresh attempt stopped with `both authorized candidate files are absent from the current worktree`, as earlier attempts did. The task's plan (rewritten by the owner and the DOCS-MAINTAINER) tells the worker to preserve and continue its earlier candidate, but a fresh attempt starts from a clean worktree at main and its prompt never names the set-aside branches, so the worker cannot find that work and reports a blocker instead. Another runner's workers stopped the same way asking for a "retained prerequisite" commit that was not an ancestor of their baseline.
-- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, skills/autowork/references/parallel-workers.md
-- Scope: (1) When a task has earlier work (its `autowork/<task>-set-aside-N` branches, or the previous attempt's branch), the worker prompt lists each with its tip commit, date and changed files, newest first, and says the worker may merge or cherry-pick from them when the task asks to keep earlier work, and must otherwise ignore them. (2) The branches are reachable from the worker's worktree (same repository; no fetch needed). (3) Files changed there count toward the worker's Touches only as the entry's Touches allow; nothing outside them is brought in.
-- Acceptance: In a fixture, a task held, set aside once, and run fresh gets a prompt naming `autowork/<task>-set-aside-1` with its commit and files; a fake worker that cherry-picks from it integrates; a task without earlier work gets no such section.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No automatic merging of set-aside work; no change to when work is set aside.
-- Planner's call: high in Now: tasks whose plans say "keep the earlier candidate" loop on blockers until a person digs the branch out by hand.
-
 ### TOOLSET-199-2d — A task whose Ownership needs the owner or live authorization is never dispatched unattended
 
 - [ ] TOOLSET-199-2d — A task whose Ownership needs the owner or live authorization is never dispatched unattended

@@ -1114,14 +1114,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-205-a1",
-      "section": "Now",
-      "status": "open",
-      "title": "A fresh attempt is told about its task's earlier work on set-aside branches and may build on it"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2497,6 +2489,14 @@
       "section": "Done",
       "status": "done",
       "title": "An answered question stays answered: a task entry that names its holder ends the claim question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-205-a1",
+      "section": "Done",
+      "status": "done",
+      "title": "A fresh attempt is told about its task's earlier work on set-aside branches and may build on it"
     },
     {
       "depends_on": [
