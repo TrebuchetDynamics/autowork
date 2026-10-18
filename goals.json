@@ -1170,14 +1170,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-221-8e",
-      "section": "Now",
-      "status": "open",
-      "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-222-e1",
       "section": "Now",
       "status": "open",
@@ -2704,6 +2696,14 @@
       "section": "Done",
       "status": "done",
       "title": "A worker whose task closes on main stops at once, and a task closed on main never starts"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-221-8e",
+      "section": "Done",
+      "status": "done",
+      "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
     },
     {
       "depends_on": [

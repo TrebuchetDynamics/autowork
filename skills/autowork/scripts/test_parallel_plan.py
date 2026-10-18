@@ -409,6 +409,46 @@ class OverlapTests(unittest.TestCase):
                 for left, right in ((a, b), (b, a)):
                     self.assertEqual(parallel_plan._shared([left], [right]), expected)
 
+    def test_literal_short_cuts_agree_with_the_full_intersection_search(self):
+        """TOOLSET-221-8e: literal sides skip the product search; the answer must not change."""
+        import random
+        import parallel_plan
+        parts = ['a', 'b', 'ab', 'src', 'x.py', 'test_a.py']
+        globs = ['*', '*.py', 'a*', '?', 'test_[a-b].py', '[!a]']
+        rng = random.Random(221)
+
+        def path(glob):
+            items = [rng.choice(parts) for _ in range(rng.randint(1, 3))]
+            if glob:
+                items[rng.randrange(len(items))] = rng.choice(globs)
+            return '/'.join(items) + ('/' if rng.random() < 0.3 else '')
+
+        for _ in range(3000):
+            left, right = path(rng.random() < 0.3), path(rng.random() < 0.3)
+            full = lambda p: p + '*' if p.endswith('/') else p
+            with self.subTest(left=left, right=right):
+                self.assertEqual(parallel_plan._intersects(left, right),
+                                 parallel_plan._search(full(left), full(right)))
+
+    def test_a_deep_queue_plans_in_seconds(self):
+        """TOOLSET-221-8e: 58 runnable tasks took minutes to plan, almost all in path overlap."""
+        import time
+        import parallel_plan
+        shapes = ['src/mod{i}/file{j}.py', 'docs/area{i}/', 'tests/test_{i}_{j}.py', 'pkg{i}/*.go',
+                  'web/{i}/[a-c]{j}.ts', 'services/{i}/package.json']
+
+        def task(n):
+            touches = ', '.join(shapes[(n + j) % len(shapes)].format(i=n % 17, j=j) for j in range(10))
+            return {'id': f'T-{n}', 'fields': {'Touches': touches, 'Dependencies': f'T-{n - 3}.' if n % 5 == 0 and n > 3 else 'None.',
+                                               'Status': 'open'}}
+
+        everything = [task(n) for n in range(158)]
+        running, queue = everything[:8], everything[8:]
+        started = time.monotonic()
+        result = parallel_plan.plan(queue, running, all_tasks=everything, protected_files=['services/1/package.json'])
+        self.assertLess(time.monotonic() - started, 10)  # under 2 s on an idle host; 10 tolerates a busy one
+        self.assertEqual(len(result['dispatch']) + len(result['waiting']), len(queue))
+
     def test_path_declarations_tolerate_only_a_final_sentence_period(self):
         from parallel_plan import paths
         for value, expected in (

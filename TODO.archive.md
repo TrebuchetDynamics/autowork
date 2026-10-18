@@ -3635,3 +3635,24 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to when the session merges or lands. No reopening, rewriting or deleting of task entries. Nothing with commits of its own is deleted.
 - Planner's call: first in Now. It wastes worker slots on every repository where the owner closes tasks on main while the session lags, which happens whenever the main checkout is dirty or a review is long. Reading the base ref is cheaper and safer than merging the base into a session under running workers.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-221-8e — Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply
+
+- [x] TOOLSET-221-8e — Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply
+- Status: done 2026-10-18 by the owner session: (1)-(4). `_intersects` is cached and decides literal sides directly (the product search is now `_search`, run only for two real globs); `plan` memoizes solo, resources, hints and the dependency closure per task, and ranks against a set. On this repository's live session ledger, `admit` went from over 6 minutes to 0.07 s; on 12 and 20 of its real tasks the old planner took 101 s and 250 s, the new one under 0.01 s, with identical dispatch and waiting output. Checks: an agreement test over 3000 random literal/directory/glob pairs and a 150-task timing test in test_parallel_plan.py; python3 scripts/check.py passed (5 directories, four resource-gate skips at load 29).
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [admission planning](skills/autowork/scripts/parallel_plan.py) (`plan`: the likely-independent ranking calls `_shared(_hint(task), chosen)` with `chosen` growing by every dispatched task's Touches; `conflict` calls `serial()`/`exclusive()`, each re-running `_solo` and its `_shared(..., SERIAL_PATHS)`, for every pair; `depends` walks the dependency graph again for every pair); `_intersects` (a glob-intersection search that tries every boundary character with `fnmatchcase` at every state pair).
+- Evidence (2026-10-18 13:16-13:23, this repository's runner, 58 runnable tasks): one `--apply` engine call ran for over 6 minutes at a full core with no child process. Rerunning `parallel_dispatch.admit` on the same ledger with stack sampling did not finish within 60 s. Every sample was in `_shared` → `_intersects` → `fnmatchcase`: 94 from `plan`'s ranking loop, 26 from `_solo`. Reading the ledger (`contracts`, `retired`, `pending_tasks`) took under 1 s together. The ranking arrived with TOOLSET-161-17 (4ec89d8), which also stopped holding tasks on path overlap, so far more tasks now reach it in one pass. Each runner's loop waits on this call, so dispatch, integration and questions all slowed, and the core it burns counts toward the host load that gates every other runner (see TOOLSET-222-e1).
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py
+- Scope: (1) `_intersects` is cached (`functools.lru_cache` on the two pattern strings) and short-cuts the common cases before the search: two literal paths compare equal or by directory prefix (`a/` covers `a/b`), and a literal path against a pattern is one `fnmatchcase`. The search runs only when both sides contain glob metacharacters. (2) In `plan`, each task's hint, resources and solo/serial/exclusive answers are computed once per call (a dict keyed by task ID), not per pair. (3) The dependency closure is computed once per call, so `depends(a, b)` is a set lookup. (4) The ranking keeps `chosen` as a set of distinct patterns. Results stay identical: same dispatch order, same waiting reasons and `blocked_by`.
+- Acceptance: In fixtures: a generated queue of 150 tasks with 10 Touches paths each (some directories, some globs, some serial paths) and 8 running tasks plans in under 2 s on an unloaded machine. Assert that it finishes within 10 s, so a busy host cannot flake it. Every existing test_parallel_plan.py and test_parallel_dispatch.py case passes unchanged. A property check over random literal/glob pairs shows the short-cuts agree with the full `_intersects` search.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to which tasks dispatch or wait, or to the order. No new dependency.
+- Planner's call: first in Now. The minutes-long planning slows every runner with a deep queue, and its CPU feeds the load gate that starves the rest. Caching and literal short-cuts keep exact semantics, unlike dropping the glob search.
