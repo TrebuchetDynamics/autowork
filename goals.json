@@ -687,7 +687,8 @@
         "TOOLSET-187-1d",
         "TOOLSET-188-75",
         "TOOLSET-189-96",
-        "TOOLSET-190-bf"
+        "TOOLSET-190-bf",
+        "TOOLSET-195-ee"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -699,6 +700,7 @@
       "TOOLSET-190-bf",
       "TOOLSET-140-f4",
       "TOOLSET-165-f7",
+      "TOOLSET-195-ee",
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
@@ -1077,6 +1079,14 @@
       "section": "Now",
       "status": "open",
       "title": "A landing that needs no merge goes ahead during a review"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-195-ee",
+      "section": "Now",
+      "status": "open",
+      "title": "The runner's own jobs never count as outside sessions"
     },
     {
       "depends_on": [],
