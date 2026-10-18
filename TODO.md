@@ -58,22 +58,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
-### TOOLSET-215-a8 — One stuck command cannot use up a worker's attempt: tool commands get their own time limit
-
-- [ ] TOOLSET-215-a8 — One stuck command cannot use up a worker's attempt: tool commands get their own time limit
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [worker](pi-autowork/pi_autowork/worker.py) (the Pi worker process and its timeout), [dispatch](skills/autowork/scripts/parallel_dispatch.py) (worker prompt; the timeout reason now names the running command, TOOLSET-209-55).
-- Evidence (2026-10-18 11:26, one fleet runner): `NUM-WALL-01: failed — worker timeout after 5400 s while running (89 min): CHROME_EXECUTABLE=/usr/bin/chromium ... flutter test --no-pub --platform chrome ...`. One browser test command hung for 89 of the attempt's 90 minutes; the worker could neither see the hang nor try anything else, and the attempt was spent. Earlier that morning two other workers timed out the same way inside long test runs.
-- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, skills/autowork/scripts/parallel_dispatch.py, docs/cross-host.md
-- Scope: (1) While a worker runs, the runner watches its process tree: a tool command (a descendant of the worker's Pi process other than Pi itself) running longer than `PI_AUTOWORK_COMMAND_TIMEOUT` seconds (default 1800, capped below the worker timeout) gets SIGTERM, then SIGKILL after 30 s, and the event is logged once with the command's first 120 characters. Pi reports the failed tool call to the model, so the worker continues the same attempt and can retry differently. (2) The worker prompt says commands longer than that limit are stopped and suggests `timeout` and narrower test selection for browser or device suites. (3) Build daemons the review already tolerates (Gradle, Kotlin, Flutter) are not counted as stuck commands while idle.
-- Acceptance: In a fixture, a fake worker whose tool command sleeps past a 3-second limit has that command killed, the worker then finishes and reports normally on the same attempt, and the runner log names the killed command once.
-- Checks: python3 scripts/check.py pi-autowork/tests/test_worker_tmp.py; python3 scripts/check.py tests/test_pi_autowork.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to the worker timeout itself or to the review's limits.
-- Planner's call: high in Now: a hung command costs a whole attempt and 90 minutes; three did today.
-
 ### TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
 
 - [ ] TOOLSET-161-17 — Touches schedules work but never holds it: integrate by merge, rebase on conflict
@@ -92,6 +76,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Evidence (2026-10-17 12:41 monitor pass, `waiting_groups` in this repository's status): after serial files stopped being exclusive, the largest admission loss left here is `8 wait behind <task>, which runs alone`. That task is a live follow-up with no Touches; as an exclusive task waiting on running work it drains the pool, so eight lower-priority tasks idle for a task a worker may not even complete offline. Under (1) it ranks lower and nothing waits behind it.
 - Owner direction (2026-10-18): "the touches mechanic is too limiting our agents ... if need to reach farther ... allow worker to do it right there? the simpler the better. it's slow progress too." Moved to the top of Now.
 - Planner's call (earlier): second in Now, behind TOOLSET-165-f7 (owner, 2026-10-17). Holds from Touches predictions are the main reason runners go idle; making integration decide by merge and checks removes the class instead of patching each shape.
+
+### TOOLSET-215-a8 — One stuck command cannot use up a worker's attempt: tool commands get their own time limit
+
+- [ ] TOOLSET-215-a8 — One stuck command cannot use up a worker's attempt: tool commands get their own time limit
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [worker](pi-autowork/pi_autowork/worker.py) (the Pi worker process and its timeout), [dispatch](skills/autowork/scripts/parallel_dispatch.py) (worker prompt; the timeout reason now names the running command, TOOLSET-209-55).
+- Evidence (2026-10-18 11:26, one fleet runner): `NUM-WALL-01: failed — worker timeout after 5400 s while running (89 min): CHROME_EXECUTABLE=/usr/bin/chromium ... flutter test --no-pub --platform chrome ...`. One browser test command hung for 89 of the attempt's 90 minutes; the worker could neither see the hang nor try anything else, and the attempt was spent. Earlier that morning two other workers timed out the same way inside long test runs.
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, skills/autowork/scripts/parallel_dispatch.py, docs/cross-host.md
+- Scope: (1) While a worker runs, the runner watches its process tree: a tool command (a descendant of the worker's Pi process other than Pi itself) running longer than `PI_AUTOWORK_COMMAND_TIMEOUT` seconds (default 1800, capped below the worker timeout) gets SIGTERM, then SIGKILL after 30 s, and the event is logged once with the command's first 120 characters. Pi reports the failed tool call to the model, so the worker continues the same attempt and can retry differently. (2) The worker prompt says commands longer than that limit are stopped and suggests `timeout` and narrower test selection for browser or device suites. (3) Build daemons the review already tolerates (Gradle, Kotlin, Flutter) are not counted as stuck commands while idle.
+- Acceptance: In a fixture, a fake worker whose tool command sleeps past a 3-second limit has that command killed, the worker then finishes and reports normally on the same attempt, and the runner log names the killed command once.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_worker_tmp.py; python3 scripts/check.py tests/test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the worker timeout itself or to the review's limits.
+- Planner's call: high in Now: a hung command costs a whole attempt and 90 minutes; three did today.
 
 ### TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
 
