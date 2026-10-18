@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/autowork update` started while the gateway restarts waits for the new gateway (up to 5 minutes) and
+  finalizes profiles whose commands are not wired yet again, instead of reporting `incomplete`.
+- `/plan_with_me` and `/plan_for_me` turn an audit or "is it ready?" into tasks: a one-line verdict, each
+  gap saved as a task (owner-only gaps in `Needs decision` with their question), and what was not
+  checked. "audit" no longer means read-only.
 - `/autowork update` resets every bundle skill a profile edited to the release, saving the edited copy in
   the update's backup and listing it as `reset`; an edited copy of a skill the bundle removed is deleted the
   same way (`removed`). Kept edits blocked releases: Hermes' skill review had rewritten 18 bundle skill
