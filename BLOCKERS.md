@@ -8,7 +8,7 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-189-96 — USER_INPUT — effort input — unblocks 68
+### Q-TOOLSET-189-96 — USER_INPUT — effort input — unblocks 0
 
 - Task: TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files
 - Needs: changed files violate Touches or coordinator/other-slot ownership: {'outside': ['pi-autowork/tests/test_status_cache.py'], 'conflicts': []}
