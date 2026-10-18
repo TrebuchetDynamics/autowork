@@ -4,8 +4,91 @@ Evidence supplement, not an accepted replacement plan or a passing check. The
 [existing task](../../TODO.md#toolset-184-b3--restore-the-full-offline-check-after-the-red-main-at-36e2b7c)
 retains every Acceptance item, dependency, status and priority. Its accepted source
 remains [the continuous runner](../project.md#continuous-pi-runner-2026-10-15).
-No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-6c8f9a5);
+No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-d72179e);
 earlier receipt sections below retain their original revision-bound observations.
+
+## Current MAIN receipt at d72179e
+
+The supplied MAIN trigger matches the inspected runner's `main_check.json`:
+red `d72179ed391684ae6b9c6951ef268a901b75298d`, recorded green
+`2e755cb1349c273c5b9885f267da00305bf47514`, and one FAIL identity:
+`test_parallel_integrate.IntegrationTests.test_a_failing_validation_with_a_daemon_still_holds_and_old_daemon_holds_are_offered_again`.
+`main-check.exit` is 1; the completed `main-check.log` ends
+`Offline result: 4 test directories passed; 1 failed; 8 modules excluded.`
+It also reports four host-resource skips; three ABC/serial traces explicitly name
+load 27.22 against 24 CPUs. Skips do not qualify those regression cases as passing.
+These are retained runner results, not checks repeated by this documentation pass.
+
+The traceback at `skills/autowork/scripts/test_parallel_integrate.py:1218`
+reports `CHECK_FAILED` instead of `CHILDREN_TERMINATED`. The earlier HELD
+assertion succeeded; the later `passed` rejection and historical exit-0 reoffer
+assertions were not reached. The waiting-runner fixture and lock-return case
+from earlier receipts are not failures in this receipt; retain them as required
+regressions rather than continuing their old diagnosis as the current frontier.
+
+Source inspection bounds the next action: `task_execution.bounded_command`
+kills the command's process group, calls `reap_children`, and selects
+`CHILDREN_TERMINATED` only when that helper returns terminated descendants;
+otherwise exit 1 with unchanged inputs becomes `CHECK_FAILED`.
+`parallel_integrate.passed` accepts a daemon outcome only with exit 0 and
+matching inputs. Capture the actual command receipt, child log and cleanup
+observations before attributing this assertion to fixture timing or runtime
+cleanup. Neither a race nor surviving daemon is established by the traceback.
+Preserve the original HELD, daemon-cleanup, exit-1 rejection and historical
+exit-0 reoffer assertions. An isolated pass is diagnostic, not a correction or a
+replacement for the unchanged full gate. TOOLSET-204-f2 separately owns future
+runner flaky classification; do not borrow its planned behavior to waive this
+task's Acceptance.
+
+### Reported commits and bounded paths
+
+The supplied ten-entry window is:
+
+```text
+d72179e Merge branch 'main' into pi-autowork/20261017-134358
+ae58ca7 docs(tasks): bind TOOLSET-184-b3 to latest MAIN error
+837bb78 docs(tasks): plan TOOLSET-204-f2, the main check reruns failures alone before calling main red
+71dd30e docs(tasks): plan TOOLSET-203-7a, a finished main check left as a zombie is recorded
+6c8f9a5 docs(tasks): reconcile TOOLSET-184-b3 with current MAIN failures
+c1e7f56 docs(blockers): questions for the owner (pi-autowork)
+151718f Merge main into pi-autowork/20261017-134358
+1b7d212 docs(tasks): close TOOLSET-140-f4 (pi-autowork)
+21fbd1e docs(tasks): plan the engine graph review, TOOLSET-200-c1, 201-5e, 202-9a
+91de6b9 fix(pi): never reuse a failed status read
+```
+
+`git show -m --name-only` corroborates runtime/test changes in
+`skills/autowork/scripts/{parallel_integrate,parallel_state,parallel_dispatch}.py`,
+`test_parallel_integrate.py`, `test_parallel_dispatch.py`,
+`pi-autowork/pi_autowork/{coordinator,questions,worker}.py`,
+`pi-autowork/tests/test_{status_cache,questions,worker_tmp}.py`, and
+`tests/test_pi_autowork.py`. All fit the existing Touches, as does the failing
+module and `task_execution.py`. The window also changes planning files,
+CHANGELOG.md, the parallel-workers reference and `skills/blockers/SKILL.md`;
+that alone does not authorize unrelated edits or identify a causal commit.
+No additional repair task, dependency or queue move is justified. Keep the
+owner's first tasks in Now and every existing Acceptance and review finding.
+
+### Retained continuation and qualification boundary
+
+There is no `slot-data/MAIN/` or `slot-data/TOOLSET-184-b3/` report. Both retained
+history reports were reread: index 2 still describes the 19-file continuation at
+`0c420d5`, and index 3 still reports no commit, no changed files and no test run
+at `f428b8f`. Read-only status confirms set-aside-2 retains 17 modified files and
+two untracked files; set-aside-3 is clean. Preserve both, the consumed attempts
+and the rejected `a7d3f9f` review's socket-path, cleanup and tx findings, plus
+all budget-evidence requirements. The old `2c23b62` candidate is not an ancestor
+of this checkout; integrated scratch allocation `740b48a` is. Verify actual
+supplied physical worker/reviewer scratch rather than treating the historical
+scratch blocker as a current environment measurement. No scratch access, slot
+reset, fresh attempt, implementation, test pass or closure follows from this
+same-task Evidence/Checks/next-action repair.
+
+| Inspected receipt | SHA-256 |
+| --- | --- |
+| `main_check.json` | `e45665a7cdcce7a02d71833c31be26f6301f36e78aa9ae24ad12ab18635f093e` |
+| `main-check.log` | `705b5deb1f4573d064e8e6806dc3827fe98006103d72d603791d2fd2c824141f` |
+| `main-check.exit` | `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865` |
 
 ## Current MAIN receipt at 6c8f9a5
 
