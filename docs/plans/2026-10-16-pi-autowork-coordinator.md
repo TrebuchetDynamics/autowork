@@ -867,3 +867,48 @@ wall-clock jumps, stopped/paused intervals, stale/PID-reuse refusal and union-of
 intervals. CLI/TUI agree and readers leave files/refs unchanged with zero model calls.
 Use small table-driven cases and the existing headless pilot; no real provider/model
 benchmark or claimed historic backfill. These new acceptance cases have not run.
+
+## Worker-attribution candidate qualification recovery
+
+Status: Accepted
+
+The original accepted TOOLSET-165-f7 attribution scope and safety acceptance stay
+unchanged. This is an evidence-backed planning repair under the owner's pipeline-bug
+priority, not approval to skip a failing inventory, use a new host or restart a runner.
+
+At the current blocker inspection, the session's only generated question is 165-f7's
+attempt-2 report: it asks for a validation window/host or fixture timing repair.
+The task is held, and the recorded attempt-2 implementation process is absent.
+Its four-file implementation is retained uncommitted in the recorded -r2 worktree;
+attempt-1 candidate a8170f5 and both failed reports remain historical evidence.
+Focused task regressions passed, but the complete attempt-2 inventory failed; this
+plan neither upgrades that result nor restores an older candidate over newer work.
+
+Source inspection confirms `test_out_of_order_completion_lands_each_commit_once`
+uses a two-second A sleep to require B to finish first, while
+`test_two_retries_and_fresh_tasks_fill_eight_worker_slots` uses sixty-second fake
+workers to require all eight slots remain occupied. Both assumptions can expire
+before the observation under load. Replace only these ordering/lifetime assumptions
+with deterministic test-owned ready/release signals, observable milestones, bounded
+failure deadlines and guaranteed child cleanup. Preserve the original exactly-once,
+no-lost-change, retry/refill, eight-distinct-slots and live-worker assertions. Do not
+just inflate sleeps, skip tests, reduce the inventory or add production test hooks.
+The existing fake-worker fixture may gain optional test-only signal handling with
+unchanged default behavior; keep the change limited to the two named scenarios.
+
+The existing checker correction 3bd1d95 isolates runner settings and caps/shapes
+parallel test scheduling, but does not itself change these two fixtures. Reconcile
+its delivered setup rather than duplicate it. The existing main check was running
+on 3ca53ce at inspection: collect that check's terminal, source-bound result through
+its owner rather than launch a duplicate run. Its outcome is not yet a pass here.
+
+Next: the existing runner preserves the -r2 dirty work and reconciles current main
+through its normal candidate workflow; carry forward the reviewed attribution fix,
+apply only the named fixture repair if still needed, run the focused affected union,
+then the complete offline inventory on the exact resulting tree. Reuse earlier
+results only when their full relevant inputs still match. Keep cumulative attempts,
+budgets, evidence, real claims, push guards and external/canonical writer protections.
+No reset of consumed attempts, manual lease release, new worker, service restart,
+installation, model call, deployment or push is performed by this planning pass.
+A failed aggregate or missing terminal receipt stays unqualified. Broader test
+thinning remains TOOLSET-127-b1, not a prerequisite or substitute for this repair.
