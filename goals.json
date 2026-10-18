@@ -712,7 +712,8 @@
         "TOOLSET-211-71",
         "TOOLSET-212-0d",
         "TOOLSET-213-45",
-        "TOOLSET-214-5b"
+        "TOOLSET-214-5b",
+        "TOOLSET-215-a8"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -2586,6 +2587,14 @@
       "section": "Done",
       "status": "done",
       "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-215-a8",
+      "section": "Done",
+      "status": "done",
+      "title": "One stuck command cannot use up a worker's attempt: tool commands get their own time limit"
     },
     {
       "depends_on": [
