@@ -44,6 +44,21 @@ class MaintainerTests(unittest.TestCase):
             self.assertFalse(maintainer.due(state, 'k2'))      # done: never again for the same set
             self.assertTrue(maintainer.due(state, 'k3'))
 
+    def test_ledger_errors_are_one_trigger_and_each_error_set_is_tried_only_once(self):
+        errors = ['B: unverified goal has no open task', 'A: missing evidence']
+        found = maintainer.triggers([{'task': 'T', 'state': 'waiting', 'reason': 'not runnable: Checks'}],
+                                    ledger_errors=errors + errors[:1])
+        self.assertEqual(found, [('LEDGER', 'invalid goals.json',
+                                 'A: missing evidence\nB: unverified goal has no open task')])
+        key = maintainer.key(found)
+        self.assertEqual(key, maintainer.key(maintainer.triggers([], ledger_errors=list(reversed(errors)))))
+        with tempfile.TemporaryDirectory() as state:
+            maintainer.remember(state, trigger_key=key, found=found, outcome='no change')
+            maintainer.remember(state, trigger_key='other', found=[('MAIN', 'main red', 'x')], outcome='merged')
+            self.assertFalse(maintainer.due(state, key))
+            changed = maintainer.triggers([], ledger_errors=['A: different error'])
+            self.assertTrue(maintainer.due(state, maintainer.key(changed)))
+
     def test_only_planning_files_may_change(self):
         self.assertTrue(maintainer.planning_only(['TODO.md', 'goals.json', 'docs/tasks/A.md']))
         self.assertFalse(maintainer.planning_only(['TODO.md', 'src/app.py']))

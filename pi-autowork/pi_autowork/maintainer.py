@@ -22,10 +22,14 @@ PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 
 
-def triggers(rows, main=None, findings=None, reported_flakes=()):
-    """[(task, kind, why)] the maintainer can act on: a hold with a planning cause, a task the
-    engine will not run as written, or a red main (TOOLSET-176-98) as the item `MAIN`. Sorted,
-    so the same queue gives the same set."""
+def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=()):
+    """[(task, kind, why)] planning holds, unrunnable tasks, MAIN failures or invalid LEDGER.
+    Ledger errors take precedence: nothing can run until they validate. Sorted, so
+    the same queue/errors give the same set."""
+    errors = sorted({' '.join(str(e).split()) for e in ledger_errors if str(e).strip()})
+    if errors:
+        # Do not let changing task holds/main commits retrigger the same ledger repair.
+        return [('LEDGER', 'invalid goals.json', '\n'.join(errors))]
     found = []
     if (main or {}).get('state') == 'red':
         commits = '; '.join((main.get('commits') or [])[:10]) or 'unknown'
@@ -69,7 +73,10 @@ PROMPT = (
     'an ambiguous contract; correct Touches, Checks or Dependencies (a worker that names the exact files '
     'it needs is evidence); fill a missing required field from the task\'s own sources; split an oversized '
     'task; supersede a duplicate with python3 {goals} supersede; re-sort to unblock a dependency chain '
-    '(never above the owner\'s first tasks in Now). For MAIN (flaky test): the test failed in the full run '
+    '(never above the owner\'s first tasks in Now). For LEDGER (goals.py validate errors): repair the ledger '
+    'and its planning docs from repository evidence. An unverified goal with no open task needs a task for '
+    'its remaining proof, or an evidence-backed status correction; never invent proof or mark it verified '
+    'just to pass validation. For MAIN (flaky test): the test failed in the full run '
     'but passed alone on three different revisions. Unless an open task already covers it, add one test-hardening '
     'task with those revisions as Evidence; investigate isolation, resource load and fixture timing, not a '
     'product-code repair. Main is not red for a flaky test. For MAIN (main red, main fails its full offline check): unless an '
@@ -113,6 +120,8 @@ def due(state, trigger_key, found=None):
     only because the session moved under it, tried fewer than TRIES times (one runner stalled
     for hours: the same set never reran after such a refusal)."""
     run = last(state)
+    if trigger_key in run.get('ledger_attempts', {}):
+        return False  # each ledger error set runs once, even across unrelated maintainer runs
     # Acknowledged flakes disappear from the next prompt. A remaining subset of
     # the last presented batch was already handled, but omitted overflow was not.
     if (found and run.get('outcome') != RETRYABLE
@@ -135,6 +144,11 @@ def remember(state, *, trigger_key, found, outcome, changed=(), now=None):
         flaky_tests.update(why.split('; flaky on revisions:')[0] for _, kind, why in found if kind == 'flaky test')
     if flaky_tests:
         value['flaky_tests'] = sorted(flaky_tests)
+    ledger_attempts = previous.get('ledger_attempts', {}).copy()
+    if any(task == 'LEDGER' for task, _, _ in found):
+        ledger_attempts[trigger_key] = outcome
+    if ledger_attempts:
+        value['ledger_attempts'] = ledger_attempts
     path = record_path(state)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(value) + '\n')
