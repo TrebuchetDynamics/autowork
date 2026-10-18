@@ -711,7 +711,8 @@
         "TOOLSET-211-71",
         "TOOLSET-212-0d",
         "TOOLSET-213-45",
-        "TOOLSET-214-5b"
+        "TOOLSET-214-5b",
+        "TOOLSET-215-a8"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -720,6 +721,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-161-17",
+      "TOOLSET-215-a8",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -1119,6 +1121,14 @@
       "section": "Now",
       "status": "open",
       "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-215-a8",
+      "section": "Now",
+      "status": "open",
+      "title": "One stuck command cannot use up a worker's attempt: tool commands get their own time limit"
     },
     {
       "depends_on": [],
