@@ -4,8 +4,120 @@ Evidence supplement, not an accepted replacement plan or a passing check. The
 [existing task](../../TODO.md#toolset-184-b3--restore-the-full-offline-check-after-the-red-main-at-36e2b7c)
 retains every Acceptance item, dependency, status and priority. Its accepted source
 remains [the continuous runner](../project.md#continuous-pi-runner-2026-10-15).
-No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-d72179e);
+No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-e4faccb);
 earlier receipt sections below retain their original revision-bound observations.
+
+## Current MAIN receipt at e4faccb
+
+The supplied MAIN trigger matches the inspected runner's `main_check.json`:
+red `e4faccb8165c770368d1884b38b2ea0249a444c4`, recorded green
+`520ddb85da146c5d115754ea1e3fe32e02ba7ad1`, and two FAIL identities:
+
+- `test_pi_autowork.EngineTests.test_a_task_commit_that_conflicts_with_the_session_is_merged_not_reimplemented`
+- `test_parallel_integrate.IntegrationTests.test_a_build_daemon_left_behind_by_a_passing_validation_does_not_fail_it`
+
+`main-check.exit` is 1. The completed log ends `Offline result: 3 test directories
+passed; 2 failed; 8 modules excluded.` It records one skip, not a pass. These are
+retained runner results, not tests repeated by this documentation pass. The older
+failing-validation/daemon, waiting-runner and lock failures remain required
+regressions, not failures reported by this receipt.
+
+### Observations and discriminating checks
+
+The conflict case fails at `tests/test_pi_autowork.py:1572`: the expected resolver
+message is absent. The trace shows A's merge aborting because uncommitted `A.txt`
+would be overwritten; B then integrates, the runner commits session dirt, and A
+gets a second worker run before all tasks finish. This is not the required
+same-candidate conflict resolution and revalidation. The fake `move_session`
+behavior (`tests/test_pi_autowork.py:186-196`) writes the session file and invokes
+Git add/commit without checking their return codes. Capture their exit status,
+stdout/stderr, session status, slot state and worker invocation count before
+attributing the dirty session to fixture ordering or production recovery. Keep
+both resolver/reverify message assertions, exactly one A worker invocation and
+A/B/C completion. No race or causal commit is established by this inspection.
+
+The passing-validation daemon case fails at
+`skills/autowork/scripts/test_parallel_integrate.py:1208`: INTEGRATED already
+succeeded, but checks report `EXECUTED` instead of `CHILDREN_TERMINATED`; the
+subsequent CLOSED assertion is not reached. `task_execution.bounded_command`
+(`:574-640`) kills the command's process group, then records the descendants
+returned by `reap_children`; a zero exit with matching inputs and no returned
+descendants selects EXECUTED. `parallel_integrate.passed` (`:175-183`) accepts
+EXECUTED or a source-matching, zero-exit CHILDREN_TERMINATED receipt. Retain the
+actual receipt, child log and cleanup observations before deciding whether this
+is a fixture-lifetime or runtime-accounting defect. Neither a surviving daemon
+nor a safe cleanup is proved by that outcome label alone. Preserve INTEGRATED,
+CHILDREN_TERMINATED and CLOSED, plus the neighboring failing-validation/daemon
+case's exit-1 rejection and historical exit-0 reoffer assertions.
+
+TODO.md now names both exact isolated reproduction commands before the existing
+focused inventory and unchanged full `python3 scripts/check.py` gate, under the
+same supplied-scratch restrictions. An isolated pass is diagnostic only;
+TOOLSET-204-f2's future flaky classification does not waive full-gate Acceptance.
+
+### Reported commits and bounded paths
+
+The supplied since-green window is:
+
+```text
+e4faccb Merge main into pi-autowork/20261017-134358
+d1e0d44 docs(tasks): close TOOLSET-203-7a (pi-autowork)
+0f84ebf docs(tasks): widen Touches for TOOLSET-199-2d from worker evidence (pi-autowork)
+8e5fe46 docs(tasks): widen TOOLSET-199-2d's Touches to parallel_status.py, as its worker asked
+bd60127 docs(tasks): add TOOLSET-206-0c's entry
+cf928da docs(tasks): plan TOOLSET-206-0c, a Touches-only answer reverifies a held commit
+f9cb1ca Merge commit '28648cc7e6c452f38888609fa4758489fb22d109' into HEAD
+28648cc fix(pi-autowork): finish and reap main checks across reloads
+```
+
+`git diff --name-only 520ddb8 e4faccb` names TODO.md, TODO.archive.md,
+goals.json, `pi-autowork/pi_autowork/coordinator.py`, `main_check.py`,
+`pi-autowork/tests/test_main_check.py` and `tests/test_pi_autowork.py`.
+`git show --stat 28648cc` corroborates those four runtime/test paths. Both failing
+modules, the cleanup/integration seams and all those runtime/test paths already
+fit this task's Touches. Planning-file churn is not permission for a runtime
+worker to edit protected contracts. This window is evidence to inspect, not
+fault attribution. The existing repair owns the complete gate; no duplicate,
+new dependency, Touches expansion or move above the owner's first tasks is needed.
+
+### Retained continuation and review boundary
+
+There is no `slot-data/MAIN/` or `slot-data/TOOLSET-184-b3/` report. The retained
+history reports at indices 2 and 3 were reread: index 2 still describes the
+19-file continuation at `0c420d5`; index 3 still reports no commit, no changed
+files and no test run at `f428b8f`. Read-only status confirms set-aside-2 retains
+17 modified and two untracked files; set-aside-3 is clean. Preserve both and all
+consumed attempts. The old `2c23b62` candidate is not an ancestor of this checkout;
+the scratch-allocation change `740b48a` is. Verify the actual supplied worker and
+reviewer physical TMPDIR rather than treating an older environment as current.
+
+The rejected `a7d3f9f` review's socket-path, worktree-cleanup and tx findings,
+all budget-evidence requirements and every existing Acceptance item remain
+binding. This same-task Evidence/Checks/next-action repair supplies no scratch
+access, slot reset, fresh implementation attempt, test pass or closure. The
+owner's queue order and task status are unchanged.
+
+### Consumer gate limitation
+
+The installed `skills/docs-sync/scripts/goals.py` validates this checkout (`ok`);
+format/render and an unchanged repeat preserve the ledger and archive bytes.
+`backlog-check --plan docs/project.md#continuous-pi-runner-2026-10-15 --tasks
+TOOLSET-184-b3` returns `draft_saved` (exit 1) on both this candidate and canonical
+main: `TOOLSET-204-f2: Dependencies name TOOLSET-203-7a absent from ledger`.
+The ledger actually retains 203-7a as done; 204-f2's body still names it while its
+indexed dependencies are empty. This is an existing consumer-binding discrepancy,
+not evidence that 203-7a is unfinished. The 204-f2 worker is identity-matched and
+running, so this pass preserves its assigned contract rather than editing its
+Dependencies to force readiness. Reconcile that binding through its integration
+owner after the active attempt. The selector's first open task remains 206-0c;
+184-b3 is listed as eligible, but the failed consumer gate is not a readiness pass.
+This candidate has not been integrated by this documentation worker.
+
+| Inspected receipt | SHA-256 |
+| --- | --- |
+| `main_check.json` | `f4bd82e623c5ee8d5c7e9a4d2d2dca920becdd893e55fd5bfb97e0b4b659a005` |
+| `main-check.log` | `db5541673d01283d10d98107f5ba7dfeb444fb31cabd013af44b7f4a92592c7b` |
+| `main-check.exit` | `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865` |
 
 ## Current MAIN receipt at d72179e
 
