@@ -13,7 +13,7 @@ import parallel_dispatch as dispatch
 import parallel_plan as plan
 import parallel_state as state
 import task_execution as execution
-from worktree_paths import worktree_path
+from worktree_paths import canonical_root, worktree_path
 
 
 def git(repo, *argv):
@@ -249,8 +249,10 @@ WRITER_HOLD = 'live or unknown external writer'
 
 
 def main_checkout(repo):
-    listing = git(repo, 'worktree', 'list', '--porcelain').splitlines()
-    return str(Path(listing[0][len('worktree '):]).resolve()) if listing else None
+    try:
+        return str(canonical_root(repo))
+    except ValueError:
+        return None
 
 
 def touches_none_of(worker, files, main):

@@ -85,6 +85,17 @@ def reload_in_place(systemctl, unit, state_root, repo, wait=None):
                    f'{unit[len("pi-autowork@"):-len(".service")]}')
 
 
+def service_path(env):
+    """This login's PATH without uv's temporary environments. Installing from the TUI, which
+    runs inside `uv run`, saved them first in PATH; uv deletes them later, and the runner's
+    `python3` then named a file that no longer existed."""
+    cache = Path(env.get('UV_CACHE_DIR') or Path(env.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'uv')
+    cache = cache.resolve()
+    kept = [part for part in env.get('PATH', '').split(os.pathsep)
+            if part and not Path(os.path.abspath(part)).resolve().is_relative_to(cache)]
+    return os.pathsep.join(dict.fromkeys(kept))
+
+
 def _escape(*args):
     return subprocess.run(['systemd-escape', *args], capture_output=True, text=True).stdout.strip()
 
@@ -144,7 +155,7 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
     tmp.write_text(UNIT.format(env_dir=env_dir, script=script))
     os.replace(tmp, unit_dir / 'pi-autowork@.service')
     # The service sees this login's PATH (Pi, Node, Flutter and other tools); credentials stay in Pi.
-    lines = [f'PI_AUTOWORK_REPO={repo}', f'PATH={env.get("PATH", "")}']
+    lines = [f'PI_AUTOWORK_REPO={repo}', f'PATH={service_path(env)}']
     if env.get('PI_AUTOWORK_ALLOW_HERMES', '0') == '1':
         lines.append('PI_AUTOWORK_ALLOW_HERMES=1')
     if env.get('PI_AUTOWORK_NO_FALLBACK', '0') == '1':

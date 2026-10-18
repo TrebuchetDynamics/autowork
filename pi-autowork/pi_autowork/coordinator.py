@@ -150,6 +150,10 @@ class Coordinator:
         self.update_interval = int(env.get('PI_AUTOWORK_UPDATE_INTERVAL', '120'))
         self.update_wait = float(env.get('PI_AUTOWORK_UPDATE_WAIT', '600'))
         self.plan_settle = float(env.get('PI_AUTOWORK_PLAN_SETTLE', '3'))
+        # Planning commits (questions, maintainer repairs, Touches) land soon, not only with a
+        # closed task (TOOLSET-188-75); at least this often while the session is ahead.
+        self.land_every = float(env.get('PI_AUTOWORK_LAND_EVERY', '600'))
+        self.landed_at, self.land_soon = time.monotonic(), False
         self.plan_seen = None
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
         self.engine_path = Path(self.toolset) / 'skills/autowork/scripts/owner_cycle.py'
@@ -725,10 +729,23 @@ class Coordinator:
         only a running review does (its fast-forward needs the session unchanged)."""
         if not self.integ or self.session_busy():
             return
+        self.landed_at, self.land_soon = time.monotonic(), False
         if self.ahead():
             self.merge_main()
         else:
             self.sync_upstream()
+
+    def land_planning(self):
+        """TOOLSET-188-75: a session whose tasks all run, wait or are held never closed one, so
+        its planning commits (questions, maintainer repairs) stayed off main for hours. Land
+        after such a commit, and every PI_AUTOWORK_LAND_EVERY seconds while ahead; running
+        workers do not wait it, a review or Pi job does."""
+        if not self.integ or self.integration or self.child:
+            return
+        if self.land_soon or time.monotonic() - self.landed_at >= self.land_every:
+            self.landed_at, self.land_soon = time.monotonic(), False
+            if self.ahead():
+                self.merge_main()
 
     def commit(self, paths, *message):
         if self.session_busy():
@@ -740,7 +757,9 @@ class Coordinator:
         args = []
         for line in message:
             args += ['-m', line]
-        return git_ok(self.integ, 'commit', '-q', *args)
+        done = git_ok(self.integ, 'commit', '-q', *args)
+        self.land_soon = self.land_soon or done
+        return done
 
     def finish(self, code, text):
         self.stop_integration()
@@ -1049,7 +1068,7 @@ class Coordinator:
                 outcome = 'refused: goals.py validate failed'
             elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
                 outcome = 'merged'
-                self.settled = True
+                self.settled = self.land_soon = True
             else:
                 git(self.integ, 'merge', '--abort')
                 outcome = maintainer.RETRYABLE
@@ -1516,6 +1535,7 @@ class Coordinator:
         self.follow_base()
         self.sweep_tmp()
         self.check_main()
+        self.land_planning()
         if not self.draining:
             if self.max_cycles and self.started_workers >= self.max_cycles:
                 self.draining = True

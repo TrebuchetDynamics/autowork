@@ -1335,6 +1335,35 @@ class EngineTests(Fixture):
         self.assertEqual(runner.returncode, 130, out + err)
         self.assertEqual(out.count('Merged pi-autowork/'), 1, out)
 
+    def test_questions_land_on_main_while_other_workers_still_run(self):
+        """TOOLSET-188-75: a session landed only when a task closed or the queue emptied; with
+        every task running, waiting or held, its questions and repairs stayed off main for hours."""
+        self.plan({'worker:A': ['blocked', 'blocked'], 'worker:B': ['slow']})
+        bare = self.origin()
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+        blockers = self.repo / 'BLOCKERS.md'
+        while '### Q-A — ' not in (blockers.read_text() if blockers.exists() else ''):
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        self.assertFalse(self.done('B'), 'B finished first; the landing did not happen beside it')
+        upstream = subprocess.run(['git', '--git-dir', str(bare), 'show', 'main:BLOCKERS.md'],
+                                  capture_output=True, text=True).stdout
+        while '### Q-A — ' not in upstream:  # and the push follows the landing
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+            upstream = subprocess.run(['git', '--git-dir', str(bare), 'show', 'main:BLOCKERS.md'],
+                                      capture_output=True, text=True).stdout
+        while not self.done('B'):
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
@@ -1879,6 +1908,18 @@ class ServiceTests(Fixture):
             check = subprocess.run(['systemd-analyze', '--user', 'verify', str(instance)], capture_output=True, text=True)
             self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
             self.assertNotIn('bad unit file setting', check.stdout + check.stderr)
+
+    def test_the_service_path_leaves_out_uvs_temporary_environments(self):
+        """Installed from the TUI (`uv run`), a service kept uv's deleted build environment first."""
+        cache = self.root / 'uv-cache'
+        build = cache / 'builds-v0' / '.tmpabc' / 'bin'
+        build.mkdir(parents=True)
+        self.env.update(UV_CACHE_DIR=str(cache), PATH=f"{build}:{self.env['PATH']}")
+        result = self.run_runner('--install-service')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        path = next(l for l in (self.envs / 'project.env').read_text().splitlines() if l.startswith('PATH='))
+        self.assertNotIn(str(cache), path)
+        self.assertIn(str(self.bin), path)
 
     def test_a_name_used_by_another_repository_is_refused(self):
         self.envs.mkdir()

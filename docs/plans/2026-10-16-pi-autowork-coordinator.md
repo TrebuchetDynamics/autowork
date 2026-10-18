@@ -868,6 +868,148 @@ intervals. CLI/TUI agree and readers leave files/refs unchanged with zero model 
 Use small table-driven cases and the existing headless pilot; no real provider/model
 benchmark or claimed historic backfill. These new acceptance cases have not run.
 
+## Canonical plan and session reconciliation
+
+Status: Accepted
+
+Owner request: fix the stale runner/session state identified by the blocker check.
+During this planning inspection, canonical main had both TOOLSET-164-f1 and
+TOOLSET-173-94 open, while the session was three commits behind and still indexed
+both in_progress. The engine retained TOOLSET-165-f7 as integrating with no live
+implementation worker. These are observations, not proof that its review finished
+or that its candidate can be adopted. Preserve that candidate, all real leases,
+assigned contracts, attempt budgets, pauses and pending verification.
+
+Source: Coordinator.follow_base defers all base merging while in_flight is true;
+cycle calls it before settling, but settling/integration can block synchronously.
+Coordinator.update_questions then combines an engine snapshot with session TODO;
+questions.build emits a claim question without checking the current canonical
+plan. More frequent question-file rewrites alone cannot repair that stale input.
+
+Planner's call: extend TOOLSET-179-cf's existing reconciliation path to include
+local canonical main, not create a watchdog, scheduler or second recovery engine.
+Check committed canonical main every cycle/startup and immediately before admission
+and question publication, independently of the rate-limited remote fetch. Remote
+sync disabled or no upstream must not disable local plan following. In a clean,
+unowned mutable session, merge canonical main through the existing path before new
+dispatch, even when there are no outgoing session commits. Follow existing push
+policy; local plan ingestion never requires publishing or enabling automatic push.
+
+When a worker/review/integration owns mutable inputs, do not merge under it, repin
+it, cancel it or move its worktree. Instead compare one read-only, revision-pinned
+canonical plan with the engine/session snapshot. Publish provenance and a concrete
+sync-pending cause in existing status: canonical revision, session revision, snapshot
+observation time and sync reason. Never treat this informational comparison as
+execution admission, ownership release or an instruction to edit a running task.
+After the phase releases its inputs, reconcile and recompute before refill.
+
+Use the same comparison for question validity. A cached claim whose only cause is
+an old in_progress token, now open in the canonical plan, becomes internal plan-sync
+waiting, not a new owner question. A real live lease remains a hold regardless of
+that token. A genuinely new decision, unresolved external input or failed lease
+inspection is never silently suppressed. Missing/changing source bytes, replaced
+session, dirty inputs and old legacy snapshots remain stale/unknown with a reason,
+not a healthy zero-blocker result. Keep stable question IDs and first-seen Since;
+show last successful reconciliation separately. Preserve owner text outside generated
+markers and dirty BLOCKERS.md; a skipped write must leave explicit stale provenance.
+
+Ownership split: TOOLSET-179-cf supplies the producer reconciliation/provenance and
+question-validity seam; TOOLSET-130-15 consumes it in CLI/TUI/blocker read views using
+its already accepted freshness contract. Its machine dependency now includes 179-cf,
+while retaining 129-c4. TOOLSET-147-54 still owns safe dirty-session preservation;
+TOOLSET-158-08 owns rejected-push recovery and TOOLSET-181-02 owns semantic planning
+merges. Reuse those outputs when present; no competing merge implementation here.
+
+Planned proof, not executed: existing fake-engine/coordinator/question fixtures
+exercise an owner-open commit while a separate integration is held; during the hold,
+current owner-question counts exclude the obsolete claim but explicitly show sync
+waiting; lease and assigned-input hashes stay unchanged. Release the fake phase and
+observe canonical answers, recomputed admission and removal of obsolete questions
+on the next cycle. Also cover no outgoing commits, no upstream, fetch disabled,
+push disabled, dirty BLOCKERS preservation, a live claim, one unresolved real owner
+question, missing/changing canonical data and restart/old-generation rejection.
+Check the composed producer-to-CLI/TUI path, not just freshness timestamps or mtimes.
+Use disposable repositories and fake commands only; no live restart, claim release,
+provider call, service edit, network repair or delivery is authorized by this plan.
+
+Rejected: clearing claims merely because main says open loses real ownership;
+merging main during a pinned review invalidates evidence; auto-restarting runners
+hides the coordination defect; repeatedly rebuilding BLOCKERS from stale session
+inputs recreates the same question. Runtime implementation and tests remain pending.
+
+### Review frontier observation (2026-10-17)
+
+The owner's supplied 16:18–16:50 log is historical evidence, not a request to
+restart or bypass a hold. At 23:11 UTC the retained TOOLSET-165-f7 slot was still
+integrating and the coordinator had live verifier/check descendants; zero active
+implementation workers therefore did not establish an idle runner. The original
+candidate a8170f5 has an actual retained offline log ending in five passing test
+directories (one skipped test, eight excluded modules). Its current integration
+revision 9c399d4 differs in parallel_integrate.py and test_parallel_integrate.py;
+that earlier passing log does not qualify these changed bytes. The terminal
+integration receipt was not yet present. Candidate implementation, integrated-tree
+verification, session inclusion and canonical delivery remain separate.
+
+Keep the live assigned task body and all attempts/pins unchanged. The existing
+integration owner collects the current check's terminal result, reconciles any
+findings against that exact revision, then follows the normal integration and
+closeout path. No replacement implementation, duplicate full gate, lease release,
+restart or claim that the visible overlaps were cleared follows from this docs
+pass. If the process later disappears without an exit/aggregate receipt, record
+incomplete verification and resume through that owner with retained evidence.
+The already-open canonical answers to 164-f1/173-94 remain the separate plan-sync
+case above; they need no repeated owner decision. TOOLSET-130-15 carries this
+current presentation evidence without changing TOOLSET-165-f7's pinned contract.
+
+## Pipeline-first queue priority (2026-10-17)
+
+Status: Accepted
+
+Owner instruction: reorder all tasks; Autowork pipeline bugs are most important
+now. This priority replaces older positional comments such as "second in Now"
+inside individual bodies, not their scope, acceptance, dependency or ownership
+requirements. Move whole task bodies without rewriting contracts or resetting
+claims, attempts, review evidence, pauses or budgets. Done/superseded history and
+external/live qualification gates remain unchanged.
+
+Planner's call: prioritize the retained 165-f7 integration blocker, file-scoped
+closeout 170-f6, restart survival 174-1d, nonblocking review 183-d6 and optimistic
+integration 161-17. Keep 174 before 183 as the latter's ownership note requires.
+Then repair the short-temp environment, integrate the retained release branch
+before pin healing (138-62 before 139-62 and 099-87), and repair canonical/upstream
+following, rejected pushes and merged-tree verification. Preserve confidentiality
+checks alongside that delivery path; never trade them for speed.
+
+Continue Now with lifecycle reconciliation, missing-toolchain handling, maintainer
+and dirty-merge recovery, stable/meaningful questions, planning handoff, safe
+worktree/landing recovery, resource scheduling and evidence-backed status. Promote
+those existing runtime-fix successors from Next where required. Dependencies stay
+as recorded; ordering is not evidence that a prerequisite passed or a lease is free.
+
+Next starts with managed-updater and UI rendering bugs, then diagnostic navigation,
+test feedback-loop thinning, planning/skill quality, compact ledger storage and
+feature work. Move the exclusive linked-ledger implementation 149-df out of Now:
+it must not drain the pool ahead of urgent runtime repairs. Its exclusivity and
+149→150→151 dependency chain stay intact, and later authorized conversion is not
+canceled. Leave native command packaging, model/accounts and the all-task browser
+behind runtime fixes; do not cancel their accepted scope.
+
+Keep the existing relative order of the late Next live/install/migration tasks
+(123-a0, 066, 003, 098-5d, 019, 096-7e, 029, 011), including 019's recorded
+in_progress state. All three Needs decision entries remain at the tail in their
+existing order. No scan bypass, live login, deployment, profile update, cross-repo
+migration, scheduler change, job resumption, implementation, commit or push follows
+from this priority change. No active worker is stopped or redirected.
+
+Verification is queue-level: preserve every pending ID and body byte-for-byte,
+allow only intended section/order changes to the index, retain goal evidence and
+dependencies, check full archive identity, run Docs Sync reorder/fmt/validate/render
+and repeat stability, then report the actual next selection and consumer result.
+The read-only engine probe returned ACTION_REQUIRED with resource-unavailable
+(errno 11) during preparation; that is unknown runtime availability, not an empty
+pool. Existing held candidates remain with their recovery owner; this pass does
+not mark a failed or incomplete integration green.
+
 ## Worker-attribution candidate qualification recovery
 
 Status: Accepted

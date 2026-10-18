@@ -23,7 +23,9 @@ def canonical_root(repo):
     fields = first.split('\0')
     if 'bare' in fields or not fields[0].startswith('worktree '):
         raise ValueError('A canonical non-bare checkout is required')
-    return Path(fields[0][9:]).resolve()
+    # A submodule's main worktree is listed as its Git directory (.git/modules/NAME, whose
+    # core.worktree names the checkout); its top level is the checkout either way.
+    return Path(git(fields[0][9:], 'rev-parse', '--show-toplevel')).resolve()
 
 
 def worktree_path(repo, name):
