@@ -1276,14 +1276,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-237-35",
-      "section": "Now",
-      "status": "open",
-      "title": "A check that crashes before reporting test results is a broken check: never a red main with placeholder failures, never a pass"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2833,6 +2825,14 @@
       "section": "Done",
       "status": "done",
       "title": "A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-237-35",
+      "section": "Done",
+      "status": "done",
+      "title": "A check that crashes before reporting test results is a broken check: never a red main with placeholder failures, never a pass"
     },
     {
       "depends_on": [

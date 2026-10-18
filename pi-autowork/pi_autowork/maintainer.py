@@ -31,6 +31,9 @@ def triggers(rows, main=None, findings=None, reported_flakes=()):
         commits = '; '.join((main.get('commits') or [])[:10]) or 'unknown'
         found.append(('MAIN', 'main red', f"failing: {', '.join(main.get('failures') or [])}; commits since the last "
                                          f"green main: {commits}"[:900]))
+    if (main or {}).get('state') == 'broken':
+        found.append(('MAIN', 'check broken', f"the full check crashed twice before any test result at "
+                                              f"{(main.get('rev') or '')[:12]}: {main.get('crash') or 'unknown'}"[:900]))
     for test_id, revisions in ((main or {}).get('flaky_history') or {}).items():
         if len(set(revisions)) >= 3 and test_id not in reported_flakes:
             found.append(('MAIN', 'flaky test', f'{test_id}; flaky on revisions: {", ".join(revisions[:3])}'))
@@ -72,7 +75,11 @@ PROMPT = (
     '(never above the owner\'s first tasks in Now). For MAIN (flaky test): the test failed in the full run '
     'but passed alone on three different revisions. Unless an open task already covers it, add one test-hardening '
     'task with those revisions as Evidence; investigate isolation, resource load and fixture timing, not a '
-    'product-code repair. Main is not red for a flaky test. For MAIN (main red, main fails its full offline check): unless an '
+    'product-code repair. Main is not red for a flaky test. For MAIN (check broken): the full check itself crashed before '
+    'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
+    'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
+    'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
+    'For MAIN (main red, main fails its full offline check): unless an '
     'open task already covers those failures, add one repair task first in Now with python3 {goals} add-task '
     'and write its entry with the failing tests and the commits as Evidence, Touches from the failing tests '
     'and the files those commits changed, and the full check as its Checks. For review findings (the last '

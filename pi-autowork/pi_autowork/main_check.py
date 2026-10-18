@@ -71,6 +71,19 @@ def exit_code(state):
         return None
 
 
+# A tool that died rather than a test that failed (TOOLSET-237-35): a crashed check names no test.
+CRASH = re.compile(r'exited unexpectedly|Segmentation fault|core dumped|Bad state|panic:|Fatal error|'
+                   r'Killed|Aborted|out of memory', re.I)
+
+
+def crash_line(log_text):
+    """What a check that crashed before reporting test results died of: the first line that
+    says so, else its last non-blank line."""
+    lines = [' '.join(l.split()) for l in log_text.splitlines() if l.strip()]
+    hit = next((l for l in lines if CRASH.search(l)), None)
+    return (hit or (lines[-1] if lines else 'no output'))[:300]
+
+
 def failures(log_text, limit=20):
     """Failing tests as 'module.Class.test' (or a timed-out directory), first ones first."""
     found = [where for _, _, where in FAILURE.findall(log_text)]
@@ -221,6 +234,10 @@ def line(record, now=None):
     state = record.get('state')
     if state == 'red':
         return f"main red since {record.get('rev', '')[:7]}: {len(record.get('failures') or [])} failing"
+    if state == 'broken':
+        return f"main check broken at {record.get('rev', '')[:7]}: {record.get('crash') or 'it crashed'}"
+    if state == 'recheck' and record.get('crashed'):
+        return f"main check again at {record.get('crashed', '')[:7]}: it crashed before any test result"
     if state == 'recheck':
         return f"main check again at {record.get('gated', '')[:7]} when the host is quieter"
     if state == 'green':

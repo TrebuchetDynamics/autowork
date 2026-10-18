@@ -879,6 +879,24 @@ class EngineTests(Fixture):
         self.assertEqual(text.count('### Q-FULL-CHECK '), 1)
         self.assertIn('`Full check: <command>`', text)
 
+    def test_a_full_check_that_crashes_on_the_base_too_never_passes_a_candidate(self):
+        """TOOLSET-237-35: a test tool crashed before any result, on the base as on the candidate,
+        and the gate called that "nothing new to blame" and landed the candidate untested."""
+        self.env['PI_AUTOWORK_VALIDATE'] = ("echo 'Oops; flutter has exited unexpectedly: \"Bad state: No element\".'; "
+                                            'exit 1')
+        result = self.run_runner('--until-empty', timeout=180)
+        self.assertFalse(self.done('A'), result.stdout)
+        self.assertIn('the full check crashed before any test result, on the base too: '
+                      'Oops; flutter has exited unexpectedly', result.stdout)
+
+    def test_a_full_check_that_crashes_once_is_run_again(self):
+        marker = self.root / 'crashed-once'
+        self.env['PI_AUTOWORK_VALIDATE'] = (f'if [ ! -e {marker} ]; then touch {marker}; '
+                                            'echo "Segmentation fault (core dumped)"; exit 139; fi')
+        result = self.run_runner('--until-empty')
+        self.assertTrue(marker.exists())
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)  # the rerun passed: nothing held
+
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
         self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'
         result = self.run_runner('--until-empty')
