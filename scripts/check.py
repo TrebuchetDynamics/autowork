@@ -145,6 +145,7 @@ def positive_int(value):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('paths', nargs='*', help='owned test modules or directories (default: all offline tests)')
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
     parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test process (default: 1800)')
     parser.add_argument('--jobs', type=positive_int,
@@ -154,6 +155,15 @@ def main(argv=None):
         parser.error('--timeout must be positive')
     root = Path(__file__).resolve().parents[1]
     tests = discover_tests(root)
+    if args.paths:
+        selected = set()
+        for name in args.paths:
+            path = (root / name).resolve()
+            matches = [test for test in tests if test == path or path in test.parents]
+            if not path.is_relative_to(root) or not matches:
+                parser.error(f'no owned offline tests match: {name}')
+            selected.update(matches)
+        tests = [test for test in tests if test in selected]
     groups = defaultdict(list)
     for path in tests:
         groups[path.parent].append(path)
