@@ -38,6 +38,105 @@ class RunnableTests(unittest.TestCase):
             self.assertEqual(tasks[0]['fields']['Resources'], 'network, port:8080')
 
 
+    def test_owner_or_live_work_waits_for_recorded_authorization(self):
+        import json
+        from types import SimpleNamespace
+        import parallel_dispatch as dispatch
+        import parallel_status
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            common = repo / 'execution'
+            common.mkdir()
+            for fields in ('Ownership: Owner', 'Ownership: owner only.',
+                           'Ownership: Owner or a coordinator with live authorization.',
+                           'Resources: live', 'Resources: network, live'):
+                for authorization in ('', 'Live authorization:   ',
+                                      'Live authorization: owner approved this run on 2026-10-17'):
+                    with self.subTest(fields=fields, authorization=authorization):
+                        repo.joinpath('TODO.md').write_text(f'''# Work
+## Now
+- [ ] T-1 — Live migration
+  Scope: installed profiles
+  Acceptance: migration verified
+  Checks: verify migration
+  {fields}
+  {authorization}
+- [ ] T-2 — Offline repair
+  Scope: b.py
+  Acceptance: works
+  Checks: test b
+  Touches: b.py
+  Ownership: Toolset coordinator.
+''')
+                        tasks = dispatch.contracts(repo)
+                        result = dispatch.admit(tasks, [], set(), [], everything=tasks,
+                                                parked=[], adopted=set(), protected=[])
+                        common.joinpath('journal.jsonl').write_text(json.dumps(dict(
+                            event='dispatch_observed', timestamp=1, waiting=result['waiting'])) + '\n')
+                        status = parallel_status._snapshot(repo, common, 2)
+                        if 'owner approved' in authorization:
+                            self.assertEqual([t['id'] for t in result['dispatch']], ['T-1'])
+                            self.assertFalse(any(r['kind'] == 'outside' for r in status['roots']))
+                        else:
+                            self.assertEqual([t['id'] for t in result['dispatch']], ['T-2'])
+                            self.assertEqual([(r['id'], r['kind']) for r in status['roots']],
+                                             [('Live authorization: T-1', 'outside')])
+                            fallback = dispatch.fallback(repo, SimpleNamespace(tasks='T-1', plan=None), 'no host')
+                            self.assertEqual(fallback['outcome'], 'WAITING')
+                            self.assertNotIn('task', fallback)
+
+    def test_duplicate_authorization_fields_never_authorize_dispatch(self):
+        import parallel_dispatch as dispatch
+        from parallel_plan import plan
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            for fields in ('Ownership: Owner\n  Ownership: Toolset coordinator.',
+                           'Resources: live\n  Resources: network',
+                           'Ownership: Owner\n  Live authorization: approved\n  Live authorization: another approval'):
+                with self.subTest(fields=fields):
+                    repo.joinpath('TODO.md').write_text(f'''## Now
+- [ ] T-1 — migration
+  Scope: profiles
+  Acceptance: verified
+  Checks: verify
+  {fields}
+''')
+                    tasks = dispatch.contracts(repo)
+                    self.assertEqual(plan(tasks)['dispatch'], [])
+                    self.assertIn('duplicate', plan(tasks)['waiting'][0]['reason'])
+
+    def test_authorization_status_tracks_current_contract_without_dispatch(self):
+        import json
+        import subprocess
+        import parallel_status as status
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            common = status.state.common_dir(repo)
+            (common / 'slots').mkdir(parents=True)
+            todo = '''## Now
+- [ ] T-1 — migration
+  Scope: profiles
+  Acceptance: verified
+  Checks: verify
+  Ownership: Owner or a coordinator with live authorization.
+'''
+            slot_path = common / 'slots' / 'T-1.json'
+            for phase in ('fresh', 'interrupted', 'released', 'held'):
+                with self.subTest(phase=phase):
+                    if phase != 'fresh':
+                        slot_path.write_text(json.dumps(dict(task_id='T-1', state=phase, attempt=1,
+                                                            started_at=1, worktree=str(repo / 'worker'))))
+                    repo.joinpath('TODO.md').write_text(todo)
+                    snapshot = status.snapshot(repo, now=2)
+                    self.assertEqual(snapshot['tasks'][0]['state'], 'waiting')
+                    self.assertEqual([(r['id'], r['kind']) for r in snapshot['roots']],
+                                     [('Live authorization: T-1', 'outside')])
+                    common.joinpath('journal.jsonl').write_text(json.dumps(dict(
+                        event='dispatch_observed', timestamp=1, waiting=status.pending_tasks(repo))) + '\n')
+                    repo.joinpath('TODO.md').write_text(todo + '  Live authorization: owner approved this run\n')
+                    self.assertFalse(any(r['kind'] == 'outside' for r in status.snapshot(repo, now=3)['roots']))
+
     def test_ledger_only_in_progress_is_not_dispatched_by_parallel_selector(self):
         import json
         from parallel_plan import plan
@@ -179,8 +278,9 @@ class PlanTests(unittest.TestCase):
 
     def test_solo_task_drains_pool_and_blocks_lower_priorities(self):
         from parallel_plan import plan
-        for solo in (task('A', ''), task('A', 'a.py', resources='live'),
-                     task('A', 'a.py', resources='exclusive')):
+        live = task('A', 'a.py', resources='live')
+        live['fields']['Live authorization'] = 'owner approved this run on 2026-10-17'
+        for solo in (task('A', ''), live, task('A', 'a.py', resources='exclusive')):
             with self.subTest(solo=solo):
                 tasks = [solo, task('B', 'b.py')]
                 self.assertEqual([t['id'] for t in plan(tasks)['dispatch']], ['A'])

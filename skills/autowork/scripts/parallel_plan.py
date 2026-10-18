@@ -122,6 +122,26 @@ def _resources(task):
     return set(re.split(r'[,\s]+', task.get('fields', {}).get('Resources', '').strip())) - {''}
 
 
+def authorization_wait(task):
+    """An unattended runner needs an explicit record for owner-only or live work.
+
+    Name the missing authorization as an outside condition, not a running claim,
+    so status roots and owner questions also work when this is the only task.
+    """
+    fields = task.get('fields', {})
+    ownership = ' '.join(fields.get('Ownership', '').split()).strip(' .`*_')
+    owner_only = re.fullmatch(r'owner(?: only| or (?:a )?coordinator with live authorization)?',
+                              ownership, re.I)
+    duplicates = task.get('authorization_duplicates', [])
+    if duplicates or ((owner_only or 'live' in _resources(task))
+                      and not fields.get('Live authorization', '').strip()):
+        reason = ('duplicate authorization fields: ' + ', '.join(duplicates) if duplicates
+                  else 'requires owner action or recorded Live authorization')
+        return {'id': task['id'], 'reason': reason,
+                'blocked_by': ['Live authorization: ' + task['id']]}
+    return None
+
+
 def protected_path(path):
     """Whether a concrete repository path changes shared build/schema/CI state."""
     return any(fnmatchcase(path, p + '*' if p.endswith('/') else p) for p in SERIAL_PATHS)
@@ -286,6 +306,9 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     dispatch, waiting, stopped, reserved = [], [], ('', None), []
     for task in tasks:
         tid = task['id']
+        if gate := authorization_wait(task):
+            waiting.append(gate)
+            continue
         if tid in invalid:
             waiting.append({'id': tid, 'reason': invalid[tid], 'blocked_by': [tid], 'root_kind': 'contract'})
             continue

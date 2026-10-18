@@ -432,7 +432,10 @@ def capacity(args):
 
 
 def fallback(repo, args, reason):
-    task = execution.select(repo, args.tasks, args.plan)
+    task = authorization_contract(execution.select(repo, args.tasks, args.plan))
+    if gate := parallel_plan.authorization_wait(task):
+        return {'outcome': 'WAITING', 'workspace': str(repo), 'waiting': [gate],
+                'reason': gate['reason']}
     return {'outcome': 'SEQUENTIAL_FALLBACK', 'reason': reason, 'workspace': str(repo),
             'priority': task.pop('priority'), 'task': task,
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
@@ -456,9 +459,18 @@ def retired(repo):
     return ids
 
 
+def authorization_contract(task):
+    """Retain ambiguity the field parser otherwise drops from safety declarations."""
+    prose = execution.goals_module().task_prose(task.get('contract', ''))
+    labels = re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):', prose, re.M)
+    duplicates = [label for label in ('Ownership', 'Resources', 'Live authorization')
+                  if labels.count(label) > 1]
+    return dict(task, authorization_duplicates=duplicates) if duplicates else task
+
+
 def contracts(repo, requested=None, plan=None):
     try:
-        return execution.select_all(repo, requested, plan)
+        return [authorization_contract(task) for task in execution.select_all(repo, requested, plan)]
     except execution.NoEligibleTask:
         return []  # Malformed queues still raise and report ACTION_REQUIRED.
 
