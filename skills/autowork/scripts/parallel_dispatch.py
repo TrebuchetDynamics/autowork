@@ -161,7 +161,12 @@ def earlier_task_work(worktree, task_id, branch, baseline):
         name = ref.removeprefix('refs/heads/')
         if name == branch or not pattern.fullmatch(name):
             continue
-        base = execution.git(worktree, 'merge-base', baseline, tip)
+        try:
+            base = execution.git(worktree, 'merge-base', baseline, tip)
+        except ValueError:  # A preserved orphan branch may have an unrelated root.
+            work.append(f'- branch {name}; tip {tip}; date {date}; '
+                        'changed files: unknown (no shared history with baseline)')
+            continue
         # A status prefix protects leading filename whitespace from git()'s strip().
         files = execution.git(worktree, 'diff', '--name-status', '-z', '--no-renames', base, tip, '--')
         changed = files.split('\0')[1::2]
@@ -258,18 +263,61 @@ def created_by_autowork(common, path, branch):
         for e in map(json.loads, journal.read_text().splitlines()))
 
 
+def set_aside_number(repo, pairs, start=1):
+    """Next suffix free for every attempt's branch and worktree; never overwrite prior work."""
+    number = start
+    while any((path and os.path.lexists(str(path) + f'-set-aside-{number}'))
+              or execution.git(repo, 'branch', '--list', branch + f'-set-aside-{number}')
+              for path, branch in pairs):
+        number += 1
+    return number
+
+
 def create_worktree(repo, common, task_id, baseline):
-    """Return (path, branch, baseline); adopt only a worktree the journal shows Autowork created."""
+    """Return (path, branch, baseline), preserving any work left under the task's names."""
     safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
     branch = 'autowork/' + safe
     path = worktree_path(repo, 'autowork-' + safe)
-    exists = path.exists() or bool(execution.git(repo, 'branch', '--list', branch))
-    if exists and created_by_autowork(common, path, branch) and path.is_dir():
-        # A previous dispatch stopped between creating the worktree and its slot.
-        return path, branch, execution.git(path, 'merge-base', baseline, 'HEAD')
-    if exists:
-        raise ValueError(f'{path} or branch {branch} already exists and was not created by parallel '
-                         'Autowork; resolve it by hand')
+    registrations = [dict(field.partition(' ')[::2] for field in entry.split('\0') if field)
+                     for entry in execution.git(repo, 'worktree', 'list', '--porcelain', '-z').split('\0\0')]
+    here = next((w for w in registrations if w.get('worktree') == str(path)), None)
+    elsewhere = [w for w in registrations if w.get('branch') == 'refs/heads/' + branch and w != here]
+    if elsewhere:
+        raise ValueError(f'branch {branch} is checked out elsewhere; preserve its worktree')
+    if path.exists() or here:
+        if (not here or here.get('branch') != 'refs/heads/' + branch or path.is_symlink()
+                or not path.is_dir() or execution.git(path, 'rev-parse', '--show-toplevel') != str(path)
+                or state.common_dir(path) != common):
+            raise ValueError(f'{path} already exists but is not the task worktree; resolve it by hand')
+        if execution.git(path, 'status', '--porcelain', '--untracked-files=all', '--ignored'):
+            raise ValueError(f'{path} has uncommitted changes; preserve its worktree')
+        if any(str(path) in w.get('workspaces', []) and w.get('active') is not False
+               for w in execution.external_workers(repo)):
+            raise ValueError(f'{path} has a live or unknown writer; preserve its worktree')
+        if created_by_autowork(common, path, branch):
+            # A previous dispatch stopped between creating the worktree and its slot.
+            return path, branch, execution.git(path, 'merge-base', baseline, 'HEAD')
+        execution.git(repo, 'worktree', 'remove', str(path))  # no force, even after the clean check
+    if execution.git(repo, 'branch', '--list', branch):
+        ref = 'refs/heads/' + branch
+        tip = execution.git(repo, 'rev-parse', ref)
+        unique = int(execution.git(repo, 'rev-list', '--count', baseline + '..' + ref))
+        removed = False
+        if not unique:
+            try:
+                execution.git(repo, 'branch', '-d', branch)  # Git also refuses an unmerged/checked-out tip.
+                removed = True
+            except ValueError:
+                pass  # An upstream may differ from our baseline: keep it under a set-aside name.
+        if removed:
+            event, details = 'stale_branch_removed', {}
+        else:
+            number = set_aside_number(repo, [(str(path), branch)])
+            renamed = branch + f'-set-aside-{number}'
+            execution.git(repo, 'branch', '-m', branch, renamed)
+            event, details = 'stale_branch_set_aside', {'branch_now': renamed}
+        with execution.lock(common / 'writer.lock'):
+            state.event(common, event, task_id=task_id, branch=branch, tip=tip, baseline=baseline, **details)
     result = subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', branch, str(path), baseline],
                             capture_output=True, text=True, timeout=60)
     if result.returncode:
@@ -717,7 +765,11 @@ def dispatch_locked(args, repo, common, count, template, host):
         if previous:
             worktree, branch, base = Path(previous['worktree']), previous['branch'], previous['baseline']
         else:
-            worktree, branch, base = create_worktree(repo, common, task['id'], baseline)
+            try:
+                worktree, branch, base = create_worktree(repo, common, task['id'], baseline)
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                waiting.append({'id': task['id'], 'reason': str(exc), 'blocked_by': []})
+                continue  # An unsafe leftover holds this task, not the rest of the queue.
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
                               baseline=base)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
