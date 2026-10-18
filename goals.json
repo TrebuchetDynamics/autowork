@@ -196,7 +196,8 @@
         "TOOLSET-127-b1",
         "TOOLSET-128-69",
         "TOOLSET-133-f5",
-        "TOOLSET-134-ab"
+        "TOOLSET-134-ab",
+        "TOOLSET-202-9a"
       ],
       "title": "Optimize test suites without losing defect detection"
     },
@@ -696,7 +697,9 @@
         "TOOLSET-196-fb",
         "TOOLSET-197-4f",
         "TOOLSET-198-8f",
-        "TOOLSET-199-2d"
+        "TOOLSET-199-2d",
+        "TOOLSET-200-c1",
+        "TOOLSET-201-5e"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -705,12 +708,13 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-199-2d",
-      "TOOLSET-198-8f",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
       "TOOLSET-140-f4",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
+      "TOOLSET-200-c1",
+      "TOOLSET-201-5e",
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
@@ -741,6 +745,7 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-202-9a",
       "TOOLSET-192-71",
       "TOOLSET-172-92",
       "TOOLSET-178-47",
@@ -1080,6 +1085,22 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-200-c1",
+      "section": "Now",
+      "status": "open",
+      "title": "A status read waits for the writer lock, and a failed read never means nothing is running"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-201-5e",
+      "section": "Now",
+      "status": "open",
+      "title": "An idle runner keeps its session instead of recreating it every interval"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1368,6 +1389,14 @@
       "section": "Next",
       "status": "open",
       "title": "The offline check runs tests with SIGINT at its default, even when started in the background"
+    },
+    {
+      "depends_on": [],
+      "goal": "TEST-SUITE",
+      "id": "TOOLSET-202-9a",
+      "section": "Next",
+      "status": "open",
+      "title": "Retire the owner-cycle engine modules no live entry point reaches"
     },
     {
       "depends_on": [

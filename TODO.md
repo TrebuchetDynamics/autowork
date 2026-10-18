@@ -151,10 +151,42 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Scope: (1) A process in this runner's own systemd unit (its `/proc/<pid>/cgroup` names `pi-autowork@<name>.service` for this repository), or one carrying the attribution marker, is the runner's own and never an outside writer or session, wherever it runs. (2) Without systemd (a foreground `autowork run`), every job the runner starts (main check, maintainer, provisioning, merge resolution, Touches inference) carries the marker, and test processes it starts keep it. (3) The runner's own jobs in their `pi-scratch-*` worktrees never block integration, closeout or worktree cleanup; a person's session in those worktrees still does. (4) A blocked integration names the process's kind (`runner job: main check` or `session`), so a wrong attribution is visible in the log.
 - Acceptance: In fixtures, an integration during a running main check proceeds without waiting, under systemd (a fake cgroup file) and without it (the marker). An agent process started outside the runner in the main checkout, or in a `pi-scratch-*` worktree, still blocks with the `session` reason. Fixture runners started by the test suite are not mistaken for the real runner's jobs (their cgroup is not the real unit's and they carry no real marker).
 - Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: TOOLSET-165-f7.
+- Dependencies: None.
 - Ownership: Toolset coordinator; builds on TOOLSET-165-f7's attribution of worker descendants in the same writer check.
 - Exclusions: No change to which outside sessions block, to the main check itself or to how often it runs.
 - Planner's call: the service's control group as the primary signal, because it covers every process the runner starts, including detached ones and test fixtures that drop the environment, and cannot be set by an outside process. The marker remains for foreground runs.
+
+### TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+
+- [ ] TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 1); [status snapshot](skills/autowork/scripts/parallel_status.py) (`snapshot`, which takes `writer.lock`), [lock helper](skills/autowork/scripts/task_execution.py) (`lock`, `wait=0`; the `--parallel-status` handler turns `BlockingIOError` into `ACTION_REQUIRED`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`status`, `tasks`, `in_flight` and the decisions they guard: `follow_base`, `merge_main`, `update_toolset`, closeout).
+- Evidence (2026-10-17 23:2x, this repository's session): a direct `--parallel-status --json` answered `{"outcome": "ACTION_REQUIRED", "reason": "[Errno 11] Resource temporarily unavailable"}` while an engine command held the lock. The coordinator reads any non-status answer as an empty task list, so `in_flight()` is false while workers run.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_e2e.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_status_cache.py, tests/test_pi_autowork.py
+- Scope: (1) `--parallel-status` waits up to `PI_AUTOWORK_STATUS_WAIT` seconds (default 10) for `writer.lock` before giving up, and a timed-out read answers a distinct `outcome: BUSY` rather than `ACTION_REQUIRED`. (2) In the coordinator, a status answer that is not `PARALLEL_STATUS` is unknown: `in_flight()` treats it as busy, and every step that acts on task state skips that cycle step (following main, landing, worktree cleanup, ending the session, closeout, settling, the `BLOCKED`/waiting detection and the DOCS-MAINTAINER trigger). Only display (`autowork status`, the TUI, log lines) uses the last good snapshot's tasks. (3) Three unknown reads in a row are logged once with the reason. When they are `BUSY`, nothing more happens. When they are any other failure (a corrupt slot file, an engine bug), the runner raises a runner blocker in health and `BLOCKERS.md`, and the toolset update is allowed to run even though the pool is unknown, since an update is how a fix arrives. The TUI and `autowork status` show `status busy` instead of an empty task list.
+- Acceptance: In fixtures, a status read started while another process holds `writer.lock` for 2 s returns the full snapshot; one held past the wait returns `BUSY`. With a fake engine answering `BUSY` while a worker runs, the coordinator neither follows main nor lands nor updates the toolset in that cycle, and the next good read resumes normally.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_status_cache.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_e2e.py; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No lock-free read of slot files; no change to how writers take the lock.
+- Planner's call: a short wait plus a conservative "unknown means busy", not a lock-free read, because slot writes and journal appends are only consistent under the lock. Waiting one cycle costs little; acting under running work can lose it. A persistent non-lock failure must not also block the update that would fix it (builder check, 2026-10-17).
+
+### TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
+
+- [ ] TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 3); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `IDLE` branch of the cycle calls `merge_main`, `--release` and `end_session`; the next cycle's `ensure_session` creates a new one).
+- Evidence (2026-10-17 23:26-23:28, one fleet runner on the current release): `Session pi-autowork/20261017-232646 started from master`, `Queue empty`, then a new session at 23:27:52 and 23:28:54. Each interval adds a worktree, a branch and engine calls for nothing.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) On an empty queue the runner lands what the session has, then keeps the session worktree and branch and follows main in place; it ends the session only on a stop, a session older than a day with nothing ahead, or a session it cannot follow (a conflict the resolver cannot fix). (2) An idle cycle that finds main unchanged makes no git writes; its engine calls are the dispatch check and the `--release` it makes today, which stays, so an interactive `owner_cycle.py` or `worktree_closeout.py` run between intervals still finds the coordinator lease free. (3) `Session … started` is logged only when a session is actually created.
+- Acceptance: In a fixture with an empty queue, ten intervals create one session, log one `Session … started` line and leave the same worktree; a task added to main afterwards dispatches from that session; a stop still ends a clean, merged session as today.
+- Checks: python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to landing, pushing or what a stop does.
+- Planner's call: keep and follow the idle session rather than remove it lazily, because following main is already the session's normal state while nothing runs.
 
 ### TOOLSET-184-b3 — Restore the full offline check after the red main at 36e2b7c
 
@@ -399,6 +431,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Context: Builds on TOOLSET-099-87 offline work.
 - Ownership: Toolset coordinator under the owner's request.
 - Exclusions: No push by the runner; no direct edits in fleet repositories; live fleet qualification stays with TOOLSET-096-7e.
+- Added (2026-10-17, [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) finding 5): `coordinator.py` is one 1805-line class with about 15 separate engine call sites; `task_execution`, `parallel_dispatch`, `parallel_claims`, `parallel_integrate`, `parallel_state`, `parallel_status` and `worktree_closeout` import each other in one cycle; `git()` is defined in 9 modules. Address them in this redesign, not as separate refactors.
 
 ### TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
 
@@ -721,6 +754,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 
 ## Next
+
+### TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+
+- [ ] TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
+- Status: open
+- Goal: TEST-SUITE — Optimize test suites without losing defect detection.
+- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 4); [historical owner cycle](skills/autowork/references/historical-owner-cycle.md) ("retained as evidence, not current instructions"), [legacy fixture](tests/fixtures/legacy_owner_cycle.py), [live skill](skills/autowork/SKILL.md) (runs only `scripts/owner_cycle.py` and `scripts/worktree_closeout.py`), [offline check](scripts/check.py).
+- Evidence (2026-10-17 graph review): no live entry point imports or runs `start_goal`, `pass_workspace`, `writer_registration`, `registration_admission`, `runtime_bundle`, `native_lifecycle`, `controller_bridge`, `native_containment`, `budget_controller`, `delivery_state`, `check_receipt`, `ready_preflight`, `progress_runtime`, `backlog_plan`, `prepare_prerequisites`, `owner_unblock`, `disjoint_fallback`, `continuation_capability` or `gate_skip`; their callers are each other, their own tests, the legacy fixture and historical references. Together about 5k production and 8k test lines, run by every full check.
+- Touches: skills/autowork/scripts/, skills/autowork/references/, tests/fixtures/, tests/, scripts/check.py, docs/
+- Scope: (1) Compute the retired set by rule, not from this list alone: a module under `skills/autowork/scripts/` is retired when no live entry point reaches it through imports or by path. Live entry points are `owner_cycle.py`, `worktree_closeout.py`, the `pi-autowork` package, `scripts/*.py` and `scripts/*.sh`, the skills and adapters (`SKILL.md`, references they link as current), and modules those reach (which keeps `finish_task`, `candidate_identity`, `source_freshness` where still reached, `audit_profiles`, `retry_selection` (imported by `audit_profiles`), `analyze_audit_logs`, `cron_output`, `discover_sources`, `engineering_signals`, `goals.py`). A name that appears only in a comment or as a dictionary key (`check_receipt` in `parallel_integrate.py`) does not reach a module. (2) Delete the retired modules, their tests, `tests/fixtures/legacy_owner_cycle.py` and tests that exercise only it, and the `scripts/check.py` exclusions they leave unused. (3) Keep `references/historical-owner-cycle.md` and other historical references as evidence, with their links to deleted scripts replaced by the commit that removed them. (4) Record the removed modules, line counts and full-check time before and after in the task evidence.
+- Acceptance: The rule, run as a script in the task's evidence, lists the retired set, and every listed module is gone. Nothing live imports a deleted module (`python3 scripts/check.py` passes, and a grep of live files for each name finds only history). The full check is measurably shorter on the same host load.
+- Checks: python3 scripts/check.py with TMPDIR set to a fresh short directory; python3 scripts/check.py --list
+- Dependencies: None.
+- Ownership: Toolset; reconcile TOOLSET-125-e6, TOOLSET-126-6b and TOOLSET-127-b1 (test thinning), which should not spend effort on tests this deletes.
+- Exclusions: No change to live behavior, no deletion of a module a live entry point still reaches, no edits to historical evidence beyond broken links.
+- Planner's call: delete instead of disabling behind a flag (no compatibility shims), and decide by reachability rather than by this list, since references drift.
 
 ### TOOLSET-192-71 — The offline check runs tests with SIGINT at its default, even when started in the background
 
