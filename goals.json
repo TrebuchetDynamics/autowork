@@ -702,7 +702,8 @@
         "TOOLSET-201-5e",
         "TOOLSET-203-7a",
         "TOOLSET-204-f2",
-        "TOOLSET-205-a1"
+        "TOOLSET-205-a1",
+        "TOOLSET-206-0c"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1111,6 +1112,14 @@
       "section": "Now",
       "status": "open",
       "title": "The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-206-0c",
+      "section": "Now",
+      "status": "open",
+      "title": "A held commit whose entry changed only in Touches is verified again, not set aside and redone"
     },
     {
       "depends_on": [],
