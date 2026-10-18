@@ -238,31 +238,32 @@ def verify(state, task):
     if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
         return 0
     head_before = git(checkout, 'rev-parse', 'HEAD')
-    # Its own scratch on disk, removed afterwards: reviewers copied whole repositories into
-    # RAM-backed /tmp and left them (39 GB on one host).
-    scratch = Path(state) / 'review-tmp' / f'{safe_name(task)}-{os.getpid()}'
-    drop_dead_scratch(checkout, scratch.parent)
-    scratch.mkdir(parents=True, exist_ok=True)
-    # $TMPDIR is a short private link to that scratch: under the state directory the path was
-    # 85 characters before a test added its own, past the 108-byte AF_UNIX limit, so every
-    # socket test failed in review while the worker's short $TMPDIR passed it.
-    short = Path(tempfile.mkdtemp(prefix='aw-r-', dir='/tmp'))
-    (short / 't').symlink_to(scratch, target_is_directory=True)
-    os.environ['TMPDIR'] = str(short / 't')
+    # Its own private scratch, removed afterwards, on disk (reviewers copied whole repositories
+    # into RAM-backed /tmp and left them, 39 GB on one host) and short: under the state directory
+    # the path was 85 characters before a test added its own, past the 108-byte AF_UNIX limit.
+    # A short link to it was not enough: code that resolves links got the long path back.
+    root = review_root()
+    drop_dead_scratch(checkout, root)
+    scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
+    os.environ['TMPDIR'] = str(scratch)
     try:
         return review(state, task, checkout, head_before)
     finally:
         drop_scratch_worktrees(checkout, scratch)
-        shutil.rmtree(short, ignore_errors=True)  # removes the link, never follows it
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def review_root():
+    """Where reviews keep their scratch: a short directory on disk (`/var/tmp`)."""
+    return Path(os.environ.get('PI_AUTOWORK_REVIEW_ROOT') or '/var/tmp')
 
 
 def drop_dead_scratch(checkout, folder):
     """Remove the scratch of reviews whose process is gone: a review killed at its timeout
-    never reaches its own cleanup (2.7 GB left on one host)."""
-    for old in folder.glob('*-*') if folder.is_dir() else ():
-        pid = old.name.rsplit('-', 1)[1]
-        if old.is_symlink() or not old.is_dir() or not pid.isdigit():
+    never reaches its own cleanup (2.7 GB left on one host). Each is `aw-r-<pid>-<random>`."""
+    for old in folder.glob('aw-r-*-*') if folder.is_dir() else ():
+        pid = old.name.split('-')[2]
+        if old.is_symlink() or not old.is_dir() or not pid.isdigit() or old.stat().st_uid != os.getuid():
             continue
         try:
             os.kill(int(pid), 0)
