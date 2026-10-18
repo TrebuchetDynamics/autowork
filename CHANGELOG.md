@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `autowork scorecard [--days N] [--json] [target...]` shows, per runner over the last N days (default
+  7): tasks closed (checked entries new in the TODO archive), the share of integrations that ended held,
+  the median time from a task's first dispatch to its integration, and new owner questions in
+  `BLOCKERS.md`. It reads the engine journal and Git history and calls no model.
 - A review's `$TMPDIR` is a short private link in `/tmp` to its scratch on disk. Under the runner's state
   directory the path was 85 characters before a test added its own, past the 108-byte AF_UNIX limit, so
   every socket test failed in review (and full-suite gates) while the worker's own run passed them.
