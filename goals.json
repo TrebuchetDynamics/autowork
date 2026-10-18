@@ -726,7 +726,8 @@
         "TOOLSET-225-75",
         "TOOLSET-226-d3",
         "TOOLSET-227-a8",
-        "TOOLSET-228-0c"
+        "TOOLSET-228-0c",
+        "TOOLSET-229-d0"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -734,15 +735,18 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-221-8e",
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
+      "TOOLSET-229-d0",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
       "TOOLSET-165-f7",
       "TOOLSET-224-07",
       "TOOLSET-195-ee",
+      "TOOLSET-226-d3",
+      "TOOLSET-227-a8",
+      "TOOLSET-228-0c",
       "TOOLSET-200-c1",
       "TOOLSET-201-5e",
       "TOOLSET-216-08",
@@ -1216,6 +1220,14 @@
       "section": "Now",
       "status": "open",
       "title": "Full checks from every runner on the host share a few check slots"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-229-d0",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold"
     },
     {
       "depends_on": [],
