@@ -704,7 +704,8 @@
         "TOOLSET-204-f2",
         "TOOLSET-205-a1",
         "TOOLSET-206-0c",
-        "TOOLSET-207-e4"
+        "TOOLSET-207-e4",
+        "TOOLSET-208-54"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -713,9 +714,7 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-207-e4",
-      "TOOLSET-206-0c",
       "TOOLSET-204-f2",
-      "TOOLSET-199-2d",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
       "TOOLSET-165-f7",
@@ -752,6 +751,7 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-208-54",
       "TOOLSET-202-9a",
       "TOOLSET-192-71",
       "TOOLSET-172-92",
@@ -1396,6 +1396,14 @@
       "section": "Next",
       "status": "open",
       "title": "Retire the owner-cycle engine modules no live entry point reaches"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-208-54",
+      "section": "Next",
+      "status": "open",
+      "title": "A toolset update never mixes two releases in one running engine process"
     },
     {
       "depends_on": [
