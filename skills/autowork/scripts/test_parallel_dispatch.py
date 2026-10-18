@@ -732,6 +732,38 @@ class DrainClockTests(unittest.TestCase):
         self.assertEqual(dispatch.drain_after({}), 1800)
 
 
+class RetiredTmpTests(unittest.TestCase):
+    """Closed and set-aside tasks keep their evidence, not their temp files."""
+
+    def test_retired_attempt_tmpdirs_go_and_held_ones_stay(self):
+        with tempfile.TemporaryDirectory() as folder:
+            common = Path(folder)
+            def attempt(base, n):
+                tmp = base / f'attempt-{n}' / 'tmp'
+                (tmp / 'sdk').mkdir(parents=True)
+                (tmp.parent / 'report.json').write_text('{}')
+                return tmp
+            closed = [attempt(common / 'slot-data' / 'C', n) for n in (1, 2)]
+            held = attempt(common / 'slot-data' / 'H', 1)
+            history = common / 'slot-history' / 'S' / '1'
+            aside = attempt(history / 'slot-data', 1)
+            history.joinpath('slot.json').write_text(json.dumps({'task_id': 'S', 'attempt': 1, 'state': 'held'}))
+            dispatch.sweep_retired_tmp(common, [{'task_id': 'C', 'attempt': 2, 'state': 'closed'},
+                                                {'task_id': 'H', 'attempt': 1, 'state': 'held'}])
+            self.assertEqual([p.exists() for p in (*closed, aside)], [False, False, False])
+            self.assertTrue((closed[0].parent / 'report.json').exists())  # evidence stays
+            self.assertTrue((held / 'sdk').exists())  # a held commit's review still uses it
+
+    def test_a_live_worker_keeps_its_tmpdir(self):
+        with tempfile.TemporaryDirectory() as folder:
+            common = Path(folder)
+            tmp = common / 'slot-data' / 'C' / 'attempt-1' / 'tmp'
+            tmp.mkdir(parents=True)
+            with patch.object(state, 'worker_live', lambda slot: True):
+                dispatch.sweep_retired_tmp(common, [{'task_id': 'C', 'attempt': 1, 'state': 'closed'}])
+            self.assertTrue(tmp.exists())
+
+
 class AdmitTests(unittest.TestCase):
     """TOOLSET-157-cd: admission and integration agree about interrupted slots."""
 

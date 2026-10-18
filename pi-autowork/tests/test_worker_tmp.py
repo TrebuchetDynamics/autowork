@@ -135,6 +135,28 @@ class ReviewScratchTests(unittest.TestCase):
             self.assertFalse([p for p in registered if (state / 'review-tmp').resolve() in p.resolve().parents])
 
 
+class DeadReviewScratchTests(unittest.TestCase):
+    """A review killed at its timeout never runs its own cleanup."""
+
+    def test_scratch_of_dead_reviews_goes_and_live_ones_stay(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo, scratch = Path(folder) / 'repo', Path(folder) / 'review-tmp'
+            git = lambda *argv: subprocess.run(['git', '-C', str(repo), *argv], check=True,
+                                               capture_output=True, text=True).stdout
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'base')
+            dead = subprocess.Popen(['true'])
+            dead.wait()
+            gone, live = scratch / f'T-1-{dead.pid}', scratch / f'T-2-{os.getpid()}'
+            for path in (gone, live):
+                path.mkdir(parents=True)
+            git('worktree', 'add', '-q', '--detach', str(gone / 'copy'), 'HEAD')
+            worker.drop_dead_scratch(str(repo), scratch)
+            self.assertFalse(gone.exists())
+            self.assertTrue(live.exists())
+            self.assertNotIn(str((gone / 'copy').resolve()), git('worktree', 'list', '--porcelain'))
+
+
 class EnvironmentMarkerTests(unittest.TestCase):
     """TOOLSET-173-94: 'could not check' is recorded apart from 'checked and wrong'."""
 

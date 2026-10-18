@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Finished tasks no longer leave temp files. Closing or setting a task aside removes every attempt's
+  own `$TMPDIR`, and each dispatch removes those that closed and set-aside tasks already left (27 GB on
+  one host). A review removes the scratch of reviews killed at their timeout. Reports, prompts and
+  logs stay; a held commit keeps its worker's files for its review.
 - A runner reuses one engine status snapshot for up to 5 seconds and drops it whenever it runs an
   engine command. Each status read was a new engine process (1.5 to 3.6 s of CPU), about 10 per
   30 seconds per runner: 3 to 5 cores across a fleet of 7 runners on a host already at full load.

@@ -166,6 +166,7 @@ def verify(state, task):
     # Its own scratch on disk, removed afterwards: reviewers copied whole repositories into
     # RAM-backed /tmp and left them (39 GB on one host).
     scratch = Path(state) / 'review-tmp' / f'{safe_name(task)}-{os.getpid()}'
+    drop_dead_scratch(checkout, scratch.parent)
     scratch.mkdir(parents=True, exist_ok=True)
     os.environ['TMPDIR'] = str(scratch)
     try:
@@ -173,6 +174,24 @@ def verify(state, task):
     finally:
         drop_scratch_worktrees(checkout, scratch)
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def drop_dead_scratch(checkout, folder):
+    """Remove the scratch of reviews whose process is gone: a review killed at its timeout
+    never reaches its own cleanup (2.7 GB left on one host)."""
+    for old in folder.glob('*-*') if folder.is_dir() else ():
+        pid = old.name.rsplit('-', 1)[1]
+        if old.is_symlink() or not old.is_dir() or not pid.isdigit():
+            continue
+        try:
+            os.kill(int(pid), 0)
+            continue  # still running, or a reused PID: a later review removes it
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            continue
+        drop_scratch_worktrees(checkout, old)
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def drop_scratch_worktrees(checkout, scratch):

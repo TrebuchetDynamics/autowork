@@ -343,6 +343,7 @@ def cleanup_tmpdir(common, slot):
     """Retirement only; forget the reservation after removal, making retries safe."""
     if state.worker_live(slot):
         return
+    drop_attempt_tmp(common / 'slot-data' / slot['task_id'])
     record = common / 'slot-data' / slot['task_id'] / 'tmp.json'
     saved = execution.read(record)
     if saved is None:
@@ -355,6 +356,32 @@ def cleanup_tmpdir(common, slot):
     else:
         shutil.rmtree(path)
     record.unlink()
+
+
+def drop_attempt_tmp(data):
+    """Remove each attempt's own $TMPDIR (slots from before short temp directories kept one
+    per attempt), keeping the report, prompt and log beside it."""
+    for tmp in data.glob('attempt-*/tmp'):
+        try:
+            _private_tmp_dir(tmp, create=False)
+        except (OSError, ValueError):
+            continue  # a link, a foreign owner or already gone
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def sweep_retired_tmp(common, current):
+    """Every retired slot's temp files go, including those retired before retirement removed
+    them (27 GB of closed tasks' attempt directories on one host)."""
+    for slot in current:
+        if slot['state'] == 'closed':
+            try:
+                cleanup_tmpdir(common, slot)
+            except (OSError, ValueError):
+                continue  # an invalid allocation stays for a person; dispatch goes on
+    for record in (common / 'slot-history').glob('*/*/slot.json'):
+        old = execution.read(record)
+        if isinstance(old, dict) and not state.worker_live(old):
+            drop_attempt_tmp(record.parent / 'slot-data')
 
 
 def launch(argv, worktree, data, slot_index, stdin_path):
@@ -633,6 +660,7 @@ def dispatch(args):
 def dispatch_locked(args, repo, common, count, template, host):
     timeouts = enforce_timeouts(repo, args.owner_pid, common, args.worker_timeout)
     current = state.reconcile(repo, args.owner_pid)
+    sweep_retired_tmp(common, current)
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
