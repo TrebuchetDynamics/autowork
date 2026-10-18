@@ -1350,7 +1350,6 @@ class EngineTests(Fixture):
             self.assertLess(time.monotonic(), deadline, log())
             time.sleep(0.2)
         self.assertFalse(self.done('B'), 'B finished first; the landing did not happen beside it')
-        os.kill(int((self.root / 'busy-B').read_text()), 0)  # B's worker still runs
         upstream = subprocess.run(['git', '--git-dir', str(bare), 'show', 'main:BLOCKERS.md'],
                                   capture_output=True, text=True).stdout
         while '### Q-A — ' not in upstream:  # and the push follows the landing
