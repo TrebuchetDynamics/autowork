@@ -1103,14 +1103,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-211-71",
-      "section": "Now",
-      "status": "open",
-      "title": "A leftover task branch with nothing of its own never stops dispatch"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-212-0d",
       "section": "Now",
       "status": "open",
@@ -2589,6 +2581,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-211-71",
+      "section": "Done",
+      "status": "done",
+      "title": "A leftover task branch with nothing of its own never stops dispatch"
     },
     {
       "depends_on": [],
