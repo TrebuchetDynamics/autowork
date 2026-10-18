@@ -70,13 +70,42 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.status()['waiting_groups'], groups)
         self.assertEqual(self.status()['max_workers'], 8)
 
-    def test_an_unanswered_status_read_keeps_the_stall_clock(self):
-        """A --status reader holding the engine lock made the runner look idle and reset the clock."""
-        health.update(self.state, snapshot(), now=0)
+    def test_an_unanswered_status_read_shows_snapshot_age_and_keeps_the_stall_clock(self):
+        """A busy lock must not leave yesterday's rows looking like a current observation."""
+        from pi_autowork import fleet_view
+        folder = self.state / 'repo'
+        folder.mkdir()
+        runner = dict(repo='/x/repo', pid=os.getpid())
+        (folder / 'runner.json').write_text(json.dumps(runner))
+        health.update(folder, snapshot(), now=1000, runner=runner)
         busy = {'outcome': 'ACTION_REQUIRED', 'reason': 'Repository execution lock is held by a live operation.'}
-        self.assertIsNone(health.update(self.state, busy, now=1000))
-        self.assertEqual((self.status()['state'], self.status()['since']), ('blocked', 0))
-        self.assertIsNotNone(health.update(self.state, snapshot(), now=1800))
+        for now in (2000, 2500):
+            self.assertIsNone(health.update(folder, busy, now=now, runner=runner))
+            record = json.loads((folder / 'status.json').read_text())
+            self.assertEqual((record['state'], record['since']), ('unavailable', 1000))
+            self.assertEqual((record['snapshot_at'], record['status_unavailable_since']), (1000, 2000))
+            self.assertEqual(record['snapshot_age_seconds'], now - 1000)
+            self.assertIn('status unavailable since 2000:', record['status_error'])
+            self.assertIn(busy['reason'], record['status_error'])
+        row = health.fleet(self.state, now=2600, service=lambda name: 'active')[0]
+        self.assertEqual(row['state'], 'unavailable')
+        self.assertIn('last snapshot 1600s old', health.render([row], now=2600))
+        systemctl = self.state / 'systemctl'
+        systemctl.write_text('#!/bin/sh\n[ "$2" != list-units ] || '
+                             'echo "pi-autowork@repo.service loaded active running"\nexit 0\n')
+        systemctl.chmod(0o755)
+        view, = fleet_view.collect(self.state, self.state, systemctl=str(systemctl), now=2600)
+        self.assertEqual((view.state, view.minutes), ('unavailable', 26))  # TUI's persistent State column
+        self.assertIn('last snapshot 1600s old', fleet_view.verdict(view)[0])
+        self.assertIsNotNone(health.update(folder, snapshot(), now=2800, runner=runner))
+        record = json.loads((folder / 'status.json').read_text())
+        self.assertEqual((record['state'], record['since']), ('stalled', 1000))
+        self.assertNotIn('status_error', record)
+        (folder / 'status.json').unlink()
+        health.update(folder, busy, now=3000, runner=runner)
+        record = json.loads((folder / 'status.json').read_text())
+        self.assertIsNone(record['snapshot_at'])
+        self.assertIn('no successful snapshot', record['status_error'])
 
     def test_new_root_blockers_are_announced_again(self):
         health.update(self.state, snapshot(), now=0)

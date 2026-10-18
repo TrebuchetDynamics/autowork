@@ -6,6 +6,8 @@ statuses. A successful command is not task acceptance, review or completion.
 import argparse
 import ctypes
 from contextlib import contextmanager
+from copy import deepcopy
+from functools import lru_cache
 import fcntl
 import hashlib
 import importlib.util
@@ -36,26 +38,78 @@ class PriorityDriftError(ValueError):
         super().__init__(status['action'])
 
 
+@lru_cache(maxsize=1)
 def goals_module():
     path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/goals.py'
     spec = importlib.util.spec_from_file_location('todo_goals', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # queue() also asks for task bodies when checking priority drift. This private
+    # module shares the same pure parse as the file-content cache below.
+    cached_bodies = lru_cache(maxsize=16)(module.task_bodies)
+    module.task_bodies = lambda text: deepcopy(cached_bodies(text))
     return module
+
+
+def file_content(path):
+    """Read bytes, not mtime/size: same-size edits and atomic replacements matter."""
+    path = Path(path).absolute()
+    blob = path.read_bytes()
+    return str(path), hashlib.sha256(blob).digest(), blob
+
+
+@lru_cache(maxsize=32)
+def _task_document(content):
+    text = content[2].decode().replace('\r\n', '\n').replace('\r', '\n')
+    return text, goals_module().task_bodies(text)
+
+
+def task_bodies(path):
+    """A caller-owned view of the cached parse, keyed by path and bytes digest."""
+    return deepcopy(_task_document(file_content(path))[1])
+
+
+def _contract_parts(body):
+    return _cached_contract_parts(body.strip())
+
+
+@lru_cache(maxsize=1024)
+def _cached_contract_parts(body):
+    goals = goals_module()
+    labels = tuple(re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):',
+                              goals.task_prose(body), re.M))
+    return goals.task_fields(body), labels
+
+
+def contract_fields(body):
+    return deepcopy(_contract_parts(body)[0])
+
+
+def contract_labels(body):
+    return _contract_parts(body)[1]
+
+
+@lru_cache(maxsize=1)
+def archive_module():
+    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/todo_archive.py'
+    spec = importlib.util.spec_from_file_location('todo_archive_owner', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@lru_cache(maxsize=16)
+def _archive_navigation(content):
+    text, bodies = _task_document(content)
+    return archive_module().navigation(text, goals_module().markdown_prose(text), set(bodies))
 
 
 def archive_file(repo):
     """The TODO history owner as Docs Sync chooses it: a linked archive such as
     docs/TODO-archive.md, else TODO.archive.md. Task sources never select it."""
-    path = Path(__file__).resolve().parents[2] / 'docs-sync/scripts/todo_archive.py'
-    spec = importlib.util.spec_from_file_location('todo_archive_owner', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    goals = goals_module()
-    text = (Path(repo) / 'TODO.md').read_text()
     try:
-        return Path(repo) / module.archive_owner(Path(repo), module.navigation(
-            text, goals.markdown_prose(text), set(goals.task_bodies(text))))
+        return Path(repo) / archive_module().archive_owner(
+            Path(repo), _archive_navigation(file_content(Path(repo) / 'TODO.md')))
     except SystemExit as exc:
         raise ValueError(str(exc)) from exc
 
@@ -68,8 +122,13 @@ def archived_done(repo):
         return set()
     if not archive.is_file():
         return set()
-    return {key for key, items in goals_module().task_bodies(archive.read_text()).items()
-            if len(items) == 1 and items[0][1].lower() == 'x'}
+    return set(_archived_done(file_content(archive)))
+
+
+@lru_cache(maxsize=16)
+def _archived_done(content):
+    return frozenset(key for key, items in _task_document(content)[1].items()
+                     if len(items) == 1 and items[0][1].lower() == 'x')
 
 
 def unique(pairs):
@@ -424,96 +483,129 @@ def select_all(repo, requested=None, plan=None):
     return list(_contracts(repo, requested, plan, parallel=True))
 
 
-def _contracts(repo, requested, plan, *, parallel=False):
+@lru_cache(maxsize=16)
+def _ledger_document(content):
     goals = goals_module()
-    todo = repo / 'TODO.md'
-    bodies = goals.task_bodies(todo.read_text())
-    wanted = requested.split(',') if requested else None
-    if wanted and (len(set(wanted)) != len(wanted) or
-                   any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', item) for item in wanted)):
-        raise ValueError('--tasks must name unique TODO IDs')
-    ledger_path = repo / 'goals.json'
-    ledger = goals.load(repo) if ledger_path.exists() else None
+    try:
+        data = goals.parse_ledger(content[2].decode())
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f'goals.json:{exc.lineno}:{exc.colno}: malformed JSON') from exc
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    problems = goals.shape_errors(data)
+    if problems:
+        raise SystemExit('\n'.join(problems))
+    return data
+
+
+def task_ledger(repo):
+    path = repo / 'goals.json'
+    return deepcopy(_ledger_document(file_content(path))) if path.exists() else None
+
+
+@lru_cache(maxsize=16)
+def _queue_inputs(todo_content, ledger_content):
+    goals = goals_module()
+    text, bodies = _task_document(todo_content)
+    ledger = deepcopy(_ledger_document(ledger_content)) if ledger_content else None
     if ledger:
         problems = goals.errors(ledger)
         if problems:
             raise ValueError('invalid goals.json: ' + '; '.join(problems))
         ledger = goals.normalize(ledger)
-        # Named tasks and an owner's active claim are explicit; only default selection
-        # would execute a stale priority, so only it stops on drift.
-        try:
-            picks, priority = goals.queue(ledger, todo.read_text(), allow_drift=bool(wanted))
-        except goals.PriorityDrift as drift:
-            raise PriorityDriftError(drift.status) from None
+        picks, priority = goals.queue(ledger, text, allow_drift=True)
         ordered = [task['id'] for task, _ in picks]
         indexed = {task['id']: task for task in ledger['tasks']}
     else:
         ordered = sorted(bodies, key=lambda key: {'Now': 0, 'Next': 1}.get(bodies[key][0][2], 2))
         indexed = {}
         priority = {'state': 'todo_only'}
-    # Loose checklist lines outside executable sections are not task contracts;
-    # only IDs that could be executed must be unique.
     executable = set(indexed) if ledger else {key for key, items in bodies.items()
-                                              if any(item[2] in ('Now', 'Next') for item in items)}
-    if any(len(bodies[key]) != 1 for key in executable.union(wanted or ()) if key in bodies):
+                                             if any(item[2] in ('Now', 'Next') for item in items)}
+    return dict(bodies=bodies, ledger=ledger, ordered=ordered, indexed=indexed,
+                priority=priority, executable=executable, known=set(bodies) | set(indexed))
+
+
+def selection_inputs(repo):
+    """Shared read-only queue context; task output is copied before returning to callers."""
+    ledger = repo / 'goals.json'
+    return _queue_inputs(file_content(repo / 'TODO.md'), file_content(ledger) if ledger.exists() else None)
+
+
+def dependency_done(repo, inputs):
+    done = {key for key, items in inputs['bodies'].items() if items[0][1].lower() == 'x'}
+    done.update(archived_done(repo))
+    done.update(key for key, task in inputs['indexed'].items() if task['status'] == 'done')
+    return done
+
+
+def contract_reason(repo, tid, inputs, done, plan=None):
+    """The sequential eligibility rules, also used by the one-pass status reader."""
+    goals = goals_module()
+    bodies, indexed = inputs['bodies'], inputs['indexed']
+    if tid not in bodies:
+        return 'missing TODO contract'
+    body, mark, section = bodies[tid][0]
+    fields, labels = _contract_parts(body)
+    if (any(labels.count(label) > 1 for label in ('Scope', 'Acceptance', 'Checks', 'Verification', 'Dependencies', 'Status', 'Sources'))
+            or all(label in labels for label in goals.CHECK_LABELS)):
+        return 'duplicate task contract fields'
+    if mark.lower() == 'x' or section not in ('Now', 'Next'):
+        return 'completed or decision-held'
+    if inputs['ledger'] and tid not in inputs['ordered']:
+        return 'ledger dependency or disposition holds execution'
+    if not (fields.get('Scope') and fields.get('Acceptance') and goals.task_checks(fields)):
+        return 'needs unique Scope, Acceptance and Checks fields'
+    deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()
+    ids = parallel_plan.dependency_ids(deps, inputs['known'])
+    if ids and any(item not in done() for item in ids):
+        return f'unresolved dependency {deps}'
+    if inputs['ledger']:
+        task = indexed[tid]
+        status = re.split(r'[;\.\s]', fields.get('Status', task['status']))[0]
+        if task['section'] != section or status != task['status']:
+            return 'TODO and goals.json disagree; repair from source evidence'
+    if plan:
+        sources = re.findall(r'\]\(([^)]+)\)', fields.get('Sources', ''))
+        if plan not in sources:
+            return 'not linked to the named plan'
+        path, _, anchor = plan.partition('#')
+        source = local_path(repo, path)
+        if not source.is_file():
+            raise ValueError('named plan does not exist')
+        if anchor and anchor not in {re.sub(r'[^\w -]', '', heading.lower()).replace(' ', '-')
+                                    for heading in re.findall(r'^#+\s+(.+)', source.read_text(), re.M)}:
+            raise ValueError('named plan heading does not exist')
+    return None
+
+
+def _contracts(repo, requested, plan, *, parallel=False):
+    # Keep sequential selection lazy: later contracts cannot change its result.
+    wanted = requested.split(',') if requested else None
+    if wanted and (len(set(wanted)) != len(wanted) or
+                   any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', item) for item in wanted)):
+        raise ValueError('--tasks must name unique TODO IDs')
+    inputs = selection_inputs(repo)
+    bodies, indexed = inputs['bodies'], inputs['indexed']
+    # Named tasks and an owner's active claim remain explicit; only default
+    # selection would execute a stale priority, so only it stops on drift.
+    if not wanted and inputs['priority']['state'] == 'drift':
+        raise PriorityDriftError(deepcopy(inputs['priority']))
+    if any(len(bodies[key]) != 1 for key in inputs['executable'].union(wanted or ()) if key in bodies):
         raise ValueError('duplicate TODO task IDs; reconcile the repository contract')
-    accepted = False
-    reasons = []
-    for tid in (wanted or ordered):
-        if tid not in bodies:
-            reasons.append(f'{tid}: missing TODO contract')
+    done = lru_cache(maxsize=1)(lambda: dependency_done(repo, inputs))
+    accepted, reasons = False, []
+    for tid in (wanted or inputs['ordered']):
+        if reason := contract_reason(repo, tid, inputs, done, plan):
+            reasons.append(f'{tid}: {reason}')
             continue
         body, mark, section = bodies[tid][0]
-        fields = goals.task_fields(body)
-        labels = re.findall(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][A-Za-z /-]*):', goals.task_prose(body), re.M)
-        if (any(labels.count(label) > 1 for label in ('Scope', 'Acceptance', 'Checks', 'Verification', 'Dependencies', 'Status', 'Sources'))
-                or all(label in labels for label in goals.CHECK_LABELS)):
-            reasons.append(f'{tid}: duplicate task contract fields')
-            continue
-        if mark.lower() == 'x' or section not in ('Now', 'Next'):
-            reasons.append(f'{tid}: completed or decision-held')
-            continue
-        if ledger and tid not in ordered:
-            reasons.append(f'{tid}: ledger dependency or disposition holds execution')
-            continue
-        if not (fields.get('Scope') and fields.get('Acceptance') and goals.task_checks(fields)):
-            reasons.append(f'{tid}: needs unique Scope, Acceptance and Checks fields')
-            continue
-        deps = fields.get('Dependencies', 'None.').strip().strip('.').strip()
-        # `None <prose>` declares no dependencies; prose words around IDs are not IDs.
-        ids = parallel_plan.dependency_ids(deps, set(bodies) | set(indexed))
-        if ids:
-            # An unknown ID is not evidence of completion.
-            done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'}
-            done.update(archived_done(repo))
-            done.update(key for key, task in indexed.items() if task['status'] == 'done')
-            if any(item not in done for item in ids):
-                reasons.append(f'{tid}: unresolved dependency {deps}')
-                continue
-        if ledger:
-            task = indexed[tid]
-            status = re.split(r'[;\.\s]', fields.get('Status', task['status']))[0]
-            if task['section'] != section or status != task['status']:
-                reasons.append(f'{tid}: TODO and goals.json disagree; repair from source evidence')
-                continue
-        if plan:
-            sources = re.findall(r'\]\(([^)]+)\)', fields.get('Sources', ''))
-            if plan not in sources:
-                reasons.append(f'{tid}: not linked to the named plan')
-                continue
-            path, _, anchor = plan.partition('#')
-            source = local_path(repo, path)
-            if not source.is_file():
-                raise ValueError('named plan does not exist')
-            if anchor and anchor not in {re.sub(r'[^\w -]', '', heading.lower()).replace(' ', '-')
-                                        for heading in re.findall(r'^#+\s+(.+)', source.read_text(), re.M)}:
-                raise ValueError('named plan heading does not exist')
-        if parallel and ledger and 'Status' not in fields:
-            # Parallel admission must retain the ledger's effective running state;
-            # sequential callers keep their historical byte-for-byte contract.
-            fields = dict(fields, Status=indexed[tid]['status'])
+        fields = contract_fields(body)
+        if parallel and inputs['ledger'] and 'Status' not in fields:
+            fields['Status'] = indexed[tid]['status']
         yield {'id': tid, 'title': body.splitlines()[0].strip(' —:-'),
-               'section': section, 'contract': body.strip(), 'fields': fields, 'priority': priority}
+               'section': section, 'contract': body.strip(), 'fields': fields,
+               'priority': deepcopy(inputs['priority'])}
         accepted = True
     if not accepted:
         raise NoEligibleTask('; '.join(reasons) or 'no eligible TODO task; inspect source and record a bounded improvement')

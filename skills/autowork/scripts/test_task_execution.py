@@ -455,5 +455,45 @@ class RecoveryTests(DirectExecutionTests):
             if identity(pid): os.kill(pid, 9)
         self.assertEqual(result['outcome'], 'CHILDREN_TERMINATED')
 
+class SelectionCacheTests(unittest.TestCase):
+    def test_selection_reuses_parsing_without_hiding_content_changes_or_caller_mutation(self):
+        import task_execution as execution
+        import parallel_status
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            todo, archive = repo / 'TODO.md', repo / 'TODO.archive.md'
+            todo.write_text('## Now\n- [ ] A — cached\n  Scope: a\n  Acceptance: works\n'
+                            '  Checks: test a\n  Dependencies: OLD\n')
+            archive.write_text('## Done\n- [x] OLD — prerequisite\n')
+            goals = execution.goals_module()
+            with patch.object(execution, 'goals_module', return_value=goals), \
+                    patch.object(goals, 'task_bodies', wraps=goals.task_bodies) as bodies:
+                first = execution.select(repo, 'A', None)
+                first['fields']['Checks'] = 'caller mutation'
+                first['priority']['state'] = 'caller mutation'
+                self.assertEqual(execution.select(repo, 'A', None)['fields']['Checks'], 'test a')
+                self.assertEqual(parallel_status.pending_tasks(repo),
+                                 [dict(id='A', reason='awaiting dispatch', blocked_by=[])])
+                self.assertEqual(bodies.call_count, 2)  # TODO and archive, once each
+            stamp = archive.stat()
+            archive.write_text(archive.read_text().replace('[x]', '[ ]'))
+            os.utime(archive, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+            with self.assertRaisesRegex(execution.NoEligibleTask, 'unresolved dependency'):
+                execution.select(repo, 'A', None)
+            todo.write_text(todo.read_text().replace('Dependencies: OLD', 'Dependencies: None.'))
+            self.assertEqual(execution.select(repo, None, None)['priority']['state'], 'todo_only')
+            ledger = {'version': 1, 'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
+                       'status': 'partial', 'tasks': ['A'], 'priority': 1, 'depends_on': []}],
+                      'tasks': [{'id': 'A', 'title': 'cached', 'goal': 'G', 'status': 'open',
+                                 'section': 'Now', 'depends_on': []}]}
+            (repo / 'goals.json').write_text(json.dumps(ledger))
+            self.assertEqual(execution.select(repo, None, None)['id'], 'A')
+            ledger['tasks'][0]['status'] = 'in_progress'
+            (repo / 'goals.json').write_text(json.dumps(ledger))
+            self.assertEqual(execution.select_all(repo)[0]['fields']['Status'], 'in_progress')
+            (repo / 'goals.json').unlink()
+            self.assertNotIn('Status', execution.select_all(repo)[0]['fields'])
+
+
 if __name__ == '__main__':
     unittest.main()
