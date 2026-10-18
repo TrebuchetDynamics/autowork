@@ -8,20 +8,6 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-138-62 — USER_INPUT — effort input — unblocks 0
-
-- Task: TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
-- Needs: worker reported a blocker: Coordinator must reconcile the original versus current-history commit identities and provide an executable acceptance contract: either authorize an integration path preserving original 3848aaa ancestry, or explicitly update the acceptance and dependent TOOLSET-139-62 pin handling to verified current-history identities. Original merge de02326 exists but is not in main/origin/main/worker history; cu…
-- Since: 2026-10-18T22:14:18Z
-- Answer: Answer in TOOLSET-138-62's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
-
-### Q-TOOLSET-139-62 — USER_INPUT — effort input — unblocks 0
-
-- Task: TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
-- Needs: worker reported a blocker: Provide a disk-backed task TMPDIR with at least 20 GB free (plus fixture headroom), or authorize relocating test scratch inside this task worktree, then rerun the resource-blocked offline modules. The supplied /run/user/1000/aw/aaf6b379/18 is on a 6.3 GB tmpfs and cannot satisfy the unchanged production guard. The worktree filesystem has approximately 400 GB free, but temporary paths were kept wit…
-- Since: 2026-10-18T22:14:18Z
-- Answer: Answer in TOOLSET-139-62's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
-
 ### Q-TOOLSET-147-54 — USER_INPUT — effort input — unblocks 0
 
 - Task: TOOLSET-147-54 — Merge pending names its real cause and clears a dirty integration worktree safely
