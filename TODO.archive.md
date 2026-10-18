@@ -2972,3 +2972,86 @@ scratch and the reviewer's scratch restriction, before claiming full acceptance.
 The existing [accepted runner source](docs/project.md#continuous-pi-runner-2026-10-15)
 and every original Acceptance item remain binding; no implementation, full-gate
 rerun, live qualification or task closure was performed by this documentation pass.
+
+## MAIN receipt at 7745319
+
+Evidence supplement for TOOLSET-184-b3, not completion or a new task. The runner's
+new `main_check.json` reports red revision
+`77453195adf012f245ee44487de8cb5e4446664a`, `green: null`, and unchanged
+`red_since: 36e2b7c0ea0c6096a7b20197edcacf68dc11dfa4`. The completed
+`main-check.log` contains exactly 16 distinct ERROR identities, matching the JSON
+summary, and ends `Offline result: 2 test directories passed; 3 failed; 8 modules excluded.`
+`main-check.exit` is 1. This is retained runner evidence, not a docs-pass rerun.
+Receipt SHA-256 bindings:
+
+- `main_check.json`: `1ea7823a85aa42fb1a8637a4ae76dff6a709204bbb1d07f4d954ebb45a957cfd`
+- `main-check.log`: `a9aee7ae725734b90a9eb351a5d085ab8c6f35f1b02507c0c1acea81b37cf22a`
+- `main-check.exit`: `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865`
+
+Full failure inventory (the maintainer trigger truncated the last test name):
+
+- `test_pi_autowork.EngineTests.test_merged_work_is_pushed_to_main_upstream`
+- `test_pi_autowork.EngineTests.test_a_backlog_left_unpushed_is_published_at_start`
+- `test_pi_autowork.EngineTests.test_upstream_commits_are_pulled_into_main_after_a_task_before_its_push`
+- `test_pi_autowork.EngineTests.test_a_rejected_push_merges_the_upstream_and_pushes_again`
+- `test_pi_autowork.SetupTests.test_an_idle_runner_updates_its_toolset_and_restarts_on_the_new_code`
+- `test_pi_autowork.SetupTests.test_a_release_that_cannot_read_current_state_is_never_installed`
+- `test_pi_autowork.SetupTests.test_a_broken_toolset_update_keeps_the_running_code`
+- `test_publication_readiness.PublicationReadinessTests.test_ancestry_conflict_never_becomes_force_push_readiness`
+- `test_publication_readiness.PublicationReadinessTests.test_multiple_remotes_are_resolved_by_bound_authority_not_origin_guess`
+- `test_publishable.PublishableTests.test_a_pointer_to_a_local_only_commit_stays_out_until_it_is_pushed`
+- `test_publishable.PublishableTests.test_an_untracked_nested_repository_is_not_added`
+- `test_publishable.PublishableTests.test_ordinary_files_are_unchanged`
+- `test_release.ReleaseCheckTests.test_a_compatible_release_may_be_installed`
+- `test_release.ReleaseCheckTests.test_a_release_that_cannot_read_this_state_is_refused`
+- `test_release.ReleaseCheckTests.test_another_runner_with_work_in_flight_defers_the_update`
+- `test_release.ReleaseCheckTests.test_fetched_declarations_are_parsed_never_executed`
+
+Reported commit window: `7745319`, `7e804d0`, `0de0ae6`, `c3f3230`, `3ca53ce`,
+`3bd1d95`, `c15b392`, `b5b4944`, `ef85685`, `36e2b7c`, `7b77f3d`, `99813f9`,
+`ce43743`, `d9e39b4`, `db2e4ba`, `69937f0`, `0749177`, `b40d85f`, `2f27806`,
+`e22cee9`. With no recorded green revision this is neither fault attribution nor
+a proven since-green range. The existing repair's Touches cover the failing
+modules: `tests/test_pi_autowork.py`, `skills/autowork/scripts/test_publication_readiness.py`,
+`pi-autowork/tests/test_publishable.py` and `pi-autowork/tests/test_release.py`.
+Relevant history already covered by its Touches includes `ef85685`'s coordinator,
+maintainer and engine-test changes and `3bd1d95`'s checker and fixture changes.
+`7e804d0` changes bundle/update code and tests; `0de0ae6` changes Docs Sync and its
+first-index tests. Neither is evidence that those unrelated paths must be added
+to this repair. Local bare-remote fixture pushes still exit 128 before the tested
+behavior runs; preserve production push denial and the existing fixture-only
+isolation boundary, not a broader publication permission.
+
+### Existing repair and live ownership
+
+The accepted [continuous runner source](docs/project.md#continuous-pi-runner-2026-10-15),
+TOOLSET-184-b3's full-suite Acceptance and Checks, and its explicit failed-review
+continuation already cover this inventory. All 16 names are also preserved in the
+preceding receipt. A smaller inventory at a different revision does not qualify
+that candidate or waive the socket, cleanup, tx or budget checks from its contract.
+No `add-task`, supersession, scope widening or priority change is warranted.
+
+The current slot records a running repair worker at baseline `0c420d5`, PID
+3084725, start ticks 307194372; both process birth and boot identity matched when
+inspected. There is no current `attempt-1/report.json` yet. The older report is
+retained under `slot-history/TOOLSET-184-b3/1/slot-data/attempt-1/report.json`;
+it names worker commit `2c23b62`, not a result from this running worker. That commit
+is not an ancestor of the recorded red main. The retained review finding still
+rejects merged candidate `a7d3f9f`; neither old receipt establishes current success.
+
+Only the queue overview is corrected to observe the running repair rather than
+instruct another resume of the old candidate. Every task body, Acceptance item,
+Checks command, dependency, ledger state and queue position is preserved. Collect
+the current worker's result through the existing coordinator and obtain the
+required full gate and independent review; do not repin, release, reset or start
+a competing worker. No runtime repair, full offline rerun, dispatch, live acceptance
+or task closure was performed by this documentation pass.
+
+Consumer check limitation: `backlog-check` for TOOLSET-184-b3 against the accepted
+continuous-runner heading returns `draft_saved` (exit 1) both in this candidate and
+the runner's session checkout, because two existing Sources links in TOOLSET-179-cf
+and TOOLSET-130-15 target the absent `canonical-plan-and-session-reconciliation`
+heading in the coordinator plan. Those bodies and the missing plan section are
+outside this MAIN repair; no replacement approval or plan content is invented.
+`next --json` still selects TOOLSET-184-b3 first with synchronized priority; that
+ledger eligibility does not authorize another worker or certify consumer readiness.

@@ -37,9 +37,12 @@ worker's assigned contract. Review the archive-shipping, safe-update and Pi
 settlement/cancellation checks when refining that existing design.
 
 MAIN repair remains with TOOLSET-184-b3, already first in Now. The
-[MAIN receipt and failed review](TODO.archive.md#main-receipt-at-3ca53ce-and-toolset-184-b3-review)
-retain the latest failure inventory, commit evidence and remaining fixture gaps.
-Resume its retained candidate through the coordinator; do not open a duplicate repair.
+[newer MAIN receipt](TODO.archive.md#main-receipt-at-7745319) records 16 errors;
+the [failed review](TODO.archive.md#main-receipt-at-3ca53ce-and-toolset-184-b3-review)
+retains the separate fixture gaps. Its repair worker was verified running when
+this receipt was reconciled; preserve its assigned contract and let the coordinator
+collect its result. Do not start a duplicate repair or replay the older candidate
+while that worker runs.
 
 ## Now
 
