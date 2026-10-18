@@ -5,9 +5,11 @@ Status: Accepted
 The owner requests a plan for smaller `TODO.md`, `TODO.archive.md` and `goals.json`,
 with detailed per-task files as a candidate, and authorizes auditing this repository.
 TODO remains the central human work queue; planning saves findings/tasks but does not
-implement or migrate the storage format. The owner's clarification explicitly asks
-for future planning/Docs Sync skill and tool updates, not direct conversion of this
-checkout. No self-migration is queued or authorized here. Choices below are the
+implement or migrate the storage format. The original clarification asked
+for planning/Docs Sync support before conversion. The owner has since prioritized
+this chain, delegated implementation details and authorized this repository as the
+first guarded adoption target after its support/review gates. No manual rewrite
+or premature migration is authorized. Choices below are the
 planner's calls.
 
 ## Measured problem
@@ -144,8 +146,9 @@ hold the old contracts; do not pause, kill, repin or restart them automatically.
    write-free previews, resume and guarded rollback. Use disposable exact copies of
    this repository's audited inputs and a large synthetic history, with interrupted
    commits, stale revisions, concurrent edits and incompatible consumers. Verify
-   skill adoption and packaged host behavior. Do not convert the canonical repository
-   or any profile/fleet repository; actual adoption is a later explicit owner action.
+   skill adoption and packaged host behavior. After support, independent review and conservation/recovery checks, perform the
+   owner-authorized guarded cutover in this repository. No other profile/fleet
+   repository is a conversion target.
 
 Use independent format versions for body storage and machine-index history; changing
 body location does not itself prune ledger history. Old TODO anchors need stable
@@ -191,12 +194,36 @@ and dependencies); hiding a second complete monolithic ledger behind a tiny root
 merge and authority replacement). The per-task format adds file/transaction overhead;
 the explicit resolver and recovery protocol are the cost of smaller hot documents.
 
-No bulk migration, task-body shortening, archive rewrite, implementation, commits,
-publication, installations, schedule changes or worker dispatch occurs when this
-plan is saved. Existing task IDs/order and historical completion evidence remain.
+Saving or reprioritizing this plan does not itself execute migration. The latest
+owner instruction separately authorizes local implementation, verification and
+scoped local commits for this chain, followed by its guarded local cutover. No
+publication, installation, schedule change or new worker dispatch is authorized
+by saving the plan. Existing task IDs/order and historical completion evidence remain.
 The read-only task-query work retains its IDs; the storage implementation must adapt
 that consumer if it has landed, not create a competing query feature.
 
 ## Source-backed impact
 
 Direct inspection located inline coupling in `skills/docs-sync/scripts/{goals,todo_archive,recover_backlog}.py`, `skills/autowork/scripts/{task_execution,ready_preflight,start_goal,parallel_claims,parallel_integrate,parallel_dispatch,parallel_status}.py`, `pi-autowork/pi_autowork/{coordinator,touches_inference,fleet_view,questions,worker}.py` and `adapters/skills/`. Reader-only changes omit closeout writes, scope protection and Pi planning adoption. Retain the pure legacy parser and introduce a repository-aware shared reader/writer; separate body relocation from terminal-index pruning. Source review only; no runtime tests or migration were executed during planning.
+
+## Immediate local adoption mandate
+
+Status: Accepted
+
+The owner delegated the priority choice and implementation details after requesting
+compact TODO.md and goals.json now. Planner call: 149-df, 150-71 and 151-01 lead
+the queue in that dependency order, ahead of the older pipeline-first ordering;
+all unrelated task order and paused/external gates remain intact. The existing
+archive is not the urgent problem: keep its content and receipts; do not spend
+time shrinking old history or erase it to meet an active-file target. The visible
+queue must contain only concise pending rows, and completed records must leave
+the hot index while remaining resolvable. Preserve the chosen docs/tasks/ layout.
+
+First deliver the shared reader/guarded writer and consumer/package compatibility,
+then active-only indexing, then run the supported local migration with conservation,
+recovery and exact-tree checks. No unreviewed manual file move is a substitute.
+The live coordinator and its current worker have matching process-birth identities;
+the current worker keeps running. Exclusive implementation/cutover waits for its
+normal safe handoff, never a competing owner, new worktree to bypass the lease,
+worker kill, restart or repin. Existing local implementation authority does not
+extend to publishing, deployment, credentials, fleet migration or scheduling.

@@ -131,7 +131,7 @@ def idle_claims(repo, claims, idle_after, *, now=None, workers=None):
     workers = execution.external_workers(repo) if workers is None else workers
     # This pool's own workers (kind 'autowork') are not claims' owners; other sessions are.
     live = [w for w in workers if w.get('kind') == 'session' and w.get('active') is not False]
-    main = execution.git(repo, 'worktree', 'list', '--porcelain').splitlines()[0][len('worktree '):]
+    main = str(execution.canonical_root(repo))
     # Active sessions in the canonical or session checkout: which claim they serve is known
     # only from the files they hold open for writing (TOOLSET-120-fc 3).
     shared = [w for w in live if {str(repo), main} & set(w.get('workspaces', []))]

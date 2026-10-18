@@ -687,6 +687,9 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-149-df",
+      "TOOLSET-150-71",
+      "TOOLSET-151-01",
       "TOOLSET-165-f7",
       "TOOLSET-183-d6",
       "TOOLSET-170-f6",
@@ -706,7 +709,6 @@
       "TOOLSET-154-d3",
       "TOOLSET-147-54",
       "TOOLSET-140-f4",
-      "TOOLSET-149-df",
       "TOOLSET-153-64",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
@@ -746,8 +748,6 @@
       "TOOLSET-029",
       "TOOLSET-011",
       "TOOLSET-144-c0",
-      "TOOLSET-150-71",
-      "TOOLSET-151-01",
       "TOOLSET-172-92",
       "TOOLSET-178-47",
       "TOOLSET-129-6c",
@@ -839,6 +839,27 @@
       "section": "Now",
       "status": "open",
       "title": "Teach planning and Docs Sync linked task storage with compatible consumers"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-149-df"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-150-71",
+      "section": "Now",
+      "status": "open",
+      "title": "Add a compact active-task index and evidence-preserving history"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-149-df",
+        "TOOLSET-150-71"
+      ],
+      "goal": "BACKLOG",
+      "id": "TOOLSET-151-01",
+      "section": "Now",
+      "status": "open",
+      "title": "Deliver opt-in ledger conversion tools and offline qualification"
     },
     {
       "depends_on": [],
@@ -1268,27 +1289,6 @@
       "section": "Next",
       "status": "open",
       "title": "Run conditional Docs Sync during verified Autowork closeout"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-149-df"
-      ],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-150-71",
-      "section": "Next",
-      "status": "open",
-      "title": "Add a compact active-task index and evidence-preserving history"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-149-df",
-        "TOOLSET-150-71"
-      ],
-      "goal": "BACKLOG",
-      "id": "TOOLSET-151-01",
-      "section": "Next",
-      "status": "open",
-      "title": "Deliver opt-in ledger conversion tools and offline qualification"
     },
     {
       "depends_on": [],

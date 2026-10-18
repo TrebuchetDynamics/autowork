@@ -39,6 +39,21 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(self.git('branch', '--show-current', cwd=path), branch)
         self.assertEqual(self.git('status', '--porcelain', '--untracked-files=all'), '')
 
+    def test_a_submodule_places_worktrees_in_its_checkout_not_its_git_directory(self):
+        """A submodule's Git directory is .git/modules/NAME and `git worktree list` shows it as
+        the main worktree; a runner's session was created inside it, with no TODO.md."""
+        import worktree_paths
+        child = Path(self.temp.name) / 'child'
+        child.mkdir()
+        self.git('init', '-q', '-b', 'main', cwd=child)
+        self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid',
+                 'commit', '--allow-empty', '-qm', 'child', cwd=child)
+        self.git('-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', str(child), 'sub')
+        sub = self.repo / 'sub'
+        self.assertIn('/.git/modules/', self.git('rev-parse', '--path-format=absolute', '--git-common-dir', cwd=sub))
+        self.assertEqual(worktree_paths.canonical_root(sub), sub.resolve())
+        self.assertEqual(worktree_paths.worktree_path(sub, 'session'), sub.resolve() / '.worktrees' / 'session')
+
     def test_claude_from_linked_checkout_keeps_its_branch_baseline(self):
         caller = self.repo / '.worktrees' / 'caller'
         self.git('worktree', 'add', '-q', '-b', 'caller', str(caller))
