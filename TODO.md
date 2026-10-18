@@ -110,9 +110,27 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Acceptance: In fixtures: the prompt contains the rule and the field; a report with `unrelated_failures` and a commit integrates without a hold; the `load` blocker text from the evidence, with uncommitted files, resumes the same attempt once with the commit instruction and raises no BLOCKERS question; a blocker naming a missing dependency still becomes a question.
 - Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
 - Dependencies: None.
-- Ownership: Toolset coordinator.
+- Ownership: Toolset coordinator. Coordinates with TOOLSET-227-a8: once workers stop running the full check there, rule (1) applies to the failures of the task's own `Checks:` commands, and (2)-(3) are unchanged.
 - Exclusions: No skipping of the runner's own full-suite gate. Failures the change causes still fail the check and the task.
 - Planner's call: third in Now, after the two integration-hold tasks (raised 2026-10-18 17:18: it held finished work in three repositories in one pass). Under the load this fleet runs at, a full gate is rarely clean, and every finished worker that obeys the current prompt turns into a question only the runner can answer. The runner's gate already separates new failures from old and flaky ones, so the worker needs no veto.
+
+### TOOLSET-227-a8 — A candidate's full check runs once, by the runner, and the worker and reviewer reuse it
+
+- [ ] TOOLSET-227-a8 — A candidate's full check runs once, by the runner, and the worker and reviewer reuse it
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [full-suite gate](pi-autowork/pi_autowork/worker.py) (`full_suite_gate`, `base_result`, `run_suite`, `verify`, the `REVIEW` prompt), [main check command](pi-autowork/pi_autowork/main_check.py) (`full_check`), [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`).
+- Evidence (2026-10-18, this repository, the last 48 hours: worker runs took a median 33 minutes (p75 51); in two logged attempts test commands took 38 of 44 and 26 of 32 minutes; a full `scripts/check.py` took 7 to 10 minutes at a host load average of 24 to 27. One candidate's full check ran 4 to 5 times: 2 or 3 times by its worker, once by the full-suite gate on the merged tree, and again by the model reviewer, which polled its own background run every 90 s. 15 of 26 integrations ended held and 15 of 25 check receipts failed or timed out, many on the environment.)
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/shared/TODO-WORKCENTER.md, CHANGELOG.md
+- Scope: (1) The worker prompt says the runner runs the repository's full check on the merged tree before review: the worker runs its task's focused checks (every `Checks:` command except the full check) and does not run the full check itself; it may run named tests from it. (2) The gate's result is cached by the merged tree's id and the check command, so a re-review of the same tree (a changed reviewer, a requeue) reuses it instead of running again, as `base_result` already does for the base. (3) The review prompt gives the reviewer the gate's outcome and log path and says not to rerun the full check; it reruns only tests it needs to examine. (4) The TODO work center says a task's `Checks:` line for the full check is satisfied by the runner's gate, not by the worker.
+- Acceptance: In fixtures, a review of a tree whose gate result is cached runs no full check; a changed tree runs it once; the worker prompt names the focused checks and states the full check is the runner's; the review prompt carries the gate's outcome and log path. Acceptance of a candidate still requires the gate: a failing merged-tree check still rejects it.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_worker_tmp.py tests/test_pi_autowork.py skills/autowork/scripts/test_parallel_dispatch.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No weaker gate: the runner's full check on the merged tree stays required; no reuse of a worker-reported result (a receipt the runner did not produce proves nothing).
+- Priority (2026-10-18 17:34): moved up to fourth in Now. On one runner 13 verified candidates waited for reviews that take 17-65 minutes each, one at a time, with the full suite run twice per review.
+- Planner's call: the runner's gate is the one trusted full run, so it is the one kept; the worker's and the reviewer's repeat runs add time and host load, not assurance. Expected effect: two to four fewer full checks per candidate, about 15 to 30 minutes at today's load.
 
 ### TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
 
@@ -282,23 +300,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator. Supersedes the attribution parts of TOOLSET-224-07; coordinates with TOOLSET-216-08, which owns the main-checkout landing rule.
 - Exclusions: No change to gates, review, priority order or Touches scheduling; no landing that moves `main` without the main checkout.
 - Planner's call: as recorded in the [design](docs/plans/2026-10-18-off-tree-integration.md#off-tree-integration-design): writing no shared working copy removes the need to tell processes apart, which no attribution rule can do for every future kind of process.
-
-### TOOLSET-227-a8 — A candidate's full check runs once, by the runner, and the worker and reviewer reuse it
-
-- [ ] TOOLSET-227-a8 — A candidate's full check runs once, by the runner, and the worker and reviewer reuse it
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [full-suite gate](pi-autowork/pi_autowork/worker.py) (`full_suite_gate`, `base_result`, `run_suite`, `verify`, the `REVIEW` prompt), [main check command](pi-autowork/pi_autowork/main_check.py) (`full_check`), [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`).
-- Evidence (2026-10-18, this repository, the last 48 hours: worker runs took a median 33 minutes (p75 51); in two logged attempts test commands took 38 of 44 and 26 of 32 minutes; a full `scripts/check.py` took 7 to 10 minutes at a host load average of 24 to 27. One candidate's full check ran 4 to 5 times: 2 or 3 times by its worker, once by the full-suite gate on the merged tree, and again by the model reviewer, which polled its own background run every 90 s. 15 of 26 integrations ended held and 15 of 25 check receipts failed or timed out, many on the environment.)
-- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/shared/TODO-WORKCENTER.md, CHANGELOG.md
-- Scope: (1) The worker prompt says the runner runs the repository's full check on the merged tree before review: the worker runs its task's focused checks (every `Checks:` command except the full check) and does not run the full check itself; it may run named tests from it. (2) The gate's result is cached by the merged tree's id and the check command, so a re-review of the same tree (a changed reviewer, a requeue) reuses it instead of running again, as `base_result` already does for the base. (3) The review prompt gives the reviewer the gate's outcome and log path and says not to rerun the full check; it reruns only tests it needs to examine. (4) The TODO work center says a task's `Checks:` line for the full check is satisfied by the runner's gate, not by the worker.
-- Acceptance: In fixtures, a review of a tree whose gate result is cached runs no full check; a changed tree runs it once; the worker prompt names the focused checks and states the full check is the runner's; the review prompt carries the gate's outcome and log path. Acceptance of a candidate still requires the gate: a failing merged-tree check still rejects it.
-- Checks: python3 scripts/check.py pi-autowork/tests/test_worker_tmp.py tests/test_pi_autowork.py skills/autowork/scripts/test_parallel_dispatch.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No weaker gate: the runner's full check on the merged tree stays required; no reuse of a worker-reported result (a receipt the runner did not produce proves nothing).
-- Planner's call: the runner's gate is the one trusted full run, so it is the one kept; the worker's and the reviewer's repeat runs add time and host load, not assurance. Expected effect: two to four fewer full checks per candidate, about 15 to 30 minutes at today's load.
 
 ### TOOLSET-228-0c — Full checks from every runner on the host share a few check slots
 
