@@ -112,6 +112,17 @@ def build(snapshot, todo, goals):
                 f"Fix {qid}'s TODO.md entry as the reason says (for example add the missing Scope, Acceptance "
                 "or Checks field), or move it out of Now/Next."), line, blocks)
         elif kind == 'outside':
+            if qid.startswith('Live authorization: '):
+                task = qid.removeprefix('Live authorization: ')
+                if task not in found:
+                    title = _title(todo, task, goals)
+                    add(task, kind, 'decision', f'{task} requires owner action or recorded live authorization; '
+                        'an unattended runner cannot run it.', (
+                            f'Run it yourself, record `Live authorization: <record>` in {task}\'s TODO.md entry '
+                            '(who authorized which live scope and when), or move it to Needs decision. '
+                            'Keep `Ownership:`, `Resources:` and `Live authorization:` fields unique.'),
+                        f'{task} — {title}' if title else task, blocks)
+                continue
             add(qid, kind, 'decision', f'{blocks} waiting task(s) depend on "{qid}", which is not a Now/Next task '
                 '(an outside condition, or a task in Needs decision).', (
                     'Decide it: record the decision in the dependent tasks\' `Dependencies:` lines, or move the '

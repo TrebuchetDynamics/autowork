@@ -61,6 +61,20 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(found[2]['task'], 'T-1 — Port the tuner')
         self.assertEqual(found[2]['needs'], 'worker reported a blocker: needs src/x.py outside Touches')
 
+    def test_live_authorization_becomes_one_owner_question_in_blockers(self):
+        condition = 'Live authorization: T-1'
+        status = {'tasks': [{'task': 'T-1', 'state': 'waiting', 'blocked_by': [condition]}],
+                  'roots': [{'id': condition, 'kind': 'outside', 'blocks': 1}]}
+        found = questions.build(status, TODO, goals)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]['id'], 'T-1')
+        self.assertEqual(found[0]['task'], 'T-1 — Port the tuner')
+        text = questions.update(None, found, now=NOW)
+        self.assertEqual(text.count('### Q-'), 1)
+        for option in ('Run it yourself', '`Live authorization: <record>`', 'Needs decision'):
+            self.assertIn(option, text)
+        self.assertNotIn('### Q-', questions.update(text, questions.build({}, TODO, goals), now=NOW))
+
     def test_a_claim_answered_with_its_holder_is_not_asked_again(self):
         """TOOLSET-198-8f: the owner noted who holds a claimed task, as the question asks, and the
         runner kept asking: /blockers said 0 questions, the TUI said 2."""

@@ -114,6 +114,10 @@ def pending_tasks(repo, known=()):
         if task in done or section not in ('Now', 'Next'):
             continue
         fields = goals.task_fields(body)
+        contract = dispatch.authorization_contract(dict(id=task, fields=fields, contract=body))
+        if gate := parallel_plan.authorization_wait(contract):
+            result.append(gate)
+            continue
         ids = parallel_plan.dependency_ids(fields.get('Dependencies', 'None.'), set(bodies) | set(indexed))
         unresolved = sorted(ids - done)
         running = fields.get('Status', indexed.get(task, {}).get('status', '')).startswith('in_progress')
@@ -188,6 +192,7 @@ def _snapshot(repo, common, now):
     observed = next((e for e in reversed(events) if e['event'] == 'dispatch_observed'), {})
     capacity = observed.get('max_workers', capacity)
     pending = {v['id']: v for v in observed.get('waiting', [])}
+    current = {v['id']: v for v in pending_tasks(repo)}
     rows = []
     active = 0
     for slot in state.slots(common):
@@ -202,9 +207,16 @@ def _snapshot(repo, common, now):
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
                          paused=bool(slot.get('paused')), blocked_by=[]))
+        gate = current.get(task, {})
+        if slot['state'] in ('interrupted', 'released', 'held') and any(
+                by.startswith('Live authorization: ') for by in gate.get('blocked_by', [])):
+            rows[-1].update(state='waiting', reason=gate['reason'], blocked_by=gate['blocked_by'])
         pending.pop(task, None)
     # Include dependencies and pre-existing sequential claims that have no slot.
-    for item in pending_tasks(repo, {r['task'] for r in rows}):
+    slotted = {r['task'] for r in rows}
+    for task, item in current.items():
+        if task in slotted:
+            continue
         task = item['id']
         observations = [e['timestamp'] for e in events if e['event'] == 'dispatch_observed'
                         and any(v['id'] == task for v in e['waiting'])]
@@ -212,7 +224,11 @@ def _snapshot(repo, common, now):
         # A dependency reason, then or now, is always taken from TODO.md as it is now.
         dependency = (item['blocked_by'] and item['blocked_by'] != [task]) \
             or pending.get(task, {}).get('reason', '').startswith('dependency:')
-        source = item if dependency or item.get('root_kind') or task not in pending else pending[task]
+        # Authorization is current TODO state, never a stale dispatch observation:
+        # recording it must remove the question without requiring another dispatch.
+        authorization = any(by.startswith('Live authorization: ')
+                            for by in pending.get(task, {}).get('blocked_by', []))
+        source = item if dependency or authorization or item.get('root_kind') or task not in pending else pending[task]
         rows.append(dict(task=task, state='waiting', slot=None,
                          elapsed_seconds=max(0, now - observations[0]) if observations else 0,
                          reason=source['reason'], worktree=None, checks=None,

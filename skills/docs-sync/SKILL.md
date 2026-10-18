@@ -400,8 +400,15 @@ compare each touched body's checkbox and enclosing TODO section with the `goals.
 task status/section; `fmt` and `validate` do not prove that consumer binding. Correct
 body placement without promoting a `Needs decision` task or changing focus absent
 authority. Now is ready work; Next is accepted successors; Needs decision is owner
-questions/defaults. Proposals stay outside executable Now/Next. Accepted tasks belong
-there even when this docs pass does not execute them; execution needs its own authority.
+questions/defaults. Proposals stay outside executable Now/Next. Put tasks whose
+`Ownership:` is `Owner`, `owner only`, or `Owner or a coordinator with live authorization`,
+and tasks declaring `Resources: live`, under Needs decision from the start unless
+that task has a nonempty `Live authorization:` record. Record who authorized which
+live scope and when; never infer authorization from accepted scope or coordinator
+ownership. Ask the owner to run it themselves, record that authorization, or keep it
+in Needs decision. Ordinary coordinator ownership is not an owner-only gate.
+Other accepted tasks belong in Now/Next even when this docs pass does not execute
+them; execution needs its own authority.
 Saving never launches autowork, claims cards, resumes cron or changes schedules.
 
 Before writing preservation assertions about TODO.md order, inspect the current
