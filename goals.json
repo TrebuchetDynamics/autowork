@@ -710,7 +710,8 @@
         "TOOLSET-210-53",
         "TOOLSET-211-71",
         "TOOLSET-212-0d",
-        "TOOLSET-213-45"
+        "TOOLSET-213-45",
+        "TOOLSET-214-5b"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1118,6 +1119,14 @@
       "section": "Now",
       "status": "open",
       "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-214-5b",
+      "section": "Now",
+      "status": "open",
+      "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
     },
     {
       "depends_on": [],

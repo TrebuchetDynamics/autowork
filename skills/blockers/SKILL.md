@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.6
+  version: 0.1.7
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -95,7 +95,15 @@ the owner deferred is still open work but not an unanswered question; do not ask
 reconfirm it because it remains under `Needs decision`. A brief approval accepts the
 recommended option only, never every alternative or permission to deploy. A task
 that only waits on unfinished dependencies is not a question: a release task waiting
-for features is not a request to approve publication.
+for features is not a request to approve publication. Waiting for overlapping files
+or a running dependency is scheduling, never a blocker.
+
+Resolve each runner question in the form the runner recognizes, so it leaves the
+block on the next cycle; a question you only filtered out keeps showing as "Waiting
+on you". A changed entry ends a held-task question, `Held by:` a claim question. A
+task whose dependency the owner deferred is deferred with it: move it to
+`Needs decision` with a dated `Owner decision:` line naming that dependency, rather
+than leaving it in Now/Next, where the runner asks again every cycle.
 
 A questions-only/read-only invocation records proposed repairs in chat rather than
 editing files. With no genuine questions left, report what was reconciled and what
@@ -196,8 +204,24 @@ uncommitted edits. Where those files hold other uncommitted planning, stage only
 answered tasks' hunks and their ledger rows, check the staged diff, and leave the
 rest as it was. Never commit unrelated changes. This workflow never pushes; route
 separately requested publication through Git Commit Push with its existing authority.
-Report what was reconciled without questions, answered, skipped and still open,
-and what each resolution unblocks. Validate a changed index and read the engine
-status before reporting. Keep apart: answer saved, blocker removed, picked up by the
-runner, worker running, and work done; a successor can still wait on the same
-unfinished prerequisite. Planning readiness is not completed integration.
+Validate a changed index and read the engine status before reporting. Keep apart:
+answer saved, blocker removed, picked up by the runner, worker running, and work
+done; a successor can still wait on the same unfinished prerequisite. Planning
+readiness is not completed integration.
+
+## 6. Report to the owner
+
+The owner reads this on a phone. Write for them, not for the runner:
+
+- **First line, the verdict:** how many questions need them now, and what the runner
+  shows them, read fresh (`autowork status NAME`, with its time). The two agree: when
+  the runner still lists a question this pass resolved, say it leaves on the runner's
+  next cycle; when one stays because nothing you may record removes it, say so and why.
+- **Then three groups, one plain line per task:** needs you (the question), the runner
+  handles it (technical recovery, a retry, a review), and waits on other work
+  (dependencies, overlapping files, a deferred task). Leave out empty groups.
+- Plain words: what the task is for and what happens next. No commit hashes, slot or
+  receipt terms, or internal roles (candidate, coordinator, combined source) unless
+  the owner asks; a repair is one line saying what changed.
+- When the runner's view is older than the checkout (a dependency it waits on is
+  already done), that is the runner's to catch up, not a question; say it in one line.
