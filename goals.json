@@ -1100,14 +1100,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-207-e4",
-      "section": "Now",
-      "status": "open",
-      "title": "Engine status and dispatch parse the task contracts once per call, not once per pending task"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2515,6 +2507,14 @@
       "section": "Done",
       "status": "done",
       "title": "A held commit whose entry changed only in Touches is verified again, not set aside and redone"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-207-e4",
+      "section": "Done",
+      "status": "done",
+      "title": "Engine status and dispatch parse the task contracts once per call, not once per pending task"
     },
     {
       "depends_on": [

@@ -58,22 +58,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
-### TOOLSET-207-e4 — Engine status and dispatch parse the task contracts once per call, not once per pending task
-
-- [ ] TOOLSET-207-e4 — Engine status and dispatch parse the task contracts once per call, not once per pending task
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [status](skills/autowork/scripts/parallel_status.py) (`_snapshot`, `pending_tasks`), [selection](skills/autowork/scripts/task_execution.py) (`select`, `_contracts`, `archived_done`), [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`contracts`).
-- Evidence (2026-10-18, profiled on this repository's session worktree with 69 waiting tasks and a 250 KB TODO.md): one `--parallel-status --json` took 11.6 s. `pending_tasks` called `select` 51 times, each re-parsing every contract through `_contracts` (102 calls); 9.6 s were 10,077 `re.findall` calls and 3.1 s `archived_done`. Another runner with a 236 KB TODO.md took 4.9 s; small queues take under 0.5 s. The runner's `--apply --parallel` holds `dispatch.lock` for 30 to 40 s each cycle for the same reason, so the runner's own status reads fail with `[Errno 11] Resource temporarily unavailable` and `status.json` kept stale data: it said `blocked`, 0 running and `wait for <a task closed minutes earlier>` while three workers ran.
-- Touches: skills/autowork/scripts/task_execution.py, skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_task_execution.py, skills/autowork/scripts/test_parallel_status.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py
-- Scope: (1) Within one engine process, parsed contracts, task bodies and the archive's done set are computed once per input file content (keyed by path and bytes digest) and reused by every `select`/`pending_tasks` call; results are unchanged. (2) `pending_tasks` evaluates eligibility in one pass over the parsed queue instead of a `select` per task. (3) When the runner's status read fails, `status.json` says so (`status unavailable since <time>: <reason>`) and keeps the last snapshot's age visible, instead of presenting old rows as current; the TUI shows that age.
-- Acceptance: A fixture TODO with 80 open tasks and a 250 KB body gives the same status JSON as before, in under 1.5 s (measured in the test with a generous bound); dispatch on it holds `dispatch.lock` under 3 s; a status failure is shown with its age in `status.json` and the TUI.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_status.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to selection rules or priorities.
-- Planner's call: high in Now: the largest queues are the slowest and the most wrongly displayed, and every runner pays this every cycle.
-
 ### TOOLSET-204-f2 — The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky
 
 - [ ] TOOLSET-204-f2 — The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky
