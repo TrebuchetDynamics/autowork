@@ -405,8 +405,11 @@ How it works:
   `pi-autowork/<session>` in a worktree under the state directory. After each closed
   task (once nothing else is in flight), and when the queue drains or the runner
   stops, the main branch is merged into it and the main checkout fast-forwards; a
-  drained session's worktree and branch are removed. A new main commit (an owner's
-  plan) is also merged into an idle session at once, so the runner plans from it. If
+  continuous runner keeps a drained session's worktree and branch, releasing the
+  coordinator lease between intervals. It retires the session after a day only when
+  clean and fully merged; finite runs and stops still clean up merged sessions (see
+  the [coordinator loop](../pi-autowork/pi_autowork/coordinator.py)). A new main commit
+  (an owner's plan) is merged into an idle session at once, so the runner plans from it. If
   `main` moved and conflicts, Pi resolves the merge with Git Commit Push, once per
   main revision; otherwise, or when your uncommitted changes in the main checkout
   would be overwritten, the runner reports `Merge pending`, shows it as its blocker in

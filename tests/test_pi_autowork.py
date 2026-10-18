@@ -1234,6 +1234,77 @@ class EngineTests(Fixture):
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
 
+    def test_ten_empty_intervals_keep_one_session_and_release_its_lease(self):
+        (self.repo / 'TODO.md').write_text(todo([]))
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+
+        def wait_for_intervals(count):
+            while log().count('Queue empty; checking again') < count:
+                self.assertLess(time.monotonic(), deadline, log())
+                self.assertIsNone(runner.poll(), log())
+                time.sleep(0.05)
+
+        try:
+            wait_for_intervals(1)
+            sessions = list(self.state.glob('*/session.json'))
+            self.assertEqual(len(sessions), 1, log())
+            session_file = sessions[0]
+            session = json.loads(session_file.read_text())
+            path = Path(session['path'])
+            admin = Path(self.git(path, 'rev-parse', '--absolute-git-dir'))
+            unchanged = [admin / 'index', admin / 'HEAD', admin / 'logs/HEAD', session_file]
+            stamps = [p.stat().st_mtime_ns for p in unchanged]
+            wait_for_intervals(10)
+            self.assertEqual(json.loads(session_file.read_text()), session)
+            self.assertEqual([p.stat().st_mtime_ns for p in unchanged], stamps)
+            self.assertEqual(log().count(' started from main'), 1, log())
+            common = Path(self.git(self.repo, 'rev-parse', '--absolute-git-dir'))
+            journal = [json.loads(l) for l in (common / 'autowork-execution/journal.jsonl').read_text().splitlines()]
+            lease_events = [e['event'] for e in journal if e['event'].startswith('coordinator_')]
+            self.assertEqual(lease_events[:20], ['coordinator_claimed', 'coordinator_released'] * 10)
+            self.assertEqual(self.runs(), [])
+        finally:
+            if runner.poll() is None:
+                runner.send_signal(signal.SIGINT)
+            out, err = runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130, out + err)
+        self.assertFalse(path.exists())
+        self.assertFalse(session_file.exists())
+        self.assertEqual(self.branches(), ['main'])
+
+    def test_an_idle_session_older_than_a_day_retires_after_landing(self):
+        (self.repo / 'TODO.md').write_text(todo([]))
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        path = self.repo / '.worktrees/old-session'
+        self.git(self.repo, 'worktree', 'add', '-q', '-b', 'pi-autowork/old', str(path))
+        (path / 'landed.txt').write_text('keep this work\n')
+        self.git(path, 'add', 'landed.txt')
+        self.git(path, 'commit', '-qm', 'old session work')
+        common = self.git(self.repo, 'rev-parse', '--absolute-git-dir')
+        state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+        state.mkdir(parents=True)
+        session_file = state / 'session.json'
+        session_file.write_text(json.dumps({'branch': 'pi-autowork/old', 'path': str(path),
+                                           'base': 'main', 'started': '2000-01-01T00:00:00+00:00'}))
+        runner = self.start_runner('--interval', '300')
+        log = state / 'runner.log'
+        try:
+            deadline = time.monotonic() + 60
+            while not log.exists() or 'Queue empty; checking again' not in log.read_text():
+                self.assertLess(time.monotonic(), deadline)
+                self.assertIsNone(runner.poll())
+                time.sleep(0.05)
+            self.assertFalse(session_file.exists())
+            self.assertFalse(path.exists())
+            self.assertEqual((self.repo / 'landed.txt').read_text(), 'keep this work\n')
+        finally:
+            if runner.poll() is None:
+                runner.send_signal(signal.SIGINT)
+            runner.communicate(timeout=60)
+
     def test_an_idle_runner_starts_new_work_as_soon_as_todo_changes(self):
         """The owner plans; the runner reacts to the plan, not to its polling interval."""
         (self.repo / 'TODO.md').write_text(todo([]))
@@ -1246,6 +1317,8 @@ class EngineTests(Fixture):
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.2)
+        session_file = next(self.state.glob('*/session.json'))
+        session = json.loads(session_file.read_text())
         (self.repo / 'D.txt').write_text('')
         (self.repo / 'TODO.md').write_text(todo([('D', None)]))
         self.git(self.repo, 'add', '-A')
@@ -1259,6 +1332,8 @@ class EngineTests(Fixture):
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.5)
         self.assertEqual(len([r for r in self.runs('worker') if r.get('task') == 'D']), 1, self.runs())
+        self.assertEqual(json.loads(session_file.read_text()), session)
+        self.assertEqual(log().count(' started from main'), 1, log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=120)
 
