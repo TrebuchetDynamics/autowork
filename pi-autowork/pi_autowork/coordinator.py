@@ -135,6 +135,8 @@ class Coordinator:
     def __init__(self, cfg):
         self.cfg = cfg
         self.repo, self.base, self.toolset = cfg['repo'], cfg['base'], cfg['toolset']
+        self.package = os.environ.get('PI_AUTOWORK_PACKAGE', self.toolset)
+        self.package_rev = cfg['toolset_rev']
         self.state = Path(cfg['state'])
         self.mode, self.workers = cfg['mode'], cfg['workers']
         env = os.environ
@@ -162,7 +164,8 @@ class Coordinator:
         self.inferred_file = self.state / 'touches-inferred.json'
         self.touches_cache = self.state / ('touches-' + hashlib.sha256(
             TOUCHES_PROMPT.format(task='TASK', checkout='DIR').encode()).hexdigest()[:12] + '.json')
-        self.worker_command = json.dumps(['/bin/bash', cfg['script'], '--worker', str(self.state), '{worktree}',
+        self.process_script = str(Path(self.toolset) / 'scripts/pi-autowork.sh')
+        self.worker_command = json.dumps(['/bin/bash', self.process_script, '--worker', str(self.state), '{worktree}',
                                           '{prompt_file}', '{report_file}', '{timeout}'])
         self.started = time.monotonic()
         self.integ = self.integ_branch = None
@@ -194,7 +197,7 @@ class Coordinator:
         out.close()
         args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
                 '--integrate', task, '--timeout', str(self.review_limit(task)), '--reviewer-version', self.reviewer_version(),
-                '--run', '/bin/bash', self.cfg['script'], '--verify', str(self.state), task]
+                '--run', '/bin/bash', self.process_script, '--verify', str(self.state), task]
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
         self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
@@ -1543,9 +1546,9 @@ class Coordinator:
         if time.monotonic() - self.last_update < self.update_interval:
             return
         self.last_update = time.monotonic()
-        if self.cfg['skill_args']:
-            return  # not the package Pi loads: a checkout is updated by its owner
-        source = git(self.toolset, 'remote', 'get-url', 'origin')
+        if os.environ.get('PI_AUTOWORK_PACKAGE_INSTALLED') != '1':
+            return  # a checkout is updated by its owner, not by the runner
+        source = git(self.package, 'remote', 'get-url', 'origin')
         if not source:
             return
         import fcntl
@@ -1559,7 +1562,8 @@ class Coordinator:
                     if time.monotonic() > deadline:
                         return
                     time.sleep(1)
-            check = release.check(self.cfg['state_root'], self.state, self.toolset, wait=self.update_wait)
+            check = release.check(self.cfg['state_root'], self.state, self.package, wait=self.update_wait,
+                                  current_toolset=self.toolset)
             if not check['ok']:
                 # Another runner's work in flight, or a release that cannot read this state.
                 note = check['reason'].split(';')[0]
@@ -1579,43 +1583,59 @@ class Coordinator:
                 LOG.say(f'Toolset update failed (see {self.state / "engine.err"}); keeping {self.toolset_rev}')
 
     def restart_if_updated(self):
-        """`pi update` replaces the runner and the engine under a running runner: continue on
-        the new release instead of mixing the two. A restart keeps the PID and adopts workers."""
+        """Only a re-exec selects the package's next immutable release.
+
+        Existing engine/review/worker processes keep their inherited release.
+        """
         if self.reload:
             return self.reexec('Reloading: settings and release re-read; running workers keep running',
                                reload=True)
         if self.mode != 'continuous' or self.toolset_rev == 'unknown':
             return
-        rev = git(self.toolset, 'rev-parse', '--short', 'HEAD')
-        if not rev or rev == self.toolset_rev:
+        rev = git(self.package, 'rev-parse', '--short', 'HEAD')
+        if not rev or rev == self.package_rev:
             return
-        script = self.cfg['script']
-        checks = [subprocess.run(['bash', '-n', script], capture_output=True),
-                  subprocess.run([sys.executable, '-m', 'py_compile',
-                                  *map(str, Path(self.toolset, 'pi-autowork/pi_autowork').glob('*.py'))],
-                                 capture_output=True)]
-        if all(c.returncode == 0 for c in checks):
-            return self.reexec(f'Toolset updated to {rev}; restarting on it')
+        try:
+            candidate = release.prepare(self.cfg['state_root'], self.package)
+            rev = git(candidate, 'rev-parse', '--short', 'HEAD')
+            shell = subprocess.run(['bash', '-n', str(candidate / 'scripts/pi-autowork.sh')], capture_output=True)
+            for path in (candidate / 'pi-autowork/pi_autowork').glob('*.py'):
+                compile(path.read_bytes(), str(path), 'exec')
+            if shell.returncode == 0:
+                return self.reexec(f'Toolset updated to {rev}; restarting on it', revision=candidate.name)
+        except (OSError, RuntimeError, SyntaxError, subprocess.SubprocessError) as exc:
+            LOG.say(f'Cannot prepare toolset {rev}: {exc}')
         LOG.say(f'Toolset changed to {rev}, but its runner does not parse; keeping the running {self.toolset_rev}')
-        self.toolset_rev = rev
+        self.package_rev = rev
 
-    def reexec(self, text, reload=False):
+    def reexec(self, text, reload=False, revision='HEAD'):
         """Run this runner again in place: same PID, so running workers stay its children and
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
         if self.integration or self.child:
             return
+        package = self.package
         if reload:
             reread_settings(self.settings_file, self.started_with)
+            configured = os.environ.get('PI_AUTOWORK_TOOLSET')
+            if configured and configured != self.toolset:
+                package = configured
+            elif not configured and 'PI_AUTOWORK_TOOLSET' in self.started_with:
+                package = ''  # removing a checkout override restores automatic discovery
             os.environ['PI_AUTOWORK_RELOADS'] = str(int(os.environ.get('PI_AUTOWORK_RELOADS') or 0) + 1)
+        # Keep the old pin through Bash/bootstrap startup; only the bootstrap's
+        # locked exec publishes the new pin. Other runners may prune meanwhile.
+        os.environ.update(PI_AUTOWORK_TOOLSET=self.toolset, PI_AUTOWORK_PACKAGE=package,
+                          PI_AUTOWORK_RESELECT='1' if package else 'auto', PI_AUTOWORK_NEXT_REVISION=revision)
+        os.environ.pop('PI_AUTOWORK_COMPONENT', None)
         LOG.say(text)
         (self.state / 'runner.json').unlink(missing_ok=True)
         sys.stdout.flush()
         # Ignored, not handled: exec keeps an ignored signal, so a reload sent while the new
         # process starts cannot end it (systemd does not restart a unit SIGHUP ended).
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
-        os.execv('/bin/bash', ['/bin/bash', self.cfg['script'], *self.cfg['argv']])
+        os.execv('/bin/bash', ['/bin/bash', self.process_script, *self.cfg['argv']])
 
     # --- Main loop -------------------------------------------------------------------------
     def stop_now(self):

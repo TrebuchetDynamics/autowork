@@ -47,6 +47,35 @@ class ReleaseCheckTests(unittest.TestCase):
         (folder / 'runner.json').write_text(json.dumps({'pid': pid, 'repo': '/x/' + name}))
         (folder / 'status.json').write_text(json.dumps({'in_flight': in_flight}))
 
+    def test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned(self):
+        for name, text in {'first.py': 'def run():\n    from second import old_api\n    return old_api\n',
+                           'second.py': 'old_api = 1\n'}.items():
+            (self.work / name).write_text(text)
+        self.publish('STATE_SCHEMA = 1\n', 'old API')
+        self.git(self.toolset, 'pull', '-q', '--ff-only')
+        selected = release.prepare(self.state_root, self.toolset)
+        child = subprocess.Popen([sys.executable, '-u', '-c',
+                                  'import sys; sys.path.insert(0, sys.argv[1]); '
+                                  'import first; print("ready", flush=True); input(); '
+                                  'print(first.run())', str(selected)],
+                                 env=dict(os.environ, PI_AUTOWORK_TOOLSET=str(selected)),
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: child.poll() is None and (child.kill(), child.wait()))
+        self.assertEqual(child.stdout.readline().strip(), 'ready')
+        for number in range(2, 5):
+            (self.work / 'first.py').write_text('from second import new_api\n')
+            (self.work / 'second.py').write_text(f'new_api = {number}\n')
+            self.publish(f'STATE_SCHEMA = 1\n# {number}\n', f'release {number}')
+            self.git(self.toolset, 'pull', '-q', '--ff-only')
+            latest = release.prepare(self.state_root, self.toolset)
+        self.assertTrue(selected.is_dir())  # a live child's old release is not pruned
+        out, err = child.communicate('\n', timeout=10)
+        self.assertEqual((child.returncode, out.strip()), (0, '1'), err)
+        release.prepare(self.state_root, self.toolset)
+        self.assertFalse(selected.exists())
+        self.assertTrue(latest.is_dir())
+        self.assertEqual(len(list((self.state_root / 'releases').glob('*/'))), 2)
+
     def test_a_compatible_release_may_be_installed(self):
         self.assertEqual(self.check(), dict(ok=False, current=True, reason='already at the newest release'))
         self.publish('STATE_SCHEMA = 2\nSTATE_SCHEMA_READS = (1, 2)\n', 'release 2 reads 1')

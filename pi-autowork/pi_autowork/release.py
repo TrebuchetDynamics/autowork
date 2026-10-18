@@ -1,22 +1,17 @@
-"""Decide whether the shared toolset package may be updated now.
+"""Immutable process releases and the fleet checkpoint before a package update.
 
-`pi update` replaces the one package every runner on the machine loads, and the
-engine is re-read on each call, so an update under a task in flight hands that task
-to the new release. An update goes only to a release that can read the current
-execution state, and preferably at a fleet-wide checkpoint:
+The shell calls ``launch`` before importing any runner module. Every descendant
+inherits PI_AUTOWORK_TOOLSET, while PI_AUTOWORK_PACKAGE tracks the mutable update
+source. Selection and pruning share a lock, held through exec so a selected release
+cannot be pruned before its process environment identifies it. Linux /proc keeps
+old releases alive even after a runner dies or re-executes and leaves children.
 
-- the new release, read from Git before anything is installed, lists the current
-  STATE_SCHEMA in its STATE_SCHEMA_READS (always required);
-- no other live runner has a task dispatched, running, reported, integrating or
-  integrated (from its status.json; this runner's caller checks itself). Busy
-  runners defer an update for at most WAIT seconds from when the release was first
-  seen (state_root/toolset-update.json): with several runners always busy a
-  checkpoint may never come, and they would never update. After the wait it
-  updates anyway; every runner restarts onto the new release and adopts its workers.
-
-    release.py check STATE_ROOT OWN_STATE_DIR TOOLSET   # prints JSON; exit 0 when safe
+``check`` still requires schema compatibility and prefers a fleet-idle checkpoint;
+its bounded wait and the update frequency are unchanged.
 """
 import ast
+from contextlib import contextmanager
+import fcntl
 import json
 import time
 import os
@@ -62,6 +57,157 @@ def _git(toolset, *argv):
     return subprocess.run(['git', '-C', str(toolset), *argv], capture_output=True, text=True, timeout=120)
 
 
+@contextmanager
+def release_lock(state_root):
+    root = Path(state_root).resolve() / 'releases'
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / '.lock', 'a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield root
+
+
+def prune(root, keep=()):
+    """Retain the newest two snapshots and every release a live process uses.
+
+    Unreadable environments of interpreter processes mean usage is unknown:
+    retain everything. Ignore privileged system daemons and exited zombies;
+    other users cannot select this user's private state root.
+    """
+    used = set(map(str, keep))
+    for process in Path('/proc').glob('[0-9]*'):
+        try:
+            if process.stat().st_uid != os.getuid():
+                continue
+            for entry in (process / 'environ').read_bytes().split(b'\0'):
+                if entry.startswith(b'PI_AUTOWORK_TOOLSET='):
+                    used.add(os.fsdecode(entry.split(b'=', 1)[1]))
+        except FileNotFoundError:
+            continue  # exited while reading
+        except PermissionError:
+            try:
+                command = (process / 'cmdline').read_bytes().split(b'\0')[0]
+                state = (process / 'stat').read_text().rsplit(')', 1)[1].split()[0]
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return
+            if state != 'Z' and (not command or re.search(rb'(python[^/]*|bash|node|pi)$', command)):
+                return  # an interpreter whose environment we cannot inspect
+        except OSError:
+            return  # cannot prove unused
+    snapshots = [p for p in root.iterdir() if re.fullmatch(r'[0-9a-f]{40,64}', p.name)
+                 and (p / '.git').is_file()]
+    snapshots.sort(key=lambda p: (p / '.git').stat().st_mtime_ns, reverse=True)
+    for folder in snapshots[2:]:
+        if str(folder) not in used:
+            # Only our detached snapshots, including their disposable Python caches.
+            _git(folder, 'worktree', 'remove', '--force', str(folder))
+
+
+def _prepare(root, toolset, revision='HEAD'):
+    resolved = _git(toolset, 'rev-parse', '--verify', revision + '^{commit}')
+    sha = resolved.stdout.strip()
+    if resolved.returncode or not re.fullmatch(r'[0-9a-f]{40,64}', sha):
+        raise RuntimeError(f'cannot resolve a committed toolset release at {toolset}')
+    target = root / sha
+    if not target.exists():
+        result = _git(toolset, 'worktree', 'add', '--detach', '-q', str(target), sha)
+        if result.returncode:
+            raise RuntimeError('cannot create toolset release: ' + result.stderr.strip())
+    elif _git(target, 'rev-parse', 'HEAD').stdout.strip() != sha:
+        raise RuntimeError(f'invalid toolset release at {target}')
+    prune(root, keep=(target,))
+    return target
+
+
+def prepare(state_root, toolset, revision='HEAD'):
+    """Materialize a commit without ever updating a previously selected directory."""
+    with release_lock(state_root) as root:
+        return _prepare(root, toolset, revision)
+
+
+def installed_toolset(pi):
+    """Bootstrap discovery without importing mutable runner modules."""
+    listing = subprocess.run([pi, 'list'], capture_output=True, text=True, timeout=60).stdout
+    found, source = [], ''
+    for line in listing.splitlines():
+        line = line.strip()
+        if line.startswith('/'):
+            path = Path(line)
+            if (path / 'pi-autowork/pi_autowork/cli.py').is_file():
+                found.append((source.split()[:1] != ['git:github.com/TrebuchetDynamics/autowork'], path))
+        else:
+            source = line
+    return next((p for other, p in found if not other), found[0][1] if found else None)
+
+
+def bootstrap_settings(script, argv):
+    """Read selection settings before pinning; keep CLI imports out of bootstrap."""
+    start = argv[argv.index('--repo') + 1] if '--repo' in argv and argv[-1] != '--repo' else None
+    if not start:
+        top = _git(Path(script).parent, 'rev-parse', '--show-toplevel').stdout.strip()
+        start = top if top and not (Path(top) / 'pi-autowork/pi_autowork/cli.py').is_file() else os.getcwd()
+    repo = _git(start, 'rev-parse', '--show-toplevel').stdout.strip()
+    if not repo:
+        return
+    name = Path(repo).name
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', name):
+        name = subprocess.run(['systemd-escape', name], capture_output=True, text=True).stdout.strip()
+    config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    path = Path(os.environ.get('PI_AUTOWORK_ENV_DIR') or config / 'pi-autowork') / f'{name}.env'
+    try:
+        values = dict(line.split('=', 1) for line in path.read_text().splitlines()
+                      if '=' in line and not line.startswith('#'))
+    except OSError:
+        return
+    if values.get('PI_AUTOWORK_REPO') not in (None, repo):
+        return
+    for key in ('PI_AUTOWORK_TOOLSET', 'PI_AUTOWORK_STATE_DIR'):
+        if key in values and key not in os.environ:
+            os.environ[key] = values[key]
+
+
+def launch(component, script, argv):
+    """Pin before cli.py imports the coordinator; children keep their inherited pin."""
+    env = os.environ
+    bootstrap_settings(script, argv)
+    reselect = env.pop('PI_AUTOWORK_RESELECT', '')
+    package = env.get('PI_AUTOWORK_PACKAGE') if reselect != 'auto' else None
+    selected = package if reselect else env.get('PI_AUTOWORK_TOOLSET')
+    revision = env.pop('PI_AUTOWORK_NEXT_REVISION', 'HEAD')
+    if not package or reselect:
+        try:
+            installed = installed_toolset(env.get('PI_BIN', 'pi'))
+        except (OSError, subprocess.SubprocessError):
+            installed = None
+        fallback = Path(script).resolve().parent.parent
+        if not (fallback / 'pi-autowork/pi_autowork/cli.py').is_file():
+            fallback = Path(component).resolve().parent
+        selected = Path(selected).resolve() if selected else installed or fallback
+        env['PI_AUTOWORK_PACKAGE_INSTALLED'] = '1' if installed and selected == installed.resolve() else '0'
+    selected = Path(selected).resolve()
+    env['PI_AUTOWORK_PACKAGE'] = str(Path(package).resolve()) if package else str(selected)
+    env['PI_AUTOWORK_SCRIPT'] = script  # stable launcher, never a prunable snapshot
+    state_root = env.get('PI_AUTOWORK_STATE_DIR') or str(
+        Path(env.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'pi-autowork')
+    # These commands perform no engine work and need no snapshot.
+    inspect_only = any(a in argv for a in ('--help', '-h', '--fleet', '--install-service', '--remove-service'))
+    if inspect_only:
+        env['PI_AUTOWORK_TOOLSET'] = str(selected)
+        env['PI_AUTOWORK_COMPONENT'] = str(selected / 'pi-autowork')
+        os.execv(sys.executable, [sys.executable, str(selected / 'pi-autowork/pi_autowork/cli.py'), *argv])
+    with release_lock(state_root) as root:
+        # An inherited snapshot is already immutable. Never consult the mutable
+        # package for a worker/reviewer launched by an older engine.
+        if selected.parent == root and re.fullmatch(r'[0-9a-f]{40,64}', selected.name):
+            target = selected
+        else:
+            target = _prepare(root, selected, revision)
+        env['PI_AUTOWORK_TOOLSET'] = str(target)
+        env['PI_AUTOWORK_COMPONENT'] = str(target / 'pi-autowork')
+        os.execv(sys.executable, [sys.executable, str(target / 'pi-autowork/pi_autowork/cli.py'), *argv])
+
+
 def first_seen(state_root, rev, now):
     """When this release was first found waiting, shared by every runner."""
     path = Path(state_root) / 'toolset-update.json'
@@ -78,7 +224,7 @@ def first_seen(state_root, rev, now):
     return now
 
 
-def check(state_root, own, toolset, wait=600, now=None):
+def check(state_root, own, toolset, wait=600, now=None, current_toolset=None):
     now = time.time() if now is None else now
     fetched = _git(toolset, 'fetch', '-q', 'origin', 'HEAD')
     if fetched.returncode:
@@ -90,7 +236,7 @@ def check(state_root, own, toolset, wait=600, now=None):
     if shown.returncode:
         return dict(ok=False, reason=f'the new release {new_rev} has no {STATE_FILE}')
     try:
-        current = schema((Path(toolset) / STATE_FILE).read_text(), 'STATE_SCHEMA', 1)
+        current = schema((Path(current_toolset or toolset) / STATE_FILE).read_text(), 'STATE_SCHEMA', 1)
         reads = schema(shown.stdout, 'STATE_SCHEMA_READS', (1,))
     except (OSError, SyntaxError, ValueError, TypeError):
         return dict(ok=False, reason='could not read the state schema declarations')
@@ -103,16 +249,23 @@ def check(state_root, own, toolset, wait=600, now=None):
             return dict(ok=False, reason=f'other runners have work in flight: {", ".join(busy)}; '
                                          f'updating to {new_rev} anyway in {max(1, round(left / 60))} min')
         return dict(ok=True, new_rev=new_rev, schema=current,
-                    note=f'updating to {new_rev} with work in flight ({", ".join(busy)}); it continues on {new_rev}')
+                    note=f'updating to {new_rev} with work in flight ({", ".join(busy)}); '
+                         'existing children keep their release')
     return dict(ok=True, new_rev=new_rev, schema=current)
 
 
 def main(argv):
+    if len(argv) >= 3 and argv[0] == 'launch':
+        try:
+            launch(argv[1], argv[2], argv[3:])
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            print(f'pi-autowork: {exc}', file=sys.stderr)
+            return 2
     if len(argv) == 4 and argv[0] == 'check':
         result = check(*argv[1:])
         print(json.dumps(result))
         return 0 if result['ok'] else 1
-    print('usage: release.py check STATE_ROOT OWN_STATE_DIR TOOLSET', file=sys.stderr)
+    print('usage: release.py check STATE_ROOT OWN_STATE_DIR TOOLSET | launch COMPONENT SCRIPT [ARGS...]', file=sys.stderr)
     return 2
 
 
