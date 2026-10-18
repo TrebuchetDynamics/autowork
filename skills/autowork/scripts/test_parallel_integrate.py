@@ -303,19 +303,20 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'BUSY')
 
     def test_a_main_checkout_session_blocks_a_close_only_through_the_files_it_writes(self):
-        """An integrated task could not close while any interactive session was open in the main
-        checkout, though interactive sessions work there and touched none of the close's files."""
+        """TOOLSET-223-8e: an uncommitted planning edit is reconciled by the landing step, so it
+        no longer blocks a close; a session holding a close file open still does."""
         self.ledger()  # with goals.json, as every real repository: the indexed close path too
         session = self.session_checkout()
         self.worker()
         module = self.module()
         self.assertEqual(module.integrate(session, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         self.agent_process()
-        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # the owner edits TODO.md
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n')  # owner planning edit
+        held = self.holder(self.repo / 'TODO.md')  # held open for writing: still a block
         with self.assertRaisesRegex(ValueError, 'writer|session'):
             module.close(session, self.owner, 'A')
-        self.git('checkout', '--', 'TODO.md')
-        (self.repo / 'B.txt').write_text('owner edit\n')  # unrelated work
+        held.kill()
+        held.wait()
         self.assertEqual(module.close(session, self.owner, 'A')['outcome'], 'CLOSED')
 
     def test_fresh_session_blocks_close_without_task_writes(self):
@@ -380,6 +381,54 @@ class IntegrationTests(unittest.TestCase):
         with patch.object(execution, 'external_workers', return_value=[alive]), \
                 self.assertRaisesRegex(ValueError, 'live or unknown external writer'):
             module.require_no_writers(self.repo)
+
+    def test_uncommitted_planning_files_do_not_block_a_merge(self):
+        """TOOLSET-223-8e: the owner's uncommitted TODO.md made every candidate's session a
+        blocker; landing already reconciles planning edits, so only real files count."""
+        module = self.module()
+        main = module.main_checkout(self.repo)
+        proc = self.agent_process()
+        worker = {'pid': proc.pid, 'kind': 'session', 'active': True, 'written': [],
+                  'workspaces': [main], 'evidence': 'running commands',
+                  **{k: v for k, v in execution.identity(proc.pid).items() if k != 'pid'}}
+        (self.repo / 'TODO.md').write_text('# TODO\n\n## Next\n\nan owner edit\n')
+        self.assertTrue(module.touches_none_of(worker, ['TODO.md'], main))
+        (self.repo / 'A.txt').write_text('an owner edit\n')
+        self.assertFalse(module.touches_none_of(worker, ['A.txt'], main))
+        worker['written'] = [main + '/TODO.md']  # held open for writing still blocks
+        self.assertFalse(module.touches_none_of(worker, ['TODO.md'], main))
+
+    def test_a_refused_candidate_records_the_writer_window_on_its_slot(self):
+        """TOOLSET-223-8e: a WritersBusy refusal is remembered on the slot, not only in memory."""
+        module = self.module()
+        self.worker('A')
+        with patch.object(module, 'require_no_writers', side_effect=module.WritersBusy('live writer')):
+            result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'BUSY', result)
+        slot = state.slots(self.common)[0]
+        self.assertTrue(module.writers_busy(slot))
+        self.assertIn('live writer', slot.get('writers_busy_reason') or '')
+
+    def test_a_writers_busy_candidate_lets_the_next_reported_task_integrate(self):
+        """TOOLSET-223-8e: A is first in TODO order but waits for a writer; B integrates,
+        and A integrates in its place once the bounded window passes."""
+        module = self.module()
+        self.worker('A')
+        self.worker('B')
+        a = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        a.update(writers_busy_at=time.time(), writers_busy_reason='live or unknown external writer/session')
+        state.write_slot(self.common, a, a)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
+        a = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        a['writers_busy_at'] = time.time() - module.WRITERS_BUSY_SKIP - 1
+        state.write_slot(self.common, a, a)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
+    def test_the_writers_busy_window_is_bounded(self):
+        module = self.module()
+        self.assertTrue(module.writers_busy({'writers_busy_at': time.time()}))
+        self.assertFalse(module.writers_busy({'writers_busy_at': time.time() - module.WRITERS_BUSY_SKIP - 1}))
+        self.assertFalse(module.writers_busy({}))
 
     def test_isolated_pool_session_does_not_block_landing(self):
         self.worker()

@@ -226,6 +226,13 @@ class WritersBusy(ValueError):
 
 
 WRITER_HOLD = 'live or unknown external writer'
+# The owner's uncommitted planning files do not stop a merge elsewhere: landing reconciles
+# them or keeps the branch (TOOLSET-223-8e). A planning file the session holds open for
+# writing still counts (it stays in ``mine``).
+PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
+# A reported commit refused for a live writer steps aside in priority order for this long,
+# so one waiting candidate never holds back the rest (TOOLSET-223-8e).
+WRITERS_BUSY_SKIP = 600
 
 
 def main_checkout(repo):
@@ -233,6 +240,15 @@ def main_checkout(repo):
         return str(canonical_root(repo))
     except ValueError:
         return None
+
+
+def writers_busy(slot, now=None):
+    """A reported task refused for a live writer is skipped for a bounded window."""
+    try:
+        stamp = float(slot.get('writers_busy_at'))
+    except (TypeError, ValueError):
+        return False
+    return (time.time() if now is None else now) - stamp < WRITERS_BUSY_SKIP
 
 
 def touches_none_of(worker, files, main):
@@ -243,6 +259,7 @@ def touches_none_of(worker, files, main):
     mine = {os.path.relpath(path, main) for path in worker.get('written') or []}
     listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
     dirty = {entry[3:] for entry in listing.split('\0') if entry} if listing else set()
+    dirty -= set(PLANNING_FILES)
     return not (set(files) & (mine | dirty))
 
 
@@ -364,8 +381,11 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                 state.event(common, 'closed_on_base', task_id=task, base=base or '')
                 return dict(aside, reason=f'{task} is closed on {base or "this branch"}; its commit is set aside')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
-            reported = {s['task_id'] for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
-            first = next((t for t in contracts if t in reported), None)
+            slots = {s['task_id']: s for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
+            # A candidate refused for a live writer steps aside for a bounded window, so one
+            # waiting commit never stops the rest from integrating (TOOLSET-223-8e).
+            available = {tid for tid, held in slots.items() if not writers_busy(held)} or set(slots)
+            first = next((t for t in contracts if t in available), None)
             if first != task:
                 raise ValueError('integrate the highest-priority reported task first')
             try:
@@ -376,7 +396,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                     if recovered:
                         return recovered
             except WritersBusy as exc:
-                # The commit stays reported and integrates once that session is gone.
+                # The commit stays reported and integrates once that session is gone; the stamp
+                # lets the next reported task go first until the window passes (TOOLSET-223-8e).
+                slot = state.write_slot(common, dict(slot, writers_busy_at=time.time(),
+                                                     writers_busy_reason=str(exc)), slot)
                 return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
             except Hold as exc:
                 return hold(common, slot, str(exc), cause=exc.cause, **exc.details)
