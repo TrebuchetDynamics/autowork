@@ -74,6 +74,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to which tasks dispatch or wait, or to the order. No new dependency.
 - Planner's call: first in Now. The minutes-long planning slows every runner with a deep queue, and its CPU feeds the load gate that starves the rest. Caching and literal short-cuts keep exact semantics, unlike dropping the glob search.
 
+### TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
+
+- [ ] TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [writer check](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`, `touches_none_of`: a session in the main checkout blocks integrating elsewhere when the merge changes a file it left uncommitted); `integrate` (`integrate the highest-priority reported task first`); [landing](pi-autowork/pi_autowork/coordinator.py) (`commit_owner_changes` commits quiet owner edits before merging, and `merge_main` keeps the branch when the main checkout cannot take it).
+- Evidence (2026-10-18 13:36, this repository's runner): 8 verified candidates were waiting to integrate and status said `1 verified commit(s) wait for another session in the main checkout (runner, holds 56)`. An interactive planning session had kept TODO.md uncommitted in the main checkout for over 90 minutes while running a polling loop, so it counted as active. Three of the candidates change TODO.md and goals.json (their own Status lines), which made the session a blocker for them. Because integration takes reported tasks strictly in priority order, the first blocked candidate also held back the ones that touch no planning file.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) In `touches_none_of`, uncommitted planning files in the main checkout (TODO.md, goals.json, the TODO archive and BLOCKERS.md) do not count: integration merges in the session worktree, and the landing step already reconciles owner planning edits or keeps the branch. A planning file the session holds open for writing still counts. (2) A reported task refused with `WritersBusy` is recorded on its slot (`writers_busy_at` plus the reason). For the next 10 minutes, the highest-priority-first rule skips it, so the next reported task integrates. It goes back in its place once that time passes or the writer is gone. (3) The coordinator's status line names which candidate waits and why, and how many integrate meanwhile.
+- Acceptance: In fixtures: a main checkout with an uncommitted TODO.md edit and a live session there does not stop a candidate whose merge changes TODO.md, and the later landing commits the owner's edit first; a session holding a source file the merge changes still blocks that candidate; a higher-priority candidate blocked by a writer lets a lower-priority one integrate in the same cycle, and is integrated itself after the writer leaves.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the landing step's own refusals or to how sessions are detected. A file the session holds open for writing still blocks.
+- Planner's call: second in Now, after TOOLSET-221-8e. Interactive planning is the normal way the owner works, and every task's own Status edit made it block the whole integration queue.
+
 ### TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
 
 - [ ] TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
@@ -88,7 +104,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Dependencies: None.
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the memory or disk floors, or to the load threshold for a runner's second and later workers. No cross-runner coordination file.
-- Planner's call: second in Now. One worker per runner means every repository progresses; a Pi worker mostly waits on the model, and the threshold still caps everyone's extra workers. A host-wide fair-share scheduler would need state shared between runners; this rule gets most of the benefit without it.
+- Planner's call: third in Now, after the two integration-throughput tasks. One worker per runner means every repository progresses; a Pi worker mostly waits on the model, and the threshold still caps everyone's extra workers. A host-wide fair-share scheduler would need state shared between runners; this rule gets most of the benefit without it.
 
 ### TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
 
@@ -166,6 +182,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Blocker reconciliation: Planning-only technical continuation saved after comparing the session question, current canonical contract, candidate and latest retained report. No new owner intent or operation authority is required; no check is waived and no worker/claim is released by this answer. Pick-up and completed delivery still require observation.
 - Review failure cause: The 2026-10-17 22:34 integration review of ad7bfac failed on its environment, not the candidate: socket-path errors from the long review TMPDIR (`review-tmp/<task>-<pid>` under the runner state directory), cleanup failures and runner timeouts at load average about 30. The worker's own run of the same checks with a short TMPDIR passed. 740b48a (TOOLSET-140-f4, landed 23:04) keeps the worker's short TMPDIR for the review. Review ad7bfac again on the current tree; do not reimplement it, and do not count the earlier environmental failure against the candidate's acceptance.
 
+
+### TOOLSET-224-07 — A worker's own test processes in its private temp directory are the worker's, not an outside session
+
+- [ ] TOOLSET-224-07 — A worker's own test processes in its private temp directory are the worker's, not an outside session
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [writer attribution](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`: a pool process is exempt only when every workspace it uses is the slot's worktree); [worker launch](skills/autowork/scripts/parallel_dispatch.py) (`launch`: each worker gets a private TMPDIR under `$XDG_RUNTIME_DIR/aw/<state>/<slot>/`); `scripts/check.py` (removes `AUTOWORK_*` from test processes, so the worktree marker does not reach them); TOOLSET-165-f7 (descendant attribution, implemented and waiting to integrate).
+- Evidence (2026-10-18, this repository's runner): integration was refused twice with `pid <n> python3 in /var/tmp/aw161/<tmp>/state/releases/<sha> (no terminal; activity unknown)` and `pid <n> python3 in $XDG_RUNTIME_DIR/aw/<state>/16/<tmp>/state/releases/<sha> (running commands)`. Both were fixture runners that a worker's own test suite started: their working directory is a release copy inside the worker's temp directory, not its worktree. TOOLSET-165-f7 attributes descendants only when every workspace is inside the slot's worktree, so these would still block.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) A process that descends from a live slot leader (the chain rule from TOOLSET-165-f7) is the slot's when each workspace it uses is inside the slot's worktree or the slot's private temp directory (`worker_tmpdir` for that slot, from its `meta.json`). (2) A process in a temp directory that is no live slot's own stays fail-closed, as does a non-descendant in any temp directory.
+- Acceptance: In fixtures: a leader's grandchild whose cwd is inside that slot's TMPDIR does not block integration; the same process under another slot's TMPDIR, or with a dead link in its parent chain, still blocks; an unrelated process in `/var/tmp` still blocks.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: TOOLSET-165-f7.
+- Ownership: Toolset coordinator.
+- Exclusions: No exemption by command name or by path pattern alone; descent from a live leader is required.
+- Planner's call: right after TOOLSET-165-f7, which owns the descent rule; this widens only where a descendant may stand. Toolset workers run the runner's own fixtures, so without it every integration here waits while any worker tests.
 
 ### TOOLSET-195-ee — The runner's own jobs never count as outside sessions
 
@@ -867,6 +899,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 
 ## Next
+
+### TOOLSET-225-75 — Status and the TUI never list a task closed on the base branch as waiting
+
+- [ ] TOOLSET-225-75 — Status and the TUI never list a task closed on the base branch as waiting
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); TOOLSET-218-d0 in [the archive](TODO.archive.md) (`--base-ref` on dispatch and integration only); [status](skills/autowork/scripts/parallel_status.py) (`pending_tasks` reads only the session worktree's ledger); [fleet view](pi-autowork/pi_autowork/fleet_view.py).
+- Evidence (2026-10-18 13:37, this repository's runner, after the TOOLSET-218-d0 reload): the three tasks closed on main had their slots set aside, yet `autowork status` listed each as `pending  awaiting dispatch`, and the TUI's waiting count included them until the session lands.
+- Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/test_parallel_status.py, skills/autowork/scripts/task_execution.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/fleet_view.py
+- Scope: (1) `--parallel-status` takes `--base-ref` too, and the coordinator and fleet view pass the runner's base. (2) `pending_tasks` leaves out tasks that `parallel_dispatch.retired(repo, base)` reports. (3) The status command run by hand reads the base from the runner's session record when one exists.
+- Acceptance: In fixtures: a task open in the session ledger but checked off on the base branch is absent from `--parallel-status --base-ref <base>` pending output and from the fleet view's waiting count; without `--base-ref` and with no session record, the output is unchanged.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_status.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to dispatch.
+- Planner's call: Next: the display is wrong only until the session lands, and nothing runs on it.
 
 ### TOOLSET-202-9a — Retire the owner-cycle engine modules no live entry point reaches
 

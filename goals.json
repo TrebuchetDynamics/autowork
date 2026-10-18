@@ -720,7 +720,10 @@
         "TOOLSET-219-2c",
         "TOOLSET-220-71",
         "TOOLSET-221-8e",
-        "TOOLSET-222-e1"
+        "TOOLSET-222-e1",
+        "TOOLSET-223-8e",
+        "TOOLSET-224-07",
+        "TOOLSET-225-75"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -729,11 +732,13 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-221-8e",
+      "TOOLSET-223-8e",
       "TOOLSET-222-e1",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
       "TOOLSET-165-f7",
+      "TOOLSET-224-07",
       "TOOLSET-195-ee",
       "TOOLSET-200-c1",
       "TOOLSET-201-5e",
@@ -772,6 +777,7 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-225-75",
       "TOOLSET-202-9a",
       "TOOLSET-192-71",
       "TOOLSET-172-92",
@@ -1178,6 +1184,22 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-223-8e",
+      "section": "Now",
+      "status": "open",
+      "title": "Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-224-07",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker's own test processes in its private temp directory are the worker's, not an outside session"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1474,6 +1496,14 @@
       "section": "Next",
       "status": "open",
       "title": "Retire the owner-cycle engine modules no live entry point reaches"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-225-75",
+      "section": "Next",
+      "status": "open",
+      "title": "Status and the TUI never list a task closed on the base branch as waiting"
     },
     {
       "depends_on": [
