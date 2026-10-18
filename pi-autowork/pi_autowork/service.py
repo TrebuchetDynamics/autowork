@@ -5,11 +5,13 @@ path. SIGINT is the runner's Ctrl+C: workers pause, finished work merges and the
 next start resumes. Deliberate exits (1, 3, 4) do not restart; crashes and kills do.
 A service never exits 3: it waits for another runner holding the repository to end.
 """
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 from .common import die
 
@@ -29,7 +31,9 @@ After=network-online.target
 [Service]
 WorkingDirectory=~
 EnvironmentFile={env_dir}/%i.env
+Environment=PI_AUTOWORK_ENV_FILE={env_dir}/%i.env
 ExecStart=/bin/bash {script} --repo ${{PI_AUTOWORK_REPO}}
+ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGINT
 TimeoutStopSec=150
@@ -40,6 +44,45 @@ RestartSec=60
 [Install]
 WantedBy=default.target
 """
+
+
+def runner_record(state_root, repo):
+    """(runner.json, its state folder) of the runner working on ``repo``, or ({}, None)."""
+    for path in Path(state_root).glob('*/runner.json'):
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if record.get('repo') == str(repo):
+            return record, path.parent
+    return {}, None
+
+
+def reload_in_place(systemctl, unit, state_root, repo, wait=None):
+    """Reload a running runner without stopping its workers (TOOLSET-174-1d): SIGHUP to the
+    main process, which re-executes in place at its next safe point. Returns (done, message);
+    done is None when the runner predates reloading and must be restarted instead."""
+    record, folder = runner_record(state_root, repo)
+    if 'reloads' not in record:
+        return None, ''
+    wait = float(os.environ.get('PI_AUTOWORK_RELOAD_WAIT', '150') if wait is None else wait)
+    if subprocess.run([systemctl, '--user', 'kill', '--kill-whom=main', '--signal=SIGHUP', unit]).returncode:
+        return False, f'could not signal {unit}'
+    end = time.monotonic() + wait
+    while time.monotonic() < end:
+        now, _ = runner_record(state_root, repo)
+        if now.get('pid') == record['pid'] and int(now.get('reloads') or 0) > int(record['reloads']):
+            try:
+                workers = int(json.loads((folder / 'status.json').read_text()).get('active_workers') or 0)
+            except (OSError, ValueError, TypeError):
+                workers = 0
+            return True, f'Reloaded {unit}; {workers} worker(s) kept running.'
+        if now.get('pid') and now['pid'] != record['pid']:
+            return True, f'Restarted {unit} (its runner exited meanwhile); workers resume on the same attempt.'
+        time.sleep(0.5)
+    return False, (f'{unit} asked to reload, but it has not within {wait:g}s; it reloads once its running review '
+                   f'or Pi job ends. To restart it now (workers pause and resume): autowork restart --stop-workers '
+                   f'{unit[len("pi-autowork@"):-len(".service")]}')
 
 
 def _escape(*args):
@@ -93,6 +136,10 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
         env_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
         die(2, f'Cannot create {unit_dir} or {env_dir}')
+    try:
+        before = re.search(r'(?m)^ExecStart=.*$', (unit_dir / 'pi-autowork@.service').read_text()).group(0)
+    except (OSError, AttributeError):
+        before = None
     tmp = unit_dir / 'pi-autowork@.service.tmp'
     tmp.write_text(UNIT.format(env_dir=env_dir, script=script))
     os.replace(tmp, unit_dir / 'pi-autowork@.service')
@@ -123,7 +170,13 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
     retire_legacy()  # stops it gracefully: finished work merges, the new unit resumes the rest
     if ctl('enable', unit, quiet=True):
         die(1, f'Could not enable {unit}')
-    if ctl('restart', unit):
+    done = None
+    if before == re.search(r'(?m)^ExecStart=.*$', UNIT.format(env_dir=env_dir, script=script)).group(0) and \
+            ctl('is-active', '--quiet', unit, quiet=True) == 0:
+        done, text = reload_in_place(systemctl, unit, state_root, repo)  # the same runner: keep its workers
+        if text:
+            print(text)
+    if done is None and ctl('restart', unit):
         die(1, f'Could not start {unit}')
     print(f'Installed and started {unit} for {repo} (merges into {base}).')
     print(f'Runs: {script}')

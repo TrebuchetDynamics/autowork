@@ -409,7 +409,9 @@ def main(argv):
             return 130
         LOG.say('The other runner exited; starting.')
     (state / 'runner.json').write_text(json.dumps({
-        'pid': os.getpid(), 'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo}))
+        'pid': os.getpid(), 'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo,
+        # `autowork restart` reloads a runner that records this, and sees the reload land when it grows.
+        'reloads': int(os.environ.get('PI_AUTOWORK_RELOADS') or 0)}))
     push_guard()
     os.environ.update(PI_BIN=pi)
     summarize(repo, base, toolset, toolset_rev, skill_args, opts, settings, state)

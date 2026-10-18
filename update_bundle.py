@@ -188,24 +188,32 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
             safe_path(path)
             local = path.read_bytes() if path.exists() else None
             old, new = state['old'].get(relative), state['new'].get(relative)
-            # Missing native copies are provisioned, including on profiles not installed yet.
-            if local is None and new is not None:
-                merged = new
-            elif local is not None and local != new and local != old and historical_copy(repo, state, relative, local):
-                merged = new
-            elif old == new and local is not None and new is not None and local != new:
-                # A profile edited its installed copy. Merge the edit onto the
-                # release from the version it started from, and report it; only
-                # a real conflict stops the update.
-                base = closest_base(repo, state, relative, local)
-                if base is None:
-                    raise ValueError(f'Local skill conflict: {path}; no single version it started from, reconcile this file before updating')
-                merged = local if base == new else merge_file(base, local, new, path)
-                local_edits.append({'profile': name, 'path': str(path),
-                                    'action': 'kept' if base == new else 'merged',
-                                    'base': hashlib.sha256(base).hexdigest()[:12]})
-            else:
-                merged = merge_file(old, local, new, path)
+            try:
+                # Missing native copies are provisioned, including on profiles not installed yet.
+                if local is None and new is not None:
+                    merged = new
+                elif local is not None and local != new and local != old and historical_copy(repo, state, relative, local):
+                    merged = new
+                elif old == new and local is not None and new is not None and local != new:
+                    # A profile edited its installed copy. Merge the edit onto the
+                    # release from the version it started from, and report it.
+                    base = closest_base(repo, state, relative, local)
+                    if base is None:
+                        raise ValueError(f'Local skill conflict: {path}; no single version it started from')
+                    merged = local if base == new else merge_file(base, local, new, path)
+                    local_edits.append({'profile': name, 'path': str(path),
+                                        'action': 'kept' if base == new else 'merged',
+                                        'base': hashlib.sha256(base).hexdigest()[:12]})
+                else:
+                    merged = merge_file(old, local, new, path)
+            except ValueError as error:
+                if not str(error).startswith('Local skill conflict'):
+                    raise
+                # The profile's own edit stays exactly as it is and is reported; the rest of
+                # the update goes on. One profile's conflicting edit used to stop every
+                # profile's update, so none of them received releases.
+                local_edits.append({'profile': name, 'path': str(path), 'action': 'conflict', 'base': None})
+                continue
             current_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
             mode = current_mode | (0o111 if relative in state['executables'] else 0)
             if merged != local or (merged is not None and mode != current_mode):

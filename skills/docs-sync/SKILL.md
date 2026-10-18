@@ -1,7 +1,7 @@
 ---
 name: docs-sync
 description: "Use when maintaining repo docs and goal-linked tasks."
-version: 0.11.3
+version: 0.12.0
 license: MIT
 metadata:
   hermes:
@@ -292,7 +292,15 @@ with user-supplied version-1 goal/task intent and existing full TODO bodies. If 
 is absent, supply those bodies with `--todo-file FILE`. Follow the executable
 [initialization example](references/document-scaffold.md#first-task-index-initialization).
 Initialization requires local source headings with explicit `Status: Accepted`;
-it does not infer approval, requirements or task metadata from prose. Preserve IDs,
+it does not infer approval, requirements or task metadata from prose. When the
+sources you drafted are not yet accepted, do not stop at `draft_saved`: run
+`scripts/goals.py propose <repo> --intent FILE [--todo-file FILE]`. It applies every
+init check except acceptance, saves the draft as `docs/tasks/proposed-goals.json` and
+writes one owner question (`Q-ACCEPT-GOALS`) under `BLOCKERS.md`'s `## Active`; report
+`awaiting_acceptance` and that question. Only the owner's yes runs `goals.py accept
+<repo>`, which marks each source section `Status: Accepted`, initializes, formats,
+renders and retires the draft and the question; then run `validate` and `backlog-check`.
+For a correction, edit the draft or its section and propose again. Preserve IDs,
 history, ownership and focus in the input. It refuses conflicting existing state;
 an unchanged repeat leaves both content files byte-identical. Then run `fmt`,
 `validate`, `render` and the actual consumer's `backlog-check`. Initialization is
@@ -545,7 +553,7 @@ changes ledger status or resolves conflicting intent; rerun the same consumer ga
 
 | JSON state | Exit | Meaning |
 | --- | --- | --- |
-| `draft_saved` | 1 | Consumer backlog absent or accepted plan/task binding unreconciled. |
+| `draft_saved` | 1 | Consumer backlog absent or accepted plan/task binding unreconciled. A first index whose sources await the owner goes through `propose` (state `awaiting_acceptance`), not this. |
 | `backlog_reconciled_not_eligible` | 2 | Reconciled bodies, but a dependency, focus, status, in-progress claim or earlier plan frontier blocks a requested task. |
 | `ready_for_autowork` | 0 | Every requested task is open and eligible, with no earlier frontier in its goals. |
 

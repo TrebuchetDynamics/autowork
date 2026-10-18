@@ -118,6 +118,45 @@ class InitializationTests(unittest.TestCase):
                 self.assertEqual(self.init().returncode, 0)
                 self.assertEqual(self.snapshot(), first)
 
+    def test_a_draft_without_accepted_sources_asks_the_owner_once_and_a_yes_initializes(self):
+        """A first docs-sync run ended `draft_saved` with nothing to run and no question asked."""
+        (self.repo / 'SPEC.md').write_text('# Slice\n\nStatus: Proposed\nStartup must work.\n')
+        self.assertIn('lacks explicit Status: Accepted', self.init('--todo-file', str(self.input_todo)).stderr)
+        result = run('propose', str(self.repo), '--intent', str(self.intent), '--todo-file', str(self.input_todo))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['state'], 'awaiting_acceptance')
+        self.assertFalse((self.repo / 'goals.json').exists())  # proposing approves nothing
+        self.assertIn('Status: Proposed', (self.repo / 'SPEC.md').read_text())
+        blockers = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('### Q-ACCEPT-GOALS — USER_DECISION', blockers)
+        self.assertIn('G1 — Startup works (SPEC.md#slice; 1 task(s))', blockers)
+        again = run('propose', str(self.repo), '--intent', str(self.intent))  # one question, not two
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual((self.repo / 'BLOCKERS.md').read_text().count('Q-ACCEPT-GOALS'), 1)
+        accepted = run('accept', str(self.repo))
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertEqual((self.repo / 'SPEC.md').read_text(), '# Slice\n\nStatus: Accepted\nStartup must work.\n')
+        self.assertFalse((self.repo / 'docs/tasks/proposed-goals.json').exists())
+        self.assertNotIn('Q-ACCEPT-GOALS', (self.repo / 'BLOCKERS.md').read_text())
+        self.assertIn('## Active', (self.repo / 'BLOCKERS.md').read_text())
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+        check = run('backlog-check', str(self.repo), '--plan', 'SPEC.md#slice', '--tasks', 'T1')
+        self.assertEqual(json.loads(check.stdout)['state'], 'ready_for_autowork', check.stdout)
+
+    def test_a_section_without_status_gets_one_and_a_broken_proposal_writes_nothing(self):
+        (self.repo / 'SPEC.md').write_text('# Slice\nStartup must work.\n')
+        bad = dict(self.data, goals=[dict(self.data['goals'][0], source='SPEC.md#missing')])
+        self.intent.write_text(json.dumps(bad))
+        result = run('propose', str(self.repo), '--intent', str(self.intent), '--todo-file', str(self.input_todo))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.repo / 'BLOCKERS.md').exists() or (self.repo / 'TODO.md').exists())
+        self.intent.write_text(json.dumps(self.data))
+        self.assertEqual(run('propose', str(self.repo), '--intent', str(self.intent),
+                             '--todo-file', str(self.input_todo)).returncode, 0)
+        self.assertEqual(run('accept', str(self.repo)).returncode, 0)
+        self.assertEqual((self.repo / 'SPEC.md').read_text(), '# Slice\n\nStatus: Accepted\nStartup must work.\n')
+        self.assertIn('already exists', run('propose', str(self.repo), '--intent', str(self.intent)).stderr)
+
     def test_todo_only_preserves_bodies_history_and_metadata(self):
         (self.repo / 'TODO.md').write_text(self.body)
         (self.repo / 'TODO.archive.md').write_text('# Prior history\n')

@@ -253,6 +253,13 @@ elif behavior == 'sleep':
 '''
 
 
+def host_environment():
+    """os.environ without runner settings. A runner's settings reach every check it runs: a
+    reviewer that inherited the service's PI_AUTOWORK_MAIN_CHECK and PI_AUTOWORK_NO_FALLBACK
+    failed eight of these fixtures."""
+    return {k: v for k, v in os.environ.items() if not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))}
+
+
 class Fixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -266,15 +273,13 @@ class Fixture(unittest.TestCase):
         self.log = self.root / 'pi.log'
         self.plan_file = self.root / 'plan.json'
         self.state = self.root / 'state'
-        self.env = {**os.environ, 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
+        self.env = {**host_environment(), 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
-        for name in ('GIT_CONFIG_COUNT', 'PI_AUTOWORK_TOOLSET', 'PI_AUTOWORK_PRIMARY', 'PI_AUTOWORK_FALLBACK',
-                     'PI_AUTOWORK_WORKERS', 'PI_AUTOWORK_MAX_COST'):
-            self.env.pop(name, None)
+        self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
         # nothing and these runner scenarios fail for the wrong reason. As the engine's own
         # dispatch tests do, report an idle host to the engine processes the runner starts.
@@ -596,7 +601,9 @@ class EngineTests(Fixture):
             time.sleep(0.2)
         holder.kill()
         holder.wait()
-        while 'The other runner exited; starting.' not in log.read_text():
+        # Its SIGINT handler is installed once it has started; a stop before that, on a loaded
+        # host, ended the process by the signal instead of its clean exit.
+        while not re.search(r'The other runner exited; starting\.[\s\S]*Started \(PID', log.read_text()):
             self.assertLess(time.monotonic(), deadline + 30, log.read_text()[-1500:])
             time.sleep(0.2)
         runner.send_signal(signal.SIGINT)
@@ -608,6 +615,14 @@ class EngineTests(Fixture):
         result = self.run_runner('--once')
         self.assertIn('A: failed', result.stdout)
         self.assertEqual((self.repo / 'A.txt').read_text(), '')
+
+    def test_the_hosts_runner_settings_never_reach_a_fixture(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='false', PI_AUTOWORK_NO_FALLBACK='1',
+                             AUTOWORK_CACHE='/elsewhere', HOME_MARKER='kept'):
+            env = host_environment()
+        self.assertFalse({'PI_AUTOWORK_MAIN_CHECK', 'PI_AUTOWORK_NO_FALLBACK', 'AUTOWORK_CACHE'} & set(env))
+        self.assertEqual(env['HOME_MARKER'], 'kept')
 
     def test_interrupt_and_resume(self):
         self.plan({'worker:A': ['sleep', 'complete'], 'worker:B': ['sleep', 'complete']})
@@ -667,6 +682,40 @@ class EngineTests(Fixture):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # adopted, not restarted
         self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):
+        """TOOLSET-174-1d: `autowork restart` paused every worker; one cost a 10-minute run."""
+        self.plan({'worker:A': ['slow']})
+        settings = self.root / 'india.env'
+        settings.write_text('PI_AUTOWORK_COOLDOWN=0\n')
+        self.env['PI_AUTOWORK_ENV_FILE'] = str(settings)
+        self.env['FAKE_PI_CATALOG'] = 'openai-codex gpt-6.1-sol;openai-codex gpt-6-luna;openrouter deepseek/deepseek-v4.1-flash'
+        runner = self.start_runner('--workers', '1', '--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A')
+        worker = int((self.root / 'busy-A').read_text())
+        settings.write_text('PI_AUTOWORK_PRIMARY=openai-codex/gpt-6-luna\n')  # as `autowork model` writes it
+        runner.send_signal(signal.SIGHUP)
+        deadline = time.monotonic() + 60
+        while 'Reloading' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        os.kill(worker, 0)  # the worker runs on
+        while not list(self.state.glob('*/runner.json')):  # written again by the re-executed runner
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        record = json.loads(next(self.state.glob('*/runner.json')).read_text())
+        self.assertEqual((record['pid'], record['reloads']), (runner.pid, 1))
+        while not self.done('A', 'B', 'C'):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        self.assertNotIn('Stopping', log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        workers = {r['task']: r['model'] for r in self.runs('worker')}
+        self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1, log())
+        self.assertEqual((workers['A'], workers['B']), ('gpt-6.1-sol', 'gpt-6-luna'))
 
     def test_a_task_integrates_while_another_worker_is_still_running(self):
         """Live qualification: a running worker's prompt path under .git made the engine

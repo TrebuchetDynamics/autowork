@@ -727,7 +727,7 @@ def actions(runner, *, command, script, agent=None, task=None):
                           confirm=f'Stop {name}? Workers pause and resume on the same attempt at the next start.'))
         if runner.has_service:
             out.append(Action('R', 'restart', [command, 'restart', name],
-                              confirm=f'Restart {name}? Workers pause and resume on the same attempt.'))
+                              confirm=f'Restart {name}? It reloads in place; running workers keep running.'))
     elif repo:
         out.append(Action('a', 'start service', [command, 'start', repo]))
     if repo and runner.has_service and not running:

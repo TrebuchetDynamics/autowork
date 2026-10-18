@@ -5,7 +5,10 @@
     autowork status [target]      one runner's full status
     autowork logs [-f] [target]   the runner's service journal
     autowork start [dir]          install (if needed) and start the repository's service
-    autowork stop|restart [target]
+    autowork stop [target]
+    autowork restart [target] [--stop-workers]
+                                  reload the runner in place: new release and settings, running
+                                  workers keep running; --stop-workers pauses them instead
     autowork pause|resume [target]
                                   stop the service and keep it off (also after a reboot), or
                                   start it again; workers resume on the same attempt
@@ -30,7 +33,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view  # noqa: E402
+from pi_autowork import fleet_view, service  # noqa: E402
 
 COMPONENT = Path(__file__).resolve().parents[1]
 TOOLSET = COMPONENT.parent
@@ -177,6 +180,27 @@ def cmd_start(args, paths):
     return subprocess.run(['bash', target or script(paths), '--install-service', '--repo', ready.repo]).returncode
 
 
+def restart(paths, name, repo, stop_workers=False):
+    """(code, message): reload a running runner in place, else restart its service."""
+    unit = f'pi-autowork@{name}.service'
+    if not stop_workers and service_state(paths, name) == 'active':
+        done, text = service.reload_in_place(paths['systemctl'], unit, paths['state_root'], repo)
+        if done is not None:
+            return (0 if done else 1), text
+    if systemctl(paths, 'restart', unit, quiet=False).returncode:
+        raise Fail(f'could not restart {unit}')
+    return 0, f'Restarted {unit}; workers paused and resume on the same attempt.'
+
+
+def cmd_restart(args, paths):
+    repo, name = resolve(args.target, paths)
+    if service_state(paths, name) == 'none':
+        raise Fail(f'{name} has no service; start one with: autowork start {repo}')
+    code, text = restart(paths, name, repo, args.stop_workers)
+    print(text)
+    return code
+
+
 def cmd_stop(args, paths, action='stop'):
     repo, name = resolve(args.target, paths)
     unit = f'pi-autowork@{name}.service'
@@ -184,7 +208,7 @@ def cmd_stop(args, paths, action='stop'):
         raise Fail(f'{name} has no service; start one with: autowork start {repo}')
     if systemctl(paths, action, unit, quiet=False).returncode:
         raise Fail(f'could not {action} {unit}')
-    print(f'{action.capitalize()}ped {unit}.' if action == 'stop' else f'Restarted {unit}.')
+    print(f'Stopped {unit}.')
     return 0
 
 
@@ -243,9 +267,9 @@ def cmd_model(args, paths):
     unit = f'pi-autowork@{name}.service'
     print(f'{name}: ' + ', '.join(f'{"model" if k.endswith("PRIMARY") else "fallback"} {v}' for k, v in updates.items()))
     if service_state(paths, name) == 'active':
-        if systemctl(paths, 'restart', unit, quiet=False).returncode:
-            raise Fail(f'could not restart {unit}')
-        print(f'Restarted {unit}; workers resume on the same attempt with the new model for new runs.')
+        code, text = restart(paths, name, repo)
+        print(f'{text} New runs use the new model.' if not code else text)
+        return code
     return 0
 
 
@@ -348,12 +372,16 @@ def parser():
     ls.add_argument('--long', '-v', action='store_true', help='add workers in flight and blockers')
     ls.add_argument('--brief', '-b', action='store_true', help=argparse.SUPPRESS)
     for name, help_text in (('status', "one runner's full status"), ('stop', 'stop the runner'),
-                            ('restart', "restart the runner's service"), ('remove', 'stop and remove the service'),
+                            ('remove', 'stop and remove the service'),
                             ('start', "install (if needed) and start the repository's service"),
                             ('run', 'run the runner here in the foreground'),
                             ('blockers', 'answer what blocks the queue')):
         item = sub.add_parser(name, help=help_text)
         item.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    again = sub.add_parser('restart', help='reload the runner in place; running workers keep running')
+    again.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    again.add_argument('--stop-workers', action='store_true',
+                       help='restart the service instead: workers pause and resume on the same attempt')
     logs = sub.add_parser('logs', help="the runner's recent output")
     logs.add_argument('-f', '--follow', action='store_true')
     logs.add_argument('-n', '--lines', type=int, default=200)
@@ -378,7 +406,7 @@ def parser():
 
 
 COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_start,
-            'stop': cmd_stop, 'restart': lambda a, p: cmd_stop(a, p, 'restart'), 'remove': cmd_remove,
+            'stop': cmd_stop, 'restart': cmd_restart, 'remove': cmd_remove,
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models}

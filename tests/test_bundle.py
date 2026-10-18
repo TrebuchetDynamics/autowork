@@ -301,7 +301,8 @@ class BundleTests(unittest.TestCase):
         names = [f'profile{i}' for i in range(10)]
         receipt = {'status': 'updated', 'pid': 1, 'started_ns': 1, 'profiles': names,
                    'sources': {f'/h/{n}/plugins/autowork': {'before': '10ef9be' + 'a' * 33, 'after': '2187e98' + 'b' * 33} for n in names},
-                   'skill_files': 500, 'drift': [], 'local_edits': [{'action': 'kept_retired'}] * 3,
+                   'skill_files': 500, 'drift': [], 'local_edits': [{'action': 'kept_retired'}] * 3
+                   + [{'action': 'conflict', 'path': '/h/p1/skills/blockers/SKILL.md'}],
                    'backup': '/h/maintenance/toolset-update/x', 'settings_healed': [],
                    'activation': [{'profile': n, 'status': 'ready', 'enable_exit': 0, 'finalize_exit': 0} for n in names],
                    'chat_menus_healed': [{'profile': 'profile1', 'status': 'unreachable', 'failed': ['...5095'], 'error': 'HTTPError'},
@@ -312,7 +313,9 @@ class BundleTests(unittest.TestCase):
                 patch.object(self.bundle, 'gateway_drain', return_value=None):
             summary = self.bundle.handle_chat('update status')
         self.assertLess(len(summary), 600)
-        for part in ('Toolset update: updated, 10 profile(s); at 2187e98 (from 10ef9be)', 'Skill files written: 500; local edits: 3 kept_retired',
+        for part in ('Toolset update: updated, 10 profile(s); at 2187e98 (from 10ef9be)', 'Skill files written: 500; local edits: 1 conflict, 3 kept_retired',
+                     'Not updated, the profile edited them and they conflict with the release (reconcile each): '
+                     '/h/p1/skills/blockers/SKILL.md',
                      'Chat menus: cleared profile4; unreachable profile1', 'Gateway restart: requested, done',
                      'Full receipt: /autowork update status full'):
             self.assertIn(part, summary)

@@ -6,6 +6,10 @@ Agents change goals.json only through these commands, never by hand-editing JSON
 
   goals.py init <repo> --intent JSON [--todo-file MARKDOWN]
                                                 initialize from accepted intent and full task bodies; never overwrite
+  goals.py propose <repo> --intent JSON [--todo-file MARKDOWN]
+                                                first index without accepted sources: check as init would,
+                                                save docs/tasks/proposed-goals.json, ask the owner in BLOCKERS.md
+  goals.py accept <repo>                         on the owner's yes: mark the proposal's sources Accepted and init
   goals.py validate <repo>                       structural + evidence-rule check (exit 1 on errors)
   goals.py fmt <repo>                            canonical byte-stable rewrite (applies the "met" rule)
   goals.py next <repo> [--json]                  next eligible open task (dependencies satisfied);
@@ -52,6 +56,7 @@ even in Next; all eligible fallback tasks remain available after them in next --
 import argparse
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import datetime, timezone
 import fcntl
 from graphlib import CycleError, TopologicalSorter
 import hashlib
@@ -842,6 +847,18 @@ def plan_acceptance_error(section):
     return ''
 
 
+def heading_rows(text):
+    """(anchor, start, end, level) of each Markdown heading in fence-masked text."""
+    headings = []
+    counts = {}
+    for match in re.finditer(r'^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*\r?$', text, re.M):
+        slug = re.sub(r'[^\w\- ]', '', match[2].lower()).replace(' ', '-')
+        count = counts.get(slug, 0)
+        counts[slug] = count + 1
+        headings.append((slug + (f'-{count}' if count else ''), match.start(), match.end(), len(match[1])))
+    return headings
+
+
 def local_reference(repo, ref, blobs, reasons, *, include_children=False):
     """Resolve maintained links; optionally return the raw full heading subtree.
 
@@ -869,13 +886,7 @@ def local_reference(repo, ref, blobs, reasons, *, include_children=False):
     if not anchor:
         return markdown_prose(blob.decode('utf-8')) if path.suffix.lower() in ('.md', '.markdown') else ''
     text = markdown_prose(blob.decode('utf-8'))
-    headings = []
-    counts = {}
-    for match in re.finditer(r'^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*\r?$', text, re.M):
-        slug = re.sub(r'[^\w\- ]', '', match[2].lower()).replace(' ', '-')
-        count = counts.get(slug, 0)
-        counts[slug] = count + 1
-        headings.append((slug + (f'-{count}' if count else ''), match.start(), match.end(), len(match[1])))
+    headings = heading_rows(text)
     found = next((i for i, row in enumerate(headings) if row[0] == anchor), None)
     if found is None:
         reasons.append(f'missing anchor {ref}')
@@ -1183,6 +1194,7 @@ def initialize(a):
                 if statuses and (len(statuses) != 1 or statuses[0].strip() != task['status']):
                     sys.exit(f'{task["id"]}: Status conflicts with intent; no write')
         candidate = {'goals.json': ledger.encode('utf-8'), 'TODO.md': todo}
+        candidate.update(getattr(a, 'sources', None) or {})  # propose: sources as acceptance would leave them
         sources = {}
         for goal in normalized['goals']:
             source = goal['source']
@@ -1206,6 +1218,10 @@ def initialize(a):
                 sys.exit('\n'.join(receipt['reasons']) + '\ninit refused; no write')
             sources.update(receipt['sha256'])
         existing = checked_bytes(path_of(repo))
+        if getattr(a, 'dry_run', False):
+            if existing is not None:
+                sys.exit('goals.json already exists; propose is only for a first index; no write')
+            return normalized
         if existing is not None:
             if original_todo is None:
                 sys.exit('existing goals.json has no TODO.md; reconcile bodies through maintenance; no write')
@@ -1241,6 +1257,141 @@ def initialize(a):
         sys.exit(f'init input/write error: {exc}; reconcile inputs before retrying')
 
 
+PROPOSED = 'docs/tasks/proposed-goals.json'
+ASK_START = '<!-- docs-sync:accept-goals:start -->'
+ASK_END = '<!-- docs-sync:accept-goals:end -->'
+
+
+def accept_section(blob, anchor):
+    """The file's bytes with the heading's own Status set to Accepted (inserted under the
+    heading when it has none); None when the anchor is missing or its Status is ambiguous."""
+    original = blob.decode('utf-8')
+    text = markdown_prose(original)
+    rows = heading_rows(text)
+    found = next((i for i, row in enumerate(rows) if row[0] == anchor), None)
+    if found is None:
+        return None
+    start = rows[found][2]
+    end = rows[found + 1][1] if found + 1 < len(rows) else len(text)
+    statuses = list(re.finditer(r'^[ \t]*(?:\*\*)?Status:(?:\*\*)?[ \t]*([^\r\n]*)', text[start:end], re.M | re.I))
+    if len(statuses) > 1:
+        return None
+    if statuses:
+        first, last = start + statuses[0].start(1), start + statuses[0].end(1)
+        return (original[:first] + 'Accepted' + original[last:]).encode('utf-8')
+    return (original[:start] + '\n\nStatus: Accepted' + original[start:]).encode('utf-8')
+
+
+def accepted_sources(repo, data):
+    """{path: bytes} of every goal source file as the owner's acceptance would leave it."""
+    patched = {}
+    for goal in data.get('goals') or []:
+        source = goal.get('source')
+        if not isinstance(source, str) or '#' not in source or re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', source):
+            sys.exit(f'{goal.get("id")}: a proposed goal needs a local source path#heading; no write')
+        name, _, anchor = source.partition('#')
+        path = Path(name)
+        if path.is_absolute() or '..' in path.parts:
+            sys.exit(f'{goal.get("id")}: nonlocal source {source}; no write')
+        blob = patched.get(path.as_posix()) or checked_bytes(Path(repo) / path)
+        if blob is None:
+            sys.exit(f'{goal.get("id")}: missing source {name}; write the goal\'s section first; no write')
+        new = accept_section(blob, anchor)
+        if new is None:
+            sys.exit(f'{goal.get("id")}: source {source} is missing or has conflicting Status lines; no write')
+        patched[path.as_posix()] = new
+    return patched
+
+
+def ask_owner(repo, data, todo_name):
+    """The one owner question, kept between docs-sync's markers under BLOCKERS.md's Active."""
+    tasks = [t for t in data['tasks'] if t.get('status') not in ('done', 'superseded')]
+    goals = '\n'.join(f'  - {g["id"]} — {g.get("title", "")} ({g["source"]}; '
+                      f'{sum(1 for t in tasks if t.get("goal") == g["id"])} task(s))' for g in data['goals'])
+    block = (f'{ASK_START}\n\n### Q-ACCEPT-GOALS — USER_DECISION — effort decision — unblocks {len(tasks)}\n\n'
+             f'- Task: accept the drafted goals so {todo_name} becomes an executable backlog\n'
+             f'- Needs: these goals are drafted, not accepted; no runner can start their tasks until you accept them:\n'
+             f'{goals}\n'
+             f'- Since: {datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}\n'
+             f'- Answer: "yes" accepts them all: run `goals.py accept <repo>`, which marks each source section '
+             f'`Status: Accepted` and initializes goals.json from {PROPOSED}. To change a goal first, edit '
+             f'{PROPOSED} or its section and run `goals.py propose` again.\n\n{ASK_END}\n')
+    path = Path(repo) / 'BLOCKERS.md'
+    text = path.read_text(encoding='utf-8') if path.exists() else (
+        '# External input blockers\n\nOnly confirmed USER_INPUT, SUDO or USER_DECISION blockers belong here.\n\n'
+        '## Active\n\n## Resolved\n\nNone.\n')
+    if ASK_START in text and ASK_END in text:
+        head, rest = text.split(ASK_START, 1)
+        text = head + block + rest.split(ASK_END, 1)[1].lstrip('\n')
+    elif re.search(r'^## Active[ \t]*$', text, re.M):
+        text = re.sub(r'^## Active[ \t]*\n', lambda m: m[0] + '\n' + block, text, count=1, flags=re.M)
+    else:
+        text = text.rstrip('\n') + '\n\n## Active\n\n' + block
+    atomic_write(path, text)
+
+
+def retire_question(repo):
+    path = Path(repo) / 'BLOCKERS.md'
+    text = path.read_text(encoding='utf-8') if path.exists() else ''
+    if ASK_START in text and ASK_END in text:
+        head, rest = text.split(ASK_START, 1)
+        atomic_write(path, head + rest.split(ASK_END, 1)[1].lstrip('\n'))
+
+
+def propose(a):
+    """First index without accepted sources: check the draft exactly as init will once the
+    owner accepts it, save it and ask the owner once in BLOCKERS.md. Approves nothing."""
+    repo = Path(a.repo)
+    blob = checked_bytes(Path(a.intent))
+    if blob is None:
+        sys.exit('missing intent file; no write')
+    data = parse_ledger(blob)
+    if (repo / 'TODO.md').exists() is False and not a.todo_file:
+        sys.exit('missing TODO.md; supply complete task bodies with --todo-file; no write')
+    initialize(argparse.Namespace(repo=a.repo, intent=a.intent, todo_file=a.todo_file,
+                                  sources=accepted_sources(repo, data), dry_run=True))
+    if not (repo / 'TODO.md').exists():
+        atomic_write(repo / 'TODO.md', checked_bytes(Path(a.todo_file)).decode('utf-8'), expected_bytes=None)
+        TRANSACTION.set((repo, revision(repo)))  # this command's own write
+    (repo / PROPOSED).parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(repo / PROPOSED, blob.decode('utf-8'))
+    ask_owner(repo, data, 'TODO.md')
+    tasks = [t['id'] for t in data['tasks'] if t.get('status') not in ('done', 'superseded')]
+    print(json.dumps({'state': 'awaiting_acceptance', 'goals': [g['id'] for g in data['goals']], 'tasks': tasks,
+                      'draft': PROPOSED, 'question': 'BLOCKERS.md#Q-ACCEPT-GOALS'}))
+
+
+def accept(a):
+    """The owner accepted the proposal: mark its source sections Accepted, initialize from it,
+    then format, render, and retire the draft and its question. Run only on the owner's answer."""
+    repo = Path(a.repo)
+    draft = repo / PROPOSED
+    blob = checked_bytes(draft)
+    if blob is None:
+        sys.exit(f'no proposal at {PROPOSED}; run propose first; no write')
+    patched = accepted_sources(repo, parse_ledger(blob))
+    originals = {name: checked_bytes(repo / name) for name in patched}
+    for name, new in patched.items():
+        atomic_write(repo / name, new.decode('utf-8'), expected_bytes=originals[name])
+    TRANSACTION.set((repo, revision(repo)))  # each step below guards against writers other than this one
+    try:
+        initialize(argparse.Namespace(repo=a.repo, intent=str(draft), todo_file=None))
+    except SystemExit:
+        for name, old in originals.items():
+            if checked_bytes(repo / name) == patched[name]:
+                atomic_write(repo / name, old.decode('utf-8'))
+        raise
+    TRANSACTION.set((repo, revision(repo)))
+    data = load(repo)
+    dump(repo, data)
+    TRANSACTION.set((repo, revision(repo)))
+    render(repo, normalize(load(repo)))
+    TRANSACTION.set((repo, revision(repo)))
+    draft.unlink()
+    retire_question(repo)
+    print(f'ok accepted {len(data["goals"])} goal(s); goals.json initialized; run validate and backlog-check')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -1248,6 +1399,11 @@ def main():
     init.add_argument('repo')
     init.add_argument('--intent', required=True, help='JSON file using the existing version-1 goals/tasks schema')
     init.add_argument('--todo-file', help='complete Markdown bodies when TODO.md is absent; must byte-match if it exists')
+    pr = sub.add_parser('propose', help='first index without accepted sources: save the draft and ask the owner once')
+    pr.add_argument('repo')
+    pr.add_argument('--intent', required=True, help='version-1 goals/tasks JSON, as init takes it')
+    pr.add_argument('--todo-file', help='complete Markdown bodies when TODO.md is absent')
+    sub.add_parser('accept', help="the owner accepted the proposal: mark its sources Accepted and initialize").add_argument('repo')
     for name in ('validate', 'fmt', 'render', 'revision'):
         sub.add_parser(name).add_argument('repo')
     ar = sub.add_parser('archive'); ar.add_argument('repo')
@@ -1303,6 +1459,10 @@ def main():
 def execute(a):
     if a.cmd == 'init':
         initialize(a); return
+    if a.cmd == 'propose':
+        propose(a); return
+    if a.cmd == 'accept':
+        accept(a); return
     if a.cmd == 'archive':
         data = load(a.repo) if path_of(a.repo).exists() else None
         result = archive_tasks(a.repo, data, verified_tasks=tuple(filter(None, a.verified_tasks.split(','))))

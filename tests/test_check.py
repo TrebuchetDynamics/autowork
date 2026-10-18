@@ -107,13 +107,15 @@ class OfflineCheckTests(unittest.TestCase):
         self.write('tests/test_environment.py', '''import os, unittest
 class Check(unittest.TestCase):
     def test_environment(self):
-        for name in ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX', 'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST'):
+        for name in ('CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX', 'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST',
+                     'PI_AUTOWORK_MAIN_CHECK', 'AUTOWORK_CACHE'):
             self.assertFalse(name in os.environ, name + ' leaked into offline tests')
 ''')
         self.write('skills/docs-sync/scripts/test_goal_gap_regression.py',
                    "raise RuntimeError('live model imported')\n")
         env = dict(os.environ, CONTAINMENT_LINUX_TESTS='1', RUN_CONTROLLER_BRIDGE_LINUX='1',
-                   HERMES_NATIVE_HANDOFF_TEST='1', HERMES_NATIVE_REGISTRATION_TEST='1')
+                   HERMES_NATIVE_HANDOFF_TEST='1', HERMES_NATIVE_REGISTRATION_TEST='1',
+                   PI_AUTOWORK_MAIN_CHECK='false', AUTOWORK_CACHE='/elsewhere')
         result = self.run_check(env=env)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Ran 1 test', result.stdout + result.stderr)
@@ -218,6 +220,16 @@ class Check(unittest.TestCase):
         self.assertIn('shard failure', result.stdout)
         pids = {(self.root / 'tests' / f'ran-{n}').read_text() for n in 'abc'}
         self.assertEqual(len(pids), 3)
+
+    def test_default_jobs_follow_idle_cpus_between_four_and_eight(self):
+        from unittest import mock
+        spec = importlib.util.spec_from_file_location('check_jobs', SCRIPT)
+        checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(checker)
+        for cpus, load, jobs in ((22, 0.5, 8), (22, 16.2, 6), (22, 30.0, 4), (2, 0.0, 4)):
+            with self.subTest(cpus=cpus, load=load), mock.patch.object(checker.os, 'cpu_count', return_value=cpus), \
+                    mock.patch.object(checker.os, 'getloadavg', return_value=(load, load, load)):
+                self.assertEqual(checker.default_jobs(), jobs)
 
     def test_jobs_one_runs_sequentially_with_the_same_output(self):
         self.sleeper('tests/test_slow.py', 1, 'first')
