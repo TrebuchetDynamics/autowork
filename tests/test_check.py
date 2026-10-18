@@ -122,6 +122,18 @@ class Check(unittest.TestCase):
         self.assertIn('1 test directories passed', result.stdout)
         self.assertNotIn('live model imported', result.stdout + result.stderr)
 
+    def test_tests_the_resource_gate_skipped_are_counted_not_failed(self):
+        """TOOLSET-193-54: a busy host is not a failing check."""
+        self.write('tests/test_gate.py', '''import sys, unittest
+class Gate(unittest.TestCase):
+    def test_gated(self):
+        print('RESOURCE_GATE_SKIP: resource gate: load average 30.00 >= 24 CPUs', file=sys.stderr)
+        raise unittest.SkipTest('host busy')
+''')
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Skipped by the host resource gate: 1 test(s)', result.stdout)
+
     def test_fixtures_can_push_although_the_runner_guards_pushes(self):
         """TOOLSET-186-07: a runner's main check reported 20 failures, all fixture pushes its
         push guard refused; outside the runner the same tree passed."""

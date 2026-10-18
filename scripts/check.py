@@ -176,7 +176,7 @@ def main(argv=None):
     # PI_AUTOWORK_NO_FALLBACK failed them.
     env = without_push_guard({k: v for k, v in os.environ.items()
                               if k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))})
-    passed = failed = 0
+    passed = failed = gated = 0
     work = list(units(root, tests))
     # Modules (and shards of split ones) are independent processes; output is still printed
     # whole, by directory and in order. Shards of split modules are the longest, so they start
@@ -191,6 +191,7 @@ def main(argv=None):
             for result in [run for where, run in runs if where == directory]:
                 unit_ok, output = result.result()
                 print(output, end='', flush=True)
+                gated += output.count('RESOURCE_GATE_SKIP:')
                 ok = ok and unit_ok
             if ok:
                 passed += 1
@@ -198,6 +199,9 @@ def main(argv=None):
                 failed += 1
     print(f'Offline result: {passed} test directories passed; {failed} failed; '
           f'{excluded} modules excluded.', flush=True)
+    if gated:  # skipped, not failed: the host was busy (TOOLSET-193-54); a quieter run checks them
+        print(f'Skipped by the host resource gate: {gated} test(s); run again at a lower load to check them.',
+              flush=True)
     return int(bool(failed))
 
 

@@ -47,6 +47,11 @@ def failures(log_text, limit=20):
     return list(dict.fromkeys(found))[:limit]
 
 
+def gate_skips(log_text):
+    """Tests the host's resource gate skipped (TOOLSET-193-54): not failures, but not checked."""
+    return log_text.count('RESOURCE_GATE_SKIP:')
+
+
 def alive(pid):
     try:
         os.kill(int(pid), 0)
@@ -61,6 +66,8 @@ def line(record, now=None):
     state = record.get('state')
     if state == 'red':
         return f"main red since {record.get('rev', '')[:7]}: {len(record.get('failures') or [])} failing"
+    if state == 'recheck':
+        return f"main check again at {record.get('gated', '')[:7]} when the host is quieter"
     if state == 'green':
         return f"main green at {record.get('rev', '')[:7]}"
     if state == 'running':

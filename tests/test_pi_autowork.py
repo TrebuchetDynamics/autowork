@@ -526,6 +526,27 @@ class EngineTests(Fixture):
         found = list(self.state.glob('*/main_check.json'))
         return json.loads(found[0].read_text()) if found else {}
 
+    def test_a_main_check_the_busy_host_cut_short_runs_again_before_green(self):
+        """TOOLSET-193-54: tests the resource gate skipped are not checked, so main is not green yet."""
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = ("echo 'RESOURCE_GATE_SKIP: resource gate: load average 30.00 >= 24 CPUs'; "
+                                              'true')
+        (self.repo / 'TODO.md').write_text(todo([]))  # nothing lands, so main stays at one revision
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 90
+        while self.main_record().get('state') != 'green':
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        text = log()
+        self.assertIn('the busy host skipped 1 test(s); checking it again when the load allows', text)
+        self.assertEqual(text.count('Checking main at'), 2, text)  # once more, then green
+        self.assertNotIn('Main is red', text)
+
     def test_a_red_main_after_a_landing_gets_one_repair_task(self):
         """TOOLSET-176-98: a landing broke unrelated tests and nothing noticed."""
         self.env['PI_AUTOWORK_MAIN_CHECK'] = ("echo 'FAIL: test_broken (test_other.OtherTests.test_broken)'; "
