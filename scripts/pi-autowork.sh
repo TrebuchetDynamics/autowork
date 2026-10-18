@@ -9,6 +9,10 @@
 # and a systemd service. This file only finds that component and runs it; the
 # component then continues in the toolset release it resolves. See --help.
 set -uo pipefail
+# A reload (SIGHUP) that arrives before the runner installs its handler, while it starts or
+# re-executes, must not end it: systemd counts death by SIGHUP as a clean exit and does not
+# restart the unit. Ignored here, and so through exec, until the runner's handler replaces it.
+trap '' HUP
 SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
 is_component() { [[ -f $1/pi_autowork/cli.py ]]; }
 # Workers inherit the runner's component; otherwise PI_AUTOWORK_TOOLSET, this file's

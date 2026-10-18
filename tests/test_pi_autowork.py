@@ -574,6 +574,35 @@ class EngineTests(Fixture):
         runner.communicate(timeout=60)
         self.assertIn('A: integrated', log())
 
+    def test_reloads_sent_while_the_runner_re_executes_never_end_it(self):
+        """A SIGHUP sent while a runner re-executed, before its new handler existed, killed it,
+        and systemd left the unit dead because death by SIGHUP is a clean exit."""
+        (self.repo / 'TODO.md').write_text(todo([]))
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        runner = self.start_runner('--interval', '300')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'Queue empty; checking again in 300s' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGHUP)
+        while 'Reloading' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.05)
+        for _ in range(40):  # through the shell and Python start-up of the re-executed runner
+            self.assertIsNone(runner.poll(), log())
+            runner.send_signal(signal.SIGHUP)
+            time.sleep(0.05)
+        while log().count('Started (PID') < 2:
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        time.sleep(2)
+        self.assertIsNone(runner.poll(), log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+
     def test_a_reload_during_a_review_waits_until_its_answer_is_read(self):
         """TOOLSET-187-1d: a reload deferred behind a review re-executed as the review ended and
         lost its answer; the task failed as an abandoned integration and ran again."""

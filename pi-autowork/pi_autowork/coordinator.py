@@ -1522,6 +1522,9 @@ class Coordinator:
         LOG.say(text)
         (self.state / 'runner.json').unlink(missing_ok=True)
         sys.stdout.flush()
+        # Ignored, not handled: exec keeps an ignored signal, so a reload sent while the new
+        # process starts cannot end it (systemd does not restart a unit SIGHUP ended).
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
         os.execv('/bin/bash', ['/bin/bash', self.cfg['script'], *self.cfg['argv']])
 
     # --- Main loop -------------------------------------------------------------------------
