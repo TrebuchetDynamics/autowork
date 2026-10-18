@@ -699,7 +699,8 @@
         "TOOLSET-198-8f",
         "TOOLSET-199-2d",
         "TOOLSET-200-c1",
-        "TOOLSET-201-5e"
+        "TOOLSET-201-5e",
+        "TOOLSET-203-7a"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -707,10 +708,10 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-203-7a",
       "TOOLSET-199-2d",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
-      "TOOLSET-140-f4",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
       "TOOLSET-200-c1",
@@ -1090,6 +1091,14 @@
       "section": "Now",
       "status": "open",
       "title": "An idle runner keeps its session instead of recreating it every interval"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-203-7a",
+      "section": "Now",
+      "status": "open",
+      "title": "A finished main check is recorded even when its process is a zombie the runner never reaped"
     },
     {
       "depends_on": [],
