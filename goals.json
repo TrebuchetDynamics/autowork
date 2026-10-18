@@ -1271,14 +1271,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-236-4d",
-      "section": "Now",
-      "status": "open",
-      "title": "A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -2810,6 +2802,14 @@
       "section": "Done",
       "status": "done",
       "title": "The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-236-4d",
+      "section": "Done",
+      "status": "done",
+      "title": "A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first"
     },
     {
       "depends_on": [

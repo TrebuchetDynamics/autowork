@@ -58,22 +58,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
-### TOOLSET-236-4d — A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first
-
-- [ ] TOOLSET-236-4d — A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`restart_if_updated` runs at the start of a cycle; `reexec` returns while `self.integration or self.child`; the integration loop collects a finished review and starts the next one in the same cycle; `autowork restart` says `it reloads once its running review or Pi job ends`).
-- Evidence (2026-10-18 16:04, this repository's runner): the runner has not re-executed since 13:33 (same PID, `since 13:33`, one `Reloading:` line), though `autowork restart` sent it five SIGHUPs since then, each answered `asked to reload, but it has not within 150s; it reloads once its running review or Pi job ends`. Its reviews run back to back: each cycle begins with a review running, so `reexec` refuses; later in the cycle the loop collects that review and starts the next. So it kept running the 13:33 release, without the fast planner (TOOLSET-221-8e), the integration fix (TOOLSET-223-8e) or the session sync (TOOLSET-233-ba), while `autowork status` showed the new release as its toolset. An automatic toolset update has the same gap.
-- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py
-- Scope: (1) While a reload is pending (`self.reload`), or a newer prepared release is waiting, the coordinator starts no new review, maintainer, merge-resolver, provisioning or other Pi job. Workers already running keep running and dispatch continues. When the running review or job ends, its answer is read and the runner re-executes at the end of that same cycle, before starting anything else. (2) The log says `Reload pending: waiting for the review of <task> to end` once. (3) `autowork status` and the TUI show the release the process runs (from `runner.json`) and, when it differs, the release it will move to. They don't show the configured release alone.
-- Acceptance: In a runner fixture with two reviews queued (`slow_review`), a SIGHUP during the first review gives `Reloading:` after the first integrates and before the second starts verifying, and the second integrates under the new process; a package update during a review does the same; with no review running, a reload applies at the next cycle as today; status shows the running and pending releases while the reload waits.
-- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No interruption of a running review or Pi job. Running workers stay attached as reloads keep them today.
-- Planner's call: first in Now. Every toolset fix reaches the runners through a reload, and the runner with the most work never took one, so the fleet could not heal itself where it mattered most. Deferring one review start costs a few seconds.
-
 ### TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
 
 - [ ] TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout

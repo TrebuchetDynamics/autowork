@@ -781,6 +781,30 @@ class EngineTests(Fixture):
         self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
         self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
 
+    def test_a_reload_applies_between_back_to_back_reviews(self):
+        """TOOLSET-236-4d: a runner whose reviews ran back to back never found a gap for a reload
+        and kept its old release for hours; it re-executes before the next review starts."""
+        self.plan({'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 120
+        while 'A: verifying' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGHUP)
+        while not ('Reloading' in log() and self.done('A', 'B')):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        text = log()
+        self.assertIn('Reload pending: waiting for the review of A to end', text)
+        self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)  # not after B's review
+        self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
+
     def test_an_idle_runner_rests_when_only_other_refs_change(self):
         """TOOLSET-185-74: an idle runner started 213 sessions in 40 minutes: ending each empty
         session rewrote packed-refs, which counted as main changing."""

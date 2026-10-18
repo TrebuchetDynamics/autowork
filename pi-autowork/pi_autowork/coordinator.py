@@ -982,6 +982,11 @@ class Coordinator:
                 return
             if task in handled:
                 continue
+            if self.reexec_due():
+                # Back-to-back reviews left no gap for a reload: one runner kept its morning
+                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
+                self.restart_if_updated()
+                return
             if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
                 self.note_state(task, 'integrating')
             self.follow_base()  # each review validates against the main branch as it is now
@@ -1500,6 +1505,17 @@ class Coordinator:
             if rc:
                 LOG.say(f'Toolset update failed (see {self.state / "engine.err"}); keeping {self.toolset_rev}')
 
+    def reexec_due(self):
+        """'reload' or 'update' when the runner should re-execute at its next safe point: an
+        asked-for reload, or a package that moved past the release this process runs."""
+        if self.reload:
+            return 'reload'
+        if self.mode == 'continuous' and self.toolset_rev != 'unknown' and self.package:
+            rev = git(self.package, 'rev-parse', '--short', 'HEAD')
+            if rev and rev != self.package_rev:
+                return 'update'
+        return ''
+
     def restart_if_updated(self):
         """Only a re-exec selects the package's next immutable release.
 
@@ -1532,6 +1548,10 @@ class Coordinator:
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
         if self.integration or self.child:
+            what = (f"the review of {self.integration['task']}" if self.integration else 'a Pi job')
+            if self.seen.get('reexec-pending') != what:
+                self.seen['reexec-pending'] = what
+                LOG.say(f'Reload pending: waiting for {what} to end')
             return
         package = self.package
         if reload:
