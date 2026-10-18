@@ -632,10 +632,46 @@ class EngineTests(Fixture):
                     if check_pid and Path(f'/proc/{check_pid}').exists():
                         os.killpg(check_pid, signal.SIGKILL)
 
+    def test_a_main_failure_that_passes_alone_is_green_without_a_maintainer(self):
+        (self.repo / 'TODO.md').write_text(todo([]))
+        tests = self.repo / 'tests'
+        tests.mkdir()
+        (tests / 'test_flaky.py').write_text(
+            'import os, unittest\nclass Flaky(unittest.TestCase):\n'
+            '    def test_flaky(self): self.assertNotIn("FULL_RUN", os.environ)\n')
+        self.git(self.repo, 'add', '.')
+        self.git(self.repo, 'commit', '-qm', 'a test fails only in the full run')
+        rev = self.git(self.repo, 'rev-parse', 'HEAD')
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = (
+            'echo "CHECK tests (1 modules)"; cd tests; FULL_RUN=1 python3 -m unittest test_flaky')
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        try:
+            deadline = time.monotonic() + 60
+            while self.main_record().get('state') not in ('green', 'red'):
+                self.assertLess(time.monotonic(), deadline, log())
+                self.assertIsNone(runner.poll(), log())
+                time.sleep(0.1)
+            record = self.main_record()
+            self.assertEqual(record['state'], 'green', log())
+            self.assertEqual(record['flaky'], ['test_flaky.Flaky.test_flaky'])
+            self.assertEqual(record['flaky_history'], {'test_flaky.Flaky.test_flaky': [rev]})
+            self.assertFalse(self.runs('maintainer'), log())
+        finally:
+            runner.send_signal(signal.SIGINT)
+            runner.communicate(timeout=60)
+
     def test_a_red_main_after_a_landing_gets_one_repair_task(self):
         """TOOLSET-176-98: a landing broke unrelated tests and nothing noticed."""
-        self.env['PI_AUTOWORK_MAIN_CHECK'] = ("echo 'FAIL: test_broken (test_other.OtherTests.test_broken)'; "
-                                              'test -s FIX.txt')
+        tests = self.repo / 'tests'
+        tests.mkdir()
+        (tests / 'test_other.py').write_text(
+            'from pathlib import Path\nimport unittest\nclass OtherTests(unittest.TestCase):\n'
+            '    def test_broken(self): self.assertTrue(Path("../FIX.txt").is_file())\n')
+        self.git(self.repo, 'add', '.')
+        self.git(self.repo, 'commit', '-qm', 'a genuinely broken test')
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = ('echo "CHECK tests (1 modules)"; '
+                                              'cd tests; python3 -m unittest test_other')
         self.plan({'maintainer': ['repair_main']})
         runner = self.start_runner('--interval', '1')
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))

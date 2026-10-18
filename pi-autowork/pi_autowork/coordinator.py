@@ -1089,16 +1089,24 @@ class Coordinator:
         if not path:
             return
         tmp = tempfile.mkdtemp(prefix='aw-main-', dir='/tmp')  # short: socket paths must fit
-        done = self.state / 'main-check.exit'
+        done, reruns = self.state / 'main-check.exit', self.state / 'main-check-reruns.json'
         done.unlink(missing_ok=True)
+        reruns.unlink(missing_ok=True)
+        retry = shlex.join([sys.executable, str(Path(main_check.__file__).resolve()),
+                            str(self.state / 'main-check.log'), path, str(reruns), rev])
+        # Finish retries before publishing the receipt: reloads can adopt the job,
+        # and finish_main_check can then safely remove the shared scratch checkout.
+        script = f'({cmd}\n)\nresult=$?\nif [ "$result" -ne 0 ]; then {retry}; fi\necho "$result" > {shlex.quote(str(done))}'
         with open(self.state / 'main-check.log', 'w') as log:
-            child = subprocess.Popen(['bash', '-c', f'{cmd}; echo $? > {shlex.quote(str(done))}'], cwd=path,
-                                     env=dict(os.environ, TMPDIR=tmp), stdout=log, stderr=subprocess.STDOUT,
+            child = subprocess.Popen(['bash', '-c', script], cwd=path,
+                                     env=dict(os.environ, TMPDIR=tmp),
+                                     stdout=log, stderr=subprocess.STDOUT,
                                      stdin=subprocess.DEVNULL, start_new_session=True)
         main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid,
                                           start_time=main_check.start_time(child.pid), started=time.time(), path=path,
                                           tmp=tmp, green=record.get('green'), failures=record.get('failures'),
-                                          red_since=record.get('red_since'), gated=record.get('gated')))
+                                          red_since=record.get('red_since'), gated=record.get('gated'),
+                                          flaky_history=record.get('flaky_history') or {}))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
     def finish_main_check(self, record):
@@ -1110,35 +1118,60 @@ class Coordinator:
         if tmp.startswith('/tmp/aw-main-'):
             shutil.rmtree(tmp, ignore_errors=True)
         rev, green = record.get('rev', ''), record.get('green')
+        history = record.get('flaky_history') or {}
         # The receipt can precede bash's exit. Retain its identity until a later cycle reaps it.
         child = {k: record[k] for k in ('pid', 'start_time') if k in record}
         if code is None:  # the runner stopped under it: check this revision again
             main_check.write(self.state, dict(state='aborted', rev='', green=green, failures=record.get('failures'),
-                                              red_since=record.get('red_since'), **child))
+                                              red_since=record.get('red_since'), flaky_history=history, **child))
             return
         try:
             log_text = (self.state / 'main-check.log').read_text(errors='replace')
         except OSError:
             log_text = ''
+        failures = (main_check.failures(log_text, limit=None) or [f'the check exited {code}']) if code else []
+        flaky = []
+        if code:
+            incomplete = code != 1  # signals and shell errors are not ordinary unittest failures
+            try:
+                reruns = json.loads((self.state / 'main-check-reruns.json').read_text())
+                if reruns.get('rev') == rev and isinstance(reruns.get('flaky'), list):
+                    flaky = [test_id for test_id in failures if test_id in reruns['flaky']]
+                    incomplete = incomplete or bool(reruns.get('incomplete'))
+            except (OSError, ValueError, AttributeError, TypeError):
+                pass
+            failures = [test_id for test_id in failures if test_id not in flaky]
+            if incomplete:
+                failures.append(f'the check exited {code} without a complete test result')
+            for test_id in flaky:
+                revisions = history.setdefault(test_id, [])
+                if rev not in revisions and len(revisions) < 3:
+                    revisions.append(rev)
         skipped = main_check.gate_skips(log_text)
-        if code == 0 and skipped and record.get('gated') != rev:
+        if not failures and skipped and record.get('gated') != rev:
             # A busy host skipped some tests (TOOLSET-193-54): check this revision once more when
             # the load allows (check_main waits for it) before calling it green.
             main_check.write(self.state, dict(state='recheck', rev='', gated=rev, green=green,
-                                              failures=record.get('failures'), red_since=record.get('red_since'), **child))
+                                              failures=record.get('failures'), red_since=record.get('red_since'),
+                                              flaky=flaky, flaky_history=history, **child))
             LOG.say(f'Main at {rev[:7]} passed, but the busy host skipped {skipped} test(s); '
                     'checking it again when the load allows')
             return
-        if code == 0:
-            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(), **child))
+        if not failures:
+            main_check.write(self.state, dict(state='green', rev=rev, green=rev, finished=time.time(),
+                                              flaky=flaky, flaky_history=history, **child))
             if record.get('failures'):
                 LOG.say(f'Main is green again at {rev[:7]}')
+            if flaky:
+                LOG.say(f'Main is green at {rev[:7]} ({len(flaky)} flaky): {", ".join(flaky)}')
+            if any(len(revisions) >= 3 for revisions in history.values()):
+                self.maintain(main_only=True)
             return
-        failures = main_check.failures(log_text) or [f'the check exited {code}']
         commits = (git(self.repo, 'log', '--format=%h %s', '-20', f'{green}..{rev}' if green else rev) or '').splitlines()
         red_since = record.get('red_since') if record.get('failures') else rev
         main_check.write(self.state, dict(state='red', rev=rev, green=green, failures=failures, commits=commits,
-                                          red_since=red_since or rev, finished=time.time(), **child))
+                                          red_since=red_since or rev, finished=time.time(),
+                                          flaky=flaky, flaky_history=history, **child))
         LOG.say(f'Main is red at {rev[:7]}: {len(failures)} failing ({", ".join(failures[:3])}'
                 + (f', +{len(failures) - 3} more' if len(failures) > 3 else '') + ')')
         self.maintain(main_only=True)  # one repair task, now: red main hides every later regression
@@ -1155,11 +1188,13 @@ class Coordinator:
         rows = [] if main_only else self.tasks()
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
-        found = maintainer.triggers(rows, main_check.read(self.state), findings)
+        main = main_check.read(self.state)
+        found = maintainer.triggers(rows, main, findings,
+                                    reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
         if not found:
             return False
         trigger_key = maintainer.key(found)
-        if not maintainer.due(self.state, trigger_key):
+        if not maintainer.due(self.state, trigger_key, found=found):
             return False
         scratch = self.scratch_checkout('maintainer')
         if not scratch:

@@ -10,9 +10,15 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
+import shlex
+import signal
+import subprocess
+import sys
+import tempfile
 import time
 
-FAILURE = re.compile(r'^(FAIL|ERROR): (\S+) \(([^)]+)\)', re.M)
+FAILURE = re.compile(r'^(FAIL|ERROR|UNEXPECTED SUCCESS): (\S+) \(([^)]+)\)', re.M)
 TIMEOUT = re.compile(r'^TIMEOUT: (\S+) after', re.M)
 
 
@@ -55,6 +61,114 @@ def failures(log_text, limit=20):
     return list(dict.fromkeys(found))[:limit]
 
 
+def complete_results(text, root):
+    """Do not excuse a flaky test alongside a process that died without a summary.
+
+    The offline inventory may shard modules, so count its units, not just modules.
+    Unknown shell commands without CHECK boundaries cannot prove completeness.
+    """
+    summary = re.compile(r'^Ran \d+ tests? in [\d.]+s\n\n(?:OK\b|FAILED\b)', re.M)
+    sections = list(re.finditer(r'^CHECK (.+) \((\d+) modules\)$', text, re.M))
+    expected = {}
+    if 'Offline inventory:' in text:
+        try:
+            checker = runpy.run_path(str(root / 'scripts/check.py'))
+            for directory, _ in checker['units'](root, checker['discover_tests'](root)):
+                name = directory.relative_to(root).as_posix()
+                expected[name] = expected.get(name, 0) + 1
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        if set(expected) != {section[1] for section in sections}:
+            return False
+    if not sections:
+        try:
+            args = shlex.split(command())
+        except ValueError:
+            return False
+        return (len(args) >= 3 and args[1:3] == ['-m', 'unittest']
+                and not re.search(r'[;&|<>()\n]', command()) and len(summary.findall(text)) == 1)
+    for index, section in enumerate(sections):
+        end = sections[index + 1].start() if index + 1 < len(sections) else len(text)
+        if len(summary.findall(text[section.end():end])) != expected.get(section[1], int(section[2])):
+            return False
+    return True
+
+
+def rerun_failures(log, root, receipt, rev, timeout=600):
+    """Rerun up to ten IDs in their original CHECK directory, before scratch cleanup.
+
+    A separate revision-bound receipt lists only completed, ungated passes. Missing
+    modules, ambiguous directories, skips, timeouts and excess failures stay red.
+    """
+    root, receipt = Path(root).resolve(), Path(receipt)
+    text = Path(log).read_text(errors='replace')
+    directory, locations = root, {}
+    for line in text.splitlines():
+        section = re.match(r'^CHECK (.+) \(\d+ modules\)$', line)
+        if section:
+            directory = (root / section[1]).resolve()
+        match = FAILURE.match(line)
+        if match:
+            locations.setdefault(match[3], set()).add(directory)
+    # Match scripts/check.py's fixture environment: no inherited runner/live flags,
+    # and fixture-local pushes must not inherit the runner's remote push guard.
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_')) and k not in (
+               'CONTAINMENT_LINUX_TESTS', 'RUN_CONTROLLER_BRIDGE_LINUX',
+               'HERMES_NATIVE_HANDOFF_TEST', 'HERMES_NATIVE_REGISTRATION_TEST')}
+    try:
+        entries = [(env.get(f'GIT_CONFIG_KEY_{i}', ''), env.get(f'GIT_CONFIG_VALUE_{i}', ''))
+                   for i in range(int(env.get('GIT_CONFIG_COUNT') or 0))]
+        kept = [(key, value) for key, value in entries if 'pi-autowork-push-disabled' not in key]
+        if kept != entries:
+            env = {k: v for k, v in env.items() if k != 'GIT_CONFIG_COUNT'
+                   and not k.startswith(('GIT_CONFIG_KEY_', 'GIT_CONFIG_VALUE_'))}
+            env['GIT_CONFIG_COUNT'] = str(len(kept))
+            for i, (key, value) in enumerate(kept):
+                env[f'GIT_CONFIG_KEY_{i}'], env[f'GIT_CONFIG_VALUE_{i}'] = key, value
+    except ValueError:
+        pass
+    flaky = []
+    with receipt.with_suffix('.log').open('w') as diagnostics:
+        for test_id, places in list(locations.items())[:10]:
+            if not re.fullmatch(r'(?:\w+\.)+\w+', test_id) or len(places) != 1:
+                continue
+            directory = next(iter(places))
+            if not directory.is_relative_to(root) or not directory.is_dir():
+                continue
+            diagnostics.write(f'RERUN {test_id} in {directory}\n')
+            diagnostics.flush()
+            try:
+                # A file, not a pipe: a detached daemon inheriting stdout must not
+                # make communicate() wait forever for EOF after the test times out.
+                with tempfile.TemporaryFile() as capture, subprocess.Popen(
+                        [sys.executable, '-m', 'unittest', test_id], cwd=directory, env=env,
+                        stdout=capture, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                        start_new_session=True) as process:
+                    timed_out = False
+                    try:
+                        process.wait(timeout=timeout)
+                    except subprocess.TimeoutExpired:
+                        timed_out = True
+                        os.killpg(process.pid, signal.SIGKILL)
+                        process.wait()
+                    size = os.fstat(capture.fileno()).st_size
+                    capture.seek(0)
+                    output = capture.read(size).decode('utf-8', errors='replace')
+                    diagnostics.write(output)
+                    if timed_out:
+                        diagnostics.write(f'TIMEOUT: {test_id} after {timeout:g}s\n')
+                    elif (process.returncode == 0 and re.search(r'^Ran [1-9]\d* tests? in ', output, re.M)
+                          and re.search(r'^OK$', output, re.M) and not gate_skips(output)):
+                        flaky.append(test_id)
+            except OSError as error:
+                diagnostics.write(f'Could not rerun {test_id}: {error}\n')
+    result = dict(rev=rev, flaky=flaky, incomplete=not complete_results(text, root))
+    tmp = receipt.with_suffix('.tmp')
+    tmp.write_text(json.dumps(result) + '\n')
+    tmp.replace(receipt)
+
+
 def gate_skips(log_text):
     """Tests the host's resource gate skipped (TOOLSET-193-54): not failures, but not checked."""
     return log_text.count('RESOURCE_GATE_SKIP:')
@@ -91,7 +205,12 @@ def line(record, now=None):
     if state == 'recheck':
         return f"main check again at {record.get('gated', '')[:7]} when the host is quieter"
     if state == 'green':
-        return f"main green at {record.get('rev', '')[:7]}"
+        flaky = len(record.get('flaky') or [])
+        return f"main green at {record.get('rev', '')[:7]}" + (f' ({flaky} flaky)' if flaky else '')
     if state == 'running':
         return f"main check running on {record.get('rev', '')[:7]} ({int((now - record.get('started', now)) // 60)}m)"
     return ''
+
+
+if __name__ == '__main__':
+    rerun_failures(*sys.argv[1:])

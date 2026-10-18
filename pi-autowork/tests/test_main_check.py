@@ -1,7 +1,9 @@
 """Main's full offline check after a landing (TOOLSET-176-98)."""
+import json
 import os
 from pathlib import Path
 import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -18,10 +20,125 @@ class MainCheckTests(unittest.TestCase):
                'FAIL: test_core_plan (test_preflight.PreflightTests.test_core_plan)\n'
                'ERROR: test_bundle (test_ui_taste_bundle.UiTasteBundleTests.test_bundle)\n'
                'FAIL: test_core_plan (test_preflight.PreflightTests.test_core_plan)\n'
+               'UNEXPECTED SUCCESS: test_fixed (test_other.OtherTests.test_fixed)\n'
                'TIMEOUT: /repo/tests after 1800s\n')
         self.assertEqual(main_check.failures(log), ['test_preflight.PreflightTests.test_core_plan',
                                                      'test_ui_taste_bundle.UiTasteBundleTests.test_bundle',
-                                                     '/repo/tests (timed out)'])
+                                                     'test_other.OtherTests.test_fixed', '/repo/tests (timed out)'])
+
+    def test_reruns_are_alone_in_their_directory_and_bounded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tests = root / 'tests'
+            tests.mkdir()
+            (tests / 'test_sample.py').write_text(
+                'from pathlib import Path\nimport time, unittest\n'
+                'class Sample(unittest.TestCase):\n'
+                '    def test_pass(self): Path("ran").touch()\n'
+                '    def test_fail(self): self.fail("still broken")\n'
+                '    @unittest.skip("not exercised")\n'
+                '    def test_skip(self): pass\n'
+                '    def test_slow(self): time.sleep(30)\n')
+            log, receipt = root / 'check.log', root / 'reruns.json'
+            for ids, want in [(['test_pass', 'test_fail', 'test_skip', 'test_slow'], ['test_pass']),
+                              ([f'test_missing_{i}' for i in range(10)] + ['test_pass'], [])]:
+                with self.subTest(ids=ids):
+                    (tests / 'ran').unlink(missing_ok=True)
+                    log.write_text('CHECK tests (1 modules)\n' + ''.join(
+                        f'FAIL: {name} (test_sample.Sample.{name})\n' for name in ids)
+                        + 'Ran 4 tests in 0.01s\n\nFAILED (failures=4)\n')
+                    main_check.rerun_failures(log, root, receipt, 'abc123', timeout=1)
+                    self.assertEqual(json.loads(receipt.read_text())['flaky'],
+                                     [f'test_sample.Sample.{name}' for name in want])
+                    self.assertEqual((tests / 'ran').exists(), bool(want))
+                    self.assertFalse((root / 'ran').exists())
+
+    def test_three_distinct_flaky_revisions_make_one_hardening_trigger(self):
+        from pi_autowork import maintainer
+        from pi_autowork.coordinator import Coordinator
+
+        test_id = 'test_sample.Sample.test_pass'
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo = Path(tmp), tmp
+            runner.maintain = lambda **_: None
+            (runner.state / 'main-check.exit').write_text('1\n')
+            (runner.state / 'main-check.log').write_text(f'FAIL: test_pass ({test_id})\n')
+            record = {}
+            for rev, count in [('a', 1), ('a', 1), ('b', 2), ('c', 3), ('d', 3)]:
+                (runner.state / 'main-check-reruns.json').write_text(json.dumps({'rev': rev, 'flaky': [test_id]}))
+                runner.finish_main_check(dict(record, rev=rev))
+                record = main_check.read(runner.state)
+                self.assertEqual(record['state'], 'green')
+                self.assertEqual(len(record['flaky_history'][test_id]), count)
+                found = maintainer.triggers([], record,
+                    reported_flakes=maintainer.last(runner.state).get('flaky_tests', []))
+                self.assertEqual(len(found), int(rev == 'c'))
+                if found:
+                    self.assertEqual(found[0][:2], ('MAIN', 'flaky test'))
+                    self.assertIn(test_id, maintainer.prompt(found, '/repo', 'goals.py'))
+                    maintainer.remember(runner.state, trigger_key=maintainer.key(found),
+                                        found=found, outcome='merged')
+
+    def test_flaky_batches_handle_overflow_without_repeating_main_repairs(self):
+        from pi_autowork import maintainer
+        from pi_autowork.coordinator import Coordinator
+
+        for count, acknowledged, red, calls in [(1, 0, True, 1), (12, 12, True, 1),
+                                                 (13, 12, False, 1), (12, 0, True, 2)]:
+            with self.subTest(count=count, acknowledged=acknowledged), tempfile.TemporaryDirectory() as tmp:
+                runner = Coordinator.__new__(Coordinator)
+                runner.state, runner.repo, runner.integ, runner.stop = Path(tmp), tmp, tmp, False
+                runner.in_flight = runner.session_busy = lambda: False
+                runner.scratch_checkout, runner.drop_scratch = lambda _: tmp, lambda _: None
+                runner.goals, runner.verify_timeout = 'goals.py', 1
+                prompts = []
+                runner.pi_job = lambda *args: (not prompts.append(args[3]), '')
+                history = {f'test_sample.Sample.test_{i:02}': ['a', 'b', 'c'] for i in range(count)}
+                if acknowledged:
+                    previous = dict(list(history.items())[:acknowledged])
+                    found = maintainer.triggers([], {'flaky_history': previous})
+                    maintainer.remember(runner.state, trigger_key=maintainer.key(found),
+                                        found=found, outcome='merged')
+                main_check.write(runner.state, dict(state='red' if red else 'green', flaky_history=history,
+                                                   failures=['test_other.Other.test_broken'] if red else []))
+                with patch('pi_autowork.coordinator.dirty', return_value=False):
+                    for _ in range(3):
+                        runner.maintain(main_only=True)
+                self.assertEqual(len(prompts), calls)
+                if red:
+                    self.assertIn('(main red)', prompts[-1])
+
+    def test_unfinished_or_wrong_revision_reruns_cannot_excuse_main(self):
+        from pi_autowork.coordinator import Coordinator
+
+        test_id = 'test_sample.Sample.test_pass'
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tests = root / 'tests'
+            tests.mkdir()
+            (tests / 'test_sample.py').write_text(
+                'import os, unittest\nclass Sample(unittest.TestCase):\n'
+                '    def test_pass(self): self.assertNotIn("FULL_RUN", os.environ)\n'
+                '    @unittest.expectedFailure\n    def test_unexpected(self): pass\n')
+            log = root / 'main-check.log'
+            receipt = root / 'main-check-reruns.json'
+            (root / 'main-check.exit').write_text('1\n')
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo = root, tmp
+            runner.maintain = lambda **_: None
+            for modules in [1, 2]:
+                with self.subTest(modules=modules), log.open('w') as output:
+                    # modules=2 represents another process dying without a summary.
+                    output.write(f'CHECK tests ({modules} modules)\n')
+                    output.flush()
+                    subprocess.run([sys.executable, '-m', 'unittest', 'test_sample'], cwd=tests,
+                                   env=dict(os.environ, FULL_RUN='1'), stdout=output, stderr=output, check=False)
+                main_check.rerun_failures(log, root, receipt, 'abc')
+                for revision in ['abc', 'different']:
+                    with self.subTest(revision=revision):
+                        runner.finish_main_check({'rev': revision})
+                        self.assertEqual(main_check.read(root)['state'], 'red')
 
     def test_alive_rejects_zombies_and_reused_pids(self):
         pid = os.fork()
@@ -86,6 +203,8 @@ class MainCheckTests(unittest.TestCase):
         self.assertEqual(main_check.line({'state': 'red', 'rev': 'abcdef123', 'failures': ['a', 'b']}),
                          'main red since abcdef1: 2 failing')
         self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123'}), 'main green at abcdef1')
+        self.assertEqual(main_check.line({'state': 'green', 'rev': 'abcdef123', 'flaky': ['a']}),
+                         'main green at abcdef1 (1 flaky)')
         self.assertEqual(main_check.line({'state': 'running', 'rev': 'abcdef123', 'started': 0}, now=600),
                          'main check running on abcdef1 (10m)')
         self.assertEqual(main_check.line({}), '')

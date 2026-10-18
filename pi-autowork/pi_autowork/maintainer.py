@@ -22,7 +22,7 @@ PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 
 
-def triggers(rows, main=None, findings=None):
+def triggers(rows, main=None, findings=None, reported_flakes=()):
     """[(task, kind, why)] the maintainer can act on: a hold with a planning cause, a task the
     engine will not run as written, or a red main (TOOLSET-176-98) as the item `MAIN`. Sorted,
     so the same queue gives the same set."""
@@ -31,6 +31,9 @@ def triggers(rows, main=None, findings=None):
         commits = '; '.join((main.get('commits') or [])[:10]) or 'unknown'
         found.append(('MAIN', 'main red', f"failing: {', '.join(main.get('failures') or [])}; commits since the last "
                                          f"green main: {commits}"[:900]))
+    for test_id, revisions in ((main or {}).get('flaky_history') or {}).items():
+        if len(set(revisions)) >= 3 and test_id not in reported_flakes:
+            found.append(('MAIN', 'flaky test', f'{test_id}; flaky on revisions: {", ".join(revisions[:3])}'))
     for row in rows:
         task, state, reason = row.get('task'), row.get('state'), ' '.join(str(row.get('reason') or '').split())
         if not task:
@@ -66,7 +69,10 @@ PROMPT = (
     'an ambiguous contract; correct Touches, Checks or Dependencies (a worker that names the exact files '
     'it needs is evidence); fill a missing required field from the task\'s own sources; split an oversized '
     'task; supersede a duplicate with python3 {goals} supersede; re-sort to unblock a dependency chain '
-    '(never above the owner\'s first tasks in Now). For MAIN (main fails its full offline check): unless an '
+    '(never above the owner\'s first tasks in Now). For MAIN (flaky test): the test failed in the full run '
+    'but passed alone on three different revisions. Unless an open task already covers it, add one test-hardening '
+    'task with those revisions as Evidence; investigate isolation, resource load and fixture timing, not a '
+    'product-code repair. Main is not red for a flaky test. For MAIN (main red, main fails its full offline check): unless an '
     'open task already covers those failures, add one repair task first in Now with python3 {goals} add-task '
     'and write its entry with the failing tests and the commits as Evidence, Touches from the failing tests '
     'and the files those commits changed, and the full check as its Checks. For review findings (the last '
@@ -102,11 +108,16 @@ RETRYABLE = 'refused: it conflicts with the session'
 TRIES = 2
 
 
-def due(state, trigger_key):
+def due(state, trigger_key, found=None):
     """Whether this trigger set still needs a run: a new set, or one whose last run was refused
     only because the session moved under it, tried fewer than TRIES times (one runner stalled
     for hours: the same set never reran after such a refusal)."""
     run = last(state)
+    # Acknowledged flakes disappear from the next prompt. A remaining subset of
+    # the last presented batch was already handled, but omitted overflow was not.
+    if (found and run.get('outcome') != RETRYABLE
+            and all(key([item]) in run.get('handled_triggers', []) for item in found)):
+        return False
     if run.get('key') != trigger_key:
         return True
     return run.get('outcome') == RETRYABLE and int(run.get('tries') or 1) < TRIES
@@ -117,6 +128,13 @@ def remember(state, *, trigger_key, found, outcome, changed=(), now=None):
     tries = int(previous.get('tries') or 1) + 1 if previous.get('key') == trigger_key else 1
     value = dict(role=ROLE, key=trigger_key, at=time.time() if now is None else now, outcome=outcome,
                  triggers=[task for task, _, _ in found], changed=list(changed), tries=tries)
+    if any(task == 'MAIN' for task, _, _ in found):
+        value['handled_triggers'] = [key([item]) for item in found]
+    flaky_tests = set(previous.get('flaky_tests') or [])
+    if outcome != RETRYABLE:
+        flaky_tests.update(why.split('; flaky on revisions:')[0] for _, kind, why in found if kind == 'flaky test')
+    if flaky_tests:
+        value['flaky_tests'] = sorted(flaky_tests)
     path = record_path(state)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(value) + '\n')
