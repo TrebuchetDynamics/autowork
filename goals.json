@@ -1101,14 +1101,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-206-0c",
-      "section": "Now",
-      "status": "open",
-      "title": "A held commit whose entry changed only in Touches is verified again, not set aside and redone"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-207-e4",
       "section": "Now",
       "status": "open",
@@ -2515,6 +2507,14 @@
       "section": "Done",
       "status": "done",
       "title": "A fresh attempt is told about its task's earlier work on set-aside branches and may build on it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-206-0c",
+      "section": "Done",
+      "status": "done",
+      "title": "A held commit whose entry changed only in Touches is verified again, not set aside and redone"
     },
     {
       "depends_on": [

@@ -74,22 +74,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to selection rules or priorities.
 - Planner's call: high in Now: the largest queues are the slowest and the most wrongly displayed, and every runner pays this every cycle.
 
-### TOOLSET-206-0c — A held commit whose entry changed only in Touches is verified again, not set aside and redone
-
-- [ ] TOOLSET-206-0c — A held commit whose entry changed only in Touches is verified again, not set aside and redone
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [rescope](skills/autowork/scripts/parallel_state.py) (`rescopable`: once per slot, `rescoped`), [retry order](skills/autowork/scripts/parallel_integrate.py) (`retry_held`: rescope, then reoffer, ..., then `entry_changed` runs fresh and sets the work aside).
-- Evidence (2026-10-18, this repository's runner): TOOLSET-189-96's commit was held for one file outside Touches, a test it adjusted while merging main; the runner had already widened its Touches once from evidence, so it asked the owner. The owner session answered by adding that file to the entry's Touches. Because the slot was already `rescoped`, `rescopable` refused, and `entry_changed` ran the task fresh, setting the commit aside as `autowork/TOOLSET-189-96-set-aside-1`: an hour of worker time redone for a one-line answer.
-- Touches: skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
-- Scope: (1) When a held commit's entry changed and the only changed field is `Touches:` (or the `Touches widened ...` lines), and the commit's outside files are now covered, the commit is verified again (`RESCOPED`) regardless of an earlier automatic rescope; the once-per-slot limit applies only to the runner's own widening. (2) Any change to Scope, Acceptance, Checks or Dependencies keeps today's fresh run. (3) The journal records which fields changed.
-- Acceptance: In a fixture, a commit held for scope after one automatic rescope, whose entry then gains the outside file in Touches and nothing else, is reverified and integrates with the same commit and attempt and no set-aside branch; an entry whose Acceptance changed runs fresh as today.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No more automatic widening than today.
-- Planner's call: high in Now: the usual answer to a scope question is exactly this edit, and today it throws the work away.
-
 ### TOOLSET-204-f2 — The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky
 
 - [ ] TOOLSET-204-f2 — The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky
