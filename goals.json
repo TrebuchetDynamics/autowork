@@ -1077,14 +1077,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-199-2d",
-      "section": "Now",
-      "status": "open",
-      "title": "A task whose Ownership needs the owner or live authorization is never dispatched unattended"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-200-c1",
       "section": "Now",
       "status": "open",
@@ -2499,6 +2491,14 @@
       "section": "Done",
       "status": "done",
       "title": "An answered question stays answered: a task entry that names its holder ends the claim question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-199-2d",
+      "section": "Done",
+      "status": "done",
+      "title": "A task whose Ownership needs the owner or live authorization is never dispatched unattended"
     },
     {
       "depends_on": [],
