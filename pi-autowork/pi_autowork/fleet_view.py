@@ -760,8 +760,15 @@ class Readiness:
 REQUIRED = ('TODO.md', 'goals.json')
 
 
+def uncommitted_planning(repo, base, required=REQUIRED):
+    """Planning inputs absent from the base tree, even if they exist in the checkout."""
+    return [name for name in required if subprocess.run(
+        ['git', '-C', str(repo), 'cat-file', '-e', f'{base}:{name}'],
+        capture_output=True, timeout=10).returncode]
+
+
 def readiness(path):
-    """A repository root with TODO.md and goals.json on its main branch is ready."""
+    """A repository root with TODO.md and goals.json committed on its main branch is ready."""
     path = str(Path(path).expanduser())
     out = Readiness(path=path)
     if not Path(path).is_dir():
@@ -783,6 +790,8 @@ def readiness(path):
     out.branch = branch
     if branch not in ('main', 'master'):
         out.problems.append('main checked out' if branch else 'a branch (HEAD is detached)')
+    elif not any(name in out.problems for name in REQUIRED) and uncommitted_planning(out.repo, branch):
+        out.problems.append(f'commit TODO.md and goals.json on {branch} first')
     out.ready = not out.problems
     return out
 
@@ -796,6 +805,8 @@ def how_to_fix(ready):
         elif problem == 'goals.json':
             hints.append('Create goals.json from TODO.md: /docs-sync, or '
                          'python3 <toolset>/skills/docs-sync/scripts/goals.py init <repo> --intent JSON.')
+        elif problem.startswith('commit TODO.md and goals.json on '):
+            hints.append(problem)
         elif problem.startswith('main checked out') or problem.startswith('a branch'):
             hints.append(f'Check out main in {ready.repo}: the runner works only from the main branch checkout.')
         elif problem.startswith('its repository root'):

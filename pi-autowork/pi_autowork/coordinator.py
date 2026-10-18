@@ -21,7 +21,7 @@ import sys
 import tempfile
 import time
 
-from . import health, janitor, main_check, maintainer, pi_runtime, questions, release, touches_inference, worker, workspaces
+from . import fleet_view, health, janitor, main_check, maintainer, pi_runtime, questions, release, touches_inference, worker, workspaces
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
@@ -287,7 +287,7 @@ class Coordinator:
     snapshot = None  # (directory, monotonic time, engine status output)
 
     def status(self, directory=None):
-        where = str(directory or self.integ)
+        where = str(directory or self.integ or self.repo)
         cached = self.snapshot
         if cached and cached[0] == where and time.monotonic() - cached[1] < self.STATUS_FRESH:
             out = cached[2]
@@ -473,11 +473,32 @@ class Coordinator:
         if not git_ok(self.repo, 'show-ref', '--verify', '-q', f'refs/heads/{branch}'):
             session.unlink(missing_ok=True)
             return False
+        canonical = str(workspaces.task_path(self.toolset, self.repo, branch.replace('/', '-')))
+        if Path(path).is_dir() and Path(path).resolve() != Path(canonical).resolve():
+            if read_only:
+                return False
+            own = git(self.repo, 'rev-list', '--count', f'{self.base}..{branch}')
+            # Git's worktree removal also deletes ignored files: they are still local work.
+            contents = git(path, 'status', '--porcelain', '--untracked-files=all', '--ignored')
+            if own == '0' and contents == '':
+                if not git_ok(self.repo, 'worktree', 'remove', path):
+                    raise Finish(1, f'Cannot retire the old integration worktree at {path}')
+                git(self.repo, 'branch', '-q', '-d', branch)
+                session.unlink(missing_ok=True)
+                LOG.say(f'Retired session {branch} at {path}; recreating at the canonical location')
+                return False
+            Path(canonical).parent.mkdir(parents=True, exist_ok=True)
+            if not git_ok(self.repo, 'worktree', 'move', path, canonical):
+                raise Finish(1, f'Cannot move the integration worktree from {path} to {canonical}; its work is kept')
+            LOG.say(f'Moved session {branch} from {path} to {canonical}; its work is kept')
+            path = canonical
+            value['path'] = path
+            session.write_text(json.dumps(value) + '\n')
         if not Path(path).is_dir():
             if read_only:
                 return False
             self.forget_missing_worktree(path)
-            path = str(workspaces.task_path(self.toolset, self.repo, branch.replace('/', '-')))
+            path = canonical
             if not git_ok(self.repo, 'worktree', 'add', '-q', path, branch):
                 raise Finish(1, f'Cannot restore the integration worktree for {branch}')
             value['path'] = path
@@ -505,8 +526,8 @@ class Coordinator:
 
     def end_session(self):
         """Only a clean, fully merged session is removed."""
-        if dirty(self.integ):
-            LOG.say(f'Session worktree {self.integ} has uncommitted changes; keeping it and {self.integ_branch}')
+        if git(self.integ, 'status', '--porcelain', '--untracked-files=all', '--ignored') != '':
+            LOG.say(f'Session worktree {self.integ} has uncommitted or ignored files; keeping it and {self.integ_branch}')
             return False
         if not git_ok(self.repo, 'worktree', 'remove', self.integ):
             return False
@@ -1529,8 +1550,8 @@ class Coordinator:
             else:
                 LOG.say(f'{task}: could not set aside: {result.get("reason") or result.get("outcome")}')
 
-    def health_update(self):
-        snapshot = self.status()
+    def health_update(self, snapshot=None):
+        snapshot = self.status() if snapshot is None else snapshot
         paused = int(time.time() + self.pause_until - time.monotonic()) if self.pause_until > time.monotonic() else 0
         # Commits that only wait for another session to leave the main checkout are no progress.
         waiting = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')
@@ -1549,7 +1570,8 @@ class Coordinator:
             return
         if line:
             LOG.warn(line)
-        self.update_questions(snapshot)
+        if not self.runner_blocker.startswith('planning files are not committed on '):
+            self.update_questions(snapshot)
 
     def update_questions(self, snapshot):
         """Keep the owner's questions in BLOCKERS.md (TOOLSET-120-fc 2): built without a model,
@@ -1693,6 +1715,62 @@ class Coordinator:
         self.health_update()
         self.pause(self.interval)
 
+    def planning_ready(self):
+        """A session sees the committed base, not the owner's untracked planning files."""
+        # The direct CLI also supports TODO-only repositories (unlike service readiness).
+        # Once an index exists on disk it too must reach the committed base before dispatch.
+        required = ('TODO.md', 'goals.json') if (Path(self.repo) / 'goals.json').exists() else ('TODO.md',)
+        missing = fleet_view.uncommitted_planning(self.repo, self.base, required)
+        path = Path(self.repo) / 'BLOCKERS.md'
+        old = path.read_text() if path.exists() else None
+        new = questions.update_planning(old, self.base if missing else None)
+        receipt = self.state / 'planning-question.json'
+        try:
+            previous = json.loads(receipt.read_text())
+        except (OSError, ValueError):
+            previous = None
+        if missing and previous and old == previous.get('before'):
+            # The receipt may have reached disk just before a crash prevented the question
+            # write. Reuse its exact text (including Since), so later restoration matches.
+            new = previous['written']
+        if missing and new != old and previous is None:
+            # On recovery restore exactly what preceded our question, even across a restart.
+            # Empty markers left behind here would block the session's next BLOCKERS.md merge.
+            receipt.write_text(json.dumps({'before': old, 'written': new}) + '\n')
+        elif not missing:
+            committed = git(self.repo, 'show', f'{self.base}:BLOCKERS.md') or ''
+            if 'RUNNER-PLANNING' in questions.previous_since(committed):
+                # The owner may have committed our question along with the plan. Let the
+                # session remove it through the usual questions commit, not a dirty main edit.
+                new = old
+            elif previous and old == previous.get('written'):
+                new = previous['before']
+        if new != old:
+            if new is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(new)  # never commit the owner's files to bootstrap a runner
+        if not missing:
+            # A crash before restoration must leave the receipt for the next start.
+            receipt.unlink(missing_ok=True)
+            if self.runner_blocker.startswith('planning files are not committed on '):
+                self.runner_blocker = ''
+                self.last_waiting = ''
+            return True
+        blocker = f'planning files are not committed on {self.base}'
+        if self.mode != 'continuous':
+            raise Finish(4, f'{blocker}; commit TODO.md and goals.json on {self.base} first')
+        if self.last_waiting != 'planning:' + blocker:
+            LOG.say(f'Runner blocked: {blocker}; commit TODO.md and goals.json on {self.base} first')
+        self.last_waiting = 'planning:' + blocker
+        self.runner_blocker = blocker
+        snapshot = self.status(directory=self.repo)
+        if snapshot.get('outcome') != 'PARALLEL_STATUS':
+            snapshot = {'outcome': 'PARALLEL_STATUS', 'tasks': [], 'roots': []}
+        self.health_update(snapshot)
+        self.pause(self.interval)
+        return False
+
     def cycle(self):
         self.plan_seen = self.plan_signature()
         if self.stop:
@@ -1700,6 +1778,8 @@ class Coordinator:
         if not self.draining and not self.in_flight():
             self.update_toolset()
         self.restart_if_updated()
+        if not self.planning_ready():
+            return
         self.ensure_session()
         if not self.seen.get('synced-at-start'):
             self.seen['synced-at-start'] = True

@@ -46,6 +46,9 @@ async def main():
             subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
             for f in files:
                 (repo / f).write_text('x\n')
+            subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                            'commit', '-qm', 'planning'], check=True)
         calls, slow = [], {'seconds': 0}
 
         def run(argv, **kwargs):

@@ -102,11 +102,20 @@ def service_path(env):
     """This login's PATH without uv's temporary environments. Installing from the TUI, which
     runs inside `uv run`, saved them first in PATH; uv deletes them later, and the runner's
     `python3` then named a file that no longer existed."""
-    cache = Path(env.get('UV_CACHE_DIR') or Path(env.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'uv')
-    cache = cache.resolve()
-    kept = [part for part in env.get('PATH', '').split(os.pathsep)
-            if part and not Path(os.path.abspath(part)).resolve().is_relative_to(cache)]
-    return os.pathsep.join(dict.fromkeys(kept))
+    caches = {Path.home() / '.cache/uv', Path(env.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'uv'}
+    if env.get('UV_CACHE_DIR'):
+        caches.add(Path(env['UV_CACHE_DIR']))
+    caches = {cache.resolve() for cache in caches}
+    kept = []
+    for part in env.get('PATH', '').split(os.pathsep):
+        path = Path(part).absolute()
+        resolved = path.resolve()
+        if (not part or not path.is_dir() or any(resolved.is_relative_to(cache) for cache in caches)
+                or any(p.startswith('.tmp') for p in (*path.parts, *resolved.parts))):
+            continue
+        if part not in kept:
+            kept.append(part)
+    return os.pathsep.join(kept)
 
 
 def _escape(*args):
@@ -168,7 +177,14 @@ def run(action, *, repo, base, script, workers, state_root, hermes_jobs, argv0):
     tmp.write_text(UNIT.format(env_dir=env_dir, script=script))
     os.replace(tmp, unit_dir / 'pi-autowork@.service')
     # The service sees this login's PATH (Pi, Node, Flutter and other tools); credentials stay in Pi.
-    lines = [f'PI_AUTOWORK_REPO={repo}', f'PATH={service_path(env)}']
+    path = service_path(env)
+    original = env.get('PATH', '').split(os.pathsep)
+    dropped = [part for part in dict.fromkeys(original)
+               if part not in path.split(os.pathsep) or original.count(part) > 1]
+    if dropped:
+        print('Dropped from the service PATH (missing, temporary or duplicate entries): '
+              + ', '.join(part or '(empty entry)' for part in dropped))
+    lines = [f'PI_AUTOWORK_REPO={repo}', f'PATH={path}']
     if env.get('PI_AUTOWORK_ALLOW_HERMES', '0') == '1':
         lines.append('PI_AUTOWORK_ALLOW_HERMES=1')
     if env.get('PI_AUTOWORK_NO_FALLBACK', '0') == '1':

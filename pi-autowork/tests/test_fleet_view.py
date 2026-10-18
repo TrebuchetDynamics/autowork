@@ -111,6 +111,12 @@ class FleetViewTests(unittest.TestCase):
         self.assertIn('Create goals.json from TODO.md', ' '.join(fleet_view.how_to_fix(ready)))
         (repo / 'TODO.md').write_text('# TODO\n')
         (repo / 'goals.json').write_text('{}\n')
+        ready = fleet_view.readiness(repo)
+        self.assertFalse(ready.ready)
+        self.assertIn('commit TODO.md and goals.json on main first', ' '.join(fleet_view.how_to_fix(ready)))
+        subprocess.run(['git', '-C', str(repo), 'add', 'TODO.md', 'goals.json'], check=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qm', 'planning'], check=True)
         self.assertTrue(fleet_view.readiness(repo).ready)
         (repo / 'sub').mkdir()
         self.assertIn(f'its repository root ({repo})', fleet_view.readiness(repo / 'sub').problems)
