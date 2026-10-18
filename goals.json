@@ -719,7 +719,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-213-45",
+      "TOOLSET-161-17",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -732,7 +732,6 @@
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
-      "TOOLSET-161-17",
       "TOOLSET-172-40",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
