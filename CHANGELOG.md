@@ -7,6 +7,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/autowork update` keeps a profile's skill file that it edited and that conflicts with the release,
+  reports it by path (`Not updated, the profile edited them…`) and updates everything else. One
+  profile's conflicting `blockers` skill stopped the whole update, so no profile received releases.
+- `scripts/check.py` runs each test module in its own process, as many at once as the host has idle
+  CPUs (4 to 8), and spreads the runner suite over several processes: the full check takes about
+  3 minutes instead of 15. Tests no longer inherit the runner's own `PI_AUTOWORK_*` settings.
 - A runner busy with its own Pi job (DOCS-MAINTAINER, toolchain provisioning, merge resolution) says so:
   `autowork ls` and the runner view show it working on that job instead of `not cycling`, which its
   stale status read as while the loop waited (TOOLSET-177-d0).
