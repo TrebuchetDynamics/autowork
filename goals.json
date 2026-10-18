@@ -1099,14 +1099,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-203-7a",
-      "section": "Now",
-      "status": "open",
-      "title": "A finished main check is recorded even when its process is a zombie the runner never reaped"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-204-f2",
       "section": "Now",
       "status": "open",
@@ -2489,6 +2481,14 @@
       "section": "Done",
       "status": "done",
       "title": "An answered question stays answered: a task entry that names its holder ends the claim question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-203-7a",
+      "section": "Done",
+      "status": "done",
+      "title": "A finished main check is recorded even when its process is a zombie the runner never reaped"
     },
     {
       "depends_on": [],

@@ -3352,3 +3352,24 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No automatic merging of set-aside work; no change to when work is set aside.
 - Planner's call: high in Now: tasks whose plans say "keep the earlier candidate" loop on blockers until a person digs the branch out by hand.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-203-7a — A finished main check is recorded even when its process is a zombie the runner never reaped
+
+- [x] TOOLSET-203-7a — A finished main check is recorded even when its process is a zombie the runner never reaped
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [main check](pi-autowork/pi_autowork/main_check.py) (`alive`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`check_main` starts the check with `Popen` and polls `alive(record['pid'])`; `reexec` drops the `Popen` object).
+- Evidence (2026-10-18, this repository's runner): `main_check.json` said `running` on one revision for 31 minutes although its log already ended `Offline result: 4 test directories passed; 1 failed` and `main-check.exit` was written; `ps` showed the check's bash as `<defunct>`, a child of the runner. `alive()` is `os.kill(pid, 0)`, which succeeds on a zombie, and nothing reaps the child: the runner re-executed in place (reload or self-update) after starting it, so no `Popen` object waits on it any more. Main's status stays frozen (still red from the previous revision) until the runner restarts, and no next revision is checked.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_main_check.py, tests/test_pi_autowork.py
+- Scope: (1) `alive(pid)` is false for a zombie (`/proc/<pid>/stat` state `Z`) and for a pid that is not the recorded check (start time from `/proc/<pid>/stat` stored with it). (2) The coordinator reaps finished children it no longer holds a `Popen` for (`os.waitpid(pid, os.WNOHANG)` on the recorded check's pid, ignoring ECHILD), so no zombie stays. (3) A written `main-check.exit` is enough to finish the record, whatever `alive` says.
+- Acceptance: In a fixture, a runner that re-executes while its main check runs records that check's result (green or red) once the check ends, within one cycle, and leaves no defunct child; `alive` is false for a zombie in a unit test.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py; python3 -m unittest discover -s tests -p test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to what the main check runs or how it reports.
+- Planner's call: first in Now: a frozen main check hides both a red and a green main, and every reload can cause it.
