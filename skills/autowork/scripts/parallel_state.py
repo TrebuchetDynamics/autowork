@@ -470,10 +470,14 @@ def reconcile(repo, owner_pid):
                     target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
                     if requested := report_scope_request(common, slot):
                         updates.update(cause='scope_request', requested=requested)
-                elif dirty:
-                    target, updates = 'interrupted', {'reason': 'dead worker with uncommitted changes'}
                 else:
-                    target, updates = 'released', {'reason': EMPTY}
+                    target = 'interrupted' if dirty else 'released'
+                    reason = ('dead worker with uncommitted changes' if dirty else EMPTY)
+                    if slot.get('paused'):
+                        reason = f'stopped by a runner restart; resumes on attempt {slot["attempt"]}'
+                        if dirty:
+                            reason += ' with uncommitted changes'
+                    updates = {'reason': reason}
             if target != slot['state']:
                 slot = change(common, slot, target, updates)
             result.append(slot)

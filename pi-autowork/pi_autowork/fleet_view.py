@@ -153,7 +153,7 @@ def _phases(state_dir):
 
 
 PHASE_WORDS = ('waiting to integrate', 'set aside', 'verifying', 'implemented', 'integrating', 'integrated',
-               'running', 'pending', 'done', 'failed', 'held', 'closed')
+               'running', 'pending', 'paused', 'done', 'failed', 'held', 'closed')
 
 
 def _split_phase(text):
@@ -507,7 +507,7 @@ TASK_LINE = re.compile(r'^\[(\d\d:\d\d)\] (\S+): (\w+)\b')
 UNIT_LINE = re.compile(r'^(Starting|Started|Stopping|Stopped) pi-autowork@|^pi-autowork@\S+: ')
 BANNER = re.compile(r'^(PI AUTOWORK$|Repository: |Toolset: |Engine: |Primary: |Fallback: |Budget: |Mode: )')
 WORD_STYLES = {'done': 'green', 'integrated': 'green', 'failed': 'bold red', 'running': 'cyan',
-               'verifying': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan'}
+               'verifying': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan', 'paused': 'yellow'}
 
 
 def log_lines(text):

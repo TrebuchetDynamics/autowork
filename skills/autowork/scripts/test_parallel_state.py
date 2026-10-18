@@ -11,6 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import task_execution as execution
 import parallel_state as state
+import parallel_status as status
 
 
 class StateTests(unittest.TestCase):
@@ -112,6 +113,55 @@ class StateTests(unittest.TestCase):
         self.assertEqual(first, state.reconcile(self.repo, self.owner))
         self.assertEqual(journal, (self.common / 'journal.jsonl').read_bytes())
         self.assertTrue((Path(dirty['worktree']) / 'new').exists())
+        self.assertEqual(next(s for s in first if s['task_id'] == 'CLEAN')['reason'],
+                         'dead worker without a commit or changes')
+
+    def test_paused_workers_are_reaped_with_a_restart_reason_and_resume_the_same_attempt(self):
+        self.claim()
+        for attempt in (1, 2):
+            for dirty in (False, True):
+                with self.subTest(attempt=attempt, dirty=dirty):
+                    task = f'PAUSED-{attempt}-{dirty}'
+                    slot = self.slot(task)
+                    if attempt == 2:
+                        state.transition(self.repo, self.owner, task, 'released')
+                        state.transition(self.repo, self.owner, task, 'dispatched')
+                    worker = subprocess.Popen(['sleep', '30'], start_new_session=True)
+                    self.addCleanup(lambda p=worker: p.poll() is None and p.kill())
+                    state.transition(self.repo, self.owner, task, 'running',
+                                     worker=execution.identity(worker.pid))
+                    if dirty:
+                        (Path(slot['worktree']) / 'new').write_text('keep me')
+                    self.assertEqual(state.pause(self.repo, self.owner)['paused'], [task])
+                    worker.terminate()
+                    worker.wait(timeout=5)
+                    reaped = next(s for s in state.reconcile(self.repo, self.owner) if s['task_id'] == task)
+                    self.assertEqual(reaped['state'], 'interrupted' if dirty else 'released')
+                    self.assertEqual(reaped['reason'], f'stopped by a runner restart; resumes on attempt {attempt}'
+                                     + (' with uncommitted changes' if dirty else ''))
+                    resumed = state.transition(self.repo, self.owner, task, 'dispatched')
+                    self.assertEqual((resumed['attempt'], resumed['worktree']), (attempt, slot['worktree']))
+                    # Retire the fixture before pausing the next worker.
+                    state.transition(self.repo, self.owner, task, 'held')
+
+    def test_paused_status_keeps_one_row_with_its_waiting_reason_and_no_failure(self):
+        self.claim()
+        reason = 'stopped by a runner restart; resumes on attempt 1'
+        for task, phase, paused in (('A', 'released', True), ('DIRTY', 'interrupted', True),
+                                    ('DEAD', 'released', False), ('HELD', 'held', True)):
+            self.slot(task)
+            state.transition(self.repo, self.owner, task, phase, paused=paused, reason=reason)
+        state.event(self.common, 'dispatch_observed', waiting=[
+            dict(id='A', reason='overlapping paths with LIVE', blocked_by=['LIVE'])], max_workers=2)
+        snapshot = status.snapshot(self.repo)
+        self.assertEqual(snapshot['failed'], 2)  # unpaused death and a real hold still fail
+        rows = [row for row in snapshot['tasks'] if row['task'] == 'A']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['reason'], reason + '; waiting: overlapping paths with LIVE')
+        self.assertEqual(rows[0]['state'], 'released')  # display must not change engine transitions
+        rendered = status.render(snapshot)
+        self.assertRegex(rendered, r'A\s+paused\s')
+        self.assertRegex(rendered, r'DIRTY\s+paused\s')
 
     def test_transitions_retry_once_and_preserve_previous_attempt(self):
         self.claim()
@@ -163,7 +213,8 @@ class StateTests(unittest.TestCase):
         self.slot()
         state.transition(self.repo, self.owner, 'A', 'interrupted')
         state.transition(self.repo, self.owner, 'A', 'dispatched')
-        self.assertEqual(state.reconcile(self.repo, self.owner)[0]['state'], 'held')
+        held = state.reconcile(self.repo, self.owner)[0]
+        self.assertEqual((held['state'], held['cause']), ('held', 'empty'))
         journal = (self.common / 'journal.jsonl').read_bytes()
         state.reconcile(self.repo, self.owner)
         self.assertEqual(journal, (self.common / 'journal.jsonl').read_bytes())

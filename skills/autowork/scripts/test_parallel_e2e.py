@@ -100,7 +100,8 @@ class ABCWorkload:
 
     def cli(self, *args):
         p = subprocess.run([sys.executable, str(CLI), str(self.repo), *args], capture_output=True,
-                           text=True, timeout=40)
+                           text=True, timeout=40,
+                           env={**os.environ, 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0'})  # tiny fixture, not a model checkout
         if p.returncode:
             raise AssertionError(f'CLI {args}: {p.stdout}\n{p.stderr}')
         return json.loads(p.stdout)

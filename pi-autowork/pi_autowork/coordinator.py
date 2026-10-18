@@ -866,11 +866,11 @@ class Coordinator:
         raise Finish(code, text)
 
     # --- Coordinator -------------------------------------------------------------------
-    def note_state(self, task, state, reason='', quiet=False):
+    def note_state(self, task, state, reason='', quiet=False, *, paused=False):
         """Log each task's lifecycle change once. A waiting task is not news (the runner's
         one `No task can start now` line covers them), and states already reached when the
         runner started are not replayed (quiet)."""
-        word = lifecycle(state)
+        word = lifecycle(state, paused=paused)
         if self.seen.get(task) == word:
             return
         self.seen[task] = word
@@ -934,10 +934,6 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            # A worker that asked for files outside Touches this runner inferred: widen the
-            # guess and the engine resumes it in its worktree (not counted as a failure).
-            if state == 'interrupted' and row.get('paused'):
-                state = 'resuming'  # a deliberate stop or a granted request, not a failure
             if state == 'held' and row.get('cause') == 'scope_request' and not self.session_busy():
                 if self.seen.get('awaiting-' + task):
                     continue  # widened already: the next refill resumes it
@@ -948,7 +944,7 @@ class Coordinator:
                     and self.resolve_task_conflict(row)):
                 self.settled = True
                 continue
-            self.note_state(task, state, reason, quiet=not self.known_at_start)
+            self.note_state(task, state, reason, quiet=not self.known_at_start, paused=row.get('paused'))
             if task == self.once_task and state == 'held':
                 self.draining = True
             # Only a failure this run watched happen counts toward the streak; holds found
