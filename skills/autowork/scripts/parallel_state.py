@@ -300,18 +300,19 @@ def readoptable(slot):
             and str(first.get('reason', '')).startswith(SCOPE_HOLD))
 
 
-def rescopable(slot, touches):
-    """A first commit held only for files outside Touches that ``touches`` now covers.
+def rescopable(slot, touches, *, touches_only=False):
+    """A scope-held commit whose outside files are now covered.
 
-    Used once per slot (``rescoped``): the coordinator widened Touches it had
-    inferred itself, so the same commit may be verified again; integration still
-    checks every other slot's files and coordinator files.
+    The automatic offer is once per slot (``rescoped``). A new, Touches-only
+    contract answer may offer it again; integration still checks every other
+    slot's files, protected-file admission and coordinator files.
     """
     import parallel_plan
     outside = slot.get('outside') or []
     declared = parallel_plan.paths(touches) if touches.strip() else []
     return (slot['state'] == 'held' and slot.get('cause') == 'scope' and bool(slot.get('commit'))
-            and not slot.get('rescoped') and not worker_live(slot) and bool(outside) and bool(declared)
+            and (not slot.get('rescoped') or touches_only) and not worker_live(slot)
+            and bool(outside) and bool(declared)
             and not parallel_plan.overlap(outside, declared, [])['outside'])
 
 
@@ -336,10 +337,13 @@ def reoffer(common, old):
     return write_slot(common, value, old)
 
 
-def rescope(common, old, touches):
+def rescope(common, old, touches, *, contract=None):
     """Return a scope-held commit to ``reported``, judged by ``touches``. Caller holds writer.lock."""
     value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'outside')}
     value.update(state='reported', rescoped=True, touches=touches)
+    if contract is not None:
+        # Consume this answer without overwriting the original admission evidence.
+        value['rescoped_contract'] = contract.strip()
     return write_slot(common, value, old)
 
 

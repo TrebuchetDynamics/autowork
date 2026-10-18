@@ -890,6 +890,71 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result, {'outcome': 'RESCOPED', 'task': 'A', 'commit': commit, 'touches': 'A.txt, extra.py'})
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
 
+    def test_a_touches_only_answer_after_rescope_keeps_the_commit_and_attempt(self):
+        root, _ = self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n'})
+        module = self.module()
+        data = dispatch.data_dir(self.common, state.slots(self.common)[0])
+        # Older attempts recorded only their prompt, not contract.txt.
+        contract = execution.goals_module().task_bodies((self.repo / 'TODO.md').read_text())['A'][0][0]
+        (data / 'prompt.md').write_text('\nTask contract from TODO.md:\n\n' + contract.strip() + '\n')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
+        self.widen('A.txt, extra.py')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'RESCOPED')
+        # The candidate gains another outside file while resolving main, after the automatic rescope.
+        (root / 'other.py').write_text('y\n')
+        self.git('add', 'other.py', cwd=root)
+        self.git('commit', '-qm', 'resolved candidate', cwd=root)
+        commit = self.git('rev-parse', 'HEAD', cwd=root)
+        slot = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(slot, commit=commit), slot)
+        self.report(commit=commit, changed_files=['A.txt', 'extra.py', 'other.py'])
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outside'], ['other.py'])
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('Touches: A.txt, extra.py\n', 'Touches: A.txt, extra.py, other.py\n')
+                        .replace('  Status: open\n', '  Status: open\n'
+                                 '  Touches widened by the owner session (2026-10-18): other.py\n', 1))
+        self.git('commit', '-qam', 'owner covers the outside file')
+        result = module.retry_held(self.retry_args())
+        self.assertEqual((result['outcome'], result.get('commit')), ('RESCOPED', commit))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['commit'], slot['attempt'], slot['branch']), (commit, 1, 'autowork/A'))
+        self.assertFalse(self.git('branch', '--list', '*set-aside*'))
+        events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        changes = [e['changed_fields'] for e in events if e['event'] == 'task_entry_changed']
+        self.assertEqual(changes[-1], ['Touches', 'Touches widened by the owner session (2026-10-18)'])
+
+    def test_other_contract_answers_requeue_even_when_touches_cover_the_commit(self):
+        module = self.module()
+        for index, field in enumerate(('Scope', 'Acceptance', 'Checks', 'Dependencies')):
+            with self.subTest(field=field):
+                task = 'ABCD'[index]
+                todo = self.repo / 'TODO.md'
+                if task in 'CD':
+                    todo.write_text(todo.read_text() + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
+                                    f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                    '  Dependencies: None.\n  Status: open\n')
+                self.worker(task, files={task + '-extra.py': 'x\n'})
+                slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                contract = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
+                (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+                self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['cause'], 'scope')
+                slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                state.write_slot(self.common, dict(slot, rescoped=index % 2 == 1), slot)
+                revised = contract.replace(f'Touches: {task}.txt', f'Touches: {task}.txt, {task}-extra.py')
+                revised = revised.replace(field + ': ', field + ': revised ', 1)
+                todo.write_text(todo.read_text().replace(contract, revised, 1))
+                self.git('commit', '-qam', 'answer ' + task)
+                result = module.retry_held(self.retry_args())
+                try:
+                    self.assertEqual((result['outcome'], result.get('task')), ('REQUEUED', task))
+                    self.assertTrue(self.git('branch', '--list', 'autowork/' + task + '-set-aside-1'))
+                    events = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+                    changes = [e['changed_fields'] for e in events if e['event'] == 'task_entry_changed']
+                    self.assertEqual(changes[-1], sorted([field, 'Touches']))
+                finally:
+                    state.slot_path(self.common, task).unlink(missing_ok=True)
+
     def test_rescoping_needs_full_coverage_and_happens_once(self):
         self.worker(files={'A.txt': 'worker\n', 'extra.py': 'x\n', 'other.py': 'y\n'})
         module = self.module()
