@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Profiles that opted out of the runtime defaults (`apply_runtime_defaults: false`) still get the
+  bundle's Telegram menu entries: every profile had opted out, so `/blockers` was in no bot's menu.
+  Their approval, turn, injection and skill settings stay their own. `/autowork update` also deepens
+  a shallow plugin clone (a pinned Hermes install) instead of stopping on its fast-forward check.
 - `/autowork update` keeps a profile's skill file that it edited and that conflicts with the release,
   reports it by path (`Not updated, the profile edited them…`) and updates everything else. One
   profile's conflicting `blockers` skill stopped the whole update, so no profile received releases.
