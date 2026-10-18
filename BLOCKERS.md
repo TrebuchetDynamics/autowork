@@ -8,7 +8,7 @@ no extra approval step or execution authority.
 
 <!-- pi-autowork:questions:start -->
 
-### Q-TOOLSET-165-f7 — USER_DECISION — effort investigate — unblocks 1
+### Q-TOOLSET-165-f7 — USER_DECISION — effort investigate — unblocks 0
 
 - Task: TOOLSET-165-f7 — A runner's own worker processes never count as an outside session in the main checkout
 - Needs: missing, failed, stale or mismatched integration validation
