@@ -612,8 +612,8 @@ class Coordinator:
         no process holds them open for writing, commit them all before merging (planning
         files alone keep their planning message). Untracked files that look like secrets
         stay untracked; a merge, rebase or cherry-pick in progress is left alone.
-        With ``planning_only``, only planning files are committed, and only when nothing
-        else is uncommitted. Returns '' when committed or nothing was uncommitted, else why it waited."""
+        With ``planning_only``, only the planning files are committed; other uncommitted
+        changes stay for the next merge. Returns '' when committed or nothing was uncommitted, else why it waited."""
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
         for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'):
@@ -642,8 +642,13 @@ class Coordinator:
         except (ValueError, OSError):
             archive = None
         planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
-        if planning_only and not set(paths) <= planning:
-            return 'other uncommitted changes wait for a merge'
+        if planning_only:
+            # The planning files alone: the plan must reach the session while other work in the
+            # main checkout waits. One repository's TODO.md sat untracked beside edited docs, so
+            # its runner never had a plan, never a merge, and never committed either.
+            paths = [p for p in paths if p in planning]
+            if not paths:
+                return 'other uncommitted changes wait for a merge'
         quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
         files = [Path(self.repo) / p for p in paths]
         recent = [p for p, f in zip(paths, files) if f.exists() and time.time() - f.stat().st_mtime < quiet]
@@ -739,13 +744,32 @@ class Coordinator:
         """TOOLSET-188-75: a session whose tasks all run, wait or are held never closed one, so
         its planning commits (questions, maintainer repairs) stayed off main for hours. Land
         after such a commit, and every PI_AUTOWORK_LAND_EVERY seconds while ahead; running
-        workers do not wait it, a review or Pi job does."""
-        if not self.integ or self.integration or self.child:
+        workers do not wait it; a Pi job does, and so does a review unless no merge is needed."""
+        if not self.integ or self.child:
             return
-        if self.land_soon or time.monotonic() - self.landed_at >= self.land_every:
-            self.landed_at, self.land_soon = time.monotonic(), False
-            if self.ahead():
-                self.merge_main()
+        if not (self.land_soon or time.monotonic() - self.landed_at >= self.land_every):
+            return
+        if self.integration:  # a review runs, or its answer is not read yet
+            if self.session_busy() and self.land_beside_review():
+                self.landed_at, self.land_soon = time.monotonic(), False
+            return  # otherwise still due: it lands after the review
+        self.landed_at, self.land_soon = time.monotonic(), False
+        if self.ahead():
+            self.merge_main()
+
+    def land_beside_review(self):
+        """TOOLSET-190-bf: with the base already in the session, landing is a fast-forward of the
+        main checkout and a push; the session branch the review fast-forwards at its end is not
+        touched, so it need not wait for a review (one runner's 25-minute reviews ran back to
+        back and kept 14 planning commits off main). False when a merge would be needed."""
+        ahead = self.ahead()
+        if (not ahead or git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base
+                or not git_ok(self.repo, 'merge-base', '--is-ancestor', self.base, self.integ_branch)
+                or not git_ok(self.repo, 'merge', '--ff-only', '-q', self.integ_branch)):
+            return False
+        LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s)) beside the running review')
+        self.sync_upstream()
+        return True
 
     def commit(self, paths, *message):
         if self.session_busy():
@@ -1498,6 +1522,9 @@ class Coordinator:
         LOG.say(text)
         (self.state / 'runner.json').unlink(missing_ok=True)
         sys.stdout.flush()
+        # Ignored, not handled: exec keeps an ignored signal, so a reload sent while the new
+        # process starts cannot end it (systemd does not restart a unit SIGHUP ended).
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
         os.execv('/bin/bash', ['/bin/bash', self.cfg['script'], *self.cfg['argv']])
 
     # --- Main loop -------------------------------------------------------------------------

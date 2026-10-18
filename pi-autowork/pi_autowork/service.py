@@ -58,11 +58,28 @@ def runner_record(state_root, repo):
     return {}, None
 
 
+def active_workers(folder):
+    try:
+        return int(json.loads((Path(folder) / 'status.json').read_text()).get('active_workers') or 0)
+    except (OSError, ValueError, TypeError):
+        return 0
+
+
 def reload_in_place(systemctl, unit, state_root, repo, wait=None):
     """Reload a running runner without stopping its workers (TOOLSET-174-1d): SIGHUP to the
     main process, which re-executes in place at its next safe point. Returns (done, message);
     done is None when the runner predates reloading and must be restarted instead."""
     record, folder = runner_record(state_root, repo)
+    if not record:
+        # A runner re-executing (a reload or self-update a moment ago) has removed its record and
+        # not written the new one yet (TOOLSET-191-0a: such a runner was restarted, pausing its
+        # worker). The record it writes shows the current release and settings already.
+        end = time.monotonic() + float(os.environ.get('PI_AUTOWORK_RECORD_WAIT', '10'))
+        while not record and time.monotonic() < end:
+            time.sleep(0.25)
+            record, folder = runner_record(state_root, repo)
+        if 'reloads' in record:
+            return True, f'Reloaded {unit}; {active_workers(folder)} worker(s) kept running.'
     if 'reloads' not in record:
         return None, ''
     wait = float(os.environ.get('PI_AUTOWORK_RELOAD_WAIT', '150') if wait is None else wait)
@@ -72,11 +89,7 @@ def reload_in_place(systemctl, unit, state_root, repo, wait=None):
     while time.monotonic() < end:
         now, _ = runner_record(state_root, repo)
         if now.get('pid') == record['pid'] and int(now.get('reloads') or 0) > int(record['reloads']):
-            try:
-                workers = int(json.loads((folder / 'status.json').read_text()).get('active_workers') or 0)
-            except (OSError, ValueError, TypeError):
-                workers = 0
-            return True, f'Reloaded {unit}; {workers} worker(s) kept running.'
+            return True, f'Reloaded {unit}; {active_workers(folder)} worker(s) kept running.'
         if now.get('pid') and now['pid'] != record['pid']:
             return True, f'Restarted {unit} (its runner exited meanwhile); workers resume on the same attempt.'
         time.sleep(0.5)

@@ -574,6 +574,35 @@ class EngineTests(Fixture):
         runner.communicate(timeout=60)
         self.assertIn('A: integrated', log())
 
+    def test_reloads_sent_while_the_runner_re_executes_never_end_it(self):
+        """A SIGHUP sent while a runner re-executed, before its new handler existed, killed it,
+        and systemd left the unit dead because death by SIGHUP is a clean exit."""
+        (self.repo / 'TODO.md').write_text(todo([]))
+        self.git(self.repo, 'commit', '-qam', 'nothing queued')
+        runner = self.start_runner('--interval', '300')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 60
+        while 'Queue empty; checking again in 300s' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGHUP)
+        while 'Reloading' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.05)
+        for _ in range(40):  # through the shell and Python start-up of the re-executed runner
+            self.assertIsNone(runner.poll(), log())
+            runner.send_signal(signal.SIGHUP)
+            time.sleep(0.05)
+        while log().count('Started (PID') < 2:
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        time.sleep(2)
+        self.assertIsNone(runner.poll(), log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+
     def test_a_reload_during_a_review_waits_until_its_answer_is_read(self):
         """TOOLSET-187-1d: a reload deferred behind a review re-executed as the review ended and
         lost its answer; the task failed as an abandoned integration and ran again."""
@@ -1469,7 +1498,7 @@ class EngineTests(Fixture):
         text = (self.repo / 'TODO.md').read_text()
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
-        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '600'
         runner = self.start_runner('--interval', '1')
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
@@ -1477,13 +1506,20 @@ class EngineTests(Fixture):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.2)
         (self.repo / 'TODO.md').write_text(text)  # the owner's answer, left uncommitted
+        os.utime(self.repo / 'TODO.md', (time.time() - 700,) * 2)  # quiet for longer than 600 s
+        # Beside other work still being edited: one repository's plan never reached its runner,
+        # because those files kept the planning-only commit from running at all.
+        (self.repo / 'notes.md').write_text('work in progress\n')
         deadline = time.monotonic() + 60
         while not self.done('A'):
             self.assertLess(time.monotonic(), deadline, 'runner never saw the uncommitted answer')
             time.sleep(0.5)
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
-        self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
+        planning = self.git(self.repo, 'log', '--format=%H', '--grep', '^docs(tasks): owner planning (pi-autowork)')
+        self.assertTrue(planning, self.git(self.repo, 'log', '--format=%s'))
+        self.assertEqual(self.git(self.repo, 'show', '--format=', '--name-only', planning.split()[-1]), 'TODO.md')
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain', '--', 'notes.md'), '?? notes.md')
 
     def origin(self):
         """A bare upstream for main, as a real repository has."""
