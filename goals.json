@@ -730,7 +730,8 @@
         "TOOLSET-229-d0",
         "TOOLSET-230-bf",
         "TOOLSET-231-49",
-        "TOOLSET-232-01"
+        "TOOLSET-232-01",
+        "TOOLSET-233-ba"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -738,6 +739,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-233-ba",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
       "TOOLSET-223-8e",
@@ -1253,6 +1255,14 @@
       "section": "Now",
       "status": "open",
       "title": "A worker never stops for a full-check failure it did not cause: it commits, and the runner's gate judges it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-233-ba",
+      "section": "Now",
+      "status": "open",
+      "title": "The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review"
     },
     {
       "depends_on": [],
