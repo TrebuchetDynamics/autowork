@@ -31,7 +31,8 @@
         "TOOLSET-123-de",
         "TOOLSET-143-62",
         "TOOLSET-172-92",
-        "TOOLSET-215-91"
+        "TOOLSET-215-91",
+        "TOOLSET-217-2d"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -713,7 +714,8 @@
         "TOOLSET-212-0d",
         "TOOLSET-213-45",
         "TOOLSET-214-5b",
-        "TOOLSET-215-a8"
+        "TOOLSET-215-a8",
+        "TOOLSET-216-08"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1121,6 +1123,22 @@
       "section": "Now",
       "status": "open",
       "title": "Bundle skills load read-only from the plugin, so the skill review never edits them"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-216-08",
+      "section": "Now",
+      "status": "open",
+      "title": "Landing merges past someone's uncommitted planning edits, and quiet means unchanged content"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-217-2d",
+      "section": "Now",
+      "status": "open",
+      "title": "/autowork update also refreshes this host's other installs through install.sh"
     },
     {
       "depends_on": [],
