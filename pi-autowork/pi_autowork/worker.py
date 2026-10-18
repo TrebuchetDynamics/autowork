@@ -56,9 +56,13 @@ def worker(state, worktree, prompt_file, report, limit):
     prompt = Path(prompt_file).read_text()
     task = (re.search(r'^Task: (.*)$', prompt, re.M) or [None, ''])[1]
     attempt = Path(report).parent.name
+    session = f'pi-autowork-{safe_name(task)}-{attempt}'
+    # The engine captures unfinished tool calls before stopping a timed-out worker.
+    Path(report).with_name('session.json').write_text(json.dumps({
+        'directory': str(Path(state).resolve() / 'sessions'), 'id': session}))
     result = pi_runtime.job(pi_runtime.Settings(state), 'worker', task, worktree,
                             f'Follow the instructions in this file exactly: @{prompt_file}',
-                            f'pi-autowork-{safe_name(task)}-{attempt}', limit, [f'@{prompt_file}'])
+                            session, limit, [f'@{prompt_file}'])
     return 0 if result['ok'] and Path(report).is_file() else 1
 
 

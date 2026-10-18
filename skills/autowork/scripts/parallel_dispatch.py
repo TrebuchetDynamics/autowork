@@ -5,6 +5,7 @@ worktree as its working directory. Its process identity is the slot's proof of
 life, so a live worker is never replaced or duplicated. Templates never add
 flags that bypass host approvals or sandboxes.
 """
+from datetime import datetime
 import errno
 import hashlib
 import json
@@ -178,7 +179,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '- Tests: add or extend at most one focused test per behavior you change, at its public seam,',
         '  preferably as a new case in an existing test; none for docs, config or renames, and none that',
         '  repeats an existing case. Keep each test small. While working run the focused tests and the',
-        '  task\'s Checks, not the whole suite after every edit.',
+        '  task\'s Checks, not the whole suite after every edit. Run focused modules through the',
+        '  repository\'s sharded check runner when available (for example: python3 scripts/check.py PATH ...).',
+        '  Run the full offline gate once, at the end, after focused checks pass.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
         '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
         '  holds the task). Put every temporary file and copy under $TMPDIR, never directly under',
@@ -399,6 +402,46 @@ def stop(worker, worktree=None):
             time.sleep(0.05)
 
 
+def timeout_activity(common, slot, now):
+    """An unfinished Pi tool call, captured before stop can append an aborted result.
+
+    The Pi worker records its session directory/id beside its report. Other hosts,
+    old workers and unreadable or partially written sessions simply add no detail.
+    """
+    try:
+        session = execution.read(data_dir(common, slot) / 'session.json') or {}
+        files = [p for p in Path(session['directory']).iterdir()
+                 if p.name.endswith('_' + session['id'] + '.jsonl')]
+        if not files:
+            return ''
+        active = {}
+        with max(files, key=lambda p: p.stat().st_mtime).open(errors='replace') as stream:
+            for line in stream:
+                try:
+                    event = json.loads(line)
+                    message = event.get('message') or {}
+                    if message.get('role') == 'toolResult':
+                        active.pop(message.get('toolCallId'), None)
+                    elif message.get('role') == 'assistant':
+                        for part in message.get('content') or []:
+                            if part.get('type') == 'toolCall' and part.get('id'):
+                                active[part['id']] = (part, event.get('timestamp'))
+                except (ValueError, TypeError, AttributeError):
+                    continue  # A session can end mid-write at the deadline.
+        if not active:
+            return ''
+        part, stamp = next(reversed(active.values()))
+        arguments = part.get('arguments') or {}
+        if isinstance(arguments, str):
+            arguments = json.loads(arguments)
+        command = arguments.get('command') or arguments.get('path') or part.get('name', 'tool')
+        command = ' '.join(str(command).split())[:120]
+        age = max(0, int(now - datetime.fromisoformat(stamp.replace('Z', '+00:00')).timestamp()))
+        return f' while running ({age // 60} min): {command}'
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError):
+        return ''
+
+
 def enforce_timeouts(repo, owner_pid, common, default_timeout):
     """Each worker keeps the timeout it was started with (saved in its meta.json)."""
     stopped = []
@@ -406,9 +449,10 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
         limit = meta(common, slot).get('worker_timeout', default_timeout)
         if (slot['state'] in ('dispatched', 'running') and state.worker_live(slot)
                 and time.time() - slot['started_at'] > limit):
+            activity = timeout_activity(common, slot, time.time())
             stop(slot['worker'], slot['worktree'])
             stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
-                                            reason=f'worker timeout after {limit:g} s'))
+                                            reason=f'worker timeout after {limit:g} s' + activity))
     return stopped
 
 

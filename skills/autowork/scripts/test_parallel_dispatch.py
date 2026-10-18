@@ -274,13 +274,41 @@ class DispatchTests(unittest.TestCase):
     def test_timed_out_worker_is_stopped_and_its_worktree_kept(self):
         self.write_todo(task('A', 'a.txt'))
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 60, 'commit': False}})
-        self.apply('--worker-timeout', '1')
+        # Exercise the Pi worker's session handoff, with a fake provider/tool instead of a model.
+        launcher = self.root / 'session_worker.py'
+        launcher.write_text(f'''import json, subprocess, sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+sys.path.insert(0, {str(SCRIPTS.parents[2] / 'pi-autowork')!r})
+from pi_autowork import worker
+
+def fake_job(settings, role, task, directory, message, session, limit, extra):
+    sessions = settings.state / 'sessions'
+    sessions.mkdir(parents=True)
+    stamp = (datetime.now(timezone.utc) - timedelta(minutes=14)).isoformat()
+    def call(id, command):
+        return {{'type': 'message', 'timestamp': stamp, 'message': {{'role': 'assistant', 'content': [
+            {{'type': 'toolCall', 'id': id, 'name': 'bash', 'arguments': {{'command': command}}}}]}}}}
+    events = [call('running', 'python3 -m unittest discover ' + 'x' * 150),
+              call('done', 'completed command'),
+              {{'type': 'message', 'message': {{'role': 'toolResult', 'toolCallId': 'done'}}}}]
+    (sessions / ('2026-10-18T00-00-00-000Z_' + session + '.jsonl')).write_text(
+        '\\n'.join(json.dumps(e) for e in events) + '\\n{{partial')
+    subprocess.run([sys.executable, {str(FAKE)!r}, sys.argv[2], directory])
+    return {{'ok': True}}
+worker.pi_runtime.job = fake_job
+worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
+''')
+        self.run_cli('--apply', '--parallel', '--worker-timeout', '2', '--worker-command',
+                     json.dumps([sys.executable, str(launcher), str(self.root / 'runner'),
+                                 '{prompt_file}', '{worktree}', '{report_file}']), worker=False)
         started = time.time()
-        _, result = self.wait(20, '--worker-timeout', '1')
+        _, result = self.wait(20, '--worker-timeout', '2')
         self.assertLess(time.time() - started, 15)
         slot = state.slots(self.common)[0]
         self.assertEqual(slot['state'], 'interrupted')
-        self.assertIn('timeout', slot['reason'])
+        command = ('python3 -m unittest discover ' + 'x' * 150)[:120]
+        self.assertEqual(slot['reason'], f'worker timeout after 2 s while running (14 min): {command}')
         self.assertFalse(state.worker_live(slot))
         self.assertEqual((self.repo / '.worktrees/autowork-A/a.txt').read_text(), 'partial')
 

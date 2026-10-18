@@ -245,20 +245,34 @@ class Check(unittest.TestCase):
         self.assertLess(result.stdout.index('OUTPUT-second'), result.stdout.index('OUTPUT-first'))  # module order
         self.assertIn('1 test directories passed', result.stdout)
 
-    def test_a_split_module_runs_its_tests_in_separate_processes(self):
+    def test_selected_split_module_runs_only_its_shards(self):
         body = ''.join(f'''    def test_{n}(self):
-        time.sleep(1.5)
         Path('ran-{n}').write_text(str(os.getpid()))
-''' for n in ('a', 'b', 'c'))
-        self.write('tests/test_pi_autowork.py', 'import os, time, unittest\nfrom pathlib import Path\n'
-                   'class Runner(unittest.TestCase):\n' + body + '    def test_d(self):\n        self.fail("shard failure")\n')
-        started = time.monotonic()
-        result = self.run_check()
-        self.assertLess(time.monotonic() - started, 2.8, 'tests did not run in parallel')
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)  # one shard failing fails it
-        self.assertIn('shard failure', result.stdout)
-        pids = {(self.root / 'tests' / f'ran-{n}').read_text() for n in 'abc'}
-        self.assertEqual(len(pids), 3)
+''' for n in range(24))
+        module = self.write('tests/test_pi_autowork.py', 'import os, unittest\nfrom pathlib import Path\n'
+                            'class Runner(unittest.TestCase):\n' + body)
+        self.write('skills/docs-sync/scripts/test_unselected.py', "raise RuntimeError('not selected')\n")
+        for paths in (['tests/test_pi_autowork.py'], ['tests'], [str(module), 'tests']):
+            with self.subTest(paths=paths):
+                for marker in module.parent.glob('ran-*'):
+                    marker.unlink()
+                result = self.run_check(*paths)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('Offline inventory: 1 modules in 1 directories', result.stdout)
+                self.assertIn('1 test directories passed; 0 failed', result.stdout)
+                pids = [(module.parent / f'ran-{n}').read_text() for n in range(24)]
+                self.assertEqual(len(set(pids)), 12)  # two tests per shard, not serial or duplicated
+                self.assertNotIn('not selected', result.stdout)
+        module.write_text(module.read_text() + '    def test_failure(self): self.fail("shard failure")\n')
+        failed = self.run_check('tests/test_pi_autowork.py')
+        self.assertEqual(failed.returncode, 1, failed.stdout + failed.stderr)
+        self.assertIn('shard failure', failed.stdout)
+        for path in ('tests/missing.py', 'vendor', '../outside',
+                     'skills/docs-sync/scripts/test_goal_gap_regression.py'):
+            with self.subTest(invalid=path):
+                result = self.run_check('tests/test_pi_autowork.py', path)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertNotIn('CHECK', result.stdout)
 
     def test_default_jobs_follow_idle_cpus_between_four_and_eight(self):
         from unittest import mock
