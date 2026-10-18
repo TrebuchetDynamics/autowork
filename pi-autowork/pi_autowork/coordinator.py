@@ -739,13 +739,32 @@ class Coordinator:
         """TOOLSET-188-75: a session whose tasks all run, wait or are held never closed one, so
         its planning commits (questions, maintainer repairs) stayed off main for hours. Land
         after such a commit, and every PI_AUTOWORK_LAND_EVERY seconds while ahead; running
-        workers do not wait it, a review or Pi job does."""
-        if not self.integ or self.integration or self.child:
+        workers do not wait it; a Pi job does, and so does a review unless no merge is needed."""
+        if not self.integ or self.child:
             return
-        if self.land_soon or time.monotonic() - self.landed_at >= self.land_every:
-            self.landed_at, self.land_soon = time.monotonic(), False
-            if self.ahead():
-                self.merge_main()
+        if not (self.land_soon or time.monotonic() - self.landed_at >= self.land_every):
+            return
+        if self.integration:  # a review runs, or its answer is not read yet
+            if self.session_busy() and self.land_beside_review():
+                self.landed_at, self.land_soon = time.monotonic(), False
+            return  # otherwise still due: it lands after the review
+        self.landed_at, self.land_soon = time.monotonic(), False
+        if self.ahead():
+            self.merge_main()
+
+    def land_beside_review(self):
+        """TOOLSET-190-bf: with the base already in the session, landing is a fast-forward of the
+        main checkout and a push; the session branch the review fast-forwards at its end is not
+        touched, so it need not wait for a review (one runner's 25-minute reviews ran back to
+        back and kept 14 planning commits off main). False when a merge would be needed."""
+        ahead = self.ahead()
+        if (not ahead or git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base
+                or not git_ok(self.repo, 'merge-base', '--is-ancestor', self.base, self.integ_branch)
+                or not git_ok(self.repo, 'merge', '--ff-only', '-q', self.integ_branch)):
+            return False
+        LOG.say(f'Merged {self.integ_branch} into {self.base} ({ahead} commit(s)) beside the running review')
+        self.sync_upstream()
+        return True
 
     def commit(self, paths, *message):
         if self.session_busy():
