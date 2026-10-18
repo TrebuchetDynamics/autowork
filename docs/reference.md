@@ -79,7 +79,7 @@ Source: [`runtime_defaults.py`](../runtime_defaults.py),
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `plugins.entries.autowork.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load (`config set` stores the word `false` as a boolean). The legacy `…autowork.config.apply_runtime_defaults` is honored when `settings` lacks the key. Setup honors it too and skips the policy and skill-list settings for that profile. Set it before restoring your own values. |
+| `plugins.entries.autowork.settings.apply_runtime_defaults` | `true` | Boolean `false` stops the plugin from applying the runtime policy below on load, except the Telegram menu entries, so new bundle commands such as `/blockers` still reach the menu (`config set` stores the word `false` as a boolean). The legacy `…autowork.config.apply_runtime_defaults` is honored when `settings` lacks the key. Setup honors it too and skips the policy and skill-list settings for that profile. Set it before restoring your own values. |
 
 While `apply_runtime_defaults` is not `false`, each plugin load writes these
 values whenever they differ, preserving other settings:

@@ -402,6 +402,20 @@ class UpdateTests(unittest.TestCase):
                 self.assertEqual((home / 'skills/engineering' / relative).read_text(), content)
         self.assertEqual(self.plan()['writes'], [])
 
+    def test_a_shallow_plugin_clone_is_deepened_and_updated(self):
+        """A pinned Hermes install is a shallow clone, and its fast-forward check failed."""
+        self.git(self.remote, 'commit', '--allow-empty', '-m', 'second')
+        shallow = self.root / 'shallow'
+        subprocess.check_output(['git', 'clone', '-q', '--depth', '1', self.remote.as_uri(), str(shallow)],
+                                stderr=subprocess.DEVNULL)
+        link = self.profiles[1][1] / 'plugins/autowork'
+        link.unlink(); link.symlink_to(shallow)
+        self.advance()
+        plan = self.plan()
+        self.assertEqual(self.git(shallow, 'rev-parse', '--is-shallow-repository'), 'false')
+        self.mod.apply(plan, self.home / 'backups')
+        self.assertEqual((shallow / 'skills/demo/SKILL.md').read_text(), 'new\n')
+
     def test_conflict_in_last_profile_keeps_only_that_file(self):
         self.advance();p=self.profiles[-1][1]/'skills/demo/SKILL.md';p.write_text('custom\n')
         plan=self.plan();self.mod.apply(plan,self.home/'backups')

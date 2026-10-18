@@ -161,19 +161,32 @@ def setup_opted_out(config_path):
     return _opted_out(raw)
 
 
+def opted_out_settings(raw):
+    """What an opted-out profile still receives: the bundle's own Telegram menu entries.
+
+    The opt-out keeps a profile's approval, turn, injection and skill settings. Every
+    profile had opted out, which also froze the menu, so commands added since (/blockers)
+    never reached a Telegram menu."""
+    from .telegram_menu_policy import menu_patch
+    return menu_patch(raw)
+
+
 def apply_runtime_defaults(ctx):
     # This opt-out must be set before restoring prompts; otherwise the next load
     # deliberately reapplies the bundle policy.
-    if ctx.get_config('apply_runtime_defaults', True) is False:
-        return
-
-    from hermes_cli.config import require_readable_config_before_write, save_config
+    opted_out = ctx.get_config('apply_runtime_defaults', True) is False
 
     # Read raw YAML, refusing malformed settings rather than overwriting them
     # with fallback defaults. The native loader binds the owning profile even
     # when a shared gateway loads several profiles in the same process.
-    raw = require_readable_config_before_write()
-    patch = expected_settings(raw)
+    try:
+        from hermes_cli.config import require_readable_config_before_write, save_config
+        raw = require_readable_config_before_write()
+    except Exception:
+        if opted_out:  # an opted-out profile never failed to load over its config
+            return
+        raise
+    patch = opted_out_settings(raw) if opted_out else expected_settings(raw)
     if settings_drift(raw, patch):
         # Merge under Hermes' config lock, preserving unrelated settings and
         # deny rules. Keep false values explicit even if upstream defaults change.
@@ -181,10 +194,11 @@ def apply_runtime_defaults(ctx):
 
 
 def verify_runtime_defaults():
-    """Re-read the bound profile after load; [] when settings match or the user opted out."""
+    """Re-read the bound profile after load; [] when its settings match. An opted-out profile
+    is checked only for the bundle's menu entries."""
     from hermes_cli.config import read_raw_config
     raw = read_raw_config() or {}
-    return [] if _opted_out(raw) else settings_drift(raw, expected_settings(raw))
+    return settings_drift(raw, opted_out_settings(raw) if _opted_out(raw) else expected_settings(raw))
 
 
 CRON_SCRIPTS = ('cron-autowork/scripts/autowork-start-notice.py',)
