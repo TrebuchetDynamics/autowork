@@ -59,9 +59,9 @@ SHA-256 receipt bindings, inspected in the existing runner state:
 | `main-check.log` | `76470c5b1944c55c434f16f853afc4d1f007f77a84cb2398be6d80108227e013` |
 | `main-check.exit` | `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865` |
 
-## Current continuation, not the older candidate
+## Retained continuation at 0c420d5
 
-The current `slot-data/TOOLSET-184-b3/attempt-1/report.json` has `commit: null`
+The then-current `slot-data/TOOLSET-184-b3/attempt-1/report.json` has `commit: null`
 and 19 changed files, matching the task worktree's inspected status: 17 modified
 tracked files and two untracked files (`pi-autowork/tests/test_coordinator.py`
 and `skills/autowork/scripts/offline_fixtures.py`). Its baseline is `0c420d5`.
@@ -125,8 +125,10 @@ to a new location or makes a descendant of the current scratch suitable.
 Existing TOOLSET-140-f4 owns private short slot scratch and already includes
 reviewer setup in Touches from worker evidence. Reconcile that existing recovery
 through the coordinator; do not create a competing scratch feature, rewrite its
-acceptance or infer that it has landed. Keep TOOLSET-184-b3 first in Now and
-preserve owner ordering. No new task dependency is asserted: the report requires
+acceptance or infer that it has landed. The later owner instruction in TODO.md
+puts TOOLSET-165-f7 before this repair; preserve the owner's leading compact-ledger
+chain and all existing ordering. The earlier first-in-Now recovery note is not a
+new priority instruction. No new task dependency is asserted: the report requires
 a valid supplied scratch input, not completion of every TOOLSET-140-f4 criterion.
 
 Once the coordinator supplies it, resume the retained continuation, run all
@@ -135,3 +137,65 @@ resulting merged tree. No skip, timeout increase, assertion weakening, alias,
 collector bypass, outside-scratch write, slot reset or evidence repin is allowed.
 No implementation, full-suite rerun, live qualification or closure occurred in
 this documentation pass.
+
+## Current MAIN receipt at cc59768
+
+The supplied trigger and inspected runner receipts agree: `main_check.json`
+records red `cc597687e9126247a9aeff2efd3078258e00dc80` after recorded green
+`7039f472657510b5562678496b98ef399bf0b550`. `main-check.exit` is 1, and
+`main-check.log` ends `Offline result: 4 test directories passed; 1 failed;
+8 modules excluded.` Its four FAIL identities are:
+
+- `test_parallel_adversarial.AdversarialWorkerTests.test_a_report_written_after_a_coordinator_restart_is_adopted`
+- `test_parallel_e2e.EndToEndTests.test_abc_real_cli`
+- `test_parallel_e2e.EndToEndTests.test_abc_with_delayed_initial_observation`
+- `test_parallel_e2e.EndToEndTests.test_serial_control`
+
+All four are already named by the open TOOLSET-184-b3 contract. Keep that repair
+rather than add or supersede a duplicate. The reported since-green commit is
+`cc59768 fix(pi): autowork restart reloads a runner that is re-executing`.
+`git show --stat cc59768` names `pi-autowork/pi_autowork/service.py` and
+`tests/test_autowork_command.py`; the former is already in Touches through its
+owning directory, and the latter is now explicit. The failing modules are already
+covered by `skills/autowork/scripts/`. This is path evidence, not proof that the
+service change caused the failures or a reason to redesign it.
+
+The three end-to-end traces explicitly refuse initial dispatch at load 26.77
+against 24 CPUs. The restart-adoption trace fails at its first dispatch assertion
+(`[] != ['A']`), before adoption is exercised; it does not report its resource
+reason. Host load is a lead, not a verified common cause. Preserve production
+resource admission, restart/adoption assertions and the unchanged full check
+`python3 scripts/check.py` under the task's supplied-scratch restrictions.
+The owner's existing current-main rerun instruction still precedes fixture edits;
+this documentation pass does not execute that gate or certify these failures fixed.
+
+### Reconcile the latest stopped continuation
+
+There is currently no `slot-data/MAIN/` or `slot-data/TOOLSET-184-b3/` report.
+The runner retained the latter under `slot-history/TOOLSET-184-b3/`:
+
+- `2/slot-data/attempt-1/report.json` is the 19-file continuation described above;
+  its SHA-256 still matches `50559aa4074f01b494dc4bce119aa135acd84246d747f3fc70286b2f9c404394`.
+  Its slot record maps the checkout to
+  `.worktrees/autowork-TOOLSET-184-b3-set-aside-2`. Read-only Git status still
+  shows 17 modified files and the two named untracked additions. Preserve them.
+- `3/slot-data/attempt-1/report.json` is the latest report. It has `commit: null`,
+  `changed_files: []`, clean baseline `f428b8f`, and no focused/full test run.
+  It reports that supplied physical scratch remains beneath `.git` and that the
+  assigned checkout lacks the retained repair. Its slot record maps that checkout
+  to `.worktrees/autowork-TOOLSET-184-b3-set-aside-3`; read-only status is clean.
+  Reassigning that clean checkout alone cannot resume the preserved repair.
+
+Reconcile the retained candidate and valid supplied scratch through the existing
+coordinator, preserving consumed attempts and the rejected `a7d3f9f` review's
+socket-path, cleanup and tx findings. No product decision or relaxed Acceptance
+is needed to correct these locations. Do not restore stale whole-tree bytes or
+change the running TOOLSET-165-f7 contract. These are retained observations, not
+new permission to dispatch, reset a slot or use outside scratch.
+
+| Inspected receipt | SHA-256 |
+| --- | --- |
+| `main_check.json` | `3ee32cad153eacb8707ac7f1bca1bc123a582fa4e53d16bc1edcea389853cb3c` |
+| `main-check.log` | `ab097d95f3811a0d57d75e09e061d41fd423fe2a2a2fcb8c396771bbaca673b7` |
+| `main-check.exit` | `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865` |
+| `slot-history/TOOLSET-184-b3/3/slot-data/attempt-1/report.json` | `0f24b08d4da76d062f0141dac65abd9e40ccf9f0fd044701759efd8c9942a4ab` |
