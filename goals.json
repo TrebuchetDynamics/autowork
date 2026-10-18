@@ -732,10 +732,11 @@
         "TOOLSET-231-49",
         "TOOLSET-232-01",
         "TOOLSET-233-ba",
+        "TOOLSET-234-51",
         "TOOLSET-234-d4",
         "TOOLSET-235-0d",
         "TOOLSET-236-4d",
-        "TOOLSET-234-51"
+        "TOOLSET-237-35"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -743,9 +744,9 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-236-4d",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
+      "TOOLSET-237-35",
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
       "TOOLSET-229-d0",
@@ -1275,6 +1276,14 @@
     },
     {
       "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-237-35",
+      "section": "Now",
+      "status": "open",
+      "title": "A check that crashes before reporting test results is a broken check: never a red main with placeholder failures, never a pass"
+    },
+    {
+      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -1593,14 +1602,6 @@
       "title": "A speculative merge queue validates the next queued commits stacked and lands each that passes in order"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-235-0d",
-      "section": "Next",
-      "status": "open",
-      "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
-    },
-    {
       "depends_on": [
         "TOOLSET-129-c4"
       ],
@@ -1609,6 +1610,14 @@
       "section": "Next",
       "status": "open",
       "title": "Make the TUI a compact fleet overview with a focused runner workspace"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-235-0d",
+      "section": "Next",
+      "status": "open",
+      "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
     },
     {
       "depends_on": [
