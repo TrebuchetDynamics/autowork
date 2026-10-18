@@ -128,8 +128,34 @@ def meta(common, slot):
     return execution.read(data_dir(common, slot) / 'meta.json') or {}
 
 
+def earlier_task_work(worktree, task_id, branch, baseline):
+    """Local task branches, newest tip first, with their delta from shared history.
+
+    Include both retired attempts (including retired -r2 retries) and the prior
+    branch of a fresh retry. Full refs avoid ambiguity with similarly named tags.
+    """
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
+    pattern = re.compile(r'autowork/' + re.escape(safe) + r'(?:-r[0-9]+)?(?:-set-aside-[0-9]+)?')
+    refs = execution.git(worktree, 'for-each-ref', '--sort=refname', '--sort=-committerdate',
+                         '--format=%(refname)%00%(objectname)%00%(committerdate:iso-strict)',
+                         'refs/heads/autowork/')
+    work = []
+    for line in refs.splitlines():
+        ref, tip, date = line.split('\0')
+        name = ref.removeprefix('refs/heads/')
+        if name == branch or not pattern.fullmatch(name):
+            continue
+        base = execution.git(worktree, 'merge-base', baseline, tip)
+        # A status prefix protects leading filename whitespace from git()'s strip().
+        files = execution.git(worktree, 'diff', '--name-status', '-z', '--no-renames', base, tip, '--')
+        changed = files.split('\0')[1::2]
+        work.append(f'- branch {name}; tip {tip}; date {date}; changed files: {json.dumps(changed)}')
+    return work
+
+
 def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None):
     touches = task['fields'].get('Touches', '(none declared)')
+    earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
         'You are an Autowork worker for exactly one task.',
         f'Task: {task["id"]}',
@@ -161,8 +187,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  and package caches under $AUTOWORK_CACHE/<name>-<version>, shared by this repository\'s',
         '  tasks and reviews (reuse one that is already there); $TMPDIR goes with the task. Use only',
         '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
-        f'- When done, commit once on {branch}. Never push, merge, rebase, switch branches, or touch',
-        '  another worktree. A finished commit is not task completion; the coordinator integrates.',
+        f'- When done, commit once on {branch}. Never push, rebase, switch branches, or touch',
+        '  another worktree. ' + ('Merge or cherry-pick only as permitted in Earlier task work below.'
+                                 if earlier else 'Never merge or cherry-pick.'),
+        '  A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
         '  "blockers": [...], "pending_live": [...], "needs_touches": [...], "changelog": "..."}.',
@@ -176,6 +204,19 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
     ]
+    if earlier:
+        lines += ['', 'Earlier task work:',
+                  'These branches are reachable in this worktree in the same repository; no fetch is needed.',
+                  'Changed files are each tip\'s delta from its merge-base with this attempt\'s baseline.',
+                  *earlier,
+                  'Only when this task asks to keep or continue earlier work, you may merge or cherry-pick',
+                  'from these tips into your assigned branch; otherwise ignore them. Inspect the diff first:',
+                  'earlier work is evidence, not accepted work, and may no longer fit the current task.',
+                  'The current entry\'s Touches still apply: bring in nothing outside them, including',
+                  'coordinator-owned files or unreserved protected paths. For a mixed-scope tip, reuse only',
+                  'allowed paths instead of merging or cherry-picking the whole commit.',
+                  'Keep one final task commit (for example cherry-pick --no-commit or merge --squash).',
+                  'Never modify the earlier branches or their worktrees; no work is applied automatically.']
     if adopted:
         hours = adopted['idle_seconds'] // 3600
         lines += ['', f'This task was marked in_progress by another session that has been idle for {hours} h',

@@ -397,32 +397,83 @@ class DispatchTests(unittest.TestCase):
         self.assertIn('change only paths within Touches: a.txt, b.txt', prompt)
 
     def test_an_answered_question_requeues_the_held_task_once(self):
-        """TOOLSET-120-fc: the owner answers by editing the task's entry; nobody runs a command."""
-        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        """An answered hold runs fresh and can continue its preserved candidate."""
+        # Integration's bounded validator enables subreaping; do not leak that
+        # process-wide setting into dispatch's later orphan-cleanup tests.
+        import ctypes
+        libc, subreaper = ctypes.CDLL(None), ctypes.c_int()
+        self.assertEqual(libc.prctl(37, ctypes.byref(subreaper), 0, 0, 0), 0)
+        self.addCleanup(lambda: libc.prctl(36, subreaper.value, 0, 0, 0))
+        self.write_todo(task('A', '*a.txt'), task('B', 'b.txt'))
         self.git('add', '.')
         self.git('commit', '-qm', 'A and B')
-        self.set_spec({'A': {'files': {'a.txt': 'half'}, 'sleep': 0.1, 'commit': False,
-                             'blockers': ['Which unit should the output use?'],
-                             'then': {'files': {'a.txt': 'done'}, 'sleep': 0.1}},
+        self.set_spec({'A': {'files': {' a.txt': 'half'}, 'sleep': 0.1,
+                             'blockers': ['Which unit should the output use?']},
                        'B': {'files': {'b.txt': 'half'}, 'sleep': 0.1, 'commit': False,
                              'blockers': ['Needs a decision too']}})
         self.apply()
         self.wait_until_idle()
+        _, held = self.run_cli('--integrate', 'A', '--timeout', '10', '--run', 'true', worker=False)
+        self.assertEqual(held['outcome'], 'HELD', held)
         self.assertEqual({s['task_id']: s['cause'] for s in state.slots(self.common)}, {'A': 'blocker', 'B': 'blocker'})
+        first = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
+        self.assertNotIn('Earlier task work:', first)
+        candidate = self.git('rev-parse', 'autowork/A')
+        date = self.git('show', '-s', '--format=%cI', candidate)
+        # The same prompt builder also serves fresh -r2 retries of held integrations.
+        entry = {'id': 'A', 'title': 'Task A', 'fields': {'Touches': '*a.txt'}, 'contract': ''}
+        retry = dispatch.prompt(entry, self.repo, 'autowork/A-r2', self.git('rev-parse', 'HEAD'), 'report')
+        self.assertIn(f'- branch autowork/A; tip {candidate}; date {date}', retry)
         _, unchanged = self.apply()
         self.assertEqual(unchanged['outcome'], 'IDLE')  # no answer yet: both stay held
-        self.write_todo(task('A', 'a.txt').replace('- Acceptance: changed.', '- Acceptance: changed, in metres.'),
+        self.write_todo(task('A', '*a.txt').replace('- Acceptance: changed.',
+                        '- Acceptance: keep the earlier candidate, in metres.'),
                         task('B', 'b.txt'))
         self.git('commit', '-qam', 'owner answers A')
         _, requeued = self.apply()
         self.assertEqual((requeued['outcome'], requeued['task'], requeued['requeued']), ('REQUEUED', 'A', True))
         self.assertIn('autowork/A-set-aside-1', self.git('branch', '--list', 'autowork/*'))
-        _, fresh = self.apply()
+        older = subprocess.check_output(['git', '-C', str(self.repo), 'commit-tree',
+                    self.git('rev-parse', 'HEAD^{tree}'), '-p', self.git('rev-parse', 'HEAD'), '-m', 'old retry'],
+                    env={**os.environ, 'GIT_COMMITTER_DATE': '2000-01-01T00:00:00+00:00'}, text=True).strip()
+        self.git('branch', 'autowork/A-r2-set-aside-1', older)
+        self.git('branch', 'autowork/AB-set-aside-1', candidate)  # not this task
+        # This worker can finish only by discovering and applying the named local tip.
+        recover = self.root / 'recover.py'
+        recover.write_text('''import json, re, subprocess, sys
+from pathlib import Path
+prompt = Path(sys.argv[1]).read_text()
+repo = sys.argv[2]
+def git(*args):
+    return subprocess.check_output(['git', '-C', repo, *args], text=True).strip()
+tip = re.search(r'^- branch autowork/A-set-aside-1; tip ([0-9a-f]+);', prompt, re.M)[1]
+git('cherry-pick', '--no-commit', tip)
+assert Path(repo, ' a.txt').read_text() == 'half'
+Path(repo, ' a.txt').write_text('half, in metres')
+git('commit', '-qam', 'continue retained candidate')
+report = re.search(r'^Report file: (.+)$', prompt, re.M)[1]
+Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEAD'),
+    'changed_files': [' a.txt'], 'checks': [], 'blockers': [], 'changelog': ''}))
+''')
+        _, fresh = self.run_cli('--apply', '--parallel', '--worker-command',
+                                json.dumps([sys.executable, str(recover), '{prompt_file}', '{worktree}']),
+                                worker=False)
         self.assertEqual([d['task'] for d in fresh['dispatched']], ['A'])
+        prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
+        self.assertIn(f'- branch autowork/A-set-aside-1; tip {candidate}; date {date}', prompt)
+        self.assertIn('changed files: [" a.txt"]', prompt)  # preserve leading filename whitespace
+        self.assertLess(prompt.index('- branch autowork/A-set-aside-1;'),
+                        prompt.index(f'- branch autowork/A-r2-set-aside-1; tip {older}; date 2000-01-01'))
+        self.assertNotIn('- branch autowork/AB', prompt)
+        self.assertNotIn('- branch autowork/A;', prompt)  # not the current attempt
         self.wait_until_idle()
         slots = {s['task_id']: s for s in state.slots(self.common)}
         self.assertEqual((slots['A']['state'], slots['A']['attempt']), ('reported', 1))
         self.assertEqual(slots['B']['state'], 'held')  # unchanged entry: still waiting for its answer
+        _, integrated = self.run_cli('--integrate', 'A', '--timeout', '10', '--run', 'true', worker=False)
+        self.assertEqual(integrated['outcome'], 'INTEGRATED', integrated)
+        self.assertEqual((self.repo / ' a.txt').read_text(), 'half, in metres')
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), candidate)
 
     def test_a_held_task_whose_entry_is_removed_is_set_aside_without_requeue(self):
         self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))

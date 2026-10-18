@@ -6,8 +6,9 @@ the results one at a time. Without `--parallel`, `owner_cycle.py` behaves exactl
 before. Linux only (worker identity comes from `/proc`).
 
 The coordinator is the current Autowork session. Workers implement one task and
-commit once; they never select tasks, edit coordinator-owned files, merge, push or
-close tasks. A worker's commit and `report.json` are evidence, not acceptance:
+commit once; they never select tasks, edit coordinator-owned files, push or close
+tasks. Reusing earlier task work is the only permitted worker merge (see recovery
+below). A worker's commit and `report.json` are evidence, not acceptance:
 the coordinator reviews, integrates, validates and closes.
 
 ## Coordinator loop
@@ -246,6 +247,20 @@ nothing parallel was claimed or started.
   merge stays in the main branch; the new entry is new work). Every attempt's
   worktree and branch is kept, renamed with `-set-aside-N`, and the slot record and
   data move to `slot-history/TASK/N`; the next refill dispatches the task fresh.
+- **Earlier task work:** [the worker prompt](../scripts/parallel_dispatch.py) lists
+  this task's local `autowork/<TASK>-set-aside-N` branches (including retired `-r2`
+  attempts) and previous attempt branches, excluding the current branch. Each has
+  its tip commit, commit date and changed files, newest tip first. Changed files
+  are measured from the merge-base of that tip and the new attempt's baseline.
+  All refs are reachable from the worker's worktree without fetching. Only when
+  the current task asks to keep or continue earlier work may the worker merge or
+  cherry-pick from those tips; otherwise it must ignore them. Nothing is applied
+  automatically. Inspect the diff and bring in only paths the current entry's
+  `Touches:` allow, never coordinator-owned or unreserved protected files; a
+  mixed-scope commit requires selecting allowed paths instead of importing the
+  whole commit. Keep one final task commit (`cherry-pick --no-commit` or
+  `merge --squash`, for example), and leave earlier branches and worktrees intact.
+  Discovery changes neither set-aside decisions nor integration's scope checks.
 - **Interrupted or released workers** (timed out, or dead with uncommitted changes
   or with nothing) restart once in the same worktree with a resume note; a second
   interruption is held. A deliberate coordinator stop first runs `--parallel-pause`
