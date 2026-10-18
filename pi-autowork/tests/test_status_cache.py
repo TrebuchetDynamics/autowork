@@ -43,6 +43,16 @@ class StatusCacheTests(unittest.TestCase):
             self.runner.status()  # older than STATUS_FRESH
         self.assertEqual(self.count(), 4)
 
+    def test_a_failed_read_is_not_reused(self):
+        """A status read finding the writer lock held answers ACTION_REQUIRED with no tasks."""
+        self.runner.engine_path.write_text('import json\nfrom pathlib import Path\n'
+                                           f'p = Path({str(self.calls)!r})\n'
+                                           'p.write_text(str(int(p.read_text()) + 1 if p.exists() else 1))\n'
+                                           'print(json.dumps({"outcome": "ACTION_REQUIRED", "reason": "busy"}))\n')
+        self.runner.status()
+        self.runner.status()
+        self.assertEqual(self.count(), 2)
+
     def test_another_directory_is_not_answered_from_the_cache(self):
         self.runner.status()
         self.runner.status(directory=self.runner.state / 'other')

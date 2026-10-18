@@ -295,7 +295,9 @@ class Coordinator:
         try:
             value = json.loads(out)
         except ValueError:
-            return {}
+            value = None
+        if not isinstance(value, dict) or value.get('outcome') != 'PARALLEL_STATUS':
+            self.snapshot = None  # a failed read (the writer lock was held) is never reused
         return value if isinstance(value, dict) else {}
 
     def tasks(self, snapshot=None):
