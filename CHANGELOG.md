@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A runner reuses one engine status snapshot for up to 5 seconds and drops it whenever it runs an
+  engine command. Each status read was a new engine process (1.5 to 3.6 s of CPU), about 10 per
+  30 seconds per runner: 3 to 5 cores across a fleet of 7 runners on a host already at full load.
 - A runner commits the owner's quiet planning files (`TODO.md`, `goals.json`, `BLOCKERS.md`, the archive)
   even while other files in the main checkout are uncommitted, leaving those for the next merge. A
   repository whose `TODO.md` was untracked beside edited docs never gave its runner a plan.
