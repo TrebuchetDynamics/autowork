@@ -198,6 +198,7 @@ class Coordinator:
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
         self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
+        self.snapshot = None
 
     REVIEW_CAP = 4 * 3600
 
@@ -238,7 +239,7 @@ class Coordinator:
             pass
         if job['proc'].poll() is None:
             return None
-        self.integration = None
+        self.integration = self.snapshot = None
         try:
             value = json.loads(Path(job['out']).read_text())
         except (OSError, ValueError):
@@ -252,6 +253,7 @@ class Coordinator:
     def stop_integration(self):
         """On a stop: end the review; the engine's recovery verifies the commit again later."""
         job, self.integration = self.integration, None
+        self.snapshot = None
         if job and job['proc'].poll() is None:
             job['proc'].terminate()
             try:
@@ -266,6 +268,7 @@ class Coordinator:
         args = [sys.executable, str(self.engine_path), str(directory or self.integ), *argv]
         if owned:
             args[3:3] = ['--owner-pid', str(os.getpid())]
+        self.snapshot = None  # an engine command can change every slot
         with open(self.state / 'engine.err', 'a') as err:
             out = subprocess.run(args, stdout=subprocess.PIPE, stderr=err, text=True).stdout
         try:
@@ -274,9 +277,21 @@ class Coordinator:
             return {'outcome': 'ACTION_REQUIRED', 'reason': out.strip()[:300] or 'no answer from the engine'}
         return value if isinstance(value, dict) else {}
 
+    # One status snapshot serves the calls of one cycle step: each call was a new engine process
+    # that scanned /proc and the event journal (1.5 to 3.6 s of CPU), about 10 times in 30 s
+    # per runner. Only the runner's own engine commands start or change work; those drop it.
+    STATUS_FRESH = 5.0
+    snapshot = None  # (directory, monotonic time, engine status output)
+
     def status(self, directory=None):
-        out = subprocess.run([sys.executable, str(self.engine_path), str(directory or self.integ),
-                              '--parallel-status', '--json'], capture_output=True, text=True).stdout
+        where = str(directory or self.integ)
+        cached = self.snapshot
+        if cached and cached[0] == where and time.monotonic() - cached[1] < self.STATUS_FRESH:
+            out = cached[2]
+        else:
+            out = subprocess.run([sys.executable, str(self.engine_path), where,
+                                  '--parallel-status', '--json'], capture_output=True, text=True).stdout
+            self.snapshot = (where, time.monotonic(), out)
         try:
             value = json.loads(out)
         except ValueError:
