@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A runner commits the owner's quiet planning files (`TODO.md`, `goals.json`, `BLOCKERS.md`, the archive)
+  even while other files in the main checkout are uncommitted, leaving those for the next merge. A
+  repository whose `TODO.md` was untracked beside edited docs never gave its runner a plan.
 - A service installed from the TUI no longer saves uv's temporary environments in its `PATH`; uv
   deleted them later and the runner exited on a `python3` that no longer existed.
 - A runner on a Git submodule places its worktrees in the submodule's checkout. `git worktree list`

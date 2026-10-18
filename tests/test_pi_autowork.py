@@ -1469,7 +1469,7 @@ class EngineTests(Fixture):
         text = (self.repo / 'TODO.md').read_text()
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
-        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '600'
         runner = self.start_runner('--interval', '1')
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
@@ -1477,13 +1477,20 @@ class EngineTests(Fixture):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.2)
         (self.repo / 'TODO.md').write_text(text)  # the owner's answer, left uncommitted
+        os.utime(self.repo / 'TODO.md', (time.time() - 700,) * 2)  # quiet for longer than 600 s
+        # Beside other work still being edited: one repository's plan never reached its runner,
+        # because those files kept the planning-only commit from running at all.
+        (self.repo / 'notes.md').write_text('work in progress\n')
         deadline = time.monotonic() + 60
         while not self.done('A'):
             self.assertLess(time.monotonic(), deadline, 'runner never saw the uncommitted answer')
             time.sleep(0.5)
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
-        self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
+        planning = self.git(self.repo, 'log', '--format=%H', '--grep', '^docs(tasks): owner planning (pi-autowork)')
+        self.assertTrue(planning, self.git(self.repo, 'log', '--format=%s'))
+        self.assertEqual(self.git(self.repo, 'show', '--format=', '--name-only', planning.split()[-1]), 'TODO.md')
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain', '--', 'notes.md'), '?? notes.md')
 
     def origin(self):
         """A bare upstream for main, as a real repository has."""

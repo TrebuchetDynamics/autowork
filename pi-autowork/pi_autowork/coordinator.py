@@ -612,8 +612,8 @@ class Coordinator:
         no process holds them open for writing, commit them all before merging (planning
         files alone keep their planning message). Untracked files that look like secrets
         stay untracked; a merge, rebase or cherry-pick in progress is left alone.
-        With ``planning_only``, only planning files are committed, and only when nothing
-        else is uncommitted. Returns '' when committed or nothing was uncommitted, else why it waited."""
+        With ``planning_only``, only the planning files are committed; other uncommitted
+        changes stay for the next merge. Returns '' when committed or nothing was uncommitted, else why it waited."""
         if git(self.repo, 'symbolic-ref', '--short', '-q', 'HEAD') != self.base:
             return f'the main checkout is not on {self.base}'
         for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'):
@@ -642,8 +642,13 @@ class Coordinator:
         except (ValueError, OSError):
             archive = None
         planning = {'TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md'} | ({archive} if archive else set())
-        if planning_only and not set(paths) <= planning:
-            return 'other uncommitted changes wait for a merge'
+        if planning_only:
+            # The planning files alone: the plan must reach the session while other work in the
+            # main checkout waits. One repository's TODO.md sat untracked beside edited docs, so
+            # its runner never had a plan, never a merge, and never committed either.
+            paths = [p for p in paths if p in planning]
+            if not paths:
+                return 'other uncommitted changes wait for a merge'
         quiet = float(os.environ.get('PI_AUTOWORK_PLANNING_QUIET', '600'))
         files = [Path(self.repo) / p for p in paths]
         recent = [p for p, f in zip(paths, files) if f.exists() and time.time() - f.stat().st_mtime < quiet]
