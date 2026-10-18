@@ -57,7 +57,8 @@ class DispatchTests(unittest.TestCase):
         self.log = self.root / 'workers.jsonl'
         self.log.touch()
         self.set_spec({})
-        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log)),
+        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log),
+                                    PI_AUTOWORK_MIN_FREE_DISK_GB='0'),
                         patch.object(dispatch, 'available_memory_mb', return_value=10 ** 6),
                         patch.object(os, 'getloadavg', return_value=(0.0, 0.0, 0.0))):
             patcher.start()

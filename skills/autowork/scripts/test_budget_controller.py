@@ -31,7 +31,8 @@ def ledger_snapshot(path):
         connection.close()
 
 HERE = Path(__file__).resolve().parent
-SCRATCH = (Path.home() / '.hermes/cache/scratch/executable-safeguards/budget-race')
+# Retain race evidence after ledger cleanup, inside the supplied task scratch.
+SCRATCH = Path(tempfile.gettempdir()) / 'budget-race'
 SCRATCH.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(HERE))
 

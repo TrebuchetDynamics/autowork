@@ -69,6 +69,21 @@ class IntegrationTests(unittest.TestCase):
                        'changed_files': list(files or {task + '.txt': ''}), 'checks': [], 'blockers': [], 'changelog': 'fixture'})
         return root, commit
 
+    def retain_evidence(self):
+        """Retain command receipts, child output and slot state before fixture cleanup."""
+        import shutil
+        target = Path(tempfile.mkdtemp(prefix='integration-evidence-', dir=tempfile.gettempdir()))
+        for source in [*self.common.glob('*.json'), *self.common.glob('*.log'),
+                       *self.common.glob('slots/*.json')]:
+            if source.is_file():
+                dest = target / source.relative_to(self.common)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest)
+        (target / 'children.json').write_text(json.dumps({
+            'children': execution.child_pids(os.getpid()),
+            'slots': state.slots(self.common)}, indent=2))
+        print(f'FIXTURE_EVIDENCE {target}', flush=True)
+
     def module(self):
         try:
             return importlib.import_module('parallel_integrate')
@@ -1271,7 +1286,19 @@ class IntegrationTests(unittest.TestCase):
         self.worker()
         daemon = 'import subprocess, sys; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])'
         module = self.module()
-        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', daemon], 20)
+        killpg = os.killpg
+
+        def settled_kill(group, sig):
+            # Force the legitimate scheduling case where SIGKILL has completed
+            # before descendant accounting runs, without reaping the zombie.
+            children = [pid for pid in execution.child_pids(os.getpid()) if os.getpgid(pid) == group]
+            killpg(group, sig)
+            for pid in children:
+                os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+
+        with patch.object(execution.os, 'killpg', side_effect=settled_kill):
+            result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', daemon], 20)
+        self.retain_evidence()
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual(state.slots(self.common)[0]['checks']['outcome'], 'CHILDREN_TERMINATED')
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
@@ -1283,6 +1310,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', failing], 20)['outcome'],
                          'HELD')
         slot = state.slots(self.common)[0]
+        self.retain_evidence()
         self.assertEqual(slot['checks']['outcome'], 'CHILDREN_TERMINATED')
         self.assertFalse(module.passed(slot['checks']))  # exit 1: a real failure, never offered again
         # As an earlier release held a passing run that left a daemon: offered again, once.

@@ -15,6 +15,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import parallel_status as status
 from gate_skip import skip_if_gated
+from offline_fixtures import idle_host_env
 
 CLI = Path(__file__).with_name('owner_cycle.py')
 WORKER = '''import json, os, re, subprocess, sys, time
@@ -63,6 +64,7 @@ class ABCWorkload:
     def __enter__(self):
         self.temp = tempfile.TemporaryDirectory(prefix='toolset-089-', dir=os.environ.get('TMPDIR'))
         self.root = Path(self.temp.name)
+        self.env = idle_host_env(self.root)
         self.repo = self.root / 'repo'
         self.repo.mkdir()
         self.git('init', '-q', '-b', 'main')
@@ -99,8 +101,10 @@ class ABCWorkload:
         return p.stdout.strip()
 
     def cli(self, *args):
+        # This tiny offline repository needs no production-sized disk reservation.
+        env = dict(self.env, PI_AUTOWORK_MIN_FREE_DISK_GB='0')
         p = subprocess.run([sys.executable, str(CLI), str(self.repo), *args], capture_output=True,
-                           text=True, timeout=40)
+                           env=env, text=True, timeout=40)
         if p.returncode:
             raise AssertionError(f'CLI {args}: {p.stdout}\n{p.stderr}')
         return json.loads(p.stdout)

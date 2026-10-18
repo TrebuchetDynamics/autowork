@@ -220,9 +220,15 @@ elif behavior == 'move_session':  # the session branch changes the task's own fi
     session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
                    if 'branch refs/heads/pi-autowork/' in b)
     open(os.path.join(session, task + '.txt'), 'w').write('from the session\n')
-    subprocess.run(['git', '-C', session, 'add', '-A'])
-    subprocess.run(['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
-                    'commit', '-qm', 'session moved'])
+    for command in (['git', '-C', session, 'add', '-A'],
+                    ['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
+                     'commit', '-qm', 'session moved']):
+        observed = subprocess.run(command, capture_output=True, text=True)
+        note({'fixture_git': command, 'returncode': observed.returncode,
+              'stdout': observed.stdout, 'stderr': observed.stderr,
+              'session_status': subprocess.run(['git', '-C', session, 'status', '--porcelain'],
+                                               capture_output=True, text=True).stdout})
+        observed.check_returncode()
     finish(text='done')
 elif behavior == 'provider_error':
     open(task + '-partial.txt', 'w').write('half\n')
@@ -308,7 +314,9 @@ class Fixture(unittest.TestCase):
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
-                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
+                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0',
+                    # Disposable fixtures fit in task scratch; they do not reserve 20 GB.
+                    'PI_AUTOWORK_MIN_FREE_DISK_GB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
         self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
         # nothing and these runner scenarios fail for the wrong reason. As the engine's own
@@ -348,8 +356,25 @@ class Fixture(unittest.TestCase):
         return repo
 
     def git(self, repo, *args):
-        return subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
-                               *args], check=True, capture_output=True, text=True).stdout.strip()
+        result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
+                                 *args], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0,
+                         f'fixture Git {args} in {repo}: {result.stdout}\n{result.stderr}')
+        return result.stdout.strip()
+
+    def retain_evidence(self):
+        """Keep targeted fake Git/runner/slot diagnostics before disposable cleanup."""
+        target = Path(tempfile.mkdtemp(prefix='runner-evidence-', dir=tempfile.gettempdir()))
+        for source in [self.log, *self.state.rglob('runner.log'), *self.state.rglob('engine.err'),
+                       *self.repo.glob('.git/autowork-execution/slots/*.json')]:
+            if source.is_file():
+                dest = target / source.relative_to(self.root)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest)
+        (target / 'snapshot.json').write_text(json.dumps({
+            'workers': self.runs('worker'), 'main_status': self.git(self.repo, 'status', '--porcelain'),
+            'worktrees': self.git(self.repo, 'worktree', 'list', '--porcelain')}, indent=2))
+        print(f'FIXTURE_EVIDENCE {target}', flush=True)
 
     def plan(self, plan):
         self.plan_file.write_text(json.dumps(plan))
@@ -1008,6 +1033,8 @@ class EngineTests(Fixture):
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
         runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and (runner.kill(), runner.wait()))
+        self.addCleanup(self.retain_evidence)
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
                                                if list(self.state.glob('*/runner.log')) else ''):
@@ -1654,6 +1681,7 @@ class EngineTests(Fixture):
         """TOOLSET-157-cd (2): a conflict hold reran the whole task from scratch."""
         self.plan({'worker:A': ['move_session'], 'merge:A': ['resolve']})
         result = self.run_runner('--until-empty')
+        self.retain_evidence()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: its commit conflicts with the session in: A.txt; asking Pi to resolve the merge '
                       'in its worktree', result.stdout)
