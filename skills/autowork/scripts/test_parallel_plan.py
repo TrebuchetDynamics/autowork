@@ -366,6 +366,26 @@ class PlanTests(unittest.TestCase):
         self.assertIn('Touches', result['waiting'][0]['reason'])
 
 
+class TouchesParsingTests(unittest.TestCase):
+    def setUp(self):
+        import parallel_plan
+        self.paths = parallel_plan.paths
+
+    def test_a_note_heading_or_blank_line_after_touches_is_not_part_of_it(self):
+        """TOOLSET-213-45: a parenthesised note ran into Touches and spoiled its last path, so the
+        worker's own file was held as outside Touches."""
+        value = ('a/x.py, tests/test_y.py\n- Touches widened by the owner session (2026-10-18): tests/test_y.py, '
+                 'which the worker adjusted while merging main into its branch.')
+        self.assertEqual(self.paths(value), ['a/x.py', 'tests/test_y.py'])
+        self.assertEqual(self.paths('docs/quality/\n\n### **P4** — Extended experiences'), ['docs/quality/'])
+        self.assertEqual(self.paths('docs/\n### Next section'), ['docs/'])
+
+    def test_prose_in_touches_is_a_contract_error(self):
+        with self.assertRaisesRegex(ValueError, r'not a list of paths\): which the worker adjusted'):
+            self.paths('a/x.py, which the worker adjusted while merging')
+        self.assertEqual(self.paths('docs/My File.md'), ['docs/My File.md'])  # a path with a space is fine
+
+
 class OverlapTests(unittest.TestCase):
     def test_actual_paths_stay_declared_and_do_not_overlap_other_work(self):
         import parallel_plan
