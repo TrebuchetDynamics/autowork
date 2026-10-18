@@ -701,3 +701,81 @@ and execute paths), `pi-autowork/tests/tui_pilot.py`, `test_fleet_view.py`, and
 [Textual screens](https://textual.textualize.io/guide/screens/) /
 [layout](https://textual.textualize.io/guide/layout/) documentation. Retain task IDs,
 queue ordering and the separate stale-question/status and model-account plans.
+
+## TUI all-task browser
+
+Status: Accepted
+
+Owner request: add an all-task viewer to the Autowork TUI. Planner's defaults:
+`t` opens a full-screen, read-only task browser for the selected runner's repository;
+a scope selector offers All repositories already present in the fleet view. Include
+inactive/paused runners and recorded completed/archive history, not just active
+worker lanes. Do not scan the filesystem, discover extra profiles or start services.
+With no selected runner, default to All repositories; an empty fleet has an empty
+state, not an implicit repository scan. Keep the fleet home and its controls intact.
+
+Use the delivered `skills/pending/scripts/task_query.py` read-only API and its
+bundled Docs Sync/archive readers. Resolve the helper from the Autowork installation,
+never execute a script from the repository being queried; invoke its JSON CLI via
+`python -B` with an argument list and no shell. Inject this query runner separately
+from service-control commands so fake tests distinguish safe reads from mutations.
+Do not add another parser, task store, model
+call or dependency. A single `query(repo, mode='search', state='all', limit='all')`
+provides each repository's current+historical records without the five-item default
+or automatic Git-date history walk. Use its source/line attribution for recorded
+Now/Next/Needs decision ordering; unfinished tasks retain human TODO order, followed
+by done/superseded history in stable ID order. Unpositioned/ledger-only records keep
+an explicit unknown-placement label. Never sort by guessed completion date.
+
+Show repository, literal task ID, title, recorded status and section, plus a
+separate observed runtime phase only when existing engine evidence establishes it.
+Default to All states; filter All/Unfinished/Done/Superseded, Now/Next/Needs decision,
+and literal ID/title text. Use case-insensitive substring search, not regex or shell.
+For this first slice, no date filtering or Git-based completion ranking is added.
+Enter opens a scrollable detail pane with recorded scope, acceptance, checks,
+dependencies, blockers/remaining qualification and attributed source path/line.
+Missing fields stay missing; completion is recorded evidence, not independently
+verified acceptance. Reopened work remains unfinished; superseded is not done.
+
+Deduplicate by (resolved configured repository path, exact task ID), never ID alone;
+show disambiguating repository paths when display names collide. Counts derive from
+the same collected unique records and filters. Separate loaded total, matched total,
+displayed page and partial/unreadable repository coverage; incomplete results are
+not a fleet-wide zero or complete total. Planner's page size is 100 with explicit
+next/previous navigation, not a hidden cap; every matched task remains reachable.
+
+Collect with at most two background read jobs, not on the UI thread. Open/manual
+refresh (`r`) collects a new generation; filtering/paging uses in-memory results
+without repeated Git scans. No persistent cache or eager full-task query on every
+fleet tick. Preserve search, scope, filters and selected (repository, ID) across
+refresh; reject out-of-order responses after scope changes or screen closure.
+Keep source revision/observation time and warnings visible, mark retained results
+stale if refresh fails, and use existing freshness classification when available.
+Never combine a canonical task list with an unlabeled older session phase.
+
+Esc closes details before the browser and restores the fleet selection. Task text
+renders as literal text, never Rich markup, shell input or an auto-opened link.
+Typing/searching, Enter, resizing and global fleet action keys inside this screen
+must not start, stop, pause, restart, change models, set aside or complete tasks.
+Browsing remains available in view-only mode. At 40x20 use stacked list/detail and
+wrapped fields; at 80x24 and 150x45 show readable tables with reachable paging/filter
+controls. Reuse existing responsive screen conventions and TOOLSET-178-47 outputs
+when available, without waiting for its unrelated confirmation implementation.
+
+Planned proof: extend the existing fake-runner headless pilot and fleet/query
+fixtures for more than 100 records, search/status/section filtering, archived done,
+reopened/superseded, duplicate IDs across two repositories, duplicate path aliases,
+paused runners, TODO-only/missing/malformed/changing sources, partial fleet counts,
+source attribution, out-of-order refresh and narrow resize/back navigation. Assert
+zero control/provider/network calls and unchanged repository bytes, Git refs/index
+and runner state, including in view-only mode and while typing fleet shortcut
+letters. Run the existing query regression suite unchanged as well. New cases are
+planned, unrun; skipped pilot tooling is not a UI pass. This plan changes no runtime,
+queue states, schedules, services, provider accounts or credentials.
+
+Sources: existing FleetApp screens/bindings in `pi-autowork/pi_autowork/tui.py`,
+`pi-autowork/tests/tui_pilot.py`, `pi-autowork/tests/test_fleet_view.py`, and
+[read-only query contract](../skills/pending/references/query-contract.md).
+Rejected: displaying only lane slots omits most tasks; a second ledger/parser
+would drift from /pending and /done; eager history queries on fleet timers would
+block/overload the UI. No task editing or new slash-command alias is in scope.

@@ -679,7 +679,14 @@
         "TOOLSET-180-72",
         "TOOLSET-181-02",
         "TOOLSET-182-ce",
-        "TOOLSET-183-d6"
+        "TOOLSET-183-d6",
+        "TOOLSET-184-1d",
+        "TOOLSET-185-74",
+        "TOOLSET-186-07",
+        "TOOLSET-187-1d",
+        "TOOLSET-188-75",
+        "TOOLSET-189-96",
+        "TOOLSET-190-bf"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -690,56 +697,60 @@
       "TOOLSET-149-df",
       "TOOLSET-150-71",
       "TOOLSET-151-01",
+      "TOOLSET-189-96",
+      "TOOLSET-190-bf",
+      "TOOLSET-140-f4",
       "TOOLSET-165-f7",
-      "TOOLSET-183-d6",
+      "TOOLSET-180-72",
       "TOOLSET-170-f6",
-      "TOOLSET-174-1d",
       "TOOLSET-161-17",
       "TOOLSET-172-40",
-      "TOOLSET-173-94",
-      "TOOLSET-179-cf",
-      "TOOLSET-158-08",
-      "TOOLSET-180-72",
-      "TOOLSET-164-f1",
-      "TOOLSET-181-02",
-      "TOOLSET-182-ce",
-      "TOOLSET-143-62",
-      "TOOLSET-163-f7",
-      "TOOLSET-155-e2",
-      "TOOLSET-154-d3",
-      "TOOLSET-147-54",
-      "TOOLSET-140-f4",
-      "TOOLSET-153-64",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
-      "TOOLSET-129-c4",
-      "TOOLSET-099-87",
+      "TOOLSET-179-cf",
+      "TOOLSET-158-08",
+      "TOOLSET-155-e2",
+      "TOOLSET-181-02",
       "TOOLSET-115-bf",
+      "TOOLSET-173-94",
+      "TOOLSET-164-f1",
+      "TOOLSET-147-54",
+      "TOOLSET-154-d3",
+      "TOOLSET-163-f7",
+      "TOOLSET-182-ce",
+      "TOOLSET-153-64",
       "TOOLSET-120-fc",
-      "TOOLSET-146-bc",
-      "TOOLSET-156-75",
       "TOOLSET-125-3c",
       "TOOLSET-126-02",
-      "TOOLSET-127-8f",
       "TOOLSET-128-89",
+      "TOOLSET-119-2b",
+      "TOOLSET-118-68",
+      "TOOLSET-099-87",
+      "TOOLSET-146-bc",
+      "TOOLSET-156-75",
+      "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-172-92",
+      "TOOLSET-178-47",
       "TOOLSET-131-ac",
       "TOOLSET-132-af",
+      "TOOLSET-127-8f",
+      "TOOLSET-125-e6",
+      "TOOLSET-126-6b",
+      "TOOLSET-127-b1",
+      "TOOLSET-128-69",
       "TOOLSET-133-f5",
       "TOOLSET-134-ab",
       "TOOLSET-135-16",
       "TOOLSET-136-0b",
       "TOOLSET-137-cd",
-      "TOOLSET-125-e6",
-      "TOOLSET-126-6b",
-      "TOOLSET-127-b1",
-      "TOOLSET-128-69",
+      "TOOLSET-143-62",
       "TOOLSET-122-27",
       "TOOLSET-123-de",
-      "TOOLSET-123-a0",
+      "TOOLSET-144-c0",
+      "TOOLSET-184-1d",
       "TOOLSET-117-cb",
-      "TOOLSET-118-68",
-      "TOOLSET-119-2b",
+      "TOOLSET-123-a0",
       "TOOLSET-066",
       "TOOLSET-003",
       "TOOLSET-098-5d",
@@ -747,9 +758,6 @@
       "TOOLSET-096-7e",
       "TOOLSET-029",
       "TOOLSET-011",
-      "TOOLSET-144-c0",
-      "TOOLSET-172-92",
-      "TOOLSET-178-47",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d"
@@ -775,6 +783,26 @@
       "title": "Redesign pi-autowork around one lifecycle authority"
     },
     {
+      "depends_on": [
+        "TOOLSET-115-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-118-68",
+      "section": "Now",
+      "status": "open",
+      "title": "Separate worker, test and memory budgets in the parallel resource gate"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-115-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-119-2b",
+      "section": "Now",
+      "status": "open",
+      "title": "Record intent before side effects in worktree creation and slot transitions"
+    },
+    {
       "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-120-fc",
@@ -785,10 +813,45 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-125-3c",
+      "section": "Now",
+      "status": "open",
+      "title": "Runners report unlanded work in health and BLOCKERS.md"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-126-02",
+      "section": "Now",
+      "status": "open",
+      "title": "Every runner worktree in .worktrees, none outliving its work"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-128-89",
+      "section": "Now",
+      "status": "open",
+      "title": "First push of a long-local or diverged main"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-129-c4",
       "section": "Now",
       "status": "open",
       "title": "Make Needs show one evidence-backed next action"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4",
+        "TOOLSET-179-cf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-130-15",
+      "section": "Now",
+      "status": "open",
+      "title": "Separate worker activity, delivery evidence and available capacity"
     },
     {
       "depends_on": [],
@@ -815,14 +878,12 @@
       "title": "Give workers a short temporary directory that browsers and sockets accept"
     },
     {
-      "depends_on": [
-        "TOOLSET-142-85"
-      ],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-143-62",
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc",
       "section": "Now",
       "status": "open",
-      "title": "Add the conversational tasks skill and host commands"
+      "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
       "depends_on": [],
@@ -884,6 +945,14 @@
       "section": "Now",
       "status": "open",
       "title": "Keep owner-listed private terms out of public commits, pushes and runner integrations"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-156-75",
+      "section": "Now",
+      "status": "open",
+      "title": "Split a task into subtasks when that unlocks parallel work or reduces complexity"
     },
     {
       "depends_on": [],
@@ -954,14 +1023,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-174-1d",
-      "section": "Now",
-      "status": "open",
-      "title": "Restarting a runner keeps its workers running"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-179-cf",
       "section": "Now",
       "status": "open",
@@ -994,10 +1055,18 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-183-d6",
+      "id": "TOOLSET-189-96",
       "section": "Now",
       "status": "open",
-      "title": "A review runs beside the runner's loop, so dispatch, status and questions continue while a commit is verified"
+      "title": "A new runner starts cleanly: a lasting PATH and committed planning files"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-190-bf",
+      "section": "Now",
+      "status": "open",
+      "title": "A landing that needs no merge goes ahead during a review"
     },
     {
       "depends_on": [],
@@ -1076,26 +1145,6 @@
       "title": "Compare the Pi CLI worker adapter with AgwaB pi-subagent runSubagent on identical fixtures"
     },
     {
-      "depends_on": [
-        "TOOLSET-115-bf"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-118-68",
-      "section": "Next",
-      "status": "open",
-      "title": "Separate worker, test and memory budgets in the parallel resource gate"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-115-bf"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-119-2b",
-      "section": "Next",
-      "status": "open",
-      "title": "Record intent before side effects in worktree creation and slot transitions"
-    },
-    {
       "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-122-27",
@@ -1125,27 +1174,11 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-125-3c",
-      "section": "Next",
-      "status": "open",
-      "title": "Runners report unlanded work in health and BLOCKERS.md"
-    },
-    {
-      "depends_on": [],
       "goal": "TEST-SUITE",
       "id": "TOOLSET-125-e6",
       "section": "Next",
       "status": "open",
       "title": "Run inherited execution regressions once"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-126-02",
-      "section": "Next",
-      "status": "open",
-      "title": "Every runner worktree in .worktrees, none outliving its work"
     },
     {
       "depends_on": [
@@ -1188,25 +1221,6 @@
       "section": "Next",
       "status": "open",
       "title": "Qualify suite thinning and reconcile the test budget"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-128-89",
-      "section": "Next",
-      "status": "open",
-      "title": "First push of a long-local or diverged main"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-129-c4",
-        "TOOLSET-179-cf"
-      ],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-130-15",
-      "section": "Next",
-      "status": "open",
-      "title": "Separate worker activity, delivery evidence and available capacity"
     },
     {
       "depends_on": [
@@ -1275,28 +1289,22 @@
       "title": "Carry justified skill recommendations from plans into Autowork"
     },
     {
+      "depends_on": [
+        "TOOLSET-142-85"
+      ],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-143-62",
+      "section": "Next",
+      "status": "open",
+      "title": "Add the conversational tasks skill and host commands"
+    },
+    {
       "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-144-c0",
       "section": "Next",
       "status": "open",
       "title": "Choose repository models and connect Pi provider accounts in Autowork"
-    },
-    {
-      "depends_on": [],
-      "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-146-bc",
-      "section": "Next",
-      "status": "open",
-      "title": "Run conditional Docs Sync during verified Autowork closeout"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-156-75",
-      "section": "Next",
-      "status": "open",
-      "title": "Split a task into subtasks when that unlocks parallel work or reduces complexity"
     },
     {
       "depends_on": [],
@@ -1313,6 +1321,16 @@
       "section": "Next",
       "status": "open",
       "title": "Keep TUI confirmations readable and stable through refresh and terminal resize"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-142-85"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-184-1d",
+      "section": "Next",
+      "status": "open",
+      "title": "Browse all recorded tasks in the Autowork TUI"
     },
     {
       "depends_on": [
@@ -2258,6 +2276,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-174-1d",
+      "section": "Done",
+      "status": "done",
+      "title": "Restarting a runner keeps its workers running"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-175-2b",
       "section": "Done",
       "status": "done",
@@ -2278,6 +2304,46 @@
       "section": "Done",
       "status": "done",
       "title": "A runner busy with its own job shows that job, not 'not cycling'"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-183-d6",
+      "section": "Done",
+      "status": "done",
+      "title": "A review runs beside the runner's loop, so dispatch, status and questions continue while a commit is verified"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-185-74",
+      "section": "Done",
+      "status": "done",
+      "title": "An idle runner waits out its interval instead of re-cycling on its own ref changes"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-186-07",
+      "section": "Done",
+      "status": "done",
+      "title": "The offline check runs tests without the runner's push guard"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-187-1d",
+      "section": "Done",
+      "status": "done",
+      "title": "A reload or self-update waits until the finished review's answer is collected"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-188-75",
+      "section": "Done",
+      "status": "done",
+      "title": "A session's planning commits land on main within minutes, not only when a task closes"
     },
     {
       "depends_on": [
