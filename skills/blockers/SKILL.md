@@ -3,7 +3,7 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.4
+  version: 0.1.5
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
@@ -48,7 +48,10 @@ without a model call:
   `.git/autowork-execution/slot-data/TASK/attempt-N/`. `blocks` counts waiting tasks
   that depend on the root; check which IDs it counts, since it can include the root.
 - Owner-maintained entries under `## Active` in `BLOCKERS.md` and tasks in TODO.md's
-  `Needs decision` section.
+  `Needs decision` section. `Q-ACCEPT-GOALS`, between `<!-- docs-sync:accept-goals:start -->`
+  and its end marker, asks to accept a first drafted backlog: on the owner's yes run
+  `python3 <docs-sync>/scripts/goals.py accept REPO`; for a change, edit
+  `docs/tasks/proposed-goals.json` or the goal's section and run `goals.py propose` again.
 
 ### Filter before asking
 
