@@ -1381,12 +1381,15 @@ class Coordinator:
         snapshot = self.status()
         paused = int(time.time() + self.pause_until - time.monotonic()) if self.pause_until > time.monotonic() else 0
         # Commits that only wait for another session to leave the main checkout are no progress.
-        waiting = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')
-                   and self.seen.get('busy-' + str(t.get('task')))]
+        reported = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')]
+        waiting = [t for t in reported if self.seen.get('busy-' + str(t.get('task')))]
         blocker = self.runner_blocker or self.merge_blocker
         if waiting and not blocker:
-            blocker = (f'{len(waiting)} verified commit(s) wait for another session in the main checkout: '
-                       + self.seen['busy-' + waiting[0]['task']])
+            candidate = waiting[0].get('task')
+            meanwhile = len(reported) - len(waiting)
+            blocker = (f'{candidate} waits for another session in the main checkout'
+                       + (f'; {meanwhile} other reported commit(s) integrate meanwhile' if meanwhile else '')
+                       + ': ' + self.seen['busy-' + str(candidate)])
         runner = {'repo': str(self.repo), 'pid': str(os.getpid()), 'toolset_rev': self.toolset_rev,
                   'mode': self.mode, 'paused_until': str(paused), 'blocker': blocker,
                   'stuck_integrations': str(len(waiting)), 'maintainer': maintainer.last(self.state),
