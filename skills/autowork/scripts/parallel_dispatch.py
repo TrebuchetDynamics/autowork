@@ -186,7 +186,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         'own subagents for this task.',
         '',
         'Rules:',
-        f'- Work only inside {worktree}; change only paths within Touches: {touches}',
+        f'- Work only inside {worktree}. Touches names the paths this task is expected to change: {touches}.',
+        '  It guides scheduling, not a fence: change whatever else the task truly needs, keeping the',
+        '  change as small as the task allows.',
         '- New dependency manifests, lock files, schema/migration or CI files need an explicit',
         '  protected path in Touches before editing; a broad directory alone does not reserve them.',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
@@ -213,13 +215,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
-        '  "blockers": [...], "pending_live": [...], "needs_touches": [...], "changelog": "..."}.',
+        '  "blockers": [...], "pending_live": [...], "changelog": "..."}.',
         '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
-        '  what a person must decide or provide (for example a path outside Touches you need, or a',
-        '  missing dependency). If blocked, report commit null with blockers and stop.',
-        '- If you are blocked only because you must change files outside Touches, also list exactly',
-        '  those repository-relative paths in "needs_touches": [...] and leave your work uncommitted.',
-        '  If Touches are widened you resume in this worktree with your changes intact.',
+        '  what a person must decide or provide (for example a missing dependency or a decision).',
+        '  If blocked, report commit null with blockers and stop.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -232,9 +231,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
                   'Only when this task asks to keep or continue earlier work, you may merge or cherry-pick',
                   'from these tips into your assigned branch; otherwise ignore them. Inspect the diff first:',
                   'earlier work is evidence, not accepted work, and may no longer fit the current task.',
-                  'The current entry\'s Touches still apply: bring in nothing outside them, including',
-                  'coordinator-owned files or unreserved protected paths. For a mixed-scope tip, reuse only',
-                  'allowed paths instead of merging or cherry-picking the whole commit.',
+                  'Bring in no coordinator-owned files and no protected paths the entry does not declare.',
+                  'For a mixed-scope tip, reuse only what this task needs instead of the whole commit.',
                   'Keep one final task commit (for example cherry-pick --no-commit or merge --squash).',
                   'Never modify the earlier branches or their worktrees; no work is applied automatically.']
     if adopted:
@@ -638,25 +636,9 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
                    drain_after=drain_after, waited=waited)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
-    resumed = {t['id'] for t in first['dispatch']}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
-    by_id = {t['id']: t for t in everything}
-    waiting_owners = [by_id[tid] for tid in restartable if tid not in resumed and tid in by_id]
-    dispatch, waiting = [], first['waiting'] + second['waiting']
-    def shares(task, other):
-        try:
-            return parallel_plan._shared(parallel_plan._touches(task), parallel_plan._touches(other))
-        except ValueError:  # invalid Touches hold their own task (plan); they reserve nothing
-            return False
-
-    for task in second['dispatch']:
-        owner = next((o['id'] for o in waiting_owners if shares(task, o)), None)
-        if owner:
-            waiting.append({'id': task['id'], 'reason': 'overlapping paths with interrupted ' + owner,
-                            'blocked_by': [owner]})
-        else:
-            dispatch.append(task)
-    return {'dispatch': first['dispatch'] + dispatch, 'waiting': waiting}
+    # Overlap with an interrupted owner never holds new work either (TOOLSET-161-17).
+    return {'dispatch': first['dispatch'] + second['dispatch'], 'waiting': first['waiting'] + second['waiting']}
 
 
 def dispatch(args):

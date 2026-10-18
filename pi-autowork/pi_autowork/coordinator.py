@@ -26,18 +26,6 @@ from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_n
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
-TOUCHES_PROMPT = (
-    'Plan the file scope of task {task} in {checkout} so it can run beside other tasks. Read its entry in TODO.md, '
-    'then the files and directories its Sources, Scope and acceptance name, and the repository layout around them. '
-    'List the repository-relative files, directories (ending in /) or globs the task\'s change will edit, including '
-    'its tests and docs; prefer a component\'s directory over guessing single files, and when unsure widen to the '
-    'owning directories rather than give up: a worker that edits outside the list is only held and retried alone. '
-    'Scope is about which files change, not how the result is checked: a task verified on a device, emulator, '
-    'screenshot harness or live service still lists the code and test files it edits. Never list TODO.md, '
-    'TODO.archive.md, goals.json or CHANGELOG.md. Answer NONE only when the task edits no repository file (purely '
-    'live, manual or device operation) or would edit files across most of the repository, and give the reason. '
-    'Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or '
-    'PI_AUTOWORK_TOUCHES: NONE - reason')
 MERGE_PROMPT = (
     '/skill:git-commit-push This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
     "in: {files}. Resolve every conflict keeping both sides' work: keep both task entries in TODO.md and "
@@ -160,10 +148,6 @@ class Coordinator:
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
         self.engine_path = Path(self.toolset) / 'skills/autowork/scripts/owner_cycle.py'
         self.goals = Path(self.toolset) / 'skills/docs-sync/scripts/goals.py'
-        self.touches_helper = Path(__file__).with_name('touches_inference.py')
-        self.inferred_file = self.state / 'touches-inferred.json'
-        self.touches_cache = self.state / ('touches-' + hashlib.sha256(
-            TOUCHES_PROMPT.format(task='TASK', checkout='DIR').encode()).hexdigest()[:12] + '.json')
         self.process_script = str(Path(self.toolset) / 'scripts/pi-autowork.sh')
         self.worker_command = json.dumps(['/bin/bash', self.process_script, '--worker', str(self.state), '{worktree}',
                                           '{prompt_file}', '{report_file}', '{timeout}'])
@@ -934,16 +918,8 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            # A worker that asked for files outside Touches this runner inferred: widen the
-            # guess and the engine resumes it in its worktree (not counted as a failure).
             if state == 'interrupted' and row.get('paused'):
                 state = 'resuming'  # a deliberate stop or a granted request, not a failure
-            if state == 'held' and row.get('cause') == 'scope_request' and not self.session_busy():
-                if self.seen.get('awaiting-' + task):
-                    continue  # widened already: the next refill resumes it
-                if not self.stop and self.widen_inferred(task, ', '.join(row.get('requested') or []), requested=True):
-                    self.settled = True
-                    continue
             if (state == 'held' and row.get('cause') == 'conflict' and not self.session_busy()
                     and self.resolve_task_conflict(row)):
                 self.settled = True
@@ -997,8 +973,6 @@ class Coordinator:
             self.close_task(task)
         elif outcome == 'HELD':
             self.settled = True
-            if result.get('cause') == 'scope' and self.widen_inferred(task, ', '.join(result.get('outside') or [])):
-                return  # the next refill verifies the same commit again (RESCOPED)
             if (result.get('cause') == 'validation' and self.environment_hold(task)
                     and self.provision_and_reverify(task, self.reviewer_version())):
                 return  # reviewed again before a refill can start a fresh retry
@@ -1294,74 +1268,6 @@ class Coordinator:
             return True
         return False
 
-    # --- Scope: widening Touches this runner inferred ------------------------------
-    def inferred(self):
-        try:
-            value = json.loads(self.inferred_file.read_text())
-        except (OSError, ValueError):
-            return {}
-        return value if isinstance(value, dict) else {}
-
-    def remember_inferred(self, task, touches):
-        value = self.inferred()
-        value[task] = touches
-        tmp = self.inferred_file.with_suffix('.tmp')
-        tmp.write_text(json.dumps(value) + '\n')
-        os.replace(tmp, self.inferred_file)
-
-    def helper(self, *argv):
-        with open(self.state / 'engine.err', 'a') as err:
-            result = subprocess.run([sys.executable, str(self.touches_helper), *argv], stdout=subprocess.PIPE,
-                                    stderr=err, text=True)
-        return result.stdout.strip() if result.returncode == 0 else None
-
-    def recorded_touches(self, task):
-        """Touches this runner recorded for the task: from its record, or for older runs from
-        its own `declare Touches` commit (the helper still refuses if they changed since)."""
-        recorded = self.inferred().get(task)
-        if recorded:
-            return recorded
-        commit = git(self.integ, 'log', '-1', '--format=%H', '--fixed-strings',
-                     f'--grep=docs(tasks): declare Touches for {task} (pi-autowork)')
-        text = git(self.integ, 'show', f'{commit}:TODO.md') if commit else None
-        if not text:
-            return None
-        goals, _ = touches_inference.modules(self.toolset)
-        bodies = goals.task_bodies(text).get(task) or []
-        value = goals.task_fields(bodies[0][0]).get('Touches', '').strip() if len(bodies) == 1 else ''
-        return value or None
-
-    def widen_inferred(self, task, outside, requested=False):
-        """Touches this runner inferred are a guess: widen them once to the files a held
-        commit changed (the engine verifies it again) or a worker asked for (the engine
-        resumes it in place). Touches a person wrote, or edited since, only get the bounded
-        widening from worker evidence."""
-        if not outside or dirty(self.integ) or self.seen.get('widened-' + task) or self.session_busy():
-            return False
-        recorded = self.recorded_touches(task)
-        if not recorded:
-            return self.widen_from_evidence(task, outside, requested)
-        widened = self.helper('widen', self.integ, self.toolset, task, recorded, outside)
-        if widened is None:
-            # A person edited the list since the runner inferred it: the bounded grant still
-            # applies (a held task's Touches had been inferred once, then rewritten by hand).
-            return self.widen_from_evidence(task, outside, requested)
-        if requested:
-            self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
-                        f'Its worker needs {outside}, outside the inferred Touches; it resumes in its worktree.')
-        else:
-            self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
-                        f"The worker's commit changed {outside}, outside the inferred Touches; the engine verifies it again.")
-        self.remember_inferred(task, widened)
-        self.seen['widened-' + task] = True
-        if requested:
-            self.seen['awaiting-' + task] = True
-            LOG.say(f'{task}: its worker needs files outside the inferred Touches ({outside}); widened them and '
-                    'resuming it in its worktree')
-        else:
-            LOG.say(f'{task}: its commit changed files outside the inferred Touches ({outside}); widened them and verifying again')
-        return True
-
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own
         worktree, Pi resolving the conflict, and the engine judges the merge from there
@@ -1394,39 +1300,7 @@ class Coordinator:
         LOG.say(f'{task}: merged the session into its commit; verifying again')
         return True
 
-    def widen_from_evidence(self, task, outside, requested):
-        """Touches a person wrote are widened once, by at most three exact files the worker
-        named and no other slot's task declares (TOOLSET-152-d4); the helper refuses the
-        rest, which stays a question. The engine then resumes or reverifies the same work."""
-        added = self.helper('grant', self.integ, self.toolset, task, outside)
-        if added is None:
-            return False
-        why = ('Its worker needs ' if requested else "The worker's commit changed ") + added
-        self.commit(['TODO.md'], f'docs(tasks): widen Touches for {task} from worker evidence (pi-autowork)',
-                    f'{why}, outside Touches; widened once, without a person.')
-        self.seen['widened-' + task] = True
-        if requested:
-            self.seen['awaiting-' + task] = True
-            LOG.say(f'{task}: its worker needs files outside Touches ({added}); widened them once and resuming it '
-                    'in its worktree')
-        else:
-            LOG.say(f'{task}: its commit changed files outside Touches ({added}); widened them once and verifying again')
-        return True
-
     # --- Touches proposals ------------------------------------------------------------
-    def touches_held_until(self):
-        try:
-            return json.loads(self.touches_cache.read_text())
-        except (OSError, ValueError):
-            return {}
-
-    def touches_hold(self, task, seconds):
-        value = self.touches_held_until()
-        value[task] = int(time.time()) + seconds
-        tmp = self.touches_cache.with_name(self.touches_cache.name + f'.{os.getpid()}')
-        tmp.write_text(json.dumps(value))
-        os.replace(tmp, self.touches_cache)
-
     def scratch_checkout(self, purpose, rev='HEAD'):
         """A disposable detached checkout inside the canonical .worktrees directory."""
         target = workspaces.task_path(self.toolset, self.repo, 'pi-scratch-' + purpose)
@@ -1448,57 +1322,6 @@ class Coordinator:
             return
         if git_ok(self.integ, 'worktree', 'remove', '--force', path):
             owned.remove(path)
-
-    def infer_touches(self):
-        """For the top runnable tasks without Touches, a read-only Pi pass proposes the
-        paths; recorded in the session branch, the engine then enforces them."""
-        if os.environ.get('PI_AUTOWORK_INFER_TOUCHES', '1') == '0':
-            return
-        listing = self.helper('missing', self.integ, self.toolset, str(self.workers))
-        try:
-            rows = json.loads(listing or '[]')
-        except ValueError:
-            return
-        # A task with a slot keeps the scope it was dispatched with: a Touches commit for it
-        # would read as an answered question and re-queue it.
-        slotted = {r.get('task') for r in self.tasks() if r.get('state') not in ('waiting', None)}
-        for task in [r.get('id') for r in rows if isinstance(r, dict) and r.get('id') not in slotted]:
-            if self.stop:
-                return
-            if task in self.touches_tried:
-                continue
-            self.touches_tried.add(task)
-            # A task judged unboundable is asked again after a day, not every cycle.
-            if float(self.touches_held_until().get(task) or 0) > time.time():
-                continue
-            # A planning pass reads a disposable copy of the session; nothing it does can
-            # touch the session checkout. The copy is removed afterwards.
-            scratch = self.scratch_checkout('touches')
-            if not scratch:
-                LOG.say(f'{task}: could not create a scratch checkout; skipping the Touches pass')
-                continue
-            ok, text = self.pi_job('touches', task, scratch, TOUCHES_PROMPT.format(task=task, checkout=scratch),
-                                   f'pi-autowork-touches-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}', 900,
-                                   ['--tools', 'read,grep,find,ls'])
-            self.drop_scratch(scratch)
-            line = next((l for l in text.splitlines() if l.startswith('PI_AUTOWORK_TOUCHES:')), '')
-            answer = line.removeprefix('PI_AUTOWORK_TOUCHES:').strip()
-            recorded = None
-            if ok and answer and not re.match(r'^NONE([^A-Za-z0-9_./]|$)', answer):
-                recorded = self.helper('apply', self.integ, self.toolset, task, answer)
-            if recorded is not None:
-                self.commit(['TODO.md'], f'docs(tasks): declare Touches for {task} (pi-autowork)',
-                            'Proposed by a read-only planning pass; the engine holds any change outside it.')
-                self.remember_inferred(task, recorded)
-                LOG.say(f'{task}: can run beside others; Touches: {recorded}')
-            elif not ok or not answer:
-                # No answer (provider failure, timeout, missing result line) is not a judgment.
-                self.touches_hold(task, 3600)
-                self.touches_tried.discard(task)
-                LOG.say(f'{task}: runs alone for now (the Touches pass gave no answer; asking again within the hour)')
-            else:
-                self.touches_hold(task, 86400)
-                LOG.say(f'{task}: runs alone (no Touches proposed: {answer})')
 
     # --- Priority, requests, health, self-update --------------------------------------
     def goals_cli(self, *argv):
@@ -1764,8 +1587,6 @@ class Coordinator:
         if not self.draining and time.monotonic() < self.pause_until:
             outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
         elif not self.draining:
-            if not self.session_busy():
-                self.infer_touches()
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle))

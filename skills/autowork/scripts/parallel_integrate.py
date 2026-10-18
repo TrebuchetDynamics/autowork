@@ -64,11 +64,8 @@ class Hold(ValueError):
 
 class ReportedBlocker(Hold):
     """The worker's own report names work it could not finish."""
-    def __init__(self, reason, requested=()):
-        if requested:
-            super().__init__('scope_request', reason, requested=list(requested))
-        else:
-            super().__init__('blocker', reason)
+    def __init__(self, reason):
+        super().__init__('blocker', reason)
 
 
 def hold(common, slot, reason, **updates):
@@ -135,7 +132,7 @@ def verify(repo, common, slot, contracts):
     files = changed(repo, slot['baseline'], commit)
     blockers = state.report_blockers(common, slot)
     if blockers:
-        raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
+        raise ReportedBlocker(state.blocker_reason(blockers))
     report['pending_live'] = live_items(report.get('pending_live'))
     mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
     if mismatch:
@@ -193,33 +190,10 @@ def report_matches(repo, common, slot):
         return False
 
 
-def owned_elsewhere(repo, common, slot, contracts):
-    """What every other unsettled slot owns: its commit's files, else its declared Touches."""
-    others: list[list[str]] = []
-    for other in state.slots(common):
-        # An exhausted hold waits for a person; the planner already lets overlap past it.
-        # A commit held for overlap waits for the others to settle and is then offered
-        # again on current main: it owns nothing meanwhile, or two could hold each other.
-        if (other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed') or state.exhausted(other)
-                or state.overlap_held(other)):
-            continue
-        if other.get('commit'):
-            others.append(changed(repo, other['baseline'], other['commit']))
-        else:
-            others.append(plan.paths(contracts.get(other['task_id'], {}).get('fields', {}).get('Touches', '')))
-    return others
-
-
-def unowned(repo, common, slot, contracts):
-    """No other unsettled slot owns any file this slot's commit changed."""
-    files = changed(repo, slot['baseline'], slot['commit'])
-    return not plan.overlap(files, files, owned_elsewhere(repo, common, slot, contracts))['conflicts']
-
-
 def verify_scope(repo, common, slot, contracts, files):
-    task = contracts[slot['task_id']]
-    others = [list(dispatch.COORDINATOR_FILES), *owned_elsewhere(repo, common, slot, contracts)]
-    declared = plan.paths(slot['touches'] if 'touches' in slot else task['fields'].get('Touches', ''))
+    """Only the coordinator's files and undeclared protected files are out of a worker's reach:
+    Touches schedule work and never hold it, and two tasks editing the same file are settled
+    by the merge into the base, in priority order (TOOLSET-161-17)."""
     # A broad directory alone does not reserve hypothetical future manifests.
     # Require an explicit serial declaration before accepting newly created shared
     # build/schema/CI state, even if other workers have already finished.
@@ -230,15 +204,9 @@ def verify_scope(repo, common, slot, contracts, files):
         if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
             raise Hold('scope', 'protected files need serial admission in the original task contract: '
                        + str(protected), outside=protected)
-    # A task without Touches was dispatched alone, so every file it changed is its own;
-    # coordinator files and other slots still conflict. (Requiring a declaration here
-    # held every such task: it could never integrate.)
-    overlap = plan.overlap(files, declared or files, others)
-    if overlap['outside'] or overlap['conflicts']:
-        message = 'changed files violate Touches or coordinator/other-slot ownership: ' + str(overlap)
-        if overlap['conflicts']:
-            raise Hold('overlap', message)
-        raise Hold('scope', message, outside=overlap['outside'])
+    coordinator = plan.overlap(files, files, [list(dispatch.COORDINATOR_FILES)])['conflicts']
+    if coordinator:
+        raise Hold('scope', 'changed files the coordinator owns: ' + ', '.join(coordinator), outside=coordinator)
 
 
 class WritersBusy(ValueError):
@@ -1018,15 +986,22 @@ def retry_held(args):
             # again, once, when no unsettled slot owns them any more (TOOLSET-157-cd): the
             # slot it waited for has integrated or was released. A fresh retry would only
             # reimplement the same change.
-            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and 'overlap' not in state.reoffered(s)]
-            if overlapped:
-                by_id = {t['id']: t for t in dispatch.contracts(repo)}
-                order = list(by_id)  # TODO.md priority: of two such commits the higher one goes first
-                overlapped.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
-                free = next((s for s in overlapped if unowned(repo, common, s, by_id)), None)
-                if free is not None:
-                    slot = state.reoffer(common, free)
-                    return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # TOOLSET-161-17: a commit held only for Touches (overlap with another slot, or files
+            # outside its Touches that are neither protected nor the coordinator's) integrates by
+            # merge now: offered again once, in TODO priority order.
+            touches_held = [s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
+                            and s.get('cause') not in state.reoffered(s)
+                            and (s.get('cause') == 'overlap'
+                                 or (s.get('cause') == 'scope' and s.get('outside') and not any(
+                                     plan.protected_path(p) or p in dispatch.COORDINATOR_FILES
+                                     for p in s.get('outside')))
+                                 or (s.get('cause') == 'scope' and 'changed files violate Touches'
+                                     in str(s.get('reason') or '') and not s.get('outside')))]
+            if touches_held:
+                order = [t['id'] for t in dispatch.contracts(repo)]
+                touches_held.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
+                slot = state.reoffer(common, touches_held[0])
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A commit an earlier release held by misreading its evidence is offered again once:
             # a report naming its commit by an abbreviated SHA, or a validation that passed but
             # left build daemons behind. Integration repeats every check.
@@ -1040,15 +1015,13 @@ def retry_held(args):
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
+            # A worker that stopped to ask for files outside Touches (an earlier release told it
+            # to) resumes in its own worktree on the same attempt: it may change them now.
             requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'
                         and not state.worker_live(s)]
             if requests:
-                touches = {t['id']: t['fields'].get('Touches', '') for t in dispatch.contracts(repo, args.tasks, args.plan)}
-                covered = next((s for s in requests if s['task_id'] in touches and touches[s['task_id']].strip()
-                                and not plan.overlap(s.get('requested') or [], plan.paths(touches[s['task_id']]), [])['outside']), None)
-                if covered is not None:
-                    slot = state.resume_widened(common, covered)
-                    return {'outcome': 'RESUMED', 'task': slot['task_id'], 'touches': touches[slot['task_id']]}
+                slot = state.resume_widened(common, requests[0])
+                return {'outcome': 'RESUMED', 'task': slot['task_id'], 'touches': ''}
             again = [s for s in current if state.readoptable(s)]
             eligible = {t['id'] for t in dispatch.contracts(repo, args.tasks, args.plan)} if again else set()
             again = next((s for s in again if s['task_id'] in eligible), None)

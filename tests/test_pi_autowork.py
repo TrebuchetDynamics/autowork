@@ -499,17 +499,17 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('B'))  # independent work still lands
         self.assertNotIn('- [x] A', (self.repo / 'TODO.md').read_text())
 
-    def test_invalid_touches_hold_the_task_while_independent_work_finishes(self):
+    def test_invalid_touches_are_no_hint_and_never_hold_the_task(self):
+        """TOOLSET-161-17: Touches schedule work; an invalid list only ranks the task lower."""
         text = (self.repo / 'TODO.md').read_text().replace('Touches: A.txt', 'Touches: a/../b')
         (self.repo / 'TODO.md').write_text(text)
         self.git(self.repo, 'commit', '-qam', 'A has invalid Touches')
         result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertEqual([r['task'] for r in self.runs('worker')], ['B'])
-        self.assertTrue(self.done('B'))
-        self.assertIn('A: invalid Touches: a/../b', result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(sorted(r['task'] for r in self.runs('worker')), ['A', 'B', 'C'])
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertNotIn('invalid Touches', result.stdout)
         self.assertNotIn('engine needs attention', result.stdout)
-        self.assertIn('invalid Touches: a/../b', self.run_runner('--status').stdout)
 
     def test_a_review_that_could_not_run_for_a_missing_tool_gets_it_installed_and_reviews_again(self):
         """TOOLSET-173-94: a commit was held on its last attempt for want of a pinned SDK."""
@@ -1080,18 +1080,6 @@ class EngineTests(Fixture):
             files = set(self.git(self.repo, 'show', '--format=', '--name-only', commit).split())
             self.assertLessEqual(files, {'TODO.md', 'goals.json', 'TODO.archive.md'}, commit)
 
-    def test_the_touches_pass_reads_a_disposable_copy_of_the_session(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        cwd = self.runs('touches')[0]['cwd']
-        self.assertEqual(Path(cwd).parent, self.repo / '.worktrees')
-        self.assertTrue(Path(cwd).name.startswith('pi-scratch-touches-'))
-        self.assertFalse(Path(cwd).exists())
-        self.assertNotIn(cwd, self.git(self.repo, 'worktree', 'list'))
-
     def test_a_set_aside_request_lets_a_blocked_task_run_fresh(self):
         self.plan({'worker:A': ['blocked']})
         first = self.run_runner('--until-empty')
@@ -1281,88 +1269,16 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')  # nothing linked is committed
 
-    def test_a_commit_outside_inferred_touches_is_reverified_after_widening(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        self.plan({'worker:A': ['extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its commit changed files outside the inferred Touches (A-extra.txt); widened them', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # same commit, no rerun
-        self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
-
-    def test_a_commit_outside_authored_touches_is_widened_once_and_reverified(self):
-        """TOOLSET-152-d4: the same commit is verified again, with no new attempt."""
+    def test_a_commit_outside_touches_integrates_without_widening(self):
+        """TOOLSET-161-17: Touches never hold a commit; it lands as it is, with no new attempt."""
         self.plan({'worker:A': ['extra', 'extra']})
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its commit changed files outside Touches (A-extra.txt); widened them once and verifying again',
-                      result.stdout)
+        self.assertNotIn('widened them', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
-    def test_a_worker_asking_for_files_outside_inferred_touches_resumes_after_widening(self):
-        """sierra TASK-024, bravo TASK-005: a worker needed one more file and stopped."""
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt); widened them and '
-                      'resuming it in its worktree', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-        workers = [r for r in self.runs('worker') if r['task'] == 'A']
-        self.assertEqual(len(workers), 2)
-        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])  # resumed in the same worktree
         self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
-        self.assertNotIn('A: failed', result.stdout)  # a request is not a failure
-
-    def test_touches_an_older_run_inferred_are_recognized_from_its_commit(self):
-        """Touches inferred before the runner kept a record (sierra TASK-024) can still be widened."""
-        text = (self.repo / 'TODO.md').read_text()
-        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', ''))
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        (self.repo / 'TODO.md').write_text(text)  # as an earlier pi-autowork run recorded it
-        self.git(self.repo, 'commit', '-qam', 'docs(tasks): declare Touches for A (pi-autowork)')
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt)', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-
-    def test_inferred_touches_a_person_edited_since_still_get_the_bounded_widening(self):
-        """A held task's Touches were inferred once, then rewritten by hand: the inferred
-        widening refused and nothing else was tried, so one file waited for the owner."""
-        text = (self.repo / 'TODO.md').read_text()
-        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', ''))
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'docs(tasks): declare Touches for A (pi-autowork)')
-        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', '  Touches: A.txt, notes.md\n'))
-        self.git(self.repo, 'commit', '-qam', 'a person edits A')
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside Touches (A-extra.txt); widened them once', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-
-    def test_a_worker_asking_for_files_outside_authored_touches_resumes_after_one_widening(self):
-        """TOOLSET-152-d4: the worker names the exact file, so no person is needed."""
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside Touches (A-extra.txt); widened them once and resuming it '
-                      'in its worktree', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-        workers = [r for r in self.runs('worker') if r['task'] == 'A']
-        self.assertEqual(len(workers), 2)
-        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])
-        self.assertNotIn('A: failed', result.stdout)
-        self.assertIn('Touches widened by the runner from worker evidence: A-extra.txt',
-                      self.git(self.repo, 'log', '-p', '-1', '--grep=widen Touches for A from worker evidence'))
-
+        self.assertNotIn('widen', self.git(self.repo, 'log', '--format=%s'))  # Touches stay as written
     def test_a_second_request_after_one_widening_waits_for_a_person(self):
         text = (self.repo / 'TODO.md').read_text().replace(
             '  Touches: A.txt\n', '  Touches: A.txt\n  Touches widened by the runner from worker evidence: A.txt\n')
@@ -1579,8 +1495,9 @@ class EngineTests(Fixture):
         self.assertNotIn('Task A', (self.repo / 'TODO.md').read_text())
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
-    def test_tasks_without_touches_get_proposed_ones_and_run_in_parallel(self):
-        """sierra: no task declared Touches, so everything ran one at a time."""
+    def test_tasks_without_touches_run_in_parallel_with_no_touches_pass(self):
+        """sierra: no task declared Touches, so everything ran one at a time. TOOLSET-161-17:
+        a missing Touches is no hint, so they run together and no model proposes any."""
         text = (self.repo / 'TODO.md').read_text()
         for t in 'ABC':
             text = text.replace(f'  Touches: {t}.txt\n', '')
@@ -1589,43 +1506,9 @@ class EngineTests(Fixture):
         self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})  # both must run at once
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: can run beside others; Touches: A.txt', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertIn('  Touches: A.txt', (self.repo / 'TODO.md').read_text()
-                      + ((self.repo / 'TODO.archive.md').read_text() if (self.repo / 'TODO.archive.md').exists() else ''))
-        self.assertTrue(all(r['tools'] == 'read,grep,find,ls' for r in self.runs('touches')))
-        # Device- or screenshot-verified work still has a bounded edit scope (TASK-013 answered NONE).
-        prompt = self.runs('touches')[0]['message']
-        self.assertIn('not how the result is checked', prompt)
-        self.assertIn('NONE - reason', prompt)
-
-    def test_an_unboundable_task_runs_alone_and_is_not_asked_again(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        self.plan({'touches:A': ['none']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: runs alone (no Touches proposed: NONE - only a live device operation)', result.stdout)
-        self.assertEqual(len(self.runs('touches')), 1)
-        self.assertNotIn('Touches: NONE', (self.repo / 'TODO.md').read_text())
-        caches = list(self.state.glob('*/touches-*.json'))
-        self.assertEqual(len(caches), 1)
-        self.assertIn('A', json.loads(caches[0].read_text()))
-
-    def test_answers_from_an_older_prompt_do_not_hold_a_task(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
-        state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
-        state.mkdir(parents=True)
-        (state / 'touches.json').write_text(json.dumps({'A': int(time.time()) + 86400}))
-        (state / 'touches-000000000000.json').write_text(json.dumps({'A': int(time.time()) + 86400}))
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: can run beside others; Touches: A.txt', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(self.runs('touches'), [])
+        self.assertNotIn('declare Touches', self.git(self.repo, 'log', '--format=%s'))
 
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
