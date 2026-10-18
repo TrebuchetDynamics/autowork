@@ -701,7 +701,8 @@
         "TOOLSET-200-c1",
         "TOOLSET-201-5e",
         "TOOLSET-203-7a",
-        "TOOLSET-204-f2"
+        "TOOLSET-204-f2",
+        "TOOLSET-205-a1"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -711,6 +712,7 @@
     "tasks": [
       "TOOLSET-203-7a",
       "TOOLSET-204-f2",
+      "TOOLSET-205-a1",
       "TOOLSET-199-2d",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -1109,6 +1111,14 @@
       "section": "Now",
       "status": "open",
       "title": "The main check reruns its failures alone before calling main red; tests that pass alone are reported as flaky"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-205-a1",
+      "section": "Now",
+      "status": "open",
+      "title": "A fresh attempt is told about its task's earlier work on set-aside branches and may build on it"
     },
     {
       "depends_on": [],
