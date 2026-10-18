@@ -695,9 +695,6 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-149-df",
-      "TOOLSET-150-71",
-      "TOOLSET-151-01",
       "TOOLSET-189-96",
       "TOOLSET-190-bf",
       "TOOLSET-140-f4",
@@ -705,6 +702,9 @@
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
+      "TOOLSET-149-df",
+      "TOOLSET-150-71",
+      "TOOLSET-151-01",
       "TOOLSET-161-17",
       "TOOLSET-172-40",
       "TOOLSET-138-62",
