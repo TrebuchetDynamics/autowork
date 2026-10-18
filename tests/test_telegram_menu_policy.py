@@ -162,12 +162,36 @@ class RuntimePolicyOptOutTests(unittest.TestCase):
     def test_documented_opt_out_with_restored_values_reports_no_drift(self):
         self.raw={'approvals':{'mode':'manual','destructive_slash_confirm':True},
                   'plugins':{'entries':{'autowork':{'settings':{'apply_runtime_defaults':False}}}}}
+        # Opted out, only the bundle's menu entries are expected.
+        self.assertEqual(self.rd.verify_runtime_defaults(), ['platforms.telegram.extra.command_menu.priority'])
+        self.raw.update(self.rd.opted_out_settings(self.raw))
         self.assertEqual(self.rd.verify_runtime_defaults(), [])
         self.raw['plugins']['entries']['autowork']['settings']['apply_runtime_defaults']=True
         self.assertIn('approvals.mode', self.rd.verify_runtime_defaults())
         del self.raw['plugins']['entries']['autowork']['settings']
         self.assertIn('approvals.mode', self.rd.verify_runtime_defaults())
 
+
+    def test_an_opted_out_profile_gets_new_menu_commands_and_keeps_its_own_settings(self):
+        """Every profile had opted out, so /blockers never reached a Telegram menu."""
+        import sys
+        self.raw={'approvals':{'mode':'manual'},'agent':{'max_turns':90},
+                  'platforms':{'telegram':{'extra':{'command_menu':{'priority':['status','plan_with_me']}}}},
+                  'plugins':{'entries':{'autowork':{'settings':{'apply_runtime_defaults':False}}}}}
+        saved=[]
+        config=sys.modules['hermes_cli.config']
+        config.require_readable_config_before_write=lambda: self.raw
+        config.save_config=lambda patch, **kw: saved.append(patch)
+        class Ctx:
+            def get_config(self, key, default=None): return False
+        self.rd.apply_runtime_defaults(Ctx())
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(set(saved[0]), {'platforms'})  # approvals and turns stay the profile's
+        self.assertIn('blockers', saved[0]['platforms']['telegram']['extra']['command_menu']['priority'])
+        self.assertEqual(saved[0]['platforms']['telegram']['extra']['command_menu']['priority'][:2], ['status','plan_with_me'])
+        config.require_readable_config_before_write=lambda: (_ for _ in ()).throw(ValueError('malformed'))
+        self.rd.apply_runtime_defaults(Ctx())  # an unreadable config never fails an opted-out load
+        self.assertEqual(len(saved), 1)
 
     def test_native_registration_probe_config_opts_out(self):
         import yaml

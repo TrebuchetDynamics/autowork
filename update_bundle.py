@@ -173,7 +173,10 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
                 raise ValueError(f'Preserved local changes in {repo}; commit or move reviewed changes before updating')
             before = git(repo, 'rev-parse', 'HEAD').decode().strip()
             # Explicit trusted URL: never execute a configured remote/helper supplied by a profile.
-            git(repo, 'fetch', '--no-tags', upstream, 'refs/heads/main')
+            # A shallow plugin clone (a pinned Hermes install) has no history to prove the
+            # fast-forward with, so it gets its full history first.
+            shallow = git(repo, 'rev-parse', '--is-shallow-repository').strip() == b'true'
+            git(repo, 'fetch', '--no-tags', *(['--unshallow'] if shallow else []), upstream, 'refs/heads/main')
             after = git(repo, 'rev-parse', 'FETCH_HEAD').decode().strip()
             git(repo, 'merge-base', '--is-ancestor', before, after)
             sources[repo] = {'before': before, 'after': after,
