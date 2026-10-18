@@ -22,13 +22,6 @@ no extra approval step or execution authority.
 - Since: 2026-10-18T17:30:47Z
 - Answer: Answer in TOOLSET-213-45's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
 
-### Q-TOOLSET-214-5b — USER_INPUT — effort input — unblocks 0
-
-- Task: TOOLSET-214-5b — A deferred dependency asks nothing, and only owner questions read as Waiting on you
-- Needs: worker reported a blocker: Coordinator must widen Touches to skills/autowork/scripts/parallel_status.py and skills/autowork/scripts/test_parallel_status.py to satisfy scope item (4)'s source fix. In parallel_status._snapshot, the source selection for an ordinary nondependency task reuses historical dispatch_observed data without invalidating ownership waits when the blocker finishes. An in-memory diagnostic exercising the r…
-- Since: 2026-10-18T17:30:47Z
-- Answer: Answer in TOOLSET-214-5b's TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, or add a dated `Owner decision:` line. The runner reruns it when the entry changes.
-
 <!-- pi-autowork:questions:end -->
 
 None.
