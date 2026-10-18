@@ -499,4 +499,9 @@ def status_view(repo, base, toolset, state):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception:  # a crash, not a deliberate stop: exit 70 so the service restarts (TOOLSET-210-53)
+        import traceback
+        traceback.print_exc()
+        sys.exit(70)

@@ -806,6 +806,21 @@ def _retire(repo, common, slot, requeued):
             if 'worktree_now' in record:
                 git(repo, 'worktree', 'move', record['worktree_now'], record['worktree'])
         raise
+    # A clean set-aside worktree holds nothing its branch does not (its build output aside, many
+    # GB of it): remove it, keep the branch (TOOLSET-210-53). Uncommitted work keeps its worktree.
+    for record in moved:
+        path = record.get('worktree_now')
+        if path and record.get('branch_now') and Path(path).is_dir():
+            try:
+                clean = not git(path, 'status', '--porcelain', '--untracked-files=all')
+            except ValueError:
+                clean = False
+            if clean:
+                try:
+                    git(repo, 'worktree', 'remove', '--force', path)
+                    record['worktree_removed'] = True
+                except ValueError:
+                    pass
     target.mkdir(parents=True, mode=0o700)
     data = common / 'slot-data' / task
     if data.exists():
@@ -1069,7 +1084,7 @@ def retry_held(args):
             template, host = dispatch.worker_command(args, args.owner_pid)
             if template is None:
                 return {'outcome': 'SEQUENTIAL_FALLBACK', 'reason': host}
-            gate = dispatch.resource_gate(len(live), args.min_free_mem_mb)
+            gate = dispatch.resource_gate(len(live), args.min_free_mem_mb, repo)
             if gate:
                 return {'outcome': 'WAITING', 'reason': gate}
             old = held[task['id']]

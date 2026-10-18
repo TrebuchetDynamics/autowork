@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/blockers` reports for the owner: a first-line verdict that agrees with what the runner shows, then
+  one plain line per task in three groups (needs you, the runner handles it, waits on other work), without
+  commit hashes or internal terms. It resolves each runner question in a form the runner recognizes, so a
+  filtered-out question no longer keeps reading as "Waiting on you", and a task whose dependency the owner
+  deferred is deferred with it.
 - Finished tasks no longer leave temp files. Closing or setting a task aside removes every attempt's
   own `$TMPDIR`, and each dispatch removes those that closed and set-aside tasks already left (27 GB on
   one host). A review removes the scratch of reviews killed at their timeout. Reports, prompts and
