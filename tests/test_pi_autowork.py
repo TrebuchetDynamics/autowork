@@ -23,6 +23,30 @@ RUNNER = ROOT / 'scripts/pi-autowork.sh'
 ENGINE_DIR = ROOT / 'skills/autowork/scripts'
 
 
+def setUpModule():
+    # The runner deliberately reads committed code only. Build one committed
+    # fixture from this task's production edits, not a mutable checkout under it.
+    global ROOT, RUNNER, ENGINE_DIR, _toolset_fixture
+    source = ROOT
+    _toolset_fixture = tempfile.TemporaryDirectory()
+    ROOT = Path(_toolset_fixture.name) / 'toolset'
+    subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
+    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py', 'scripts/pi-autowork.sh']
+    patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
+                           check=True, capture_output=True).stdout
+    if patch:
+        subprocess.run(['git', '-C', str(ROOT), 'apply', '-'], input=patch, check=True)
+        subprocess.run(['git', '-C', str(ROOT), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
+                        'commit', '-qam', 'production code under test'], check=True)
+    RUNNER = ROOT / 'scripts/pi-autowork.sh'
+    ENGINE_DIR = ROOT / 'skills/autowork/scripts'
+
+
+def tearDownModule():
+    subprocess.run(['git', '-C', str(ROOT), 'worktree', 'remove', '--force', str(ROOT)], check=True)
+    _toolset_fixture.cleanup()
+
+
 def todo(tasks):
     """TODO.md in the engine's contract format: (id, depends_on) pairs."""
     body = ''.join(
@@ -42,6 +66,9 @@ def note(record):
         fcntl.flock(stream, fcntl.LOCK_EX)
         stream.write(json.dumps(record) + '\n')
 if args[:1] == ['list']:
+    if os.environ.get('FAKE_PI_LIST'):
+        print(os.environ['FAKE_PI_LIST'])
+        sys.exit(0)
     if os.environ.get('FAKE_PI_TOOLSET'):
         print('User packages:\n  ' + os.environ['FAKE_PI_TOOLSET'] + '\n    ' + os.environ['FAKE_PI_TOOLSET'])
     sys.exit(0)
@@ -288,7 +315,14 @@ class Fixture(unittest.TestCase):
         (shim / 'sitecustomize.py').write_text('import os\nos.getloadavg = lambda: (0.0, 0.0, 0.0)\n')
         self.env['PYTHONPATH'] = os.pathsep.join(filter(None, [str(shim), os.environ.get('PYTHONPATH')]))
         self.plan({})
+        self.addCleanup(self.remove_releases)
         self.addCleanup(self.stop_workers)
+
+    def remove_releases(self):
+        for path in (self.state / 'releases').glob('*/'):
+            if (path / '.git').is_file():
+                subprocess.run(['git', '-C', str(path), 'worktree', 'remove', '--force', str(path)],
+                               capture_output=True)
 
     def stop_workers(self):  # failures must not leave fake workers writing after cleanup
         slots = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')) / 'autowork-execution/slots'
@@ -327,8 +361,8 @@ class Fixture(unittest.TestCase):
         found = list(self.state.glob('*/runs.jsonl'))
         return [json.loads(line) for line in found[0].read_text().splitlines()] if found else []
 
-    def run_runner(self, *args, script=RUNNER, cwd=None, env=None, timeout=120):
-        return subprocess.run(['bash', str(script), *args], cwd=cwd or self.repo, env=env or self.env,
+    def run_runner(self, *args, script=None, cwd=None, env=None, timeout=120):
+        return subprocess.run(['bash', str(script or RUNNER), *args], cwd=cwd or self.repo, env=env or self.env,
                               capture_output=True, text=True, timeout=timeout)
 
     def start_runner(self, *args):
@@ -941,21 +975,18 @@ class EngineTests(Fixture):
     def test_a_running_runner_restarts_on_an_updated_toolset(self):
         """A `pi update` under a live runner mixed the old script with the new engine."""
         toolset = self.root / 'toolset'
-        shutil.copytree(ROOT, toolset, ignore=shutil.ignore_patterns('.git', '.claude', '.worktrees', '__pycache__'))
-        for args in (['init', '-q'], ['add', '-A'], ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
-                                                     'commit', '-qm', 'release']):
-            self.git(toolset, *args)
-        text = (self.repo / 'TODO.md').read_text()
-        (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
-        self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
+        self.git(ROOT, 'worktree', 'add', '-q', '--detach', str(toolset), 'HEAD')
+        self.addCleanup(lambda: self.git(toolset, 'worktree', 'remove', '--force', str(toolset)))
+        self.plan({'worker:A': ['sleep']})
         env = {**self.env, 'PI_AUTOWORK_TOOLSET': str(toolset)}
-        runner = subprocess.Popen(['bash', str(toolset / 'scripts/pi-autowork.sh'), '--interval', '1'], cwd=self.repo,
-                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        runner = subprocess.Popen(['bash', str(toolset / 'scripts/pi-autowork.sh'), '--interval', '1', '--workers', '1'],
+                                  cwd=self.repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: runner.poll() is None and (runner.kill(), runner.wait()))
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
-        deadline = time.monotonic() + 30
-        while 'No task can start now' not in log():
-            self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.2)
+        self.wait_for(self.root / 'sleeping-A')
+        worker_pid = int((self.root / 'sleeping-A').read_text())
+        old_release = self.state / 'releases' / self.git(toolset, 'rev-parse', 'HEAD')
+        self.assertTrue(old_release.is_dir())
         (toolset / 'NEW').write_text('update\n')
         self.git(toolset, 'add', 'NEW')
         self.git(toolset, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'update')
@@ -966,6 +997,11 @@ class EngineTests(Fixture):
             time.sleep(0.2)
         self.assertIn(f'Toolset updated to {rev}; restarting on it', log())
         self.assertIsNone(runner.poll())
+        new_release = self.state / 'releases' / self.git(toolset, 'rev-parse', 'HEAD')
+        self.assertIn(os.fsencode(f'PI_AUTOWORK_TOOLSET={old_release}'),
+                      Path(f'/proc/{worker_pid}/environ').read_bytes().split(b'\0'))
+        self.assertIn(os.fsencode(f'PI_AUTOWORK_TOOLSET={new_release}'),
+                      Path(f'/proc/{runner.pid}/environ').read_bytes().split(b'\0'))
         runner.send_signal(signal.SIGINT)
         out, err = runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130, out + err)
@@ -1542,10 +1578,9 @@ class EngineTests(Fixture):
 
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
-        self.run_runner('--status')  # creates nothing
-        key_dir = None
+        self.run_runner('--status')  # materializes code only, not execution state
         self.run_runner('--once')
-        key_dir, = self.state.iterdir()
+        key_dir, = (p.parent for p in self.state.glob('*/runs.jsonl'))
         spent_now = sum(r['cost_usd'] for r in self.records())
         with (key_dir / 'runs.jsonl').open('a') as runs:
             runs.write(json.dumps({'time': '2026-01-01T00:00:00+00:00', 'cost_usd': 100}) + '\n')  # outside the window
@@ -1814,7 +1849,7 @@ class EngineTests(Fixture):
             self.assertIn('Engine:     Parallel Autowork, up to 8 worker(s)', result.stdout)
             self.assertIn('Runner:     not running', result.stdout)
         self.assertEqual(self.git(self.repo, 'status', '--porcelain', '--untracked-files=all'), before)
-        self.assertFalse(self.state.exists())
+        self.assertEqual({p.name for p in self.state.iterdir()}, {'releases'})  # only immutable code cache
         self.assertEqual(self.runs(), [])
 
 
@@ -1834,12 +1869,29 @@ class SetupTests(Fixture):
         shutil.copytree(ROOT / 'skills', package / 'skills', ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copytree(ROOT / 'adapters', package / 'adapters')
         shutil.copytree(ROOT / 'pi-autowork', package / 'pi-autowork', ignore=shutil.ignore_patterns('__pycache__'))
+        self.git(package, 'init', '-q')
+        self.git(package, 'add', '-A')
+        self.git(package, 'commit', '-qm', 'installed package')
         self.env['FAKE_PI_TOOLSET'] = str(package)
+        selected = self.state / 'releases' / self.git(package, 'rev-parse', 'HEAD')
         result = self.run_runner('--dry-run')
-        self.assertIn(f'Toolset:    {package} at unknown (Pi package)', result.stdout)
+        self.assertIn(f'Toolset:    {selected} at ', result.stdout)
         self.env.pop('FAKE_PI_TOOLSET')
         result = self.run_runner('--dry-run')
         self.assertIn('(not a Pi package)', result.stdout)
+        # A copied launcher must reach the canonical bootstrap before importing
+        # an older package whose release helper does not support `launch`.
+        old = self.root / 'hermes-toolset/pi-autowork/pi_autowork'
+        old.mkdir(parents=True)
+        (old / 'cli.py').touch()
+        (old / 'release.py').write_text('raise SystemExit(2)\n')
+        self.env['FAKE_PI_LIST'] = (f'git:github.com/TrebuchetDynamics/hermes-toolset\n  {old.parents[1]}\n'
+                                    f'git:github.com/TrebuchetDynamics/autowork\n  {package}\n')
+        copied = self.repo / 'pi-autowork.sh'
+        shutil.copy(RUNNER, copied)
+        result = self.run_runner('--dry-run', script=copied)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f'Toolset:    {selected} at ', result.stdout)
 
     def installed_package(self):
         """A disposable autowork Pi package whose local origin holds one newer,

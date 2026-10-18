@@ -170,11 +170,22 @@ Run it from the checkout of the repository's main branch (`main`, `master` or
 ~/.pi/agent/git/github.com/TrebuchetDynamics/autowork/scripts/pi-autowork.sh --status
 ```
 
-It uses the autowork package Pi has installed (found with `pi list`) for the
-engine and skills; the banner shows that package's path and revision. Install it from
-the Git source (`pi install git:github.com/TrebuchetDynamics/autowork`) and
-advance it with `pi update`: a local-path install loads whatever your working
-checkout holds, unreleased commits included.
+It selects the autowork package Pi has installed (found with `pi list`), or an
+explicit `PI_AUTOWORK_TOOLSET` checkout. Before importing runner code, the
+[release bootstrap](../pi-autowork/pi_autowork/release.py) creates a detached Git
+checkout of its commit at `<state root>/releases/<full SHA>`. The banner shows this
+immutable path and revision. The runner, engine, worker and review wrappers inherit
+that path through `PI_AUTOWORK_TOOLSET`, including for late imports; updating the
+package never rewrites a selected release. Local-path installs run committed code,
+not uncommitted working-tree edits. Engine commands (including `--status` and
+`--dry-run`) require a committed Git checkout; use
+`pi install git:github.com/TrebuchetDynamics/autowork`.
+
+The bootstrap serializes release creation and pruning. It retains the newest two
+snapshots plus any older snapshot referenced by a live process, including children
+whose runner has exited or re-executed. Unused older snapshots are removed on a
+subsequent release preparation. Do not edit release directories. `--dry-run` and
+`--status` may populate this code cache, but do not create repository execution state.
 
 | Option | Effect |
 | --- | --- |
@@ -182,7 +193,7 @@ checkout holds, unreleased commits included.
 | `--once` | Run one task |
 | `--until-empty` | Exit when no runnable task remains |
 | `--workers N` | Most tasks run at once, 1 to 8 (default 8); free memory and load decide how many start |
-| `--dry-run`, `--status` | Show the repository, models, budget, session and each task's state; change nothing |
+| `--dry-run`, `--status` | Show the repository, models, budget, session and each task's state; no repository changes (may cache release code) |
 | `--repo PATH` | Work on the repository at `PATH` |
 | `--interval SECONDS` | Idle check interval (default 60) |
 | `--max-cycles N` | Start at most N workers, then finish |
@@ -254,9 +265,14 @@ read from Git first, declares it can read the current execution state. It prefer
 moment when no runner on the machine has work in flight, but waits for one at most
 `PI_AUTOWORK_UPDATE_WAIT` seconds (default 600) from when the release was first seen,
 looking again every 5 minutes or each check interval, whichever is shorter; busy runners rarely all pause at once, and they would
-otherwise never update. It logs why it waits once. When the toolset revision changed, by that or any other update,
-a running runner restarts itself on the new release at its next cycle and resumes its
-session; an update whose script does not parse is logged and the running code kept.
+otherwise never update. It logs why it waits once. When the package revision changes,
+by that or any other update, the [coordinator](../pi-autowork/pi_autowork/coordinator.py)
+prepares and syntax-checks the next immutable release, then re-executes onto that
+exact commit at a safe cycle point and resumes its session with the same PID.
+A running review's answer is consumed first. Existing workers and other children
+keep their old release until they exit; only newly started children use the new one.
+An update whose script does not parse is logged and the running code kept. Update
+frequency and the fleet checkpoint wait are unchanged.
 Remembered `NONE` answers from the `Touches:` pass belong to the prompt that produced
 them, so a changed prompt asks those tasks again, and a pass that gave no answer is
 retried within the hour.

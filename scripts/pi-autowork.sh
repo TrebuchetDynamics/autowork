@@ -13,20 +13,32 @@ set -uo pipefail
 # re-executes, must not end it: systemd counts death by SIGHUP as a clean exit and does not
 # restart the unit. Ignored here, and so through exec, until the runner's handler replaces it.
 trap '' HUP
-SCRIPT=$(readlink -f "${BASH_SOURCE[0]}")
+LAUNCHER=$(readlink -f "${BASH_SOURCE[0]}")
+SCRIPT=${PI_AUTOWORK_SCRIPT:-$LAUNCHER}
 is_component() { [[ -f $1/pi_autowork/cli.py ]]; }
 # Workers inherit the runner's component; otherwise PI_AUTOWORK_TOOLSET, this file's
 # own release, then the package Pi loads (a copy of this file in a repository).
 COMPONENT=${PI_AUTOWORK_COMPONENT:-}
 if ! { [[ -n $COMPONENT ]] && is_component "$COMPONENT"; }; then
   COMPONENT=''
-  for candidate in "${PI_AUTOWORK_TOOLSET:+$PI_AUTOWORK_TOOLSET/pi-autowork}" "$(dirname "$SCRIPT")/../pi-autowork"; do
+  for candidate in "${PI_AUTOWORK_TOOLSET:+$PI_AUTOWORK_TOOLSET/pi-autowork}" "$(dirname "$LAUNCHER")/../pi-autowork"; do
     [[ -n $candidate ]] && is_component "$candidate" && { COMPONENT=$candidate; break; }
   done
   if [[ -z $COMPONENT ]]; then
+    source=''
     while IFS= read -r line; do
       line=${line#"${line%%[![:space:]]*}"}
-      [[ $line == /* ]] && is_component "$line/pi-autowork" && { COMPONENT=$line/pi-autowork; break; }
+      if [[ $line == /* ]]; then
+        if is_component "$line/pi-autowork"; then
+          [[ -z $COMPONENT ]] && COMPONENT=$line/pi-autowork
+          if [[ ${source%% *} == git:github.com/TrebuchetDynamics/autowork ]]; then
+            COMPONENT=$line/pi-autowork
+            break
+          fi
+        fi
+      else
+        source=$line
+      fi
     done < <("${PI_BIN:-pi}" list 2>/dev/null)
   fi
 fi
@@ -35,5 +47,6 @@ if [[ -z $COMPONENT ]]; then
   exit 2
 fi
 command -v python3 >/dev/null 2>&1 || { printf 'pi-autowork: Missing required command: python3\n' >&2; exit 2; }
-export PI_AUTOWORK_SCRIPT=$SCRIPT
-exec python3 "$COMPONENT/pi_autowork/cli.py" "$@"
+# Bootstrap is stdlib-only: pin the entire component before cli.py can import
+# coordinator/worker modules from a package being updated in place.
+exec python3 "$COMPONENT/pi_autowork/release.py" launch "$COMPONENT" "$SCRIPT" "$@"
