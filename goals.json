@@ -1116,14 +1116,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-213-45",
-      "section": "Now",
-      "status": "open",
-      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-214-5b",
       "section": "Now",
       "status": "open",
@@ -2578,6 +2570,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-213-45",
+      "section": "Done",
+      "status": "done",
+      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
     },
     {
       "depends_on": [

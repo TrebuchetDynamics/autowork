@@ -3526,3 +3526,24 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No deletion outside the runner's own `.worktrees`; no source, commit or branch removed; no change to memory or load gates.
 - Planner's call: first in Now: a full disk stopped the whole host's fleet and the owner's other work.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+### TOOLSET-213-45 — A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold
+
+- [x] TOOLSET-213-45 — A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold
+- Status: done 2026-10-18 by the owner session (4994477): (1) and (2), with (3) met by ending a Touches value at a list item, heading or blank line instead of changing the field labels (a general label change would have altered 49 lines in one fleet ledger); python3 scripts/check.py passed.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [field parsing](skills/docs-sync/scripts/goals.py) (`task_fields`: a label is `[A-Za-z][A-Za-z /-]*:`, so a line such as `- Touches widened by the owner session (2026-10-18): ...` is no field and runs into the one before), [paths](skills/autowork/scripts/parallel_plan.py) (`paths`), [contracts](skills/autowork/scripts/task_execution.py).
+- Evidence (2026-10-18, this repository's runner): TOOLSET-189-96's entry had `- Touches: ..., pi-autowork/tests/test_status_cache.py` followed by the owner session's note `- Touches widened by the owner session (2026-10-18): pi-autowork/tests/test_status_cache.py, which the worker adjusted ...`. The parenthesised label is not a field, so `paths()` returned `pi-autowork/tests/test_status_cache.py\n- Touches widened by the owner session (2026-10-18): pi-autowork/tests/test_status_cache.py` and `which the worker adjusted ... branch` as two "paths"; the real file was outside, and the worker's attempt was held for `changed files violate Touches` although the entry listed it. The owner session fixed the label (1faf38a).
+- Touches: skills/autowork/scripts/parallel_plan.py, skills/autowork/scripts/test_parallel_plan.py, skills/docs-sync/scripts/goals.py, skills/docs-sync/scripts/test_goals.py
+- Scope: (1) `paths()` rejects an entry containing whitespace other than single spaces inside a quoted path, a newline, or a leading `- `, and a Touches value with such an entry makes the task not runnable with the reason `Touches is not a list of paths: <first bad entry, 80 chars>`, which the DOCS-MAINTAINER repairs. (2) `goals.py validate` reports the same for open tasks. (3) The field label pattern also accepts a parenthesised suffix (`Touches widened by X (date):`), so such notes are their own fields.
+- Acceptance: In fixtures, the entry above is a contract error with that reason in status and no worker is dispatched; with the label fixed, or with (3), its paths parse to the listed files only; `validate` flags the broken entry.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_plan.py; python3 -m unittest discover -s skills/docs-sync/scripts -p test_goals.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to what Touches may contain beyond rejecting prose.
+- Planner's call: high in Now: a mis-parsed Touches costs a worker's attempt and looks like the worker's fault.
