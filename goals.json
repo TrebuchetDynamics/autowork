@@ -727,7 +727,9 @@
         "TOOLSET-226-d3",
         "TOOLSET-227-a8",
         "TOOLSET-228-0c",
-        "TOOLSET-229-d0"
+        "TOOLSET-229-d0",
+        "TOOLSET-230-bf",
+        "TOOLSET-231-49"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1230,6 +1232,17 @@
       "title": "A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold"
     },
     {
+      "depends_on": [
+        "TOOLSET-165-f7",
+        "TOOLSET-195-ee"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-230-bf",
+      "section": "Now",
+      "status": "open",
+      "title": "Integration and closeout move the runner's branch with a ref update, never through a working copy"
+    },
+    {
       "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
@@ -1535,6 +1548,18 @@
       "section": "Next",
       "status": "open",
       "title": "Status and the TUI never list a task closed on the base branch as waiting"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-227-a8",
+        "TOOLSET-228-0c",
+        "TOOLSET-230-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-231-49",
+      "section": "Next",
+      "status": "open",
+      "title": "A speculative merge queue validates the next queued commits stacked and lands each that passes in order"
     },
     {
       "depends_on": [
