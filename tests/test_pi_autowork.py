@@ -190,6 +190,9 @@ elif role == 'merge':
     finish(text='PI_AUTOWORK_RESULT: completed')
 elif behavior == 'complete':
     work(); finish(text='done')
+elif behavior == 'stuck_command':  # a tool command that would hang for a minute, then the work
+    subprocess.run(['sleep', '60'])
+    work(); finish(text='done')
 elif behavior == 'slow':  # busy for a few seconds, then finishes normally
     open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
     subprocess.run(['sleep', '6'])  # a running tool command, as real Pi has: an active session
@@ -807,6 +810,18 @@ class EngineTests(Fixture):
         self.assertIn('A: its review ran out of time; reviewing the same commit again', result.stdout)
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # no second attempt
         self.assertNotIn('failed in a row', result.stdout)
+
+    def test_a_stuck_command_is_stopped_and_the_worker_finishes_on_the_same_attempt(self):
+        """TOOLSET-215-a8: one browser test hung for 89 of a worker's 90 minutes."""
+        self.plan({'worker:A': ['stuck_command']})
+        self.env['PI_AUTOWORK_COMMAND_TIMEOUT'] = '3'
+        started = time.monotonic()
+        result = self.run_runner('--until-empty', timeout=120)
+        self.assertLess(time.monotonic() - started, 50, result.stdout)  # not the command's 60 s
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # same attempt
+        logs = ''.join(p.read_text(errors='replace') for p in self.repo.glob('.git/autowork-execution/slot-data/A/*/worker.log'))
+        self.assertIn('stopped a command that ran 0 min (limit 0 min): sleep 60', logs)
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
