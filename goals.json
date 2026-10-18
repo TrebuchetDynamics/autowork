@@ -729,7 +729,8 @@
         "TOOLSET-228-0c",
         "TOOLSET-229-d0",
         "TOOLSET-230-bf",
-        "TOOLSET-231-49"
+        "TOOLSET-231-49",
+        "TOOLSET-232-01"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -742,6 +743,7 @@
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
       "TOOLSET-229-d0",
+      "TOOLSET-232-01",
       "TOOLSET-211-71",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
@@ -1243,6 +1245,14 @@
       "section": "Now",
       "status": "open",
       "title": "Integration and closeout move the runner's branch with a ref update, never through a working copy"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-232-01",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker never stops for a full-check failure it did not cause: it commits, and the runner's gate judges it"
     },
     {
       "depends_on": [],
