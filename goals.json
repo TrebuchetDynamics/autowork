@@ -709,7 +709,8 @@
         "TOOLSET-209-55",
         "TOOLSET-210-53",
         "TOOLSET-211-71",
-        "TOOLSET-212-0d"
+        "TOOLSET-212-0d",
+        "TOOLSET-213-45"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -717,14 +718,15 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-213-45",
       "TOOLSET-211-71",
-      "TOOLSET-210-53",
       "TOOLSET-189-96",
       "TOOLSET-197-4f",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
       "TOOLSET-200-c1",
       "TOOLSET-201-5e",
+      "TOOLSET-212-0d",
       "TOOLSET-184-b3",
       "TOOLSET-180-72",
       "TOOLSET-170-f6",
@@ -1108,6 +1110,14 @@
       "section": "Now",
       "status": "open",
       "title": "Each worker gets a disk-backed scratch folder that is removed when its task retires"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-213-45",
+      "section": "Now",
+      "status": "open",
+      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
     },
     {
       "depends_on": [],
