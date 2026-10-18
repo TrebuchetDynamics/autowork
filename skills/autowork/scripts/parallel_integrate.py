@@ -740,13 +740,37 @@ def dispatched_contract(common, slot):
     return text.split(marker, 1)[1].split('\nFresh retry after a held integration.', 1)[0].strip()
 
 
+def entry_changes(repo, common, slot):
+    """Changed field names since dispatch or the last rescope; None without evidence.
+
+    Keep raw field bodies (including continuations, duplicate fields and free text)
+    rather than comparing only the planner's recognized, nonempty field values.
+    """
+    previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
+    if previous is None:
+        return None  # no record to compare with: never guess
+    goals = execution.goals_module()
+    items = goals.task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
+    if len(items) != 1:
+        return ['Entry']  # removed or duplicated: never a Touches-only answer
+
+    def fields(text):
+        # Use prose offsets so field-looking text inside a fenced example is not a field.
+        marks = list(re.finditer(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?([A-Za-z][^:\r\n]*?):(?:\*\*)?[ \t]*',
+                                 goals.task_prose(text), re.M))
+        result = {'Entry': [text[:marks[0].start()].rstrip() if marks else text]}
+        for index, mark in enumerate(marks):
+            end = marks[index + 1].start() if index + 1 < len(marks) else len(text)
+            result.setdefault(mark[1], []).append(text[mark.start():end].rstrip())
+        return result
+
+    before, after = fields(previous.strip()), fields(items[0][0].strip())
+    return sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+
+
 def entry_changed(repo, common, slot):
-    """Whether the task's TODO entry differs from the contract its attempt was dispatched with."""
-    dispatched = dispatched_contract(common, slot)
-    if dispatched is None:
-        return False  # no record to compare with: never guess
-    items = execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
-    return len(items) != 1 or items[0][0].strip() != dispatched
+    """Whether a recorded entry has changed since dispatch or its last accepted rescope."""
+    return bool(entry_changes(repo, common, slot))
 
 
 def _retire(repo, common, slot, requeued):
@@ -952,15 +976,27 @@ def retry_held(args):
                 value['state'] = 'reported'
                 slot = state.write_slot(common, value, busy)
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
-            # A commit held only for files outside Touches the coordinator has since widened
-            # (it had inferred them) is verified again once, before any fresh retry.
+            # A new Touches-only answer keeps the candidate even after an automatic rescope.
+            # Other contract edits must reach the fresh-run path below, never this shortcut.
             scoped = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope']
             if scoped:
-                touches = {t['id']: t['fields'].get('Touches', '') for t in dispatch.contracts(repo, args.tasks, args.plan)}
-                widened = next((s for s in scoped if s['task_id'] in touches
-                                and state.rescopable(s, touches[s['task_id']])), None)
-                if widened is not None:
-                    slot = state.rescope(common, widened, touches[widened['task_id']])
+                contracts = {t['id']: t for t in dispatch.contracts(repo, args.tasks, args.plan)}
+                for candidate in scoped:
+                    task = contracts.get(candidate['task_id'])
+                    if task is None:
+                        continue
+                    changes = entry_changes(repo, common, candidate)
+                    touches_only = bool(changes) and all(
+                        name == 'Touches' or name.startswith('Touches widened ') for name in changes)
+                    if changes and not touches_only:
+                        continue
+                    touches = task['fields'].get('Touches', '')
+                    if not state.rescopable(candidate, touches, touches_only=touches_only):
+                        continue
+                    slot = state.rescope(common, candidate, touches, contract=task['contract'])
+                    if changes:
+                        state.event(common, 'task_entry_changed', task_id=slot['task_id'],
+                                    changed_fields=changes, action='rescope')
                     return {'outcome': 'RESCOPED', 'task': slot['task_id'], 'commit': slot['commit'],
                             'touches': slot['touches']}
             # A commit held only because another slot owned some of its files is offered
@@ -1012,6 +1048,8 @@ def retry_held(args):
                             and entry_changed(repo, common, s)), None)
             if changed is not None:
                 present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed['task_id']))
+                state.event(common, 'task_entry_changed', task_id=changed['task_id'],
+                            changed_fields=entry_changes(repo, common, changed), action='requeue')
                 result = _retire(repo, common, changed, present)
                 return dict(result, outcome='REQUEUED')
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
