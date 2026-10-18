@@ -74,22 +74,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No removal of anything with unique commits or uncommitted changes.
 - Planner's call: high in Now: one stale name stopped a whole repository's dispatch until a person acted.
 
-### TOOLSET-210-53 — A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails
-
-- [ ] TOOLSET-210-53 — A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`: memory and load only), [set-aside](skills/autowork/scripts/parallel_integrate.py) (earlier work kept on `autowork/<task>-set-aside-N`, worktree kept too), [janitor](pi-autowork/pi_autowork/janitor.py) (only `/tmp` entries), [service unit](pi-autowork/pi_autowork/service.py) (`Restart=on-abnormal`).
-- Evidence (2026-10-18 ~09:40): the root filesystem reached 100 % (464 KB free of 1.8 TB). One fleet repository's `.worktrees` held 85 GB in 119 worktrees, about 87 GB of it in Rust `target/` build directories, the largest in set-aside worktrees (17 GB, 15 GB, 9 GB) that no attempt would use again. Six of eight runners then exited on `No space left on device` and stayed dead: the unit restarts only on abnormal exits. The owner session freed 121 GB by removing those `target/` directories (with the owner's approval) and restarted the six runners.
-- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/janitor.py, pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_janitor.py, tests/test_autowork_command.py, docs/cross-host.md
-- Scope: (1) The resource gate also refuses a new worker when the repository's filesystem has less than `PI_AUTOWORK_MIN_FREE_DISK_GB` (default 20) free, with the reason `resource gate: <n> GB free on <mount>, need <m>`; status and the TUI show it. (2) Setting a task aside removes its worktree once its branch holds the work (commits, and uncommitted changes committed first, as today), so set-aside worktrees do not accumulate; the branch stays. (3) The janitor removes regenerable build output (`target/` with `CACHEDIR.TAG` or `.rustc_info.json`, `build/` and `.dart_tool/` under a worktree whose slot is held, released, closed or set aside, and untouched for 2 hours) in this runner's own `.worktrees` only, and logs what it freed; below the disk threshold it does so at once, oldest first. (4) The unit uses `Restart=on-failure` with `RestartSec=60`, so a runner that exits on an OS error comes back; deliberate exits (1 for failures the owner must see, 3 for another runner, 4 for attention) keep `RestartPreventExitStatus=` so they stay down as today.
-- Acceptance: In fixtures: with free space reported below the threshold, no worker starts and status shows the disk reason; a set-aside leaves no worktree but its branch; the janitor removes a held slot's cargo `target/` older than its age limit and never one in a running slot or outside `.worktrees`; the installed unit has the restart settings and a fake runner exiting 2 is restarted while one exiting 3 is not.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_janitor.py; python3 -m unittest discover -s tests -p test_autowork_command.py; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No deletion outside the runner's own `.worktrees`; no source, commit or branch removed; no change to memory or load gates.
-- Planner's call: first in Now: a full disk stopped the whole host's fleet and the owner's other work.
-
 ### TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files
 
 - [ ] TOOLSET-189-96 — A new runner starts cleanly: a lasting PATH and committed planning files

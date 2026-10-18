@@ -1096,14 +1096,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-210-53",
-      "section": "Now",
-      "status": "open",
-      "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-211-71",
       "section": "Now",
       "status": "open",
@@ -2558,6 +2550,14 @@
       "section": "Done",
       "status": "done",
       "title": "Workers run the runner suite sharded, and a worker timeout names the command it cut off"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-210-53",
+      "section": "Done",
+      "status": "done",
+      "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
     },
     {
       "depends_on": [
