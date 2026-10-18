@@ -167,10 +167,14 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(any(p == path for p, *_ in plan['writes']))
 
     def assert_stops_without_writes(self, local):
+        """The conflicting copy is kept byte for byte and reported; it is never guessed at."""
         path = self.home / 'skills/demo/SKILL.md'
         path.write_text(local)
-        with self.assertRaisesRegex(ValueError, 'Local skill conflict'):
-            self.plan()
+        plan = self.plan()
+        self.assertIn({'profile': self.profiles[0][0], 'path': str(path), 'action': 'conflict', 'base': None},
+                      plan['local_edits'])
+        self.assertFalse(any(p == path for p, *_ in plan['writes']))
+        self.mod.apply(plan, self.home / 'backups')
         self.assertEqual(path.read_text(), local)
 
     def test_equally_close_older_versions_are_ambiguous_not_a_coin_flip(self):
@@ -189,15 +193,17 @@ class UpdateTests(unittest.TestCase):
         self.release('a\nbar\nc\nd\ne\n')
         self.assert_stops_without_writes('a\nbaz\nc\nd\ne\n')
 
-    def test_conflicting_local_edit_still_stops_the_update_without_writes(self):
+    def test_a_conflicting_local_edit_is_kept_and_the_other_profiles_still_update(self):
+        """One profile's conflicting copy stopped every profile's update, so none got releases."""
         self.install_lines('a\nb\nc\n')
         path = self.home / 'skills/demo/SKILL.md'
         path.write_text('local a\nb\nc\n')
         self.release('upstream a\nb\nc\n')
-        with self.assertRaisesRegex(ValueError, 'Local skill conflict'):
-            self.plan()
+        plan = self.plan()
+        self.assertEqual([e['action'] for e in plan['local_edits'] if e['path'] == str(path)], ['conflict'])
+        self.mod.apply(plan, self.home / 'backups')
         self.assertEqual(path.read_text(), 'local a\nb\nc\n')
-        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'a\nb\nc\n')
+        self.assertEqual((self.profiles[1][1] / 'skills/demo/SKILL.md').read_text(), 'upstream a\nb\nc\n')
 
     def test_history_does_not_match_other_paths_or_unreachable_branches(self):
         (self.remote / 'skills/demo/other.md').write_text('unrelated\n')
@@ -215,8 +221,9 @@ class UpdateTests(unittest.TestCase):
         # Bytes from another path or an untrusted branch never become a merge base;
         # with no closer same-path version they are a conflict, not a silent overwrite.
         before = [(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles]
-        with self.assertRaisesRegex(ValueError, 'Local skill conflict'):
-            self.plan()
+        plan = self.plan()
+        self.assertEqual([e['action'] for e in plan['local_edits']], ['conflict'] * len(self.profiles))
+        self.mod.apply(plan, self.home / 'backups')
         self.assertEqual([(home / 'skills/demo/SKILL.md').read_text() for _, home in self.profiles], before)
 
     def test_historical_lookup_is_cached_per_checkout_and_path(self):
@@ -395,16 +402,17 @@ class UpdateTests(unittest.TestCase):
                 self.assertEqual((home / 'skills/engineering' / relative).read_text(), content)
         self.assertEqual(self.plan()['writes'], [])
 
-    def test_conflict_in_last_profile_prevents_all_mutations(self):
+    def test_conflict_in_last_profile_keeps_only_that_file(self):
         self.advance();p=self.profiles[-1][1]/'skills/demo/SKILL.md';p.write_text('custom\n')
-        with self.assertRaisesRegex(ValueError,'conflict'):self.plan()
-        self.assertEqual((self.repo/'skills/demo/SKILL.md').read_text(),'old\n')
-        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(),'old\n')
+        plan=self.plan();self.mod.apply(plan,self.home/'backups')
+        self.assertEqual(p.read_text(),'custom\n')
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(),'new\n')
     def test_upstream_deletion_preserves_modified_local_skill(self):
         p=self.remote/'skills/demo/SKILL.md';p.unlink()
         self.git(self.remote,'commit','-am','remove')
         (self.home/'skills/demo/SKILL.md').write_text('custom\n')
-        with self.assertRaisesRegex(ValueError,'conflict'):self.plan()
+        plan=self.plan();self.mod.apply(plan,self.home/'backups')
+        self.assertEqual((self.home/'skills/demo/SKILL.md').read_text(),'custom\n')
 
     def test_local_commit_ahead_is_not_discarded(self):
         self.git(self.repo,'config','user.email','fixture@example.invalid')

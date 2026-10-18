@@ -337,6 +337,10 @@ def summarize_update(result):
             edits[edit.get('action', 'edited')] = edits.get(edit.get('action', 'edited'), 0) + 1
         lines.append(f"Skill files written: {result['skill_files']}; local edits: "
                      + (', '.join(f'{n} {a}' for a, n in sorted(edits.items())) or 'none'))
+        conflicts = [e['path'] for e in result.get('local_edits') or [] if e.get('action') == 'conflict']
+        if conflicts:
+            lines.append('Not updated, the profile edited them and they conflict with the release (reconcile each): '
+                         + ', '.join(conflicts[:6]) + (f' (+{len(conflicts) - 6} more)' if len(conflicts) > 6 else ''))
     if result.get('settings_healed'):
         lines.append('Settings healed: ' + ', '.join(result['settings_healed']))
     menus = result.get('chat_menus_healed') or []
