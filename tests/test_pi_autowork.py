@@ -668,6 +668,40 @@ class EngineTests(Fixture):
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # adopted, not restarted
         self.assertTrue(self.done('A', 'B', 'C'))
 
+    def test_a_reload_keeps_the_runner_and_its_worker_and_applies_new_settings(self):
+        """TOOLSET-174-1d: `autowork restart` paused every worker; one cost a 10-minute run."""
+        self.plan({'worker:A': ['slow']})
+        settings = self.root / 'india.env'
+        settings.write_text('PI_AUTOWORK_COOLDOWN=0\n')
+        self.env['PI_AUTOWORK_ENV_FILE'] = str(settings)
+        self.env['FAKE_PI_CATALOG'] = 'openai-codex gpt-6.1-sol;openai-codex gpt-6-luna;openrouter deepseek/deepseek-v4.1-flash'
+        runner = self.start_runner('--workers', '1', '--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A')
+        worker = int((self.root / 'busy-A').read_text())
+        settings.write_text('PI_AUTOWORK_PRIMARY=openai-codex/gpt-6-luna\n')  # as `autowork model` writes it
+        runner.send_signal(signal.SIGHUP)
+        deadline = time.monotonic() + 60
+        while 'Reloading' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        os.kill(worker, 0)  # the worker runs on
+        while not list(self.state.glob('*/runner.json')):  # written again by the re-executed runner
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        record = json.loads(next(self.state.glob('*/runner.json')).read_text())
+        self.assertEqual((record['pid'], record['reloads']), (runner.pid, 1))
+        while not self.done('A', 'B', 'C'):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        self.assertNotIn('Stopping', log())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        workers = {r['task']: r['model'] for r in self.runs('worker')}
+        self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1, log())
+        self.assertEqual((workers['A'], workers['B']), ('gpt-6.1-sol', 'gpt-6-luna'))
+
     def test_a_task_integrates_while_another_worker_is_still_running(self):
         """Live qualification: a running worker's prompt path under .git made the engine
         treat it as a writer in the main checkout and hold every other integration."""

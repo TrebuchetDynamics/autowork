@@ -232,7 +232,11 @@ holding the repository path, the installing shell's `PATH`, `--workers`,
 `--allow-hermes`, `--no-fallback` and any `PI_AUTOWORK_*` settings, then enables and
 starts the unit. It refuses a name another repository's service already uses, and
 replaces a unit an earlier release named after the escaped path.
-Stopping sends SIGINT, the runner's Ctrl+C. Crashes and kills restart after a
+Stopping sends SIGINT, the runner's Ctrl+C. `autowork restart` (the TUI's `R`, a model
+change and a reinstall onto the same script) reloads instead: SIGHUP, and at its next
+safe point (no review or Pi job running) the runner re-reads its settings file and
+re-executes in place, keeping its PID and every running worker. `autowork restart
+--stop-workers` restarts the unit, pausing workers. Crashes and kills restart after a
 minute; the runner's own exits (failures, another runner, needs attention) do not.
 Without user lingering (`loginctl enable-linger $USER`) the service stops at logout.
 
@@ -419,7 +423,7 @@ How it works:
   security boundary, and does not cover other tools such as `gh`. Pi runs with
   `--no-approve`, so a repository's own Pi extensions do not load; its `AGENTS.md`
   still does.
-- **Stopping and recovery.** Ctrl+C (and a service stop or restart) first marks the
+- **Stopping and recovery.** Ctrl+C (and a service stop or `restart --stop-workers`) first marks the
   running workers paused, then interrupts their process groups, merges finished work
   into the main branch and exits 130 within seconds. On the next start the engine
   reconciles: a paused worker resumes in its worktree on the same attempt, so a stop

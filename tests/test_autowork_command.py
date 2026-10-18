@@ -27,6 +27,8 @@ case $cmd in
   is-enabled) [[ -f $state.enabled ]] ;;
   start|restart) touch "$state.active" ;;
   stop) rm -f "$state.active" ;;
+  kill) [[ -n ${FAKE_RELOADS:-} ]] && python3 -c 'import json, sys; p = sys.argv[1]; r = json.load(open(p))
+r["reloads"] += 1; json.dump(r, open(p, "w"))' "$FAKE_RELOADS"; true ;;
   enable) touch "$state.enabled"; ((now)) && touch "$state.active"; true ;;
   disable) rm -f "$state.enabled"; ((now)) && rm -f "$state.active"; true ;;
   list-units)
@@ -183,6 +185,44 @@ class AutoworkCommandTests(unittest.TestCase):
         self.aw('remove', 'india')
         self.assertIn(f'script --remove-service --repo {self.repo}', self.calls())
         self.assertIn('no runner named nothing', self.aw('stop', 'nothing').stderr)
+
+    def running(self, reloads=0):
+        """A live runner's record as the runner writes it; a reload grows its count."""
+        folder = self.state / 'abc123'
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / 'runner.json').write_text(json.dumps({'pid': 4242, 'started': 'now', 'repo': str(self.repo),
+                                                        'reloads': reloads}))
+        (folder / 'status.json').write_text(json.dumps({'active_workers': 2}))
+        return folder / 'runner.json'
+
+    def test_restart_reloads_a_running_runner_in_place_so_workers_keep_running(self):
+        """TOOLSET-174-1d: every restart paused all workers; one cost a 10-minute run."""
+        self.aw('start', str(self.repo))
+        self.env['FAKE_RELOADS'] = str(self.running())
+        result = self.aw('restart', 'india')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Reloaded pi-autowork@india.service; 2 worker(s) kept running.', result.stdout)
+        self.assertIn('systemctl --user kill --kill-whom=main --signal=SIGHUP pi-autowork@india.service', self.calls())
+        self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
+        stopped = self.aw('restart', '--stop-workers', 'india')  # the explicit form still restarts the unit
+        self.assertIn('systemctl --user restart pi-autowork@india.service', self.calls())
+        self.assertIn('workers paused and resume on the same attempt', stopped.stdout)
+
+    def test_a_runner_that_does_not_reload_in_time_is_named_not_killed(self):
+        self.aw('start', str(self.repo))
+        self.running()  # nothing answers the signal
+        self.env['PI_AUTOWORK_RELOAD_WAIT'] = '1'
+        result = self.aw('restart', 'india')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('autowork restart --stop-workers india', result.stdout)
+        self.assertNotIn('systemctl --user restart pi-autowork@india.service', self.calls())
+
+    def test_a_runner_from_before_reloads_is_restarted(self):
+        self.aw('start', str(self.repo))
+        record = self.running()
+        record.write_text(json.dumps({'pid': 4242, 'started': 'now', 'repo': str(self.repo)}))
+        self.assertIn('workers paused', self.aw('restart', 'india').stdout)
+        self.assertIn('systemctl --user restart pi-autowork@india.service', self.calls())
 
     def test_model_is_chosen_per_service_from_pis_list(self):
         self.assertEqual(self.aw('models').stdout.split(),

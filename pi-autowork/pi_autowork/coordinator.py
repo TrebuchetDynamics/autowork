@@ -94,6 +94,43 @@ class Finish(Exception):
         self.code, self.text = code, text
 
 
+def env_settings(path):
+    """KEY=value lines of the service's settings file (systemd's EnvironmentFile)."""
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return {}
+    found = {}
+    for line in lines:
+        key, sep, value = line.strip().partition('=')
+        if sep and key and not key.startswith('#'):
+            found[key] = value[1:-1] if len(value) > 1 and value[0] == value[-1] and value[0] in '"\'' else value
+    return found
+
+
+def settings_file(repo):
+    """The service's settings file: the unit names it; a unit installed before that is found by
+    its repository line. None outside a service."""
+    if os.environ.get('PI_AUTOWORK_ENV_FILE'):
+        return os.environ['PI_AUTOWORK_ENV_FILE']
+    if not os.environ.get('INVOCATION_ID'):
+        return None
+    config = os.environ.get('XDG_CONFIG_HOME') or str(Path.home() / '.config')
+    folder = Path(os.environ.get('PI_AUTOWORK_ENV_DIR') or f'{config}/pi-autowork')
+    return next((str(p) for p in sorted(folder.glob('*.env')) if env_settings(p).get('PI_AUTOWORK_REPO') == str(repo)), None)
+
+
+def reread_settings(path, started_with):
+    """Apply the service's settings file as it is now, as a fresh service start would; a key
+    removed since this process started (``started_with``) is dropped too."""
+    if not path:
+        return
+    now = env_settings(path)
+    for key in started_with - set(now):
+        os.environ.pop(key, None)
+    os.environ.update(now)
+
+
 class Coordinator:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -128,6 +165,9 @@ class Coordinator:
         self.merge_pending, self.resolved_for, self.merge_blocker = '', '', ''
         self.waiting_merge = None  # what the last merge while waiting saw
         self.stop, self.paused, self.child = False, False, None
+        self.reload = False  # SIGHUP: re-execute in place at the next safe point (TOOLSET-174-1d)
+        self.settings_file = settings_file(self.repo)
+        self.started_with = set(env_settings(self.settings_file)) if self.settings_file else set()
         self.started_workers = self.failures = 0
         self.draining, self.once_task, self.once_done = False, None, False
         self.last_waiting, self.runner_blocker = '', ''
@@ -285,6 +325,11 @@ class Coordinator:
             except OSError:
                 pass
 
+    def on_reload(self, *_):
+        """SIGHUP (`autowork restart`, `systemctl reload`): re-execute on the current release and
+        settings at the next safe point, keeping the PID and every running worker."""
+        self.reload = True
+
     PLAN_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md')
 
     def plan_signature(self):
@@ -316,7 +361,7 @@ class Coordinator:
         start = dict(seen)
         checked = time.monotonic()
         changed_at = None
-        while not self.stop and time.monotonic() < end:
+        while not self.stop and not self.reload and time.monotonic() < end:
             time.sleep(min(0.2, max(0.0, end - time.monotonic())))
             if time.monotonic() - checked < 1:
                 continue
@@ -1374,6 +1419,9 @@ class Coordinator:
     def restart_if_updated(self):
         """`pi update` replaces the runner and the engine under a running runner: continue on
         the new release instead of mixing the two. A restart keeps the PID and adopts workers."""
+        if self.reload:
+            return self.reexec('Reloading: settings and release re-read; running workers keep running',
+                               reload=True)
         if self.mode != 'continuous' or self.toolset_rev == 'unknown':
             return
         rev = git(self.toolset, 'rev-parse', '--short', 'HEAD')
@@ -1385,12 +1433,23 @@ class Coordinator:
                                   *map(str, Path(self.toolset, 'pi-autowork/pi_autowork').glob('*.py'))],
                                  capture_output=True)]
         if all(c.returncode == 0 for c in checks):
-            LOG.say(f'Toolset updated to {rev}; restarting on it')
-            (self.state / 'runner.json').unlink(missing_ok=True)
-            sys.stdout.flush()
-            os.execv('/bin/bash', ['/bin/bash', script, *self.cfg['argv']])
+            return self.reexec(f'Toolset updated to {rev}; restarting on it')
         LOG.say(f'Toolset changed to {rev}, but its runner does not parse; keeping the running {self.toolset_rev}')
         self.toolset_rev = rev
+
+    def reexec(self, text, reload=False):
+        """Run this runner again in place: same PID, so running workers stay its children and
+        are adopted. Not while a review or a Pi job runs: their answers would be lost, so the
+        next cycle tries again."""
+        if self.session_busy() or self.child:
+            return
+        if reload:
+            reread_settings(self.settings_file, self.started_with)
+            os.environ['PI_AUTOWORK_RELOADS'] = str(int(os.environ.get('PI_AUTOWORK_RELOADS') or 0) + 1)
+        LOG.say(text)
+        (self.state / 'runner.json').unlink(missing_ok=True)
+        sys.stdout.flush()
+        os.execv('/bin/bash', ['/bin/bash', self.cfg['script'], *self.cfg['argv']])
 
     # --- Main loop -------------------------------------------------------------------------
     def stop_now(self):
@@ -1585,6 +1644,7 @@ class Coordinator:
     def run(self):
         signal.signal(signal.SIGINT, self.on_signal)
         signal.signal(signal.SIGTERM, self.on_signal)
+        signal.signal(signal.SIGHUP, self.on_reload)
         LOG.say(f'Started (PID {os.getpid()}). Stop with Ctrl+C.')
         try:
             while True:
