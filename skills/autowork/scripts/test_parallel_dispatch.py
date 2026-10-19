@@ -260,6 +260,11 @@ class DispatchTests(unittest.TestCase):
 
     def test_two_repositories_first_workers_get_ports_no_one_else_holds(self):
         """Every runner's slot 1 got 20100..20199, and two repositories' fixtures collided."""
+        leases = self.root / 'port-leases'  # private: live runners on this host lease the real blocks
+        patcher = patch.object(dispatch, 'port_lease_dir', lambda: leases)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         def start(name):
             data = self.common / 'slot-data' / name / 'attempt-1'
             data.mkdir(parents=True)
@@ -467,6 +472,23 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual((kept / 'a.txt').read_text(), 'duplicate')  # uncommitted work is kept
         self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
         self.assertIn('B', [s['task_id'] for s in state.slots(self.common)])  # open on both: untouched
+
+    def test_a_task_closed_on_the_base_during_a_review_reads_closing_until_set_aside(self):
+        """TOOLSET-250-49: 270 done/implemented lines in 11 minutes while a review held the lock."""
+        import parallel_status
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}, 'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        self.apply('--base-ref', 'trunk')
+        self.wait_until_idle()
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'))
+        with execution.lock(self.common / 'integration.lock'):  # a review is running
+            for _ in range(3):
+                _, held = self.apply('--base-ref', 'trunk')
+                self.assertEqual((held.get('closing'), held.get('closed_on_base')), (['A'], None))
+            rows = {r['task']: r for r in parallel_status.snapshot(str(self.repo))['tasks']}
+            self.assertEqual(rows['A']['state'], 'closing')
+        _, freed = self.apply('--base-ref', 'trunk')
+        self.assertEqual(freed['closed_on_base'], ['A'])
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
 
     def test_a_task_closed_only_on_the_base_never_starts(self):
         self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),

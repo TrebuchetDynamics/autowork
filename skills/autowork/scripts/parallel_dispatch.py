@@ -551,14 +551,19 @@ def sweep_retired_tmp(common, current):
 PORT_BLOCKS = 127  # 100-port blocks from 20100, below the kernel's ephemeral ports (32768)
 
 
+def port_lease_dir():
+    """Where every runner's workers lease their port blocks: one directory per user and host."""
+    root = Path(f'/run/user/{os.getuid()}')
+    return (root if root.is_dir() else Path('/tmp')) / f'autowork-ports-{os.getuid()}'
+
+
 def port_lease(slot_index):
     """(base, locked file) for a 100-port block that no other worker on this host holds.
 
     Slot numbers are per repository, so every runner's first worker got 20100..20199 and two
     repositories' fixtures collided. The worker inherits the locked file: the block is free
     again when it exits, however it ends. The slot's own block is tried first."""
-    root = Path(f'/run/user/{os.getuid()}')
-    root = (root if root.is_dir() else Path('/tmp')) / f'autowork-ports-{os.getuid()}'
+    root = port_lease_dir()
     root.mkdir(mode=0o700, exist_ok=True)
     first = (slot_index - 1) % PORT_BLOCKS
     for block in sorted(range(PORT_BLOCKS), key=lambda b: (b - first) % PORT_BLOCKS):

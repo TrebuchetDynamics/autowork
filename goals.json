@@ -775,7 +775,6 @@
       "TOOLSET-251-c4",
       "TOOLSET-252-4c",
       "TOOLSET-253-0d",
-      "TOOLSET-250-49",
       "TOOLSET-244-5d",
       "TOOLSET-232-01",
       "TOOLSET-222-e1",
@@ -1254,14 +1253,6 @@
       "section": "Now",
       "status": "open",
       "title": "The crash line is the tool's own exit message, not an earlier warning that mentions an error"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-250-49",
-      "section": "Now",
-      "status": "open",
-      "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
     },
     {
       "depends_on": [],
@@ -3099,6 +3090,14 @@
       "section": "Done",
       "status": "done",
       "title": "A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-250-49",
+      "section": "Done",
+      "status": "done",
+      "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
     },
     {
       "depends_on": [

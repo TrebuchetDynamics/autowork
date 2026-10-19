@@ -12,6 +12,27 @@ CLI), require Hermes profiles, or depend on a native Kanban card. Run in the cur
 the user's instructions. Use a separate worktree when real concurrent writes need
 isolation, and preserve all unrelated edits.
 
+## Start the runner first
+
+The default action (`/autowork`, `/autowork start`) starts this repository's runner
+service, so the work goes on after this session ends:
+
+1. If `AUTOWORK_SLOT` is set, you are already a runner's worker: skip this section.
+2. Run `autowork start .`. It installs the service if needed and starts it. If the
+   service is already running, it says so and changes nothing.
+3. Check with `autowork status .` that it runs, then report the runner, its model and
+   what it's doing. You're done: don't also work on its tasks in this session, because
+   the runner owns them. Never pass flags that change approval, sandbox or credentials.
+4. Do the work by hand in this session, as described below, only when the service
+   can't run. That means: no `autowork` command, no systemd user session, `autowork
+   start` fails, or the runner stops at once. Say why in one line first. If `autowork
+   start` says the repository isn't ready (for example, no TODO.md yet), fix that first
+   with [Docs Sync](../docs-sync/SKILL.md), then start the runner.
+
+Work in this session instead only when the user asks for it ("here", "in this session",
+"by hand"), when the request is read-only, or when the scope is one named task the user
+wants done now.
+
 At verified closeout and initial reconciliation of completed bodies, automatically
 move those bodies from TODO.md to `TODO.archive.md` (or the established archive).
 Reconcile the task checkbox/Status and ledger, then run the bundled
@@ -78,8 +99,8 @@ explicit read-only runs write nothing.
 `/autowork blockers [repo|name]` is [`/blockers`](../blockers/SKILL.md): routine planning
 repairs first, then genuine owner questions, easiest first; resolutions become
 TODO.md planning, never execution. A task may
-read runner state (`autowork ls`, `autowork status NAME`); it never starts,
-stops or reconfigures runners.
+read runner state (`autowork ls`, `autowork status NAME`). Only the start step above
+starts a runner. Nothing here stops or reconfigures one.
 
 Parallel workers are opt-in: only when the user asks, run the bundled
 `owner_cycle.py REPO --apply --parallel [N] --owner-pid PID` and follow

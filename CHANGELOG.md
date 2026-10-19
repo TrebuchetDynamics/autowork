@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/autowork` and `/autowork start` in Claude Code, Codex and Pi start the repository's runner
+  service (`autowork start .`) and report it, instead of doing the work in the session. The
+  work runs by hand in the session only when the service can't run, or when the user asks
+  for that.
 - The review gate reruns the merged tree's failures alone, side by side, before anything else; when
   each passes, the base suite is not run. It ran on nearly every review, as long as the merged suite,
   and the reruns ran one at a time: two suites and 20 minutes of reruns per candidate.
@@ -226,6 +230,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `install.sh` refreshes the Claude Code and Codex plugins, not only their marketplaces: both
+  hosts cache a plugin by its version, which rarely changes, so a reinstall kept old workflows
+  (sessions lacked the `blockers` and `pending` skills). It updates the marketplace and drops
+  the cached plugin (keeping Claude's plugin data) before installing.
+- A task closed on main while a review holds the integration lock reads `closing` until its
+  work is set aside, logged once, instead of flipping between `done` and `implemented` about
+  four times a minute (TOOLSET-250-49).
 - A conflict-held commit is adopted again after the merge resolver merges it, once the
   session has moved past the last adoption, up to three times per attempt; with the session
   unmoved no resolver job runs. The resolver ran about every ten minutes for tasks the
