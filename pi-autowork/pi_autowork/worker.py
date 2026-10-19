@@ -102,7 +102,7 @@ PROVISIONED = (' Toolchains, SDKs and caches the worker provisioned for this tas
 CACHE = (' SDKs, toolchains and package caches this repository\'s tasks installed are in {path} '
          '(AUTOWORK_CACHE; PROVISIONED.md there says how to use what the runner installed): use them instead '
          'of downloading again, and add one there only if a check needs it.')
-ENVIRONMENT = re.compile(r'^PI_AUTOWORK_VERIFY: fail environment\s*[—:-]+\s*(.*)$')
+ENVIRONMENT = re.compile(r'^PI_AUTOWORK_VERIFY: fail environment(?:\s*[—:-]+\s*(.*))?\s*$')
 
 
 def findings_path(state, task):
@@ -212,7 +212,9 @@ def base_result(state, checkout, command, rev, limit, progress=None):
                          command=command, rev=rev, tree=tree)
         finally:
             git(checkout, 'worktree', 'remove', '--force', str(scratch))
-    if value['code'] == 0 or value['failures']:  # a crash may be the host's: run it again next time
+    if (value['code'] == 0 or value['failures']) and not value.get('timed_out'):
+        # A crash or a timeout may be the host's: run it again next time. A cached timeout named
+        # only the tests before its cut-off, so later ones read as new failures on every tree.
         cache.write_text(json.dumps(value))
         tree_cache.write_text(json.dumps(value))
     return value
@@ -273,16 +275,23 @@ def run_gate(state, task, checkout, command, base_rev=None):
         main_check.rerun_failures(str(log), checkout, str(receipt), 'merged')
         try:
             flaky = json.loads(receipt.read_text()).get('flaky') or []
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError):
             flaky = []
         failures = [f for f in failures if f not in flaky]
+        if not failures and (merged['code'] < 0 or merged['code'] >= 128):
+            # Killed by a signal (out of memory, a segfault): what it named passed alone, but the rest
+            # never ran, and a pass here was cached for the tree.
+            return False, f'the full check stopped before its results were complete (exit {merged["code"]}); the rest never ran'
         if not failures:
             return True, ''
     base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
     if not merged['failures']:
         crash = main_check.crash_line(log.read_text(errors='replace'))
-        if base['code'] == 0:
-            return False, f'the full check exits {merged["code"]} where the base passes: {crash}'
+        if base['code'] == 0 or base['failures']:
+            # The base ran to its results (a red main names failures; it did not crash): the crash
+            # is this tree's own. Called a host crash, it was provisioned for instead of rejected.
+            return False, (f'the full check exits {merged["code"]} where the base '
+                           + ('passes' if base['code'] == 0 else 'runs to its test results') + f': {crash}')
         marker = environment_marker(state, task)
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps({'missing': f'a full check that runs to its test results (it crashed: {crash})',
@@ -319,7 +328,10 @@ def batched_verdict(state, task, checkout):
     except (OSError, ValueError):
         return None
     if value.get('commit') != git(checkout, 'rev-parse', 'HEAD^2') or not same_code(checkout, value.get('tree'), 'HEAD^{tree}'):
-        return None  # the session moved since by more than planning files: today's full verification
+        # The session moved since by more than planning files: today's full verification. The record
+        # can never match again; left, it held new batches back for two hours.
+        record.unlink(missing_ok=True)
+        return None
     record.unlink(missing_ok=True)
     return bool(value.get('ok')), value.get('reason') or ''
 
@@ -379,8 +391,11 @@ def drop_dead_scratch(checkout, folder):
     never reaches its own cleanup (2.7 GB left on one host). Each is `aw-r-<pid>-<random>`."""
     for old in folder.glob('aw-r-*-*') if folder.is_dir() else ():
         pid = old.name.split('-')[2]
-        if old.is_symlink() or not old.is_dir() or not pid.isdigit() or old.stat().st_uid != os.getuid():
-            continue
+        try:
+            if old.is_symlink() or not old.is_dir() or not pid.isdigit() or old.stat().st_uid != os.getuid():
+                continue
+        except OSError:
+            continue  # a parallel review removed it first
         try:
             os.kill(int(pid), 0)
             continue  # still running, or a reused PID: a later review removes it
@@ -408,6 +423,8 @@ def batch_review(state, task, checkout, gate):
     """The review of one batched candidate, on its own step of the batch's merge chain; the
     verdict is recorded for the engine's later integration of that same tree."""
     head = git(checkout, 'rev-parse', 'HEAD')
+    # An environment fail or no verdict writes no findings: an earlier review's would be recorded.
+    findings_path(state, task).unlink(missing_ok=True)
     note = GATE.format(command=gate['command'], outcome='it passed', log=gate['log'])
     code = review(state, task, checkout, head, note)
     try:
@@ -447,7 +464,7 @@ def verify_batch(state, session, script, tasks):
     root = Path(tempfile.mkdtemp(prefix='aw-b-', dir=review_root()))
     chain = root / 'chain'
     git(session, 'worktree', 'add', '--detach', str(chain), base)
-    steps, skipped = [], []
+    steps, skipped, running = [], [], []
     try:
         for task in order:
             commit = commits.get(task)
@@ -471,7 +488,7 @@ def verify_batch(state, session, script, tasks):
             return 0
         gate = json.dumps({'command': command or '', 'log': str(gate_log(state, 'batch'))})
         limit = max(1, int(os.environ.get('PI_AUTOWORK_REVIEWS') or 3))
-        pending, running = list(steps), []
+        pending = list(steps)
         while pending or running:
             while pending and len(running) < limit:
                 task, head = pending.pop(0)
@@ -490,6 +507,10 @@ def verify_batch(state, session, script, tasks):
         print(json.dumps(result))
         return 0
     finally:
+        for _, _, child in running:  # an error mid-batch left reviews running in removed worktrees
+            if child.poll() is None:
+                child.kill()
+                child.wait()
         for path in [p for p in root.iterdir() if p.is_dir()] if root.exists() else []:
             subprocess.run(['git', '-C', session, 'worktree', 'remove', '--force', str(path)], capture_output=True)
         shutil.rmtree(root, ignore_errors=True)
@@ -524,13 +545,14 @@ def review(state, task, checkout, head_before, gate=''):
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
                             os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800'),
                             ['--tools', 'read,bash,grep,find,ls'])
-    line = next((l for l in result['text'].splitlines() if l.startswith('PI_AUTOWORK_VERIFY:')), '')
+    line = next((l for l in reversed(result['text'].splitlines()) if l.startswith('PI_AUTOWORK_VERIFY:')), '')
     verdict = (re.match(r'^PI_AUTOWORK_VERIFY: (pass|fail)', line) or [None, ''])[1]
     marker = environment_marker(state, task)
     missing = ENVIRONMENT.match(line)
     if missing and verdict == 'fail':
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps({'missing': ' '.join(missing.group(1).split())[:300], 'commit': head_before}))
+        marker.write_text(json.dumps({'missing': ' '.join((missing.group(1) or 'unnamed').split())[:300],
+                                      'commit': head_before}))
     else:
         marker.unlink(missing_ok=True)
     findings = findings_path(state, task)

@@ -186,7 +186,7 @@ class WorkerTmpTests(unittest.TestCase):
         git('add', '-A')
         git('commit', '-qm', 'base')
         runs = Path(self.temp.name) / 'runs'
-        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_ok (test_mod.T.test_ok)"; exit 1'
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_ok (test_mod.T.test_ok)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
         self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
         state = Path(self.temp.name) / 'flaky'
         (self.repo / 'a.txt').write_text('merged\n')
@@ -194,7 +194,7 @@ class WorkerTmpTests(unittest.TestCase):
         git('commit', '-qm', 'merged')
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 1)  # the merged run only
-        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_red (test_mod.T.test_red)"; exit 1'
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_red (test_mod.T.test_red)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 3)  # red alone too: the base, red as well, decides
 
@@ -255,6 +255,30 @@ class WorkerTmpTests(unittest.TestCase):
         git('commit', '-q', '--amend', '--no-edit')  # same merge, plus code: not the tree that was checked
         write(merged_tree)
         self.assertIsNone(worker.batched_verdict(state, 'T-1', str(self.repo)))
+
+    def test_a_suite_that_stops_partway_is_never_a_pass_and_a_crash_beside_a_red_base_is_its_own(self):
+        """A killed suite whose named failure passed alone landed the unrun rest; a crash beside a
+        main with ordinary failures was called the host's and provisioned for."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        (self.repo / 'test_mod.py').write_text('import unittest\nclass T(unittest.TestCase):\n'
+                                               '    def test_ok(self): pass\n')
+        git('add', '-A')
+        git('commit', '-qm', 'base')
+        (self.repo / 'a.txt').write_text('merged\n')
+        git('add', '-A')
+        git('commit', '-qm', 'merged')
+        killed = 'echo "FAIL: test_ok (test_mod.T.test_ok)"; exit 137'  # no summary: it never finished
+        ok, reason = worker.run_gate(Path(self.temp.name) / 'killed', 'T-1', str(self.repo), killed)
+        self.assertEqual((ok, reason[:44]), (False, 'the full check stopped before its results we'))
+        merged = self.root_head = subprocess.run(['git', '-C', str(self.repo), 'rev-parse', 'HEAD'],
+                                                 capture_output=True, text=True).stdout.strip()
+        crash = (f'if [ "$(git rev-parse HEAD)" = {merged} ]; then echo "Segmentation fault"; exit 139; fi; '
+                 'echo "FAIL: test_x (test_mod.T.test_x)"; printf \'Ran 1 test in 0.1s\\n\\nFAILED (failures=1)\\n\'; exit 1')
+        ok, reason = worker.run_gate(Path(self.temp.name) / 'crash', 'T-1', str(self.repo), crash)
+        self.assertFalse(ok)
+        self.assertIn('where the base runs to its test results', reason)
+        self.assertFalse(worker.environment_marker(Path(self.temp.name) / 'crash', 'T-1').exists())
 
     def test_the_worker_tmpdir_of_the_slot_attempt_is_found(self):
         self.slot()
