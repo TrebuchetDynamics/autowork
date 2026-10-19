@@ -1604,6 +1604,25 @@ finally:
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
 
+    def test_clear_held_returns_a_held_commit_to_integration_on_request(self):
+        """An explicit technical-recovery request re-offers the commit; nothing is discarded."""
+        module, head = self.interrupted_while_main_moved()
+        module.hold(self.common, state.slots(self.common)[0], module.STALE_VALIDATION)
+        result = module.clear_held(self.repo, self.owner, 'A')
+        self.assertEqual(result['outcome'], 'CLEARED', result)
+        self.assertEqual(result['tasks'], ['A'])
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        self.assertNotIn('cause', slot)
+        self.assertNotIn('reoffered', slot)  # a later explicit request may clear it again
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
+
+    def test_clear_held_refuses_when_nothing_is_held(self):
+        self.worker()
+        with self.assertRaises(ValueError):
+            self.module().clear_held(self.repo, self.owner, 'A')
+
     def test_real_validation_interrupt_stops_child_before_recovery(self):
         self.worker()
         cli = Path(__file__).with_name('owner_cycle.py')

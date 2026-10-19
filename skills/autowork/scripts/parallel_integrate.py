@@ -990,6 +990,29 @@ def set_aside(repo, owner_pid, task):
         return _retire(repo, common, slot, requeued)
 
 
+def clear_held(repo, owner_pid, task=None):
+    """Return held commit(s) to integration on an explicit request: technical recovery, not a
+    person's decision. Each commit and its worktrees are kept and every check repeats; the
+    prior re-offer marks are forgotten so a hold can be retried again. ``task`` is one ID, a
+    comma/space-separated list, or empty for every held commit."""
+    repo, common = context(repo, owner_pid)
+    with execution.lock(common / 'dispatch.lock'), execution.lock(common / 'integration.lock'), \
+            execution.lock(common / 'writer.lock'):
+        state.require_owner(common, owner_pid)
+        wanted = {t for t in re.split(r'[,\s]+', task or '') if t and t.lower() != 'all'}
+        held = [s for s in state.slots(common) if s['state'] == 'held' and s.get('commit')
+                and not state.worker_live(s) and (not wanted or s['task_id'] in wanted)]
+        if not held:
+            raise ValueError('no held commit to clear' + (f' for {", ".join(sorted(wanted))}' if wanted else ''))
+        cleared = []
+        for slot in held:
+            value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'reoffered')}
+            value['state'] = 'reported'
+            state.write_slot(common, value, slot)
+            cleared.append(slot['task_id'])
+        return {'outcome': 'CLEARED', 'tasks': cleared}
+
+
 VALIDATION_HOLD = 'integration validation failed'
 
 
