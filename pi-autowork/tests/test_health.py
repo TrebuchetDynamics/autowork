@@ -70,6 +70,29 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.status()['waiting_groups'], groups)
         self.assertEqual(self.status()['max_workers'], 8)
 
+    def test_merge_backlog_is_a_wait_with_one_pause_and_resume_announcement(self):
+        snap = snapshot(queue=3, roots=())
+        snap['tasks'] = [{'task': 'F', 'state': 'waiting',
+                          'reason': 'wait for 3 finished commits to merge', 'blocked_by': []}]
+        snap['merge_backlog'] = {'paused': True, 'count': 3,
+                                 'reason': 'waiting to integrate until another session leaves the main checkout: pid 123 pi'}
+        line = health.update(self.state, snap, now=0)
+        self.assertIn('Fresh dispatch paused: wait for 3 finished commits to merge', line)
+        self.assertIn('pid 123 pi', line)
+        self.assertEqual(self.status()['waiting_groups'],
+                         [{'label': 'wait for 3 finished commits to merge', 'count': 1, 'tasks': ['F']}])
+        self.assertEqual(self.status()['stall_roots'], [])
+        self.assertIsNone(health.update(self.state, snap, now=1900))
+        # An unavailable status is not a resume and does not reset the announcement.
+        self.assertIsNone(health.update(self.state, {'outcome': 'BUSY'}, now=2000))
+        self.assertIsNone(health.update(self.state, snap, now=2100))
+        snap['merge_backlog'] = {'paused': False, 'count': 2}
+        snap['tasks'] = [{'task': 'F', 'state': 'running'}]
+        snap['active_workers'] = 1
+        line = health.update(self.state, snap, now=2200)
+        self.assertIn('Fresh dispatch resumed', line)
+        self.assertIsNone(health.update(self.state, snap, now=2300))
+
     def test_an_unanswered_status_read_shows_snapshot_age_and_keeps_the_stall_clock(self):
         """A busy lock must not leave yesterday's rows looking like a current observation."""
         from pi_autowork import fleet_view

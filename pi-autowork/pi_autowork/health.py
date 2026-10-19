@@ -68,6 +68,7 @@ def describe(root):
 # Why a task waits, as a person reads it: (pattern, group key, label). The key keeps one
 # group per blocking task; the label names it. First match wins.
 WAIT_KINDS = (
+    (r'^wait for (\d+) finished commits to merge', 'merge_backlog', 'wait for {0} finished commits to merge'),
     (r'^overlapping paths with (?:in_progress |interrupted )?(\S+)', 'overlap:{0}', 'wait for {0} (overlapping files)'),
     (r'^serial path shared with (?:in_progress )?(\S+)', 'serial:{0}', 'wait for {0} (serial files)'),
     (r'^priority (?:waits for|task) (\S+?):?(?:\s|$)', 'priority:{0}', 'wait behind {0}, which runs alone'),
@@ -168,6 +169,17 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                     + '; '.join(describe(r) for r in stuck[:5])
                     + (f' (+{len(stuck) - 5} more)' if len(stuck) > 5 else '')
                     + '. See pi-autowork.sh --status.')
+    backlog = snapshot.get('merge_backlog') or {}
+    was_paused = bool((previous.get('merge_backlog') or {}).get('paused'))
+    if bool(backlog.get('paused')) != was_paused:
+        if backlog.get('paused'):
+            line = f'Fresh dispatch paused: wait for {backlog["count"]} finished commits to merge.'
+            reason = backlog.get('reason') or runner.get('blocker')
+            if reason:
+                line += ' Integration waits: ' + ' '.join(str(reason).split())
+        else:
+            line = f'Fresh dispatch resumed: {backlog.get("count", 0)} finished commits remain to merge.'
+        announce = '\n'.join(filter(None, (announce, line)))
     value = dict(schema=SCHEMA, updated_at=now, snapshot_at=now, snapshot_age_seconds=0,
                  state=state, since=since,
                  active_workers=snapshot.get('active_workers', 0),
@@ -176,7 +188,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  held=[dict(task=t['task'], cause=t.get('cause'), reason=t.get('reason'))
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],
                  roots=roots[:10], stall_roots=keys if state == 'stalled' else [],
-                 waiting_groups=waiting_groups(snapshot.get('tasks', [])),
+                 waiting_groups=waiting_groups(snapshot.get('tasks', [])), merge_backlog=backlog,
                  max_workers=snapshot.get('max_workers'), **runner)
     write_status(path, value)
     return announce
