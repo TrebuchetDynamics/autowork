@@ -30,7 +30,12 @@ def setUpModule():
     source = ROOT
     _toolset_fixture = tempfile.TemporaryDirectory()
     ROOT = Path(_toolset_fixture.name) / 'toolset'
-    subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
+    # A clone of its own, not a worktree of the source: under the runner's gate the source is the
+    # live repository, and every fixture toolset and release became a worktree of it.
+    head = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'], check=True,
+                          capture_output=True, text=True).stdout.strip()
+    subprocess.run(['git', 'clone', '-q', '--shared', '--no-checkout', str(source), str(ROOT)], check=True)
+    subprocess.run(['git', '-C', str(ROOT), 'checkout', '-q', '--detach', head], check=True)
     # Snapshot dependencies together: a merge can change both the engine's CLI
     # and the helpers it calls, not just the runner entry points.
     paths = ['pi-autowork/pi_autowork', 'skills/autowork/scripts',
@@ -46,7 +51,6 @@ def setUpModule():
 
 
 def tearDownModule():
-    subprocess.run(['git', '-C', str(ROOT), 'worktree', 'remove', '--force', str(ROOT)], check=True)
     _toolset_fixture.cleanup()
 
 
@@ -440,8 +444,15 @@ class Fixture(unittest.TestCase):
         return [json.loads(line) for line in found[0].read_text().splitlines()] if found else []
 
     def run_runner(self, *args, script=None, cwd=None, env=None, timeout=120):
-        return subprocess.run(['bash', str(script or RUNNER), *args], cwd=cwd or self.repo, env=env or self.env,
-                              capture_output=True, text=True, timeout=timeout)
+        try:
+            return subprocess.run(['bash', str(script or RUNNER), *args], cwd=cwd or self.repo, env=env or self.env,
+                                  capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            # A bare "timed out" hid where 58 runs hung in the runner's gate: say what it was doing.
+            out = ''.join(s.decode(errors='replace') if isinstance(s, bytes) else s for s in (e.stdout, e.stderr) if s)
+            log = ''.join(p.read_text(errors='replace') for p in self.state.glob('*/runner.log'))
+            self.fail(f'the runner did not finish in {timeout} s\n--- output ---\n{out[-3000:]}\n'
+                      f'--- runner.log ---\n{log[-3000:]}')
 
     def start_runner(self, *args):
         return subprocess.Popen(['bash', str(RUNNER), *args], cwd=self.repo, env=self.env,

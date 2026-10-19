@@ -6,6 +6,7 @@ check (PI_AUTOWORK_MAIN_CHECK) has it run in the background, once per main revis
 disposable checkout of main; a failure names the failing tests and the commits since the
 last green revision, and the DOCS-MAINTAINER adds one repair task for it. Standard library only.
 """
+import concurrent.futures
 import json
 import os
 from pathlib import Path
@@ -160,41 +161,48 @@ def rerun_failures(log, root, receipt, rev, timeout=600):
                 env[f'GIT_CONFIG_KEY_{i}'], env[f'GIT_CONFIG_VALUE_{i}'] = key, value
     except ValueError:
         pass
-    flaky = []
+    runs = []
+    for test_id, places in list(locations.items())[:10]:
+        if not re.fullmatch(r'(?:\w+\.)+\w+', test_id) or len(places) != 1:
+            continue
+        directory = next(iter(places))
+        if directory.is_relative_to(root) and directory.is_dir():
+            runs.append((test_id, directory))
+
+    def rerun(test_id, directory):
+        """(passed, diagnostics) of one test run alone."""
+        notes = f'RERUN {test_id} in {directory}\n'
+        try:
+            # A file, not a pipe: a detached daemon inheriting stdout must not
+            # make communicate() wait forever for EOF after the test times out.
+            with tempfile.TemporaryFile() as capture, subprocess.Popen(
+                    [sys.executable, '-m', 'unittest', test_id], cwd=directory, env=env,
+                    stdout=capture, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                    start_new_session=True) as process:
+                timed_out = False
+                try:
+                    process.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+                size = os.fstat(capture.fileno()).st_size
+                capture.seek(0)
+                output = capture.read(size).decode('utf-8', errors='replace')
+        except OSError as error:
+            return False, notes + f'Could not rerun {test_id}: {error}\n'
+        if timed_out:
+            return False, notes + output + f'TIMEOUT: {test_id} after {timeout:g}s\n'
+        return (process.returncode == 0 and bool(re.search(r'^Ran [1-9]\d* tests? in ', output, re.M))
+                and bool(re.search(r'^OK$', output, re.M)) and not gate_skips(output)), notes + output
+
+    # Side by side: one at a time, ten reruns that each hit their timeout took 20 minutes.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        outcomes = list(pool.map(lambda run: rerun(*run), runs))
     with receipt.with_suffix('.log').open('w') as diagnostics:
-        for test_id, places in list(locations.items())[:10]:
-            if not re.fullmatch(r'(?:\w+\.)+\w+', test_id) or len(places) != 1:
-                continue
-            directory = next(iter(places))
-            if not directory.is_relative_to(root) or not directory.is_dir():
-                continue
-            diagnostics.write(f'RERUN {test_id} in {directory}\n')
-            diagnostics.flush()
-            try:
-                # A file, not a pipe: a detached daemon inheriting stdout must not
-                # make communicate() wait forever for EOF after the test times out.
-                with tempfile.TemporaryFile() as capture, subprocess.Popen(
-                        [sys.executable, '-m', 'unittest', test_id], cwd=directory, env=env,
-                        stdout=capture, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                        start_new_session=True) as process:
-                    timed_out = False
-                    try:
-                        process.wait(timeout=timeout)
-                    except subprocess.TimeoutExpired:
-                        timed_out = True
-                        os.killpg(process.pid, signal.SIGKILL)
-                        process.wait()
-                    size = os.fstat(capture.fileno()).st_size
-                    capture.seek(0)
-                    output = capture.read(size).decode('utf-8', errors='replace')
-                    diagnostics.write(output)
-                    if timed_out:
-                        diagnostics.write(f'TIMEOUT: {test_id} after {timeout:g}s\n')
-                    elif (process.returncode == 0 and re.search(r'^Ran [1-9]\d* tests? in ', output, re.M)
-                          and re.search(r'^OK$', output, re.M) and not gate_skips(output)):
-                        flaky.append(test_id)
-            except OSError as error:
-                diagnostics.write(f'Could not rerun {test_id}: {error}\n')
+        for notes in (notes for _, notes in outcomes):
+            diagnostics.write(notes)
+    flaky = [test_id for (test_id, _), (passed, _) in zip(runs, outcomes) if passed]
     result = dict(rev=rev, flaky=flaky, incomplete=not complete_results(text, root))
     tmp = receipt.with_suffix('.tmp')
     tmp.write_text(json.dumps(result) + '\n')

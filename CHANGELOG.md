@@ -7,6 +7,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The review gate reruns the merged tree's failures alone, side by side, before anything else; when
+  each passes, the base suite is not run. It ran on nearly every review, as long as the merged suite,
+  and the reruns ran one at a time: two suites and 20 minutes of reruns per candidate.
+- The engine tests build their fixture toolset as a clone of its own, not a worktree of the source.
+  Under the runner's gate the source is the live repository: 58 fixture runs each hung to their
+  120 s limit there, and nowhere else. A runner that does not finish now fails with its output and
+  log instead of a bare timeout.
 - A worker's `$TMPDIR` is a short private directory on disk, `/var/tmp/aw-<uid>-<repo key>-<slot>`
   (`PI_AUTOWORK_WORKER_ROOT` moves it; `/tmp` is the fallback), instead of the runtime directory: a
   6.3 GB RAM disk shared by every worker, too small for builds and for checks that need free space.
