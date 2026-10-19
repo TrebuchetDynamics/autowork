@@ -265,6 +265,72 @@ class UpdateTests(unittest.TestCase):
         backups = [p for p in (self.home / 'maintenance/toolset-update').iterdir() if p.is_dir() and p.name[:1].isdigit()]
         self.assertEqual(len(backups), 1)  # only the first run wrote, so only it left a backup
 
+    def test_release_refreshes_hosts_once_without_failing_the_hermes_update(self):
+        log = self.root / 'host-calls'
+        (self.remote / 'install.sh').write_text(
+            '#!/bin/bash\n'
+            f'printf "%s\\n" "$*" >> "{log}"\n'
+            'test "$*" = "--full --skip hermes,pi -q" || exit 9\n'
+            'read -r answer && exit 8\n'  # background updates cannot prompt
+            'printf \'%s\\n\' \'{"item":"autowork","status":"installed","exit":0}\' '
+            '\'{"item":"tx","status":"installed","exit":0}\' '
+            '\'{"item":"claude","status":"failed","exit":7}\' '
+            '\'{"item":"codex","status":"skipped","exit":null}\' > "$AUTOWORK_INSTALL_REPORT"\n'
+            'exit 1\n')
+        self.git(self.remote, 'add', '.'); self.git(self.remote, 'commit', '-m', 'installer')
+        prepare = self.mod.prepare
+        receipts = []
+        with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
+             patch.dict('sys.modules', {'setup_bundle': self.setup_stub}), \
+             patch.object(self.mod, 'finalize_profiles', return_value=[{'status': 'ready'}]), \
+             patch.object(self.mod, 'heal_chat_menus', return_value=[]), \
+             patch.object(self.mod, 'gateway_running', return_value=False), \
+             contextlib.redirect_stdout(io.StringIO()):
+            for extra in (['--check'], [], []):
+                self.assertEqual(self.mod.main(['--hermes-home', str(self.home), *extra]), 0)
+                receipts.append(json.loads((self.home / 'maintenance/toolset-update/latest.json').read_text()))
+                self.assertEqual(log.exists(), len(receipts) > 1)
+        self.assertEqual(log.read_text().splitlines(), ['--full --skip hermes,pi -q'])
+        self.assertEqual([r['status'] for r in receipts], ['update_available', 'updated', 'up_to_date'])
+        self.assertEqual(receipts[1]['hosts'], [
+            {'item': 'autowork', 'status': 'installed', 'exit': 0},
+            {'item': 'tx', 'status': 'installed', 'exit': 0},
+            {'item': 'claude', 'status': 'failed', 'exit': 7},
+            {'item': 'codex', 'status': 'skipped', 'exit': None}])
+        self.assertNotIn('hosts', receipts[0])
+        self.assertNotIn('hosts', receipts[2])
+
+    def test_unavailable_or_unreported_host_installs_stay_best_effort(self):
+        installer = self.repo / 'install.sh'
+        for body, status, code in (
+            (None, 'unavailable', None),
+            ('printf "\\377" > "$AUTOWORK_INSTALL_REPORT"\n', 'unreported', 0),
+            ('exit 6\n', 'failed', 6),
+        ):
+            with self.subTest(status=status):
+                if body is not None:
+                    installer.write_text('#!/bin/bash\n' + body)
+                self.assertEqual(self.mod.refresh_hosts(self.repo), [
+                    {'item': item, 'status': status, 'exit': code}
+                    for item in ('autowork', 'tx', 'claude', 'codex')])
+
+    def test_host_refresh_timeout_keeps_completed_items_and_stops_descendants(self):
+        import time
+        child = self.root / 'late-write'
+        (self.repo / 'install.sh').write_text(
+            '#!/bin/bash\n'
+            'echo \'{"item":"autowork","status":"installed","exit":0}\' > "$AUTOWORK_INSTALL_REPORT"\n'
+            f'(sleep 0.5; touch "{child}") &\nwait\n')
+        with patch.object(self.mod, 'HOST_REFRESH_TIMEOUT_S', 0.1):
+            rows = self.mod.refresh_hosts(self.repo)
+        self.assertEqual(rows, [
+            {'item': 'autowork', 'status': 'installed', 'exit': 0},
+            {'item': 'tx', 'status': 'timeout', 'exit': None},
+            {'item': 'claude', 'status': 'timeout', 'exit': None},
+            {'item': 'codex', 'status': 'timeout', 'exit': None}])
+        time.sleep(0.6)
+        self.assertFalse(child.exists())
+
     def test_update_heals_profile_settings_and_requests_one_graceful_gateway_restart(self):
         self.advance()
         self.git(self.repo, 'pull', '--ff-only')

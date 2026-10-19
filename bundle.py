@@ -342,6 +342,11 @@ def summarize_update(result):
             lines.append('Reset to the release or removed with it, the profile had edited them (old copies in '
                          + (result.get('backup') or 'the update backup') + '): '
                          + ', '.join(reset[:6]) + (f' (+{len(reset) - 6} more)' if len(reset) > 6 else ''))
+    if result.get('hosts'):
+        lines.append('Hosts: ' + '; '.join(
+            f"{row['item']} {row['status']}"
+            + (f" (exit {row['exit']})" if row.get('exit') else '')
+            for row in result['hosts']))
     if result.get('settings_healed'):
         lines.append('Settings healed: ' + ', '.join(result['settings_healed']))
     menus = result.get('chat_menus_healed') or []

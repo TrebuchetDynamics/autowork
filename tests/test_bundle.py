@@ -320,6 +320,15 @@ class BundleTests(unittest.TestCase):
                      'Full receipt: /autowork update status full'):
             self.assertIn(part, summary)
 
+    def test_status_reports_host_item_outcomes_in_one_line(self):
+        lines = self.bundle.summarize_update({'status': 'updated', 'hosts': [
+            {'item': 'autowork', 'status': 'installed', 'exit': 0},
+            {'item': 'tx', 'status': 'timeout', 'exit': None},
+            {'item': 'claude', 'status': 'failed', 'exit': 7},
+            {'item': 'codex', 'status': 'skipped', 'exit': None}]})
+        self.assertIn('Hosts: autowork installed; tx timeout; claude failed (exit 7); codex skipped', lines)
+        self.assertIn('Toolset update: updated, 0 profile(s)', lines)
+
     def test_running_receipt_owned_by_other_user_is_still_running(self):
         home = Path(self.tmp.name)
         folder = home / 'maintenance/toolset-update'
