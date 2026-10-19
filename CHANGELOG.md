@@ -255,6 +255,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A runner whose engine keeps failing reads a finished review's answer, so it can reload onto a
+  release that fixes the engine. The reload waited for that answer, which the failing engine
+  never let it read: the runner stayed down until a person restarted it.
 - The engine no longer stops on a merge-conflict hold that the retry plan names first. Fresh
   retries leave conflict holds to the resolver, but the plan still listed them, and picking
   one raised a KeyError in every cycle ("no answer from the engine").
