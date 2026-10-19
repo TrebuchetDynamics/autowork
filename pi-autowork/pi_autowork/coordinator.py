@@ -1487,10 +1487,16 @@ class Coordinator:
         the repository's toolchain cache from its own setup docs, then the same commit is
         reviewed once more. Once per task and reviewer version; True when it went back to review."""
         missing = self.environment_hold(task)
-        key = 'provisioned-' + task
-        if not missing or self.seen.get(key) == version:
+        # On disk, not in memory: every reload started the same job again, and a reload ended it.
+        record = self.state / 'provisioned.json'
+        try:
+            done = json.loads(record.read_text())
+        except (OSError, ValueError):
+            done = {}
+        if not missing or done.get(task) == version:
             return False
-        self.seen[key] = version
+        done[task] = version
+        record.write_text(json.dumps(done, indent=1))
         cache = worker.repository_cache(self.integ)
         scratch = self.scratch_checkout('provision') if cache else None
         if not scratch:

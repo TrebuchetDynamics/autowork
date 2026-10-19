@@ -226,6 +226,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review that could not run gets one provisioning job per reviewer version across reloads:
+  the record was in memory, so each reload started the same job again, and the next reload
+  ended it.
 - A must-run-alone task no longer waits beside a task whose worker has ended: a commit
   awaiting review or integration still owns its files, but nothing runs beside it. One
   runner sat at 0 workers for 54 minutes while its exclusive task waited out a review.
