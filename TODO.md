@@ -134,23 +134,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Owner decision (2026-10-19): Preserve the code; separate coordinator-owned queue edits and reverify this retained implementation. Keep candidate 6e31dfc0138d0adb3a237a9a744b08ce188eb09f and its recorded checks/history; no fresh reimplementation or waiver of mandatory checks.
 - Next action: Existing execution owner: continue from retained candidate 6e31dfc0138d0adb3a237a9a744b08ce188eb09f, preserving its code and tests. Prepare the smallest descendant/reconciled candidate that excludes only attributable worker changes to protected TODO.md/goals.json; any necessary planning repair goes through the coordinator/Docs Sync, never a worker-file guard bypass or restoration of stale queue snapshots. Reverify the exact integrated code with original required checks and review; reuse only still-valid evidence. Keep the same task and cumulative accounting, preserve unrelated work and do not clear slots/leases manually. A saved answer is not verified delivery.
 
-### TOOLSET-220-71 — Plan For Me and Plan With Me end a large plan's batch with a planning task
-
-- [ ] TOOLSET-220-71 — Plan For Me and Plan With Me end a large plan's batch with a planning task
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [accepted rolling planning design](docs/plans/2026-10-18-rolling-planning.md#rolling-planning-design), [Plan For Me](skills/plan-for-me/SKILL.md), [Plan With Me](skills/plan-with-me/SKILL.md), [TODO work center](skills/shared/TODO-WORKCENTER.md) (task fields).
-- Evidence (2026-10-18, owner): "plan_for_me porting this <project> to flutter" should start a chain that keeps planning and building.
-- Touches: skills/plan-for-me/SKILL.md, skills/plan-with-me/SKILL.md, skills/shared/TODO-WORKCENTER.md, tests/test_workflow_commands.py
-- Scope: (1) The TODO work center documents `Kind: plan` and `Plan round: N of M` (default M 10, at most 8 tasks a round). (2) Plan For Me and Plan With Me, for work too large for one batch, save the first batch (the tasks whose content is known now) and end it with a planning task depending on every task of the batch, whose scope names the goal and what the next round must find out. (3) Their report says the chain will continue on its own, its round limit, and how to stop it (move the planning task to `Needs decision`).
-- Acceptance: The three skill texts carry the fields and the rule; a fixture prompt for "port this project to Flutter" in the workflow-command tests is answered by the skill text with a first batch plus one `Kind: plan` task (checked as text, no model run). Plan text for a small task adds no planning task.
-- Checks: python3 scripts/check.py tests/test_workflow_commands.py tests/test_blockers.py
-- Dependencies: TOOLSET-219-2c
-- Ownership: Toolset coordinator.
-- Exclusions: No change to how a single-batch plan is saved.
-- Planner's call: the skills start a chain only after the runner can run planning tasks (the dependency), so no planning task lands where a code worker would take it.
-
 ### TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
 
 - [ ] TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it

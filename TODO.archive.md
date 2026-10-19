@@ -4683,3 +4683,27 @@ Source section: Now
 - Exclusions: No worker write access to ledger files. The worker prompt still says never to edit them. No automatic application of the dropped patch.
 - Planner's call: Now, after TOOLSET-222-e1. Holding sound work for a ledger edit wastes an attempt, and the maintainer is the role allowed to edit the ledger. A worker usually touches it to fix a link or a status line, and the maintainer can judge that.
 - Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): This also applies to merges the runner or its resolver makes into a task branch: ledger paths always take the integration base's content. That removes the ledger holds of 252-4c and 200-c1, which came from those merges, not from their Scopes; run it before them.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-220-71"></a>
+
+### TOOLSET-220-71 — Plan For Me and Plan With Me end a large plan's batch with a planning task
+
+- [x] TOOLSET-220-71 — Plan For Me and Plan With Me end a large plan's batch with a planning task
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [accepted rolling planning design](docs/plans/2026-10-18-rolling-planning.md#rolling-planning-design), [Plan For Me](skills/plan-for-me/SKILL.md), [Plan With Me](skills/plan-with-me/SKILL.md), [TODO work center](skills/shared/TODO-WORKCENTER.md) (task fields).
+- Evidence (2026-10-18, owner): "plan_for_me porting this <project> to flutter" should start a chain that keeps planning and building.
+- Touches: skills/plan-for-me/SKILL.md, skills/plan-with-me/SKILL.md, skills/shared/TODO-WORKCENTER.md, tests/test_workflow_commands.py
+- Scope: (1) The TODO work center documents `Kind: plan` and `Plan round: N of M` (default M 10, at most 8 tasks a round). (2) Plan For Me and Plan With Me, for work too large for one batch, save the first batch (the tasks whose content is known now) and end it with a planning task depending on every task of the batch, whose scope names the goal and what the next round must find out. (3) Their report says the chain will continue on its own, its round limit, and how to stop it (move the planning task to `Needs decision`).
+- Acceptance: The three skill texts carry the fields and the rule; a fixture prompt for "port this project to Flutter" in the workflow-command tests is answered by the skill text with a first batch plus one `Kind: plan` task (checked as text, no model run). Plan text for a small task adds no planning task.
+- Checks: python3 scripts/check.py tests/test_workflow_commands.py tests/test_blockers.py
+- Dependencies: TOOLSET-219-2c
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how a single-batch plan is saved.
+- Planner's call: the skills start a chain only after the runner can run planning tasks (the dependency), so no planning task lands where a code worker would take it.
