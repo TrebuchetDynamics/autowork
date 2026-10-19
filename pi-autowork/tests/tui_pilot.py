@@ -64,12 +64,12 @@ async def main():
             assert app.query_one('#runners').row_count == 1
             detail = str(app.query_one('#detail').render())
             # TOOLSET-166-b4: the verdict first, then why tasks wait, grouped.
-            assert detail.lstrip().startswith('india  Stuck 1h00m — TASK-036'), detail
-            assert 'holds 19' in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
+            assert detail.lstrip().startswith('india  Waiting — 19 wait for TASK-036 (overlapping files)'), detail
+            assert 'on you' not in detail and 'model openai-codex/gpt-6.1-sol' in detail, detail
             assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
             assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Needs', 'Tasks', 'Now']
-            assert 'outside Now/Next: TASK-036 (19)' in str(runners.get_row_at(0)[2])
+            assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[2])
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
@@ -132,7 +132,7 @@ async def main():
         async with narrow.run_test(size=(80, 30)) as pilot:   # an 80-column terminal: wrapped, not cut
             await pilot.pause()
             words = ' '.join(str(narrow.query_one('#detail').render()).split())
-            assert 'Stuck 1h00m — TASK-036' in words and 'holds 19' in words, words
+            assert 'Waiting — 19 wait for TASK-036 (overlapping files)' in words and 'on you' not in words, words
         viewer = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
                           systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
                           view_only=True)

@@ -66,6 +66,7 @@ def build(snapshot, todo, goals, repairs=()):
     rows = {r.get('task'): r for r in snapshot.get('tasks') or [] if r.get('task')}
     roots = {r['id']: r for r in snapshot.get('roots') or []}
     found = {}
+    deferred = goals.deferred_tasks(goals.task_bodies(todo))
 
     def add(qid, kind, effort, needs, answer, task_line, unblocks):
         found[qid] = dict(id=qid, type='USER_INPUT' if effort == 'input' else 'USER_DECISION', effort=effort,
@@ -143,10 +144,14 @@ def build(snapshot, todo, goals, repairs=()):
                             'Keep `Ownership:`, `Resources:` and `Live authorization:` fields unique.'),
                         f'{task} — {title}' if title else task, blocks)
                 continue
+            if qid in deferred:
+                continue  # the dated owner deferral is already the answer; its dependents wait
             add(qid, kind, 'decision', f'{blocks} waiting task(s) depend on "{qid}", which is not a Now/Next task '
                 '(an outside condition, or a task in Needs decision).', (
                     'Decide it: record the decision in the dependent tasks\' `Dependencies:` lines, or move the '
-                    'task that owns it into Now or Next.'), qid if not title else line, blocks)
+                    'task that owns it into Now or Next. To defer it, keep that task in Needs decision with a dated '
+                    '`Owner decision:` line; its dependents then wait without another question.'),
+                qid if not title else line, blocks)
     order = {e: i for i, e in enumerate(EFFORT_ORDER)}
     return sorted(found.values(), key=lambda q: (order[q['effort']], -q['unblocks'], q['id']))
 

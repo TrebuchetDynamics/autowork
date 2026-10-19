@@ -365,11 +365,18 @@ def verdict(runner):
     head = ('Stuck ' + age).strip() if runner.state in ('stalled', 'blocked', 'not cycling') else runner.state
     if runner.blocker:
         return f'{head} — {runner.blocker}', 'bold red'
+    if runner.state != 'not cycling' and runner.waiting_groups:
+        return f'Waiting — {waiting_line(runner)}', 'bold yellow'
     if runner.roots:
         root = max(runner.roots, key=lambda r: r.get('blocks', 0))
-        return f"{head} — {health.describe(root)}", 'bold red'
+        if runner.state == 'not cycling':
+            return f"{head} — {health.describe(root)}", 'bold red'
+        return f"Waiting — {health.describe(root)}", 'bold yellow'
     if runner.state == 'not cycling':
         return f'{head} — its status has not been refreshed; the runner may be busy or hung', 'bold red'
+    if runner.held:
+        task, cause = runner.held[0]
+        return f"Waiting — {task}: {health.CAUSES.get(cause, cause or 'held')}", 'bold yellow'
     return head, 'bold yellow'
 
 
@@ -500,6 +507,8 @@ def needs(runner):
         first = runner.questions[0]
         count = len(runner.questions)
         return f"{count} question{'s' if count > 1 else ''}, easiest {first.id}"
+    if runner.waiting_groups:
+        return waiting_line(runner)
     groups = blockers(runner)
     if groups:
         kind, items = groups[0]

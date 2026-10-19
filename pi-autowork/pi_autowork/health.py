@@ -25,7 +25,7 @@ NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
 
 
 def classify(snapshot, *, paused=False, stuck=0):
-    """'working', 'paused', 'idle' (nothing waits) or 'blocked' (work waits, none runs).
+    """'working', 'paused', 'idle' (nothing waits or is held) or 'blocked' (work waits, none runs).
 
     ``stuck`` integrations only wait for another session to leave the main checkout:
     they are in flight but make no progress (flutter, 2026-10-16)."""
@@ -33,7 +33,7 @@ def classify(snapshot, *, paused=False, stuck=0):
         return 'working'
     if paused:
         return 'paused'
-    waiting = [t for t in snapshot.get('tasks', []) if t.get('state') == 'waiting']
+    waiting = [t for t in snapshot.get('tasks', []) if t.get('state') in ('waiting', 'held')]
     return 'blocked' if waiting or stuck else 'idle'
 
 
@@ -59,6 +59,8 @@ def describe(root):
             'outside': 'outside condition or task not in Now/Next', 'cycle': 'dependency cycle',
             'running': 'running', 'integrating': 'being integrated', 'restarting': 'restarting'}
     kind = what.get(root['kind'], root['kind'])
+    if root['kind'] == 'outside' and root.get('deferred'):
+        kind = 'deferred by owner'
     if root['kind'] == 'held' and root.get('cause') == 'overlap':
         kind = 'held'  # the engine offers it again by itself; no person is needed
     if root['kind'] == 'held' and root.get('cause'):
@@ -69,6 +71,7 @@ def describe(root):
 # Why a task waits, as a person reads it: (pattern, group key, label). The key keeps one
 # group per blocking task; the label names it. First match wins.
 WAIT_KINDS = (
+    (r'^wait for deferred (.+)$', 'deferred:{0}', 'wait for deferred {0}'),
     (r'^overlapping paths with (?:in_progress |interrupted )?(\S+)', 'overlap:{0}', 'wait for {0} (overlapping files)'),
     (r'^serial path shared with (?:in_progress )?(\S+)', 'serial:{0}', 'wait for {0} (serial files)'),
     (r'^priority (?:waits for|task) (\S+?):?(?:\s|$)', 'priority:{0}', 'wait behind {0}, which runs alone'),
