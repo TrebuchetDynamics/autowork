@@ -1272,6 +1272,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-235-0d",
+      "section": "Now",
+      "status": "open",
+      "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-240-f8",
       "section": "Now",
       "status": "open",
@@ -1637,14 +1645,6 @@
       "section": "Next",
       "status": "open",
       "title": "Make the TUI a compact fleet overview with a focused runner workspace"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-235-0d",
-      "section": "Next",
-      "status": "open",
-      "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
     },
     {
       "depends_on": [],
