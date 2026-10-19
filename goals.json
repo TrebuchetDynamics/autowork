@@ -881,25 +881,13 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-115-bf",
-      "section": "Now",
-      "status": "open",
-      "title": "Redesign pi-autowork around one lifecycle authority"
-    },
-    {
-      "depends_on": [
-        "TOOLSET-115-bf"
-      ],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-118-68",
       "section": "Now",
       "status": "open",
       "title": "Separate worker, test and memory budgets in the parallel resource gate"
     },
     {
-      "depends_on": [
-        "TOOLSET-115-bf"
-      ],
+      "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-119-2b",
       "section": "Now",
@@ -929,14 +917,6 @@
       "section": "Now",
       "status": "open",
       "title": "Every runner worktree in .worktrees, none outliving its work"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-128-89",
-      "section": "Now",
-      "status": "open",
-      "title": "First push of a long-local or diverged main"
     },
     {
       "depends_on": [],
@@ -982,7 +962,9 @@
       "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-265-16"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-147-54",
       "section": "Now",
@@ -1014,7 +996,9 @@
       "title": "Keep owner-listed private terms out of public commits, pushes and runner integrations"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-265-16"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-156-75",
       "section": "Now",
@@ -1054,14 +1038,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-170-f6",
-      "section": "Now",
-      "status": "open",
-      "title": "Closeout waits only for a main-checkout session that holds the files it writes"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-173-94",
       "section": "Now",
       "status": "open",
@@ -1076,7 +1052,9 @@
       "title": "The runner merges the upstream before it dispatches work"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-265-16"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-182-ce",
       "section": "Now",
@@ -1137,20 +1115,14 @@
       "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-200-c1"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-235-0d",
       "section": "Now",
       "status": "open",
       "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-240-f8",
-      "section": "Now",
-      "status": "open",
-      "title": "A repair task for a red main gets the runner's main-check log and its failing tests"
     },
     {
       "depends_on": [],
@@ -1243,9 +1215,7 @@
       "title": "Refresh the installed OMH plugin in each OMH profile to the Hermes 0.22 release"
     },
     {
-      "depends_on": [
-        "TOOLSET-115-bf"
-      ],
+      "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-117-cb",
       "section": "Next",
@@ -1632,6 +1602,7 @@
     },
     {
       "depends_on": [
+        "TOOLSET-146-bc",
         "TOOLSET-265-16"
       ],
       "goal": "PI-RUNNER",
@@ -1675,8 +1646,7 @@
     {
       "depends_on": [
         "TOOLSET-125-3c",
-        "TOOLSET-126-02",
-        "TOOLSET-128-89"
+        "TOOLSET-126-02"
       ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-129-6c",
@@ -3164,6 +3134,34 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-115-bf",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-230-bf",
+        "TOOLSET-254-80",
+        "TOOLSET-255-55",
+        "TOOLSET-256-4b",
+        "TOOLSET-257-bd"
+      ],
+      "supersession_reason": "A catch-all redesign written against coordinator code main has since redesigned; its Touches serialized all coordinator work. Its remaining scope is covered by the named tasks.",
+      "title": "Redesign pi-autowork around one lifecycle authority"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-128-89",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-158-08"
+      ],
+      "supersession_reason": "Duplicate of 158-08 (fetch, merge the upstream, resolver once per revision, never force-push); its no-runner-push evidence is obsolete since the runner pushes (ef85685). The PI_AUTOWORK_PUSH_BATCH log line moves into 158-08.",
+      "title": "First push of a long-local or diverged main"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-141-c4",
       "section": "Superseded",
       "status": "superseded",
@@ -3188,6 +3186,18 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-170-f6",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-230-bf"
+      ],
+      "supersession_reason": "230-bf removes the closeout writer check whose message 170-f6 refines; the session-and-file wording moves to 230-bf's main-checkout landing.",
+      "title": "Closeout waits only for a main-checkout session that holds the files it writes"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-212-0d",
       "section": "Superseded",
       "status": "superseded",
@@ -3196,6 +3206,18 @@
       ],
       "supersession_reason": "TOOLSET-239-d4 puts the worker's $TMPDIR itself on disk, which makes a separate disk folder unnecessary (owner, 2026-10-18)",
       "title": "Each worker gets a disk-backed scratch folder that is removed when its task retires"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-240-f8",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-234-d4"
+      ],
+      "supersession_reason": "Duplicate of 234-d4: both hand the main-check evidence to repair workers; 240-f8's update-the-existing-evidence step is folded into 234-d4.",
+      "title": "A repair task for a red main gets the runner's main-check log and its failing tests"
     }
   ],
   "version": 1
