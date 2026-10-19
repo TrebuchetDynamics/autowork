@@ -1143,6 +1143,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to how a non-empty queue cycles.
 - Planner's call: top of Next: no work is lost, but the owner's rule is that an idle runner costs nothing, and today one rewrites refs and spawns an engine every minute and fills its log with two lines a minute.
 
+### TOOLSET-249-5b — A waiting line is logged when the reasons change, not each minute a drain counter moves
+
+- [ ] TOOLSET-249-5b — A waiting line is logged when the reasons change, not each minute a drain counter moves
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `WAITING` branch logs `Waiting: <summary>` when the summary differs from `last_waiting`); [admission](skills/autowork/scripts/parallel_plan.py) (`priority waits for <task> (draining, waited <n>m)`).
+- Evidence (2026-10-18 21:49): in six hours one fleet runner logged 171 `Waiting:` lines and this repository's runner 554. On the first, consecutive lines differed only in `waited 65m`, `66m`, `67m`... of a draining exclusive task, so the dedupe saw a new summary each minute. The runner log and the TUI log pane fill with copies of one state.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) The dedupe compares the summary with elapsed counters removed (`waited <n>m`, `for <n> min`, `<n>s ago` and similar), so a line is logged when the set of tasks or reasons changes. (2) A draining wait is logged again at most every 30 minutes with its current length, so a long drain stays visible.
+- Acceptance: In a fixture whose dispatch answers the same waiting set with a growing `waited <n>m` for ten cycles, one `Waiting:` line is logged; a changed reason or task logs a new one; a drain longer than 30 minutes logs one reminder.
+- Checks: python3 -m unittest tests/test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to admission or to the waiting reasons the engine gives.
+- Planner's call: Next: log noise only, but it buries the lines the owner and the monitor read.
+
 ### TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
 
 - [ ] TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause

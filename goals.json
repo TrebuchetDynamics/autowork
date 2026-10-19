@@ -747,7 +747,8 @@
         "TOOLSET-245-6a",
         "TOOLSET-246-06",
         "TOOLSET-247-5a",
-        "TOOLSET-248-60"
+        "TOOLSET-248-60",
+        "TOOLSET-249-5b"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -813,6 +814,7 @@
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
       "TOOLSET-248-60",
+      "TOOLSET-249-5b",
       "TOOLSET-245-6a",
       "TOOLSET-234-51",
       "TOOLSET-231-49",
@@ -1674,6 +1676,14 @@
       "section": "Next",
       "status": "open",
       "title": "An idle runner with an empty queue rests: no new session until the plan or main changes"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-249-5b",
+      "section": "Next",
+      "status": "open",
+      "title": "A waiting line is logged when the reasons change, not each minute a drain counter moves"
     },
     {
       "depends_on": [
