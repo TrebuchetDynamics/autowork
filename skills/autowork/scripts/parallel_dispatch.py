@@ -884,11 +884,7 @@ def merge_backlog(common, current, *, now=None, env=os.environ):
 
 
 def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected,
-<<<<<<< af49a0bd404a37f3a04a08d6324f6116c8ec5886
-          drain_after=None, waited=None, finished=()):
-=======
-          drain_after=None, waited=None, merge_backlog=None):
->>>>>>> ac3987cab4ed9d97d2df3d959ccd21c90db435f3
+          drain_after=None, waited=None, finished=(), merge_backlog=None):
     """Admission in two passes, so it agrees with integration about who owns a file
     (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
     held commit that only conflicts with them at integration does not stop them, or each
@@ -956,12 +952,9 @@ def dispatch_locked(args, repo, common, count, template, host):
     backlog = merge_backlog(common, occupying)
     planned = admit(candidates, running, restartable, occupying, everything=everything,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
-<<<<<<< af49a0bd404a37f3a04a08d6324f6116c8ec5886
                     drain_after=drain_after(), waited=waiting_streaks(common),
-                    finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)})
-=======
-                    drain_after=drain_after(), waited=waiting_streaks(common), merge_backlog=backlog)
->>>>>>> ac3987cab4ed9d97d2df3d959ccd21c90db435f3
+                    finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)},
+                    merge_backlog=backlog)
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

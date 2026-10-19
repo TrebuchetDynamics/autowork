@@ -334,7 +334,6 @@ class DispatchTests(unittest.TestCase):
         paths = {e['task']: e['tmpdir'] for e in self.events() if e['event'] == 'start'}
         self.assertEqual(len(set(paths.values())), 3)  # a reused worker lane is not a reused temp slot
 
-<<<<<<< af49a0bd404a37f3a04a08d6324f6116c8ec5886
     def test_a_planning_task_waits_for_its_batch_then_never_gets_a_worker(self):
         self.write_todo(task('A', 'a.txt'), task('PLAN', 'TODO.md', 'A') + '- Kind: plan\n')
         _, first = self.apply()
@@ -353,7 +352,6 @@ class DispatchTests(unittest.TestCase):
         self.assertNotIn('PLAN', [s['task_id'] for s in state.slots(self.common)])
         with self.assertRaisesRegex(execution.NoEligibleTask, 'ready for planning'):
             execution.select(self.repo, 'PLAN', None)
-=======
     def test_merge_backlog_pauses_only_fresh_dispatch_until_it_drains(self):
         """Finished commits take precedence, without stopping interrupted work."""
         # As in the answered-question fixture, integration's subreaper is process-wide.
@@ -423,7 +421,6 @@ class DispatchTests(unittest.TestCase):
                             self.assertFalse(status['merge_backlog']['paused'])
                     finally:
                         self.stop_workers()
->>>>>>> ac3987cab4ed9d97d2df3d959ccd21c90db435f3
 
     def test_dependent_task_waits_until_its_dependency_is_done(self):
         self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))
