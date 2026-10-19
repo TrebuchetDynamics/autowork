@@ -28,6 +28,17 @@ from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, L
 
 REFRESH = 3.0
 LOG_REFRESH = 5.0
+CODE_CHECK = 30.0
+CODE = Path(__file__).resolve().parent
+
+
+def code_stamp():
+    """The newest change to the TUI's own code: an update replaces these files, and a TUI left
+    open kept showing the old release's readings for hours."""
+    try:
+        return max(path.stat().st_mtime for path in CODE.glob('*.py'))
+    except (OSError, ValueError):
+        return 0
 QUESTIONS_SHOWN = 3
 
 
@@ -318,6 +329,13 @@ class FleetApp(App):
         self.refresh_log()
         self.set_interval(REFRESH, self.action_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
+        self.code = code_stamp()
+        self.set_interval(CODE_CHECK, self.reload_if_updated)
+
+    def reload_if_updated(self):
+        """Start again on new code, between actions and with no dialog open."""
+        if code_stamp() != self.code and len(self.screen_stack) == 1 and not any(w.is_running for w in self.workers):
+            self.exit('reload')
 
     # -- data -------------------------------------------------------------------
     def action_refresh(self):
@@ -568,10 +586,13 @@ def main(argv=None):
     parser.add_argument('--browse-root', default=os.environ.get('AUTOWORK_BROWSE_ROOT'))
     parser.add_argument('--view-only', action='store_true', help='Show runners; disable every control key.')
     args = parser.parse_args(argv)
-    FleetApp(command=args.command, script=args.script, state_root=args.state_root, env_dir=args.env_dir,
-             systemctl=os.environ.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl'),
-             journalctl=os.environ.get('AUTOWORK_JOURNALCTL', 'journalctl'),
-             agent=fleet_view.blockers_agent(), view_only=args.view_only, browse_root=args.browse_root).run()
+    result = FleetApp(command=args.command, script=args.script, state_root=args.state_root, env_dir=args.env_dir,
+                      systemctl=os.environ.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl'),
+                      journalctl=os.environ.get('AUTOWORK_JOURNALCTL', 'journalctl'),
+                      agent=fleet_view.blockers_agent(), view_only=args.view_only, browse_root=args.browse_root).run()
+    if result == 'reload':  # the code was updated: the same view, on the new release
+        os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()),
+                                  *(sys.argv[1:] if argv is None else argv)])
     return 0
 
 

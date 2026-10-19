@@ -233,6 +233,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A TUI left open restarts itself on the new release once an update replaces its code,
+  between actions and with no dialog open: it kept showing the old release's readings for
+  hours after the runners had moved on.
 - A task's resources are the names its `Resources:` line starts with, not every word of
   the line: one task whose line explained it had been changed from exclusive ran alone and
   drained its runner's pool for five hours, and common words made unrelated tasks share a
