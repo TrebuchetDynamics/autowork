@@ -130,7 +130,9 @@ def resource_gate(running, min_free_mb, path=None):
     # AUTOWORK_GATE_CPUS lowers the threshold so a test can force a refusal (TOOLSET-193-54);
     # scripts/check.py removes AUTOWORK_* from test processes, so a runner's value never leaks in.
     load, cpus = os.getloadavg()[0], float(os.environ.get('AUTOWORK_GATE_CPUS') or 0) or os.cpu_count() or 1
-    if load >= cpus:
+    # Each runner gets its first worker even when another runner keeps the host busy.
+    # Memory and disk still gate every worker; load only gates additional live workers.
+    if running >= 1 and load >= cpus:
         return f'resource gate: load average {load:.2f} >= {cpus:g} CPUs'
     return ''
 

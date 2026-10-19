@@ -683,8 +683,22 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
                 patch.object(dispatch.os, 'getloadavg', return_value=(0.0, 0.0, 0.0)):
             self.assertEqual(dispatch.resource_gate(0, 3000, self.repo), '')
 
+    def test_load_gates_only_workers_after_this_runners_first(self):
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        self.set_spec({'A': {'sleep': 60}, 'B': {'sleep': 60}})
+        with patch.object(dispatch.os, 'getloadavg', return_value=(3.0, 0.0, 0.0)), \
+                patch.dict(os.environ, AUTOWORK_GATE_CPUS='2'):
+            _, first = self.apply()
+            self.assertEqual([s['task'] for s in first['dispatched']], ['A'])
+            self.assertEqual(first['waiting'], [dict(id='B', blocked_by=[],
+                              reason='resource gate: load average 3.00 >= 2 CPUs')])
+            _, again = self.apply()
+            self.assertEqual((again['outcome'], again['dispatched']), ('WAITING', []))
+            self.assertEqual(again['waiting'], first['waiting'])
+
     def test_low_memory_holds_dispatch(self):
-        with patch.object(dispatch, 'available_memory_mb', return_value=1000):
+        with patch.object(dispatch, 'available_memory_mb', return_value=1000), \
+                patch.object(dispatch.os, 'getloadavg', return_value=(99999.0, 0.0, 0.0)):
             _, result = self.apply()
         self.assertEqual(result['outcome'], 'IDLE')
         self.assertEqual(result['dispatched'], [])
