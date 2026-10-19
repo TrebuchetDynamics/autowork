@@ -293,9 +293,8 @@ WRITER_HOLD = 'live or unknown external writer'
 # them or keeps the branch (TOOLSET-223-8e). A planning file the session holds open for
 # writing still counts (it stays in ``mine``).
 PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
-# A reported commit refused for a live writer steps aside in priority order for this long,
-# so one waiting candidate never holds back the rest (TOOLSET-223-8e).
-WRITERS_BUSY_SKIP = 600
+WRITERS_BUSY_SKIP = state.WRITERS_BUSY_SKIP
+writers_busy = state.writers_busy
 
 
 def main_checkout(repo):
@@ -328,19 +327,13 @@ def remerge_planning(repo, root, merge, head):
     return remerged
 
 
-def writers_busy(slot, now=None):
-    """A reported task refused for a live writer is skipped for a bounded window."""
-    try:
-        stamp = float(slot.get('writers_busy_at'))
-    except (TypeError, ValueError):
-        return False
-    return (time.time() if now is None else now) - stamp < WRITERS_BUSY_SKIP
-
-
 def touches_none_of(worker, files, main):
-    """A session only in the main checkout that neither holds open nor has left uncommitted
-    any of ``files`` (sierra, 2026-10-16: TASK-026 waited an hour on an unrelated session)."""
-    if files is None or set(worker.get('workspaces') or []) != {main}:
+    """A session working in the main checkout that neither holds open nor has left uncommitted
+    any of ``files`` (sierra, 2026-10-16: TASK-026 waited an hour on an unrelated session).
+
+    Other checkouts the same session also has open are irrelevant: the merge writes only
+    ``files`` in the canonical checkout, and those paths are what this compares."""
+    if files is None or main not in (worker.get('workspaces') or []):
         return False
     mine = {os.path.relpath(path, main) for path in worker.get('written') or []}
     listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
@@ -365,17 +358,31 @@ def slot_workspace_roots(common, slot):
 
 
 def require_no_writers(repo, files=None):
-    """Refuse while another agent may be writing. Integrating outside the main checkout
-    (a runner's session worktree) with ``files`` (the paths the merge changes), a session
-    in the main checkout blocks only when it holds one of them open or has left one
-    uncommitted there; sessions elsewhere and Autowork commands block as before."""
+    """Refuse while another agent may be writing. With ``files`` (the paths the write
+    changes), a session in the main checkout blocks only when it holds one of them open or
+    has left one uncommitted there, whichever checkout the write happens in. Its presence,
+    its activity and any other checkout it has open never block. Sessions that work in a
+    worker's worktree and Autowork commands block as before."""
     workers = execution.external_workers(repo)
     main = main_checkout(repo)
-    if main and main != str(Path(repo).resolve()):  # integrating elsewhere (the runner's session)
-        workers = [w for w in workers if not (w['kind'] == 'session' and touches_none_of(w, files, main))]
-    blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
     pool = [(slot, slot_workspace_roots(common, slot)) for slot in state.slots(common)]
+    if main:
+        # A person's session in the canonical checkout never gates work by existing, being
+        # busy or having another checkout open: only a file it holds open or has left
+        # uncommitted there, and only for a write that touches that same file, waits. A
+        # process inside a slot's worktree is not covered: it is judged as before below.
+        roots = [root for _, roots in pool for root in roots]
+        leaders = [slot['worker'] for slot, _ in pool if slot.get('worker')]
+        def in_pool(worker):
+            return any(Path(w).is_relative_to(root)
+                       for w in worker.get('workspaces') or [] for root in roots)
+        def recorded(worker):  # a slot's leader running somewhere the record does not say
+            return any(execution.identity(worker['pid']) == leader for leader in leaders)
+        workers = [w for w in workers
+                   if not (w['kind'] == 'session' and touches_none_of(w, files, main)
+                           and not in_pool(w) and not recorded(w))]
+    blocking = execution.blocking_workers(workers, repo)
     unattributed = {}
     for worker in workers:
         if worker['active'] is False:

@@ -66,10 +66,10 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
      the worker branch stay untouched);
    - validation fails, or the task contract or canonical branch changes meanwhile;
    - (not a hold) another live agent session would be affected: the result is `BUSY`
-     and the commit stays reported until that session leaves. Integrating outside
-     the main checkout (a runner's session worktree), a session in the main checkout
-     counts only when the merge changes a file it holds open for writing or has left
-     uncommitted there.
+     and the commit stays reported until that session leaves. A session in the main
+     checkout counts only when the merge changes a file it holds open for writing or
+     has left uncommitted there, wherever the integration runs. A person's session
+     never waits a merge by existing, being busy or having another checkout open.
 
    Coordinator-owned edits are left out before validation, including ledger-only
    conflicts and edits introduced by the runner or resolver merging into the task

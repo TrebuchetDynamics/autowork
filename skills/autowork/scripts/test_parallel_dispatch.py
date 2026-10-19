@@ -441,6 +441,19 @@ class DispatchTests(unittest.TestCase):
                     finally:
                         self.stop_workers()
 
+    def test_a_closed_writer_window_no_longer_explains_the_merge_backlog(self):
+        """A reason kept on an integrating slot was replayed for hours after the session left,
+        so the runner announced a writer that no longer held anything."""
+        now = time.time()
+        current = [dict(task_id='A', state='reported', commit='a' * 40,
+                        writers_busy_reason='live writer', writers_busy_at=now - 3600),
+                   dict(task_id='B', state='integrating', commit='b' * 40)]
+        env = {'PI_AUTOWORK_MERGE_BACKLOG': '1', 'PI_AUTOWORK_MERGE_BACKLOG_AFTER': '1200'}
+        self.assertNotIn('reason', dispatch.merge_backlog(self.common, current, workers=8, env=env))
+        current[0]['writers_busy_at'] = now
+        self.assertEqual(dispatch.merge_backlog(self.common, current, workers=8, env=env)['reason'],
+                         'live writer')
+
     def test_dependent_task_waits_until_its_dependency_is_done(self):
         self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2}})
