@@ -46,13 +46,28 @@ def command(env=os.environ, repo=None):
     return env.get('PI_AUTOWORK_MAIN_CHECK', '').strip() or full_check(repo, env)
 
 
+def slot_home():
+    """The per-user pool the check slots live in: one host-wide location, from the user alone.
+
+    Not XDG_RUNTIME_DIR: a cron job or a systemd unit without it derived a second pool, with its
+    own PI_AUTOWORK_CHECK_SLOTS, so the swap-safe limit was never host-wide.
+    """
+    uid = os.getuid()
+    for candidate in (Path(f'/run/user/{uid}'), Path('/var/tmp')):
+        if candidate.is_dir():
+            return candidate / f'autowork-checks-{uid}'
+    raise ValueError('no per-user runtime directory for the check slots')
+
+
 def slot_root():
-    """One per-user pool across repositories, never under a task's TMPDIR."""
-    runtime = Path(os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}')
-    if not runtime.is_dir():
-        runtime = Path('/var/tmp')
-    root = runtime / f'autowork-checks-{os.getuid()}'
-    root.mkdir(mode=0o700, exist_ok=True)
+    """One per-user pool across repositories, never under a task's TMPDIR.
+
+    PI_AUTOWORK_CHECK_ROOT names it for a fixture or an isolated host; nothing else in the
+    environment may move it.
+    """
+    override = os.environ.get('PI_AUTOWORK_CHECK_ROOT')
+    root = Path(override) if override else slot_home()
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
     if root.is_symlink() or root.stat().st_uid != os.getuid() or root.stat().st_mode & 0o077:
         raise ValueError(f'check slot directory must be private and owned by this user: {root}')
     return root

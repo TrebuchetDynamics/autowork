@@ -18,7 +18,7 @@ def setUpModule():
     """Reviews in these tests keep their scratch in a temporary folder, never the host's /var/tmp."""
     global _root, _environment
     _root = tempfile.TemporaryDirectory()
-    _environment = patch.dict(os.environ, PI_AUTOWORK_REVIEW_ROOT=_root.name, XDG_RUNTIME_DIR=_root.name)
+    _environment = patch.dict(os.environ, PI_AUTOWORK_REVIEW_ROOT=_root.name, PI_AUTOWORK_CHECK_ROOT=_root.name)
     _environment.start()
 
 
@@ -43,7 +43,7 @@ class WorkerTmpTests(unittest.TestCase):
         """A competing runner must wait, survive its outer timeout, and recover a killed holder."""
         component = str(Path(worker.__file__).resolve().parents[1])
         engine = str(Path(__file__).resolve().parents[2] / 'skills/autowork/scripts')
-        with patch.dict(os.environ, XDG_RUNTIME_DIR=self.temp.name):
+        with patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=self.temp.name):
             for slots, killed in [('1', False), ('1', True), ('0', False)]:
                 with self.subTest(slots=slots, killed=killed):
                     root = self.repo / f'case-{slots}-{killed}'
@@ -141,6 +141,102 @@ class WorkerTmpTests(unittest.TestCase):
         self.assertEqual(runs.read_text().count('ran'), 2)
         os.environ.pop('PI_AUTOWORK_VALIDATE')
         self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
+
+    def elsewhere(self):
+        """A temporary directory beside the fixture repository, so the repository stays clean."""
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        return Path(folder.name)
+
+    def committed_repo(self):
+        """The fixture repository with a base commit and a merged commit, as the gate sees it."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        (self.repo / 'a.txt').write_text('base\n')
+        git('add', '-A')
+        git('commit', '-qm', 'base')
+        (self.repo / 'a.txt').write_text('merged\n')
+        git('commit', '-qam', 'merged')
+        return git
+
+    def test_a_directory_the_check_gave_up_on_is_never_excused_by_the_base(self):
+        """check.py reports a directory it timed out as a failure, so a loaded host timed the same
+        directory out on the base, nothing stayed new enough to reject, and the gate passed a
+        tree whose full check never ran that directory."""
+        self.committed_repo()
+        state, runs = self.elsewhere() / 'state', self.elsewhere() / 'runs'
+        timed = f'{self.repo}/tests'
+        command = f'echo run >> {runs}; echo "TIMEOUT: {timed} after 1800s"; exit 1'
+        ok, reason = worker.run_gate(state, 'T-1', str(self.repo), command)
+        self.assertFalse(ok, 'a directory that never completed passed the gate')
+        self.assertIn('did not complete', reason)
+        self.assertIn(timed, reason)
+        self.assertEqual(runs.read_text().count('run'), 1,
+                         'the base suite is not worth running: no verdict can use it')
+
+    def test_the_base_suite_runs_in_a_short_directory_and_not_under_the_state_dir(self):
+        """Under the state directory this worktree path reached 87 characters before the suite
+        added its own, past the 108-byte AF_UNIX limit that already moved review scratch."""
+        self.committed_repo()
+        state, runs = self.elsewhere() / 'state', self.elsewhere() / 'runs'
+        command = f'pwd >> {runs}; echo "FAIL: test_x (m.T.test_x)"; exit 1'
+        self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), command), (True, ''))
+        seen = runs.read_text().split()
+        self.assertEqual(len(seen), 2, seen)  # the merged tree, then the base
+        self.assertEqual(Path(seen[0]).resolve(), Path(self.repo).resolve())
+        base = Path(seen[1])
+        self.assertEqual(base.parent.parent, Path(os.environ['PI_AUTOWORK_REVIEW_ROOT']))
+        self.assertFalse(base.exists(), 'the base worktree goes with the holder it was made in')
+        self.assertFalse((state / 'review-tmp').exists(), 'the state directory is not a suite path')
+
+    def test_a_base_revision_that_cannot_be_resolved_is_a_hold_not_a_crash(self):
+        """`base_rev or git(...HEAD^1)` yields None, and base_tree interpolated it into git."""
+        self.committed_repo()
+        state = self.elsewhere() / 'state'
+        command = 'echo "FAIL: test_x (m.T.test_x)"; exit 1'
+        ok, reason = worker.run_gate(state, 'T-1', str(self.repo), command, 'deadbeefdeadbeefdeadbeef')
+        self.assertFalse(ok)
+        self.assertIn('no base to compare with', reason)
+        self.assertRaises(ValueError, worker.base_result, state, str(self.repo), command, '', 10)
+
+    def test_a_cached_verdict_leaves_the_reviewer_a_log_that_exists(self):
+        """The verdict is cached per tree while the note names the task's log, so a second task
+        that hit the cache was told to read a file nobody had written."""
+        self.committed_repo()
+        state = self.elsewhere() / 'state'
+        command = 'echo "Ran 1 test in 0.1s"; echo; echo OK'
+        os.environ['PI_AUTOWORK_VALIDATE'] = command
+        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
+        self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
+        self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
+        log = worker.gate_log(state, 'T-2')
+        self.assertIn(str(log), worker.gate_note(state, 'T-2', str(self.repo)))
+        self.assertTrue(log.is_file(), 'the note names a log the cached verdict never wrote')
+        self.assertEqual(log.read_text(), worker.gate_log(state, 'T-1').read_text())
+
+    def test_an_empty_verify_timeout_keeps_the_documented_default(self):
+        """A service config that sets the name to nothing became `timeout ''`, and float('')
+        raised inside review_limit."""
+        state = self.elsewhere() / 'state'
+        head = worker.git(str(self.repo), 'rev-parse', 'HEAD')
+        with patch.dict(os.environ, PI_AUTOWORK_VERIFY_TIMEOUT=''), \
+                patch.object(worker.pi_runtime, 'job',
+                             return_value={'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass'}) as job:
+            self.assertEqual(worker.review(state, 'T-1', str(self.repo), head, ''), 0)
+        self.assertEqual(job.call_args.args[6], '1800')
+
+    def test_an_empty_task_timeout_keeps_the_documented_default(self):
+        state = self.elsewhere() / 'state'
+        prompt, report = state / 'prompt.md', state / 'attempt-1' / 'report.json'
+        report.parent.mkdir(parents=True)
+        prompt.write_text('Task: T-1\n')
+        guard = ('GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0',
+                 'GIT_CONFIG_KEY_1', 'GIT_CONFIG_VALUE_1')
+        self.addCleanup(lambda: [os.environ.pop(name, None) for name in guard])
+        with patch.dict(os.environ, PI_AUTOWORK_TASK_TIMEOUT=''), \
+                patch.object(worker.pi_runtime, 'job', return_value={'ok': True, 'text': ''}) as job:
+            worker.main(['--worker', str(state), str(self.repo), str(prompt), str(report)])
+        self.assertEqual(job.call_args.args[6], '5400')
 
     def test_base_cache_reuses_only_planning_changes_under_the_same_command(self):
         """Planning commits must not repeat a base run; code and command changes must."""
@@ -422,6 +518,37 @@ class DeadReviewScratchTests(unittest.TestCase):
             self.assertFalse(gone.exists())
             self.assertTrue(live.exists())
             self.assertNotIn(str((gone / 'copy').resolve()), git('worktree', 'list', '--porcelain'))
+
+
+class ReviewLimitTests(unittest.TestCase):
+    """PI_AUTOWORK_VERIFY_TIMEOUT comes from a service settings file, so a name set to nothing
+    must keep the documented limit: it reached float('') inside review_limit, which the run loop
+    calls for every integration."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+
+    def limit(self, value):
+        from pi_autowork.coordinator import Coordinator
+        coordinator = Coordinator.__new__(Coordinator)
+        coordinator.state, coordinator.timeout_limits = Path(self.temp.name), {}
+        coordinator.verify_timeout = value
+        return coordinator.review_limit()
+
+    def test_a_misconfigured_review_limit_keeps_the_documented_default(self):
+        for value in ('1800', '', 'nonsense'):
+            with self.subTest(value=value):
+                self.assertEqual(self.limit(value), 1800)
+
+    def test_the_settings_read_keeps_the_default_for_a_name_set_to_nothing(self):
+        from pi_autowork.coordinator import Coordinator
+        cfg = dict(repo=self.temp.name, base='main', toolset=self.temp.name, toolset_rev='revision',
+                   state=self.temp.name, mode='run', workers=1, interval='60', max_cycles='0', claim_idle='0')
+        with patch.dict(os.environ, PI_AUTOWORK_VERIFY_TIMEOUT='', PI_AUTOWORK_TASK_TIMEOUT=''):
+            coordinator = Coordinator(cfg)
+        self.assertEqual((coordinator.verify_timeout, coordinator.task_timeout), ('1800', '5400'))
+        self.assertEqual(coordinator.review_limit(), 1800)
 
 
 class EnvironmentMarkerTests(unittest.TestCase):
