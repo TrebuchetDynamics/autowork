@@ -551,6 +551,30 @@ class ReviewLimitTests(unittest.TestCase):
         self.assertEqual(coordinator.review_limit(), 1800)
 
 
+class BatchFailureTests(unittest.TestCase):
+    """A batch whose full check failed sends its candidates one at a time. That lived in memory and
+    was keyed on the whole set, so a restart, or one more candidate, batched the same failing one again."""
+
+    def coordinator(self, folder):
+        from pi_autowork.coordinator import Coordinator
+        coordinator = Coordinator.__new__(Coordinator)
+        coordinator.state, coordinator.seen = Path(folder), {}
+        coordinator.reexec_due = coordinator.batch_pending = lambda: False
+        return coordinator
+
+    def test_a_failed_batch_is_not_batched_again_after_a_restart_or_a_new_candidate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first = self.coordinator(folder)
+            self.assertEqual(first.batch_due([('A', 'a1'), ('B', 'b1'), ('C', 'c1')]), ['A', 'B', 'C'])
+            first.batch_done({'outcome': 'BATCH_GATE_FAILED', 'reason': 'new failures', 'tasks': ['A', 'B']})
+            restarted = self.coordinator(folder)
+            # C was past the batch size, never checked: it may still join a batch.
+            self.assertEqual(restarted.batch_due([('A', 'a1'), ('B', 'b1'), ('C', 'c1'), ('D', 'd1')]), ['C', 'D'])
+            # A new revision (the resolver merged it with the session) is a new candidate.
+            self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('B', 'b1')]), [])
+            self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('E', 'e1')]), ['A', 'E'])
+
+
 class EnvironmentMarkerTests(unittest.TestCase):
     """TOOLSET-173-94: 'could not check' is recorded apart from 'checked and wrong'."""
 

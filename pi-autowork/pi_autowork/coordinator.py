@@ -241,13 +241,24 @@ class Coordinator:
         last batch had to skip are offered to a new batch once they merge (one check, not one
         each) instead of being held back for the process's lifetime."""
         size = int(os.environ.get('PI_AUTOWORK_BATCH') or 6)
-        fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()]
+        failed = self.batch_failed()
+        fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()
+                 and f'{t}@{commit}' not in failed]
         key = ','.join(f'{t}@{commit}' for t, commit in sorted(fresh))
         if (size < 2 or len(fresh) < 2 or self.seen.get('batch-tried') == key or self.reexec_due()
                 or self.batch_pending()):  # land the last batch first: a new one would be built on another tree
             return []
         self.seen['batch-tried'] = key
+        self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
         return [t for t, _ in fresh]
+
+    def batch_failed(self):
+        """Revisions whose batch failed its full check: they integrate one at a time. Kept on disk,
+        since a restart, or one more candidate, built a new batch around the same failing one."""
+        try:
+            return set(json.loads((self.state / 'batch-failed.json').read_text()))
+        except (OSError, ValueError, TypeError):
+            return set()
 
     def start_batch(self, tasks):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
@@ -269,6 +280,10 @@ class Coordinator:
         if result.get('outcome') == 'BATCH_GATE_FAILED':
             LOG.say(f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
                     'its candidates integrate one at a time')
+            checked = set(result.get('tasks') or [])
+            failed = self.batch_failed() | {r for r in getattr(self, 'batch_revisions', [])
+                                             if r.split('@')[0] in checked}
+            (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
             return
         parts = [f'{len(result.get("passed") or [])} passed ({", ".join(result.get("passed") or []) or "none"})']
         if result.get('held'):
