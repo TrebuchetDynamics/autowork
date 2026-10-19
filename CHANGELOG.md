@@ -237,6 +237,17 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Review gate fixes in `worker.py`:
+  - A full check that crashes beside a base that ran to its results is the candidate's own
+    failure, not a host crash to provision for.
+  - A suite killed by a signal is never a pass because the failures it named passed alone.
+  - A base run that timed out is not cached.
+  - A batch verdict that can no longer match its tree is removed instead of holding new
+    batches for two hours, and a batch review never records an earlier review's findings.
+  - Parallel reviews sweeping the same scratch root no longer crash on a directory another
+    one removed, and a batch that fails partway stops the reviews it started.
+  - The reviewer's last verdict line counts, and a bare `fail environment` is still an
+    environment fail.
 - The runner's test fixtures keep their workers' and reviews' scratch in a short directory each
   fixture owns and removes: every test left `/var/tmp/aw-*` directories that nothing could
   reclaim once its repository was gone, about 1.2 GB an hour on a busy host.
