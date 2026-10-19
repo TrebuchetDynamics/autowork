@@ -58,7 +58,8 @@ def exhausted(row):
     """A held task the runner will not retry: a person must answer."""
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
-                                          or adoption.get('allowed') is False or bool(adoption.get('merged_count')))
+                                          or adoption.get('allowed') is False or bool(adoption.get('merged_count'))
+                                          or bool(row.get('quick_hold')))
 
 
 def build(snapshot, todo, goals, repairs=()):
@@ -81,8 +82,26 @@ def build(snapshot, todo, goals, repairs=()):
             'goal proof or correct evidence/status in TODO.md and goals.json, then run goals.py validate.',
             'LEDGER — goals.json validation', len(rows))
 
+    for task, row in rows.items():
+        hold = row.get('quick_hold')
+        if row.get('state') != 'held' or not hold:
+            continue
+        title = _title(todo, task, goals)
+        attempts = ', '.join(
+            f"{a['attempt']}: {a['seconds']:.0f}s "
+            f"(held {datetime.fromtimestamp(a['held_at'], timezone.utc):%Y-%m-%d %H:%M:%S UTC})"
+            for a in hold['attempts'])
+        add(task, 'quick_hold', 'input',
+            f"Repeated quick hold: {hold['reason']}; attempts {attempts}. Automatic reruns stopped.",
+            f"Produce the missing input (add its producer task and dependency), or move {task} to Needs decision. "
+            f"To rerun, add `Blocker resolution: {hold['fingerprint']}; <producer task or decision evidence>` "
+            'to its TODO.md entry. Other entry edits do not answer this blocker.',
+            f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
+
     for repair in repairs:
         task = repair['task']
+        if task in found:
+            continue
         title = _title(todo, task, goals)
         add(task, 'maintainer', 'decision',
             f"{repair['reason']}; DOCS-MAINTAINER already changed {', '.join(repair['fields'])}, "

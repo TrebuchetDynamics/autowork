@@ -15,6 +15,7 @@ Standard library only.
 """
 import argparse
 import codecs
+import json
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
@@ -165,6 +166,9 @@ def install_tx():
     for shell, folder, name in (('bash', HOME / '.local/share/bash-completion/completions', 'tx'),
                                 ('zsh', HOME / '.zsh/completions', '_tx'),
                                 ('fish', HOME / '.config/fish/completions', 'tx.fish')):
+        dest = folder / name
+        if dest.exists() or dest.is_symlink():
+            continue
         text = subprocess.run(['bash', str(source), 'completion', shell], capture_output=True, text=True).stdout
         if text:
             folder.mkdir(parents=True, exist_ok=True)
@@ -175,7 +179,7 @@ def install_tx():
                       (ROOT / 'tmux/style.tmux', HOME / '.tmux/style.tmux'),
                       (ROOT / 'tmux/git-status.sh', HOME / '.tmux/git-status.sh'),
                       (ROOT / 'tmux/short-path.sh', HOME / '.tmux/short-path.sh')):
-        if dest.exists():
+        if dest.exists() or dest.is_symlink():
             kept.append(dest.name)
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -352,6 +356,17 @@ def choose_text(all_items, chosen, read=input, write=print):
 def install(all_items, chosen, dry_run=False, output=None):
     output = output or Output()
     results = []
+    # Private machine-readable progress for update_bundle.py, separate from native output.
+    report = os.environ.get('AUTOWORK_INSTALL_REPORT')
+    if report:
+        Path(report).write_text('')
+
+    def record(key, status, detail, code=None):
+        results.append((key, status, detail))
+        if report:
+            with Path(report).open('a') as stream:
+                stream.write(json.dumps({'item': key, 'status': status, 'exit': code}) + '\n')
+
     total = len(chosen)
     current = 0
     started = time.monotonic()
@@ -360,20 +375,20 @@ def install(all_items, chosen, dry_run=False, output=None):
         output.line('Selected: ' + (', '.join(i.key for i in all_items if i.key in chosen) or 'none'))
     for item in all_items:
         if item.key not in chosen:
-            results.append((item.key, 'skipped', describe(item) if not item.available else 'not chosen'))
+            record(item.key, 'skipped', describe(item) if not item.available else 'not chosen')
             continue
         current += 1
         if output.verbosity or dry_run:
             output.line(f'\n[{current}/{total}] {item.label}', 'heading')
         if not item.available or item.refuse:
-            results.append((item.key, 'failed', item.refuse or describe(item)))
+            record(item.key, 'failed', item.refuse or describe(item), 1)
             if item.refuse:
                 output.line(f'  FAILED: {item.refuse}', 'failed')
             continue
         if not item.steps:
-            results.append((item.key, 'skipped', item.note))
+            record(item.key, 'skipped', item.note)
             continue
-        outcome, detail = 'installed', []
+        outcome, detail, exit_code = 'installed', [], 0
         for index, step in enumerate(item.steps, 1):
             if output.verbosity or dry_run:
                 output.line(f'  ({index}/{len(item.steps)}) {step.describe}')
@@ -392,7 +407,7 @@ def install(all_items, chosen, dry_run=False, output=None):
                 else:
                     code, text = run_command(step.argv, output)
                     if code:
-                        outcome = 'failed'
+                        outcome, exit_code = 'failed', code
                         cause = text.splitlines()[-1] if text else 'command failed'
                         detail.append(f'{cause} (exit {code})')
                         output.line(f'  FAILED: {step.describe} (exit {code})', 'failed')
@@ -401,11 +416,12 @@ def install(all_items, chosen, dry_run=False, output=None):
                 if output.verbosity:
                     output.line(f'  Done in {time.monotonic() - step_started:.1f}s', 'installed')
             except (OSError, subprocess.SubprocessError) as exc:
-                outcome = 'failed'
+                outcome, exit_code = 'failed', 1
                 detail.append(str(exc))
                 output.line(f'  FAILED: {exc}', 'failed')
                 break
-        results.append((item.key, 'planned' if dry_run else outcome, '; '.join(d for d in detail if d)))
+        record(item.key, 'planned' if dry_run else outcome, '; '.join(d for d in detail if d),
+               None if dry_run else exit_code)
     output.line('\nSummary:', 'heading')
     for key, outcome, detail in results:
         output.line(f'  {key:<9} {outcome:<9} {detail}', outcome)

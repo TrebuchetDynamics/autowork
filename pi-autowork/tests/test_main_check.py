@@ -39,6 +39,21 @@ class MainCheckTests(unittest.TestCase):
         self.assertEqual(main_check.failures('FAILED tests/test_a.py::test_b - x\n    --- FAIL: TestC (0.1s)\n'),
                          ['tests/test_a.py::test_b', 'TestC'])
 
+    def test_the_check_slot_pool_does_not_follow_the_environment(self):
+        """One host-wide pool: a cron job or a systemd unit without XDG_RUNTIME_DIR derived a
+        second pool, with its own PI_AUTOWORK_CHECK_SLOTS, so the limit was never host-wide."""
+        uid = os.getuid()
+        runtime = Path(f'/run/user/{uid}')
+        expected = (runtime if runtime.is_dir() else Path('/var/tmp')) / f'autowork-checks-{uid}'
+        self.assertEqual(main_check.slot_home(), expected)
+        with tempfile.TemporaryDirectory() as elsewhere, patch.dict(
+                os.environ, XDG_RUNTIME_DIR=str(Path(elsewhere) / 'stale'), PI_AUTOWORK_CHECK_ROOT=elsewhere):
+            self.assertEqual(main_check.slot_home(), expected, 'the environment cannot move the pool')
+            self.assertEqual(main_check.slot_root(), Path(elsewhere), 'the override names it')
+        with tempfile.TemporaryDirectory() as loose, patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=loose):
+            os.chmod(loose, 0o777)
+            self.assertRaises(ValueError, main_check.slot_root)  # the pool stays private
+
     def test_reruns_are_alone_in_their_directory_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -158,7 +173,8 @@ class MainCheckTests(unittest.TestCase):
         from pi_autowork import maintainer
         from pi_autowork.coordinator import Coordinator
 
-        crash = ('Analyzing app...\nNo issues found! (ran in 24.5s)\n\n'
+        crash = ('[warn][wallpaper] Set wallpaper failed {"error":"Bad state: channel unavailable"}\n'
+                 'Analyzing app...\nNo issues found! (ran in 24.5s)\n\n'
                  'Oops; flutter has exited unexpectedly: "Bad state: No element".\n'
                  'A crash report has been written to /x/flutter_01.log\n')
         self.assertEqual(main_check.crash_line(crash), 'Oops; flutter has exited unexpectedly: "Bad state: No element".')
@@ -185,6 +201,27 @@ class MainCheckTests(unittest.TestCase):
             found = maintainer.triggers([], record)
             self.assertEqual([kind for _, kind, _ in found], ['check broken'])
             self.assertIn('Never add a repair task for test names', maintainer.prompt(found, '/repo', 'goals.py'))
+
+    def test_crash_line_ranks_terminal_messages_and_uses_the_last_match(self):
+        cases = [
+            ('Bad state: earlier\nSegmentation fault\nreport saved\n', 'Segmentation fault'),
+            ('Fatal error: first\nAborted\nreport saved\n', 'Fatal error: first'),
+            ('panic: first\nKilled\nreport saved\n', 'Killed'),
+            ('Aborted\nout of memory\nreport saved\n', 'out of memory'),
+            ('Bad state: earlier\nTraceback (most recent call last):\n'
+             '  File "check.py", line 1, in <module>\n'
+             '    raise RuntimeError("broken")\nRuntimeError: broken\nreport saved\n',
+             'RuntimeError: broken'),
+            ('Traceback (most recent call last):\n  run()\nKeyboardInterrupt\nreport saved\n',
+             'KeyboardInterrupt'),
+            ('example.Error: not a traceback\nAborted\nreport saved\n', 'Aborted'),
+        ]
+        for prefix in ('[warn][wallpaper]', '[info]', 'WARNING:'):
+            cases.append((f'{prefix} Fatal error: Bad state\nlast words\n\n', 'last words'))
+            cases.append((f'core dumped\n{prefix} Killed\nreport saved\n', 'core dumped'))
+        for log, expected in cases:
+            with self.subTest(log=log):
+                self.assertEqual(main_check.crash_line(log), expected)
 
     def test_alive_rejects_zombies_and_reused_pids(self):
         pid = os.fork()
@@ -244,6 +281,55 @@ class MainCheckTests(unittest.TestCase):
                 os.waitpid(pid, 0)
             except ProcessLookupError:
                 pass
+
+    def test_main_check_waiting_is_visible_and_does_not_consume_its_timeout(self):
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,
+                PI_AUTOWORK_CHECK_ROOT=tmp, PI_AUTOWORK_CHECK_SLOTS='1',
+                PI_AUTOWORK_MAIN_CHECK='sleep .1; touch ran', PI_AUTOWORK_VALIDATE_TIMEOUT='.5'):
+            root = Path(tmp)
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = root, tmp, 'main', False
+            runner.tasks = lambda: []
+            runner.scratch_checkout = lambda *args: tmp
+            runner.job_environment = lambda **values: dict(os.environ, **values)
+            children, popen = [], subprocess.Popen
+
+            def launch(*args, **kwargs):
+                process = popen(*args, **kwargs)
+                children.append(process)  # retain Popen while the coordinator adopts/reaps its persisted PID
+                return process
+
+            with patch('pi_autowork.coordinator.git', return_value='abc123'), \
+                    patch('subprocess.Popen', side_effect=launch), patch('os.getloadavg', return_value=(0, 0, 0)):
+                try:
+                    with main_check.check_slot(lambda _: None):
+                        runner.check_main()
+                        pid = main_check.read(root)['pid']
+                        deadline = time.monotonic() + 10
+                        while main_check.read(root).get('check_slot', {}).get('state') != 'waiting':
+                            self.assertTrue(main_check.alive(pid))
+                            self.assertLess(time.monotonic(), deadline)
+                            time.sleep(.01)
+                        time.sleep(.7)
+                        runner.check_main()  # still one running job, not aborted or rescheduled
+                        self.assertEqual(main_check.read(root)['pid'], pid)
+                        self.assertIn('waiting for a check slot, 1 ahead', main_check.line(main_check.read(root)))
+                        self.assertFalse((root / 'ran').exists())
+                    deadline = time.monotonic() + 10
+                    while main_check.exit_code(root) is None:
+                        self.assertLess(time.monotonic(), deadline)
+                        time.sleep(.01)
+                    runner.check_main()
+                    self.assertEqual(main_check.read(root)['state'], 'green')
+                    self.assertTrue((root / 'ran').exists())
+                finally:
+                    record = main_check.read(root)
+                    if main_check.alive(record.get('pid')):
+                        os.killpg(record['pid'], signal.SIGKILL)
+                    for child in children:
+                        child.wait(timeout=10)
 
     def test_the_status_line(self):
         self.assertEqual(main_check.line({'state': 'red', 'rev': 'abcdef123', 'failures': ['a', 'b']}),

@@ -145,6 +145,8 @@ def _pending_tasks(repo, known=()):
             why = execution.contract_reason(repo, task, inputs, lambda: selection_done)
             if why:
                 row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
+            elif fields.get('Kind', '').strip().lower() == 'plan':
+                row['reason'] = 'ready for planning'
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)
     return result, done, deferred
@@ -225,6 +227,8 @@ def _snapshot(repo, common, now):
                          paused=bool(slot.get('paused')),
                          answered=max(int(s.get('answered') or 0) for s in [slot, *slot.get('previous_attempts', [])]),
                          blocked_by=[]))
+        if hold := state.quick_hold(common, slot):
+            rows[-1]['quick_hold'] = hold
         if slot['state'] == 'held' and slot.get('cause') == 'conflict' and slot.get('commit'):
             adoption = state.merge_adoption(repo, slot)
             rows[-1]['merge_adoption'] = adoption
@@ -295,7 +299,8 @@ def _snapshot(repo, common, now):
                 failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
                                                   and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
-                metrics=metrics(events, now))
+                metrics=metrics(events, now),
+                **({'merge_backlog': observed['merge_backlog']} if 'merge_backlog' in observed else {}))
 
 
 def render(value):

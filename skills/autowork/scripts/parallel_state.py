@@ -3,6 +3,7 @@
 All mutations share the sequential writer lock. Process birth identity, never age,
 controls liveness. Slot records describe execution evidence, not TODO acceptance.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -40,6 +41,15 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
 # say so again, so the docs maintainer closes or restates the task.
 NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
+
+
+def close_files(repo):
+    """The files a close writes, repository-relative where they can be. It lives here so
+    parallel_integrate can re-export it for callers that stage a close's own file set."""
+    repo = Path(repo)
+    archive = execution.archive_file(repo)
+    return ['TODO.md', 'goals.json',
+            archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
 
 
 def common_dir(repo):
@@ -246,10 +256,61 @@ def workspace(common, worktree, branch, baseline):
 
 
 def write_slot(common, slot, previous=None):
+    # Keep the attempt's runtime separate from started_at (the per-resume timeout
+    # clock). Paused/held time is not work, and resuming is not a new attempt.
+    stamp = time.time()
+    stopped = ('held', 'interrupted', 'released')
+    if slot['state'] in stopped and (not previous or previous['state'] not in stopped):
+        seconds = slot.get('runtime_seconds', 0) + max(0, stamp - slot.get('runtime_started_at', slot['started_at']))
+        slot = dict(slot, runtime_seconds=seconds)
+    elif slot['state'] not in stopped and previous and previous['state'] in stopped:
+        slot = dict(slot, runtime_started_at=stamp)
+    if slot['state'] == 'held' and (not previous or previous['state'] != 'held'
+                                   or previous.get('reason') != slot.get('reason')):
+        slot = dict(slot, held_at=stamp, held_seconds=slot.get('runtime_seconds'))
     execution.save(slot_path(common, slot['task_id']), slot)
     event(common, 'slot_changed', task_id=slot['task_id'], state=slot['state'],
           previous_state=previous['state'] if previous else None, slot=slot)
     return slot
+
+
+def blocker_class(reason):
+    """Ignore volatile paths, revisions and identifiers, not the missing-input prose."""
+    text = re.sub(r"(?:[A-Za-z]:[\\\\/]|/|\b\.{1,2}/)[^\s,;\"'()]+|\b[\w.-]+(?:/[\w.-]+)+", '<path>', reason)
+    text = re.sub(r'\b[0-9a-fA-F]{7,}\b|\b(?:[A-Z][A-Z0-9]*(?:[-_][A-Za-z0-9]+)+|[A-Z]|[\w-]*\d[\w-]*)\b',
+                  '<id>', text)
+    return ' '.join(text.casefold().split())
+
+
+def quick_hold(common, slot):
+    """Three consecutive quick planning holds, across fresh slots as well as -r2.
+
+    Missing timing evidence breaks the streak. Resumes/re-reviews of one attempt
+    count once; failures on the work (validation/crash/timeout) never trip this gate.
+    """
+    if slot['state'] != 'held':
+        return None
+    history = common / 'slot-history' / slot['task_id']
+    paths = sorted((p for p in history.glob('*') if p.name.isdigit()), key=lambda p: int(p.name))
+    attempts = []
+    for generation, record in enumerate([*(execution.read(p / 'slot.json') or {} for p in paths), slot], 1):
+        distinct = {}
+        for attempt in [*record.get('previous_attempts', []), record]:
+            distinct[(attempt.get('branch'), attempt.get('attempt'))] = attempt
+        for attempt in distinct.values():
+            attempts.append(dict(attempt=f'{generation}/{attempt.get("attempt", "?")}',
+                                 reason=attempt.get('reason') or '', seconds=attempt.get('held_seconds'),
+                                 held_at=attempt.get('held_at'), cause=attempt.get('cause'), state=attempt.get('state')))
+    recent = attempts[-3:]
+    if len(recent) != 3 or any(a['state'] != 'held' or a['cause'] not in (
+            'blocker', 'scope_request', 'scope', 'contract_changed') or a['seconds'] is None
+            or not 0 <= a['seconds'] <= 600 for a in recent):
+        return None
+    reasons = {blocker_class(a['reason']) for a in recent}
+    if len(reasons) != 1 or not next(iter(reasons)):
+        return None
+    fingerprint = hashlib.sha256(next(iter(reasons)).encode()).hexdigest()[:12]
+    return dict(fingerprint=fingerprint, reason=slot.get('reason') or '', attempts=recent)
 
 
 def create_slot(repo, owner_pid, task, *, worktree, branch, baseline, worker=None):
@@ -305,7 +366,7 @@ def change(common, old, target, updates):
         for key in FIELDS:
             value.pop(key, None)
         if not resume:  # A fresh worker commit is not a re-review of the held attempt.
-            for key in ('reverified', 'reverify_verdict'):
+            for key in ('reverified', 'reverify_verdict', 'runtime_seconds', 'runtime_started_at', 'held_at', 'held_seconds'):
                 value.pop(key, None)
         value.update(attempt=old['attempt'] if resume else 2, worker=None, started_at=time.time())
     if updates.get('worker') is not None:

@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A review no longer reruns the task's test Checks that the runner's full check already ran
+  on the same merged tree; it runs only checks the full check does not cover, and single
+  tests to settle a doubt. Rerunning whole test files took most of every review's 20 to 40
+  minutes, and one review at a time held every runner's queue.
 - Verified candidates waiting together integrate as a batch: one full check on their merged tree and
   their reviews side by side, then each lands on its recorded verdict. One runner had landed six tasks a
   day, one review at a time, while nine waited.
@@ -233,6 +237,51 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review cut off by a restart no longer holds its task for good when main moved meanwhile.
+  Recovery took any movement of main as a landing and then found no passing record; the
+  runner lands its own session beside running reviews, so main usually moves. A merge that
+  is not in main is now merged again on the current main and checked again, and a task an
+  earlier release held this way is offered again once.
+- A set-aside request for a finished commit waiting to merge is carried out, keeping the commit
+  on a `-set-aside-N` branch, so the task runs fresh on current main: such requests were
+  refused, and stale commits that only conflicted stayed in the queue.
+- Review gate fixes in `worker.py`:
+  - A full check that crashes beside a base that ran to its results is the candidate's own
+    failure, not a host crash to provision for.
+  - A suite killed by a signal is never a pass because the failures it named passed alone.
+  - A base run that timed out is not cached.
+  - A batch verdict that can no longer match its tree is removed instead of holding new
+    batches for two hours, and a batch review never records an earlier review's findings.
+  - Parallel reviews sweeping the same scratch root no longer crash on a directory another
+    one removed, and a batch that fails partway stops the reviews it started.
+  - The reviewer's last verdict line counts, and a bare `fail environment` is still an
+    environment fail.
+  - A directory the full check timed out is never excused by the base timing out too. The check
+    reports a timeout as a failure, so nothing stayed new to reject and the gate passed a tree
+    whose full check never ran that directory.
+  - The base suite runs in a short directory on disk, not under the state directory, where the
+    worktree path reached 87 characters before the suite added its own, past the 108-byte
+    AF_UNIX limit that already moved review scratch to `/var/tmp`.
+  - A base revision that cannot be resolved, or a base worktree that cannot be created, holds
+    the candidate with a reason instead of ending the review in a traceback.
+  - A verdict cached per tree leaves the review a log where its note points: the note names the
+    task's log, so a second task that hit the cache was told to read a file nobody had written.
+- `PI_AUTOWORK_TASK_TIMEOUT` and `PI_AUTOWORK_VERIFY_TIMEOUT` a settings file sets to nothing
+  keep their documented defaults: the reader returned `''`, so every worker and review ran
+  `timeout ''`, and `float('')` raised inside the run loop's `review_limit`.
+- The check-slot pool is derived from the user, not `XDG_RUNTIME_DIR`: a cron job or a systemd
+  unit without it derived a second pool, with its own `PI_AUTOWORK_CHECK_SLOTS`, so the
+  swap-safe limit was never host-wide. `PI_AUTOWORK_CHECK_ROOT` names the pool explicitly.
+- The runner's test fixtures keep their workers' and reviews' scratch in a short directory each
+  fixture owns and removes: every test left `/var/tmp/aw-*` directories that nothing could
+  reclaim once its repository was gone, about 1.2 GB an hour on a busy host.
+- A set-aside request made while a review holds the integration lock waits for a later cycle
+  instead of being dropped: every request made during a review was lost.
+- A held slot whose task was closed on main is set aside like any other, instead of keeping
+  its place and even being retried fresh.
+- A hold from the runner's own integration mechanics (a review a restart interrupted, a
+  commit already on main) no longer counts toward the failure streak: three after one restart
+  paused every new task for an hour.
 - Candidates a batch verified land first, in the order the batch verified them
   (`--batch-order`): each verdict holds only for its step of that chain, so a higher-priority
   task landing between them voided every verdict and the batch's work was lost. Candidates

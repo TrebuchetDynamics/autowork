@@ -7,6 +7,8 @@ disposable checkout of main; a failure names the failing tests and the commits s
 last green revision, and the DOCS-MAINTAINER adds one repair task for it. Standard library only.
 """
 import concurrent.futures
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -44,6 +46,155 @@ def command(env=os.environ, repo=None):
     return env.get('PI_AUTOWORK_MAIN_CHECK', '').strip() or full_check(repo, env)
 
 
+def slot_home():
+    """The per-user pool the check slots live in: one host-wide location, from the user alone.
+
+    Not XDG_RUNTIME_DIR: a cron job or a systemd unit without it derived a second pool, with its
+    own PI_AUTOWORK_CHECK_SLOTS, so the swap-safe limit was never host-wide.
+    """
+    uid = os.getuid()
+    for candidate in (Path(f'/run/user/{uid}'), Path('/var/tmp')):
+        if candidate.is_dir():
+            return candidate / f'autowork-checks-{uid}'
+    raise ValueError('no per-user runtime directory for the check slots')
+
+
+def slot_root():
+    """One per-user pool across repositories, never under a task's TMPDIR.
+
+    PI_AUTOWORK_CHECK_ROOT names it for a fixture or an isolated host; nothing else in the
+    environment may move it.
+    """
+    override = os.environ.get('PI_AUTOWORK_CHECK_ROOT')
+    root = Path(override) if override else slot_home()
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if root.is_symlink() or root.stat().st_uid != os.getuid() or root.stat().st_mode & 0o077:
+        raise ValueError(f'check slot directory must be private and owned by this user: {root}')
+    return root
+
+
+@contextmanager
+def check_slot(waiting):
+    """FIFO admission to host-wide flock slots; dead tickets are cleaned on the next poll.
+
+    Only tickets are unlinked. Slot/mutex inodes must stay put, including across restarts.
+    The command inherits the lease: killing its supervisor does not release a still-live check.
+    Normal completion unlocks it even if a background descendant kept an inherited fd.
+    """
+    count = int(os.environ.get('PI_AUTOWORK_CHECK_SLOTS') or max(1, (os.cpu_count() or 1) // 8))
+    if count < 0:
+        raise ValueError('PI_AUTOWORK_CHECK_SLOTS must be nonnegative')
+    if count == 0:
+        yield None
+        return
+    root = slot_root()
+    lease, ticket = None, None
+    with (root / 'queue.lock').open('a') as mutex:
+        try:
+            while lease is None:
+                fcntl.flock(mutex, fcntl.LOCK_EX)
+                try:
+                    if ticket is None:
+                        ticket = (root / f'wait-{time.monotonic_ns():020d}-{os.getpid()}').open('x')
+                        fcntl.flock(ticket, fcntl.LOCK_EX)
+                    ahead = 0
+                    for path in sorted(root.glob('wait-*')):
+                        if path == Path(ticket.name):
+                            continue
+                        with path.open('a') as other:
+                            try:
+                                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            except BlockingIOError:
+                                ahead += path.name < Path(ticket.name).name
+                            else:
+                                path.unlink()  # dead waiter, including SIGKILL
+                    busy = 0
+                    for index in range(count):
+                        fd = os.open(root / f'slot-{index}', os.O_RDWR | os.O_CREAT, 0o600)
+                        try:
+                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        except BlockingIOError:
+                            busy += 1
+                        else:
+                            if ahead == 0 and lease is None:
+                                lease = fd
+                        if fd != lease:
+                            os.close(fd)
+                    if lease is not None:
+                        Path(ticket.name).unlink()
+                finally:
+                    fcntl.flock(mutex, fcntl.LOCK_UN)
+                if lease is None:
+                    waiting(ahead + busy)
+                    time.sleep(.1)
+            yield lease
+            fcntl.flock(lease, fcntl.LOCK_UN)  # the check ended; leftover daemons must not occupy its slot
+        finally:
+            if ticket is not None:
+                # Creation/admission scans use the same mutex, so no live ticket is mistaken for stale.
+                fcntl.flock(mutex, fcntl.LOCK_EX)
+                Path(ticket.name).unlink(missing_ok=True)
+                ticket.close()
+                fcntl.flock(mutex, fcntl.LOCK_UN)
+            if lease is not None:
+                os.close(lease)  # on abnormal exit, a surviving command still owns its inherited fd
+
+
+def run_command(cmd, checkout, limit, progress, output=None):
+    """Run a full suite with its complete timeout after admission; report queue progress."""
+    queued = timed_out = False
+
+    def notify(state, **fields):
+        value = dict(state=state, pid=os.getpid(), updated=time.time(), **fields)
+        path = Path(progress)
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(value) + '\n')
+        tmp.replace(path)
+
+    def transition(waiting):
+        fd = os.environ.get('AUTOWORK_CHECK_WAIT_FD')
+        if fd:
+            try:
+                os.write(int(fd), f'{time.monotonic()} {int(waiting)}\n'.encode())
+            except (OSError, ValueError):
+                pass  # direct checks and old engines have no wait-accounting channel
+
+    def wait(ahead):
+        nonlocal queued
+        if not queued:
+            transition(True)
+        queued = True
+        notify('waiting', ahead=ahead)
+
+    try:
+        with check_slot(wait) as lease:
+            if queued:
+                transition(False)
+            notify('running', started=time.time())
+            env = {k: v for k, v in os.environ.items() if k != 'AUTOWORK_CHECK_WAIT_FD'}
+            with subprocess.Popen(['bash', '-c', cmd], cwd=checkout, env=env, stdin=subprocess.DEVNULL,
+                                  stdout=output, stderr=subprocess.STDOUT, start_new_session=True,
+                                  pass_fds=(() if lease is None else (lease,))) as process:
+                try:
+                    return process.wait(timeout=limit), False
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    os.killpg(process.pid, signal.SIGKILL)
+                    return process.wait(), True
+    finally:
+        if queued:
+            transition(False)
+        notify('finished', timed_out=timed_out)
+
+
+def slot_status(path):
+    try:
+        value = json.loads(Path(path).read_text())
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def record_path(state):
     return Path(state) / 'main_check.json'
 
@@ -53,7 +204,11 @@ def read(state):
         value = json.loads(record_path(state).read_text())
     except (OSError, ValueError):
         return {}
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    if value.get('state') == 'running' and value.get('slot_status'):
+        value['check_slot'] = slot_status(value['slot_status'])
+    return value
 
 
 def write(state, value):
@@ -72,17 +227,37 @@ def exit_code(state):
         return None
 
 
-# A tool that died rather than a test that failed (TOOLSET-237-35): a crashed check names no test.
-CRASH = re.compile(r'exited unexpectedly|Segmentation fault|core dumped|Bad state|panic:|Fatal error|'
-                   r'Killed|Aborted|out of memory', re.I)
+# Diagnostic selection only: a crashed check names no test (TOOLSET-237-35).
+CRASH = re.compile(r'exited unexpectedly|Segmentation fault|core dumped|panic:|Fatal error|Killed', re.I)
+WEAK_CRASH = re.compile(r'Bad state|Aborted|out of memory', re.I)
+LOG_LEVEL = re.compile(r'^(?:\[(?:trace|debug|info|warn(?:ing)?|error|fatal|critical)\]|'
+                       r'(?:trace|debug|info|warn(?:ing)?|error|fatal|critical):)', re.I)
+PYTHON_EXCEPTION = re.compile(r'^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?::|$)')
 
 
 def crash_line(log_text):
-    """What a check that crashed before reporting test results died of: the first line that
-    says so, else its last non-blank line."""
-    lines = [' '.join(l.split()) for l in log_text.splitlines() if l.strip()]
-    hit = next((l for l in lines if CRASH.search(l)), None)
-    return (hit or (lines[-1] if lines else 'no output'))[:300]
+    """Last highest-ranked crash message, excluding log-level lines; else last non-blank line.
+
+    Keep indentation until traceback exceptions are identified, so source and frame lines
+    cannot be mistaken for the final exception (TOOLSET-244-5d).
+    """
+    hit, last, highest = '', 'no output', 0
+    traceback = False
+    for raw in log_text.splitlines():
+        if not raw.strip():
+            continue
+        last = ' '.join(raw.split())
+        if LOG_LEVEL.match(raw.lstrip()):
+            continue
+        if raw.startswith('Traceback (most recent call last):'):
+            traceback = True
+        exception = traceback and bool(PYTHON_EXCEPTION.match(raw))
+        if exception:
+            traceback = False
+        rank = 2 if exception or CRASH.search(last) else 1 if WEAK_CRASH.search(last) else 0
+        if rank and rank >= highest:
+            hit, highest = last, rank
+    return (hit or last)[:300]
 
 
 def failures(log_text, limit=20):
@@ -252,9 +427,16 @@ def line(record, now=None):
         flaky = len(record.get('flaky') or [])
         return f"main green at {record.get('rev', '')[:7]}" + (f' ({flaky} flaky)' if flaky else '')
     if state == 'running':
-        return f"main check running on {record.get('rev', '')[:7]} ({int((now - record.get('started', now)) // 60)}m)"
+        progress = record.get('check_slot') or {}
+        if progress.get('state') == 'waiting':
+            return f"main check waiting for a check slot, {progress.get('ahead', 0)} ahead"
+        started = progress.get('started', record.get('started', now))
+        return f"main check running on {record.get('rev', '')[:7]} ({int((now - started) // 60)}m)"
     return ''
 
 
 if __name__ == '__main__':
+    if sys.argv[1] == '--run':
+        code, _ = run_command(sys.argv[2], os.getcwd(), float(sys.argv[3]), sys.argv[4])
+        sys.exit(code if code >= 0 else 128 - code)
     rerun_failures(*sys.argv[1:])

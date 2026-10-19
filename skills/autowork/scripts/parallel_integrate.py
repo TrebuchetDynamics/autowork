@@ -13,6 +13,7 @@ import time
 import parallel_dispatch as dispatch
 import parallel_plan as plan
 import parallel_state as state
+from parallel_state import close_files  # the close's own file set; re-exported for callers
 import task_execution as execution
 from worktree_paths import canonical_root, worktree_path
 
@@ -76,6 +77,17 @@ def hold(common, slot, reason, **updates):
 
 
 BRANCH_HOLD = 'unexpected worker branch'
+STALE_VALIDATION = 'missing, failed, stale or mismatched integration validation'
+
+
+def landed(repo, commit):
+    """Whether ``commit`` is in the canonical HEAD; None when that cannot be told."""
+    if not commit:
+        return None
+    try:
+        return git(repo, 'merge-base', commit, 'HEAD') == commit
+    except ValueError:
+        return None
 
 
 def expected_branch(slot):
@@ -288,6 +300,21 @@ def touches_none_of(worker, files, main):
     return not (set(files) & (mine | dirty))
 
 
+def slot_workspace_roots(common, slot):
+    """Read the slot's saved temp allocation without allocating or migrating it."""
+    roots = [Path(slot['worktree'])]
+    try:
+        data = dispatch.data_dir(common, slot)
+        allocation = execution.read(data.parent / 'tmp.json')
+        temporary = (dispatch._tmp_record(common, allocation) if allocation is not None
+                     else execution.safe_path(data / 'tmp'))  # older attempt-local TMPDIR
+        if temporary.is_dir() and temporary.stat().st_uid == os.getuid():
+            roots.append(temporary)
+    except (OSError, ValueError):
+        pass  # Missing or unsafe temp evidence never widens containment.
+    return roots
+
+
 def require_no_writers(repo, files=None):
     """Refuse while another agent may be writing. Integrating outside the main checkout
     (a runner's session worktree) with ``files`` (the paths the merge changes), a session
@@ -299,7 +326,7 @@ def require_no_writers(repo, files=None):
         workers = [w for w in workers if not (w['kind'] == 'session' and touches_none_of(w, files, main))]
     blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
-    pool = state.slots(common)
+    pool = [(slot, slot_workspace_roots(common, slot)) for slot in state.slots(common)]
     unattributed = {}
     for worker in workers:
         if worker['active'] is False:
@@ -307,9 +334,8 @@ def require_no_writers(repo, files=None):
         # Workspace containment is necessary, not proof of pool membership. A
         # child in a new session still belongs to its birth-checked live leader.
         attributed = False
-        for slot in pool:
-            worktree = Path(slot['worktree'])
-            inside = [Path(w).is_relative_to(worktree) for w in worker['workspaces']]
+        for slot, roots in pool:
+            inside = [any(Path(w).is_relative_to(root) for root in roots) for w in worker['workspaces']]
             if not any(inside):
                 continue
             leader = slot.get('worker')
@@ -447,7 +473,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                 return hold(common, slot, str(exc))
             if slot['state'] == 'reported':
                 slot = state.change(common, slot, 'integrating', {'report': report})
-        check = None
+        check, queued = None, 0
         def save_receipt(path, value):
             nonlocal slot
             with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
@@ -486,7 +512,9 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     slot = state.write_slot(common, dict(slot, integration=integration, checks=None), slot)
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
-                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
+                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id,
+                            check_slot_wait=True)
+                queued += (check or {}).get('command_receipt', {}).get('check_slot_wait_seconds', 0)
                 if (check or {}).get('outcome') == 'TIMED_OUT':
                     # The host's speed, not the task (TOOLSET-196-fb): its own cause, reverified
                     # with a longer limit instead of spending an attempt.
@@ -528,7 +556,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                     if git(repo, 'rev-parse', 'HEAD') != merge:
                         raise ValueError('canonical fast-forward readback mismatch')
                     state.change(common, slot, 'integrated', {'integration': integration, 'checks': check})
-                    return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration}
+                    return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration,
+                            'check_slot_wait_seconds': queued}
         except WritersBusy as exc:
             # Not a verdict: an integrating candidate is revalidated on the next call.
             return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
@@ -542,7 +571,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                 details = {'cause': exc.cause, **exc.details} if isinstance(exc, Hold) else {}
                 if reviewer:
                     details['reviewed_by'] = reviewer  # which validation held it, for reverify
-                return hold(common, slot, str(exc), **details, **({'checks': check} if check is not None else {}))
+                return dict(hold(common, slot, str(exc), **details, **({'checks': check} if check is not None else {})),
+                            check_slot_wait_seconds=queued)
 
 
 def validated_receipt(repo, common, slot):
@@ -560,7 +590,7 @@ def validated_receipt(repo, common, slot):
             or git(repo, 'merge-base', info['commit'], 'HEAD') != info['commit']
             or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
                != [info['baseline'], slot['commit']]):
-        raise ValueError('missing, failed, stale or mismatched integration validation')
+        raise ValueError(STALE_VALIDATION)
     return info, checks
 
 
@@ -599,8 +629,10 @@ def recover_integration(repo, common, slot, contracts):
             candidates.append(root)
     if len(candidates) != 1:
         raise ValueError('abandoned integration tree changed or ambiguous; preserve for diagnosis')
-    if git(repo, 'rev-parse', 'HEAD') == info['baseline']:
-        return None  # Pre-FF; remerge and revalidate, retaining worker attempt.
+    if not landed(repo, info['commit']):
+        # Never landed: remerge on the current head and revalidate, retaining the worker attempt.
+        # The head may have moved, since the runner lands its session beside a running review.
+        return None
     validated_receipt(repo, common, slot)
     state.change(common, slot, 'integrated', {})
     return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info}
@@ -685,12 +717,6 @@ def require_task_contract(items, expected, *, archived=False):
     if ((archived and mark.lower() != 'x') or body.strip() not in
             ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
         raise ValueError(CONTRACT_CHANGED)
-
-
-def close_files(repo):
-    """The files a close writes, repository-relative where they can be."""
-    archive = archive_path(repo)
-    return ['TODO.md', 'goals.json', archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
 
 
 def close(repo, owner_pid, task):
@@ -830,9 +856,30 @@ def entry_changes(repo, common, slot):
     return sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
 
 
+def blocker_resolved(repo, common, slot, hold):
+    """An explicit answer names this blocker and its producer/evidence, not a cosmetic edit.
+
+    The runner cannot judge prose semantically. Require a fresh, blocker-specific
+    resolution field; the maintainer/owner supplies the evidence, normal checks judge it.
+    """
+    if 'Blocker resolution' not in (entry_changes(repo, common, slot) or []):
+        return False
+    goals = execution.goals_module()
+    items = goals.task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
+    if len(items) != 1:
+        return False
+    value = ' '.join(goals.task_fields(items[0][0]).get('Blocker resolution', '').split())
+    previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
+    before = ' '.join(goals.task_fields(previous or '').get('Blocker resolution', '').split())
+    prefix = hold['fingerprint'] + ';'
+    return (value.casefold() != before.casefold() and value.startswith(prefix)
+            and bool(value[len(prefix):].strip()))
+
+
 def entry_changed(repo, common, slot):
-    """Whether a recorded entry has changed since dispatch or its last accepted rescope."""
-    return bool(entry_changes(repo, common, slot))
+    """A changed entry, or for a repeated quick hold, an answer to its named blocker."""
+    hold = state.quick_hold(common, slot)
+    return bool(entry_changes(repo, common, slot)) and (not hold or blocker_resolved(repo, common, slot, hold))
 
 
 def _retire(repo, common, slot, requeued):
@@ -840,6 +887,10 @@ def _retire(repo, common, slot, requeued):
 
     Caller holds dispatch.lock, integration.lock and writer.lock."""
     task = slot['task_id']
+    hold = state.quick_hold(common, slot)
+    if requeued and hold and not blocker_resolved(repo, common, slot, hold):
+        raise ValueError(f'repeated quick hold: add Blocker resolution: {hold["fingerprint"]}; '
+                         'producer task or decision evidence to the entry before rerunning')
     dispatch.cleanup_tmpdir(common, slot)
     history = execution.safe_path(common / 'slot-history' / task)
     number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
@@ -903,7 +954,7 @@ def _retire(repo, common, slot, requeued):
 def set_aside(repo, owner_pid, task):
     """Retire a slot that can never finish, so its task can dispatch fresh.
 
-    Only for a held slot no attempt can finish, or an integrated one whose TODO
+    Only for a finished commit waiting to merge (on request), a held slot no attempt can finish, or an integrated one whose TODO
     entry was rewritten after validation (its merge stays in main; the new entry
     is new work) or was archived or removed by someone else (``requeued`` false). Every attempt's worktree and branch is kept, renamed with a
     ``-set-aside-N`` suffix, and the slot record and its data move to
@@ -931,9 +982,11 @@ def set_aside(repo, owner_pid, task):
                         raise
                 else:
                     raise ValueError('integrated task still matches its contract; close it instead')
-        elif not state.exhausted(slot):
-            raise ValueError('set-aside is only for a held slot with no attempt left or an integrated '
-                             'task whose TODO entry changed')
+        elif slot['state'] != 'reported' and not state.exhausted(slot):
+            # A finished commit too, on a person's request: stale ones written against code main had
+            # since redesigned only conflicted, and the request was refused.
+            raise ValueError('set-aside is only for a finished commit, a held slot with no attempt left, or an '
+                             'integrated task whose TODO entry changed')
         return _retire(repo, common, slot, requeued)
 
 
@@ -1004,7 +1057,7 @@ def answer(repo, owner_pid, task, text):
         state.require_owner(common, owner_pid)
         slot = slot_for(common, task)
         if (slot is None or slot['state'] != 'held' or slot.get('cause') != 'blocker' or state.worker_live(slot)
-                or answered(slot) >= ANSWERS):
+                or answered(slot) >= ANSWERS or state.quick_hold(common, slot)):
             raise ValueError(f'answer is only for a blocker-held task, at most {ANSWERS} times')
         with open(answers_path(common, task), 'a') as record:
             record.write(f'- {datetime.now():%Y-%m-%d %H:%M} to: {slot.get("reason") or "a blocker"}\n  {text}\n')
@@ -1101,6 +1154,9 @@ def retry_held(args):
         with execution.lock(common / 'writer.lock'):
             state.require_owner(common, args.owner_pid)
             current = state.slots(common)
+            # No rescope, reoffer or fresh retry may bypass a repeated missing input.
+            current = [s for s in current if not (hold := state.quick_hold(common, s))
+                       or blocker_resolved(repo, common, s, hold)]
             # A retry that produced nothing (often because it judged the first hold
             # binding) gets the first attempt's commit re-verified once instead.
             # Earlier releases held a commit when a live session was in the canonical checkout
@@ -1168,6 +1224,15 @@ def retry_held(args):
                                      == 'CHILDREN_TERMINATED' and passed(s.get('checks'))))), None)
             if misread is not None:
                 slot = state.reoffer(common, misread)
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # Earlier releases held an interrupted review whose merge never landed when main had
+            # moved meanwhile, as if it had landed without evidence: offered again once.
+            unlanded = next((s for s in current if s['state'] == 'held' and s.get('commit')
+                             and s.get('reason') == STALE_VALIDATION and not state.worker_live(s)
+                             and 'stale_validation' not in state.reoffered(s)
+                             and landed(repo, (s.get('integration') or {}).get('commit')) is False), None)
+            if unlanded is not None:
+                slot = state.reoffer(common, dict(unlanded, cause='stale_validation'))
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
@@ -1246,7 +1311,8 @@ def retry_held(args):
             return {'outcome': 'RETRIED', 'task': task['id'], 'slot': slot}
 
 
-RETIRABLE = ('dispatched', 'running', 'interrupted', 'released', 'reported')
+# Held too: a held slot whose task was closed on main kept its place and was even retried fresh.
+RETIRABLE = ('dispatched', 'running', 'interrupted', 'released', 'reported', 'held')
 
 
 def retire_closed(args):

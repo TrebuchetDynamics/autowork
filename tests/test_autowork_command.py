@@ -130,7 +130,7 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertEqual(len([c for c in self.calls() if c.startswith('script --install-service')]), 2)
 
     def test_start_moves_a_service_off_another_copy_of_the_package(self):
-        """Services ran from the Pi package under its old hermes-toolset name."""
+        """Services ran from the Pi package under an older name."""
         self.aw('start', str(self.repo))
         other = self.make_repo('bravo')
         self.aw('start', str(other))
@@ -154,7 +154,7 @@ class AutoworkCommandTests(unittest.TestCase):
         (package / 'scripts').mkdir(parents=True)
         (package / 'scripts' / 'pi-autowork.sh').write_text('exit 0\n')
         (self.base / 'bin' / 'pi').write_text('#!/usr/bin/env bash\necho "User packages:"\n'
-                                              'echo "  git:github.com/TrebuchetDynamics/hermes-toolset"\necho "    /old"\n'
+                                              'echo "  git:github.com/TrebuchetDynamics/old-toolset"\necho "    /old"\n'
                                               f'echo "  git:github.com/TrebuchetDynamics/autowork (filtered)"\necho "    {package}"\n')
         import sys
         sys.path.insert(0, str(ROOT / 'pi-autowork'))

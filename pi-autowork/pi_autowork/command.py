@@ -159,7 +159,7 @@ def cmd_start(args, paths):
     fleet_view.paused_marker(paths['env_dir'], name).unlink(missing_ok=True)  # starting ends a pause
     state = service_state(paths, name)
     # Services run from the Pi package installed from PI_SOURCE. A unit that runs another
-    # copy (the package installed under the old hermes-toolset name) is moved onto it:
+    # copy (a package installed under an older name) is moved onto it:
     # reinstalling rewrites the shared unit and restarts this service, whose workers pause
     # and resume; the other services follow when they next restart.
     target = os.environ.get('PI_AUTOWORK_SCRIPT') or package_script()

@@ -22,10 +22,12 @@ STALE_AFTER = 600       # a status this old means the runner is not cycling
 MOVING = ('running', 'integrating', 'restarting')
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  # unsafe to update under
 NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
+HOST_WAIT = 'waiting for the host'
+LOAD_WAIT = r'^resource gate: load average (\S+) >= (\S+) CPUs$'
 
 
 def classify(snapshot, *, paused=False, stuck=0):
-    """'working', 'paused', 'idle' (nothing waits or is held) or 'blocked' (work waits, none runs).
+    """Working, paused, idle (nothing waits or is held), host-waiting (load only), or blocked.
 
     ``stuck`` integrations only wait for another session to leave the main checkout:
     they are in flight but make no progress (flutter, 2026-10-16)."""
@@ -34,6 +36,9 @@ def classify(snapshot, *, paused=False, stuck=0):
     if paused:
         return 'paused'
     waiting = [t for t in snapshot.get('tasks', []) if t.get('state') in ('waiting', 'held')]
+    if waiting and not stuck and all(t.get('state') == 'waiting'
+                                    and re.match(LOAD_WAIT, str(t.get('reason') or '')) for t in waiting):
+        return HOST_WAIT
     return 'blocked' if waiting or stuck else 'idle'
 
 
@@ -72,12 +77,14 @@ def describe(root):
 # group per blocking task; the label names it. First match wins.
 WAIT_KINDS = (
     (r'^wait for deferred (.+)$', 'deferred:{0}', 'wait for deferred {0}'),
+    (r'^wait for (\d+) finished commits to merge', 'merge_backlog', 'wait for {0} finished commits to merge'),
     (r'^overlapping paths with (?:in_progress |interrupted )?(\S+)', 'overlap:{0}', 'wait for {0} (overlapping files)'),
     (r'^serial path shared with (?:in_progress )?(\S+)', 'serial:{0}', 'wait for {0} (serial files)'),
     (r'^priority (?:waits for|task) (\S+?):?(?:\s|$)', 'priority:{0}', 'wait behind {0}, which runs alone'),
     (r'^shared resource with (?:in_progress )?(\S+)', 'resource:{0}', 'share a resource with {0}'),
     (r'^dependency', 'dependency', 'on dependencies'),
-    (r'^resource gate', 'gate', 'on host memory or load'),
+    (LOAD_WAIT, 'load', HOST_WAIT + ' (load {0} on {1} CPUs)'),
+    (r'^resource gate', 'gate', 'on host memory or disk'),
     (r'^all \d+ worker slots busy', 'slots', 'for a free worker slot'),
     (r'^already running/live slot or in_progress', 'claim', 'claimed elsewhere'),
     (r'^sequential task in progress', 'sequential', 'behind a sequential task'),
@@ -150,6 +157,8 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         return None
     paused = float(runner.get('paused_until') or 0) > now
     state = classify(snapshot, paused=paused, stuck=int(runner.get('stuck_integrations') or 0))
+    if state == HOST_WAIT and runner.get('blocker'):
+        state = 'blocked'  # a load observation must not hide a runner failure
     observed_state = previous.get('snapshot_state', previous.get('state', ''))
     since = previous.get('since', now) if observed_state.replace('stalled', 'blocked') == state else now
     roots = list(snapshot.get('roots', []))
@@ -172,6 +181,17 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                     + '; '.join(describe(r) for r in stuck[:5])
                     + (f' (+{len(stuck) - 5} more)' if len(stuck) > 5 else '')
                     + '. See pi-autowork.sh --status.')
+    backlog = snapshot.get('merge_backlog') or {}
+    was_paused = bool((previous.get('merge_backlog') or {}).get('paused'))
+    if bool(backlog.get('paused')) != was_paused:
+        if backlog.get('paused'):
+            line = f'Fresh dispatch paused: wait for {backlog["count"]} finished commits to merge.'
+            reason = backlog.get('reason') or runner.get('blocker')
+            if reason:
+                line += ' Integration waits: ' + ' '.join(str(reason).split())
+        else:
+            line = f'Fresh dispatch resumed: {backlog.get("count", 0)} finished commits remain to merge.'
+        announce = '\n'.join(filter(None, (announce, line)))
     value = dict(schema=SCHEMA, updated_at=now, snapshot_at=now, snapshot_age_seconds=0,
                  state=state, since=since,
                  active_workers=snapshot.get('active_workers', 0),
@@ -180,7 +200,7 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                  held=[dict(task=t['task'], cause=t.get('cause'), reason=t.get('reason'))
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],
                  roots=roots[:10], stall_roots=keys if state == 'stalled' else [],
-                 waiting_groups=waiting_groups(snapshot.get('tasks', [])),
+                 waiting_groups=waiting_groups(snapshot.get('tasks', [])), merge_backlog=backlog,
                  max_workers=snapshot.get('max_workers'), **runner)
     write_status(path, value)
     return announce
@@ -274,7 +294,9 @@ def render(rows, *, now=None):
     lines = []
     for row in rows:
         since = f" for {int((now - row['since']) // 60)} min" if row.get('since') else ''
-        lines.append(f"{row['name']:<24} service {row['service']:<9} {row['state']}{since}; "
+        word = (row['waiting_groups'][0]['label']
+                if row['state'] == HOST_WAIT and row.get('waiting_groups') else row['state'])
+        lines.append(f"{row['name']:<24} service {row['service']:<9} {word}{since}; "
                      f"{row['workers']} running, {row['waiting']} waiting")
         if row.get('blocker', '').startswith('status unavailable since '):
             lines.append('    ' + row['blocker'])

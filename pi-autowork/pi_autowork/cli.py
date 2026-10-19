@@ -117,7 +117,7 @@ PI_SOURCE = 'git:github.com/TrebuchetDynamics/autowork'
 def installed_toolset(pi):
     """The autowork package Pi loads, from `pi list`: the one installed from PI_SOURCE, else
     the first other package that is an Autowork toolset (Pi lists a source, then its path).
-    The package installed under the old hermes-toolset name came first in the list and
+    A package installed under an older name came first in the list and
     kept every runner on it after the renamed one was installed."""
     try:
         listing = subprocess.run([pi, 'list'], capture_output=True, text=True, timeout=60).stdout

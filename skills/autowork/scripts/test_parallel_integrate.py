@@ -12,6 +12,7 @@ from unittest.mock import patch
 import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
 import task_execution as execution
@@ -26,7 +27,8 @@ class IntegrationTests(unittest.TestCase):
         previous = ctypes.c_int()
         self.assertEqual(libc.prctl(37, ctypes.byref(previous), 0, 0, 0), 0)
         self.addCleanup(lambda: libc.prctl(36, previous.value, 0, 0, 0))
-        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
+        # Bootstrap independently of the invoking session's runtime dir.
+        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=fixture_runtime_root())
         self.addCleanup(self.runtime.cleanup)
         runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
                                  PI_AUTOWORK_WORKER_ROOT=self.runtime.name)
@@ -516,6 +518,54 @@ finally:
                 finally:
                     proc.communicate('x', timeout=5)
 
+    def test_only_live_slot_descendants_in_their_own_temporary_directory_are_exempt(self):
+        self.worker('A')
+        root, _ = self.worker('B')
+        slots = {s['task_id']: s for s in state.slots(self.common)}
+        temps = {task: dispatch.worker_tmpdir(dispatch.data_dir(self.common, slot), index)
+                 for index, (task, slot) in enumerate(slots.items(), 1)}
+        self.addCleanup(lambda: [dispatch.cleanup_tmpdir(self.common, slot) for slot in slots.values()])
+        # This test is the live intermediate between the recorded leader and its
+        # grandchild; the child starts a new session, as fixture runners do.
+        leader = execution.identity(os.getppid())
+        unrelated = self.agent_process(root)
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(slots['A'], state='running', worker=execution.identity(unrelated.pid)))
+        data = dispatch.data_dir(self.common, slots['B'])
+        allocation = execution.read(data.parent / 'tmp.json')
+        module = self.module()
+        identity = execution.identity
+        for case, cwd, owner, dead_link, extra, blocked in (
+                ('own temp', temps['B'] / 'state/releases/fixture', leader, False, [], False),
+                ('worktree and own temp', temps['B'], leader, False, [str(root)], False),
+                ('other slot temp', temps['A'], leader, False, [], True),
+                ('dead parent link', temps['B'], leader, True, [], True),
+                ('unrelated in own temp', temps['B'], identity(unrelated.pid), False, [], True),
+                ('unowned var/tmp', Path('/var/tmp'), identity(unrelated.pid), False, [], True),
+                ('temp and canonical', temps['B'], leader, False, [str(self.repo)], True),
+                ('legacy attempt temp', data / 'tmp', leader, False, [], False)):
+            with self.subTest(case=case):
+                if case == 'legacy attempt temp':
+                    (data.parent / 'tmp.json').unlink()
+                    self.addCleanup(execution.save, data.parent / 'tmp.json', allocation)
+                cwd.mkdir(parents=True, exist_ok=True)
+                proc = self.agent_process(cwd)
+                observed = dict(identity(proc.pid), kind='session', active=None, written=[],
+                                workspaces=[str(cwd), *extra], evidence='session: activity unknown')
+                execution.save(state.slot_path(self.common, 'B'),
+                               dict(slots['B'], state='running', worker=owner))
+                def live(pid):
+                    return None if dead_link and pid == os.getpid() else identity(pid)
+                with patch.object(execution, 'external_workers', return_value=[observed]), \
+                        patch.object(execution, 'identity', side_effect=live):
+                    if blocked:
+                        with self.assertRaises(module.WritersBusy):
+                            module.require_no_writers(self.repo)
+                    else:
+                        module.require_no_writers(self.repo)
+                proc.kill()
+                proc.wait()
+
     def test_unattributed_session_in_pool_worktree_is_not_exempt(self):
         self.worker()
         root, _ = self.worker('B')
@@ -786,6 +836,17 @@ finally:
         self.assertEqual((fresh, branch), (root, 'autowork/A'))
         self.assertEqual(self.git('rev-parse', 'HEAD', cwd=fresh), self.baseline)
 
+    def test_a_finished_commit_is_set_aside_on_request_with_its_commit_kept(self):
+        """Stale commits written against code main had redesigned only conflicted, and the
+        owner's set-aside request was refused because they were waiting to merge."""
+        self.worker('A')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        result = self.module().set_aside(self.repo, self.owner, 'A')
+        self.assertEqual((result['outcome'], result['previous_state']), ('SET_ASIDE', 'reported'))
+        self.assertEqual(state.slots(self.common), [])
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), slot['commit'])
+
     def test_close_and_set_aside_remove_only_the_retired_slots_temporary_directory(self):
         module = self.module()
         temps = {}
@@ -811,11 +872,9 @@ finally:
         self.assertEqual(module.set_aside(self.repo, self.owner, 'B')['outcome'], 'SET_ASIDE')
         self.assertFalse(temps['B'].exists())
 
-    def test_set_aside_refuses_a_slot_that_can_still_finish(self):
+    def test_set_aside_refuses_an_integrated_task_that_still_matches_its_entry(self):
         self.worker()
         module = self.module()
-        with self.assertRaisesRegex(ValueError, 'only for'):
-            module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         with self.assertRaisesRegex(ValueError, 'close it instead'):
             module.set_aside(self.repo, self.owner, 'A')
@@ -1115,6 +1174,68 @@ finally:
             max_workers=None, worker_command=json.dumps([sys.executable, '-c', 'pass']), worker_host='auto',
             worker_profile=None, worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
 
+    def test_three_quick_identical_input_holds_require_a_named_resolution(self):
+        import parallel_status
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        for task, third_reason, seconds, cause, resumed, stopped in (
+                ('A', 'missing receipt', 60, 'blocker', False, True),
+                ('B', 'missing credentials', 60, 'blocker', False, False),
+                ('C', 'missing receipt', 601, 'blocker', False, False),
+                ('D', 'missing receipt', 60, 'validation', False, False),
+                ('E', 'missing receipt', 700, 'blocker', True, False),
+                ('F', 'missing receipt', 30, 'blocker', True, True)):
+            with self.subTest(task=task):
+                if task not in 'AB':
+                    todo.write_text(todo.read_text() + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
+                                    f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                    '  Dependencies: None.\n  Status: open\n')
+                for attempt in range(1, 4):
+                    self.worker(task)
+                    slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                    contract = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
+                    (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+                    slot = state.write_slot(self.common, dict(slot, state='running' if resumed else 'reported',
+                                                             started_at=time.time() - seconds), slot)
+                    if resumed:
+                        state.transition(self.repo, self.owner, task, 'interrupted', paused=True)
+                        slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                        slot = state.change(self.common, slot, 'dispatched', {})
+                        start = time.time() - 30
+                        state.write_slot(self.common, dict(slot, started_at=start, runtime_started_at=start), slot)
+                    reason = (third_reason if attempt == 3 else 'missing receipt')
+                    reason += f' /var/tmp/run-{attempt}/receipt.json for TASK-{attempt}'
+                    state.transition(self.repo, self.owner, task, 'held', reason=reason, cause=cause)
+                    todo.write_text(todo.read_text().replace(contract, contract + f'\n  Evidence: edit {attempt}', 1))
+                    result = module.retry_held(self.retry_args())
+                    if attempt < 3 or not stopped:
+                        self.assertEqual(result['outcome'], 'REQUEUED', result)
+                if stopped:
+                    self.assertEqual(result['outcome'], 'IDLE', result)
+                    row = next(r for r in parallel_status.snapshot(self.repo)['tasks'] if r['task'] == task)
+                    hold = row['quick_hold']
+                    self.assertEqual(len(hold['attempts']), 3)
+                    self.assertTrue(all(60 <= a['seconds'] < 61 for a in hold['attempts']))
+                    self.assertEqual(len({a['reason'] for a in hold['attempts']}), 3)
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+                    with self.assertRaisesRegex(ValueError, 'Blocker resolution'):
+                        module.set_aside(self.repo, self.owner, task)
+                    with self.assertRaisesRegex(ValueError, 'answer is only'):
+                        module.answer(self.repo, self.owner, task, 'try again')
+                    current = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
+                    resolved = current.replace('Dependencies: None.', 'Dependencies: INPUT-1')
+                    resolved += f'\n  Blocker resolution: {hold["fingerprint"]}; INPUT-1 produces the receipt'
+                    todo.write_text(todo.read_text().replace(current, resolved, 1))
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+                    # If that answer failed, formatting it differently is not a new answer.
+                    self.worker(task)
+                    slot = state.slots(self.common)[0]
+                    (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(resolved + '\n')
+                    state.transition(self.repo, self.owner, task, 'held', reason=reason, cause=cause)
+                    todo.write_text(todo.read_text().replace('  Blocker resolution:', '   Blocker resolution:'))
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+                    state.slot_path(self.common, task).unlink()  # next fixture case starts without a live slot
+
     def test_a_scope_hold_records_its_cause_and_outside_files(self):
         # TOOLSET-161-17: only an undeclared protected file or a coordinator file is out of scope.
         self.worker(files={'A.txt': 'worker\n', 'go.mod': 'module x\n'})
@@ -1343,8 +1464,12 @@ finally:
     def test_moved_head_is_remerged_and_revalidated_once(self):
         self.worker()
         argv, marker = self.moving_validation()
+        argv[2] = ('import os,time; fd=int(os.environ["AUTOWORK_CHECK_WAIT_FD"]); '
+                   'os.write(fd,f"{time.monotonic()} 1\\n".encode()); time.sleep(.25); '
+                   'os.write(fd,f"{time.monotonic()} 0\\n".encode()); ' + argv[2])
         result = self.module().integrate(self.repo, self.owner, 'A', argv, 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertGreaterEqual(result['check_slot_wait_seconds'], .5)  # both attempts, not just the final one
         self.assertEqual(marker.read_text(), '2')
         self.assertEqual(self.git('show', 'HEAD^1:B.txt'), '0')
         self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
@@ -1448,7 +1573,7 @@ finally:
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         self.assertFalse((self.repo / 'TODO.archive.md').exists())
 
-    def test_interrupted_candidate_with_unexplained_head_movement_is_held(self):
+    def interrupted_while_main_moved(self):
         self.worker()
         module = self.module()
         from unittest.mock import patch
@@ -1457,11 +1582,27 @@ finally:
                 module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         (self.repo / 'B.txt').write_text('independent canonical change')
         self.git('add', 'B.txt')
-        self.git('commit', '-qm', 'unexplained movement')
-        head = self.git('rev-parse', 'HEAD')
+        self.git('commit', '-qm', 'the session landed beside the review')
+        return module, self.git('rev-parse', 'HEAD')
+
+    def test_interrupted_candidate_that_never_landed_merges_again_on_the_moved_head(self):
+        module, head = self.interrupted_while_main_moved()
         result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_a_held_review_whose_merge_never_landed_is_offered_again_once(self):
+        module, head = self.interrupted_while_main_moved()
+        slot = state.slots(self.common)[0]
+        held = module.hold(self.common, slot, module.STALE_VALIDATION)
+        self.assertEqual(held['outcome'], 'HELD')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        self.assertIn('stale_validation', state.reoffered(slot))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
 
     def test_real_validation_interrupt_stops_child_before_recovery(self):
         self.worker()
