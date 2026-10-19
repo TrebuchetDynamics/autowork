@@ -2,24 +2,28 @@
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import worker  # noqa: E402
+from pi_autowork import fleet_view, worker  # noqa: E402
 
 
 def setUpModule():
     """Reviews in these tests keep their scratch in a temporary folder, never the host's /var/tmp."""
-    global _root
+    global _root, _environment
     _root = tempfile.TemporaryDirectory()
-    os.environ['PI_AUTOWORK_REVIEW_ROOT'] = _root.name
+    _environment = patch.dict(os.environ, PI_AUTOWORK_REVIEW_ROOT=_root.name, XDG_RUNTIME_DIR=_root.name)
+    _environment.start()
 
 
 def tearDownModule():
-    os.environ.pop('PI_AUTOWORK_REVIEW_ROOT', None)
+    _environment.stop()
     _root.cleanup()
 
 
@@ -34,6 +38,81 @@ class WorkerTmpTests(unittest.TestCase):
 
     def slot(self, **fields):
         (self.execution / 'slots' / 'T-1.json').write_text(json.dumps({'task_id': 'T-1', 'attempt': 2, **fields}))
+
+    def test_full_suites_share_host_slots_without_spending_their_timeout_waiting(self):
+        """A competing runner must wait, survive its outer timeout, and recover a killed holder."""
+        component = str(Path(worker.__file__).resolve().parents[1])
+        engine = str(Path(__file__).resolve().parents[2] / 'skills/autowork/scripts')
+        with patch.dict(os.environ, XDG_RUNTIME_DIR=self.temp.name):
+            for slots, killed in [('1', False), ('1', True), ('0', False)]:
+                with self.subTest(slots=slots, killed=killed):
+                    root = self.repo / f'case-{slots}-{killed}'
+                    root.mkdir()
+                    self.slot(state='integrating')
+                    env = dict(os.environ, PI_AUTOWORK_CHECK_SLOTS=slots)
+                    script = ('import sys,json; from pathlib import Path; '
+                              f'sys.path[:0] = {[component, engine]!r}; '
+                              'from pi_autowork import worker; import task_execution as execution; ')
+                    hold_command = ('echo $$ > holder.pid; exec sleep 30' if killed else
+                                    'sleep 30 & echo $! > daemon.pid; echo $$ > holder.pid; wait')
+                    holder = subprocess.Popen([sys.executable, '-c', script +
+                        f'worker.run_suite({hold_command!r}, {str(root)!r}, 40, '
+                        f'Path({str(root / "holder.log")!r}))'], env=env)
+                    contender = None
+                    try:
+                        deadline = time.monotonic() + 10
+                        while not (root / 'holder.pid').exists():
+                            self.assertIsNone(holder.poll())
+                            self.assertLess(time.monotonic(), deadline)
+                            time.sleep(.01)
+                        command = [sys.executable, '-c', script +
+                            f'r = worker.run_suite("sleep .1; touch ran", {str(root)!r}, .5, '
+                            f'Path({str(root / "full-check/second.log")!r}), '
+                            f'Path({str(root / "full-check/T-1.status.json")!r})); sys.exit(r["code"])']
+                        contender = subprocess.Popen([sys.executable, '-c', script +
+                            f'r = execution.bounded_command({command!r}, Path({str(root)!r}), '
+                            f'Path({str(root)!r}), "T", .6, check_slot_wait=True); '
+                            f'Path({str(root / "result.json")!r}).write_text(json.dumps(r))'], env=env)
+                        progress = root / 'full-check/T-1.status.json'
+                        deadline = time.monotonic() + 10
+                        while not progress.exists() and not (root / 'result.json').exists():
+                            self.assertIsNone(contender.poll())
+                            self.assertLess(time.monotonic(), deadline)
+                            time.sleep(.01)
+                        if slots == '1':
+                            self.assertEqual(json.loads(progress.read_text())['ahead'], 1)
+                            runner = fleet_view.Runner('fixture', repo=str(self.repo), state_dir=str(root))
+                            lane = fleet_view.lanes(runner)[0]
+                            self.assertEqual((lane.phase, lane.detail), ('waiting for a check slot', '1 ahead'))
+                            self.assertEqual(fleet_view.doing(lane), 'waiting for a check slot, 1 ahead')
+                            lane.activity_age = 600
+                            self.assertEqual(fleet_view.quiet(lane), '')
+                            time.sleep(.8)  # longer than both execution budgets
+                            self.assertIsNone(contender.poll())
+                            self.assertFalse((root / 'ran').exists())
+                        else:
+                            self.assertEqual(contender.wait(timeout=10), 0)
+                            self.assertTrue((root / 'ran').exists())  # no slot even while holder runs
+                        if killed:
+                            os.kill(int((root / 'holder.pid').read_text()), signal.SIGKILL)
+                        else:
+                            os.kill(int((root / 'holder.pid').read_text()), signal.SIGTERM)
+                        self.assertEqual(holder.wait(timeout=10), 0)
+                        self.assertEqual(contender.wait(timeout=10), 0)
+                        result = json.loads((root / 'result.json').read_text())
+                        self.assertEqual(result['outcome'], 'EXECUTED')
+                        self.assertTrue((root / 'ran').exists())
+                    finally:
+                        for name in ('holder.pid', 'daemon.pid'):
+                            if (root / name).exists():
+                                try:
+                                    os.kill(int((root / name).read_text()), signal.SIGKILL)
+                                except ProcessLookupError:
+                                    pass
+                        for process in (holder, contender):
+                            if process is not None and process.poll() is None:
+                                process.kill()
+                                process.wait()
 
     def test_the_gate_runs_once_per_merged_tree_and_the_reviewer_is_told_its_result(self):
         """TOOLSET-227-a8: one candidate's full suite ran four or five times."""

@@ -441,7 +441,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                 return hold(common, slot, str(exc))
             if slot['state'] == 'reported':
                 slot = state.change(common, slot, 'integrating', {'report': report})
-        check = None
+        check, queued = None, 0
         def save_receipt(path, value):
             nonlocal slot
             with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
@@ -478,7 +478,9 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                     slot = state.write_slot(common, dict(slot, integration=integration, checks=None), slot)
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
-                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id)
+                            receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id,
+                            check_slot_wait=True)
+                queued += (check or {}).get('command_receipt', {}).get('check_slot_wait_seconds', 0)
                 if (check or {}).get('outcome') == 'TIMED_OUT':
                     # The host's speed, not the task (TOOLSET-196-fb): its own cause, reverified
                     # with a longer limit instead of spending an attempt.
@@ -520,7 +522,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                     if git(repo, 'rev-parse', 'HEAD') != merge:
                         raise ValueError('canonical fast-forward readback mismatch')
                     state.change(common, slot, 'integrated', {'integration': integration, 'checks': check})
-                    return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration}
+                    return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration,
+                            'check_slot_wait_seconds': queued}
         except WritersBusy as exc:
             # Not a verdict: an integrating candidate is revalidated on the next call.
             return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
@@ -534,7 +537,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                 details = {'cause': exc.cause, **exc.details} if isinstance(exc, Hold) else {}
                 if reviewer:
                     details['reviewed_by'] = reviewer  # which validation held it, for reverify
-                return hold(common, slot, str(exc), **details, **({'checks': check} if check is not None else {}))
+                return dict(hold(common, slot, str(exc), **details, **({'checks': check} if check is not None else {})),
+                            check_slot_wait_seconds=queued)
 
 
 def validated_receipt(repo, common, slot):

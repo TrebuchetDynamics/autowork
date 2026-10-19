@@ -16,6 +16,7 @@ import math
 import os
 from pathlib import Path
 import re
+from select import select as select_fds
 import shutil
 import signal
 import subprocess
@@ -708,9 +709,49 @@ def command(args, repo, state, common, task, lease, lock_fd):
                            pass_fds=(lock_fd,), run_id=run_id)
 
 
+def wait_check_command(child, timeout, fd):
+    """An integration's active budget excludes its full-suite slot waits, not test execution.
+
+    Only the validator supervisor inherits the notification fd. Timestamped transitions
+    account for polling delay and repeated merged/base waits; process exit wins over EOF.
+    """
+    started, paused, waiting, pending = time.monotonic(), 0, None, b''
+    while True:
+        now = time.monotonic()
+        if fd is not None and select_fds([fd], [], [], 0)[0]:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                fd = None
+                if waiting is not None:
+                    paused += now - waiting
+                    waiting = None
+            pending += chunk
+            while b'\n' in pending:
+                line, pending = pending.split(b'\n', 1)
+                try:
+                    stamp, state = line.split()
+                    stamp = min(now, max(started, float(stamp)))
+                    if state == b'1' and waiting is None:
+                        waiting = stamp
+                    elif state == b'0' and waiting is not None:
+                        paused += max(0, stamp - waiting)
+                        waiting = None
+                except ValueError:
+                    continue
+        excluded = paused + (now - waiting if waiting is not None else 0)
+        code = child.poll()
+        if code is not None:
+            return code, excluded
+        if now - started - excluded >= timeout:
+            error = subprocess.TimeoutExpired(child.args, timeout)
+            error.check_slot_wait_seconds = excluded
+            raise error
+        time.sleep(.02)
+
+
 def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
                     on_start=None, on_finish=None, on_pending=None, pass_fds=(), run_id=None,
-                    receipt_context=None, receipt_writer=None):
+                    receipt_context=None, receipt_writer=None, check_slot_wait=False):
     """Bound a process tree in cwd ``repo`` and persist its source-bound receipt.
 
     No leases or writer locks are acquired here. Sequential command supplies its
@@ -737,16 +778,28 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
     started = time.monotonic()
     timed_out = False
     terminated = []
+    queued = 0
+    wait_read, wait_write = os.pipe() if check_slot_wait else (None, None)
     try:
         with os.fdopen(os.open(safe_path(log), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as stream:
             env = dict(os.environ, AUTOWORK_EXECUTION_COMMON=str(common.parent))
+            if check_slot_wait:
+                env['AUTOWORK_CHECK_WAIT_FD'] = str(wait_write)
             child = subprocess.Popen([resolved, *argv[1:]], cwd=repo, env=env, stdout=stream, stderr=subprocess.STDOUT,
-                                     start_new_session=True, pass_fds=pass_fds)
+                                     start_new_session=True,
+                                     pass_fds=(*pass_fds, wait_write) if check_slot_wait else pass_fds)
+            if wait_write is not None:
+                os.close(wait_write)
+                wait_write = None
             try:
                 if on_start:
                     on_start(child)
-                code = child.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
+                if check_slot_wait:
+                    code, queued = wait_check_command(child, timeout, wait_read)
+                else:
+                    code = child.wait(timeout=timeout)
+            except subprocess.TimeoutExpired as error:
+                queued = getattr(error, 'check_slot_wait_seconds', 0)
                 timed_out = True
                 os.killpg(child.pid, signal.SIGKILL)
                 code = child.wait()
@@ -763,6 +816,9 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
                     except ProcessLookupError:
                         pass
     finally:
+        for fd in (wait_read, wait_write):
+            if fd is not None:
+                os.close(fd)
         elapsed = time.monotonic() - started
         if on_finish:
             on_finish(elapsed)
@@ -771,7 +827,8 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
     result = {'outcome': 'TIMED_OUT' if timed_out else 'CHILDREN_TERMINATED' if terminated else 'SOURCE_CHANGED' if not inputs_match else 'EXECUTED' if code == 0 else 'CHECK_FAILED',
               'command_receipt': {'task_id': task_id, 'workspace': str(repo), 'exit_code': code,
                                   'argv': argv, 'reusable_acceptance': False, 'terminated_descendants': terminated,
-                                  'elapsed_seconds': elapsed, 'timeout_seconds': timeout,
+                                  'elapsed_seconds': elapsed - queued, 'timeout_seconds': timeout,
+                                  **({'check_slot_wait_seconds': queued, 'wall_seconds': elapsed} if check_slot_wait else {}),
                                   'inputs_before': before, 'inputs_after': after, 'inputs_match': inputs_match,
                                   'executable': resolved, 'executable_sha256': executable_before,
                                   'log': str(log), 'receipt': str(common / (run_id + '.json'))}}

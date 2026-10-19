@@ -243,7 +243,8 @@ class Coordinator:
         finally:
             Path(job['out']).unlink(missing_ok=True)
         if isinstance(value, dict) and value.get('outcome') in ('INTEGRATED', 'HELD'):
-            self.note_review_time(time.time() - job['started'])  # what this repository's reviews take
+            # Queue contention is not evidence that this repository's checks need a longer budget.
+            self.note_review_time(max(0, time.time() - job['started'] - value.get('check_slot_wait_seconds', 0)))
         return job['task'], value if isinstance(value, dict) else {}
 
     def stop_integration(self):
@@ -1230,7 +1231,7 @@ class Coordinator:
         path = self.scratch_checkout('main-check', rev)
         if not path:
             return
-        tmp = tempfile.mkdtemp(prefix='aw-main-', dir='/tmp')  # short: socket paths must fit
+        tmp = tempfile.mkdtemp(prefix='aw-main-')  # honor the runner's short, disk-backed TMPDIR
         done, reruns = self.state / 'main-check.exit', self.state / 'main-check-reruns.json'
         done.unlink(missing_ok=True)
         reruns.unlink(missing_ok=True)
@@ -1238,7 +1239,11 @@ class Coordinator:
                             str(self.state / 'main-check.log'), path, str(reruns), rev])
         # Finish retries before publishing the receipt: reloads can adopt the job,
         # and finish_main_check can then safely remove the shared scratch checkout.
-        script = f'({cmd}\n)\nresult=$?\nif [ "$result" -ne 0 ]; then {retry}; fi\necho "$result" > {shlex.quote(str(done))}'
+        progress = self.state / 'main-check-slot.json'
+        progress.unlink(missing_ok=True)
+        run = shlex.join([sys.executable, str(Path(main_check.__file__).resolve()), '--run', cmd,
+                          os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or '3600', str(progress)])
+        script = f'{run}\nresult=$?\nif [ "$result" -ne 0 ]; then {retry}; fi\necho "$result" > {shlex.quote(str(done))}'
         with open(self.state / 'main-check.log', 'w') as log:
             child = subprocess.Popen(['bash', '-c', script], cwd=path,
                                      env=self.job_environment(TMPDIR=tmp),
@@ -1246,7 +1251,7 @@ class Coordinator:
                                      stdin=subprocess.DEVNULL, start_new_session=True)
         main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid,
                                           start_time=main_check.start_time(child.pid), started=time.time(), path=path,
-                                          tmp=tmp, green=record.get('green'), failures=record.get('failures'),
+                                          tmp=tmp, slot_status=str(progress), green=record.get('green'), failures=record.get('failures'),
                                           red_since=record.get('red_since'), gated=record.get('gated'),
                                           crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {}))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
@@ -1257,7 +1262,7 @@ class Coordinator:
         path, tmp = record.get('path') or '', record.get('tmp') or ''
         if path and Path(path).name.startswith('pi-scratch-main-check'):
             git(self.repo, 'worktree', 'remove', '--force', path)
-        if tmp.startswith('/tmp/aw-main-'):
+        if tmp and Path(tmp).name.startswith('aw-main-'):
             shutil.rmtree(tmp, ignore_errors=True)
         rev, green = record.get('rev', ''), record.get('green')
         history = record.get('flaky_history') or {}

@@ -158,22 +158,17 @@ def worker_tmp(checkout, task):
         return None
 
 
-def run_suite(command, checkout, limit, log):
+def run_suite(command, checkout, limit, log, progress=None):
     """{code, failures, timed_out} of ``command`` in ``checkout``, its output in ``log``."""
     log.parent.mkdir(parents=True, exist_ok=True)
+    progress = progress or log.with_suffix('.status.json')
     with open(log, 'w') as out:
-        process = subprocess.Popen(['bash', '-c', command], cwd=checkout, stdout=out, stderr=subprocess.STDOUT,
-                                   stdin=subprocess.DEVNULL, start_new_session=True)
-        try:
-            code, timed_out = process.wait(timeout=limit), False
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            code, timed_out = process.wait(), True
+        code, timed_out = main_check.run_command(command, checkout, limit, progress, output=out)
     text = log.read_text(errors='replace')
     return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out}
 
 
-def base_result(state, checkout, command, rev, limit):
+def base_result(state, checkout, command, rev, limit, progress=None):
     """The full check on the base revision, run once per revision and cached."""
     cache = Path(state) / 'full-check' / f'base-{rev}.json'
     try:
@@ -185,7 +180,7 @@ def base_result(state, checkout, command, rev, limit):
     scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
     git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
     try:
-        value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log')), command=command)
+        value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log'), progress), command=command)
     finally:
         git(checkout, 'worktree', 'remove', '--force', str(scratch))
     cache.write_text(json.dumps(value))
@@ -225,7 +220,8 @@ def run_gate(state, task, checkout, command):
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
     limit = float(os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or 3600)
     log = gate_log(state, task)
-    merged = run_suite(command, checkout, limit, log)
+    progress = log.with_name(f'{safe_name(task)}.status.json')
+    merged = run_suite(command, checkout, limit, log, progress)
     if merged['code'] == 0:
         return True, ''
     if merged['timed_out']:
@@ -233,7 +229,7 @@ def run_gate(state, task, checkout, command):
     if not merged['failures']:
         # It crashed before naming a test (TOOLSET-237-35): once more, then never a pass for want
         # of evidence. A crash only this tree has is its own; one the base shares is the host's.
-        merged = run_suite(command, checkout, limit, log)
+        merged = run_suite(command, checkout, limit, log, progress)
         if merged['code'] == 0:
             return True, ''
         if merged['timed_out']:
@@ -251,7 +247,7 @@ def run_gate(state, task, checkout, command):
         failures = [f for f in failures if f not in flaky]
         if not failures:
             return True, ''
-    base = base_result(state, checkout, command, git(checkout, 'rev-parse', 'HEAD^1'), limit)
+    base = base_result(state, checkout, command, git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
     if not merged['failures']:
         crash = main_check.crash_line(log.read_text(errors='replace'))
         if base['code'] == 0:
