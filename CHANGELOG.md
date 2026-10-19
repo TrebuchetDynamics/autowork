@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A candidate's full check runs once: under a runner, workers leave it to the gate on the merged tree,
+  the gate's verdict is cached per merged tree, and the reviewer reads that run's result and log instead
+  of repeating it. One candidate's suite had run four or five times.
 - While a reload or a new release is waiting, a runner starts no new review, so it reaches the moment
   with nothing running that a re-exec needs. With a queue of reviews it never did: a reload and four
   releases waited 2.5 hours, so the runner kept its old reviewer (held commits were never reviewed

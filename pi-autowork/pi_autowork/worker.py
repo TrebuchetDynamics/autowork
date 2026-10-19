@@ -34,6 +34,10 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
           '<what is missing, and the setup doc that names it>. Otherwise end with exactly one line: '
           'PI_AUTOWORK_VERIFY: pass or '
           'PI_AUTOWORK_VERIFY: fail, then the reason.')
+# The runner's full check on the merged tree is the one trusted full run (TOOLSET-227-a8).
+GATE = (' The runner already ran the repository\'s full check (`{command}`) on this merged tree: {outcome}. '
+        'Its log is {log}. Do not run the full check again; read that log, and rerun only individual tests you '
+        'need to examine. A Checks entry naming the full check is satisfied by that run.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
 # pending live become their own TASK-LIVE follow-up, so they must not fail the review.
 LIVE = (' Checks that need a physical device, hardware, production or live services, or a person cannot run '
@@ -188,16 +192,39 @@ def base_result(state, checkout, command, rev, limit):
     return value
 
 
+def gate_log(state, task):
+    return Path(state) / 'full-check' / f'{safe_name(task)}-merged.log'
+
+
 def full_suite_gate(state, task, checkout):
-    """(ok, reason) of the repository's full check on the merged tree (TOOLSET-180-72): a
-    reviewer-approved commit landed while breaking 44 tests its own checks never ran. Only what
-    the base does not already fail rejects a candidate; a test that passes when rerun alone is
-    flaky, not new."""
+    """(ok, reason) of the repository's full check on the merged tree, run once per tree and
+    command (TOOLSET-227-a8): a re-review of the same tree, by a changed reviewer or after a
+    requeue, reuses the verdict instead of running the suite again. A crash is never cached,
+    so provisioning can fix it."""
     command = main_check.full_check(checkout)
     if not command:
         return True, ''
+    tree = git(checkout, 'rev-parse', 'HEAD^{tree}')
+    cache = Path(state) / 'full-check' / f'tree-{tree}.json'
+    try:
+        cached = json.loads(cache.read_text())
+        if tree and cached.get('command') == command:
+            return cached['ok'], cached['reason']
+    except (OSError, ValueError, KeyError, AttributeError):
+        pass
+    ok, reason = run_gate(state, task, checkout, command)
+    if tree and (ok or reason.startswith(('the full check has new failures', 'the full check exits'))):
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({'command': command, 'ok': ok, 'reason': reason, 'task': task}))
+    return ok, reason
+
+
+def run_gate(state, task, checkout, command):
+    """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
+    landed while breaking 44 tests its own checks never ran. Only what the base does not already
+    fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
     limit = float(os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or 3600)
-    log = Path(state) / 'full-check' / f'{safe_name(task)}-merged.log'
+    log = gate_log(state, task)
     merged = run_suite(command, checkout, limit, log)
     if merged['code'] == 0:
         return True, ''
@@ -262,7 +289,7 @@ def verify(state, task):
     scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
     try:
-        return review(state, task, checkout, head_before)
+        return review(state, task, checkout, head_before, gate_note(state, task, checkout))
     finally:
         drop_scratch_worktrees(checkout, scratch)
         shutil.rmtree(scratch, ignore_errors=True)
@@ -303,7 +330,20 @@ def drop_scratch_worktrees(checkout, scratch):
                            capture_output=True)
 
 
-def review(state, task, checkout, head_before):
+def gate_note(state, task, checkout):
+    """What the review prompt says about the runner's full check, so the reviewer judges from
+    that run instead of repeating it (TOOLSET-227-a8); '' without a full check."""
+    command = main_check.full_check(checkout)
+    if not command:
+        return ''
+    log = gate_log(state, task)
+    named = main_check.failures(log.read_text(errors='replace'), limit=None) if log.exists() else []
+    outcome = ('it passed' if not named else 'it passed apart from failures the base already has or that '
+               'passed when rerun alone: ' + ', '.join(named[:10]))
+    return GATE.format(command=command, outcome=outcome, log=log)
+
+
+def review(state, task, checkout, head_before, gate=''):
     provisioned = worker_tmp(checkout, task)
     if provisioned:
         os.environ['AUTOWORK_WORKER_TMPDIR'] = str(provisioned)
@@ -312,6 +352,7 @@ def review(state, task, checkout, head_before):
         os.environ['AUTOWORK_CACHE'] = str(cache)
     result = pi_runtime.job(pi_runtime.Settings(state), 'verify', task, checkout,
                             REVIEW.format(task=task, checkout=checkout)
+                            + gate
                             + (PROVISIONED.format(path=provisioned) if provisioned else '')
                             + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),

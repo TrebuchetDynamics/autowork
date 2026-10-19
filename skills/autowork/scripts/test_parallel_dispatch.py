@@ -107,6 +107,17 @@ class DispatchTests(unittest.TestCase):
                 return result
         self.fail('workers did not finish')
 
+    def test_under_a_gating_runner_the_worker_leaves_the_full_check_to_it(self):
+        """TOOLSET-227-a8: workers ran the full suite two or three times before the runner's gate."""
+        task = execution.select_all(self.repo, None, None)[0]
+        plain = dispatch.prompt(task, self.repo, 'b', 'HEAD', self.root / 'r.json')
+        self.assertIn('Run the full offline gate once', plain)
+        with patch.dict(os.environ, AUTOWORK_RUNNER_FULL_CHECK='python3 scripts/check.py'):
+            gated = dispatch.prompt(task, self.repo, 'b', 'HEAD', self.root / 'r.json')
+        self.assertNotIn('Run the full offline gate once', gated)
+        self.assertIn('Do not run the full check (`python3 scripts/check.py`)', gated)
+        self.assertIn('Leave the full check out of the report', gated)
+
     def test_independent_tasks_run_together_in_separate_worktrees(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 1.0},
                        'B': {'files': {'b.txt': 'b'}, 'sleep': 1.0}})

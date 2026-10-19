@@ -174,6 +174,19 @@ def earlier_task_work(worktree, task_id, branch, baseline):
     return work
 
 
+def full_check_rule():
+    """The worker prompt's line about the repository's full check. Under a runner that runs it on the
+    merged tree before review (AUTOWORK_RUNNER_FULL_CHECK), the worker does not repeat it
+    (TOOLSET-227-a8: one candidate's suite ran four or five times); otherwise it runs it once."""
+    command = os.environ.get('AUTOWORK_RUNNER_FULL_CHECK', '').strip()
+    if not command:
+        return ['  Run the full offline gate once, at the end, after focused checks pass.']
+    return [f'  Do not run the full check (`{command}`): the runner runs it on the merged tree before',
+            '  review, and that run is the one that counts. Run every other Checks command, and named tests',
+            '  from the full suite when you need them. Leave the full check out of the report\'s "checks":',
+            '  the runner\'s gate records it.']
+
+
 def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
@@ -203,7 +216,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  repeats an existing case. Keep each test small. While working run the focused tests and the',
         '  task\'s Checks, not the whole suite after every edit. Run focused modules through the',
         '  repository\'s sharded check runner when available (for example: python3 scripts/check.py PATH ...).',
-        '  Run the full offline gate once, at the end, after focused checks pass. One command that runs',
+        *full_check_rule(),
+        '  One command that runs',
         '  longer than $PI_AUTOWORK_COMMAND_TIMEOUT seconds (default 1800) is stopped: wrap browser,',
         '  device and other long suites in `timeout` and select narrower tests rather than waiting.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',

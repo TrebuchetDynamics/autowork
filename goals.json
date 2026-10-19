@@ -736,7 +736,8 @@
         "TOOLSET-234-d4",
         "TOOLSET-235-0d",
         "TOOLSET-236-4d",
-        "TOOLSET-237-35"
+        "TOOLSET-237-35",
+        "TOOLSET-238-11"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -747,9 +748,9 @@
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
       "TOOLSET-232-01",
-      "TOOLSET-227-a8",
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
+      "TOOLSET-238-11",
       "TOOLSET-229-d0",
       "TOOLSET-234-d4",
       "TOOLSET-189-96",
@@ -1216,14 +1217,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-227-a8",
-      "section": "Now",
-      "status": "open",
-      "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-228-0c",
       "section": "Now",
       "status": "open",
@@ -1263,6 +1256,14 @@
       "section": "Now",
       "status": "open",
       "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-238-11",
+      "section": "Now",
+      "status": "open",
+      "title": "Only the candidate the engine will integrate next is started, and only it reads 'verifying'"
     },
     {
       "depends_on": [],
@@ -2807,6 +2808,14 @@
       "section": "Done",
       "status": "done",
       "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-227-a8",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
     },
     {
       "depends_on": [],
