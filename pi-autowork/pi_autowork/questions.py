@@ -20,6 +20,9 @@ START = '<!-- pi-autowork:questions:start -->'
 END = '<!-- pi-autowork:questions:end -->'
 EFFORT_ORDER = ('quick', 'decision', 'input', 'investigate')
 INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
+# Holds the engine recovers without a person: it re-offers the commit, re-verifies the
+# validation failure, or (on request) clears the hold. They are never the owner's question.
+TECHNICAL_CAUSES = ('conflict', 'validation', 'report', 'overlap', 'timeout', 'moved')
 
 
 def _title(todo, task, goals):
@@ -54,8 +57,20 @@ def held_by(todo, task, goals, today=None):
     return holder, until, bool(until and until < (today or date.today()))
 
 
+def technical(row):
+    """A hold the runner recovers by itself: a merge conflict, or an integration-validation
+    failure it can re-offer or re-verify. A person need not decide anything (owner direction:
+    the recorded reason must name a decision, or it stays technical recovery)."""
+    return (row.get('cause') in TECHNICAL_CAUSES
+            or 'integration validation' in str(row.get('reason') or ''))
+
+
 def exhausted(row):
-    """A held task the runner will not retry: a person must answer."""
+    """A held task the runner will not retry: a person must answer. A technical hold the
+    engine still recovers (re-offer, re-verify, clear-held) never counts as exhausted, however
+    many attempts it took."""
+    if technical(row):
+        return False
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
                                           or adoption.get('allowed') is False or bool(adoption.get('merged_count'))

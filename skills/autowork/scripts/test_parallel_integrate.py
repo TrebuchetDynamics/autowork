@@ -1700,6 +1700,21 @@ finally:
         execution.save(state.slot_path(self.common, 'A'), dict(slot, state='held', cause='validation', checks=checks))
         self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REOFFERED')
 
+    def test_a_merge_conflict_hold_is_offered_again_once(self):
+        """A conflict hold is technical recovery: integration repeats the resolver on current main."""
+        self.worker()
+        module = self.module()
+        slot = state.slots(self.common)[0]
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(slot, state='held', cause='conflict',
+                            reason='merge conflict; worker and canonical checkout preserved'))
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        self.assertIn('conflict', state.reoffered(slot))
+        execution.save(state.slot_path(self.common, 'A'), dict(slot, state='held', cause='conflict'))
+        self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REOFFERED')  # once only
+
     def test_cli_integrate_and_close(self):
         self.worker()
         cli = Path(__file__).with_name('owner_cycle.py')
