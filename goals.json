@@ -745,7 +745,8 @@
         "TOOLSET-243-6d",
         "TOOLSET-244-5d",
         "TOOLSET-245-6a",
-        "TOOLSET-246-06"
+        "TOOLSET-246-06",
+        "TOOLSET-247-5a"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -753,9 +754,9 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-165-f7",
       "TOOLSET-246-06",
       "TOOLSET-243-6d",
+      "TOOLSET-247-5a",
       "TOOLSET-244-5d",
       "TOOLSET-195-ee",
       "TOOLSET-232-01",
@@ -1318,6 +1319,14 @@
       "section": "Now",
       "status": "open",
       "title": "Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-247-5a",
+      "section": "Now",
+      "status": "open",
+      "title": "A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question"
     },
     {
       "depends_on": [],

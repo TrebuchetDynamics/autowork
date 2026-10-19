@@ -91,6 +91,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to the full-suite gate or to what a review checks.
 - Planner's call: second in Now, behind TOOLSET-165-f7. Each toolset release re-reviewed the same failing commit ahead of the whole queue, so the runner that receives the most releases integrated the least. Ordering, scoping the fingerprint and stopping same-verdict repeats keep the benefit (a fixed reviewer gets one more look) without the stall.
 
+### TOOLSET-247-5a — A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question
+
+- [ ] TOOLSET-247-5a — A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [maintainer](pi-autowork/pi_autowork/maintainer.py) (`due`: a run is due for any trigger set whose `key` differs from the last run's; `remember` records the set, its outcome and the changed tasks); [questions](pi-autowork/pi_autowork/questions.py).
+- Evidence (2026-10-18, one fleet runner): the docs maintainer merged repairs to the same three task entries at 15:01, 15:34 and 21:14, and started a fourth run at 21:18. After each merge the three tasks were still `not runnable: ledger dependency or disposition holds execution`, holding six dependents, and the runner stayed stalled from 15:37 to 21:10. The trigger set alternated between those three tasks and the same three plus two others, so each alternation counted as a new set. Each run is a model call and rewrites the same entries.
+- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, pi-autowork/pi_autowork/coordinator.py
+- Scope: (1) Due-ness is decided per trigger item, not per set. A run is due when at least one item was not yet handled, and the prompt carries only those items. (2) Each item the maintainer changed is recorded with its reason class (the waiting reason without IDs or numbers) and the entry's digest after the change. If the task is still waiting for the same reason class with that same entry, the item is not offered again. It is offered again only when someone else changes the entry or the reason changes. (3) An item excluded by (2) raises one BLOCKERS.md question. It names the task, the reason the runner gives, and the fields the maintainer already changed, so the owner decides once instead of the maintainer guessing again.
+- Acceptance: In fixtures: a trigger set {A, B, C} handled and merged, followed by {A, B, C, D}, runs the maintainer for D alone; A still waiting with the same reason and the entry the maintainer left is not offered again and yields one question naming its reason; an owner edit to A's entry makes A eligible again; a changed reason does too.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to what the maintainer may edit or to its validation of its own commits.
+- Planner's call: Now, after TOOLSET-243-6d. A repair that does not change the runner's verdict is not progress, and repeating it spends model calls and hides the fact that the task needs an owner decision.
+
 ### TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
 
 - [ ] TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
