@@ -1,5 +1,27 @@
 # Commands and repository workflows
 
+## Blockers resolves held work and owner questions
+
+`/blockers` inspects both engine-held tasks and the runner's owner questions,
+including holds with no dependents and no question. It repairs routine local
+causes within the accepted task and verifies the resulting state, rather than
+merely saving another continuation note. Retained code, candidate identity,
+attempt budgets and required tests/review remain authoritative.
+
+Recovery uses the existing execution owner and supported task workflow. Live or
+unknown ownership remains protected; no competing repair session, slot clearing,
+service restart, pause resumption, credential use, deployment or push is implied.
+A real resource wait or missing external prerequisite can remain held. Ask only
+for consequential intent or unavailable authority/input; do not ask again for
+answers already saved. Explicit planning/questions-only requests perform no
+execution; read-only requests also write nothing.
+
+Report actual repairs separately from saved answers, pending owner handoffs,
+ordinary waits and external gates. A disappearing question is not task completion,
+and a saved answer is not proof that a held task advanced. Static skill tests and
+offline command-routing fixtures verify these instructions and routing, not live
+model adherence, successful recovery or service delivery.
+
 ## Commands
 
 Use `/autowork status` for a short overview: the bundle version and revision, the profile serving

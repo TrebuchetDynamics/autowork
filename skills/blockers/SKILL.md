@@ -3,25 +3,29 @@ name: blockers
 description: "Use to resolve blocked tasks: ask only what the owner must."
 license: MIT
 metadata:
-  version: 0.1.7
+  version: 0.2.0
   hermes:
     tags: [blockers, interview, planning, autowork]
 ---
 
 # Blockers
 
-`/blockers [repo|runner name]` reviews the blocked queue at once. Apply established
-answers and evidence-backed planning repairs, then ask only for unresolved owner
+`/blockers [repo|runner name]` resolves held tasks and owner questions together.
+Apply established answers, repair authorized technical causes and verify progress,
+then ask only for unresolved owner
 decisions or unavailable inputs, easiest first. Save each resolution before moving
 on. `/autowork blockers` and `/plan_with_me blockers` are the same command.
 It runs only when the owner starts it; no runner or schedule invokes it, so an idle
 queue still costs no tokens.
 
-It changes plans, not runners: it never starts, stops, restarts or reconfigures a
-runner or service, never launches an execution or repair session, never kills a
-session, and never pushes. The owner supplies product intent and genuinely missing
-authority; the existing runner performs technical recovery and integration.
-Updating an already authorized plan needs no new owner decision.
+It never starts, stops, restarts or reconfigures a runner or service, never launches
+a competing execution or repair session, never kills a session, and never pushes.
+Execute authorized local recovery through the existing task's supported execution
+workflow when exclusive ownership is established; do not edit a live worker or
+duplicate its checks. An invocation authorizes bounded local blocker repair, not
+unrelated implementation, live operations, credentials or publication. Explicit
+questions-only, planning-only and read-only requests execute nothing; read-only also
+writes nothing. Updating an already authorized plan needs no new owner decision.
 
 ## 1. Gather and filter
 
@@ -32,14 +36,15 @@ planning repairs and remaining execution work without inventing a question.
 Resolve the target: a path, `.` (default), or a runner name, whose repository is the
 `Repository:` line of `autowork status NAME`. The runner's questions live in its
 session worktree, which can be ahead of the main checkout; read them there, and save
-answers in the main checkout, which the runner merges into its session. Then collect,
-without a model call:
+answers in the main checkout, which the runner merges into its session. Always inspect
+both the questions and engine task states: an empty questions block does not mean no
+held work. Initial discovery is without a model call:
 
 - The runner's questions block in `BLOCKERS.md`, between
   `<!-- pi-autowork:questions:start -->` and `<!-- pi-autowork:questions:end -->`,
   when present (TOOLSET-120-fc). Each entry already carries its type, effort,
   `unblocks` count, `Needs:` and `Answer:`.
-- Without that block, the engine's view:
+- The engine's view even when the questions block exists:
   `python3 <autowork>/scripts/owner_cycle.py REPO --parallel-status --json`. Use
   `roots` whose `kind` is `held`, `claim`, `outside`, `cycle`, `runner` or `contract`
   (a TODO/index mismatch: without it a metadata-blocked queue seems to have no
@@ -47,6 +52,9 @@ without a model call:
   worker's `report.json` blockers under
   `.git/autowork-execution/slot-data/TASK/attempt-N/`. `blocks` counts waiting tasks
   that depend on the root; check which IDs it counts, since it can include the root.
+  Inspect every held task row, including holds with zero dependents and no root entry.
+  A failed status read is unavailable evidence, not an empty queue; fall back to
+  current slot identities and latest attempt reports without inventing live counts.
 - Owner-maintained entries under `## Active` in `BLOCKERS.md` and tasks in TODO.md's
   `Needs decision` section. `Q-ACCEPT-GOALS`, between `<!-- docs-sync:accept-goals:start -->`
   and its end marker, asks to accept a first drafted backlog: on the owner's yes run
@@ -68,12 +76,13 @@ figure, not measured impact.
 
 - **Established answer or routine recovery:** use existing authorization. Inspect
   repository/session facts yourself. Preserve the agreed scope and acceptance;
-  record the remaining technical work for the runner. A failed check, missing
+  repair the cause and verify the supported continuation, not merely another Next
+  action in the task. A failed check, missing
   receipt or pending local integration does not by itself need a user choice.
 - **Idle candidate awaiting delivery:** verify actual writer/session activity and
   candidate identity. When no live writer owns it and local integration is already
-  authorized, record an integration-only continuation for the current eligible
-  runner, reusing the candidate. Keep valid candidate checks, require verification
+  authorized, perform the supported integration-only continuation with the existing
+  execution owner, reusing the candidate. Keep valid candidate checks, require verification
   against the integrated code, preserve saved settings and private data, and retain
   no-push/deploy/package-delivery exclusions. Do not ask “Pi or this session?” or
   ask permission to reuse the reviewed fix. Do not label this an owner decision or
@@ -157,12 +166,30 @@ development may go ahead before the final human acceptance. The answer can chang
 admission dependencies; it never supplies a test result, product acceptance or
 publication authority, and never turns an unobserved check into a pass.
 
-## 4. Record the answer as planning
+## 4. Resolve and verify each item
+
+For each technical hold, keep the same task, candidate and cumulative budgets.
+Inspect its latest attempt, actual writer/session activity and exact qualification
+inputs; fix the smallest in-scope local cause using the existing Autowork execution
+workflow. Reuse retained code and valid checks, repair local metadata/scope omissions
+within accepted intent, and rerun only missing or invalidated required checks. Keep
+required full-gate/review evidence, source bindings and negative safety assertions.
+Never patch a report or directly clear a slot/lease to manufacture progress.
+
+Read back the exact task state and question after the repair. A saved answer is not
+a removed hold; missing terminal evidence stays unqualified. If a live owner must
+consume the change, observe its acknowledgement or name the precise pending
+operation and owner. Do not repeatedly append the same advice or edit metadata just
+to trigger fresh implementation. An unavailable owner, real resource wait or external
+prerequisite can remain held: retain its evidence and continue independent repairs.
+Escalate only unavailable input, consequential intent or ungranted authority—not
+routine implementation choices. Do not promise every hold can be removed safely.
 
 Write each answer or supported planning repair where the queue reads it, right away.
 An approved clerical index correction is planning: apply it through Docs Sync and
-record it in the task. No answer is permission to start the task, migrate a service
-or launch a repair during the interview.
+record it in the task. An answer supplies only the selected intent or authority;
+execute its local repair only within the invocation's scope and ownership rules.
+It never implicitly authorizes service migration or broader live operations.
 
 - Edit that task's TODO.md entry: scope, `Touches:`, acceptance, `Dependencies:`,
   `Status:`, or a short dated `Owner decision:` line. Keep the entry's shape; use
@@ -188,19 +215,20 @@ or launch a repair during the interview.
 
 A running runner reconsiders a held task once its entry changes (TOOLSET-120-fc),
 usually within seconds. Observe that in `autowork status NAME`; do not promise it,
-and never start a paused runner to consume an answer. Retries, restarts and
-`pi-autowork.sh --set-aside TASK` belong to the runner's own workflow, not to this
-questionnaire; when a change was not picked up, report that instead. A kept branch
+and never start a paused runner to consume an answer.
+Retries, restarts and `pi-autowork.sh --set-aside TASK` belong to the runner's own workflow;
+use its supported handoff rather than manual state mutation. When it cannot consume
+the repair safely, report the precise remaining execution condition instead. A kept branch
 does not prove a fresh worker received that candidate: name it in the task's
 `Next action:` so the next attempt restores it instead of reimplementing. Never
 rewrite a running worker's contract.
 
 ## 5. Close out
 
-Commit only the planning files the answers or supported repairs changed (TODO.md, goals.json,
-TODO.archive.md, `BLOCKERS.md`) in the repository's checkout as
-`docs(tasks): owner answers to blockers`, so the runner's merge is not held by
-uncommitted edits. Where those files hold other uncommitted planning, stage only the
+Commit only attributable, verified planning or local repair files, including their
+tests and affected docs, through the repository's scoped local-commit workflow.
+Use `docs(tasks): owner answers to blockers` for planning-only changes, so the
+runner's merge is not held by uncommitted edits. Where those files hold other uncommitted planning, stage only the
 answered tasks' hunks and their ledger rows, check the staged diff, and leave the
 rest as it was. Never commit unrelated changes. This workflow never pushes; route
 separately requested publication through Git Commit Push with its existing authority.
