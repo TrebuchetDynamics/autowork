@@ -140,8 +140,16 @@ def check_slot(waiting):
                 os.close(lease)  # on abnormal exit, a surviving command still owns its inherited fd
 
 
-def run_command(cmd, checkout, limit, progress, output=None):
-    """Run a full suite with its complete timeout after admission; report queue progress."""
+class Stopped(Exception):
+    """The caller was told to stop while its suite waited or ran; the suite is killed."""
+
+
+def run_command(cmd, checkout, limit, progress, output=None, stop=None):
+    """Run a full suite with its complete timeout after admission; report queue progress.
+
+    The suite runs in its own session, which a stop sent to the caller's group never reaches:
+    with ``stop`` (a callable), a true answer kills it and raises Stopped instead.
+    """
     queued = timed_out = False
 
     def notify(state, **fields):
@@ -161,6 +169,8 @@ def run_command(cmd, checkout, limit, progress, output=None):
 
     def wait(ahead):
         nonlocal queued
+        if stop and stop():
+            raise Stopped(f'stopped while queued: {cmd}')
         if not queued:
             transition(True)
         queued = True
@@ -175,12 +185,21 @@ def run_command(cmd, checkout, limit, progress, output=None):
             with subprocess.Popen(['bash', '-c', cmd], cwd=checkout, env=env, stdin=subprocess.DEVNULL,
                                   stdout=output, stderr=subprocess.STDOUT, start_new_session=True,
                                   pass_fds=(() if lease is None else (lease,))) as process:
-                try:
-                    return process.wait(timeout=limit), False
-                except subprocess.TimeoutExpired:
-                    timed_out = True
-                    os.killpg(process.pid, signal.SIGKILL)
-                    return process.wait(), True
+                deadline = time.monotonic() + limit
+                while True:
+                    left = deadline - time.monotonic()
+                    try:
+                        return process.wait(timeout=min(left, 1) if stop else left), False
+                    except subprocess.TimeoutExpired:
+                        stopped = bool(stop and stop())
+                        if not stopped and time.monotonic() < deadline:
+                            continue
+                        os.killpg(process.pid, signal.SIGKILL)
+                        if stopped:
+                            process.wait()
+                            raise Stopped(f'stopped: {cmd}')
+                        timed_out = True
+                        return process.wait(), True
     finally:
         if queued:
             transition(False)
