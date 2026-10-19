@@ -1262,14 +1262,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-246-06",
-      "section": "Now",
-      "status": "open",
-      "title": "Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-247-5a",
       "section": "Now",
       "status": "open",
@@ -2962,6 +2954,14 @@
       "section": "Done",
       "status": "done",
       "title": "A worker's TMPDIR is a short directory on disk, not the shared RAM disk"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-246-06",
+      "section": "Done",
+      "status": "done",
+      "title": "Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits"
     },
     {
       "depends_on": [

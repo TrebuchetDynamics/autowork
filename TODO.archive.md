@@ -4043,3 +4043,27 @@ Source section: Now
 - Ownership: Docs Sync; TOOLSET-150-71 later replaces the coverage format and keeps these drivers.
 - Exclusions: Generating goals.json from TODO.md is not part of this; that is the linked-store direction (TOOLSET-149-df, TOOLSET-150-71). No rewrite of existing coverage rows beyond what each close touches.
 - Planner's call: merge drivers instead of generating goals.json from TODO.md. They remove the conflicts now without a format change, which TOOLSET-150-71 already plans.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-246-06"></a>
+
+### TOOLSET-246-06 — Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits
+
+- [x] TOOLSET-246-06 — Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [budget-controller tests](skills/autowork/scripts/test_budget_controller.py) (`assert_final_observation_failure_retains_evidence` and two race cases: `self.assertLess(evidence['elapsed'], 2)` and `self.assertLess(race['elapsed'], 2)` over fixture subprocesses).
+- Evidence (2026-10-18 20:32, this repository's runner, load average 21-27): main went red at 539b926 with one failure, `test_budget_controller.BudgetTests.test_final_source_read_error_fails_qualification_without_erasing_evidence`: `AssertionError: 3.0635160729289055 not less than 2`. Its isolated rerun under the same load failed the same way, so it counted as red, not flaky. Reruns of the module from the owner session at that load also failed `test_failed_race_evidence_survives_assertion_and_temp_cleanup` and `test_final_effect_read_error_fails_qualification_without_erasing_evidence`. Earlier the same day a worker reported "the unrelated budget-controller timing failure" as a reason it could not finish (TOOLSET-170-f6). The test logic held in each case; only the elapsed bound failed.
+- Evidence (2026-10-18 20:31, this repository's runner): the full-suite gate held TOOLSET-165-f7, first in Now, with `the full check has new failures the base does not: test_budget_controller.BudgetTests.test_duplicate_race_records_deterministic_transaction_coordination, ...`. The base run happened to pass those tests and the isolated reruns under load did not, so a timing failure counted as the candidate's. That commit had been held at each review since 16:10 with "required offline checks are red".
+- Touches: skills/autowork/scripts/test_budget_controller.py
+- Scope: (1) Each `elapsed < 2` assertion becomes a bound tied to what it guards. A fixture that ends normally must finish well inside the fixture's own deadline (the deadline the test sets, or 30 s if none), which still catches a hang. A deadline-mode fixture must have been stopped by that deadline, which the events and failures already assert. (2) Any timing that remains reads the fixture's own monotonic stamps, not the test's wall clock around process start-up. (3) No skip or retry is added: the tests stay deterministic.
+- Acceptance: The three named tests pass with the host loaded (for example with `AUTOWORK_GATE_CPUS=1` and a CPU-burning helper running beside them, or 8 parallel runs of the module), and still fail when the fixture is made to hang past its deadline.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_budget_controller.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator. It is the concrete fix for the current failing inventory of TOOLSET-184-b3 (MAIN recovery), whose evidence the maintainer refreshed at 20:38 for this red main; landing it should let that task record main green.
+- Exclusions: No change to the budget controller itself.
+- Planner's call: second in Now, after TOOLSET-165-f7 (raised 2026-10-18 20:49): these timing failures hold the top task's own candidate as well as main. A red main hides real regressions and blocks main-green signals for every candidate, and the maintainer would otherwise add a product-code repair task for a test-speed problem.
