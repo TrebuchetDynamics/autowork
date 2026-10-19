@@ -147,6 +147,21 @@ its contract shape. Do not claim a task or launch execution just to validate a
 planning handoff. Reconcile one affected batch and reuse input-bound checks when
 the evidence is unchanged.
 
+For work too large for one batch, follow
+[rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
+first batch whose content is known now, at most 8 new tasks total including one
+closing `Kind: plan` task under the same Goal. Give it `Plan round: 1 of 10` by
+default and dependencies on every building task in the batch. Its Scope names the
+goal and what the next round must find out from the finished batch's evidence.
+When continuing an existing chain, advance N in `Plan round: N of M` without
+resetting its limit; apply the shared stopping rules. A small or single-batch plan
+adds no planning task and keeps the existing saving flow.
+
+For a rolling plan, the final report says the chain will continue on its own under
+an already running, authorized Autowork runner, gives its round limit (10 by default),
+and explains how to stop it: move the planning task to `Needs decision`. Saving the
+chain does not start a runner or grant execution authority.
+
 Before reporting the plan ready, run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff): a fresh
 reader in Autowork's place lists what it would have to guess. Write answers already
