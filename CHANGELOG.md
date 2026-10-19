@@ -255,6 +255,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The engine no longer stops on a merge-conflict hold that the retry plan names first. Fresh
+  retries leave conflict holds to the resolver, but the plan still listed them, and picking
+  one raised a KeyError in every cycle ("no answer from the engine").
 - Main's full check waits for a quiet host and a free review slot for at most 30 minutes.
   With eight workers and batches there was nearly always a review or a load above the core
   count, so main went unchecked for over two hours while it was red.
