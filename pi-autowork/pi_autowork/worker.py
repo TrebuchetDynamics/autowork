@@ -190,8 +190,22 @@ def base_tree(checkout, rev):
                           check=True, capture_output=True).stdout.decode().strip()
 
 
+def conclusive(value):
+    """Whether a suite result says something about its tree, so it is worth caching.
+
+    A crash and a directory check.py gave up on are the host's, not the tree's: caching such a
+    base let the same timeout on a candidate read as nothing new, and the gate passed a tree
+    whose full check never ran that directory.
+    """
+    return (bool(value['code'] == 0 or value['failures'])
+            and not value.get('timed_out')
+            and not [f for f in value['failures'] if f.endswith('(timed out)')])
+
+
 def base_result(state, checkout, command, rev, limit, progress=None):
     """Cache a base check by revision and planning-stripped tree, for the same command only."""
+    if not rev:
+        raise ValueError('the base revision is unknown, so the merged tree has nothing to compare with')
     cache = Path(state) / 'full-check' / f'base-{rev}.json'
     tree = base_tree(checkout, rev)
     tree_cache = cache.with_name(f'base-tree-{tree}.json')
@@ -199,20 +213,26 @@ def base_result(state, checkout, command, rev, limit, progress=None):
     for source in (cache, tree_cache):
         try:
             cached = json.loads(source.read_text())
-            if cached.get('command') == command:
+            if cached.get('command') == command and conclusive(cached):
                 value = dict(cached, rev=cached.get('rev', rev), tree=tree)
                 break
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError, AttributeError, KeyError):
             pass
     if value is None:
-        scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
-        git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
+        # A short directory on disk, like a review's scratch: under the state directory this path
+        # reached 87 characters before the suite added its own, past the 108-byte AF_UNIX limit.
+        # The `aw-r-<pid>-*` name keeps a killed review's copy where drop_dead_scratch sweeps it.
+        holder = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=review_root()))
+        scratch = holder / 'base'
         try:
+            if git(checkout, 'worktree', 'add', '--detach', str(scratch), rev) is None:
+                raise ValueError(f'the base worktree for {rev[:12]} could not be created in {holder}')
             value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log'), progress),
                          command=command, rev=rev, tree=tree)
         finally:
-            git(checkout, 'worktree', 'remove', '--force', str(scratch))
-    if (value['code'] == 0 or value['failures']) and not value.get('timed_out'):
+            git(checkout, 'worktree', 'remove', '--force', '--force', str(scratch))
+            shutil.rmtree(holder, ignore_errors=True)
+    if conclusive(value):
         # A crash or a timeout may be the host's: run it again next time. A cached timeout named
         # only the tests before its cut-off, so later ones read as new failures on every tree.
         cache.write_text(json.dumps(value))
@@ -222,6 +242,22 @@ def base_result(state, checkout, command, rev, limit, progress=None):
 
 def gate_log(state, task):
     return Path(state) / 'full-check' / f'{safe_name(task)}-merged.log'
+
+
+def replay_gate_log(state, task, cached):
+    """Put a cached run's evidence where this task's review note points.
+
+    The verdict is cached per tree while the note, the engine and the reviewer all name this
+    task's log, and the task that ran the suite may be a different one: a reviewer told to read
+    a log that does not exist has no evidence for the pass it is asked to trust.
+    """
+    target, source = gate_log(state, task), Path(cached.get('log') or '')
+    try:
+        if not target.exists() and source.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+    except OSError:
+        pass
 
 
 def full_suite_gate(state, task, checkout, base=None):
@@ -237,13 +273,22 @@ def full_suite_gate(state, task, checkout, base=None):
     try:
         cached = json.loads(cache.read_text())
         if tree and cached.get('command') == command:
+            replay_gate_log(state, task, cached)
             return cached['ok'], cached['reason']
-    except (OSError, ValueError, KeyError, AttributeError):
+    except (OSError, ValueError, KeyError, AttributeError, TypeError):
         pass
     ok, reason = run_gate(state, task, checkout, command, base)
     if tree and (ok or reason.startswith(('the full check has new failures', 'the full check exits'))):
         cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps({'command': command, 'ok': ok, 'reason': reason, 'task': task}))
+        # The evidence is tree-keyed too: this cache outlives the task that ran it, and that
+        # task's own log is overwritten when it next gates a different tree.
+        evidence = cache.with_suffix('.log')
+        try:
+            shutil.copyfile(gate_log(state, task), evidence)
+        except OSError:
+            evidence = gate_log(state, task)
+        cache.write_text(json.dumps({'command': command, 'ok': ok, 'reason': reason, 'task': task,
+                                     'log': str(evidence)}))
     return ok, reason
 
 
@@ -284,7 +329,19 @@ def run_gate(state, task, checkout, command, base_rev=None):
             return False, f'the full check stopped before its results were complete (exit {merged["code"]}); the rest never ran'
         if not failures:
             return True, ''
-    base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
+    # A directory check.py gave up on is not a failure the base can excuse. It reports the timeout
+    # as a failure, so with the same directory timing out on a loaded base this left nothing new
+    # to reject and the gate passed a tree whose full check never ran that directory.
+    incomplete = [f for f in merged['failures'] if f.endswith('(timed out)')]
+    if incomplete:
+        return False, 'the full check did not complete ' + ', '.join(incomplete[:10]) + (
+            f' (+{len(incomplete) - 10} more)' if len(incomplete) > 10 else '')
+    try:
+        base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'),
+                           limit, progress)
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
+        # Without a base there is no verdict, and never a pass for want of evidence.
+        return False, f'the full check has no base to compare with: {error}'
     if not merged['failures']:
         crash = main_check.crash_line(log.read_text(errors='replace'))
         if base['code'] == 0 or base['failures']:
@@ -543,7 +600,7 @@ def review(state, task, checkout, head_before, gate=''):
                             + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
-                            os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800'),
+                            os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT') or '1800',
                             ['--tools', 'read,bash,grep,find,ls'])
     line = next((l for l in reversed(result['text'].splitlines()) if l.startswith('PI_AUTOWORK_VERIFY:')), '')
     verdict = (re.match(r'^PI_AUTOWORK_VERIFY: (pass|fail)', line) or [None, ''])[1]
@@ -586,6 +643,6 @@ def main(argv):
         return verify_batch(state, session, script, tasks)
     if argv[0] == '--worker':
         state, worktree, prompt_file, report = argv[1:5]
-        limit = argv[5] if len(argv) > 5 else os.environ.get('PI_AUTOWORK_TASK_TIMEOUT', '5400')
+        limit = argv[5] if len(argv) > 5 else os.environ.get('PI_AUTOWORK_TASK_TIMEOUT') or '5400'
         return worker(state, worktree, prompt_file, report, limit)
     return verify(argv[1], argv[2])
