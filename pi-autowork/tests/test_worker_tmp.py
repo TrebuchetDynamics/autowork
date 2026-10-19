@@ -64,6 +64,39 @@ class WorkerTmpTests(unittest.TestCase):
         os.environ.pop('PI_AUTOWORK_VALIDATE')
         self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
 
+    def test_base_cache_reuses_only_planning_changes_under_the_same_command(self):
+        """Planning commits must not repeat a base run; code and command changes must."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True,
+                                        text=True).stdout.strip()
+        (self.repo / 'source.py').write_text('base\n')
+        (self.repo / 'TODO.md').write_text('base plan\n')
+        (self.repo / 'BLOCKERS.md').write_text('base questions\n')
+        git('add', '-A')
+        git('commit', '-qm', 'base')
+        base_rev = git('rev-parse', 'HEAD')
+        state, runs = self.repo / '.git' / 'state', self.repo / '.git' / 'runs'
+        command = f'echo ran >> {runs}'
+        worker.base_result(state, self.repo, command, base_rev, 10)
+        for path, expected_runs in (('BLOCKERS.md', 1), ('TODO.md', 1), ('TODO.archive.md', 1),
+                                    ('todo.archive.md', 1), ('goals.json', 1), ('docs/nested/plan.md', 1),
+                                    ('source.py', 2)):
+            with self.subTest(path=path):
+                target = self.repo / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text('changed\n')
+                git('add', '-A')
+                git('commit', '-qm', path)
+                rev = git('rev-parse', 'HEAD')
+                value = worker.base_result(state, self.repo, command, rev, 10)
+                self.assertEqual(runs.read_text().count('ran'), expected_runs)
+                self.assertEqual(value['code'], 0)
+                self.assertEqual(value['rev'], base_rev if expected_runs == 1 else rev)
+                saved = json.loads((state / 'full-check' / f'base-{rev}.json').read_text())
+                self.assertEqual(saved['tree'], value['tree'])
+        worker.base_result(state, self.repo, command + '; true', rev, 10)
+        self.assertEqual(runs.read_text().count('ran'), 3)
+
     def test_failures_that_pass_alone_need_no_base_suite(self):
         """A base suite as long as the merged one ran on nearly every review, even when each failure
         passed when rerun alone; a failure that stays red still gets the base comparison."""

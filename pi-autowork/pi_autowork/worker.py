@@ -174,23 +174,49 @@ def run_suite(command, checkout, limit, log):
     return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out}
 
 
+def base_tree(checkout, rev):
+    """A Git tree ID excluding root planning files and the docs/ subtree, not the worktree."""
+    listing = subprocess.run(['git', '-C', str(checkout), 'ls-tree', '-z', rev],
+                             check=True, capture_output=True).stdout
+    excluded = {path.encode() for path in PLANNING_FILES}
+    entries = []
+    for entry in listing.split(b'\0'):
+        if not entry:
+            continue
+        metadata, path = entry.split(b'\t', 1)
+        directory = metadata.startswith(b'040000 ')
+        if (path in excluded and not directory) or (path == b'docs' and directory):
+            continue
+        entries.append(entry + b'\0')
+    return subprocess.run(['git', '-C', str(checkout), 'mktree', '-z'], input=b''.join(entries),
+                          check=True, capture_output=True).stdout.decode().strip()
+
+
 def base_result(state, checkout, command, rev, limit):
-    """The full check on the base revision, run once per revision and cached."""
+    """Cache a base check by revision and planning-stripped tree, for the same command only."""
     cache = Path(state) / 'full-check' / f'base-{rev}.json'
-    try:
-        value = json.loads(cache.read_text())
-        if value.get('command') == command:
-            return value
-    except (OSError, ValueError):
-        pass
-    scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
-    git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
-    try:
-        value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log')), command=command)
-    finally:
-        git(checkout, 'worktree', 'remove', '--force', str(scratch))
+    tree = base_tree(checkout, rev)
+    tree_cache = cache.with_name(f'base-tree-{tree}.json')
+    value = None
+    for source in (cache, tree_cache):
+        try:
+            cached = json.loads(source.read_text())
+            if cached.get('command') == command:
+                value = dict(cached, rev=cached.get('rev', rev), tree=tree)
+                break
+        except (OSError, ValueError, AttributeError):
+            pass
+    if value is None:
+        scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
+        git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
+        try:
+            value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log')),
+                         command=command, rev=rev, tree=tree)
+        finally:
+            git(checkout, 'worktree', 'remove', '--force', str(scratch))
     if value['code'] == 0 or value['failures']:  # a crash may be the host's: run it again next time
         cache.write_text(json.dumps(value))
+        tree_cache.write_text(json.dumps(value))
     return value
 
 
