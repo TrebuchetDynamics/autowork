@@ -742,7 +742,8 @@
         "TOOLSET-240-f8",
         "TOOLSET-241-a1",
         "TOOLSET-242-d5",
-        "TOOLSET-243-6d"
+        "TOOLSET-243-6d",
+        "TOOLSET-244-5d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -752,6 +753,7 @@
     "tasks": [
       "TOOLSET-165-f7",
       "TOOLSET-243-6d",
+      "TOOLSET-244-5d",
       "TOOLSET-195-ee",
       "TOOLSET-232-01",
       "TOOLSET-223-8e",
@@ -1296,6 +1298,14 @@
       "section": "Now",
       "status": "open",
       "title": "A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-244-5d",
+      "section": "Now",
+      "status": "open",
+      "title": "The crash line is the tool's own exit message, not an earlier warning that mentions an error"
     },
     {
       "depends_on": [],

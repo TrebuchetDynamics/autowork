@@ -97,6 +97,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to the full-suite gate or to what a review checks.
 - Planner's call: second in Now, behind TOOLSET-165-f7. Each toolset release re-reviewed the same failing commit ahead of the whole queue, so the runner that receives the most releases integrated the least. Ordering, scoping the fingerprint and stopping same-verdict repeats keep the benefit (a fixed reviewer gets one more look) without the stall.
 
+### TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
+
+- [ ] TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); TOOLSET-237-35 in [the archive](TODO.archive.md); [main check](pi-autowork/pi_autowork/main_check.py) (`CRASH`, `crash_line`: the first line matching any of `exited unexpectedly`, `Segmentation fault`, `core dumped`, `Bad state`, `panic:`, `Fatal error`, `Killed`, `Aborted`, `out of memory`).
+- Evidence (2026-10-18 19:05, one fleet runner): the gate held a candidate whose test tool crashed on the base and the candidate alike, as TOOLSET-237-35 intends. But the crash line it recorded was an ordinary app warning printed during the tests, `[warn][wallpaper] Set wallpaper failed {"error":"Bad state: channel unavailable"}`, because it matched `Bad state` before the tool's own `Oops; flutter has exited unexpectedly: "Bad state: No element".` further down. That wrong line went into the hold reason, the provisioning request ("installing it into the toolchain cache") and the maintainer's input. The main check of the same repository picked the right line, because its log had no such warning.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/tests/test_main_check.py
+- Scope: (1) Patterns are ranked. A process-ending message (`exited unexpectedly`, `Segmentation fault`, `core dumped`, `panic:`, `Fatal error`, `Killed`, a line starting with a Python exception after `Traceback`) beats a weak one (`Bad state`, `Aborted`, `out of memory`). (2) Within a rank the last matching line wins, since a crash ends the output. (3) Log-level prefixes such as `[warn]`, `[info]` and `WARNING:` never count as a crash line.
+- Acceptance: In fixtures: the logged sequence (an earlier `[warn] ... Bad state: channel unavailable` line, then `Oops; flutter has exited unexpectedly: "Bad state: No element".`) yields the `Oops` line; a Python traceback yields its final exception line; a log with only a warning-level match falls back to the last non-blank line.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when a check counts as crashed.
+- Planner's call: Now, right after TOOLSET-243-6d: a small fix to my own TOOLSET-237-35 that otherwise points provisioning and the maintainer at a harmless warning.
+
 ### TOOLSET-195-ee — The runner's own jobs never count as outside sessions
 
 - [ ] TOOLSET-195-ee — The runner's own jobs never count as outside sessions
