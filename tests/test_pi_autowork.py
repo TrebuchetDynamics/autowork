@@ -1234,10 +1234,8 @@ class EngineTests(Fixture):
         self.assertLess(result.stdout.index('A: failed'), result.stdout.index('B: integrated'), result.stdout)
         self.assertTrue(self.done('B', 'C'), result.stdout)  # and A's retry lands later
 
-    def test_candidates_held_by_conflicts_re_batch_once_their_revision_changes(self):
-        """A candidate the resolver merged with the session is a new revision, so it re-batches
-        with its siblings instead of being blocked by the id-only batch key. Landing them together
-        needs the resolver to merge every skipped candidate before either integrates (follow-up)."""
+    def test_candidates_held_by_conflicts_are_resolved_as_a_group_then_checked_once(self):
+        """Two conflicts are held, resolved together, then checked in one batch run (not one each)."""
         self.env['PI_AUTOWORK_BATCH'] = '6'
         self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
         self.plan({'worker:A': ['move_session'], 'worker:B': ['move_session'],
@@ -1245,9 +1243,10 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty', timeout=300)
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
         self.assertIn('left out (conflict): A, B', result.stdout)  # the first batch merged neither
-        self.assertIn('merged the session into its commit', result.stdout)
-        # After one revision changed, the same pair is offered to a new batch (was blocked by the
-        # id-only key, which never changed); B is merged and lands after its own resolution.
+        # Both held conflicts are resolved before either integrates (no fresh retry meanwhile),
+        # so the re-batch merges and checks them as a pair: one shared check, not one each.
+        self.assertGreaterEqual(result.stdout.count('merged the session into its commit'), 2, result.stdout)
+        self.assertIn('Batch: 2 passed (A, B)', result.stdout)
         self.assertGreaterEqual(result.stdout.count('Batch of 2 candidates (A, B)'), 2, result.stdout)
 
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):

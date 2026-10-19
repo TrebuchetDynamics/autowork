@@ -1420,13 +1420,15 @@ class Coordinator:
             return
         if self.session_busy():
             return  # one review at a time; it is collected when it ends
-        handled = set()
+        handled, deferred = set(), []
         finished = self.collect_integration()
         if finished and finished[0] == self.BATCH:
             self.batch_done(finished[1])
         elif finished:
             handled.add(finished[0])
-            self.integrated(*finished)
+            self.integrated(*finished, resolve_conflicts=False)
+            if finished[1].get('cause') == 'conflict':
+                deferred.append(finished[0])
             if self.stop:
                 return
         self.reverify_held(rows)
@@ -1434,6 +1436,9 @@ class Coordinator:
             if self.stop:
                 return
             self.close_task(task)
+        # A conflict resolved above changed that candidate's commit: batch on the current
+        # revisions, not the snapshot taken before the resolution.
+        rows = self.tasks(self.status())
         # The engine integrates one candidate at a time, in priority order, and names the one it
         # wants when asked for another: start that one, never every candidate in turn (13 engine
         # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
@@ -1454,6 +1459,7 @@ class Coordinator:
             if self.reexec_due():
                 # Back-to-back reviews left no gap for a reload: one runner kept its morning
                 # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
+                self.resolve_deferred(deferred)
                 self.restart_if_updated()
                 return
             self.follow_base()  # each review validates against the main branch as it is now
@@ -1465,6 +1471,7 @@ class Coordinator:
                 self.note_state(task, 'integrating')
                 finished = self.collect_integration(wait=3.5)
             if finished is None:
+                self.resolve_deferred(deferred)
                 return  # a real review: it runs beside the loop until it ends
             handled.add(task)
             first = re.search(r'highest-priority reported task first: (\S+)', finished[1].get('reason') or '')
@@ -1474,10 +1481,32 @@ class Coordinator:
                 continue
             if finished[1].get('outcome') in ('INTEGRATED', 'HELD'):
                 self.note_state(task, 'integrating')  # a quick review still ran: say so before its answer
-            self.integrated(*finished)
+            self.integrated(*finished, resolve_conflicts=False)
+            if finished[1].get('cause') == 'conflict':
+                deferred.append(task)
+        self.resolve_deferred(deferred)
 
-    def integrated(self, task, result):
-        """Act on the engine's answer to integrating ``task``."""
+    def resolve_deferred(self, deferred):
+        """Resolve the conflicts this pass held back, then batch their merged revisions so they
+        share one check. Runs before the pass returns it to the loop, so a held conflict never
+        reaches a cycle boundary where a fresh retry could start (or --once would read it as final)."""
+        if not deferred or self.stop or self.session_busy():
+            return False
+        for task in deferred:
+            row = next((r for r in self.tasks() if r.get('task') == task), None)
+            if row and row.get('state') == 'held' and row.get('cause') == 'conflict':
+                self.resolve_task_conflict(row)
+        rows = self.tasks(self.status())
+        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows if r.get('state') == 'reported'])
+        if batch:
+            self.start_batch(batch)
+            return True
+        return False
+
+    def integrated(self, task, result, resolve_conflicts=True):
+        """Act on the engine's answer to integrating ``task``. ``resolve_conflicts`` False holds a
+        conflict instead of resolving it now: the next cycle's first pass resolves every held
+        conflict together, so their merged revisions batch into one check instead of one each."""
         outcome, reason = result.get('outcome') or 'ACTION_REQUIRED', result.get('reason') or ''
         if outcome != 'BUSY':
             self.seen.pop('busy-' + task, None)
@@ -1494,8 +1523,15 @@ class Coordinator:
                     and self.provision_and_reverify(task, self.reviewer_version())):
                 return  # reviewed again before a refill can start a fresh retry
             if result.get('cause') == 'conflict':  # before a refill can start a fresh retry
-                row = next((r for r in self.tasks() if r.get('task') == task), None)
-                if row and self.resolve_task_conflict(row):
+                if resolve_conflicts:
+                    row = next((r for r in self.tasks() if r.get('task') == task), None)
+                    if row and self.resolve_task_conflict(row):
+                        return
+                else:
+                    # Grouping: hold it. The engine never retries a conflict with a fresh worker,
+                    # so it waits safely for the grouped resolution; a transient conflict is not a
+                    # failure streak either.
+                    self.note_state(task, 'held', reason)
                     return
             self.note_state(task, 'held', reason)
             self.count_failure(task, result.get('cause'), reason)
