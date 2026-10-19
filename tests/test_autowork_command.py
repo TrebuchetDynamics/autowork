@@ -188,6 +188,16 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('ALPHA-1', one.stdout)
         self.assertNotIn('BETA-2', one.stdout)
 
+    def test_update_runs_the_configured_installer(self):
+        installer = self.base / 'bin' / 'install.sh'
+        installer.write_text('#!/usr/bin/env bash\necho "install.sh $*" >> "$FAKE_LOG"\n')
+        installer.chmod(0o755)
+        env = {**self.env, 'AUTOWORK_INSTALLER': str(installer)}
+        result = subprocess.run([str(AUTOWORK), 'update', '-q', '--dry-run'], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('install.sh update -q --dry-run', self.log.read_text())
+
     def test_start_refuses_a_repository_that_is_not_ready(self):
         bare = self.make_repo('bare', files=('TODO.md',))
         result = self.aw('start', str(bare))
@@ -295,6 +305,22 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertEqual(oct((self.env_dir / 'india.env').stat().st_mode & 0o777), '0o600')
         bad = self.aw('model', 'india', 'nobody/nothing')
         self.assertIn("not in Pi's model list: nobody/nothing", bad.stderr)
+
+    def test_ls_reports_failed_discovery_instead_of_successful_empty_fleet(self):
+        probe = self.base / 'bin/systemctl'
+        for body in ['#!/bin/sh\nexit 1\n', '#!/missing/interpreter\n']:
+            with self.subTest(body=body.splitlines()[0]):
+                probe.write_text(body)
+                probe.chmod(0o755)
+                result = self.aw('ls')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('runner discovery unavailable', result.stderr.lower())
+                self.assertNotIn('autowork runners: none', result.stdout)
+        probe.write_text('#!/bin/sh\nexit 0\n')
+        probe.chmod(0o755)
+        result = self.aw('ls')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('autowork runners: none', result.stdout)
 
     def test_ls_shows_each_runner_with_its_model_and_pause(self):
         self.assertIn('autowork runners: none', self.aw('ls').stdout)

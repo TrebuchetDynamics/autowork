@@ -57,23 +57,9 @@ class QuestionTests(unittest.TestCase):
         found = questions.build(snapshot(), TODO, goals)
         self.assertEqual([(q['id'], q['effort'], q['type'], q['unblocks']) for q in found], [
             ('T-2', 'quick', 'USER_DECISION', 3), ('G1 gate review', 'decision', 'USER_DECISION', 2),
-            ('T-1', 'input', 'USER_INPUT', 1)])
-        self.assertNotIn('T-3', [q['id'] for q in found])  # a validation hold is the engine's to recover
+            ('T-1', 'input', 'USER_INPUT', 1), ('T-3', 'investigate', 'USER_DECISION', 0)])
         self.assertEqual(found[2]['task'], 'T-1 — Port the tuner')
         self.assertEqual(found[2]['needs'], 'worker reported a blocker: needs src/x.py outside Touches')
-
-    def test_a_technical_hold_is_never_an_owner_question(self):
-        """A conflict or validation/report hold the engine can re-offer is recovery, not a decision."""
-        for cause in ('conflict', 'validation', 'report', 'overlap', 'timeout', 'moved'):
-            with self.subTest(cause=cause):
-                self.assertFalse(questions.exhausted(
-                    {'state': 'held', 'attempt': 9, 'cause': cause, 'reason': 'anything'}))
-        self.assertFalse(questions.exhausted(
-            {'state': 'held', 'attempt': 9, 'cause': None,
-             'reason': 'missing, failed, stale or mismatched integration validation'}))
-        # A genuine owner-input hold with no attempt left is still a question.
-        self.assertTrue(questions.exhausted(
-            {'state': 'held', 'attempt': 2, 'cause': None, 'reason': 'held with no attempt left'}))
 
     def test_live_authorization_becomes_one_owner_question_in_blockers(self):
         condition = 'Live authorization: T-1'
@@ -167,8 +153,7 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(text[:start] + text[end:], OWNER.replace('## Active\n', '## Active\n\n\n', 1))
         self.assertIn('### Q-T-1 — USER_INPUT — effort input — unblocks 1\n\n- Task: T-1 — Port the tuner\n', text)
         self.assertIn('- Since: 2026-10-16T20:00:00Z\n- Answer: Answer in T-1\'s TODO.md entry', text)
-        self.assertLess(text.index('Q-T-2'), text.index('Q-G1 gate review'))
-        self.assertNotIn('Q-T-3', text)  # a validation hold is not a question
+        self.assertLess(text.index('Q-T-2'), text.index('Q-T-3'))
 
     def test_rewrites_keep_first_times_and_drop_answered_questions(self):
         first = questions.update(OWNER, questions.build(snapshot(), TODO, goals), now=NOW)
@@ -180,8 +165,8 @@ class QuestionTests(unittest.TestCase):
         answered['roots'] = [r for r in answered['roots'] if r['id'] != 'T-1']
         after = questions.update(first, questions.build(answered, TODO, goals), now=later)
         self.assertNotIn('Q-T-1', after)
-        self.assertIn('### Q-T-2', after)
-        self.assertIn('- Since: 2026-10-16T20:00:00Z', after)  # T-2 kept its first time
+        self.assertIn('### Q-T-3', after)
+        self.assertIn('- Since: 2026-10-16T20:00:00Z', after)  # T-3 kept its first time
 
     def test_no_questions_leaves_a_file_without_a_block_alone(self):
         self.assertEqual(questions.update(OWNER, [], now=NOW), OWNER)

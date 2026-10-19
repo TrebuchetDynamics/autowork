@@ -19,6 +19,7 @@
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
     autowork blockers [dir]       answer what blocks the queue (/blockers in an agent)
+    autowork update [flags]       update the installed suite in place (install.sh update)
     autowork clear-held [target] [TASK...]
                                   return held commits to integration as technical recovery
                                   (keeps the worktrees); no owner decision is asked
@@ -99,8 +100,8 @@ def self_path():
     return os.environ.get('AUTOWORK_COMMAND') or str(COMPONENT / 'bin' / 'autowork')
 
 
-def runners(paths):
-    return fleet_view.collect(paths['state_root'], paths['env_dir'], systemctl=paths['systemctl'])
+def runners(paths, *, strict=False):
+    return fleet_view.collect(paths['state_root'], paths['env_dir'], systemctl=paths['systemctl'], strict=strict)
 
 
 def resolve(target, paths):
@@ -309,7 +310,10 @@ def paint(text, color, enabled):
 
 
 def cmd_ls(args, paths):
-    found = runners(paths)
+    try:
+        found = runners(paths, strict=True)
+    except fleet_view.DiscoveryUnavailable as error:
+        raise Fail(str(error)) from error
     if args.json:
         # Everything the TUI shows, for a script or an agent watching the fleet.
         print(json.dumps({'runners': [dataclasses.asdict(r) for r in found]}, indent=2, default=str))
@@ -379,6 +383,14 @@ def cmd_web(args, paths):
                                                 '--port', str(args.port)] + (['--view-only'] if args.view_only else [])
     print(f'autowork: serving the TUI at http://{args.host}:{args.port} (Ctrl+C stops it)', file=sys.stderr)
     os.execvp(argv[0], argv)
+
+
+def cmd_update(args, paths):
+    """Update the installed suite in place: the same items as a full install."""
+    installer = Path(os.environ.get('AUTOWORK_INSTALLER') or (TOOLSET / 'install.sh'))
+    if not installer.is_file():
+        raise Fail(f'no installer at {installer}; update the package first: pi update {PI_SOURCE}')
+    return subprocess.run(['bash', str(installer), 'update', *args.extra], check=False).returncode
 
 
 def cmd_blockers(args, paths):
@@ -463,6 +475,8 @@ def parser():
     model.add_argument('--fallback', help='the fallback provider/model')
     models = sub.add_parser('models', help="Pi's model list")
     models.add_argument('search', nargs='?')
+    update = sub.add_parser('update', help='update the installed suite in place (install.sh update)')
+    update.add_argument('extra', nargs='*', help='extra install.sh flags (for example -q or --dry-run)')
     card = sub.add_parser('scorecard', help='per runner: tasks closed, held share, start to merge, owner questions')
     card.add_argument('--days', type=int, default=7)
     card.add_argument('--json', action='store_true')
@@ -476,7 +490,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
-            'clear-held': cmd_clear_held}
+            'clear-held': cmd_clear_held, 'update': cmd_update}
 
 
 def main(argv=None):
@@ -488,7 +502,13 @@ def main(argv=None):
         else:
             top.print_help()
             return 0
-    args = top.parse_args(argv)
+    # `update` forwards arbitrary install.sh flags, so take its unknowns as those flags and
+    # keep the strict parse for every other command.
+    args, extra = top.parse_known_args(argv)
+    if args.command == 'update':
+        args.extra = [*args.extra, *extra]
+    elif extra:
+        top.error('unrecognized arguments: ' + ' '.join(extra))
     if args.command in (None, 'help'):
         top.print_help()
         return 0

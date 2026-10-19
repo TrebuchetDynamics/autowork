@@ -85,6 +85,48 @@ class InstallMenuTests(unittest.TestCase):
         self.assertRegex(result.stdout, r'hermes\s+skipped\s+hermes not found')
         self.assertRegex(result.stdout, r'tx\s+installed')
 
+    def test_update_runs_the_same_items_as_a_full_install(self):
+        result = self.install('update')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Autowork suite update', result.stdout)
+        self.assertIn(f'pi install {NEW}', self.calls('pi'))
+        self.assertIn('claude plugin install autowork@autowork', self.calls('claude'))
+        self.assertIn('codex plugin add autowork@autowork-marketplace', self.calls('codex'))
+
+    def test_a_transient_preflight_race_is_retried_once(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        self.addCleanup(sys.path.remove, str(ROOT / 'scripts'))
+        import install_menu
+        original = install_menu.run_command
+        self.addCleanup(setattr, install_menu, 'run_command', original)
+        answers = [(1, 'ValueError: Destination changed since preflight: /x/skills/SKILL.md'), (0, '')]
+        install_menu.run_command = lambda argv, output: answers.pop(0)
+        item = install_menu.Item('hermes', 'Hermes plugin', steps=[
+            install_menu.Step('update_bundle.py', ['true'], retry_on='changed since preflight')])
+        code = install_menu.install([item], {'hermes'}, output=install_menu.Output('never', 0))
+        self.assertEqual(code, 0)
+        self.assertEqual(answers, [])  # the second (successful) run consumed the queue
+
+    def test_a_failure_without_the_retry_marker_is_not_retried(self):
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import install_menu
+        original = install_menu.run_command
+        self.addCleanup(setattr, install_menu, 'run_command', original)
+        seen = []
+
+        def fake(argv, output):
+            seen.append(argv)
+            return 1, 'some other failure'
+
+        install_menu.run_command = fake
+        item = install_menu.Item('hermes', 'Hermes plugin', steps=[
+            install_menu.Step('update_bundle.py', ['true'], retry_on='changed since preflight')])
+        code = install_menu.install([item], {'hermes'}, output=install_menu.Output('never', 0))
+        self.assertEqual(code, 1)
+        self.assertEqual(len(seen), 1)
+
     def test_no_arguments_installs_full_suite_with_verbose_output(self):
         result = self.install()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

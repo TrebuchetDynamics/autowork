@@ -4,6 +4,7 @@
     install.sh                every available component, live output and exact commands
     install.sh --menu         a checkbox menu on a terminal (arrows, Space, Enter)
     install.sh --full          the full suite for available hosts, no menu (--all also works)
+    install.sh update          update the installed suite in place (the same items as --full)
     install.sh --only tx,pi    just these; --skip hermes leaves those out
     install.sh --list          the items and whether each host is available
     install.sh --dry-run ...   print each command instead of running it
@@ -95,6 +96,7 @@ class Step:
     describe: str                   # what this step does, for --dry-run and the summary
     argv: list = None               # a command to run, or
     run: object = None              # a Python callable returning a message
+    retry_on: str = ''              # transient failure text that is retried once (a concurrent writer)
 
 
 @dataclass
@@ -220,8 +222,11 @@ def hermes_item(hermes_args):
     home = hermes_installed(hermes_args)
     if home:
         argv = [sys.executable, str(ROOT / 'update_bundle.py'), '--hermes-home', str(home)]
+        # A Hermes profile that rewrites a skill file while the bundle writes it fails the
+        # destination recheck; update_bundle re-plans every run, so retry that one race once.
         item = Item('hermes', label, needs='hermes',
-                    steps=[Step(f'update_bundle.py --hermes-home {home} (the profiles\' installed plugin)', argv)])
+                    steps=[Step(f'update_bundle.py --hermes-home {home} (the profiles\' installed plugin)', argv,
+                                retry_on='changed since preflight')])
         # update_bundle.py has none of these and restarts gateways, so it cannot honor them.
         unsupported = [flag for flag in SETUP_ONLY if flag in hermes_args]
         if unsupported:
@@ -353,7 +358,7 @@ def choose_text(all_items, chosen, read=input, write=print):
 
 
 # -- installing -------------------------------------------------------------------
-def install(all_items, chosen, dry_run=False, output=None):
+def install(all_items, chosen, dry_run=False, output=None, mode='install'):
     output = output or Output()
     results = []
     # Private machine-readable progress for update_bundle.py, separate from native output.
@@ -371,7 +376,8 @@ def install(all_items, chosen, dry_run=False, output=None):
     current = 0
     started = time.monotonic()
     if output.verbosity or dry_run:
-        output.line('Autowork full suite installer' + (' — preview' if dry_run else ''), 'heading')
+        title = 'Autowork suite update' if mode == 'update' else 'Autowork full suite installer'
+        output.line(title + (' — preview' if dry_run else ''), 'heading')
         output.line('Selected: ' + (', '.join(i.key for i in all_items if i.key in chosen) or 'none'))
     for item in all_items:
         if item.key not in chosen:
@@ -398,14 +404,21 @@ def install(all_items, chosen, dry_run=False, output=None):
                 detail.append('dry run')
                 continue
             step_started = time.monotonic()
-            try:
-                if step.run:
-                    message = step.run()
-                    detail.append(message)
-                    if output.verbosity:
-                        output.line('  ' + message)
-                else:
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    if step.run:
+                        message = step.run()
+                        detail.append(message)
+                        if output.verbosity:
+                            output.line('  ' + message)
+                        break
                     code, text = run_command(step.argv, output)
+                    if code and attempt == 1 and step.retry_on and step.retry_on in text:
+                        output.line('  Retrying once: a concurrent writer changed a destination after preflight',
+                                    'failed')
+                        continue
                     if code:
                         outcome, exit_code = 'failed', code
                         cause = text.splitlines()[-1] if text else 'command failed'
@@ -413,13 +426,14 @@ def install(all_items, chosen, dry_run=False, output=None):
                         output.line(f'  FAILED: {step.describe} (exit {code})', 'failed')
                         break
                     detail.append('ok')
-                if output.verbosity:
-                    output.line(f'  Done in {time.monotonic() - step_started:.1f}s', 'installed')
-            except (OSError, subprocess.SubprocessError) as exc:
-                outcome, exit_code = 'failed', 1
-                detail.append(str(exc))
-                output.line(f'  FAILED: {exc}', 'failed')
-                break
+                    break
+                except (OSError, subprocess.SubprocessError) as exc:
+                    outcome, exit_code = 'failed', 1
+                    detail.append(str(exc))
+                    output.line(f'  FAILED: {exc}', 'failed')
+                    break
+            if output.verbosity and outcome == 'installed':
+                output.line(f'  Done in {time.monotonic() - step_started:.1f}s', 'installed')
         record(item.key, 'planned' if dry_run else outcome, '; '.join(d for d in detail if d),
                None if dry_run else exit_code)
     output.line('\nSummary:', 'heading')
@@ -451,6 +465,8 @@ def main(argv=None):
     for flag in ('--bundle-only', '--no-reload', '--yes-deps'):
         parser.add_argument(flag, action='store_true', help='passed to the Hermes item')
     parser.add_argument('--hermes-home', help='passed to the Hermes item')
+    parser.add_argument('command', nargs='?', choices=('install', 'update'), default='install',
+                        help='install (default) or update the installed suite in place; both run the same items')
     args = parser.parse_args(argv)
     output = Output(args.color, 0 if args.quiet else 2)
     hermes = [f for f, on in (('--bundle-only', args.bundle_only), ('--no-reload', args.no_reload),
@@ -486,7 +502,7 @@ def main(argv=None):
         if not go:
             print('Nothing installed.')
             return 0
-    return install(all_items, chosen, dry_run=args.dry_run, output=output)
+    return install(all_items, chosen, dry_run=args.dry_run, output=output, mode=args.command)
 
 
 if __name__ == '__main__':
