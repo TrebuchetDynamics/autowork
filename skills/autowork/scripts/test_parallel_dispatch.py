@@ -1217,6 +1217,18 @@ class RetiredTmpTests(unittest.TestCase):
             self.assertTrue((closed[0].parent / 'report.json').exists())  # evidence stays
             self.assertTrue((held / 'sdk').exists())  # a held commit's review still uses it
 
+    def test_a_read_only_module_cache_in_a_tmpdir_is_removed(self):
+        """Go makes its module cache read-only; removing such a $TMPDIR stopped the engine."""
+        with tempfile.TemporaryDirectory() as folder:
+            tmp = Path(folder) / 'tmp'
+            module = tmp / 'go/pkg/mod/golang.org/x/net@v0.23.0'
+            module.mkdir(parents=True)
+            (module / 'go.mod').write_text('module golang.org/x/net\n')
+            for path in (module / 'go.mod', module, module.parent):
+                path.chmod(0o444 if path.is_file() else 0o555)
+            dispatch.remove_tree(tmp)
+            self.assertFalse(tmp.exists())
+
     def test_a_live_worker_keeps_its_tmpdir(self):
         with tempfile.TemporaryDirectory() as folder:
             common = Path(folder)

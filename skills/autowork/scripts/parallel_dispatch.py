@@ -487,7 +487,7 @@ def worker_tmpdir(data, slot_index):
             _private_tmp_dir(path, create=False)
             for child in list(path.iterdir()):
                 shutil.move(str(child), str(preferred / child.name))
-            shutil.rmtree(path, ignore_errors=True)
+            remove_tree(path, ignore_errors=True)
         execution.save(record, {'path': str(preferred), 'slot': saved['slot']})
         return preferred
     used = set()
@@ -505,6 +505,28 @@ def worker_tmpdir(data, slot_index):
     return path
 
 
+def remove_tree(path, ignore_errors=False):
+    """``shutil.rmtree`` that also removes what a tool made read-only: Go keeps its module cache
+    in read-only directories, so a worker's $TMPDIR with one in it could not be removed and the
+    engine stopped on the PermissionError."""
+    def writable(function, name, error):
+        error = error[1] if isinstance(error, tuple) else error
+        if not isinstance(error, PermissionError):
+            raise error
+        for entry in (os.path.dirname(name), name):
+            if os.path.isdir(entry) and not os.path.islink(entry):
+                os.chmod(entry, 0o700)
+        function(name)
+    try:
+        try:
+            shutil.rmtree(path, onexc=writable)
+        except TypeError:  # Python before 3.12
+            shutil.rmtree(path, onerror=writable)
+    except OSError:
+        if not ignore_errors:
+            raise
+
+
 def cleanup_tmpdir(common, slot):
     """Retirement only; forget the reservation after removal, making retries safe."""
     if state.worker_live(slot):
@@ -520,7 +542,7 @@ def cleanup_tmpdir(common, slot):
     except FileNotFoundError:
         pass
     else:
-        shutil.rmtree(path)
+        remove_tree(path)
     record.unlink()
 
 
@@ -532,7 +554,7 @@ def drop_attempt_tmp(data):
             _private_tmp_dir(tmp, create=False)
         except (OSError, ValueError):
             continue  # a link, a foreign owner or already gone
-        shutil.rmtree(tmp, ignore_errors=True)
+        remove_tree(tmp, ignore_errors=True)
 
 
 def sweep_retired_tmp(common, current):
