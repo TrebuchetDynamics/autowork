@@ -946,7 +946,7 @@ def _retire(repo, common, slot, requeued):
 def set_aside(repo, owner_pid, task):
     """Retire a slot that can never finish, so its task can dispatch fresh.
 
-    Only for a held slot no attempt can finish, or an integrated one whose TODO
+    Only for a finished commit waiting to merge (on request), a held slot no attempt can finish, or an integrated one whose TODO
     entry was rewritten after validation (its merge stays in main; the new entry
     is new work) or was archived or removed by someone else (``requeued`` false). Every attempt's worktree and branch is kept, renamed with a
     ``-set-aside-N`` suffix, and the slot record and its data move to
@@ -974,9 +974,11 @@ def set_aside(repo, owner_pid, task):
                         raise
                 else:
                     raise ValueError('integrated task still matches its contract; close it instead')
-        elif not state.exhausted(slot):
-            raise ValueError('set-aside is only for a held slot with no attempt left or an integrated '
-                             'task whose TODO entry changed')
+        elif slot['state'] != 'reported' and not state.exhausted(slot):
+            # A finished commit too, on a person's request: stale ones written against code main had
+            # since redesigned only conflicted, and the request was refused.
+            raise ValueError('set-aside is only for a finished commit, a held slot with no attempt left, or an '
+                             'integrated task whose TODO entry changed')
         return _retire(repo, common, slot, requeued)
 
 

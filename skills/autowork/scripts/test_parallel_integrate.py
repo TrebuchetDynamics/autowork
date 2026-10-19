@@ -836,6 +836,17 @@ finally:
         self.assertEqual((fresh, branch), (root, 'autowork/A'))
         self.assertEqual(self.git('rev-parse', 'HEAD', cwd=fresh), self.baseline)
 
+    def test_a_finished_commit_is_set_aside_on_request_with_its_commit_kept(self):
+        """Stale commits written against code main had redesigned only conflicted, and the
+        owner's set-aside request was refused because they were waiting to merge."""
+        self.worker('A')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        result = self.module().set_aside(self.repo, self.owner, 'A')
+        self.assertEqual((result['outcome'], result['previous_state']), ('SET_ASIDE', 'reported'))
+        self.assertEqual(state.slots(self.common), [])
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), slot['commit'])
+
     def test_close_and_set_aside_remove_only_the_retired_slots_temporary_directory(self):
         module = self.module()
         temps = {}
@@ -861,11 +872,9 @@ finally:
         self.assertEqual(module.set_aside(self.repo, self.owner, 'B')['outcome'], 'SET_ASIDE')
         self.assertFalse(temps['B'].exists())
 
-    def test_set_aside_refuses_a_slot_that_can_still_finish(self):
+    def test_set_aside_refuses_an_integrated_task_that_still_matches_its_entry(self):
         self.worker()
         module = self.module()
-        with self.assertRaisesRegex(ValueError, 'only for'):
-            module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         with self.assertRaisesRegex(ValueError, 'close it instead'):
             module.set_aside(self.repo, self.owner, 'A')
