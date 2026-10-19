@@ -860,14 +860,16 @@ def waiting_streaks(common, now=None):
     return {tid: now - start for tid, start in since.items()}
 
 
-def merge_backlog(common, current, *, now=None, env=os.environ):
+def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     """Back-pressure from finished commits; only queue time counts, not worker runtime.
 
+    The default threshold is two commits per worker: one batch lands a whole pool's
+    work, so a fixed 3 left an 8-worker runner with one worker after every batch.
     The journal keeps the queue clock and pause across coordinator restarts. A pause
     lasts until the count drops below the threshold, even if the oldest merges first.
     """
     limits = {}
-    for name, default in (('MERGE_BACKLOG', 3), ('MERGE_BACKLOG_AFTER', 1200)):
+    for name, default in (('MERGE_BACKLOG', 2 * workers), ('MERGE_BACKLOG_AFTER', 1200)):
         try:
             value = int(env.get('PI_AUTOWORK_' + name, str(default)))
             limits[name] = value if value >= 0 else default
@@ -971,7 +973,7 @@ def dispatch_locked(args, repo, common, count, template, host):
     claimed = [t['id'] for t in candidates if (t['id'] not in slotted or t['id'] in restartable)
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
-    backlog = merge_backlog(common, occupying)
+    backlog = merge_backlog(common, occupying, workers=count)
     planned = admit(candidates, running, restartable, occupying, everything=everything,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
                     drain_after=drain_after(), waited=waiting_streaks(common),

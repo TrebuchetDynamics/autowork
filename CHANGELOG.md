@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The merge backlog that pauses fresh dispatch now defaults to twice the worker
+  count instead of a fixed 3 commits, so a full pool's batch no longer leaves an
+  8-worker runner with one worker until it lands. `PI_AUTOWORK_MERGE_BACKLOG`
+  still overrides it and `0` still turns it off.
 - Chat `/autowork status` reads the repository runner fleet instead of plugin setup
   health; `/autowork status NAME` reads one runner and `/autowork plugin status`
   retains the previous setup overview. Status uses the existing read-only native

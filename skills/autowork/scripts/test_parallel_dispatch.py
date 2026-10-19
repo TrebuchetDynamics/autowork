@@ -372,6 +372,7 @@ class DispatchTests(unittest.TestCase):
             execution.select(self.repo, 'PLAN', None)
     def test_merge_backlog_pauses_only_fresh_dispatch_until_it_drains(self):
         """Finished commits take precedence, without stopping interrupted work."""
+        # An unset or invalid count defaults to two per worker: 4 for these 2 workers.
         # As in the answered-question fixture, integration's subreaper is process-wide.
         import ctypes
         libc, subreaper = ctypes.CDLL(None), ctypes.c_int()
@@ -380,7 +381,7 @@ class DispatchTests(unittest.TestCase):
         for number, (count, age, setting, after, paused) in enumerate(
                 [(3, 1260, '3', '1200', True), (2, 1260, '3', '1200', False),
                  (3, 300, '3', '1200', False), (3, 1260, '0', '1200', False),
-                 (3, 300, '3', '60', True), (3, 1260, '-1', '1200', True),
+                 (3, 300, '3', '60', True), (3, 1260, '-1', '1200', False), (3, 1260, '', '1200', False),
                  (3, 300, '3', '-1', False)]):
             with self.subTest(count=count, age=age, setting=setting):
                 self.repo = self.root / f'backlog-{number}'
