@@ -13,6 +13,7 @@ import time
 import parallel_dispatch as dispatch
 import parallel_plan as plan
 import parallel_state as state
+from parallel_state import close_files  # the close's own file set; re-exported for callers
 import task_execution as execution
 from worktree_paths import canonical_root, worktree_path
 
@@ -703,12 +704,6 @@ def require_task_contract(items, expected, *, archived=False):
     if ((archived and mark.lower() != 'x') or body.strip() not in
             ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
         raise ValueError(CONTRACT_CHANGED)
-
-
-def close_files(repo):
-    """The files a close writes, repository-relative where they can be."""
-    archive = archive_path(repo)
-    return ['TODO.md', 'goals.json', archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
 
 
 def close(repo, owner_pid, task):
