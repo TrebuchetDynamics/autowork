@@ -8,7 +8,10 @@ FAKE_WORKER_SPEC: {"TASK": {"files": {"path": "text"}, "sleep": 0.5,
 (a worker that stopped on purpose). "report": false commits without a report.
 "escape" leaves a child in its own session that ignores SIGTERM, outlives this
 leader by that many seconds and then writes escaped.txt in the worktree. Start and end times are appended to
-FAKE_WORKER_LOG so tests can prove overlapping lifetimes.
+FAKE_WORKER_LOG so tests can prove overlapping lifetimes. Optional "ready" and
+"release" paths replace the sleep with a test-owned barrier after writing files:
+create ready, then wait for release. The test must release or stop the worker in
+bounded cleanup; unsignaled workers never finish merely because time elapsed.
 """
 import json
 import os
@@ -54,7 +57,13 @@ for name, text in spec.get('files', {}).items():
     path = worktree / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-time.sleep(spec.get('sleep', 0.5))
+if spec.get('ready'):
+    Path(spec['ready']).touch()
+if spec.get('release'):
+    while not Path(spec['release']).exists():
+        time.sleep(0.05)
+else:
+    time.sleep(spec.get('sleep', 0.5))
 commit = None
 if spec.get('commit', True) and spec.get('files'):
     subprocess.run(['git', '-C', str(worktree), 'add', '-A'], check=True)

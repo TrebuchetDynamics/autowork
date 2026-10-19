@@ -178,15 +178,20 @@ class AdversarialWorkerTests(unittest.TestCase):
         """Symphony reconcile-before-dispatch; AgwaB out-of-order completion: the later task
         finishes first. Both land exactly once and neither loses the other's change."""
         self.commit_todo(task('A', 'a.txt'), task('B', 'b.txt'))
-        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 2.0}, 'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
-        _, first = self.apply()
-        self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
-        deadline = time.monotonic() + 20
-        while self.slot('B')['state'] != 'reported':
-            self.assertLess(time.monotonic(), deadline)
-            self.wait(1)
-        self.assertEqual(self.slot('A')['state'], 'running')
-        self.assertEqual(self.land('B')['outcome'], 'INTEGRATED')
+        ready, release = self.root / 'a.ready', self.root / 'a.release'
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'ready': str(ready), 'release': str(release)},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        try:
+            _, first = self.apply()
+            self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
+            deadline = time.monotonic() + 20
+            while not ready.exists() or self.slot('B')['state'] != 'reported':
+                self.assertLess(time.monotonic(), deadline, 'A not ready or B not reported')
+                self.wait(1)
+            self.assertEqual(self.slot('A')['state'], 'running')
+            self.assertEqual(self.land('B')['outcome'], 'INTEGRATED')
+        finally:
+            release.touch()  # A cannot finish before B lands, even on a loaded host.
         self.wait_until_idle()
         self.assertEqual(self.land('A')['outcome'], 'INTEGRATED')
         merges = self.git('log', '--merges', '--format=%P').splitlines()
