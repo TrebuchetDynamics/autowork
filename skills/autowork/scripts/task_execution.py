@@ -892,7 +892,8 @@ def parallel_main(args):
             result = parallel_state.pause(Path(args.consumer).expanduser().resolve(), args.owner_pid)
         elif args.integrate:
             result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout,
-                                                  args.reviewer_version, args.base_ref)
+                                                  args.reviewer_version, args.base_ref,
+                                                  [t for t in (args.batch_order or '').split(',') if t])
         elif args.parallel_close:
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-close does not accept --run or --timeout')
@@ -987,6 +988,8 @@ def main(argv=None):
     parallel.add_argument('--parallel-merged', metavar='TASK',
                           help='Adopt a conflict-held commit whose worktree has merged canonical HEAD; '
                                'up to three times per attempt, each against a newer canonical revision.')
+    parallel.add_argument('--batch-order', metavar='TASKS',
+                          help='With --integrate: candidates verified together, in their order; they land first.')
     parallel.add_argument('--parallel-answer', metavar='TASK',
                           help='Answer a worker-reported blocker and resume its attempt in its own worktree.')
     parallel.add_argument('--answer-file', help='The answer to the blocker, for --parallel-answer.')
