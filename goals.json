@@ -1199,14 +1199,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-232-01",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker never stops for a full-check failure it did not cause: it commits, and the runner's gate judges it"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-234-d4",
       "section": "Now",
       "status": "open",
@@ -3008,6 +3000,14 @@
       "section": "Done",
       "status": "done",
       "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-232-01",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker never stops for a full-check failure it did not cause: it commits, and the runner's gate judges it"
     },
     {
       "depends_on": [],
