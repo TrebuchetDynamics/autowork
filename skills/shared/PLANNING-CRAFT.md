@@ -83,6 +83,9 @@ finished without anyone:
   it. Do not forbid "unrelated" fixes that the task's own checks depend on.
 - **Offline acceptance.** Acceptance is what the worker can check here. Devices,
   production, live services and human review go under live checks, not Acceptance.
+- **Independent tasks first.** Prefer tasks with disjoint `Touches` that can run
+  at once. For a dependency chain longer than three tasks, state why each link
+  depends on the last. Split a task that touches unrelated areas.
 - **Resources mean resources.** Use `Resources: exclusive` or `live` only for a
   real shared thing, such as a device, a port the code cannot move, or a live
   account. Never use them for caution: a task marked so runs alone and holds back
@@ -108,7 +111,8 @@ questions. Dispatch a fresh subagent (`delegate_task`, or the host's equivalent)
 > anything the tasks leave to the implementer, anything you could reasonably decide,
 > and wording nitpicks. Also list anything that would make you stop and wait for
 > someone: an input you could not get, a check you could not run here, or a
-> prerequisite the task forbids you to fix. If nothing important is left, say
+> prerequisite the task forbids you to fix. Also identify which saved tasks could
+> run in parallel and why the rest cannot. If nothing important is left, say
 > "nothing important left".
 
 Without a subagent tool, read the tasks as that builder yourself. Sort the questions:

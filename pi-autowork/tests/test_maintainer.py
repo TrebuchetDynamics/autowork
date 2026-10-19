@@ -289,6 +289,11 @@ class MaintainerTests(unittest.TestCase):
                 else:
                     self.assertTrue(error, case)
 
+    def test_prompt_prefers_independent_parts_when_unblocking_a_chain(self):
+        message = maintainer.prompt([('A', 'not runnable', 'not runnable: dependency chain')], '/repo', 'goals.py')
+        self.assertIn('re-sort to unblock a dependency chain, preferring to split off independent parts '
+                      'with disjoint Touches', message)
+
     def test_only_planning_files_may_change(self):
         self.assertTrue(maintainer.planning_only(['TODO.md', 'goals.json', 'docs/tasks/A.md']))
         self.assertFalse(maintainer.planning_only(['TODO.md', 'src/app.py']))
