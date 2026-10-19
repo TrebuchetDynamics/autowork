@@ -254,6 +254,32 @@ class DispatchTests(unittest.TestCase):
             dispatch.launch(['true'], self.repo, data, 1, prompt)
         self.assertEqual(self.git('status', '--porcelain'), '')
 
+    def test_two_repositories_first_workers_get_ports_no_one_else_holds(self):
+        """Every runner's slot 1 got 20100..20199, and two repositories' fixtures collided."""
+        def start(name):
+            data = self.common / 'slot-data' / name / 'attempt-1'
+            data.mkdir(parents=True)
+            (data / 'prompt.md').write_text('fixture')
+            out = data / 'port'
+            script = 'import os, sys, time; open(sys.argv[1], "w").write(os.environ["AUTOWORK_PORT_BASE"]); time.sleep(30)'
+            worker = dispatch.launch([sys.executable, '-c', script, str(out)], self.repo, data, 1, data / 'prompt.md')
+            self.addCleanup(dispatch.stop, worker, str(self.repo))
+            for _ in range(200):
+                if out.exists() and out.read_text():
+                    return worker, int(out.read_text())
+                time.sleep(.01)
+            self.fail('the worker did not report its port base')
+        first, a = start('P1')
+        _, b = start('P2')
+        self.assertNotEqual(a, b)
+        for base in (a, b):
+            self.assertEqual((base - 20100) % 100, 0)
+            self.assertLess(base + 99, 32768)
+        dispatch.stop(first, str(self.repo))
+        base, lease = dispatch.port_lease(1 + (a - 20100) // 100)
+        os.close(lease)
+        self.assertEqual(base, a)  # the stopped worker's block is free again
+
     def test_directory_containing_manifest_is_serial_beside_independent_work(self):
         """TOOLSET-160-df: it never runs beside other serial work, but no longer alone."""
         for tracked in (True, False):
