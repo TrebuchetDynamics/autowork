@@ -1571,10 +1571,7 @@ class Coordinator:
         worktree, Pi resolving the conflict, and the engine judges the merge from there
         (TOOLSET-157-cd): once per session revision, instead of reimplementing the task."""
         task, root = row.get('task'), row.get('worktree')
-        # The engine adopts a merged commit once: merging again only added a merge commit it then
-        # refused, on every session revision and every reload.
-        if (self.stop or row.get('worker_live') or row.get('merged_base') or not root or not Path(root).is_dir()
-                or dirty(root)):
+        if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or dirty(root):
             return False
         head = git(self.integ, 'rev-parse', 'HEAD')
         if not head or self.seen.get('resolved-' + task) == head:
