@@ -237,6 +237,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A set-aside request for a finished commit waiting to merge is carried out, keeping the commit
+  on a `-set-aside-N` branch, so the task runs fresh on current main: such requests were
+  refused, and stale commits that only conflicted stayed in the queue.
 - Review gate fixes in `worker.py`:
   - A full check that crashes beside a base that ran to its results is the candidate's own
     failure, not a host crash to provision for.
