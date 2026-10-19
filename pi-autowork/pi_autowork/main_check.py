@@ -72,17 +72,37 @@ def exit_code(state):
         return None
 
 
-# A tool that died rather than a test that failed (TOOLSET-237-35): a crashed check names no test.
-CRASH = re.compile(r'exited unexpectedly|Segmentation fault|core dumped|Bad state|panic:|Fatal error|'
-                   r'Killed|Aborted|out of memory', re.I)
+# Diagnostic selection only: a crashed check names no test (TOOLSET-237-35).
+CRASH = re.compile(r'exited unexpectedly|Segmentation fault|core dumped|panic:|Fatal error|Killed', re.I)
+WEAK_CRASH = re.compile(r'Bad state|Aborted|out of memory', re.I)
+LOG_LEVEL = re.compile(r'^(?:\[(?:trace|debug|info|warn(?:ing)?|error|fatal|critical)\]|'
+                       r'(?:trace|debug|info|warn(?:ing)?|error|fatal|critical):)', re.I)
+PYTHON_EXCEPTION = re.compile(r'^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?::|$)')
 
 
 def crash_line(log_text):
-    """What a check that crashed before reporting test results died of: the first line that
-    says so, else its last non-blank line."""
-    lines = [' '.join(l.split()) for l in log_text.splitlines() if l.strip()]
-    hit = next((l for l in lines if CRASH.search(l)), None)
-    return (hit or (lines[-1] if lines else 'no output'))[:300]
+    """Last highest-ranked crash message, excluding log-level lines; else last non-blank line.
+
+    Keep indentation until traceback exceptions are identified, so source and frame lines
+    cannot be mistaken for the final exception (TOOLSET-244-5d).
+    """
+    hit, last, highest = '', 'no output', 0
+    traceback = False
+    for raw in log_text.splitlines():
+        if not raw.strip():
+            continue
+        last = ' '.join(raw.split())
+        if LOG_LEVEL.match(raw.lstrip()):
+            continue
+        if raw.startswith('Traceback (most recent call last):'):
+            traceback = True
+        exception = traceback and bool(PYTHON_EXCEPTION.match(raw))
+        if exception:
+            traceback = False
+        rank = 2 if exception or CRASH.search(last) else 1 if WEAK_CRASH.search(last) else 0
+        if rank and rank >= highest:
+            hit, highest = last, rank
+    return (hit or last)[:300]
 
 
 def failures(log_text, limit=20):

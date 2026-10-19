@@ -158,7 +158,8 @@ class MainCheckTests(unittest.TestCase):
         from pi_autowork import maintainer
         from pi_autowork.coordinator import Coordinator
 
-        crash = ('Analyzing app...\nNo issues found! (ran in 24.5s)\n\n'
+        crash = ('[warn][wallpaper] Set wallpaper failed {"error":"Bad state: channel unavailable"}\n'
+                 'Analyzing app...\nNo issues found! (ran in 24.5s)\n\n'
                  'Oops; flutter has exited unexpectedly: "Bad state: No element".\n'
                  'A crash report has been written to /x/flutter_01.log\n')
         self.assertEqual(main_check.crash_line(crash), 'Oops; flutter has exited unexpectedly: "Bad state: No element".')
@@ -185,6 +186,27 @@ class MainCheckTests(unittest.TestCase):
             found = maintainer.triggers([], record)
             self.assertEqual([kind for _, kind, _ in found], ['check broken'])
             self.assertIn('Never add a repair task for test names', maintainer.prompt(found, '/repo', 'goals.py'))
+
+    def test_crash_line_ranks_terminal_messages_and_uses_the_last_match(self):
+        cases = [
+            ('Bad state: earlier\nSegmentation fault\nreport saved\n', 'Segmentation fault'),
+            ('Fatal error: first\nAborted\nreport saved\n', 'Fatal error: first'),
+            ('panic: first\nKilled\nreport saved\n', 'Killed'),
+            ('Aborted\nout of memory\nreport saved\n', 'out of memory'),
+            ('Bad state: earlier\nTraceback (most recent call last):\n'
+             '  File "check.py", line 1, in <module>\n'
+             '    raise RuntimeError("broken")\nRuntimeError: broken\nreport saved\n',
+             'RuntimeError: broken'),
+            ('Traceback (most recent call last):\n  run()\nKeyboardInterrupt\nreport saved\n',
+             'KeyboardInterrupt'),
+            ('example.Error: not a traceback\nAborted\nreport saved\n', 'Aborted'),
+        ]
+        for prefix in ('[warn][wallpaper]', '[info]', 'WARNING:'):
+            cases.append((f'{prefix} Fatal error: Bad state\nlast words\n\n', 'last words'))
+            cases.append((f'core dumped\n{prefix} Killed\nreport saved\n', 'core dumped'))
+        for log, expected in cases:
+            with self.subTest(log=log):
+                self.assertEqual(main_check.crash_line(log), expected)
 
     def test_alive_rejects_zombies_and_reused_pids(self):
         pid = os.fork()
