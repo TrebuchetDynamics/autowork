@@ -160,7 +160,8 @@ class RecoveryTests(DirectExecutionTests):
     def test_archive_satisfies_todo_only_dependency(self):
         original = self.todo.read_text()
         self.todo.write_text('# Work\n## Now\n' + original.split('## Next\n')[1])
-        (self.repo / 'TODO.archive.md').write_text(original.split('## Next')[0].replace('[ ] T1', '[x] T1'))
+        (self.repo / 'TODO.archive.md').write_text(original.split('## Next')[0].replace(
+            '[ ] T1', '[x] T1').replace('Status: open', 'Status: done'))
         self.assertEqual(self.call('--tasks', 'T2')[1]['outcome'], 'READY')
 
     def test_actual_git_worktrees_share_writer_lease(self):

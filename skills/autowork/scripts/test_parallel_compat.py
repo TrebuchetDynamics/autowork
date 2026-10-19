@@ -97,9 +97,9 @@ class ParallelCompatibilityTests(unittest.TestCase):
     def test_sequential_output_is_byte_identical_to_pre_parallel_release(self):
         self.assert_golden(golden({'state': 'todo_only'}, 'T2: unresolved dependency T1'))
 
-    def test_ledger_output_is_byte_identical_to_pre_parallel_release(self):
+    def test_ledger_output_keeps_admission_with_an_actionable_dependency_reason(self):
         (self.repo / 'goals.json').write_text(json.dumps(LEDGER))
-        self.assert_golden(golden(UNMIGRATED, 'T2: ledger dependency or disposition holds execution'))
+        self.assert_golden(golden(UNMIGRATED, 'T2: ledger: dependency T1 is open in goals.json'))
 
     def assert_fallback(self, p, reason):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)

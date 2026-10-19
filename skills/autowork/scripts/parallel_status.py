@@ -127,7 +127,9 @@ def _pending_tasks(repo, known=()):
         if len(items) != 1:
             raise ValueError('duplicate TODO task IDs in parallel status')
         body, mark, section = items[0]
-        if task in done or section not in ('Now', 'Next'):
+        # A ledger-only close with an unchecked live entry is a disagreement,
+        # not a reason to hide the entry from the maintainer.
+        if mark.lower() == 'x' or section not in ('Now', 'Next'):
             continue
         fields = execution.contract_fields(body)
         contract = dispatch.authorization_contract(dict(id=task, fields=fields, contract=body))
@@ -140,12 +142,16 @@ def _pending_tasks(repo, known=()):
         reason = ('sequential task in progress' if running else 'dependency: ' + ', '.join(unresolved)
                   if unresolved else 'awaiting dispatch')
         row = dict(id=task, reason=reason, blocked_by=[task] if running else unresolved)
-        if reason == 'awaiting dispatch' and inputs is not None:
-            # Same rules as named selection, evaluated once per visible row.
-            why = execution.contract_reason(repo, task, inputs, lambda: selection_done)
+        if inputs is not None:
+            # Ordinary dependencies still wait for their workers; only a ledger
+            # disagreement overrides that wait with a maintainer trigger.
+            why = (execution.contract_reason(repo, task, inputs, lambda: selection_done)
+                   if reason == 'awaiting dispatch' else
+                   execution.ledger_reason(repo, task, inputs, fields, section, include_dependencies=False)
+                   if inputs['ledger'] else None)
             if why:
                 row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
-            elif fields.get('Kind', '').strip().lower() == 'plan':
+            elif reason == 'awaiting dispatch' and fields.get('Kind', '').strip().lower() == 'plan':
                 row['reason'] = 'ready for planning'
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)

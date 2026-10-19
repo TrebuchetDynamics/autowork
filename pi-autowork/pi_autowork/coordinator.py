@@ -1828,14 +1828,22 @@ class Coordinator:
         main = {} if ledger_edits_only else main_check.read(self.state)
         found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
+        goals, dispatch = touches_inference.modules(self.toolset)
+        closures = maintainer.archive_closures(self.integ, dispatch.execution) \
+            if not main_only and not ledger_edits_only and not self.ledger_errors else []
+        found = closures + found
         before = {}
         if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
-            goals, dispatch = touches_inference.modules(self.toolset)
             before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
         reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
+        found += maintainer.archive_rejections(self.state, closures, entries=before, reasons=reasons)
         found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
+        # Mechanical replay is its own model-free batch in the same transaction.
+        # Failed replay receipts are filtered above, so other repairs still proceed.
+        replay = [item for item in found if item[1] == 'archive close']
+        found = replay or found
         trigger_key = maintainer.key(found)
         rolling = any(kind == 'plan' for _, kind, _ in found)
         plan_before = maintainer.plan_entries(self.integ, goals, dispatch.execution.archive_file(Path(self.integ))) \
@@ -1848,12 +1856,18 @@ class Coordinator:
         outcome, changed = 'no change', []
         try:
             base = git(scratch, 'rev-parse', 'HEAD')
-            message = maintainer.prompt(found, self.repo, self.goals)
-            if rolling:
-                message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
-            ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
-                                   message,
-                                   f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+            if replay:
+                ok, text = maintainer.replay_archive(scratch, names, dispatch.execution, self.goals_cli)
+                if ok:
+                    ok = git_ok(scratch, 'add', '-A') and git_ok(scratch, 'commit', '-qm',
+                        'docs(tasks): replay archived completion of ' + ', '.join(names))
+            else:
+                message = maintainer.prompt(found, self.repo, self.goals)
+                if rolling:
+                    message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
+                ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
+                                       message,
+                                       f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             head = git(scratch, 'rev-parse', 'HEAD')
             paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
             diff = git(scratch, 'diff', base, head) or '' if paths else ''
@@ -1870,13 +1884,19 @@ class Coordinator:
                     plan_error = 'planning must finish successfully in one commit'
             if rolling and plan_error:
                 outcome = 'planning failed: ' + plan_error
+            elif replay and not ok:
+                outcome = maintainer.REPLAY_REFUSED + text.strip()
             elif not paths:
                 outcome = 'no change' if ok else 'failed'
-            elif not maintainer.planning_only(paths) or dirty(scratch):
+            elif (not (maintainer.planning_only(paths) or (replay and all(
+                    maintainer.planning_only([p]) or
+                    p == dispatch.execution.archive_file(Path(scratch)).relative_to(scratch).as_posix()
+                    for p in paths))) or dirty(scratch)):
                 outcome = 'refused: it changed more than planning files'
-            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and subprocess.run(
-                    [sys.executable, str(self.goals), 'validate', scratch], capture_output=True).returncode:
-                outcome = 'refused: goals.py validate failed'
+            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and (
+                    validation := self.goals_cli('validate', scratch)).returncode:
+                outcome = (maintainer.REPLAY_REFUSED + (validation.stdout + validation.stderr).strip()
+                           if replay else 'refused: goals.py validate failed')
             elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
                 outcome = 'merged'
                 self.settled = self.land_soon = True
@@ -1886,9 +1906,9 @@ class Coordinator:
         finally:
             self.drop_scratch(scratch)
         after = before
-        if outcome == 'merged' and before:
+        if outcome == 'merged' and (before or replay):
             after = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
-            changed = [task for task in names if before.get(task) != after.get(task)
+            changed = names if replay else [task for task in names if before.get(task) != after.get(task)
                        or (task in ('MAIN', 'LEDGER') and task in changed)]
             self.snapshot = None  # waiting reasons must be reread against the repaired entries
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
@@ -1902,7 +1922,8 @@ class Coordinator:
                 LOG.say('The engine needs attention: invalid goals.json: ' + '; '.join(self.ledger_errors)
                         + f'; {maintainer.ROLE} {outcome}; see BLOCKERS.md')
         proposals = [item for item in maintainer.triggers(rows, limit=None) if item[1] == 'ledger edit']
-        return outcome == 'merged' or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons))
+        return (outcome == 'merged' or (bool(replay) and outcome.startswith(maintainer.REPLAY_REFUSED))
+                or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons)))
 
     def environment_hold(self, task):
         """What a review of the held commit could not run without, or None (TOOLSET-173-94)."""

@@ -137,6 +137,78 @@ class RunnableTests(unittest.TestCase):
                     repo.joinpath('TODO.md').write_text(todo + '  Live authorization: owner approved this run\n')
                     self.assertFalse(any(r['kind'] == 'outside' for r in status.snapshot(repo, now=3)['roots']))
 
+    def test_ledger_holds_name_the_task_and_disagreement(self):
+        import json
+        import parallel_status
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            repo.joinpath('TODO.md').write_text('''## Now
+- [ ] B — dependent
+  Scope: b.py
+  Acceptance: works
+  Checks: test b
+  Dependencies: A.
+  Status: open
+''')
+            ledger = {
+                'version': 1,
+                'goals': [{'id': 'G', 'title': 'fixture', 'source': 'TODO.md',
+                           'status': 'partial', 'tasks': ['A', 'B', 'SPARE'], 'priority': 1, 'depends_on': []}],
+                'tasks': [{'id': 'A', 'title': 'prerequisite', 'goal': 'G', 'status': 'open',
+                           'section': 'Next', 'depends_on': []},
+                          {'id': 'B', 'title': 'dependent', 'goal': 'G', 'status': 'open',
+                           'section': 'Now', 'depends_on': ['A']},
+                          {'id': 'SPARE', 'title': 'remaining proof', 'goal': 'G', 'status': 'open',
+                           'section': 'Needs decision', 'depends_on': []}]}
+            for case, want in (
+                    ('archived', 'ledger: A is open in goals.json but archived as done'),
+                    ('outside', 'ledger: dependency A is open in goals.json in Needs decision (outside Now/Next)'),
+                    ('missing', 'ledger: B is missing from goals.json'),
+                    ('status', 'ledger: B is done in goals.json but open in TODO.md; files disagree'),
+                    ('section', 'ledger: B is in Next in goals.json but Now in TODO.md; files disagree'),
+                    ('goal', 'ledger: goal dependency H is partial in goals.json')):
+                with self.subTest(case=case):
+                    data = deepcopy(ledger)
+                    archive = repo / 'TODO.archive.md'
+                    archive.write_text('## Done\n- [x] A — prerequisite\n  Status: done\n')
+                    if case == 'outside':
+                        archive.unlink()
+                        data['tasks'][0]['section'] = 'Needs decision'
+                    elif case == 'missing':
+                        data['tasks'].pop(1)
+                        data['goals'][0]['tasks'] = ['A', 'SPARE']
+                    elif case in ('status', 'section', 'goal'):
+                        data['tasks'][0]['status'] = 'done'
+                        if case == 'status':
+                            data['tasks'][1]['status'] = 'done'
+                        elif case == 'section':
+                            data['tasks'][1]['section'] = 'Next'
+                        else:
+                            data['goals'][0]['depends_on'] = ['H']
+                            data['goals'].append(dict(id='H', title='prerequisite goal', source='TODO.md',
+                                status='partial', tasks=['H1'], priority=2, depends_on=[]))
+                            data['tasks'].append(dict(id='H1', title='proof', goal='H', status='open',
+                                section='Needs decision', depends_on=[]))
+                    repo.joinpath('goals.json').write_text(json.dumps(data))
+                    with self.assertRaises(task_execution.NoEligibleTask) as caught:
+                        task_execution.select(repo, 'B', None)
+                    self.assertEqual(str(caught.exception), 'B: ' + want)
+                    self.assertEqual(parallel_status.pending_tasks(repo)[0]['reason'], 'not runnable: ' + want)
+            # An ordinary unmet dependency is not a docs-repair or planning trigger.
+            repo.joinpath('goals.json').write_text(json.dumps(ledger))
+            repo.joinpath('TODO.archive.md').write_text('')
+            todo = repo / 'TODO.md'
+            todo.write_text(todo.read_text() + '  Kind: plan\n')
+            self.assertEqual(parallel_status.pending_tasks(repo)[0]['reason'], 'dependency: A')
+            repo.joinpath('goals.json').unlink()
+            for tail in ('### Evidence — latest acceptance\n  Status: open\n',
+                         '### Acceptance — remaining criteria\n  - [ ] device proof\n'):
+                with self.subTest(ambiguous_archive=tail):
+                    repo.joinpath('TODO.archive.md').write_text(
+                        '## Done\n- [x] A — prerequisite\n  Status: done\n' + tail)
+                    with self.assertRaises(task_execution.NoEligibleTask):
+                        task_execution.select(repo, 'B', None)
+
     def test_ledger_only_in_progress_is_not_dispatched_by_parallel_selector(self):
         import json
         from parallel_plan import plan
