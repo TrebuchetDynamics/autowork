@@ -1121,22 +1121,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-226-d3",
-      "section": "Now",
-      "status": "open",
-      "title": "Dispatch pauses while finished commits wait to merge, and resumes when the queue drains"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-228-0c",
-      "section": "Now",
-      "status": "open",
-      "title": "Full checks from every runner on the host share a few check slots"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-229-d0",
       "section": "Now",
       "status": "open",
@@ -2979,10 +2963,26 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-226-d3",
+      "section": "Done",
+      "status": "done",
+      "title": "Dispatch pauses while finished commits wait to merge, and resumes when the queue drains"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-227-a8",
       "section": "Done",
       "status": "done",
       "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-228-0c",
+      "section": "Done",
+      "status": "done",
+      "title": "Full checks from every runner on the host share a few check slots"
     },
     {
       "depends_on": [],

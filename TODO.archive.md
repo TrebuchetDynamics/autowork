@@ -4396,3 +4396,51 @@ Source section: Now
 - Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits maintainer.py and coordinator.py.
 - Exclusions: No code worker gains write access to coordinator files; no new `goals.json` schema; no planning without a `Kind: plan` entry (the maintainer's existing triggers are unchanged).
 - Planner's call: as recorded in the [design](docs/plans/2026-10-18-rolling-planning.md#rolling-planning-design): the maintainer runs planning tasks, the chain is a dependency, and the limits (10 rounds, 8 tasks a round) are defaults.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-226-d3"></a>
+
+### TOOLSET-226-d3 — Dispatch pauses while finished commits wait to merge, and resumes when the queue drains
+
+- [x] TOOLSET-226-d3 — Dispatch pauses while finished commits wait to merge, and resumes when the queue drains
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [admission](skills/autowork/scripts/parallel_dispatch.py) (`admit`, `dispatch_locked`, `OCCUPYING`, `drain_after`), [wait labels](pi-autowork/pi_autowork/health.py) (`WAIT_KINDS`), [integration writer guard](skills/autowork/scripts/parallel_integrate.py) (`WritersBusy`).
+- Evidence (2026-10-18, this repository): 8 verified commits waited to merge for over half an hour while the runner kept starting workers. Each integration attempt stopped on `waiting to integrate until another session leaves the main checkout`, the "other session" being a test process of one of the runner's own workers (TOOLSET-165-f7 and TOOLSET-195-ee fix that attribution), and with 4 workers testing at once the quiet windows integration needs were rare. The owner lowered the runner to 1 worker by hand and asked for "a more sustainable future proof solution".
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py, docs/reference.md, CHANGELOG.md
+- Scope: (1) When at least `PI_AUTOWORK_MERGE_BACKLOG` verified commits (slots `reported` or `integrating`, default 3) are waiting and the oldest has waited `PI_AUTOWORK_MERGE_BACKLOG_AFTER` seconds (default 1200), admission starts no fresh task; restartable and interrupted work and running workers continue. (2) It resumes on its own once the waiting commits fall below the threshold; no setting is changed and no person is needed. (3) Waiting tasks show `wait for N finished commits to merge` (a wait, not a question), and the runner logs the pause and the resume once each, naming what holds integration if the integration step reported it.
+- Acceptance: In fixtures, 3 commits waiting 21 minutes stop fresh dispatch while a restartable task still resumes; 2 waiting, or 3 waiting 5 minutes, dispatch as today; after one integrates below the threshold, the next cycle dispatches again. The pause appears in the wait summary with that label and in the log once, and `PI_AUTOWORK_MERGE_BACKLOG=0` turns it off.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_dispatch.py pi-autowork/tests/test_health.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how integration attributes writers (TOOLSET-165-f7, TOOLSET-195-ee) or to the worker count setting; nothing is stopped or killed.
+- Planner's call: back-pressure in admission is the general form of the owner's manual fix: work that is finished but unmerged is the costliest to keep waiting, so the pool stops adding more until it merges. The thresholds are defaults; 0 turns the pause off.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-228-0c"></a>
+
+### TOOLSET-228-0c — Full checks from every runner on the host share a few check slots
+
+- [x] TOOLSET-228-0c — Full checks from every runner on the host share a few check slots
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [check runner](scripts/check.py) (`default_jobs`, load-adaptive jobs), [main check](pi-autowork/pi_autowork/main_check.py), [full-suite gate](pi-autowork/pi_autowork/worker.py) (`run_suite`), [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`).
+- Evidence (2026-10-18, this repository, the last 48 hours: worker runs took a median 33 minutes (p75 51); in two logged attempts test commands took 38 of 44 and 26 of 32 minutes; a full `scripts/check.py` took 7 to 10 minutes at a host load average of 24 to 27. One candidate's full check ran 4 to 5 times: 2 or 3 times by its worker, once by the full-suite gate on the merged tree, and again by the model reviewer, which polled its own background run every 90 s. 15 of 26 integrations ended held and 15 of 25 check receipts failed or timed out, many on the environment. Eight runners on one host each start main checks, gates and worker checks independently, so several full suites compete for the same cores and each runs slower and times out more.)
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/main_check.py, pi-autowork/tests/test_main_check.py, pi-autowork/tests/test_worker_tmp.py, docs/reference.md, CHANGELOG.md
+- Scope: (1) A full check the runner starts (main check, merged-tree gate, base run) first takes one of `PI_AUTOWORK_CHECK_SLOTS` host-wide slots (default: CPU count divided by 8, at least 1), held as an `flock` on a file under the user's runtime directory shared by every runner. (2) Its timeout counts from when it got the slot; time spent waiting is reported (`waiting for a check slot, N ahead`) and is not a failure. (3) A slot is released when the check ends or its process dies (the lock goes with the file descriptor), so a killed check never holds one.
+- Acceptance: In fixtures with 1 slot, a second full check waits until the first ends, then runs with its full timeout; a killed holder frees the slot; waiting shows in status. With the setting at 0 the slots are off and checks start at once as today.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_main_check.py pi-autowork/tests/test_worker_tmp.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator. Coordinates with TOOLSET-118-68 (worker and test budgets in the resource gate), which it does not replace.
+- Exclusions: No slot for a worker's focused checks; no change to `scripts/check.py`'s own job count.
+- Planner's call: a few full suites at full speed finish sooner and fail less than many at once on a saturated host; an `flock` slot needs no daemon and frees itself when its holder dies.
