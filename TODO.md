@@ -58,6 +58,102 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-269-f2 — A runner never commits or publishes uncommitted changes it did not make (GitHub #3)
+
+- [ ] TOOLSET-269-f2 — A runner never commits or publishes uncommitted changes it did not make (GitHub #3)
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #3](https://github.com/TrebuchetDynamics/autowork/issues/3) (recurrence of #2); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the main-checkout sweep that commits `chore: uncommitted work in the main checkout (pi-autowork)` and logs `Committed uncommitted changes in <repo> (...) so the session can merge`).
+- Evidence (2026-10-19, one fleet runner): within two minutes of start the runner committed the owner's unfinished work on 9 files (one a deletion) that no task's `Touches:` named, merged its session and pushed main. Its own status had just said the final merge stops if it would touch uncommitted changes. The session's only change was one file.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, docs/reference.md
+- Scope: (1) The runner never stages or commits a main-checkout path outside the planning files (`TODO.md`, `TODO.archive.md`, `goals.json`, `BLOCKERS.md`), whatever its age or quietness. (2) When the session merge would touch such a dirty path, the merge waits and the status names the paths, as the status note already promises; when it would not, the merge proceeds and leaves them uncommitted. (3) The owner-planning sweep of quiet planning files stays as it is.
+- Acceptance: In fixtures: a dirty, quiet non-planning file the session does not change stays uncommitted while the session merges and pushes; a dirty file the session does change stops the merge with that path named and no commit; a quiet `TODO.md` edit is still committed as owner planning.
+- Checks: python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to worker-worktree commits (`Left uncommitted in the session worktree`): those are the runner's own.
+- Planner's call (2026-10-19): Now, first. Publishing unreviewed owner work is the one failure that damages the repository rather than throughput. The issue's expected behaviour decides the policy: only planning files keep the quiet-edit sweep; everything else belongs to whoever wrote it.
+
+### TOOLSET-270-a9 — Pushing is opt-in, and autowork start applies or refuses the settings it is given (GitHub #4)
+
+- [ ] TOOLSET-270-a9 — Pushing is opt-in, and autowork start applies or refuses the settings it is given (GitHub #4)
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #4](https://github.com/TrebuchetDynamics/autowork/issues/4); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`os.environ.get('PI_AUTOWORK_PUSH', '1')`); [service](pi-autowork/pi_autowork/service.py) (`ENV_NAMES`, env file writing); [command](pi-autowork/pi_autowork/command.py) (`cmd_start`).
+- Evidence (2026-10-19, one fleet runner): `PI_AUTOWORK_PUSH=0 autowork start .` started the existing unit without touching its env file; the runner came up with pushing on and pushed three times.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/service.py, pi-autowork/pi_autowork/command.py, tests/test_pi_autowork.py, docs/reference.md
+- Scope: (1) `PI_AUTOWORK_PUSH` defaults to off; a runner pushes only with `PI_AUTOWORK_PUSH=1`. (2) `autowork start` with any `ENV_NAMES` variable set in its environment writes it into an existing env file (keeping the other lines) before starting, and says which settings it changed. (3) `autowork status` shows `Push: on` or `Push: off`. (4) Existing env files are not migrated: a runner that relied on the default stops pushing until its owner sets `=1`; the CHANGELOG says so.
+- Acceptance: In fixtures: a runner with no push setting merges into main without pushing; with `=1` it pushes; `PI_AUTOWORK_PUSH=0 autowork start` on an existing env file leaves `PI_AUTOWORK_PUSH=0` in it and keeps its other lines; status shows the push state.
+- Checks: python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No interactive prompt in `autowork start`; it must stay scriptable.
+- Planner's call (2026-10-19): Now, after 269-f2. A push is publication and needs its own authorization; a clean cut with no compatibility default.
+
+### TOOLSET-271-d6 — A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)
+
+- [ ] TOOLSET-271-d6 — A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #7](https://github.com/TrebuchetDynamics/autowork/issues/7); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`MERGE_PROMPT`: runs `goals.py merge-finalize` whenever goals.json exists, and opens with the git-commit-push skill); [integration](skills/autowork/scripts/parallel_integrate.py) (`verify_scope` holds `changed files the coordinator owns`; the `touches_held` re-offer skips coordinator files).
+- Evidence (2026-10-19, one fleet runner): a task whose conflicts were only in two source files was merged by Pi, which ran `merge-finalize` and committed a normalized `TODO.md`/`goals.json`. The batch check passed, then `verify_scope` held it for changing coordinator files, recovery never re-offered it, and five dependent tasks stayed blocked.
+- Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py
+- Scope: (1) `MERGE_PROMPT` asks for `merge-finalize` only when a planning file is among the conflicted files, and no longer loads the git-commit-push skill. (2) After a worker-side merge, before its commit is checked, the runner restores `TODO.md`, `TODO.archive.md` and `goals.json` from the merged base when the task's own commit did not change them. (3) A scope hold whose outside paths are only coordinator files whose content matches the base is dropped and the commit re-offered once.
+- Acceptance: In fixtures: a merge conflicting only in a source file, where the agent also rewrites `goals.json`, integrates with the base's planning files; a conflict in `TODO.md` still runs `merge-finalize`; an existing hold for coordinator files equal to the base is re-offered and lands.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No relaxing of `verify_scope` for coordinator files a task's own commit changed.
+- Planner's call (2026-10-19): Now. The runner's own procedure must never fail a correct task; any one of the three changes breaks the loop, and all three together keep it broken.
+
+### TOOLSET-272-1c — A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)
+
+- [ ] TOOLSET-272-1c — A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #8](https://github.com/TrebuchetDynamics/autowork/issues/8); [state](skills/autowork/scripts/parallel_state.py) (`rescopable`, `rescope`, `rescoped_contract`); [integration](skills/autowork/scripts/parallel_integrate.py) (`verify_scope` reads `dispatched_contract`, the attempt's original `contract.txt`).
+- Evidence (2026-10-19, one fleet runner): a task held for changing `package.json` was rescoped by the owner to declare it. The rescope was accepted, then integration checked the original contract, held it again for the same file and never offered it again; the owner had to cherry-pick the commit by hand.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_state.py
+- Scope: (1) When a slot was rescoped by a Touches-only answer that names the protected path, protected-file admission reads `rescoped_contract`, and the commit integrates serially (nothing else integrating beside it). (2) A rescoped slot that is held again for a path its rescope did not name becomes one owner question that says a rerun or a contract change is needed; it is never left held silently.
+- Acceptance: In fixtures: a commit changing `package.json`, held, then rescoped with `package.json` in `Touches:`, integrates on the next cycle and alone; a rescope that misses the held path gives one question naming that path.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_state.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No admission change for slots that were not rescoped.
+- Planner's call (2026-10-19): Now. An answer the runner accepts must take effect; same shape as 271-d6, so whichever lands second reuses the other's re-offer path.
+
+### TOOLSET-273-e0 — Planning merge drivers survive a toolset self-update (GitHub #5)
+
+- [ ] TOOLSET-273-e0 — Planning merge drivers survive a toolset self-update (GitHub #5)
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #5](https://github.com/TrebuchetDynamics/autowork/issues/5); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`setup_planning_merges` writes `merge.docs-sync-*.driver` with the release directory's path); [release](pi-autowork/pi_autowork/release.py) (`prune` removes old releases).
+- Evidence (2026-10-19, one fleet runner): after a self-update pruned the old release, the repository's `.git/config` drivers still named its `goals.py`; any planning-file merge until the next registration used a driver that no longer existed.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/release.py, pi-autowork/tests/test_release.py, tests/test_pi_autowork.py
+- Scope: (1) The registered driver command names a stable entry point that outlives releases: the installed toolset package's `goals.py`, or a shim that resolves the current release. (2) A runner re-registers on start when the registered command differs. (3) `prune` never removes a release that a registered driver still names.
+- Acceptance: In fixtures: drivers registered on release A still run after an update to B prunes A; a stale registration from before this change is rewritten on the next start.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_release.py; python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No portable `.gitattributes` change; only the local Git config command moves.
+- Planner's call (2026-10-19): Now. Small, and it removes a way for an update to break merges done outside the runner.
+
+### TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)
+
+- [ ] TOOLSET-274-f0 — An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: [GitHub #6](https://github.com/TrebuchetDynamics/autowork/issues/6); [cli](pi-autowork/pi_autowork/cli.py) (`die(2, 'Not inside a Git repository')`); [service](pi-autowork/pi_autowork/service.py) (`RestartPreventExitStatus=1 3 4`).
+- Evidence (2026-10-19, one fleet runner): a consumer test run from a session worktree's hook inherited `GIT_DIR`/`GIT_WORK_TREE` and set `core.bare=true` on the real repository; the runner exited 2 and systemd restarted it every 60 s, 23 times and counting.
+- Touches: pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/service.py, tests/test_pi_autowork.py
+- Scope: (1) A repository that is not a usable work tree (missing, bare, or not a Git repository) exits 4, "needs attention", with the reason in the log and status. (2) Between steps, before any merge or push, the runner checks `core.bare` and the work tree, and stops the same way when they changed. (3) Checks, hooks and commits the runner starts run with `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` removed from their environment.
+- Acceptance: In fixtures: a runner started on a bare repository exits 4 and its unit does not restart; setting `core.bare=true` mid-session stops it before the next merge; a check command sees no `GIT_DIR` from the runner.
+- Checks: python3 -m unittest tests.test_pi_autowork; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No repair of the repository by the runner; a person decides.
+- Planner's call (2026-10-19): Now. A deliberate stop is the honest state, and scrubbing the inherited Git variables closes the way the repository got damaged.
+
 ### TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
 
 - [ ] TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
@@ -1543,6 +1639,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Read-only repository chat status: offline gate and source review pass ([TOOLSET-268-7a](TODO.archive.md#toolset-268-7a)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0 |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | Read-only repository chat status: offline gate and source review pass ([TOOLSET-268-7a](TODO.archive.md#toolset-268-7a)) | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-225-75, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-242-d5, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-252-4c, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd, TOOLSET-259-ca, TOOLSET-260-ae, TOOLSET-261-15, TOOLSET-262-13, TOOLSET-263-94, TOOLSET-264-39, TOOLSET-265-16, TOOLSET-266-7a, TOOLSET-267-a0, TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-272-1c, TOOLSET-273-e0, TOOLSET-274-f0 |
 
 <!-- goals:coverage:end -->
