@@ -248,6 +248,22 @@ claim of a tagged release, completed installation or live workflow qualification
     one removed, and a batch that fails partway stops the reviews it started.
   - The reviewer's last verdict line counts, and a bare `fail environment` is still an
     environment fail.
+  - A directory the full check timed out is never excused by the base timing out too. The check
+    reports a timeout as a failure, so nothing stayed new to reject and the gate passed a tree
+    whose full check never ran that directory.
+  - The base suite runs in a short directory on disk, not under the state directory, where the
+    worktree path reached 87 characters before the suite added its own, past the 108-byte
+    AF_UNIX limit that already moved review scratch to `/var/tmp`.
+  - A base revision that cannot be resolved, or a base worktree that cannot be created, holds
+    the candidate with a reason instead of ending the review in a traceback.
+  - A verdict cached per tree leaves the review a log where its note points: the note names the
+    task's log, so a second task that hit the cache was told to read a file nobody had written.
+- `PI_AUTOWORK_TASK_TIMEOUT` and `PI_AUTOWORK_VERIFY_TIMEOUT` a settings file sets to nothing
+  keep their documented defaults: the reader returned `''`, so every worker and review ran
+  `timeout ''`, and `float('')` raised inside the run loop's `review_limit`.
+- The check-slot pool is derived from the user, not `XDG_RUNTIME_DIR`: a cron job or a systemd
+  unit without it derived a second pool, with its own `PI_AUTOWORK_CHECK_SLOTS`, so the
+  swap-safe limit was never host-wide. `PI_AUTOWORK_CHECK_ROOT` names the pool explicitly.
 - The runner's test fixtures keep their workers' and reviews' scratch in a short directory each
   fixture owns and removes: every test left `/var/tmp/aw-*` directories that nothing could
   reclaim once its repository was gone, about 1.2 GB an hour on a busy host.

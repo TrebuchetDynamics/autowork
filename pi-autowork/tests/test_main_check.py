@@ -39,6 +39,21 @@ class MainCheckTests(unittest.TestCase):
         self.assertEqual(main_check.failures('FAILED tests/test_a.py::test_b - x\n    --- FAIL: TestC (0.1s)\n'),
                          ['tests/test_a.py::test_b', 'TestC'])
 
+    def test_the_check_slot_pool_does_not_follow_the_environment(self):
+        """One host-wide pool: a cron job or a systemd unit without XDG_RUNTIME_DIR derived a
+        second pool, with its own PI_AUTOWORK_CHECK_SLOTS, so the limit was never host-wide."""
+        uid = os.getuid()
+        runtime = Path(f'/run/user/{uid}')
+        expected = (runtime if runtime.is_dir() else Path('/var/tmp')) / f'autowork-checks-{uid}'
+        self.assertEqual(main_check.slot_home(), expected)
+        with tempfile.TemporaryDirectory() as elsewhere, patch.dict(
+                os.environ, XDG_RUNTIME_DIR=str(Path(elsewhere) / 'stale'), PI_AUTOWORK_CHECK_ROOT=elsewhere):
+            self.assertEqual(main_check.slot_home(), expected, 'the environment cannot move the pool')
+            self.assertEqual(main_check.slot_root(), Path(elsewhere), 'the override names it')
+        with tempfile.TemporaryDirectory() as loose, patch.dict(os.environ, PI_AUTOWORK_CHECK_ROOT=loose):
+            os.chmod(loose, 0o777)
+            self.assertRaises(ValueError, main_check.slot_root)  # the pool stays private
+
     def test_reruns_are_alone_in_their_directory_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -271,7 +286,7 @@ class MainCheckTests(unittest.TestCase):
         from pi_autowork.coordinator import Coordinator
 
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,
-                XDG_RUNTIME_DIR=tmp, PI_AUTOWORK_CHECK_SLOTS='1',
+                PI_AUTOWORK_CHECK_ROOT=tmp, PI_AUTOWORK_CHECK_SLOTS='1',
                 PI_AUTOWORK_MAIN_CHECK='sleep .1; touch ran', PI_AUTOWORK_VALIDATE_TIMEOUT='.5'):
             root = Path(tmp)
             runner = Coordinator.__new__(Coordinator)

@@ -169,8 +169,10 @@ class Coordinator:
         env = os.environ
         self.interval = cfg['interval']
         self.max_cycles = cfg['max_cycles']
-        self.verify_timeout = env.get('PI_AUTOWORK_VERIFY_TIMEOUT', '1800')
-        self.task_timeout = env.get('PI_AUTOWORK_TASK_TIMEOUT', '5400')
+        # `or`, not a default: a service config that sets the name to nothing must keep the
+        # documented limit. `get(name, default)` returns '', and float('') raised in review_limit.
+        self.verify_timeout = env.get('PI_AUTOWORK_VERIFY_TIMEOUT') or '1800'
+        self.task_timeout = env.get('PI_AUTOWORK_TASK_TIMEOUT') or '5400'
         self.max_failures = int(env.get('PI_AUTOWORK_MAX_FAILURES', '3'))
         self.failure_pause = int(env.get('PI_AUTOWORK_FAILURE_PAUSE', '3600'))
         self.claim_idle = cfg['claim_idle']
@@ -313,7 +315,11 @@ class Coordinator:
         except (OSError, ValueError):
             recent = []
         longest = max([float(x) for x in recent if isinstance(x, (int, float))] or [0])
-        return int(min(self.REVIEW_CAP, max(float(self.verify_timeout), 2 * longest)))
+        try:
+            given = float(self.verify_timeout)
+        except (TypeError, ValueError):  # a misconfigured limit must not stop the run loop
+            given = 1800.0
+        return int(min(self.REVIEW_CAP, max(given, 2 * longest)))
 
     def note_review_time(self, seconds):
         path = self.state / 'review_times.json'
