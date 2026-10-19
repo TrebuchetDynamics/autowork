@@ -198,23 +198,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to when main counts as red.
 - Planner's call: the runner owns the main check, so it hands over its own evidence; a worker should never have to ask for a log the runner holds (owner, 2026-10-18: autowork "must be able to fix these issues easily").
 
-### TOOLSET-241-a1 — A task that fails the same way within minutes stops and asks, instead of rerunning
-
-- [ ] TOOLSET-241-a1 — A task that fails the same way within minutes stops and asks, instead of rerunning
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [set-aside and rerun on an entry change](skills/autowork/scripts/parallel_integrate.py) (`set_aside`, `_retire`, `entry_changed`), [held-task questions](pi-autowork/pi_autowork/questions.py) (`exhausted`, `build`), [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (`triggers`).
-- Evidence (2026-10-17 to 2026-10-18, a fleet runner): one task was set aside and run fresh ten times; each attempt held within a minute with the same blocker (a required input that nothing produces), each rerun started by an edit to its entry.
-- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, CHANGELOG.md
-- Scope: (1) The runner records each attempt's held reason and how long it ran. (2) After 3 attempts in a row that held within 10 minutes with the same blocker (the same reason after normalizing paths and identifiers), an entry change no longer reruns the task: it stays held with one question naming the blocker, the attempts and their times. (3) The maintainer gets that task as a trigger once, to restate it so the missing input is produced (a task or dependency for it) or to move it to `Needs decision`; only an entry change that addresses the named blocker reruns it.
-- Acceptance: In fixtures, three one-minute holds with the same blocker stop the reruns and write one question; a different blocker, or an attempt that ran longer than the limit, keeps today's behavior; the maintainer is triggered once for it.
-- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py pi-autowork/tests/test_questions.py pi-autowork/tests/test_maintainer.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to attempt budgets for tasks that ran and failed on their work.
-- Planner's call: three quick identical holds are evidence the task cannot start as written; rerunning it spends a worker and a review each time and teaches nothing.
-
 ### TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it
 
 - [ ] TOOLSET-242-d5 — A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it

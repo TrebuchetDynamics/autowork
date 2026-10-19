@@ -1147,14 +1147,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-241-a1",
-      "section": "Now",
-      "status": "open",
-      "title": "A task that fails the same way within minutes stops and asks, instead of rerunning"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-242-d5",
       "section": "Now",
       "status": "open",
@@ -3022,6 +3014,14 @@
       "section": "Done",
       "status": "done",
       "title": "A worker's TMPDIR is a short directory on disk, not the shared RAM disk"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-241-a1",
+      "section": "Done",
+      "status": "done",
+      "title": "A task that fails the same way within minutes stops and asks, instead of rerunning"
     },
     {
       "depends_on": [],
