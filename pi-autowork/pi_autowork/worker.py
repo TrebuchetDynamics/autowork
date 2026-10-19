@@ -58,8 +58,9 @@ CACHE = (' SDKs, toolchains and package caches this repository\'s tasks installe
          '(AUTOWORK_CACHE; PROVISIONED.md there says how to use what the runner installed): use them instead '
          'of downloading again, and add one there only if a check needs it.')
 ENVIRONMENT = re.compile(r'^PI_AUTOWORK_VERIFY: fail environment(?:\s*[—:-]+\s*(.*))?\s*$')
-# The reviewer's verdict; an echo of the prompt's `pass or ... fail` line is never a pass.
-VERDICT = re.compile(r'^PI_AUTOWORK_VERIFY: (?:(pass)(?:ed)?\.?\s*$|(fail)\b)')
+# The reviewer's verdict, with any reason after it (`pass all checks`); an echo of the prompt's
+# `pass or ... fail` line is never a pass.
+VERDICT = re.compile(r'^PI_AUTOWORK_VERIFY: (?:(pass)(?:ed)?\b(?!\s+or\b)|(fail)\b)')
 PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
 
 
@@ -659,6 +660,8 @@ def verify_batch(state, session, script, tasks):
                 git(session, 'worktree', 'remove', '--force', '--force', str(where))
         for task, _ in pending:  # left by a stop: unreviewed, so each integrates on its own
             result['tasks'].remove(task)
+        for verdict in ('passed', 'held'):  # in batch order, not the order reviews exited
+            result[verdict].sort(key=order.index)
         print(json.dumps(result))
         return 0
     except main_check.Stopped:

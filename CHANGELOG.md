@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The merge backlog that pauses fresh dispatch now defaults to twice the worker
+  count instead of a fixed 3 commits, so a full pool's batch no longer leaves an
+  8-worker runner with one worker until it lands. `PI_AUTOWORK_MERGE_BACKLOG`
+  still overrides it and `0` still turns it off.
 - Chat `/autowork status` reads the repository runner fleet instead of plugin setup
   health; `/autowork status NAME` reads one runner and `/autowork plugin status`
   retains the previous setup overview. Status uses the existing read-only native
@@ -247,6 +251,14 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review whose verdict line carries a reason after it (`PI_AUTOWORK_VERIFY: pass all
+  checks`) passes again. A stricter verdict pattern read every such line as no verdict, so
+  each of those reviews failed; only an echo of the prompt's `pass or … fail` line is refused.
+- Candidates whose batch failed its full check now integrate one at a time, as the runner
+  says. The verdict was kept in memory for that exact set only, so a restart or one more
+  waiting candidate built a new batch around the same failing candidate and ran another full
+  check that failed the same way (8, then 11 candidates on one host). It is kept in the state
+  directory per revision; a revision the resolver merged anew may join a batch again.
 - A worker's temporary directory holding a Go module cache is removed again. Go makes the
   cache read-only, so removing the directory failed with "Permission denied" and the engine
   stopped until a person cleaned it up; other removals left the cache behind for good.
