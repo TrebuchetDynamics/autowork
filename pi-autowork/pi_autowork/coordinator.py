@@ -298,6 +298,14 @@ class Coordinator:
     def in_flight(self):
         return any(t.get('state') in IN_FLIGHT for t in self.tasks())
 
+    def job_environment(self, **overrides):
+        """Attribute all auxiliary jobs to this repository, including foreground runs.
+
+        Do not replace TMPDIR or sanitize the marker in descendants: checks and fake
+        agents they launch are runner work too, wherever their working directory is.
+        """
+        return dict(os.environ, AUTOWORK_EXECUTION_COMMON=str(self.cfg['git_common']), **overrides)
+
     # --- Pi -------------------------------------------------------------------------
     def pi_job(self, role, task, directory, message, session, limit, extra=()):
         """Runs one Pi job in a child (so a second Ctrl+C can reach it); returns (ok, text)."""
@@ -306,7 +314,7 @@ class Coordinator:
         # The loop waits on this job: say what it is, or the fleet reads the stale status as
         # `not cycling` (TOOLSET-177-d0).
         health.job_started(self.state, role, task)
-        env = dict(os.environ, PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
+        env = self.job_environment(PI_AUTOWORK_SESSION=self.integ_branch or os.environ.get('PI_AUTOWORK_SESSION', ''))
         try:
             with open(out.name, 'w') as stream:
                 self.child = subprocess.Popen([sys.executable, str(Path(__file__).with_name('pi_runtime.py')), 'job',
@@ -1147,7 +1155,7 @@ class Coordinator:
         script = f'({cmd}\n)\nresult=$?\nif [ "$result" -ne 0 ]; then {retry}; fi\necho "$result" > {shlex.quote(str(done))}'
         with open(self.state / 'main-check.log', 'w') as log:
             child = subprocess.Popen(['bash', '-c', script], cwd=path,
-                                     env=dict(os.environ, TMPDIR=tmp),
+                                     env=self.job_environment(TMPDIR=tmp),
                                      stdout=log, stderr=subprocess.STDOUT,
                                      stdin=subprocess.DEVNULL, start_new_session=True)
         main_check.write(self.state, dict(state='running', rev=rev, pid=child.pid,

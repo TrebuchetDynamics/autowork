@@ -31,10 +31,10 @@ def setUpModule():
     _toolset_fixture = tempfile.TemporaryDirectory()
     ROOT = Path(_toolset_fixture.name) / 'toolset'
     subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
-    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py',
-             'pi-autowork/pi_autowork/cli.py', 'pi-autowork/pi_autowork/main_check.py',
-             'pi-autowork/pi_autowork/maintainer.py', 'pi-autowork/pi_autowork/worker.py',
-             'scripts/pi-autowork.sh']
+    # Snapshot dependencies together: a merge can change both the engine's CLI
+    # and the helpers it calls, not just the runner entry points.
+    paths = ['pi-autowork/pi_autowork', 'skills/autowork/scripts',
+             'skills/docs-sync/scripts', 'scripts/pi-autowork.sh']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
     if patch:
@@ -124,6 +124,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
     stream.seek(0); stream.truncate(); json.dump(plan, stream)
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
       'session': opts.get('--session-id'), 'cwd': os.getcwd(), 'tools': opts.get('--tools'),
+      'execution_common': os.environ.get('AUTOWORK_EXECUTION_COMMON'),
       'no_approve': '--no-approve' in args, 'message': message})
 def emit(record):
     print(json.dumps(record), flush=True)
@@ -321,7 +322,8 @@ class Fixture(unittest.TestCase):
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
-                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
+                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
+                    'XDG_STATE_HOME': str(self.root / 'xdg')}
         self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
         self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
@@ -576,6 +578,44 @@ class EngineTests(Fixture):
     def main_record(self):
         found = list(self.state.glob('*/main_check.json'))
         return json.loads(found[0].read_text()) if found else {}
+
+    def test_a_foreground_main_checks_agents_do_not_delay_integration(self):
+        (self.repo / 'TODO.md').write_text(todo([('A', None)]).replace('  Touches: A.txt\n', ''))
+        self.git(self.repo, 'commit', '-qam', 'one task needing Touches')
+        ready, release = self.root / 'check-ready.json', self.root / 'release-check'
+        agent, child = self.root / 'run_agent.py', self.root / 'pi'
+        child.write_text('import time\nfrom pathlib import Path\n'
+                         f'while not Path({str(release)!r}).exists(): time.sleep(0.05)\n')
+        # Offline harnesses strip runner settings before starting fixture agents. Their
+        # real marked parent still attributes them without leaking settings into tests.
+        agent.write_text('import json, os, subprocess, sys\nfrom pathlib import Path\n'
+                         'env = {k: v for k, v in os.environ.items() if not k.startswith("AUTOWORK_")}\n'
+                         f'child = subprocess.Popen([sys.executable, {str(child)!r}], env=env)\n'
+                         f'Path({str(ready)!r}).write_text(json.dumps(dict(pid=child.pid, '
+                         'marker=os.environ.get("AUTOWORK_EXECUTION_COMMON"))))\nchild.wait()\n')
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = shlex.join([sys.executable, str(agent)])
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        try:
+            self.wait_for(ready)
+            deadline = time.monotonic() + 60
+            while not self.done('A'):
+                self.assertIsNone(runner.poll(), log())
+                self.assertLess(time.monotonic(), deadline, log())
+                time.sleep(0.1)
+            record = json.loads(ready.read_text())
+            self.assertTrue(Path(f'/proc/{record["pid"]}').exists(), log())
+            self.assertEqual(record['marker'], str(self.repo / '.git'))
+            self.assertNotIn(b'AUTOWORK_EXECUTION_COMMON=', Path(f'/proc/{record["pid"]}/environ').read_bytes())
+            # Touches are scheduling hints now; the reviewer is still a real
+            # auxiliary Pi job and must carry the same repository attribution.
+            self.assertEqual(self.runs('verify')[0]['execution_common'], str(self.repo / '.git'))
+            self.assertNotIn('waiting to integrate until another session', log())
+        finally:
+            release.touch()
+            if runner.poll() is None:
+                runner.send_signal(signal.SIGINT)
+            runner.communicate(timeout=60)
 
     def test_a_main_check_the_busy_host_cut_short_runs_again_before_green(self):
         """TOOLSET-193-54: tests the resource gate skipped are not checked, so main is not green yet."""
