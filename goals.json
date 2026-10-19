@@ -1246,14 +1246,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-243-6d",
-      "section": "Now",
-      "status": "open",
-      "title": "A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-244-5d",
       "section": "Now",
       "status": "open",
@@ -2946,6 +2938,14 @@
       "section": "Done",
       "status": "done",
       "title": "A worker's TMPDIR is a short directory on disk, not the shared RAM disk"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-243-6d",
+      "section": "Done",
+      "status": "done",
+      "title": "A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict"
     },
     {
       "depends_on": [],

@@ -4091,3 +4091,26 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to what the maintainer may edit or to its validation of its own commits.
 - Planner's call: second in Now (raised 2026-10-18 22:34: the loop runs on three runners, once every two minutes on one). A repair that does not change the runner's verdict is not progress, and repeating it spends model calls and hides the fact that the task needs an owner decision.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-243-6d"></a>
+
+### TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
+
+- [x] TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`reviewer_version` hashes all of worker.py plus two settings; `reverify_held` sends every validation-held commit back on each new version); [integration](skills/autowork/scripts/parallel_integrate.py) (`reverify` puts the slot back to `reported` with `reverified=<version>`, and `integrate` takes reported slots in plain priority order).
+- Evidence (2026-10-18 19:01, this repository's runner): one candidate integrated between 12:00 and 19:00 while 14 verified candidates waited. TOOLSET-165-f7's commit `7238dc0` was re-reviewed at 16:10, 17:55 and 18:47 after toolset releases that changed worker.py for unrelated reasons (the gate's crash handling and its cache). Each time the reviewer gave the same verdict, `fail — required offline checks are red`, and each re-review took about 50 minutes. Because the task is first in Now, its re-review went ahead of every fresh candidate each time.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) The fingerprint covers only what decides a verdict: the review, live and gate prompt texts, the source of `review`, `full_suite_gate` and `run_gate`, and the settings already in it. Edits elsewhere in worker.py leave it unchanged. (2) A slot sent back by `reverify` integrates after every reported slot that was not (the priority rule treats `reverified` slots as last). Among reverified slots, the plain priority order holds. (3) A commit held again by a changed reviewer with the same verdict class (the same failure line, ignoring revision IDs) is not reverified again for that commit. It stays held for the maintainer's `review findings` trigger. A different verdict, or a new commit, resets that.
+- Acceptance: In fixtures: an edit to a worker.py helper outside those functions leaves `reviewer_version` unchanged, and an edit to the review prompt changes it; a reverified slot of a high-priority task waits while a fresh lower-priority candidate integrates first; a commit held twice with the same verdict is not offered a third review when the fingerprint changes again, and one with a new verdict is.
+- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the full-suite gate or to what a review checks.
+- Planner's call: second in Now, behind TOOLSET-165-f7. Each toolset release re-reviewed the same failing commit ahead of the whole queue, so the runner that receives the most releases integrated the least. Ordering, scoping the fingerprint and stopping same-verdict repeats keep the benefit (a fixed reviewer gets one more look) without the stall.
