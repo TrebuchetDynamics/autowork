@@ -1262,14 +1262,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-247-5a",
-      "section": "Now",
-      "status": "open",
-      "title": "A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-250-49",
       "section": "Now",
       "status": "open",
@@ -2962,6 +2954,14 @@
       "section": "Done",
       "status": "done",
       "title": "Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-247-5a",
+      "section": "Done",
+      "status": "done",
+      "title": "A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question"
     },
     {
       "depends_on": [

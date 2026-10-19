@@ -58,23 +58,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
-### TOOLSET-247-5a — A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question
-
-- [ ] TOOLSET-247-5a — A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [maintainer](pi-autowork/pi_autowork/maintainer.py) (`due`: a run is due for any trigger set whose `key` differs from the last run's; `remember` records the set, its outcome and the changed tasks); [questions](pi-autowork/pi_autowork/questions.py).
-- Evidence (2026-10-18, one fleet runner): the docs maintainer merged repairs to the same three task entries at 15:01, 15:34 and 21:14, and started a fourth run at 21:18. After each merge the three tasks were still `not runnable: ledger dependency or disposition holds execution`, holding six dependents, and the runner stayed stalled from 15:37 to 21:10. The trigger set alternated between those three tasks and the same three plus two others, so each alternation counted as a new set. Each run is a model call and rewrites the same entries.
-- Evidence (2026-10-18 22:34, two more fleet runners): one merged maintainer changes to the same held task at 22:19, 22:21, 22:23 and 22:25 (four model runs in six minutes). That task waits for a live device only the owner can provide, so no doc repair could release it. Another runner merged changes to one task at 20:53, 22:08 and 22:32, with the task still held each time.
-- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, pi-autowork/pi_autowork/coordinator.py
-- Scope: (1) Due-ness is decided per trigger item, not per set. A run is due when at least one item was not yet handled, and the prompt carries only those items. (2) Each item the maintainer changed is recorded with its reason class (the waiting reason without IDs or numbers) and the entry's digest after the change. If the task is still waiting for the same reason class with that same entry, the item is not offered again. It is offered again only when someone else changes the entry or the reason changes. (3) An item excluded by (2) raises one BLOCKERS.md question. It names the task, the reason the runner gives, and the fields the maintainer already changed, so the owner decides once instead of the maintainer guessing again.
-- Acceptance: In fixtures: a trigger set {A, B, C} handled and merged, followed by {A, B, C, D}, runs the maintainer for D alone; A still waiting with the same reason and the entry the maintainer left is not offered again and yields one question naming its reason; an owner edit to A's entry makes A eligible again; a changed reason does too.
-- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to what the maintainer may edit or to its validation of its own commits.
-- Planner's call: second in Now (raised 2026-10-18 22:34: the loop runs on three runners, once every two minutes on one). A repair that does not change the runner's verdict is not progress, and repeating it spends model calls and hides the fact that the task needs an owner decision.
-
 ### TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
 
 - [ ] TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
