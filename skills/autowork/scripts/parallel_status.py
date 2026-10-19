@@ -210,7 +210,7 @@ def _snapshot(repo, common, now):
                          reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
-                         paused=bool(slot.get('paused')), blocked_by=[]))
+                         paused=bool(slot.get('paused')), merged_base=bool(slot.get('merged_base')), blocked_by=[]))
         gate = current.get(task, {})
         authorization = any(by.startswith('Live authorization: ') for by in gate.get('blocked_by', []))
         if slot.get('paused') and slot['state'] in ('interrupted', 'released'):
