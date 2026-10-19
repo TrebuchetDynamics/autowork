@@ -514,6 +514,24 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual([e['task_id'] for e in journal if e['event'] == 'claim_adopted'], ['A'])
         self.wait_until_idle()
 
+    def test_a_dead_workers_task_marked_in_progress_restarts_once_idle(self):
+        """Its released slot kept it out of adoption, and admission held it as a claim."""
+        self.write_todo(task('A', 'a.txt'))
+        self.git('commit', '-qam', 'A')
+        self.set_spec({'A': {'sleep': 0.1, 'commit': False}})
+        self.apply()
+        self.wait_until_idle()
+        self.write_todo(task('A', 'a.txt') + '- Status: in_progress\n')
+        self.git('commit', '-qam', 'A marked in_progress')
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}})
+        time.sleep(1.2)
+        _, plain = self.apply()
+        self.assertEqual(plain['dispatched'], [])
+        self.assertEqual(state.slots(self.common)[0]['state'], 'released')  # the dead worker's
+        _, adopted = self.apply('--adopt-idle-claims', '1')
+        self.assertEqual([d['task'] for d in adopted['dispatched']], ['A'])
+        self.wait_until_idle()
+
     def test_a_held_scope_request_resumes_in_place_without_a_touches_check(self):
         """sierra TASK-024: a worker needed one test file outside Touches and could only stop.
         TOOLSET-161-17: a worker no longer asks; a request an older release held resumes in its

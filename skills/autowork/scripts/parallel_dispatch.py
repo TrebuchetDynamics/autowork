@@ -826,7 +826,9 @@ def dispatch_locked(args, repo, common, count, template, host):
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     slotted = {s['task_id'] for s in current}
-    claimed = [t['id'] for t in candidates if t['id'] not in slotted
+    # A restartable slot's task marked in_progress is a claim like any other: left out, it was
+    # neither adopted nor restarted, and one dead worker stalled a runner for five hours.
+    claimed = [t['id'] for t in candidates if (t['id'] not in slotted or t['id'] in restartable)
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = admit(candidates, running, restartable, occupying, everything=everything,

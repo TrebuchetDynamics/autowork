@@ -226,6 +226,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A task marked `in_progress` whose worker died without leaving work is taken over once idle,
+  like any other stale claim: its released slot kept it out of adoption while admission
+  still held it as a claim, and one runner stalled for five hours.
 - Worker port ranges no longer collide across repositories: `AUTOWORK_PORT_BASE` was
   20000 + 100 × the slot number, which is per repository, so every runner's first worker
   got 20100–20199. A worker now holds a host-wide lease on a free 100-port block while it runs.
