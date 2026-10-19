@@ -78,8 +78,9 @@ def exhausted(row):
                                           or bool(row.get('quick_hold')))
 
 
-def build(snapshot, todo, goals, repairs=()):
+def build(snapshot, todo, goals, repairs=(), *, now=None):
     """Questions from an engine status snapshot, without a model: dicts sorted easiest first."""
+    now = datetime.now(timezone.utc).timestamp() if now is None else now
     rows = {r.get('task'): r for r in snapshot.get('tasks') or [] if r.get('task')}
     roots = {r['id']: r for r in snapshot.get('roots') or []}
     found = {}
@@ -127,12 +128,24 @@ def build(snapshot, todo, goals, repairs=()):
             f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
 
     for task, row in rows.items():
-        if task in found or not exhausted(row):
+        if task in found:
+            continue
+        waits = row.get('waits_for') if row.get('state') == 'held' else None
+        if waits:
+            since = row.get('wait_since')
+            if since is None or now - since < 24 * 3600:
+                continue
+        elif not exhausted(row):
             continue
         title = _title(todo, task, goals)
         line = f'{task} — {title}' if title else task
         blocks = (roots.get(task) or {}).get('blocks', 0)
-        if row.get('cause') in INPUT_CAUSES:
+        if waits:
+            add(task, 'held', 'input', 'Waiting for ' + ', '.join(waits) + ' to land for at least 24 hours. ' +
+                (row.get('reason') or ''),
+                'Inspect the prerequisite tasks and resolve their holds or close them with verified evidence. '
+                'The runner resumes this task on the same attempt when all prerequisites close.', line, blocks)
+        elif row.get('cause') in INPUT_CAUSES:
             add(task, 'held', 'input', row.get('reason') or 'the worker stopped and asked for input', (
                 f"Answer in {task}'s TODO.md entry: widen `Touches:`, supply the input, narrow the acceptance, "
                 "or add a dated `Owner decision:` line. The runner reruns it when the entry changes."), line, blocks)

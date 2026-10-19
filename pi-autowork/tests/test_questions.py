@@ -77,6 +77,18 @@ class QuestionTests(unittest.TestCase):
         self.assertTrue(questions.exhausted(
             {'state': 'held', 'attempt': 2, 'cause': None, 'reason': 'held with no attempt left'}))
 
+    def test_task_wait_becomes_one_question_only_after_24_hours(self):
+        status = {'tasks': [{'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'task_wait',
+                             'waits_for': ['T-2'], 'wait_since': 1000,
+                             'reason': 'worker waits for T-2'}]}
+        self.assertEqual(questions.build(status, TODO, goals, now=1000 + 24 * 3600 - 1), [])
+        found = questions.build(status, TODO, goals, now=1000 + 24 * 3600)
+        self.assertEqual([(q['id'], q['effort']) for q in found], [('T-1', 'input')])
+        self.assertIn('T-2', found[0]['needs'])
+        self.assertIn('24', found[0]['needs'])
+        text = questions.update(None, found, now=NOW)
+        self.assertEqual(text.count('### Q-'), 1)
+
     def test_live_authorization_becomes_one_owner_question_in_blockers(self):
         condition = 'Live authorization: T-1'
         status = {'tasks': [{'task': 'T-1', 'state': 'waiting', 'blocked_by': [condition]}],

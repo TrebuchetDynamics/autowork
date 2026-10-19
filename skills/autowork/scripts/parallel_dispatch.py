@@ -220,7 +220,8 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
+           landed_tasks=(), landed_revisions=()):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -288,6 +289,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
         '  the task\'s sources say how to make, you make. If blocked, report commit null with',
         '  blockers and stop.',
+        '  When the ONLY missing input is another open task landing, write "Needs TASK-ID to land."',
+        '  List any additional owner input as a separate blocker; never hide it in a task wait.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -315,6 +318,14 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
     if resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
+    if landed_tasks:
+        lines += ['', 'Landed prerequisites: ' + ', '.join(landed_tasks) + '.',
+                  'Their landed source is reachable here at these immutable revisions:',
+                  *['- ' + revision for revision in landed_revisions],
+                  'Inspect with git show REVISION:path or git diff BASELINE REVISION -- path.',
+                  'Reconcile only prerequisite code needed by this task into this retained worktree,',
+                  'preserving its committed and uncommitted work. Do not import coordinator-owned files,',
+                  'reset, clean, or merge an entire revision. Re-run checks affected by the combined code.']
     if commit_finished:
         lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
                   'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
@@ -1012,6 +1023,8 @@ def dispatch_locked(args, repo, common, count, template, host):
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
                                       adopted=idle.get(task['id']),
+                                      landed_tasks=(previous or {}).get('landed_tasks', ()),
+                                      landed_revisions=(previous or {}).get('landed_revisions', ()),
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
                                       else ''))

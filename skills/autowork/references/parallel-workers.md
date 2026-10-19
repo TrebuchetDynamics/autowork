@@ -42,7 +42,17 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    `--parallel-answer TASK --answer-file F` answers it instead: the attempt resumes in
    its own worktree with the answer in its prompt, at most twice per task. The Pi
    runner triages each new blocker this way and leaves only a person's part as a
-   question. `pending_live`
+   question. Exception: when every blocker is solely a wait for other open tasks, use
+   `Needs TASK-ID to land.` (multiple IDs may be joined with commas or `and`). The
+   [report classifier](../scripts/parallel_state.py) records `cause: task_wait`, `waits_for`
+   and `wait_since` before triage; the runner never triages a slot with `waits_for`.
+   Unknown wording, additional requests, self references and existing ledger dependencies
+   remain ordinary blockers for triage, not automatic owner questions. A task wait reserves
+   no files or resources, but still holds its dependents. Once every named task closes
+   locally or on the base, it resumes in place on the same attempt; the prompt names the
+   prerequisites and pins reachable landed source revisions for scoped reconciliation,
+   preserving retained work. An unresolved wait becomes one owner question after 24 hours,
+   never a triage. The engine never edits `Dependencies:` for this wait. `pending_live`
    lists device, production, hardware or human checks the worker could not run;
    they never hold the task. `unrelated_failures` lists test IDs that passed a single isolated
    rerun or also failed on the baseline; `environment_failures` lists command/summary strings
@@ -263,11 +273,12 @@ nothing parallel was claimed or started.
   blocker with uncommitted work: it resumes the same attempt once with an instruction to
   commit finished work using the advisory failure fields. A repeated such report becomes
   `timeout`, not an owner question; the coordinator resumes it when the resource gate allows.
-  Missing dependencies and other genuine inputs still wait for a person. Closing a
+  Task waits described above resume without spending a retry; other inputs go through
+  blocker triage, which leaves only a person's part as a question. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
   `outside`, the undeclared protected files), `report`, `conflict`,
-  `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice) or
+  `validation`, `contract_changed`, `moved`, `blocker`, `task_wait` (with `waits_for`), `crash` (died twice) or
   `launch`. Integration's `HELD` result carries `cause` and `outside` too.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
   files that are not protected (including coordinator-owned files), is offered again once

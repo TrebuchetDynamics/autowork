@@ -67,14 +67,14 @@ class Hold(ValueError):
 
 class ReportedBlocker(Hold):
     """The worker's own report names work it could not finish."""
-    def __init__(self, reason):
-        super().__init__('blocker', reason)
+    def __init__(self, reason, cause='blocker', **details):
+        super().__init__(cause, reason, **details)
 
 
 def hold(common, slot, reason, **updates):
     slot = state.change(common, slot, 'held', dict(updates, reason=reason))
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason,
-            **{k: updates[k] for k in ('cause', 'outside', 'requested') if k in updates}}
+            **{k: updates[k] for k in ('cause', 'outside', 'requested', 'waits_for') if k in updates}}
 
 
 BRANCH_HOLD = 'unexpected worker branch'
@@ -146,7 +146,7 @@ def verify(repo, common, slot, contracts):
     files = changed(repo, slot['baseline'], commit)
     blockers = state.report_blockers(common, slot)
     if blockers:
-        raise ReportedBlocker(state.blocker_reason(blockers))
+        raise ReportedBlocker(**state.blocker_updates(repo, slot, blockers))
     for field in ('pending_live', 'unrelated_failures', 'environment_failures'):
         report[field] = live_items(report.get(field))
     mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
@@ -1230,6 +1230,21 @@ def retry_held(args):
             # No rescope, reoffer or fresh retry may bypass a repeated missing input.
             current = [s for s in current if not (hold := state.quick_hold(common, s))
                        or blocker_resolved(repo, common, s, hold)]
+            waits = [s for s in current if s['state'] == 'held' and s.get('waits_for')
+                     and not state.worker_live(s)]
+            if waits:
+                base = getattr(args, 'base_ref', None)
+                closed = dispatch.retired(repo, base)
+                ready = next((s for s in waits if set(s['waits_for']) <= closed), None)
+                if ready:
+                    revisions = [git(repo, 'rev-parse', 'HEAD')]
+                    if base:
+                        try:
+                            revisions.append(git(repo, 'rev-parse', '--verify', base + '^{commit}'))
+                        except ValueError:
+                            pass  # local closures remain sufficient with an unreadable base
+                    slot = state.resume_waited(common, ready, list(dict.fromkeys(revisions)))
+                    return {'outcome': 'RESUMED', 'task': slot['task_id'], 'landed_tasks': slot['landed_tasks']}
             # A retry that produced nothing (often because it judged the first hold
             # binding) gets the first attempt's commit re-verified once instead.
             # Earlier releases held a commit when a live session was in the canonical checkout
@@ -1325,8 +1340,8 @@ def retry_held(args):
             # held task whose TODO entry changed since its attempt was dispatched runs fresh,
             # its earlier work kept on -set-aside-N names; an entry that disappeared was
             # closed or removed by a person, so nothing is queued again.
-            changed = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
-                            and entry_changed(repo, common, s)), None)
+            changed = next((s for s in current if s['state'] == 'held' and not s.get('waits_for')
+                            and not state.worker_live(s) and entry_changed(repo, common, s)), None)
             if changed is not None:
                 present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed['task_id']))
                 state.event(common, 'task_entry_changed', task_id=changed['task_id'],
