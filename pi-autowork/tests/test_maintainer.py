@@ -28,6 +28,53 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(maintainer.key(found), maintainer.key(maintainer.triggers(list(reversed(rows)))))
         self.assertEqual(maintainer.triggers([r for r in rows if r['task'] in 'DEFG']), [])
 
+    def test_dropped_ledger_proposals_are_reviewed_once_before_draining_exits(self):
+        from pi_autowork.coordinator import Coordinator, Finish
+
+        with tempfile.TemporaryDirectory() as state:
+            root = Path(state)
+            (root / 'TODO.md').write_text('# TODO\n')  # source task already archived
+            evidence = root / 'ledger-edit.patch'
+            evidence.write_text('--- a/TODO.md\n+++ b/TODO.md\n-old link\n+fixed link\n' + 'x' * 1000)
+            row = dict(task='A', state='reported', reason='',
+                       ledger_edit_dropped=dict(paths=['TODO.md'], patch=str(evidence)))
+            self.assertEqual(maintainer.triggers([row]), [])
+            row['state'] = 'integrated'
+            found = maintainer.triggers([row])
+            self.assertEqual([(t, kind) for t, kind, _ in found], [('A', 'ledger edit')])
+            self.assertIn('+fixed link', found[0][2])
+            self.assertLessEqual(len(found[0][2]), 900)
+            row['state'] = 'closed'
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.integ, runner.stop = root, state, state, False
+            runner.toolset, runner.goals, runner.verify_timeout = Path(__file__).resolve().parents[2], 'goals.py', 1
+            runner.in_flight = runner.session_busy = lambda: False
+            rows = [row] + [dict(row, task=f'Z{i:02}') for i in range(maintainer.LIMIT)]
+            runner.tasks = lambda: rows
+            runner.scratch_checkout, runner.drop_scratch = lambda _: state, lambda _: None
+            prompts = []
+            runner.pi_job = lambda *args: (prompts.append(args[3]) or True, '')
+            runner.draining, runner.mode, runner.once_done, runner.once_task = True, 'once', True, 'A'
+            runner.seen, runner.settled = {'synced-at-start': True}, False
+            runner.plan_signature, runner.planning_ready = lambda: '', lambda: True
+            for method in ('restart_if_updated', 'ensure_session', 'follow_base', 'sweep_tmp', 'check_main',
+                           'land_planning', 'settle', 'handle_requests', 'health_update'):
+                setattr(runner, method, lambda: None)  # external lifecycle, not the handoff
+            def finish(code, text):
+                raise Finish(code, text)
+            runner.finish = finish
+            with patch('pi_autowork.coordinator.dirty', return_value=False):
+                self.assertTrue(runner.maintain())  # IDLE must continue even after discarding a batch
+                self.assertEqual(len(prompts), 1)
+                for _ in range(2):
+                    with self.assertRaises(Finish) as done:
+                        runner.cycle()
+                    self.assertEqual(done.exception.code, 0)
+                    (root / 'TODO.md').write_text('# TODO\n\nUnrelated planning edit\n')
+            self.assertEqual(len(prompts), 2)
+            self.assertTrue(all('+fixed link' in message for message in prompts))
+            self.assertEqual((root / 'TODO.md').read_text(), '# TODO\n\nUnrelated planning edit\n')
+
     def test_repeated_quick_hold_is_repaired_once_even_after_cosmetic_entry_edits(self):
         row = dict(task='A', state='held', cause='blocker', reason='missing receipt',
                    quick_hold=dict(fingerprint='abc123', reason='missing receipt', attempts=[]))

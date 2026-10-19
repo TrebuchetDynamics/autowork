@@ -507,7 +507,7 @@ def batch_order(session, reported):
     slots = {s['task_id']: s for s in parallel_state.slots(common)}
     busy = {t for t, s in slots.items() if parallel_integrate.writers_busy(s)}
     order = [t['id'] for t in parallel_dispatch.contracts(Path(session))]
-    return [t for t in order if t in reported and t not in busy], {t: slots[t].get('commit') for t in reported if t in slots}
+    return [t for t in order if t in reported and t not in busy], {t: slots[t] for t in reported if t in slots}
 
 
 def verify_batch(state, session, script, tasks):
@@ -515,7 +515,8 @@ def verify_batch(state, session, script, tasks):
     engine's order, the full check run once on the result, and each candidate reviewed side by
     side on its own step of that chain. Verdicts are recorded per tree; the engine then lands
     each candidate through its usual integration, which finds its verdict when the tree matches."""
-    order, commits = batch_order(session, set(tasks))
+    order, slots = batch_order(session, set(tasks))
+    import parallel_integrate  # batch_order loaded the repository's engine modules
     order = order[:max(2, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))]
     base = git(session, 'rev-parse', 'HEAD')
     root = Path(tempfile.mkdtemp(prefix='aw-b-', dir=review_root()))
@@ -524,11 +525,15 @@ def verify_batch(state, session, script, tasks):
     steps, skipped, running = [], [], []
     try:
         for task in order:
-            commit = commits.get(task)
-            merged = commit and subprocess.run(['git', '-C', str(chain), 'merge', '--no-ff', '--no-edit', commit],
-                                               capture_output=True).returncode == 0
-            if not merged:
-                subprocess.run(['git', '-C', str(chain), 'merge', '--abort'], capture_output=True)
+            slot = slots.get(task)
+            if not slot or not slot.get('commit'):
+                skipped.append(task)
+                continue
+            try:
+                # Check and review exactly the stripped tree the engine will integrate.
+                # Only integration persists the dropped proposal and slot evidence.
+                parallel_integrate.merge_candidate(chain, slot, git(chain, 'rev-parse', 'HEAD'))
+            except parallel_integrate.Hold:
                 skipped.append(task)
                 continue
             steps.append((task, git(chain, 'rev-parse', 'HEAD')))

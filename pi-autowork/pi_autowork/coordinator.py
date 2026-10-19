@@ -1483,6 +1483,9 @@ class Coordinator:
             self.seen.pop('busy-' + task, None)
         if outcome == 'INTEGRATED':
             self.settled = True
+            if dropped := result.get('ledger_edit_dropped'):
+                LOG.say(f'{task}: its edit to {", ".join(dropped["paths"])} was left out; '
+                        'the docs maintainer will review it')
             self.note_state(task, 'integrated')
             self.close_task(task)
         elif outcome == 'HELD':
@@ -1744,13 +1747,13 @@ class Coordinator:
             return sorted(set(reason.removeprefix('invalid goals.json').lstrip(': ').split('; ')))
         return []
 
-    def maintain(self, main_only=False, ledger_errors=None):
+    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
         planning files alone and goals.py validate passes. Only unhandled trigger items enter
         the prompt; an unchanged unsuccessful repair needs an owner, not another run.
-        True when its repair merged."""
+        True when its repair merged, or another ledger-proposal batch still waits."""
         if self.stop or not self.integ:
             return False
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
@@ -1761,9 +1764,12 @@ class Coordinator:
                 or (self.in_flight() and not main_only and not self.ledger_errors)):
             return False
         rows = [] if main_only or self.ledger_errors else self.tasks()
+        if ledger_edits_only:
+            rows = [r for r in rows if r.get('state') in ('integrated', 'closing', 'closed')
+                    and r.get('ledger_edit_dropped')]
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
-        main = main_check.read(self.state)
+        main = {} if ledger_edits_only else main_check.read(self.state)
         found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
         before = {}
@@ -1839,7 +1845,8 @@ class Coordinator:
             else:
                 LOG.say('The engine needs attention: invalid goals.json: ' + '; '.join(self.ledger_errors)
                         + f'; {maintainer.ROLE} {outcome}; see BLOCKERS.md')
-        return outcome == 'merged'
+        proposals = [item for item in maintainer.triggers(rows, limit=None) if item[1] == 'ledger edit']
+        return outcome == 'merged' or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons))
 
     def environment_hold(self, task):
         """What a review of the held commit could not run without, or None (TOOLSET-173-94)."""
@@ -2511,6 +2518,10 @@ class Coordinator:
                 self.finish(1, f'No runnable task can start: {self.last_waiting or "see --status"}')
             self.merge_waiting()
             return self.pause(self.interval)
+        # --once/budget draining never reach IDLE's maintainer pass. Finish their
+        # proposal batches (including discarded ones) without dispatching new work.
+        if self.draining and self.maintain(ledger_edits_only=True):
+            return
         # Nothing running, nothing to integrate and nothing waiting: finite runs end here.
         if self.draining or self.mode != 'continuous':
             if self.mode == 'once' and not self.once_task and outcome == 'IDLE':

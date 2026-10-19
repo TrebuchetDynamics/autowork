@@ -295,7 +295,7 @@ elif behavior == 'long':  # busy for a minute: long enough to be stopped from ou
     open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
     subprocess.run(['sleep', '60'])
     work(); finish(text='done')
-elif behavior == 'barrier':  # both A and B must be running at once
+elif behavior in ('barrier', 'ledger_barrier'):  # both A and B must be running at once
     mine = os.path.join(os.environ['FAKE_PI_ROOT'], 'ready-' + task)
     open(mine, 'w').write('ready')
     deadline = time.monotonic() + 20
@@ -303,7 +303,19 @@ elif behavior == 'barrier':  # both A and B must be running at once
         if time.monotonic() > deadline:
             sys.exit('barrier timed out')
         time.sleep(0.05)
-    work(); finish(text='done')
+    work()
+    if behavior == 'ledger_barrier':
+        with open('TODO.md', 'a') as stream:
+            stream.write('\nworker ledger proposal\n')
+        git('add', 'TODO.md')
+        git('commit', '--amend', '--no-edit')
+        path = field('Report file')
+        with open(path) as stream:
+            saved = json.load(stream)
+        saved.update(commit=git('rev-parse', 'HEAD').stdout.strip(), changed_files=[task + '.txt', 'TODO.md'])
+        with open(path, 'w') as stream:
+            json.dump(saved, stream)
+    finish(text='done')
 elif behavior == 'move_main':  # another writer commits a conflicting file to main meanwhile
     work()
     main = os.environ['FAKE_MAIN_REPO']
@@ -1195,9 +1207,11 @@ class EngineTests(Fixture):
         """TOOLSET-258-07: one runner landed six tasks a day, one review at a time, while nine waited."""
         self.env['PI_AUTOWORK_BATCH'] = '6'
         runs = self.root / 'full-check-runs'
-        self.env['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        self.env['PI_AUTOWORK_VALIDATE'] = (f'echo ran >> {runs}; '
+            'if grep -q "worker ledger proposal" TODO.md; then '
+            'echo "FAIL: test_ledger (fixture.Tests.test_ledger)"; exit 1; fi')
         self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'  # main's own check is not counted
-        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})  # both finish together
+        self.plan({'worker:A': ['ledger_barrier'], 'worker:B': ['barrier']})  # both finish together
         result = self.run_runner('--until-empty', timeout=240)
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
         self.assertIn('Batch of 2 candidates (A, B)', result.stdout)
@@ -1205,6 +1219,8 @@ class EngineTests(Fixture):
         # One run for the batch tree of A and B, one for C alone: not one per candidate.
         self.assertEqual(runs.read_text().count('ran'), 2, result.stdout)
         self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
+        self.assertNotIn('worker ledger proposal', (self.repo / 'TODO.md').read_text())
+        self.assertIn('A: its edit to TODO.md was left out; the docs maintainer will review it', result.stdout)
 
     def test_a_batched_candidate_that_fails_its_review_is_held_and_the_other_lands(self):
         self.env['PI_AUTOWORK_BATCH'] = '6'
