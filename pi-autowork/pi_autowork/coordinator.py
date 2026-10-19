@@ -694,6 +694,15 @@ class Coordinator:
     def ahead(self):
         return int(git(self.repo, 'rev-list', '--count', f'{self.base}..{self.integ_branch}') or 0)
 
+    def session_expired(self):
+        """Rotate idle sessions after a day, using the persisted age across restarts."""
+        try:
+            session = json.loads((self.state / 'session.json').read_text())
+            started = datetime.fromisoformat(session['started']).astimezone()
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        return (datetime.now().astimezone() - started).total_seconds() > 24 * 3600
+
     def merge_main(self):
         """The session into the main branch: the base into the session first (Pi resolves
         conflicts once per base revision), a fast-forward of the base in the main checkout, then a push."""
@@ -2474,7 +2483,7 @@ class Coordinator:
                 self.finish(1, f'No runnable task can start: {self.last_waiting or "see --status"}')
             self.merge_waiting()
             return self.pause(self.interval)
-        # Nothing running, nothing to integrate and nothing waiting: the session ends here.
+        # Nothing running, nothing to integrate and nothing waiting: finite runs end here.
         if self.draining or self.mode != 'continuous':
             if self.mode == 'once' and not self.once_task and outcome == 'IDLE':
                 self.finish(0, 'Queue empty')
@@ -2489,7 +2498,10 @@ class Coordinator:
         if outcome == 'IDLE':
             if self.merge_main():
                 self.engine('--parallel', str(self.workers), '--max-workers', '8', '--release')
-                if self.integ:
+                # Keep the worktree and branch: follow_base() takes main's next plan in
+                # place. Release the lease nevertheless, so interactive engine users can
+                # work between intervals. Only a day-old, fully landed session rotates.
+                if self.integ and self.session_expired() and self.ahead() == 0:
                     self.end_session()
             LOG.say(f'Queue empty; checking again in {self.interval}s')
             self.pause(self.interval)
