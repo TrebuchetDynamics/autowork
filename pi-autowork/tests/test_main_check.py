@@ -267,6 +267,55 @@ class MainCheckTests(unittest.TestCase):
             except ProcessLookupError:
                 pass
 
+    def test_main_check_waiting_is_visible_and_does_not_consume_its_timeout(self):
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,
+                XDG_RUNTIME_DIR=tmp, PI_AUTOWORK_CHECK_SLOTS='1',
+                PI_AUTOWORK_MAIN_CHECK='sleep .1; touch ran', PI_AUTOWORK_VALIDATE_TIMEOUT='.5'):
+            root = Path(tmp)
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = root, tmp, 'main', False
+            runner.tasks = lambda: []
+            runner.scratch_checkout = lambda *args: tmp
+            runner.job_environment = lambda **values: dict(os.environ, **values)
+            children, popen = [], subprocess.Popen
+
+            def launch(*args, **kwargs):
+                process = popen(*args, **kwargs)
+                children.append(process)  # retain Popen while the coordinator adopts/reaps its persisted PID
+                return process
+
+            with patch('pi_autowork.coordinator.git', return_value='abc123'), \
+                    patch('subprocess.Popen', side_effect=launch), patch('os.getloadavg', return_value=(0, 0, 0)):
+                try:
+                    with main_check.check_slot(lambda _: None):
+                        runner.check_main()
+                        pid = main_check.read(root)['pid']
+                        deadline = time.monotonic() + 10
+                        while main_check.read(root).get('check_slot', {}).get('state') != 'waiting':
+                            self.assertTrue(main_check.alive(pid))
+                            self.assertLess(time.monotonic(), deadline)
+                            time.sleep(.01)
+                        time.sleep(.7)
+                        runner.check_main()  # still one running job, not aborted or rescheduled
+                        self.assertEqual(main_check.read(root)['pid'], pid)
+                        self.assertIn('waiting for a check slot, 1 ahead', main_check.line(main_check.read(root)))
+                        self.assertFalse((root / 'ran').exists())
+                    deadline = time.monotonic() + 10
+                    while main_check.exit_code(root) is None:
+                        self.assertLess(time.monotonic(), deadline)
+                        time.sleep(.01)
+                    runner.check_main()
+                    self.assertEqual(main_check.read(root)['state'], 'green')
+                    self.assertTrue((root / 'ran').exists())
+                finally:
+                    record = main_check.read(root)
+                    if main_check.alive(record.get('pid')):
+                        os.killpg(record['pid'], signal.SIGKILL)
+                    for child in children:
+                        child.wait(timeout=10)
+
     def test_the_status_line(self):
         self.assertEqual(main_check.line({'state': 'red', 'rev': 'abcdef123', 'failures': ['a', 'b']}),
                          'main red since abcdef1: 2 failing')
