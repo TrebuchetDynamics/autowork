@@ -3553,6 +3553,27 @@ Source section: Now
 
 Source section: Now
 
+### TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
+
+- [x] TOOLSET-211-71 — A leftover task branch with nothing of its own never stops dispatch
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [worktree creation](skills/autowork/scripts/parallel_dispatch.py) (`create_worktree`, `created_by_autowork`: `... already exists and was not created by parallel Autowork; resolve it by hand`), [set-aside](skills/autowork/scripts/parallel_integrate.py) (renames a task's branch to `-set-aside-N`).
+- Evidence (2026-10-18 10:16, one fleet runner, after the disk filled and six runners were restarted): every cycle logged `The engine needs attention: <repo>/.worktrees/autowork-<task> or branch autowork/<task> already exists and was not created by parallel Autowork; resolve it by hand` and nothing was dispatched for the whole repository. The branch `autowork/<task>` had no worktree, and its tip was a commit already in main (a questions commit): a name left behind when a set-aside was interrupted mid-way (its `-set-aside-6` was created at the moment of the restarts). It held nothing; the owner session deleted it with `git branch -d` on the owner's approval, and the runner continued.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_dispatch.py
+- Scope: (1) When the task's branch exists without a worktree and its tip is an ancestor of the base (no commit of its own), the engine deletes it (`git branch -d`, which refuses anything unmerged) and creates the worktree as usual, journaling `stale_branch_removed`. (2) A branch with commits of its own is set aside to the next free `-set-aside-N` name (its work is kept) and the task proceeds; it is never deleted. (3) Only a leftover worktree directory with uncommitted changes, or a path that is not a worktree, stays a person's question, and then only that task waits: the rest of the queue dispatches.
+- Acceptance: In fixtures: a leftover branch at a base commit is removed and the task dispatches; a leftover branch with a commit of its own becomes `-set-aside-N` with that commit and the task dispatches; a foreign directory at the worktree path holds only that task while another task dispatches in the same cycle.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No removal of anything with unique commits or uncommitted changes.
+- Planner's call: high in Now: one stale name stopped a whole repository's dispatch until a person acted.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
 ### TOOLSET-215-a8 — One stuck command cannot use up a worker's attempt: tool commands get their own time limit
 
 - [x] TOOLSET-215-a8 — One stuck command cannot use up a worker's attempt: tool commands get their own time limit

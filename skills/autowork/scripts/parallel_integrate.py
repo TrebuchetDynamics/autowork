@@ -832,12 +832,17 @@ def _retire(repo, common, slot, requeued):
     dispatch.cleanup_tmpdir(common, slot)
     history = execution.safe_path(common / 'slot-history' / task)
     number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
-    target = history / str(number)
     pairs = []
     for attempt in [*slot.get('previous_attempts', []), slot]:
         pair = (attempt.get('worktree'), attempt.get('branch'))
         if pair[1] and pair not in pairs:
             pairs.append(pair)
+    while True:
+        number = dispatch.set_aside_number(repo, pairs, number)
+        target = history / str(number)
+        if not target.exists():
+            break
+        number += 1
     moved = []
     try:
         for worktree, branch in pairs:

@@ -62,7 +62,8 @@ class DispatchTests(unittest.TestCase):
         self.log = self.root / 'workers.jsonl'
         self.log.touch()
         self.set_spec({})
-        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log)),
+        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log),
+                                    PI_AUTOWORK_MIN_FREE_DISK_GB='0'),
                         patch.object(dispatch, 'available_memory_mb', return_value=10 ** 6),
                         patch.object(os, 'getloadavg', return_value=(0.0, 0.0, 0.0))):
             patcher.start()
@@ -691,24 +692,87 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
                             if w['id'] in ('A', 'B')))
         self.assertFalse((self.common / 'slots').exists() and state.slots(self.common))
 
-    def test_existing_user_branch_or_folder_is_refused_untouched(self):
-        self.write_todo(task('A', 'a.txt'))
-        self.git('branch', 'autowork/A')
-        before = self.git('rev-parse', 'autowork/A')
+    def test_leftover_merged_branch_is_removed_before_dispatch(self):
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        baseline = self.git('rev-parse', 'HEAD')
+        self.git('branch', 'autowork/A', baseline)
+        self.set_spec({'A': {'sleep': 60}, 'B': {'sleep': 60}})
         code, result = self.apply()
-        self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
-        self.assertIn('already exists', result['reason'])
-        self.assertEqual(self.git('rev-parse', 'autowork/A'), before)
-        self.git('branch', '-D', 'autowork/A')
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
+        journal = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        removed = [e for e in journal if e['event'] == 'stale_branch_removed']
+        self.assertEqual([(e['task_id'], e['branch'], e['tip']) for e in removed],
+                         [('A', 'autowork/A', baseline)])
+        self.assertFalse(self.git('branch', '--list', 'autowork/A-set-aside-*'))
+
+    def test_leftover_unique_branch_is_set_aside_before_dispatch(self):
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        baseline = self.git('rev-parse', 'HEAD')
+        tree = self.git('rev-parse', 'HEAD^{tree}')
+        tip = self.git('commit-tree', tree, '-p', baseline, '-m', 'prior task work')
+        unrelated = self.git('commit-tree', tree, '-m', 'unrelated task work')
+        self.git('branch', 'autowork/A', tip)
+        self.git('branch', 'autowork/B', unrelated)
+        self.git('branch', 'autowork/A-set-aside-1', baseline)
+        self.set_spec({'A': {'sleep': 60}, 'B': {'sleep': 60}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-2'), tip)
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), baseline)
+        self.assertEqual(self.git('rev-parse', 'autowork/B-set-aside-1'), unrelated)
+        self.assertEqual(self.git('rev-parse', 'autowork/A'), baseline)
+        self.assertEqual(self.git('rev-parse', 'autowork/B'), baseline)
+
+    def test_unsafe_worktree_path_holds_only_its_task_untouched(self):
         folder = self.repo / '.worktrees/autowork-A'
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
         folder.mkdir(parents=True)
         (folder / 'mine').write_text('user data')
-        _, result = self.apply()
-        self.assertIn('already exists', result['reason'])
+        self.set_spec({'B': {'sleep': 60}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['B'])
+        self.assertIn('A', [w['id'] for w in result['waiting']])
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['mine'])
-        self.assertEqual(self.events(), [])
-        journal = self.common / 'journal.jsonl'
-        self.assertNotIn('worktree_created', journal.read_text() if journal.exists() else '')
+        self.assertFalse(self.git('branch', '--list', 'autowork/A'))
+
+        # A registered worktree with uncommitted work is no safer to reclaim.
+        (folder / 'mine').unlink()
+        folder.rmdir()
+        self.git('worktree', 'add', '-qb', 'autowork/A', str(folder))
+        (folder / 'mine').write_text('unsaved work')
+        for journaled in (False, True):
+            with self.subTest(journaled=journaled):
+                if journaled:
+                    state.event(self.common, 'worktree_created', task_id='A', worktree=str(folder), branch='autowork/A')
+                _, again = self.apply()
+                self.assertEqual(again['dispatched'], [])
+                self.assertIn('A', [w['id'] for w in again['waiting']])
+                self.assertEqual((folder / 'mine').read_text(), 'unsaved work')
+                self.assertEqual(self.git('symbolic-ref', '--short', 'HEAD', repo=folder), 'autowork/A')
+        (folder / 'mine').unlink()
+        with patch.object(execution, 'external_workers', return_value=[{'workspaces': [str(folder)], 'active': True}]):
+            _, busy = self.apply()
+        self.assertEqual(busy['dispatched'], [])
+        self.assertIn('A', [w['id'] for w in busy['waiting']])
+
+    def test_clean_leftover_worktree_is_replaced_without_losing_its_commit(self):
+        self.write_todo(task('A', 'a.txt'))
+        baseline = self.git('rev-parse', 'HEAD')
+        folder = self.repo / '.worktrees/autowork-A'
+        self.git('worktree', 'add', '-qb', 'autowork/A', str(folder))
+        (folder / 'a.txt').write_text('earlier work')
+        self.git('add', 'a.txt', repo=folder)
+        self.git('commit', '-qm', 'earlier work', repo=folder)
+        tip = self.git('rev-parse', 'HEAD', repo=folder)
+        self.set_spec({'A': {'sleep': 60}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A'])
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), tip)
+        self.assertEqual(self.git('rev-parse', 'HEAD', repo=folder), baseline)
 
     def test_unsupported_host_falls_back_to_the_sequential_contract(self):
         for args in (('--worker-host', 'claude'), ('--worker-host', 'hermes')):

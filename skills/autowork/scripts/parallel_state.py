@@ -482,10 +482,14 @@ def reconcile(repo, owner_pid):
                     # It stopped on purpose and said why; resuming would only repeat that
                     # (sierra TASK-022 spent both attempts this way). Its changes stay put.
                     target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
-                elif dirty:
-                    target, updates = 'interrupted', {'reason': 'dead worker with uncommitted changes'}
                 else:
-                    target, updates = 'released', {'reason': EMPTY}
+                    target = 'interrupted' if dirty else 'released'
+                    reason = ('dead worker with uncommitted changes' if dirty else EMPTY)
+                    if slot.get('paused'):
+                        reason = f'stopped by a runner restart; resumes on attempt {slot["attempt"]}'
+                        if dirty:
+                            reason += ' with uncommitted changes'
+                    updates = {'reason': reason}
             if target != slot['state']:
                 slot = change(common, slot, target, updates)
             result.append(slot)

@@ -94,6 +94,28 @@ reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 
+## Runner jobs versus outside sessions
+
+The [writer scan](../scripts/task_execution.py) excludes this repository's own
+runner jobs before integration, closeout and slot worktree cleanup check for outside
+sessions. The primary attribution is the process's `/proc/<pid>/cgroup`: an exact
+`pi-autowork@<canonical-repository-name>.service` component, including its child
+cgroups. A different repository's unit does not qualify.
+
+For foreground runs, the [coordinator](../../../pi-autowork/pi_autowork/coordinator.py)
+sets `AUTOWORK_EXECUTION_COMMON` to the repository's absolute Git common directory
+on every main check and Pi auxiliary job (DOCS-MAINTAINER, provisioning, merge
+resolution and Touches inference). Children inherit it. If a test harness sanitizes
+its child's environment, a still-live marked ancestor retains attribution; under
+systemd the cgroup also covers detached jobs that drop the environment. Fixture
+repositories do not match the real runner's marker or repository-specific unit.
+
+A `pi-scratch-*` name alone grants no exemption: an outside person's agent there
+still blocks, as does an otherwise blocking session in the main checkout. A blocked
+integration's process evidence explicitly says `session`, so mistaken attribution
+is visible instead of looking like an unidentified check process. These rules do
+not change which outside sessions block or how often the main check runs.
+
 ## Worker temporary directories
 
 `TMPDIR`, `TMP` and `TEMP` all point to the same private, owner-checked directory
@@ -243,7 +265,8 @@ nothing parallel was claimed or started.
   this task's local `autowork/<TASK>-set-aside-N` branches (including retired `-r2`
   attempts) and previous attempt branches, excluding the current branch. Each has
   its tip commit, commit date and changed files, newest tip first. Changed files
-  are measured from the merge-base of that tip and the new attempt's baseline.
+  are measured from the merge-base of that tip and the new attempt's baseline;
+  unrelated histories retain their tips with the changed-file list marked unknown.
   All refs are reachable from the worker's worktree without fetching. Only when
   the current task asks to keep or continue earlier work may the worker merge or
   cherry-pick from those tips; otherwise it must ignore them. Nothing is applied
@@ -265,9 +288,15 @@ nothing parallel was claimed or started.
   dead worker with a commit becomes `reported` (keeping any uncommitted changes),
   one with only uncommitted changes `interrupted`, one with neither `released`, and
   one whose HEAD left the baseline `held`. No task gets a second worker.
-- **Name collisions:** a worktree is adopted only when the journal shows Autowork
-  created it. A user branch or folder with the target name is left untouched and
-  dispatch returns `ACTION_REQUIRED` until it is resolved by hand.
+- **Name collisions:** [dispatch](../scripts/parallel_dispatch.py) adopts a clean, idle
+  journaled task worktree after verifying its identity. An orphan task branch without commits
+  beyond the dispatch baseline is removed with `git branch -d` and journaled as
+  `stale_branch_removed`; otherwise its work is kept under the next free
+  `-set-aside-N` name. A clean, idle task worktree can be removed without force before
+  this recovery. Dirty worktrees (including ignored files), unrelated paths and
+  branches checked out elsewhere are preserved: only that task waits, while
+  independent tasks dispatch. [Slot retirement](../scripts/parallel_integrate.py)
+  also skips existing set-aside names, preserving earlier attempts.
 - **Resources:** a worker starts only while MemAvailable is at least twice
   `--min-free-mem-mb` (default 1500): one worker's budget plus as much spare, however
   many already run, since their memory is already out of MemAvailable. The 1-minute

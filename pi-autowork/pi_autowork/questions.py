@@ -70,6 +70,14 @@ def build(snapshot, todo, goals):
                           unblocks=unblocks, task=task_line, needs=' '.join(str(needs).split()), answer=answer,
                           kind=kind)
 
+    if snapshot.get('ledger_errors'):
+        add('LEDGER', 'ledger', 'investigate',
+            'invalid goals.json: ' + '; '.join(snapshot['ledger_errors']),
+            'DOCS-MAINTAINER could not repair the ledger. Read the validation errors above and its '
+            'run record under the runner state directory (maintainer.json); add a task for remaining '
+            'goal proof or correct evidence/status in TODO.md and goals.json, then run goals.py validate.',
+            'LEDGER — goals.json validation', len(rows))
+
     for task, row in rows.items():
         if not exhausted(row):
             continue
@@ -139,6 +147,28 @@ def full_check_question():
                       'and main is never checked',
                 answer='Add one line to AGENTS.md, `Full check: <command>` (the command that runs the whole '
                        'offline suite), or set PI_AUTOWORK_VALIDATE in the runner\'s settings.')
+
+
+def update_planning(text, base=None):
+    """Add/remove just the startup question, preserving other questions and owner prose."""
+    block = block_of(text or '')
+    if block is None:
+        return update(text, [planning(base)]) if base else text
+    kept = re.sub(r'^### Q-RUNNER-PLANNING — .*?(?=^### Q-|\Z)', '', block, flags=re.M | re.S)
+    if base:
+        stamp = previous_since(text).get('RUNNER-PLANNING') or datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        question = render([planning(base)], {'RUNNER-PLANNING': stamp})
+        kept = block_of(question) + kept.lstrip('\n')
+    return text[:text.index(START) + len(START)] + kept + text[text.index(END):]
+
+
+def planning(base):
+    """One actionable runner question before a committed plan can reach a session."""
+    return dict(id='RUNNER-PLANNING', type='USER_INPUT', effort='quick', unblocks=0,
+                task='Runner startup', kind='runner',
+                needs=f'planning files are not committed on {base}',
+                answer=f'commit TODO.md and goals.json on {base} first. The runner resumes automatically; '
+                       'it will not commit these files for you at startup.')
 
 
 def previous_since(text):

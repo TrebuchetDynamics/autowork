@@ -31,7 +31,10 @@ def setUpModule():
     _toolset_fixture = tempfile.TemporaryDirectory()
     ROOT = Path(_toolset_fixture.name) / 'toolset'
     subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
-    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py', 'scripts/pi-autowork.sh']
+    # Snapshot dependencies together: a merge can change both the engine's CLI
+    # and the helpers it calls, not just the runner entry points.
+    paths = ['pi-autowork/pi_autowork', 'skills/autowork/scripts',
+             'skills/docs-sync/scripts', 'scripts/pi-autowork.sh']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
     if patch:
@@ -121,6 +124,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
     stream.seek(0); stream.truncate(); json.dump(plan, stream)
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
       'session': opts.get('--session-id'), 'cwd': os.getcwd(), 'tools': opts.get('--tools'),
+      'execution_common': os.environ.get('AUTOWORK_EXECUTION_COMMON'),
       'no_approve': '--no-approve' in args, 'message': message})
 def emit(record):
     print(json.dumps(record), flush=True)
@@ -178,6 +182,23 @@ elif role == 'maintainer':
             '  Checks: test -s FIX.txt\n  Dependencies: None.\n  Status: open\n', 1)
         open('TODO.md', 'w').write(text)
         git('commit', '-qam', 'docs(tasks): FIX repairs the red main')
+    elif behavior == 'repair_ledger':
+        data = json.load(open('goals.json'))
+        next(g for g in data['goals'] if g['id'] == 'PROOF')['tasks'] = ['PROOF-1']
+        data['tasks'].append(dict(id='PROOF-1', title='Remaining proof', goal='PROOF', status='open',
+                                  section='Needs decision', depends_on=[]))
+        open('goals.json', 'w').write(json.dumps(data))
+        with open('TODO.md', 'a') as stream:
+            stream.write('\n- [ ] PROOF-1 — Remaining proof\n  Scope: Remaining proof\n'
+                         '  Acceptance: recorded proof\n  Checks: manual\n  Dependencies: None.\n  Status: open\n')
+        git('commit', '-qam', 'docs(tasks): record remaining ledger proof')
+    elif behavior == 'drop_ledger':
+        os.unlink('goals.json')
+        git('commit', '-qam', 'docs(tasks): removed ledger')
+    elif behavior == 'invalid_ledger':
+        with open('TODO.md', 'a') as stream:
+            stream.write('\nStill missing ledger proof.\n')
+        git('commit', '-qam', 'docs(tasks): incomplete ledger repair')
     elif behavior == 'code':  # oversteps: edits product code
         open('A.txt', 'w').write('maintainer wrote code\n')
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
@@ -223,6 +244,19 @@ elif behavior == 'move_main':  # another writer commits a conflicting file to ma
     subprocess.run(['git', '-C', main, 'add', '-A'])
     subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
     finish(text='done')
+elif behavior == 'break_ledger':  # a ledger breaks while this worker is in flight
+    work()
+    listing = subprocess.run(['git', '-C', os.environ['FAKE_MAIN_REPO'], 'worktree', 'list', '--porcelain'],
+                             capture_output=True, text=True).stdout
+    session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
+                   if 'branch refs/heads/pi-autowork/' in b)
+    path = os.path.join(session, 'goals.json')
+    data = json.load(open(path))
+    data['goals'].append(dict(id='PROOF', title='Unverified proof', source='TODO.md', status='partial',
+                              tasks=[], priority=2, depends_on=[]))
+    open(path, 'w').write(json.dumps(data))
+    git('-C', session, 'commit', '-qam', 'unverified goal has no open task')
+    finish(text='done')
 elif behavior == 'move_session':  # the session branch changes the task's own file meanwhile
     work()
     listing = subprocess.run(['git', '-C', os.environ['FAKE_MAIN_REPO'], 'worktree', 'list', '--porcelain'],
@@ -230,9 +264,15 @@ elif behavior == 'move_session':  # the session branch changes the task's own fi
     session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
                    if 'branch refs/heads/pi-autowork/' in b)
     open(os.path.join(session, task + '.txt'), 'w').write('from the session\n')
-    subprocess.run(['git', '-C', session, 'add', '-A'])
-    subprocess.run(['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
-                    'commit', '-qm', 'session moved'])
+    for command in (['git', '-C', session, 'add', '-A'],
+                    ['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
+                     'commit', '-qm', 'session moved']):
+        observed = subprocess.run(command, capture_output=True, text=True)
+        note({'fixture_git': command, 'returncode': observed.returncode,
+              'stdout': observed.stdout, 'stderr': observed.stderr,
+              'session_status': subprocess.run(['git', '-C', session, 'status', '--porcelain'],
+                                               capture_output=True, text=True).stdout})
+        observed.check_returncode()
     finish(text='done')
 elif behavior == 'provider_error':
     open(task + '-partial.txt', 'w').write('half\n')
@@ -317,8 +357,10 @@ class Fixture(unittest.TestCase):
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
+                    'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',  # tiny fixtures also run on a small TMPDIR
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
-                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
+                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
+                    'XDG_STATE_HOME': str(self.root / 'xdg')}
         self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
         self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
@@ -352,6 +394,11 @@ class Fixture(unittest.TestCase):
         repo.mkdir()
         self.git(repo, 'init', '-q', '-b', 'main')
         (repo / 'TODO.md').write_text(todo(tasks))
+        # Unrelated runner journeys start after the one-time planning-driver setup.
+        # The startup test below adds a custom owner and verifies its setup commit.
+        (repo / '.gitattributes').write_text('goals.json merge=docs-sync-goals\nTODO.md merge=docs-sync-todo\n'
+            'TODO.archive.md merge=docs-sync-archive\ntodo.archive.md merge=docs-sync-archive\n'
+            'docs/TODO-archive.md merge=docs-sync-archive\n')
         for t, _ in tasks:
             (repo / f'{t}.txt').write_text('')
         self.git(repo, 'add', '-A')
@@ -359,8 +406,25 @@ class Fixture(unittest.TestCase):
         return repo
 
     def git(self, repo, *args):
-        return subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
-                               *args], check=True, capture_output=True, text=True).stdout.strip()
+        result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
+                                 *args], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0,
+                         f'fixture Git {args} in {repo}: {result.stdout}\n{result.stderr}')
+        return result.stdout.strip()
+
+    def retain_evidence(self):
+        """Keep targeted fake Git/runner/slot diagnostics before disposable cleanup."""
+        target = Path(tempfile.mkdtemp(prefix='runner-evidence-', dir=tempfile.gettempdir()))
+        for source in [self.log, *self.state.rglob('runner.log'), *self.state.rglob('engine.err'),
+                       *self.repo.glob('.git/autowork-execution/slots/*.json')]:
+            if source.is_file():
+                dest = target / source.relative_to(self.root)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest)
+        (target / 'snapshot.json').write_text(json.dumps({
+            'workers': self.runs('worker'), 'main_status': self.git(self.repo, 'status', '--porcelain'),
+            'worktrees': self.git(self.repo, 'worktree', 'list', '--porcelain')}, indent=2))
+        print(f'FIXTURE_EVIDENCE {target}', flush=True)
 
     def plan(self, plan):
         self.plan_file.write_text(json.dumps(plan))
@@ -425,11 +489,29 @@ class EngineTests(Fixture):
         self.assertEqual(roles, {'worker', 'verify'})
 
     def test_once_runs_one_task(self):
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text().replace(
+            '# TODO\n', '# TODO\n\n[Completed tasks](docs/history.md)\n'))
+        (self.repo / 'docs').mkdir()
+        (self.repo / 'docs/history.md').write_text('# Completed tasks\n')
+        self.git(self.repo, 'add', 'TODO.md', 'docs/history.md')
+        self.git(self.repo, 'commit', '-qm', 'custom history owner')
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
         self.assertTrue(self.done('A'))
         self.assertEqual((self.repo / 'B.txt').read_text(), '')
+        for kind, name in (('goals', 'goals.json'), ('todo', 'TODO.md'), ('archive', 'TODO.archive.md')):
+            driver = self.git(self.repo, 'config', '--local', '--get', f'merge.docs-sync-{kind}.driver')
+            self.assertIn('merge-driver ' + kind, driver)
+            self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', name),
+                             f'{name}: merge: docs-sync-{kind}')
+        self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', 'docs/history.md'),
+                         'docs/history.md: merge: docs-sync-archive')
+        attributes = (self.repo / '.gitattributes').read_bytes()
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.repo / '.gitattributes').read_bytes(), attributes)
+        self.assertEqual(self.git(self.repo, 'rev-list', '--count', 'HEAD', '--', '.gitattributes'), '2')
 
     def test_empty_queue_calls_no_model(self):
         # Seed the consumed artifacts of a completed A/B/C session, not another
@@ -573,6 +655,44 @@ class EngineTests(Fixture):
     def main_record(self):
         found = list(self.state.glob('*/main_check.json'))
         return json.loads(found[0].read_text()) if found else {}
+
+    def test_a_foreground_main_checks_agents_do_not_delay_integration(self):
+        (self.repo / 'TODO.md').write_text(todo([('A', None)]).replace('  Touches: A.txt\n', ''))
+        self.git(self.repo, 'commit', '-qam', 'one task needing Touches')
+        ready, release = self.root / 'check-ready.json', self.root / 'release-check'
+        agent, child = self.root / 'run_agent.py', self.root / 'pi'
+        child.write_text('import time\nfrom pathlib import Path\n'
+                         f'while not Path({str(release)!r}).exists(): time.sleep(0.05)\n')
+        # Offline harnesses strip runner settings before starting fixture agents. Their
+        # real marked parent still attributes them without leaking settings into tests.
+        agent.write_text('import json, os, subprocess, sys\nfrom pathlib import Path\n'
+                         'env = {k: v for k, v in os.environ.items() if not k.startswith("AUTOWORK_")}\n'
+                         f'child = subprocess.Popen([sys.executable, {str(child)!r}], env=env)\n'
+                         f'Path({str(ready)!r}).write_text(json.dumps(dict(pid=child.pid, '
+                         'marker=os.environ.get("AUTOWORK_EXECUTION_COMMON"))))\nchild.wait()\n')
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = shlex.join([sys.executable, str(agent)])
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        try:
+            self.wait_for(ready)
+            deadline = time.monotonic() + 60
+            while not self.done('A'):
+                self.assertIsNone(runner.poll(), log())
+                self.assertLess(time.monotonic(), deadline, log())
+                time.sleep(0.1)
+            record = json.loads(ready.read_text())
+            self.assertTrue(Path(f'/proc/{record["pid"]}').exists(), log())
+            self.assertEqual(record['marker'], str(self.repo / '.git'))
+            self.assertNotIn(b'AUTOWORK_EXECUTION_COMMON=', Path(f'/proc/{record["pid"]}/environ').read_bytes())
+            # Touches are scheduling hints now; the reviewer is still a real
+            # auxiliary Pi job and must carry the same repository attribution.
+            self.assertEqual(self.runs('verify')[0]['execution_common'], str(self.repo / '.git'))
+            self.assertNotIn('waiting to integrate until another session', log())
+        finally:
+            release.touch()
+            if runner.poll() is None:
+                runner.send_signal(signal.SIGINT)
+            runner.communicate(timeout=60)
 
     def test_a_main_check_the_busy_host_cut_short_runs_again_before_green(self):
         """TOOLSET-193-54: tests the resource gate skipped are not checked, so main is not green yet."""
@@ -987,9 +1107,21 @@ class EngineTests(Fixture):
                                 '--owner-pid', str(sleeper.pid)], capture_output=True, text=True)
         self.assertEqual(json.loads(claim.stdout)['outcome'], 'BUSY', claim.stdout)
         self.assertIn('parallel coordinator', claim.stdout)
+        slots = self.repo / '.git/autowork-execution/slots'
+        b = json.loads((slots / 'B.json').read_text())
+        (Path(b['worktree']) / 'B.txt').write_text('unfinished')
         runner.send_signal(signal.SIGINT)
         out, _ = runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130, out)
+        reason = 'stopped by a runner restart; resumes on attempt 1'
+        self.assertIn('A: paused — ' + reason, out)
+        self.assertIn('B: paused — ' + reason + ' with uncommitted changes', out)
+        self.assertNotIn(': failed', out)
+        status = self.run_runner('--status')
+        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
+        self.assertIn('0 failed', status.stdout)
+        for task, suffix in (('A', ''), ('B', ' with uncommitted changes')):
+            self.assertRegex(status.stdout, rf'{task}\s+paused\s+{reason}{suffix}')
         signals = [json.loads(l) for l in self.log.read_text().splitlines() if '"signal"' in l]
         self.assertEqual(sorted(s['task'] for s in signals), ['A', 'B'], out + self.log.read_text()[-1500:])
         result = self.run_runner('--until-empty')
@@ -1108,6 +1240,8 @@ class EngineTests(Fixture):
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
         runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and (runner.kill(), runner.wait()))
+        self.addCleanup(self.retain_evidence)
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
                                                if list(self.state.glob('*/runner.log')) else ''):
@@ -1217,6 +1351,7 @@ class EngineTests(Fixture):
         time.sleep(3)
         self.assertIsNone(runner.poll(), log())  # still serving, not finished
         self.assertNotIn('Finished.', log())
+        self.assertIn('A: failed — dead worker without a commit or changes', log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
@@ -1302,25 +1437,185 @@ class EngineTests(Fixture):
         self.assertIn('docs(tasks): record TODO.md priority order (pi-autowork)',
                       self.git(self.repo, 'log', '--format=%s'))
 
+    def test_an_invalid_ledger_is_repaired_before_dispatch_or_settling_reported_work(self):
+        for source in ('before_dispatch', 'reported', 'reported_once'):
+            with self.subTest(source=source):
+                self.repo = self.make_repo(self.root / source, [('A', None), ('B', None), ('C', 'A')])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                self.ledger_with_recorded_order()
+                if source == 'before_dispatch':
+                    data = json.loads((self.repo / 'goals.json').read_text())
+                    data['goals'].append(dict(id='PROOF', title='Unverified proof', source='TODO.md', status='partial',
+                                              tasks=[], priority=2, depends_on=[]))
+                    (self.repo / 'goals.json').write_text(json.dumps(data))
+                    self.git(self.repo, 'commit', '-qam', 'unverified goal has no open task')
+                self.plan({'maintainer': ['repair_ledger'],
+                           'worker:A': ['complete'] if source == 'before_dispatch' else ['break_ledger']})
+                result = self.run_runner('--once' if source == 'reported_once' else '--until-empty',
+                                         '--workers', '1')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.count('DOCS-MAINTAINER: repairing the task docs of LEDGER'), 1,
+                                 result.stdout)
+                self.assertIn('DOCS-MAINTAINER: merged', result.stdout)
+                self.assertTrue(self.done(*('A' if source == 'reported_once' else 'ABC')),
+                                result.stdout + result.stderr)
+                self.assertIn('record remaining ledger proof', self.git(self.repo, 'log', '--format=%s'))
+                self.assertNotIn('The engine needs attention', result.stdout)
+
+    def test_a_maintainer_change_that_leaves_an_invalid_ledger_is_refused_and_asked_once(self):
+        for behavior in ('invalid_ledger', 'drop_ledger'):
+            with self.subTest(behavior=behavior):
+                self.repo = self.make_repo(self.root / behavior, [('A', None)])
+                (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'broken ledger')
+                self.plan({'maintainer': [behavior]})
+                result = self.run_runner('--until-empty')
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                self.assertIn('DOCS-MAINTAINER: refused: goals.py validate failed', result.stdout)
+                self.assertTrue((self.repo / 'goals.json').exists())
+                again = self.run_runner('--until-empty')
+                self.assertNotIn('DOCS-MAINTAINER: repairing', again.stdout)
+                self.assertNotIn('The engine needs attention', again.stdout)
+                blockers = (self.repo / 'BLOCKERS.md').read_text()
+                self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
+                self.assertIn('A: unknown goal None', blockers)
+
+    def test_structural_ledger_errors_also_get_a_repair_attempt_and_question(self):
+        for content, error in [('{', 'malformed JSON'), ('{"version": 2, "goals": [], "tasks": []}',
+                                                       'version must be 1')]:
+            with self.subTest(error=error):
+                self.repo = self.make_repo(self.root / error.replace(' ', '-'), [('A', None)])
+                (self.repo / 'goals.json').write_text(content)
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'structurally broken ledger')
+                result = self.run_runner('--until-empty')
+                self.assertIn('DOCS-MAINTAINER: repairing the task docs of LEDGER', result.stdout)
+                self.assertIn(error, (self.repo / 'BLOCKERS.md').read_text())
+
     def test_a_service_stays_up_and_reports_when_the_engine_needs_attention(self):
-        """An invalid ledger made the runner exit, and systemd does not restart a deliberate exit."""
-        (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
-        self.git(self.repo, 'add', 'goals.json')
-        self.git(self.repo, 'commit', '-qm', 'broken ledger')
+        """A refused ledger must recover even when a reported worker waits for integration."""
+        self.ledger_with_recorded_order()
+        self.plan({'worker:A': ['break_ledger']})  # maintainer defaults to making no change
         env = {**self.env, 'PI_AUTOWORK_STALL_AFTER': '1'}
-        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1', '--workers', '1'], cwd=self.repo, env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
         deadline = time.monotonic() + 60
-        while 'STALLED' not in log():
+        while not (self.repo / 'BLOCKERS.md').exists():
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.2)
         self.assertEqual(log().count('The engine needs attention'), 1, log())
-        self.assertIn('the engine needs attention: invalid goals.json', log())
+        self.assertIn('The engine needs attention: invalid goals.json', log())
+        self.assertEqual(log().count('DOCS-MAINTAINER: repairing the task docs of LEDGER'), 1, log())
+        listing = self.git(self.repo, 'worktree', 'list', '--porcelain')
+        session = next(Path(b.splitlines()[0].removeprefix('worktree ')) for b in listing.split('\n\n')
+                       if 'branch refs/heads/pi-autowork/' in b)
+        blockers = (session / 'BLOCKERS.md').read_text()
+        self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
+        self.assertIn('PROOF: partial goal has no open task', blockers)
+        # The question has landed, so the session is no longer ahead. Owner fixes on
+        # main must still reach it even though A remains reported (an in-flight slot).
+        self.git(self.repo, 'rm', 'goals.json')
+        self.git(self.repo, 'commit', '-qm', 'owner restored TODO-only plan')
+        deadline = time.monotonic() + 60
+        while not self.done('A', 'B', 'C') or '### Q-LEDGER' in (self.repo / 'BLOCKERS.md').read_text():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertEqual(log().count('The engine needs attention'), 1, log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
+
+    def test_uncommitted_planning_waits_once_then_dispatches_after_commit(self):
+        for stage_all in (False, True):
+            with self.subTest(stage_all=stage_all):
+                self.repo = self.make_repo(self.root / f'planning-{stage_all}', [('A', None), ('B', None), ('C', 'A')])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                self.log.unlink(missing_ok=True)
+                self.ledger_with_recorded_order()
+                self.git(self.repo, 'rm', '--cached', 'TODO.md', 'goals.json')
+                question = self.repo / 'BLOCKERS.md'
+                question.write_text('# Blockers\n\n## Active\n\nOwner note: preserve me.\n')
+                self.git(self.repo, 'add', 'BLOCKERS.md')
+                self.git(self.repo, 'commit', '-qm', 'planning only on disk')
+                self.env.update(PI_AUTOWORK_PLAN_SETTLE='0', PI_AUTOWORK_PLANNING_QUIET='600')
+                if not stage_all:
+                    # Interrupt recovery just before restoring owner prose; a restart must
+                    # retain the receipt and finish restoration, not leave a dirty scaffold.
+                    shim = self.root / 'idle-host' / 'sitecustomize.py'
+                    with shim.open('a') as stream:
+                        stream.write('\nfrom pathlib import Path\n'
+                                     '_write_text = Path.write_text\n'
+                                     'def write_text(path, data, *args, **kwargs):\n'
+                                     '    insertion = Path(os.environ["FAKE_PI_ROOT"]) / "interrupt-insertion"\n'
+                                     '    if path.name == "BLOCKERS.md" and "Q-RUNNER-PLANNING" in data and insertion.exists():\n'
+                                     '        insertion.unlink()\n'
+                                     '        os._exit(98)\n'
+                                     '    marker = Path(os.environ["FAKE_PI_ROOT"]) / "interrupt-recovery"\n'
+                                     '    if path.name == "BLOCKERS.md" and "Owner note:" in data '
+                                     'and "pi-autowork:questions:start" not in data and marker.exists():\n'
+                                     '        marker.unlink()\n'
+                                     '        os._exit(99)\n'
+                                     '    return _write_text(path, data, *args, **kwargs)\n'
+                                     'Path.write_text = write_text\n')
+                    (self.root / 'interrupt-insertion').touch()
+                self.plan({'worker:A': ['blocked']})
+                runner = self.start_runner('--interval', '1')
+                self.addCleanup(lambda r=runner: r.poll() is None and r.kill())
+                common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+                folder = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+                log = lambda: (folder / 'runner.log').read_text() if (folder / 'runner.log').exists() else ''
+                if not stage_all:
+                    runner.communicate(timeout=30)
+                    self.assertEqual(runner.returncode, 98, log())
+                    self.assertTrue((folder / 'planning-question.json').exists())
+                    time.sleep(1.1)  # cross a timestamp boundary before retrying the pending write
+                    runner = self.start_runner('--interval', '1')
+                    self.addCleanup(lambda r=runner: r.poll() is None and r.kill())
+                deadline = time.monotonic() + 30
+                while 'planning files are not committed on main' not in question.read_text():
+                    self.assertLess(time.monotonic(), deadline, log())
+                    self.assertIsNone(runner.poll(), log())
+                    time.sleep(0.1)
+                before = question.read_text()
+                time.sleep(3)  # several cycles: neither the log nor the question repeats
+                self.assertEqual(question.read_text(), before)
+                self.assertEqual(log().count('Runner blocked:'), 1, log())
+                status = json.loads((folder / 'status.json').read_text())
+                self.assertEqual(len([r for r in status['roots'] if r['kind'] == 'runner']), 1)
+                self.assertIn('planning files are not committed on main', status['blocker'])
+                self.assertEqual(self.runs(), [])
+                self.assertEqual(self.git(self.repo, 'ls-tree', '--name-only', 'main', 'TODO.md', 'goals.json'), '')
+                self.git(self.repo, 'add', 'TODO.md')
+                self.git(self.repo, 'commit', '-qm', 'commit TODO only')
+                time.sleep(3)
+                self.assertEqual(self.runs(), [])  # an uncommitted index still holds dispatch
+                self.assertEqual(log().count('Runner blocked:'), 1, log())
+                if not stage_all:
+                    (self.root / 'interrupt-recovery').touch()
+                self.git(self.repo, 'add', '-A' if stage_all else 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'commit planning')
+                if not stage_all:
+                    runner.communicate(timeout=30)
+                    self.assertEqual(runner.returncode, 99, log())
+                    self.assertTrue((folder / 'planning-question.json').exists())
+                    runner = self.start_runner('--interval', '1')
+                    self.addCleanup(lambda r=runner: r.poll() is None and r.kill())
+                deadline = time.monotonic() + 90
+                while '### Q-A ' not in question.read_text():
+                    self.assertLess(time.monotonic(), deadline, log())
+                    self.assertIsNone(runner.poll(), log())
+                    time.sleep(0.2)
+                self.assertTrue(self.runs('worker'))
+                runner.send_signal(signal.SIGINT)
+                runner.communicate(timeout=120)
+                self.assertNotIn('The engine needs attention', log())
+                self.assertNotIn('planning files are not committed', question.read_text())
+                self.assertIn('Owner note: preserve me.', question.read_text())
 
     def test_an_idle_runner_starts_new_work_as_soon_as_todo_changes(self):
         """The owner plans; the runner reacts to the plan, not to its polling interval."""
@@ -1684,6 +1979,7 @@ class EngineTests(Fixture):
         """TOOLSET-157-cd (2): a conflict hold reran the whole task from scratch."""
         self.plan({'worker:A': ['move_session'], 'merge:A': ['resolve']})
         result = self.run_runner('--until-empty')
+        self.retain_evidence()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: its commit conflicts with the session in: A.txt; asking Pi to resolve the merge '
                       'in its worktree', result.stdout)
@@ -1875,6 +2171,45 @@ class EngineTests(Fixture):
         self.assertIn(f'Merged {session["branch"]}', result.stdout)
         self.assertFalse(self.registered(session['path']))
         self.assertTrue(self.registered(other))
+
+    def test_a_session_at_an_old_location_is_recreated_or_moved_without_losing_work(self):
+        for contents in ('clean', 'committed', 'ignored'):
+            with self.subTest(contents=contents):
+                self.repo = self.make_repo(self.root / f'project-{contents}', [('A', None)])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                # The runner's state key is the common Git directory's digest.
+                common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+                folder = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+                folder.mkdir(parents=True, exist_ok=True)
+                branch = f'pi-autowork/old-{contents}'
+                old = self.root / f'old-{contents}'
+                (self.repo / '.gitignore').write_text('private-note.txt\n')
+                self.git(self.repo, 'add', '.gitignore')
+                self.git(self.repo, 'commit', '-qm', 'ignored session data')
+                self.git(self.repo, 'worktree', 'add', '-q', '-b', branch, str(old), 'main')
+                saved = 'private-note.txt' if contents == 'ignored' else 'saved.txt'
+                if contents != 'clean':
+                    (old / saved).write_text('keep this work\n')
+                if contents == 'committed':
+                    self.git(old, 'add', saved)
+                    self.git(old, 'commit', '-qm', 'session work')
+                (folder / 'session.json').write_text(json.dumps({'branch': branch, 'path': str(old), 'base': 'main'}))
+                # Hold the final merge so the relocated session remains inspectable.
+                (self.repo / 'A.txt').write_text('owner edit\n')
+                result = self.run_runner('--once')
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                session = json.loads((folder / 'session.json').read_text())
+                self.assertEqual(Path(session['path']).parent, self.repo / '.worktrees')
+                self.assertFalse(old.exists())
+                if contents != 'clean':
+                    self.assertEqual(session['branch'], branch)
+                    self.assertEqual((Path(session['path']) / saved).read_text(), 'keep this work\n')
+                else:
+                    self.assertNotEqual(session['branch'], branch)
+                self.git(self.repo, 'checkout', '--', 'A.txt')
+                self.assertEqual(self.run_runner('--until-empty').returncode, 0)
+                if contents == 'ignored':
+                    self.assertEqual((Path(session['path']) / saved).read_text(), 'keep this work\n')
 
     def test_user_changes_in_main_block_only_the_final_merge(self):
         (self.repo / 'A.txt').write_text('my note\n')  # uncommitted; the merge would overwrite it
@@ -2167,12 +2502,24 @@ class ServiceTests(Fixture):
         cache = self.root / 'uv-cache'
         build = cache / 'builds-v0' / '.tmpabc' / 'bin'
         build.mkdir(parents=True)
-        self.env.update(UV_CACHE_DIR=str(cache), PATH=f"{build}:{self.env['PATH']}")
+        missing = self.root / '.tmp-gone' / 'bin'
+        temporary = self.root / '.tmp-other-tool' / 'bin'
+        temporary.mkdir(parents=True)
+        gone = self.root / 'gone' / 'bin'
+        archive = cache / 'archive-v0' / 'abc' / 'bin'
+        archive.mkdir(parents=True)
+        xdg_cache = self.root / 'xdg-cache'
+        default_build = xdg_cache / 'uv' / 'builds-v0' / 'abc' / 'bin'
+        default_build.mkdir(parents=True)
+        self.env.update(UV_CACHE_DIR=str(cache), XDG_CACHE_HOME=str(xdg_cache),
+                        PATH=f"{missing}:{build}:{temporary}:{gone}:{archive}:{default_build}:{self.bin}:{self.env['PATH']}")
         result = self.run_runner('--install-service')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         path = next(l for l in (self.envs / 'project.env').read_text().splitlines() if l.startswith('PATH='))
-        self.assertNotIn(str(cache), path)
-        self.assertIn(str(self.bin), path)
+        for dropped in (missing, build, temporary, gone, archive, default_build):
+            self.assertNotIn(str(dropped), path)
+            self.assertIn(str(dropped), result.stdout)
+        self.assertEqual(path.split('=', 1)[1].split(os.pathsep).count(str(self.bin)), 1)
 
     def test_a_name_used_by_another_repository_is_refused(self):
         self.envs.mkdir()

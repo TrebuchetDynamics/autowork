@@ -70,6 +70,21 @@ class IntegrationTests(unittest.TestCase):
                        'changed_files': list(files or {task + '.txt': ''}), 'checks': [], 'blockers': [], 'changelog': 'fixture'})
         return root, commit
 
+    def retain_evidence(self):
+        """Retain command receipts, child output and slot state before fixture cleanup."""
+        import shutil
+        target = Path(tempfile.mkdtemp(prefix='integration-evidence-', dir=tempfile.gettempdir()))
+        for source in [*self.common.glob('*.json'), *self.common.glob('*.log'),
+                       *self.common.glob('slots/*.json')]:
+            if source.is_file():
+                dest = target / source.relative_to(self.common)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest)
+        (target / 'children.json').write_text(json.dumps({
+            'children': execution.child_pids(os.getpid()),
+            'slots': state.slots(self.common)}, indent=2))
+        print(f'FIXTURE_EVIDENCE {target}', flush=True)
+
     def module(self):
         try:
             return importlib.import_module('parallel_integrate')
@@ -736,16 +751,19 @@ finally:
         root, retry, commit = self.exhaust()
         module = self.module()
         self.assertTrue(state.exhausted(state.slots(self.common)[0]))
+        # Dispatch may already have preserved an orphan branch before this slot existed.
+        self.git('branch', 'autowork/A-set-aside-1', self.baseline)
         result = module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual((result['outcome'], result['previous_state']), ('SET_ASIDE', 'held'))
         self.assertEqual(state.slots(self.common), [])
         self.assertFalse(root.exists() or retry.exists())
-        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), commit)
-        self.assertEqual(Path(str(retry) + '-set-aside-1', 'wip.txt').read_text(), 'unsaved\n')  # dirty: kept
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), self.baseline)
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-2'), commit)
+        self.assertEqual(Path(str(retry) + '-set-aside-2', 'wip.txt').read_text(), 'unsaved\n')  # dirty: kept
         # TOOLSET-210-53: the clean first attempt's worktree (and its build output) is gone; its branch is kept.
-        self.assertFalse(Path(str(root) + '-set-aside-1').exists())
+        self.assertFalse(Path(str(root) + '-set-aside-2').exists())
         self.assertTrue(any(r.get('worktree_removed') for r in result['renamed']), result['renamed'])
-        self.assertTrue((self.common / 'slot-history' / 'A' / '1' / 'slot.json').exists())
+        self.assertTrue((self.common / 'slot-history' / 'A' / '2' / 'slot.json').exists())
         self.assertFalse((self.common / 'slot-data' / 'A').exists())
         # The task dispatches fresh under its original names.
         fresh, branch, _ = dispatch.create_worktree(self.repo, self.common, 'A', self.baseline)
@@ -1361,7 +1379,19 @@ finally:
         self.worker()
         daemon = 'import subprocess, sys; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])'
         module = self.module()
-        result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', daemon], 20)
+        killpg = os.killpg
+
+        def settled_kill(group, sig):
+            # Force the legitimate scheduling case where SIGKILL has completed
+            # before descendant accounting runs, without reaping the zombie.
+            children = [pid for pid in execution.child_pids(os.getpid()) if os.getpgid(pid) == group]
+            killpg(group, sig)
+            for pid in children:
+                os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+
+        with patch.object(execution.os, 'killpg', side_effect=settled_kill):
+            result = module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', daemon], 20)
+        self.retain_evidence()
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual(state.slots(self.common)[0]['checks']['outcome'], 'CHILDREN_TERMINATED')
         self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
@@ -1373,6 +1403,7 @@ finally:
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', [sys.executable, '-c', failing], 20)['outcome'],
                          'HELD')
         slot = state.slots(self.common)[0]
+        self.retain_evidence()
         self.assertEqual(slot['checks']['outcome'], 'CHILDREN_TERMINATED')
         self.assertFalse(module.passed(slot['checks']))  # exit 1: a real failure, never offered again
         # As an earlier release held a passing run that left a daemon: offered again, once.

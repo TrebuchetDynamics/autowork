@@ -4,8 +4,124 @@ Evidence supplement, not an accepted replacement plan or a passing check. The
 [existing task](../../TODO.md#toolset-184-b3--restore-the-full-offline-check-after-the-red-main-at-36e2b7c)
 retains every Acceptance item, dependency, status and priority. Its accepted source
 remains [the continuous runner](../project.md#continuous-pi-runner-2026-10-15).
-No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-e4faccb);
+No duplicate repair task is needed. Start with the [latest receipt](#current-main-receipt-at-539b926);
 earlier receipt sections below retain their original revision-bound observations.
+
+## Current MAIN receipt at 539b926
+
+The supplied MAIN trigger agrees with the inspected runner's `main_check.json`:
+red `539b9268a76358009af653bd524d7f4cecb834b2`, recorded green
+`0cd50869a71a5e76a5034e612c52b6720d434199`, and one failure remaining after
+isolated reruns:
+`test_budget_controller.BudgetTests.test_final_source_read_error_fails_qualification_without_erasing_evidence`.
+The completed `python3 scripts/check.py` log ends `Offline result: 4 test
+directories passed; 1 failed; 8 modules excluded.` `main-check.exit` is 1.
+These are retained runner results, not checks repeated by this docs pass.
+
+At `test_budget_controller.py:534`, the source-read case's
+`assertLess(evidence['elapsed'], 2)` observes 4.500797971151769 seconds in the
+full run. Its isolated rerun fails the same assertion at 3.0635160729289055
+seconds. Main is recorded red, not check-broken and not the three-revision
+flaky-test case. Six other full-run failures pass their isolated reruns:
+
+- `test_budget_controller.BudgetTests.test_failed_race_evidence_survives_assertion_and_temp_cleanup`
+- `test_budget_controller.BudgetTests.test_final_effect_read_error_fails_qualification_without_erasing_evidence`
+- `test_budget_controller.BudgetTests.test_final_snapshot_error_preserves_real_deadline_failure`
+- `test_budget_controller.BudgetTests.test_final_snapshot_error_retains_normal_process_evidence`
+- `test_budget_controller.UnsynchronizedAdmissionTests.test_completion_transaction_contention_never_refunds_or_replays`
+- `test_budget_controller.UnsynchronizedAdmissionTests.test_identical_barrier_race_is_at_most_once_after_restart`
+
+Preserve their original failed runs and rerun classifications; they are not six
+more current red failures or proof of stability. Their `flaky_history` entries
+contain only this revision, not three different revisions.
+
+### Bounded investigation and unchanged contract
+
+The open task already owns budget-evidence failures, the failing module and the
+complete offline gate. Reuse TOOLSET-184-b3 without adding a duplicate or moving
+it above the owner's leading tasks. Its unchanged Acceptance and Review
+continuation require retained observations, uncertainty/deadline semantics,
+cleanup and the complete inventory. The fixture deliberately makes the final
+source observation fail: qualification must fail while the already-persisted
+process evidence survives. The timing assertion fails before all later retention
+and redaction assertions execute; it proves neither their success nor a product
+controller defect.
+
+TODO.md now names the exact focused check before the retained historical checks:
+`python3 scripts/check.py skills/autowork/scripts/test_budget_controller.py -k test_final_source_read_error_fails_qualification_without_erasing_evidence`.
+Inspect fixture isolation, shared scratch, resource load and event/deadline
+ordering, retaining elapsed time, child receipts and both observation envelopes.
+These are discriminating investigation leads, not verified causes. Keep the
+existing less-than-two-second bound and all retention/redaction/cleanup assertions;
+no longer timeout, skip or isolated-pass waiver. The required full check remains
+`python3 scripts/check.py` under the existing supplied-scratch restrictions.
+
+### Reported commits and path evidence
+
+The supplied prompt truncates its eighth commit; the runner JSON retains this
+complete reported since-green window:
+
+```text
+539b926 docs(tasks): plan TOOLSET-245-6a (a dispatch refused by the runner's own review lock retries in seconds); evidence for TOOLSET-235-0d
+68f4d61 docs(tasks): plan TOOLSET-244-5d (the crash line is the tool's exit message, not a warning)
+d037c1c docs(tasks): plan TOOLSET-243-6d (reviewer-change re-reviews go behind fresh candidates, once)
+5fc79f6 fix(pi): only the candidate the engine takes next is started and reads 'verifying' (TOOLSET-238-11)
+2229553 fix(blockers): repair held tasks as well as owner questions
+94d4342 docs(tasks): TOOLSET-239-d4 done (3d0f2c0) supersedes TOOLSET-212-0d; plan TOOLSET-240-f8, 241-a1, 242-d5
+3d0f2c0 fix(autowork): a worker's TMPDIR is a short directory on disk, not the shared RAM disk
+70767ef test(pi): the review-scratch test holds inside a review, and keeps its scratch out of /var/tmp
+0faf17c docs(tasks): plan TOOLSET-238-11 (only the next candidate is started and reads verifying)
+29d230a perf(pi): a candidate's full check runs once, by the runner; workers and the reviewer reuse it (TOOLSET-227-a8)
+54b0954 docs(tasks): TOOLSET-227-a8 to fourth in Now; note its overlap with TOOLSET-232-01
+```
+
+Inspected commit stats corroborate coordinator, parallel integration/dispatch,
+their tests and `pi-autowork/tests/test_worker_tmp.py` changes. These and the
+failing budget module already fit Touches through `pi-autowork/pi_autowork/`,
+`pi-autowork/tests/`, `skills/autowork/scripts/` and `tests/test_pi_autowork.py`.
+The blockers change also touches `skills/blockers/SKILL.md`, its portable adapter,
+`docs/workflows.md` and `tests/test_blockers.py`; the window alone supplies no
+causal link or permission to expand this runtime repair to blockers instructions.
+Protected planning-file churn is not worker scope. No Touches expansion,
+dependency change, supersession or new product decision is evidenced.
+
+### Newer reported candidate, not the historical scratch blocker
+
+Unlike the older receipts below, current
+`slot-data/TOOLSET-184-b3/attempt-1/report.json` exists and names commit
+`a989641bf2db90d3e4fb9b87bb71cb3f4acd95af`, source tree
+`2432cb45d6063e894720bb9025c7c43773bab7e3`, based on `e9c117d`.
+It reports ten changed files (checker/test, offline fixtures, task execution,
+budget test, parallel adversarial/dispatch/e2e/integration tests and Pi runner
+test), focused passes, independent worker-side review and full-gate exit 0:
+1,866 identities, 1,865 passes, one pre-existing native opt-in skip, eight unchanged
+exclusions and no host-resource skips. It reports no blockers. This is
+candidate-bound worker evidence, not a pass repeated here or acceptance of a
+newer integration tree. The slot is `reported`, its recorded worker PID no longer
+exists, and its candidate checkout is clean. The candidate is not an ancestor
+of this docs checkout; do not infer delivered repair from its report.
+
+The existing integration owner must reconcile this candidate, the latest MAIN
+failure and any newer overlapping changes; do not start over from history index
+3's clean checkout or replay index 2's older dirty continuation. Preserve all old
+candidates, attempts and the rejected review's socket-path, worktree-cleanup and
+tx findings plus budget-evidence requirements. Verify current supplied physical
+scratch and source-bound receipts. Require the unchanged full gate and independent
+review on the resulting merged tree. No claim release, runtime state edit,
+scratch access, fresh implementation attempt or completion follows from this pass.
+
+Inspected private receipts are in the runner's existing state directory
+(`main_check.json`, `main-check.log`, `main-check.exit`, `main-check-reruns.log`)
+and Git common directory (the report below); no main-evidence bundle exists there
+at inspection. Do not ask the owner for logs the runner already retains.
+
+| Inspected receipt | SHA-256 |
+| --- | --- |
+| `main_check.json` | `c110c68e80d965f0389edcbe85d67e6b3c9daaff3481a884dec0927b0621d7e2` |
+| `main-check.log` | `01dcd208a1cb82b95957919d0c3c5eda1279b7ad9561709ef7e50eac288e44de` |
+| `main-check.exit` | `4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865` |
+| `main-check-reruns.log` | `8775cf253ca83cb9473bf730d51f4ea06a2be050c64d3a9c4e27f1b182f9fc6f` |
+| `slot-data/TOOLSET-184-b3/attempt-1/report.json` | `e05623507d3e9d202cdb600b78c40c934779368f9008b4dac9e23bf3f0993116` |
 
 ## Current MAIN receipt at e4faccb
 
