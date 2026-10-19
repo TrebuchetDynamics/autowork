@@ -1,5 +1,6 @@
 """Serialized, validated local integration. Worker reports are evidence, not acceptance."""
 import math
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -980,6 +981,41 @@ def reverify(repo, owner_pid, task, version):
         value.update(state='reported', reverified=version, reverify_verdict=validation_verdict(slot))
         slot = state.write_slot(common, value, slot)
         return {'outcome': 'REVERIFY', 'task': task, 'commit': slot['commit'], 'version': version}
+
+
+ANSWERS = 2  # answered blockers per task; after that the hold is the owner's question
+
+
+def answer(repo, owner_pid, task, text):
+    """Answer a worker-reported blocker and resume its attempt in its own worktree, with the answer
+    in its prompt: most blockers asked the runner for what it already provides, or for a repair the
+    worker may make itself, and waited hours for a person (TOOLSET-252-4c's evidence, 2026-10-19)."""
+    text = text.strip()
+    if not text:
+        raise ValueError('an answer needs text')
+    repo, common = context(repo, owner_pid)
+    with execution.lock(common / 'writer.lock'):
+        state.require_owner(common, owner_pid)
+        slot = slot_for(common, task)
+        if (slot is None or slot['state'] != 'held' or slot.get('cause') != 'blocker' or state.worker_live(slot)
+                or answered(slot) >= ANSWERS):
+            raise ValueError(f'answer is only for a blocker-held task, at most {ANSWERS} times')
+        with open(answers_path(common, task), 'a') as record:
+            record.write(f'- {datetime.now():%Y-%m-%d %H:%M} to: {slot.get("reason") or "a blocker"}\n  {text}\n')
+        value = {k: v for k, v in slot.items() if k not in ('reason', 'cause')}
+        value.update(state='interrupted', paused=True, answered=answered(slot) + 1)
+        slot = state.write_slot(common, value, slot)
+        state.event(common, 'blocker_answered', task_id=task, answered=slot['answered'])
+    return {'outcome': 'ANSWERED', 'task': task, 'answered': slot['answered']}
+
+
+def answered(slot):
+    """How often the runner has answered this task's blockers; a resume keeps the count in its history."""
+    return max(int(s.get('answered') or 0) for s in [slot, *slot.get('previous_attempts', [])])
+
+
+def answers_path(common, task):
+    return execution.safe_path(common / 'slot-data' / task / 'answers.md')
 
 
 def merged(repo, owner_pid, task):

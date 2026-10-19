@@ -28,7 +28,7 @@ TRANSITIONS = {
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
-          'outside', 'requested', 'reviewed_by', 'check_failure_resumed'}
+          'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry

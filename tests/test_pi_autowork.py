@@ -115,6 +115,8 @@ elif 'could not run its checks because this is missing' in message:
     role, task = 'provision', re.search(r'review of task (\S+) ', message)[1]
 elif message.startswith('You are the DOCS-MAINTAINER'):
     role, task = 'maintainer', None
+elif message.startswith('You triage a blocker'):
+    role, task = 'triage', re.search(r'The worker of task (\S+) ', message)[1]
 else:
     role, task = 'worker', field('Task')
 key = role if role in ('merge', 'maintainer') else f'{role}:{task}'
@@ -123,7 +125,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
     plan = json.load(stream)
     queue = plan.get(key) or []
     behavior = queue.pop(0) if queue else {'worker': 'complete', 'verify': 'pass', 'merge': 'resolve', 'touches': 'own',
-                                           'maintainer': 'nothing', 'provision': 'block'}[role]
+                                           'maintainer': 'nothing', 'provision': 'block', 'triage': 'owner'}[role]
     plan[key] = queue
     stream.seek(0); stream.truncate(); json.dump(plan, stream)
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
@@ -207,6 +209,11 @@ elif role == 'maintainer':
         open('A.txt', 'w').write('maintainer wrote code\n')
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
     finish(text='PI_AUTOWORK_RESULT: completed A')
+elif role == 'triage':
+    if behavior == 'answer':
+        finish(text='Read the report.\nPI_AUTOWORK_TRIAGE: answer\nYour ports are yours alone; no receipt exists. Proceed.')
+    else:
+        finish(text='PI_AUTOWORK_TRIAGE: owner\nA person must attach the device.')
 elif role == 'provision':
     if behavior == 'install':
         os.makedirs(os.path.join(os.environ['AUTOWORK_CACHE'], 'fake-sdk-1.0'), exist_ok=True)
@@ -1333,6 +1340,24 @@ class EngineTests(Fixture):
         for commit in closes:
             files = set(self.git(self.repo, 'show', '--format=', '--name-only', commit).split())
             self.assertLessEqual(files, {'TODO.md', 'goals.json', 'TODO.archive.md'}, commit)
+
+    def test_a_blocker_the_runner_can_answer_resumes_the_attempt_without_a_question(self):
+        """Most worker blockers asked the runner for what it already provides and waited for the owner."""
+        self.plan({'worker:A': ['blocked', 'complete'], 'triage:A': ['answer']})
+        result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('A: the runner answered its blocker; resuming its attempt', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'))
+        resumed = [r for r in self.runs('worker') if r['task'] == 'A']
+        self.assertEqual(len(resumed), 2)
+        self.assertNotIn('autowork/A-r2', self.git(self.repo, 'branch', '--list', 'autowork/*'))  # same attempt
+
+    def test_a_blocker_only_a_person_can_resolve_stays_a_question(self):
+        self.plan({'worker:A': ['blocked']})
+        result = self.run_runner('--until-empty')
+        self.assertIn('A: its blocker needs the owner: A person must attach the device.', result.stdout)
+        self.assertIn('A: failed — worker reported a blocker', result.stdout)
+        self.assertEqual(len(self.runs('triage')), 1)  # once per task and reason, not every cycle
 
     def test_a_set_aside_request_lets_a_blocked_task_run_fresh(self):
         self.plan({'worker:A': ['blocked']})

@@ -36,9 +36,13 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    `<git-common-dir>/autowork-execution/slot-data/<TASK>/attempt-N/report.json`
    (commit, changed files, checks, blockers, pending live checks, proposed
    CHANGELOG line) and the commit itself. A report is a claim; integration verifies
-   it. `blockers` name offline work the worker could not finish and what a person
-   must decide; a worker that reports any is held with `cause: blocker`, with or
-   without a commit, and gets neither a resume nor a fresh attempt. `pending_live`
+   it. `blockers` name what only a person can provide (credentials, devices, spending,
+   third-party changes, open product or security decisions); a worker that reports any
+   is held with `cause: blocker`, with or without a commit, and gets no fresh attempt.
+   `--parallel-answer TASK --answer-file F` answers it instead: the attempt resumes in
+   its own worktree with the answer in its prompt, at most twice per task. The Pi
+   runner triages each new blocker this way and leaves only a person's part as a
+   question. `pending_live`
    lists device, production, hardware or human checks the worker could not run;
    they never hold the task. `unrelated_failures` lists test IDs that passed a single isolated
    rerun or also failed on the baseline; `environment_failures` lists command/summary strings

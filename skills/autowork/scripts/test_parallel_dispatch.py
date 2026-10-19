@@ -590,6 +590,32 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual([d['task'] for d in adopted['dispatched']], ['A'])
         self.wait_until_idle()
 
+    def test_an_answered_blocker_resumes_its_attempt_with_the_answer_twice_at_most(self):
+        """Most blockers asked the runner for what it already provides and waited hours for a person."""
+        self.write_todo(task('A', 'a.txt'))
+        self.git('commit', '-qam', 'A')
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
+                             'blockers': ['Coordinator must provide an exclusive port receipt']}})
+        self.apply()
+        self.wait_until_idle()
+        held = state.slots(self.common)[0]
+        self.assertEqual((held['state'], held['cause']), ('held', 'blocker'))
+        answer = self.root / 'answer.txt'
+        answer.write_text('Your port range is leased to you alone on this host; no receipt exists.')
+        for n in (1, 2):
+            _, result = self.run_cli('--parallel-answer', 'A', '--answer-file', str(answer), worker=False)
+            self.assertEqual((result['outcome'], result['answered']), ('ANSWERED', n))
+            _, resumed = self.apply()
+            self.assertEqual([d['task'] for d in resumed['dispatched']], ['A'])
+            slot = state.slots(self.common)[0]
+            self.assertEqual((slot['attempt'], slot['worktree']), (held['attempt'], held['worktree']))
+            prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
+            self.assertIn('the runner answered it', prompt)
+            self.assertIn('no receipt exists', prompt)
+            self.wait_until_idle()
+        _, refused = self.run_cli('--parallel-answer', 'A', '--answer-file', str(answer), worker=False)
+        self.assertEqual(refused['outcome'], 'ACTION_REQUIRED')  # a third time, it is the owner's
+
     def test_a_held_scope_request_resumes_in_place_without_a_touches_check(self):
         """sierra TASK-024: a worker needed one test file outside Touches and could only stop.
         TOOLSET-161-17: a worker no longer asks; a request an older release held resumes in its

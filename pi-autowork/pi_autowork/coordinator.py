@@ -71,6 +71,40 @@ def publishable(repo, paths):
     return keep, held
 
 
+TRIAGE_PROMPT = (
+    'You triage a blocker for the runner of {repo}. The worker of task {task} stopped and reported blockers '
+    'instead of finishing; read them in full in {report}, then the task\'s TODO.md entry, its Sources and, if '
+    'needed, the worker log beside the report. Its worktree is {root}: read it, but do not edit, commit or run '
+    'anything that writes there (scratch goes in $TMPDIR). Decide whether only a person can resolve the '
+    'blockers. Only these need the owner: credentials, secrets or an account; a physical device, hardware or '
+    'operator access; spending; a change to third-party software the repository does not contain; a product, '
+    'security or scope decision that the task, its sources and the repository\'s docs leave open. Anything '
+    'else gets an answer the worker can act on. State as fact what the runner guarantees: the worker\'s ports '
+    '$AUTOWORK_PORT_BASE to +99 are leased to it alone on this host; its $TMPDIR is private and on disk; its '
+    'baseline is the session\'s current HEAD; other tasks\' overlapping work merges at integration, in priority '
+    'order; the runner verifies an idle in_progress claim before adopting it; the runner\'s review runs the full '
+    'check on the merged tree and tells new failures from old and flaky ones. No coordinator receipt, handoff, '
+    'source refresh, registry or verification exists beyond these: the worker proceeds without one. A defect '
+    'already in the baseline that stops a required check (a broken or unparsable test, a missing fixture, a '
+    'stale generated file) is the worker\'s to repair as a separate commit on its branch. A missing input whose '
+    'making the task\'s sources describe, the worker makes. Host load, a slow or flaky check or a time budget: '
+    'the worker commits the finished work and reports the check\'s result. Be specific: name the files, commands '
+    'and facts the worker needs, from what you read. Never grant authority, credentials or spending, never '
+    'change Acceptance, and never decide a product or security question yourself. End with exactly one of two '
+    'blocks: the line PI_AUTOWORK_TRIAGE: owner and then one line saying what the person must provide, or the '
+    'line PI_AUTOWORK_TRIAGE: answer and then the answer for the worker, at most 15 lines.')
+TRIAGE = re.compile(r'^PI_AUTOWORK_TRIAGE:\s*(answer|owner)\s*$', re.M)
+
+
+def triage_verdict(text):
+    """('answer'|'owner', text) from a triage job's output, or None when it ended without a verdict."""
+    found = list(TRIAGE.finditer(text or ''))
+    if not found:
+        return None
+    body = text[found[-1].end():].strip()
+    return (found[-1].group(1), body[:4000]) if body else None
+
+
 PROVISION_PROMPT = (
     'In {repo}, the review of task {task} could not run its checks because this is missing: {missing}. '
     'Install what is missing so that the checks can run, following the repository\'s own setup docs '
@@ -1035,6 +1069,10 @@ class Coordinator:
                     and self.resolve_task_conflict(row)):
                 self.settled = True
                 continue
+            if (state == 'held' and row.get('cause') == 'blocker' and not self.session_busy()
+                    and self.triage_blocker(row)):
+                self.settled = True
+                continue
             self.note_state(task, state, reason, quiet=not self.known_at_start, paused=row.get('paused'))
             if task == self.once_task and state == 'held':
                 self.draining = True
@@ -1478,6 +1516,49 @@ class Coordinator:
             LOG.say(f'{task}: installed what its review needed; verifying it again')
             return True
         return False
+
+    def triage_blocker(self, row):
+        """A worker-reported blocker is answered by the runner and the attempt resumes, unless only a
+        person can resolve it: most blockers asked for what the runner already provides, or for a repair
+        the worker may make itself, and waited hours for the owner. Once per task and reason."""
+        task, root, reason = row.get('task'), row.get('worktree'), ' '.join(str(row.get('reason') or '').split())
+        if (self.stop or row.get('worker_live') or int(row.get('answered') or 0) >= 2 or not root
+                or not Path(root).is_dir()):
+            return False
+        record = self.state / 'triage.json'
+        try:
+            done = json.loads(record.read_text())
+        except (OSError, ValueError):
+            done = {}
+        key = hashlib.sha256(reason.encode()).hexdigest()[:16]
+        if done.get(task) == key:
+            return False
+        before = (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all'))
+        report = Path(self.cfg['git_common']) / 'autowork-execution' / 'slot-data' / task
+        report = max(report.glob('attempt-*/report.json'), default=report / 'attempt-1' / 'report.json',
+                     key=lambda p: int(p.parent.name.split('-')[1]))
+        LOG.say(f'{task}: triaging its blocker: can the runner answer it?')
+        _, text = self.pi_job('triage', task, root, TRIAGE_PROMPT.format(repo=self.repo, task=task, report=report,
+                                                                          root=root),
+                              f'pi-autowork-triage-{task}-{datetime.now():%Y%m%d%H%M%S}', 900)
+        done[task] = key
+        record.write_text(json.dumps(done, indent=1))
+        verdict = triage_verdict(text)
+        if (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all')) != before:
+            LOG.say(f'{task}: its blocker triage changed the worktree; the blocker stays a question')
+            return False
+        if verdict is None or verdict[0] == 'owner':
+            LOG.say(f'{task}: its blocker needs the owner' + (f': {fleet_view.short(verdict[1], 200)}' if verdict else ''))
+            return False
+        answer = self.state / 'runs' / f'answer-{task}.txt'
+        answer.write_text(verdict[1] + '\n')
+        result = self.engine('--parallel-answer', task, '--answer-file', str(answer))
+        answer.unlink(missing_ok=True)
+        if result.get('outcome') != 'ANSWERED':
+            LOG.say(f'{task}: could not answer its blocker: {result.get("reason") or result.get("outcome")}')
+            return False
+        LOG.say(f'{task}: the runner answered its blocker; resuming its attempt ({fleet_view.short(verdict[1], 160)})')
+        return True
 
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own

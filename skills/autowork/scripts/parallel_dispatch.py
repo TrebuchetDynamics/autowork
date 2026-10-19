@@ -218,7 +218,7 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -276,9 +276,16 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
         '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
         '  "environment_failures": [...], "changelog": "..."}.',
-        '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
-        '  what a person must decide or provide (for example a missing dependency or a decision).',
-        '  If blocked, report commit null with blockers and stop.',
+        '- "blockers" is only for what a person alone can provide: credentials or an account, a',
+        '  physical device or operator access, spending, a change to third-party software, or a',
+        '  product, security or scope decision the task and its sources leave open. Everything else',
+        '  is yours. The runner gives nothing beyond this prompt (no receipt, handoff, source refresh',
+        '  or verification to ask it for): your ports and $TMPDIR are yours alone on this host, your',
+        '  baseline is the current session, and overlapping work by other tasks merges at integration.',
+        '  A defect already in the baseline that stops a required check (a broken or unparsable test,',
+        '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
+        '  the task\'s sources say how to make, you make. If blocked, report commit null with',
+        '  blockers and stop.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -310,7 +317,18 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
                   'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
                   'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
+    if answers:
+        lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
+                  'task; do not report the same blocker again. A blocker that remains after this answer must',
+                  'name what only a person can provide.', answers.strip()]
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def answers_text(common, task):
+    try:
+        return (common / 'slot-data' / task / 'answers.md').read_text()
+    except OSError:
+        return ''
 
 
 def created_by_autowork(common, path, branch):
@@ -912,7 +930,9 @@ def dispatch_locked(args, repo, common, count, template, host):
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
                                       adopted=idle.get(task['id']),
-                                      commit_finished=bool(previous and check_failure_resumed(previous))))
+                                      commit_finished=bool(previous and check_failure_resumed(previous)),
+                                      answers=answers_text(common, task['id']) if previous and previous.get('answered')
+                                      else ''))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])

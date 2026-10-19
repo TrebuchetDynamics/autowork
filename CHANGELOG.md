@@ -451,6 +451,13 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- The runner answers worker blockers it can resolve, and the attempt resumes in its own
+  worktree instead of waiting for the owner: a short triage job reads the report and
+  either answers from what the runner guarantees and the repository's evidence (private
+  ports and `$TMPDIR`, merge at integration, prerequisite repairs the worker may make) or
+  confirms that only a person can help. It runs once per task and reason, with at most two
+  answers per task (`--parallel-answer`). Workers are told what a blocker is for, and the
+  planning craft and docs maintainer now write tasks an unattended worker can finish.
 - `autowork ls --json`: every runner with every field the TUI shows, for scripts and
   agents that watch the fleet.
 - An idle pi-autowork runner reacts to the plan: a change to `TODO.md`, `goals.json`,
