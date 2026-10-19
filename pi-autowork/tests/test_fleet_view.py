@@ -230,6 +230,9 @@ class FleetViewTests(unittest.TestCase):
         cases = [
             (R('a', state='working', running=2, max_workers=8, lanes=[L('T1', 'implementing'), L('T2', 'verifying')]),
              'Working — 2 of 8 workers busy'),
+            (R('a', state='working', running=1, max_workers=1,
+               lanes=[L('T1', 'implementing')] + [L(f'D{i}', 'implemented') for i in range(15)]),
+             'Working — 1 of 1 worker busy; 15 commits waiting to merge'),
             (R('a', state='working', running=1, lanes=[L('T1', 'implementing')], gate='load average 27 >= 24 CPUs',
                questions=[Q('X', 'quick', 4, 'answer it')]),
              'Working — 1 worker busy; no more start: load average 27 >= 24 CPUs; 1 question for you'),

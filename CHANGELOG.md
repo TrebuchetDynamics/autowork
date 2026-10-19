@@ -230,6 +230,8 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The TUI headline counts live workers, not every task in flight, and names finished
+  commits waiting to merge separately: one runner read "Working — 16 of 1 workers busy".
 - `install.sh` updates an installed Pi package (`pi update`) instead of leaving it to the
   runners, which kept this host's `autowork` command and skills a release behind until each
   runner reached a safe point; the runners still move onto it at their own safe point.
