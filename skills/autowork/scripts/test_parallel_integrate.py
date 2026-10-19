@@ -516,6 +516,54 @@ finally:
                 finally:
                     proc.communicate('x', timeout=5)
 
+    def test_only_live_slot_descendants_in_their_own_temporary_directory_are_exempt(self):
+        self.worker('A')
+        root, _ = self.worker('B')
+        slots = {s['task_id']: s for s in state.slots(self.common)}
+        temps = {task: dispatch.worker_tmpdir(dispatch.data_dir(self.common, slot), index)
+                 for index, (task, slot) in enumerate(slots.items(), 1)}
+        self.addCleanup(lambda: [dispatch.cleanup_tmpdir(self.common, slot) for slot in slots.values()])
+        # This test is the live intermediate between the recorded leader and its
+        # grandchild; the child starts a new session, as fixture runners do.
+        leader = execution.identity(os.getppid())
+        unrelated = self.agent_process(root)
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(slots['A'], state='running', worker=execution.identity(unrelated.pid)))
+        data = dispatch.data_dir(self.common, slots['B'])
+        allocation = execution.read(data.parent / 'tmp.json')
+        module = self.module()
+        identity = execution.identity
+        for case, cwd, owner, dead_link, extra, blocked in (
+                ('own temp', temps['B'] / 'state/releases/fixture', leader, False, [], False),
+                ('worktree and own temp', temps['B'], leader, False, [str(root)], False),
+                ('other slot temp', temps['A'], leader, False, [], True),
+                ('dead parent link', temps['B'], leader, True, [], True),
+                ('unrelated in own temp', temps['B'], identity(unrelated.pid), False, [], True),
+                ('unowned var/tmp', Path('/var/tmp'), identity(unrelated.pid), False, [], True),
+                ('temp and canonical', temps['B'], leader, False, [str(self.repo)], True),
+                ('legacy attempt temp', data / 'tmp', leader, False, [], False)):
+            with self.subTest(case=case):
+                if case == 'legacy attempt temp':
+                    (data.parent / 'tmp.json').unlink()
+                    self.addCleanup(execution.save, data.parent / 'tmp.json', allocation)
+                cwd.mkdir(parents=True, exist_ok=True)
+                proc = self.agent_process(cwd)
+                observed = dict(identity(proc.pid), kind='session', active=None, written=[],
+                                workspaces=[str(cwd), *extra], evidence='session: activity unknown')
+                execution.save(state.slot_path(self.common, 'B'),
+                               dict(slots['B'], state='running', worker=owner))
+                def live(pid):
+                    return None if dead_link and pid == os.getpid() else identity(pid)
+                with patch.object(execution, 'external_workers', return_value=[observed]), \
+                        patch.object(execution, 'identity', side_effect=live):
+                    if blocked:
+                        with self.assertRaises(module.WritersBusy):
+                            module.require_no_writers(self.repo)
+                    else:
+                        module.require_no_writers(self.repo)
+                proc.kill()
+                proc.wait()
+
     def test_unattributed_session_in_pool_worktree_is_not_exempt(self):
         self.worker()
         root, _ = self.worker('B')
