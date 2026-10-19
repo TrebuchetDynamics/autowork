@@ -70,6 +70,14 @@ def build(snapshot, todo, goals):
                           unblocks=unblocks, task=task_line, needs=' '.join(str(needs).split()), answer=answer,
                           kind=kind)
 
+    if snapshot.get('ledger_errors'):
+        add('LEDGER', 'ledger', 'investigate',
+            'invalid goals.json: ' + '; '.join(snapshot['ledger_errors']),
+            'DOCS-MAINTAINER could not repair the ledger. Read the validation errors above and its '
+            'run record under the runner state directory (maintainer.json); add a task for remaining '
+            'goal proof or correct evidence/status in TODO.md and goals.json, then run goals.py validate.',
+            'LEDGER — goals.json validation', len(rows))
+
     for task, row in rows.items():
         if not exhausted(row):
             continue

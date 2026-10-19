@@ -75,6 +75,16 @@ class QuestionTests(unittest.TestCase):
             self.assertIn(option, text)
         self.assertNotIn('### Q-', questions.update(text, questions.build({}, TODO, goals), now=NOW))
 
+    def test_a_refused_ledger_gets_one_question_until_validation_is_fixed(self):
+        status = {'outcome': 'ACTION_REQUIRED', 'ledger_errors': ['G: unverified goal has no open task']}
+        found = questions.build(status, TODO, goals)
+        text = questions.update(OWNER, found, now=NOW)
+        self.assertEqual(text.count('### Q-LEDGER'), 1)
+        self.assertIn('G: unverified goal has no open task', text)
+        self.assertIn('remaining goal proof', text)
+        self.assertEqual(questions.update(text, found, now=NOW), text)
+        self.assertNotIn('### Q-LEDGER', questions.update(text, questions.build({}, TODO, goals), now=NOW))
+
     def test_a_claim_answered_with_its_holder_is_not_asked_again(self):
         """TOOLSET-198-8f: the owner noted who holds a claimed task, as the question asks, and the
         runner kept asking: /blockers said 0 questions, the TUI said 2."""

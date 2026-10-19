@@ -182,6 +182,23 @@ elif role == 'maintainer':
             '  Checks: test -s FIX.txt\n  Dependencies: None.\n  Status: open\n', 1)
         open('TODO.md', 'w').write(text)
         git('commit', '-qam', 'docs(tasks): FIX repairs the red main')
+    elif behavior == 'repair_ledger':
+        data = json.load(open('goals.json'))
+        next(g for g in data['goals'] if g['id'] == 'PROOF')['tasks'] = ['PROOF-1']
+        data['tasks'].append(dict(id='PROOF-1', title='Remaining proof', goal='PROOF', status='open',
+                                  section='Needs decision', depends_on=[]))
+        open('goals.json', 'w').write(json.dumps(data))
+        with open('TODO.md', 'a') as stream:
+            stream.write('\n- [ ] PROOF-1 — Remaining proof\n  Scope: Remaining proof\n'
+                         '  Acceptance: recorded proof\n  Checks: manual\n  Dependencies: None.\n  Status: open\n')
+        git('commit', '-qam', 'docs(tasks): record remaining ledger proof')
+    elif behavior == 'drop_ledger':
+        os.unlink('goals.json')
+        git('commit', '-qam', 'docs(tasks): removed ledger')
+    elif behavior == 'invalid_ledger':
+        with open('TODO.md', 'a') as stream:
+            stream.write('\nStill missing ledger proof.\n')
+        git('commit', '-qam', 'docs(tasks): incomplete ledger repair')
     elif behavior == 'code':  # oversteps: edits product code
         open('A.txt', 'w').write('maintainer wrote code\n')
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
@@ -226,6 +243,19 @@ elif behavior == 'move_main':  # another writer commits a conflicting file to ma
     open(os.path.join(main, task + '.txt'), 'w').write('from main\n')
     subprocess.run(['git', '-C', main, 'add', '-A'])
     subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
+    finish(text='done')
+elif behavior == 'break_ledger':  # a ledger breaks while this worker is in flight
+    work()
+    listing = subprocess.run(['git', '-C', os.environ['FAKE_MAIN_REPO'], 'worktree', 'list', '--porcelain'],
+                             capture_output=True, text=True).stdout
+    session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
+                   if 'branch refs/heads/pi-autowork/' in b)
+    path = os.path.join(session, 'goals.json')
+    data = json.load(open(path))
+    data['goals'].append(dict(id='PROOF', title='Unverified proof', source='TODO.md', status='partial',
+                              tasks=[], priority=2, depends_on=[]))
+    open(path, 'w').write(json.dumps(data))
+    git('-C', session, 'commit', '-qam', 'unverified goal has no open task')
     finish(text='done')
 elif behavior == 'move_session':  # the session branch changes the task's own file meanwhile
     work()
@@ -1345,22 +1375,95 @@ class EngineTests(Fixture):
         self.assertIn('docs(tasks): record TODO.md priority order (pi-autowork)',
                       self.git(self.repo, 'log', '--format=%s'))
 
+    def test_an_invalid_ledger_is_repaired_before_dispatch_or_settling_reported_work(self):
+        for source in ('before_dispatch', 'reported', 'reported_once'):
+            with self.subTest(source=source):
+                self.repo = self.make_repo(self.root / source, [('A', None), ('B', None), ('C', 'A')])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                self.ledger_with_recorded_order()
+                if source == 'before_dispatch':
+                    data = json.loads((self.repo / 'goals.json').read_text())
+                    data['goals'].append(dict(id='PROOF', title='Unverified proof', source='TODO.md', status='partial',
+                                              tasks=[], priority=2, depends_on=[]))
+                    (self.repo / 'goals.json').write_text(json.dumps(data))
+                    self.git(self.repo, 'commit', '-qam', 'unverified goal has no open task')
+                self.plan({'maintainer': ['repair_ledger'],
+                           'worker:A': ['complete'] if source == 'before_dispatch' else ['break_ledger']})
+                result = self.run_runner('--once' if source == 'reported_once' else '--until-empty',
+                                         '--workers', '1')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.count('DOCS-MAINTAINER: repairing the task docs of LEDGER'), 1,
+                                 result.stdout)
+                self.assertIn('DOCS-MAINTAINER: merged', result.stdout)
+                self.assertTrue(self.done(*('A' if source == 'reported_once' else 'ABC')),
+                                result.stdout + result.stderr)
+                self.assertIn('record remaining ledger proof', self.git(self.repo, 'log', '--format=%s'))
+                self.assertNotIn('The engine needs attention', result.stdout)
+
+    def test_a_maintainer_change_that_leaves_an_invalid_ledger_is_refused_and_asked_once(self):
+        for behavior in ('invalid_ledger', 'drop_ledger'):
+            with self.subTest(behavior=behavior):
+                self.repo = self.make_repo(self.root / behavior, [('A', None)])
+                (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'broken ledger')
+                self.plan({'maintainer': [behavior]})
+                result = self.run_runner('--until-empty')
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                self.assertIn('DOCS-MAINTAINER: refused: goals.py validate failed', result.stdout)
+                self.assertTrue((self.repo / 'goals.json').exists())
+                again = self.run_runner('--until-empty')
+                self.assertNotIn('DOCS-MAINTAINER: repairing', again.stdout)
+                self.assertNotIn('The engine needs attention', again.stdout)
+                blockers = (self.repo / 'BLOCKERS.md').read_text()
+                self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
+                self.assertIn('A: unknown goal None', blockers)
+
+    def test_structural_ledger_errors_also_get_a_repair_attempt_and_question(self):
+        for content, error in [('{', 'malformed JSON'), ('{"version": 2, "goals": [], "tasks": []}',
+                                                       'version must be 1')]:
+            with self.subTest(error=error):
+                self.repo = self.make_repo(self.root / error.replace(' ', '-'), [('A', None)])
+                (self.repo / 'goals.json').write_text(content)
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'structurally broken ledger')
+                result = self.run_runner('--until-empty')
+                self.assertIn('DOCS-MAINTAINER: repairing the task docs of LEDGER', result.stdout)
+                self.assertIn(error, (self.repo / 'BLOCKERS.md').read_text())
+
     def test_a_service_stays_up_and_reports_when_the_engine_needs_attention(self):
-        """An invalid ledger made the runner exit, and systemd does not restart a deliberate exit."""
-        (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
-        self.git(self.repo, 'add', 'goals.json')
-        self.git(self.repo, 'commit', '-qm', 'broken ledger')
+        """A refused ledger must recover even when a reported worker waits for integration."""
+        self.ledger_with_recorded_order()
+        self.plan({'worker:A': ['break_ledger']})  # maintainer defaults to making no change
         env = {**self.env, 'PI_AUTOWORK_STALL_AFTER': '1'}
-        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1', '--workers', '1'], cwd=self.repo, env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
         deadline = time.monotonic() + 60
-        while 'STALLED' not in log():
+        while not (self.repo / 'BLOCKERS.md').exists():
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.2)
         self.assertEqual(log().count('The engine needs attention'), 1, log())
-        self.assertIn('the engine needs attention: invalid goals.json', log())
+        self.assertIn('The engine needs attention: invalid goals.json', log())
+        self.assertEqual(log().count('DOCS-MAINTAINER: repairing the task docs of LEDGER'), 1, log())
+        listing = self.git(self.repo, 'worktree', 'list', '--porcelain')
+        session = next(Path(b.splitlines()[0].removeprefix('worktree ')) for b in listing.split('\n\n')
+                       if 'branch refs/heads/pi-autowork/' in b)
+        blockers = (session / 'BLOCKERS.md').read_text()
+        self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
+        self.assertIn('PROOF: partial goal has no open task', blockers)
+        # The question has landed, so the session is no longer ahead. Owner fixes on
+        # main must still reach it even though A remains reported (an in-flight slot).
+        self.git(self.repo, 'rm', 'goals.json')
+        self.git(self.repo, 'commit', '-qm', 'owner restored TODO-only plan')
+        deadline = time.monotonic() + 60
+        while not self.done('A', 'B', 'C') or '### Q-LEDGER' in (self.repo / 'BLOCKERS.md').read_text():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertEqual(log().count('The engine needs attention'), 1, log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)

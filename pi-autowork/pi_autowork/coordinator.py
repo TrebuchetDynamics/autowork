@@ -166,6 +166,7 @@ class Coordinator:
         self.started_workers = self.failures = 0
         self.draining, self.once_task, self.once_done = False, None, False
         self.last_waiting, self.runner_blocker = '', ''
+        self.ledger_errors = []
         self.integration = None  # the review running beside the loop (TOOLSET-183-d6)
         self.pause_until = 0.0
         self.seen, self.touches_tried = {}, set()
@@ -794,8 +795,10 @@ class Coordinator:
         dispatch and validation within one review (TOOLSET-233-ba). With nothing in flight, a
         conflict (the owner's TODO.md edit against the session's own bookkeeping) is resolved at
         once through the session merge, not left for a final merge a stalled runner never
-        reaches; a merge that still fails is a runner blocker the owner sees."""
-        if self.integ and not self.in_flight():
+        reaches; a merge that still fails is a runner blocker the owner sees. A refused ledger is an
+        exception: task slots cannot settle until the owner's repair reaches the session, so the
+        owner's planning edits are committed even beside work in flight."""
+        if self.integ and (not self.in_flight() or self.ledger_errors):
             # The owner's quiet planning edits (answers to held tasks) are committed even when
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes(planning_only=True)
@@ -1073,6 +1076,10 @@ class Coordinator:
                 else:
                     LOG.say(f'{task}: waiting to integrate until another session leaves the main checkout ({reason})')
             self.seen['busy-' + task] = reason
+        elif outcome == 'PRIORITY_DRIFT' and self.draining and self.reconcile_priority():
+            # A ledger repair can add a task while --once is draining. No refill
+            # will reconcile its order, so do that before retrying this integration.
+            self.settled = True
         elif 'highest-priority' not in reason:  # another reported task goes first
             LOG.say(f'{task}: integration needs attention: {reason or outcome}')
 
@@ -1268,20 +1275,38 @@ class Coordinator:
                 + (f', +{len(failures) - 3} more' if len(failures) > 3 else '') + ')')
         self.maintain(main_only=True)  # one repair task, now: red main hides every later regression
 
-    def maintain(self, main_only=False):
+    def validate_ledger(self, reason=''):
+        """Read full validator errors, falling back to an engine refusal if needed."""
+        if (Path(self.integ) / 'goals.json').exists():
+            result = self.goals_cli('validate', self.integ)
+            if result.returncode:
+                errors = (result.stdout + result.stderr).strip().splitlines()
+                if errors:
+                    return sorted({' '.join(e.split()) for e in errors if e.strip()})
+        if reason.startswith('invalid goals.json'):
+            return sorted(set(reason.removeprefix('invalid goals.json').lstrip(': ').split('; ')))
+        return []
+
+    def maintain(self, main_only=False, ledger_errors=None):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
         planning files alone and goals.py validate passes. One run per distinct trigger set; no
         trigger, no model call. True when its repair merged."""
-        if (self.stop or (self.in_flight() and not main_only) or not self.integ or dirty(self.integ)
-                or self.session_busy()):
+        if self.stop or not self.integ:
             return False
-        rows = [] if main_only else self.tasks()
+        self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
+        # Like MAIN repair, LEDGER repair may coexist with task workers/reported slots:
+        # those slots cannot settle until the ledger is valid. Never move the session
+        # under an active review or another writer.
+        if (dirty(self.integ) or self.session_busy()
+                or (self.in_flight() and not main_only and not self.ledger_errors)):
+            return False
+        rows = [] if main_only or self.ledger_errors else self.tasks()
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
         main = main_check.read(self.state)
-        found = maintainer.triggers(rows, main, findings,
+        found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors,
                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
         if not found:
             return False
@@ -1307,7 +1332,7 @@ class Coordinator:
                 outcome = 'no change' if ok else 'failed'
             elif not maintainer.planning_only(paths) or dirty(scratch):
                 outcome = 'refused: it changed more than planning files'
-            elif (Path(scratch) / 'goals.json').exists() and subprocess.run(
+            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and subprocess.run(
                     [sys.executable, str(self.goals), 'validate', scratch], capture_output=True).returncode:
                 outcome = 'refused: goals.py validate failed'
             elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
@@ -1320,6 +1345,13 @@ class Coordinator:
             self.drop_scratch(scratch)
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed)
         LOG.say(f'{maintainer.ROLE}: {outcome}' + (f'; changed {", ".join(changed)}' if changed else ''))
+        if self.ledger_errors:
+            if outcome == 'merged':
+                self.ledger_errors = []
+                self.snapshot = None
+            else:
+                LOG.say('The engine needs attention: invalid goals.json: ' + '; '.join(self.ledger_errors)
+                        + f'; {maintainer.ROLE} {outcome}; see BLOCKERS.md')
         return outcome == 'merged'
 
     def environment_hold(self, task):
@@ -1494,13 +1526,15 @@ class Coordinator:
         if line:
             LOG.warn(line)
         if not self.runner_blocker.startswith('planning files are not committed on '):
-            self.update_questions(snapshot)
+            ledger_key = maintainer.key(maintainer.triggers([], ledger_errors=self.ledger_errors))
+            attempted = ledger_key in maintainer.last(self.state).get('ledger_attempts', {})
+            self.update_questions(dict(snapshot, ledger_errors=self.ledger_errors if attempted else []))
 
     def update_questions(self, snapshot):
         """Keep the owner's questions in BLOCKERS.md (TOOLSET-120-fc 2): built without a model,
         written only when they change, committed alone on the session branch."""
-        if (not self.integ or snapshot.get('outcome') != 'PARALLEL_STATUS' or dirty(self.integ)
-                or self.session_busy()):
+        if (not self.integ or (snapshot.get('outcome') != 'PARALLEL_STATUS' and not snapshot.get('ledger_errors'))
+                or dirty(self.integ) or self.session_busy()):
             return
         goals, _ = touches_inference.modules(self.toolset)
         path = Path(self.integ) / 'BLOCKERS.md'
@@ -1772,8 +1806,13 @@ class Coordinator:
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
+            if outcome != 'ACTION_REQUIRED':
+                self.ledger_errors = []  # an owner repair must also retire its question
         else:
-            outcome = 'DRAINING'
+            # --once/budget draining starts no new task, but a broken ledger also
+            # prevents the already dispatched tasks from integrating or closing.
+            self.ledger_errors = self.validate_ledger()
+            outcome = 'ACTION_REQUIRED' if self.ledger_errors else 'DRAINING'
         if outcome in ('DISPATCHED', 'RETRIED'):
             started = [d.get('task') for d in result.get('dispatched') or []]
             if isinstance(result.get('retried'), dict) and result['retried'].get('task'):
@@ -1821,9 +1860,9 @@ class Coordinator:
                 if blocked != self.last_waiting:
                     LOG.say(f'No task can start now: {blocked}')
                 self.last_waiting = blocked
-                if self.maintain():  # nothing runs: repair the task docs that keep it so
-                    self.last_waiting = ''
-                    return  # dispatch again on the repaired docs first
+            if self.maintain():  # also check a ledger the engine did not flag
+                self.last_waiting = ''
+                return  # dispatch again on the repaired docs first
         elif outcome in ('DRAINING', 'PAUSED'):
             pass
         elif outcome == 'BUSY':
@@ -1845,6 +1884,21 @@ class Coordinator:
             return self.blocked_pause(f'TODO.md priority changed and goals.py reorder refused: {self.drift_reason}')
         else:
             reason = result.get('reason') or outcome
+            # Shape/parse failures have no `invalid goals.json` prefix. Consult the
+            # validator on every refusal rather than guessing the engine's wording.
+            self.ledger_errors = self.validate_ledger(reason) if outcome == 'ACTION_REQUIRED' else []
+            if self.ledger_errors:
+                if self.maintain(ledger_errors=self.ledger_errors):
+                    return  # select again on valid docs before asking the owner
+                if self.integration:
+                    self.settle()  # reap an existing review so it cannot hold repair forever
+                reason = 'invalid goals.json: ' + '; '.join(self.ledger_errors)
+                self.last_waiting = 'engine:' + reason
+                if self.mode != 'continuous':
+                    self.runner_blocker = f'the engine needs attention: {reason}'
+                    self.health_update()
+                    self.finish(4, 'Ledger repair pending; see BLOCKERS.md')
+                return self.blocked_pause(f'the engine needs attention: {reason}')
             if self.mode != 'continuous':
                 self.finish(4, f'The engine needs attention: {reason}')
             # A service that exits here stops silently (deliberate exits are not restarted):
