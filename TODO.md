@@ -107,6 +107,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to what the maintainer may edit or to its validation of its own commits.
 - Planner's call: Now, after TOOLSET-243-6d. A repair that does not change the runner's verdict is not progress, and repeating it spends model calls and hides the fact that the task needs an owner decision.
 
+### TOOLSET-250-49 — A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle
+
+- [ ] TOOLSET-250-49 — A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); TOOLSET-218-d0 in [the archive](TODO.archive.md); [integration](skills/autowork/scripts/parallel_integrate.py) (`retire_closed`: when the integration lock is held, it returns the stopped tasks as closed and sets them aside on a later cycle); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`closed_on_base` results go to `note_state(task, 'closed', ...)`; `settle` notes each status row's state, so a still-slotted `reported` task reads `implemented` again).
+- Evidence (2026-10-18 21:55-22:06, this repository's runner): after the owner hand-merged a verified batch and closed seven tasks on main, the runner logged 270 `<task>: done — closed on main; its worker is stopped and its work set aside` lines in 11 minutes, interleaved with as many `<task>: implemented` lines, about four cycles a minute. Its own review held the integration lock, so each cycle deferred the set-aside and reported the same tasks again, and the next status read showed their slots `reported`. The set-asides completed at 22:06, when the review ended.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_status.py
+- Scope: (1) `retire_closed` returns two lists: `closed_on_base` (set aside now) and `closing` (stopped, set aside when the integration lock is free). (2) The coordinator logs `<task>: closing — closed on <base>; set aside once the running review ends` once per task and the `done` line once when it is set aside. (3) A slot whose task is retired shows `closing` in status rows and TUI lanes, so `settle` never flips it back to `implemented`. (4) A cycle whose only news is deferred closings pauses the normal interval instead of cycling again at once.
+- Acceptance: In a fixture with a review holding the integration lock and three tasks closed on the base, ten cycles log one `closing` line per task, no `implemented` line for them, and one `done` line each after the lock frees; the loop does not cycle faster than its interval meanwhile.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest tests/test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when a closed task's worker is stopped or its work set aside.
+- Planner's call: Now, after TOOLSET-247-5a: a fix to my own TOOLSET-218-d0. The log flood buries every other line exactly when the owner lands work by hand and reads the log to see what happened.
+
 ### TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
 
 - [ ] TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error

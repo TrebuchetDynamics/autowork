@@ -748,7 +748,8 @@
         "TOOLSET-246-06",
         "TOOLSET-247-5a",
         "TOOLSET-248-60",
-        "TOOLSET-249-5b"
+        "TOOLSET-249-5b",
+        "TOOLSET-250-49"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -759,16 +760,13 @@
       "TOOLSET-246-06",
       "TOOLSET-243-6d",
       "TOOLSET-247-5a",
+      "TOOLSET-250-49",
       "TOOLSET-244-5d",
-      "TOOLSET-195-ee",
       "TOOLSET-232-01",
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
       "TOOLSET-229-d0",
       "TOOLSET-234-d4",
-      "TOOLSET-211-71",
-      "TOOLSET-189-96",
-      "TOOLSET-197-4f",
       "TOOLSET-224-07",
       "TOOLSET-226-d3",
       "TOOLSET-230-bf",
@@ -784,15 +782,12 @@
       "TOOLSET-240-f8",
       "TOOLSET-241-a1",
       "TOOLSET-242-d5",
-      "TOOLSET-184-b3",
       "TOOLSET-170-f6",
-      "TOOLSET-172-40",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
       "TOOLSET-179-cf",
       "TOOLSET-158-08",
       "TOOLSET-155-e2",
-      "TOOLSET-181-02",
       "TOOLSET-115-bf",
       "TOOLSET-173-94",
       "TOOLSET-164-f1",
@@ -1275,6 +1270,14 @@
       "section": "Now",
       "status": "open",
       "title": "A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-250-49",
+      "section": "Now",
+      "status": "open",
+      "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
     },
     {
       "depends_on": [],
