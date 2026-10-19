@@ -203,11 +203,24 @@ def full_suite_gate(state, task, checkout):
         return True, ''
     if merged['timed_out']:
         return False, f'the full check ran out of time after {limit:g} s'
+    if not merged['failures']:
+        # It crashed before naming a test (TOOLSET-237-35): once more, then never a pass for want
+        # of evidence. A crash only this tree has is its own; one the base shares is the host's.
+        merged = run_suite(command, checkout, limit, log)
+        if merged['code'] == 0:
+            return True, ''
+        if merged['timed_out']:
+            return False, f'the full check ran out of time after {limit:g} s'
     base = base_result(state, checkout, command, git(checkout, 'rev-parse', 'HEAD^1'), limit)
     if not merged['failures']:
-        if base['code'] != 0 and not base['failures']:
-            return True, ''  # the base fails the same unnamed way: nothing new to blame on this commit
-        return False, f'the full check exits {merged["code"]} where the base passes'
+        crash = main_check.crash_line(log.read_text(errors='replace'))
+        if base['code'] == 0:
+            return False, f'the full check exits {merged["code"]} where the base passes: {crash}'
+        marker = environment_marker(state, task)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({'missing': f'a full check that runs to its test results (it crashed: {crash})',
+                                      'commit': git(checkout, 'rev-parse', 'HEAD')}))
+        return False, f'the full check crashed before any test result, on the base too: {crash}'
     new = merged['failures'] if base['code'] == 0 else [f for f in merged['failures'] if f not in base['failures']]
     if new:
         receipt = log.with_suffix('.reruns.json')
@@ -226,13 +239,15 @@ def full_suite_gate(state, task, checkout):
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
+    environment_marker(state, task).unlink(missing_ok=True)  # this run says afresh what was missing
     ok, reason = full_suite_gate(state, task, checkout)
     if not ok:
         # The engine puts this line into the hold reason, which the retry's prompt quotes.
         print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
-        findings = findings_path(state, task)
-        findings.parent.mkdir(parents=True, exist_ok=True)
-        findings.write_text(json.dumps({'verdict': reason[:800], 'commit': git(checkout, 'rev-parse', 'HEAD')}))
+        if not environment_marker(state, task).exists():  # a crash is the host's, not a finding
+            findings = findings_path(state, task)
+            findings.parent.mkdir(parents=True, exist_ok=True)
+            findings.write_text(json.dumps({'verdict': reason[:800], 'commit': git(checkout, 'rev-parse', 'HEAD')}))
         print(f'pi-autowork: the full check rejects {task}: {reason}', file=sys.stderr)
         return 1
     if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':

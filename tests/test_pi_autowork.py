@@ -31,7 +31,10 @@ def setUpModule():
     _toolset_fixture = tempfile.TemporaryDirectory()
     ROOT = Path(_toolset_fixture.name) / 'toolset'
     subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
-    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py', 'scripts/pi-autowork.sh']
+    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py',
+             'pi-autowork/pi_autowork/cli.py', 'pi-autowork/pi_autowork/main_check.py',
+             'pi-autowork/pi_autowork/maintainer.py', 'pi-autowork/pi_autowork/worker.py',
+             'scripts/pi-autowork.sh']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
     if patch:
@@ -779,6 +782,32 @@ class EngineTests(Fixture):
         text = log()
         self.assertNotIn('abandoned integration', text)
         self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        # No review starts while the reload waits, or a queue of reviews postpones it for hours.
+        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)
+        self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
+
+    def test_a_reload_applies_between_back_to_back_reviews(self):
+        """TOOLSET-236-4d: a runner whose reviews ran back to back never found a gap for a reload
+        and kept its old release for hours; it re-executes before the next review starts."""
+        self.plan({'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 120
+        while 'A: verifying' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGHUP)
+        while not ('Reloading' in log() and self.done('A', 'B')):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        text = log()
+        self.assertIn('Reload pending: waiting for the review of A to end', text)
+        self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)  # not after B's review
         self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
 
     def test_an_idle_runner_rests_when_only_other_refs_change(self):
@@ -852,6 +881,24 @@ class EngineTests(Fixture):
         text = (self.repo / 'BLOCKERS.md').read_text()
         self.assertEqual(text.count('### Q-FULL-CHECK '), 1)
         self.assertIn('`Full check: <command>`', text)
+
+    def test_a_full_check_that_crashes_on_the_base_too_never_passes_a_candidate(self):
+        """TOOLSET-237-35: a test tool crashed before any result, on the base as on the candidate,
+        and the gate called that "nothing new to blame" and landed the candidate untested."""
+        self.env['PI_AUTOWORK_VALIDATE'] = ("echo 'Oops; flutter has exited unexpectedly: \"Bad state: No element\".'; "
+                                            'exit 1')
+        result = self.run_runner('--until-empty', timeout=180)
+        self.assertFalse(self.done('A'), result.stdout)
+        self.assertIn('the full check crashed before any test result, on the base too: '
+                      'Oops; flutter has exited unexpectedly', result.stdout)
+
+    def test_a_full_check_that_crashes_once_is_run_again(self):
+        marker = self.root / 'crashed-once'
+        self.env['PI_AUTOWORK_VALIDATE'] = (f'if [ ! -e {marker} ]; then touch {marker}; '
+                                            'echo "Segmentation fault (core dumped)"; exit 139; fi')
+        result = self.run_runner('--until-empty')
+        self.assertTrue(marker.exists())
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)  # the rerun passed: nothing held
 
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
         self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'

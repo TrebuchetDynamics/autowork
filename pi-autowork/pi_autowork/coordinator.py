@@ -982,6 +982,11 @@ class Coordinator:
                 return
             if task in handled:
                 continue
+            if self.reexec_due():
+                # Back-to-back reviews left no gap for a reload: one runner kept its morning
+                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
+                self.restart_if_updated()
+                return
             if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
                 self.note_state(task, 'integrating')
             self.follow_base()  # each review validates against the main branch as it is now
@@ -1134,7 +1139,7 @@ class Coordinator:
                                           start_time=main_check.start_time(child.pid), started=time.time(), path=path,
                                           tmp=tmp, green=record.get('green'), failures=record.get('failures'),
                                           red_since=record.get('red_since'), gated=record.get('gated'),
-                                          flaky_history=record.get('flaky_history') or {}))
+                                          crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {}))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
     def finish_main_check(self, record):
@@ -1157,8 +1162,8 @@ class Coordinator:
             log_text = (self.state / 'main-check.log').read_text(errors='replace')
         except OSError:
             log_text = ''
-        failures = (main_check.failures(log_text, limit=None) or [f'the check exited {code}']) if code else []
-        flaky = []
+        failures = named = main_check.failures(log_text, limit=None) if code else []
+        flaky, incomplete = [], False
         if code:
             incomplete = code != 1  # signals and shell errors are not ordinary unittest failures
             try:
@@ -1169,12 +1174,27 @@ class Coordinator:
             except (OSError, ValueError, AttributeError, TypeError):
                 pass
             failures = [test_id for test_id in failures if test_id not in flaky]
-            if incomplete:
-                failures.append(f'the check exited {code} without a complete test result')
             for test_id in flaky:
                 revisions = history.setdefault(test_id, [])
                 if rev not in revisions and len(revisions) < 3:
                     revisions.append(rev)
+        if code and not failures and (not named or incomplete):
+            # It crashed before naming a test, or was cut short with only flaky ones named
+            # (TOOLSET-237-35): no placeholder test IDs for the maintainer to repair. Once more;
+            # a second crash is a broken check, not a red main.
+            crash = main_check.crash_line(log_text)
+            if record.get('crashed') != rev:
+                main_check.write(self.state, dict(state='recheck', rev='', crashed=rev, green=green,
+                                                  failures=record.get('failures'), red_since=record.get('red_since'),
+                                                  flaky_history=history, **child))
+                LOG.say(f'The main check at {rev[:7]} crashed before any test result ({crash}); checking it once more')
+                return
+            main_check.write(self.state, dict(state='broken', rev=rev, green=green, crash=crash, finished=time.time(),
+                                              failures=record.get('failures'), red_since=record.get('red_since'),
+                                              flaky_history=history, **child))
+            LOG.say(f'The main check is broken at {rev[:7]}: it crashed twice before any test result ({crash})')
+            self.maintain(main_only=True)
+            return
         skipped = main_check.gate_skips(log_text)
         if not failures and skipped and record.get('gated') != rev:
             # A busy host skipped some tests (TOOLSET-193-54): check this revision once more when
@@ -1500,6 +1520,17 @@ class Coordinator:
             if rc:
                 LOG.say(f'Toolset update failed (see {self.state / "engine.err"}); keeping {self.toolset_rev}')
 
+    def reexec_due(self):
+        """'reload' or 'update' when the runner should re-execute at its next safe point: an
+        asked-for reload, or a package that moved past the release this process runs."""
+        if self.reload:
+            return 'reload'
+        if self.mode == 'continuous' and self.toolset_rev != 'unknown' and self.package:
+            rev = git(self.package, 'rev-parse', '--short', 'HEAD')
+            if rev and rev != self.package_rev:
+                return 'update'
+        return ''
+
     def restart_if_updated(self):
         """Only a re-exec selects the package's next immutable release.
 
@@ -1532,6 +1563,10 @@ class Coordinator:
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
         if self.integration or self.child:
+            what = (f"the review of {self.integration['task']}" if self.integration else 'a Pi job')
+            if self.seen.get('reexec-pending') != what:
+                self.seen['reexec-pending'] = what
+                LOG.say(f'Reload pending: waiting for {what} to end')
             return
         package = self.package
         if reload:

@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- While a reload or a new release is waiting, a runner starts no new review, so it reaches the moment
+  with nothing running that a re-exec needs. With a queue of reviews it never did: a reload and four
+  releases waited 2.5 hours, so the runner kept its old reviewer (held commits were never reviewed
+  again by the fixed one) and its old settings (a lowered worker count never applied).
 - `autowork scorecard [--days N] [--json] [target...]` shows, per runner over the last N days (default
   7): tasks closed (checked entries new in the TODO archive), the share of integrations that ended held,
   the median time from a task's first dispatch to its integration, and new owner questions in

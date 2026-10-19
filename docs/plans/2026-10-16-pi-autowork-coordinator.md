@@ -1054,3 +1054,238 @@ No reset of consumed attempts, manual lease release, new worker, service restart
 installation, model call, deployment or push is performed by this planning pass.
 A failed aggregate or missing terminal receipt stays unqualified. Broader test
 thinning remains TOOLSET-127-b1, not a prerequisite or substitute for this repair.
+
+## Runner activity versus partial task holds
+
+Status: Accepted
+
+Owner report: the fleet table shows `blocked 0m` and the detail `Stuck 0m` with no
+Needs reason, even though other work/main verification continues; a later log shows
+one task held for an omitted test file. Treat the supplied fleet values as historical
+observations, not authorization to restart, widen a worker's scope or clear a hold.
+A fresh read-only engine observation during planning reported two running workers
+and a separate held TOOLSET-210-53. The missing test-scope hold is real task-level
+work; it does not establish that the entire runner cannot progress.
+
+Source inspection: health.classify already gives active workers/integration priority
+over queue waits. fleet_view.collect starts from the persisted health state and
+only overrides blocked/stalled/not-cycling when a lane has recent transcript activity;
+fleet_view.verdict then selects its headline chiefly from runner.state. A quiet live
+worker or mixed/stale generations can therefore be misrepresented. This is a
+source-backed risk, not a claimed exact reproduction of the owner's terminal.
+
+Planner call: refine existing TOOLSET-129-c4's display classification, with producer
+provenance/shared CLI projection retained under TOOLSET-130-15. Keep the task's
+recorded hold, admission gates, owner questions and background-job results distinct
+from overall observed activity. From one coherent source-bound snapshot, running,
+testing, reviewing or integrating work yields a Working headline plus the partial
+hold count/reason; queue overlap/dependency/exclusive waits describe unused capacity,
+not global Stuck while independent work progresses. Use existing identity/generation
+validation; do not count an unvalidated old `running` slot or arbitrary process as
+proof of life. Quiet validated work does not stop being active solely because no
+transcript text arrived recently. Process existence alone is not proof of progress;
+a real stale/stall indication remains visible as such.
+
+With no task work but a validated main check/maintainer currently active, name that
+activity and separately show why task admission is waiting. A previous failed
+maintainer run is historical status, not itself a current global block. Blocked/Stuck
+requires current evidence that task execution cannot progress, and a nonempty cause
+or an explicit unavailable/stale reason; never `Stuck 0m` and Needs `-`. Intentional
+pause, stopped service, failed current safety gate, real owner input and unknown or
+contradictory freshness remain visible; no optimistic green fallback from missing
+counts or a background heartbeat. Preserve first observation times separately from
+new refresh time and do not reset the displayed age on each poll.
+
+Apply the same derived classification to runner-row state/color, header totals,
+Needs and selected detail; a single frame cannot say blocked and Working for the
+same snapshot. The existing 130-15 freshness/provenance work owns eventual CLI and
+producer parity; its fallback-policy correction also covers the pasted disabled-
+fallback mismatch without creating another account/model task.
+
+Planned proof (unrun): extend existing fleet/health/pilot fixtures for two active
+workers plus one scope-held task; a quiet but identity-validated worker; review-only
+and main-check-only activity; a historical maintainer failure plus current progress;
+zero-progress dependency/exclusive/disk waits; real owner input; stale/contradictory
+counts, dead/reused worker identity and pause/stop. Assert row/header/detail/Needs
+agreement, accurate counts and nonempty wait causes across transitions as workers
+finish, and no false pass/completion. Use fake clocks/data/process observations;
+retain view-only and zero model/service/slot-mutation assertions. No new dashboard,
+scheduler, repair loop, threshold-tuning campaign or implementation in this plan.
+
+## Completion-first delivery and recoverable handoffs
+
+Status: Accepted
+
+### Outcome and owner decision
+
+Improve efficiency and accuracy from worker completion through required verification,
+session integration and canonical delivery. The owner chose completion-first admission:
+when verification/integration capacity is saturated, defer NEW implementation starts,
+while current workers continue. This is a planned admission policy, not a request to
+pause/restart current runners, change their settings or execute this plan. Existing
+checks, review, ownership, privacy, publication and live-qualification boundaries stay.
+
+Planner's call: make incremental changes in the current shared lifecycle engine and
+Pi wrapper, not a new harness, scheduler, state database or rewrite. Reuse existing
+slots, journal, reports, check records, integration state and health projections.
+Keep planning IDs/order and every active assigned contract. Existing partial phases
+of TOOLSET-115-bf are not instructions to reimplement delivered code. Canonical local
+delivery and remote publication are distinct; no new push/deploy authority is granted.
+
+### Evidence and limits
+
+The owner's historical worker view mixed running, reviewer-changed and verifying
+labels with transcripts saying committed. These messages do not establish process
+exit, report acceptance, passing review or canonical delivery. A read-only observation
+during planning found two running workers, seven awaiting integration and ten session
+commits not yet merged into main; this is queue evidence, not a proven defect or a
+measured latency baseline. Current coordinator.cycle calls dispatch before settle;
+settle already collects asynchronous integration, serializes review and closes
+integrated tasks. reviewer_version fingerprints worker.py and validation/review
+settings; reverify_held already bounds reoffers per version. Preserve these existing
+mechanisms and tighten their boundaries rather than add another implementation.
+
+### One authoritative completion lifecycle — TOOLSET-115-bf
+
+Distinguish worker executing, terminal result/report available, report adopted,
+verification queued/running/failed, qualified integration and canonical delivery.
+Expose these through existing records; no new mandatory names or parallel tracker.
+A transcript, heartbeat, git commit, old green main or PID alone cannot advance a
+completion boundary. Validate task/attempt, commit, terminal execution evidence,
+process-birth ownership, candidate/worktree and current effective contract. A valid
+report written while an owned worker is still exiting is visible as awaiting that
+terminal boundary, not silently closed or counted as a new implementation.
+
+Use a stable task/attempt/candidate identity and the existing journal/receipts for
+idempotent adoption, check collection, integration and closeout. Reconcile Git and
+recorded intent after interruption; do not replay an already proven side effect.
+TOOLSET-119-2b continues to own atomic intent/worktree creation, not a second journal
+inside this change. A missing terminal result remains incomplete; preserve failures,
+missing reports, dirty/untracked changes, real claims and cumulative attempt/budget
+history. Unknown ownership is not permission to steal or kill a process.
+
+A changed planning entry does not automatically justify fresh implementation. Compare
+effective scope/acceptance/Touches/gates with the retained candidate: informational
+notes alone do not invalidate it; a widened allowed path can permit qualification
+of the same candidate; an actual changed requirement needs bounded reconciliation
+against current code. Closed/cancelled tasks do not resume. Never restore an old
+snapshot over newer source or repin a running worker/review to make evidence match.
+Retained work is not a passing result and mandatory review is never skipped.
+
+Bind each verification to the actual integrated source, check command/inventory,
+relevant code/dependency/tool/environment inputs and effective review policy captured
+at launch. Reuse executed results only when that full input closure is demonstrably
+unchanged; otherwise rerun invalidated checks and required review. Different merged
+code is not qualified by worker checks on its old base. No semantic-equivalence guess,
+changed policy hidden by a stale fingerprint, skipped failure, stale receipt rewrite
+or main-green substitution. Keep the launch fingerprint with active work across
+polls/restarts; UI/config refresh must not fabricate a new review or imply one is
+running. A genuine validation-policy or relevant environment change remains visible
+and requires its affected qualification; budgeted reoffers do not replenish on restart.
+
+### Completion-first capacity — TOOLSET-118-68
+
+Use the existing engine gate, with coordinator settlement/collection before new
+implementation admission. Count implementation and expensive test/review capacity
+separately using current process-bound observations and cgroup/host limits. Unknown
+resource usage stays unknown/conservative, not zero. Reconcile the current single
+integration/review lane; this plan does not add parallel reviews on a shared tree.
+
+Initial deterministic policy: an occupied completion lane plus at least one ready,
+actionable candidate waiting for it is saturation. Reserve the resource headroom
+needed by that lane, deny new implementation admission with a named completion wait,
+and reconsider after every terminal collection. Continue existing workers and drain
+eligible completion work in existing engine priority order. No arbitrary time limit,
+new model-cost budget or constant threshold-tuning project. If no actionable
+completion work remains and budgets permit, resume normal compatible starts.
+
+An owner/external/foreign-writer hold alone is not an executable drain queue and must
+not deadlock all unrelated work. Permit only the existing bounded prerequisite repair
+needed to unblock completion, with its normal ownership, budget and safety checks;
+this is not a backdoor to unlimited implementation. Persist sufficient policy state
+for restart continuity, but derive actual occupancy from validated current evidence.
+Do not relax load/disk/memory gates, clear leases, kill workers to free a slot or count
+reported/held tasks as free resources without checking their remaining processes.
+
+### Reliable checks and truthful views — existing owners
+
+TOOLSET-127-b1 retains deterministic event-based fixtures and deduplication with every
+unique assertion preserved; do not create another suite or infer speedup from fewer
+cases. TOOLSET-212-0d owns disk-backed per-task scratch; TOOLSET-173-94 owns missing-
+toolchain provisioning and bounded environment requalification. Use those outcomes,
+not competing scratch/provisioning fixes or a second full-gate recovery task.
+
+TOOLSET-130-15 consumes the engine's stage/evidence and the capacity gate reason in
+one generation-bound CLI/TUI snapshot, reusing TOOLSET-129-c4's headline. Show report
+awaiting adoption/exit, queued review, active check, integration/session-only changes,
+canonical delivery and remote publication separately. Show quiet/last activity apart
+from phase duration, pending policy invalidation apart from an active reviewer, and
+real owner input apart from technical recovery. Missing/stale counts never mean zero.
+Preserve the existing source-freshness prerequisites and all view-only restrictions.
+
+### Source-audit refinements and concrete boundaries
+
+Further source inspection confirms that parallel_state.reconcile already retains a
+dead worker's descendant commit as reported, including preserved dirty residue;
+parallel_integrate subsequently validates the report and candidate. Keep this split:
+candidate discovery is not report acceptance, and neither is completed delivery.
+The engine already checks an isolated merged tree and its closeout receipt; the
+coordinator's target is its session, so that receipt alone is not canonical delivery.
+
+Planner's calls: aged session commits alone do not trigger saturation. Attempt a
+safe actionable closeout/landing before new admission; if a real external writer or
+owner gate prevents it, expose that gate without globally freezing independent work.
+Continuing an already live, validated worker is not a new start. Launching a new
+implementation process, including retry/resume of an old attempt after its process
+exited, is new admission and obeys completion backpressure, except the bounded
+normally guarded prerequisite repair described above. Never resume an explicit pause.
+
+Use existing records, not a new receipt format, to retain task/attempt/candidate,
+review input signature and reviewed merge, integration and closeout commit identities,
+and configured canonical ref/observed head. Canonical delivery requires the accepted
+integration and closeout in that ref's ancestry with matching source-bound evidence;
+missing ancestry/provenance is session-only or unknown, never Delivered. A remote
+publication claim additionally needs authorized remote-ref readback.
+
+TOOLSET-173-94's environment marker includes a commit, but environment_hold currently
+reads only its missing-tool text; provisioning suppression also uses process-local
+seen state. Bind the marker to the actual reviewed merge/task/attempt before acting.
+Keep the existing one-provision/one-reverify policy durable by repository, task/attempt,
+candidate, relevant review-input signature and normalized missing item; restart does
+not grant another attempt or reset cumulative limits. Old mismatched markers are
+historical, not a request to install tools for a different candidate. Record attempted
+setup and failure evidence in the existing recovery owner, preserving cache-only scope.
+
+Current worker.full_suite_gate already distinguishes baseline-equivalent and isolated-
+rerun/flaky failures. This plan does not broaden or silently remove that policy.
+Record the original full inventory's exit, baseline comparisons, rerun classifications,
+skips and accepted exceptions explicitly. An accepted integration with those exceptions
+is not an all-green run, and a rerun passing does not rewrite the original failure.
+Preserve required execution/review and expose any unqualified or unavailable proof.
+
+### Proof and efficiency observations
+
+Extend existing controlled-process/Git fixtures, not live Pi/model calls. Cover:
+report-before-exit and terminal-before-report; missing/malformed report; duplicate
+polls; restart after each adoption/qualification/integration/closeout boundary; dirty
+candidate and live/reused/unknown identities; planning-note-only changes versus real
+scope changes; unchanged full inputs versus altered integration code/tool/review
+policy; saturated completion lane, current workers continuing, capacity release and
+resume; genuine external hold with independent useful work; and canonical closeout
+with publication disabled. Assert one implementation and one adoption/delivery per
+unchanged candidate, no duplicate check/review launch while valid evidence exists,
+and affected requalification rather than false completion when inputs change.
+
+Read existing events to report worker-terminal-to-adoption, report-to-review-start,
+review duration and qualified-to-canonical-delivery separately, plus duplicate check
+launches for identical input bindings and peak expensive-check occupancy. Unknown
+historical timestamps stay unknown. Establish a source-bound baseline during
+implementation; no latency/speedup percentage or fixed minutes target is claimed by
+this planning pass. Acceptance is correct bounded transitions, no unbounded rerun
+loop, and retained normal offline/review gates. The new scenarios are planned, unrun.
+
+Implementation owners remain 115-bf (completion handoff), 118-68 (admission budgets),
+127-b1 (existing fixture efficiency), 130-15 (projection) and 173-94 (existing environment
+escalation). 118-68 already follows 115-bf; no reciprocal dependency is introduced.
+Preserve unrelated queue ordering and live-work exclusions; planning does not promote
+this chain above the current frontier or supersede the compact-ledger tasks.
