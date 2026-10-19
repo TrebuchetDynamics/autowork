@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import worker  # noqa: E402
@@ -86,6 +87,25 @@ class WorkerTmpTests(unittest.TestCase):
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 3)  # red alone too: the base, red as well, decides
 
+    def test_the_gate_runs_the_full_check_with_a_private_tmpdir(self):
+        """The runner has no $TMPDIR: a check that requires one crashed on every candidate and its base."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        (self.repo / 'a.txt').write_text('merged\n')
+        git('add', '-A')
+        git('commit', '-qm', 'merged')
+        root = Path(self.temp.name) / 'review-root'
+        root.mkdir()
+        env = {k: v for k, v in os.environ.items() if k != 'TMPDIR'}
+        env.update(PI_AUTOWORK_VALIDATE=': "${TMPDIR:?TMPDIR must be set}"; test -d "$TMPDIR"',
+                   PI_AUTOWORK_REVIEW='0', PI_AUTOWORK_REVIEW_ROOT=str(root))
+        cwd = os.getcwd()
+        self.addCleanup(os.chdir, cwd)
+        os.chdir(self.repo)
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(worker.verify(Path(self.temp.name) / 'state', 'T-1'), 0)
+        self.assertEqual(list(root.iterdir()), [])  # and the scratch is gone
+
     def test_the_worker_tmpdir_of_the_slot_attempt_is_found(self):
         self.slot()
         tmp = self.execution / 'slot-data' / 'T-1' / 'attempt-2' / 'tmp'
@@ -125,7 +145,6 @@ class ReviewScratchTests(unittest.TestCase):
     """Reviewers copied whole repositories into RAM-backed /tmp and left them there."""
 
     def test_a_review_gets_its_own_tmpdir_which_is_removed_afterwards(self):
-        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as folder:
             repo, state = Path(folder) / 'repo', Path(folder) / 'state'
             subprocess.run(['git', 'init', '-q', str(repo)], check=True)
@@ -165,7 +184,6 @@ class ReviewScratchTests(unittest.TestCase):
             self.assertTrue(cache.is_dir())
 
     def test_a_review_unregisters_only_its_own_scratch_worktrees(self):
-        from unittest.mock import patch
         import shutil
         with tempfile.TemporaryDirectory() as folder:
             repo, state = Path(folder) / 'repo', Path(folder) / 'state'
@@ -236,7 +254,6 @@ class EnvironmentMarkerTests(unittest.TestCase):
     """TOOLSET-173-94: 'could not check' is recorded apart from 'checked and wrong'."""
 
     def test_a_review_that_could_not_run_records_what_was_missing(self):
-        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as folder:
             repo, state = Path(folder) / 'repo', Path(folder) / 'state'
             subprocess.run(['git', 'init', '-q', str(repo)], check=True)

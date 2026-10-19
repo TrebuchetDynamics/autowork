@@ -226,6 +226,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The review gate runs the full check with a private `$TMPDIR` on disk, as main's check
+  already did: the runner has none, so a check that requires one crashed on every candidate
+  and its base, and gate suites wrote into RAM-backed `/tmp`. A base run that crashed is no
+  longer cached for its revision.
 - A task marked `in_progress` whose worker died without leaving work is taken over once idle,
   like any other stale claim: its released slot kept it out of adoption while admission
   still held it as a claim, and one runner stalled for five hours.

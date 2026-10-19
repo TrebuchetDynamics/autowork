@@ -188,7 +188,8 @@ def base_result(state, checkout, command, rev, limit):
         value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log')), command=command)
     finally:
         git(checkout, 'worktree', 'remove', '--force', str(scratch))
-    cache.write_text(json.dumps(value))
+    if value['code'] == 0 or value['failures']:  # a crash may be the host's: run it again next time
+        cache.write_text(json.dumps(value))
     return value
 
 
@@ -272,28 +273,30 @@ def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
     environment_marker(state, task).unlink(missing_ok=True)  # this run says afresh what was missing
-    ok, reason = full_suite_gate(state, task, checkout)
-    if not ok:
-        # The engine puts this line into the hold reason, which the retry's prompt quotes.
-        print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
-        if not environment_marker(state, task).exists():  # a crash is the host's, not a finding
-            findings = findings_path(state, task)
-            findings.parent.mkdir(parents=True, exist_ok=True)
-            findings.write_text(json.dumps({'verdict': reason[:800], 'commit': git(checkout, 'rev-parse', 'HEAD')}))
-        print(f'pi-autowork: the full check rejects {task}: {reason}', file=sys.stderr)
-        return 1
-    if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
-        return 0
-    head_before = git(checkout, 'rev-parse', 'HEAD')
     # Its own private scratch, removed afterwards, on disk (reviewers copied whole repositories
     # into RAM-backed /tmp and left them, 39 GB on one host) and short: under the state directory
     # the path was 85 characters before a test added its own, past the 108-byte AF_UNIX limit.
     # A short link to it was not enough: code that resolves links got the long path back.
+    # The gate's suites run in it too: the runner has no $TMPDIR, and a check that requires one
+    # crashed on every candidate and its base.
     root = review_root()
     drop_dead_scratch(checkout, root)
     scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
     try:
+        ok, reason = full_suite_gate(state, task, checkout)
+        if not ok:
+            # The engine puts this line into the hold reason, which the retry's prompt quotes.
+            print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
+            if not environment_marker(state, task).exists():  # a crash is the host's, not a finding
+                findings = findings_path(state, task)
+                findings.parent.mkdir(parents=True, exist_ok=True)
+                findings.write_text(json.dumps({'verdict': reason[:800], 'commit': git(checkout, 'rev-parse', 'HEAD')}))
+            print(f'pi-autowork: the full check rejects {task}: {reason}', file=sys.stderr)
+            return 1
+        if os.environ.get('PI_AUTOWORK_REVIEW', '1') == '0':
+            return 0
+        head_before = git(checkout, 'rev-parse', 'HEAD')
         return review(state, task, checkout, head_before, gate_note(state, task, checkout))
     finally:
         drop_scratch_worktrees(checkout, scratch)
