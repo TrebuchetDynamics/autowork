@@ -92,6 +92,23 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to what the maintainer may edit or to its validation of its own commits.
 - Planner's call: second in Now (raised 2026-10-18 22:34: the loop runs on three runners, once every two minutes on one). A repair that does not change the runner's verdict is not progress, and repeating it spends model calls and hides the fact that the task needs an owner decision.
 
+### TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
+
+- [ ] TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [integration](skills/autowork/scripts/parallel_integrate.py) (`merged`: refuses with `merged is only for a conflict-held commit, once` when the slot already has `merged_base`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`resolve_task_conflict`: asks the Pi merge resolver once per session revision, `seen['resolved-<task>']`, then calls `--parallel-merged`); TOOLSET-157-cd and TOOLSET-233-ba in [the archive](TODO.archive.md) (the session now follows main between reviews, so it moves more often under a held commit).
+- Evidence (2026-10-18 22:03-22:47, one fleet runner): two tasks on their second attempt, holding 8 dependents between them, were held for `merge conflict`. The resolver merged each, and at 22:33 the engine refused to adopt both (`could not adopt its merged commit: merged is only for a conflict-held commit, once`, logged twice each), because each slot's earlier conflict had already been adopted once. At 22:47 the runner asked the resolver to merge one of them again. The once-per-slot rule and the once-per-revision rule disagree, so each session move costs a resolver run and the tasks never leave the hold.
+- Evidence (2026-10-18 23:17, a second fleet runner as well): one task there was refused the same way at 23:06 and 23:17, and one on the first runner again at 23:17: a resolver run about every ten minutes per stuck task.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) `merged_base` records the canonical revision the merge was adopted against, not just `True`. `merged` accepts another adoption when canonical HEAD has moved past that revision, up to 3 adoptions per attempt (`merged_count`). (2) The coordinator asks the engine whether an adoption would be accepted (a read-only `--parallel-merged --check`, or the same rule read from the slot) before it runs the resolver. If not, it runs no resolver and the hold stays a question for the owner, naming the conflicting files and the adoption count. (3) The log says `merged the session into its commit again (<n> of 3)`.
+- Acceptance: In fixtures: a conflict-held slot adopted once, then held for conflict again after canonical HEAD moved, is adopted a second time and reaches review; with HEAD unmoved it is refused and no resolver job runs; a fourth adoption is refused with a question naming the files; the runner journey that reproduces back-to-back conflicts lands the task after two resolutions.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how a conflict is detected or to the resolver's prompt.
+- Planner's call: third in Now (raised 2026-10-18 23:19, two runners): the session moves more since TOOLSET-233-ba, so this loop will grow on every runner whose files overlap, and each turn is a model call with no progress.
+
 ### TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
 
 - [ ] TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
@@ -107,22 +124,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the full-suite gate or to what a review checks.
 - Planner's call: second in Now, behind TOOLSET-165-f7. Each toolset release re-reviewed the same failing commit ahead of the whole queue, so the runner that receives the most releases integrated the least. Ordering, scoping the fingerprint and stopping same-verdict repeats keep the benefit (a fixed reviewer gets one more look) without the stall.
-
-### TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
-
-- [ ] TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [integration](skills/autowork/scripts/parallel_integrate.py) (`merged`: refuses with `merged is only for a conflict-held commit, once` when the slot already has `merged_base`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`resolve_task_conflict`: asks the Pi merge resolver once per session revision, `seen['resolved-<task>']`, then calls `--parallel-merged`); TOOLSET-157-cd and TOOLSET-233-ba in [the archive](TODO.archive.md) (the session now follows main between reviews, so it moves more often under a held commit).
-- Evidence (2026-10-18 22:03-22:47, one fleet runner): two tasks on their second attempt, holding 8 dependents between them, were held for `merge conflict`. The resolver merged each, and at 22:33 the engine refused to adopt both (`could not adopt its merged commit: merged is only for a conflict-held commit, once`, logged twice each), because each slot's earlier conflict had already been adopted once. At 22:47 the runner asked the resolver to merge one of them again. The once-per-slot rule and the once-per-revision rule disagree, so each session move costs a resolver run and the tasks never leave the hold.
-- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
-- Scope: (1) `merged_base` records the canonical revision the merge was adopted against, not just `True`. `merged` accepts another adoption when canonical HEAD has moved past that revision, up to 3 adoptions per attempt (`merged_count`). (2) The coordinator asks the engine whether an adoption would be accepted (a read-only `--parallel-merged --check`, or the same rule read from the slot) before it runs the resolver. If not, it runs no resolver and the hold stays a question for the owner, naming the conflicting files and the adoption count. (3) The log says `merged the session into its commit again (<n> of 3)`.
-- Acceptance: In fixtures: a conflict-held slot adopted once, then held for conflict again after canonical HEAD moved, is adopted a second time and reaches review; with HEAD unmoved it is refused and no resolver job runs; a fourth adoption is refused with a question naming the files; the runner journey that reproduces back-to-back conflicts lands the task after two resolutions.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to how a conflict is detected or to the resolver's prompt.
-- Planner's call: Now, after TOOLSET-243-6d: the session moves more since TOOLSET-233-ba, so this loop will grow on every runner whose files overlap, and each turn is a model call with no progress.
 
 ### TOOLSET-250-49 — A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle
 
