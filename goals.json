@@ -756,7 +756,8 @@
         "TOOLSET-254-80",
         "TOOLSET-255-55",
         "TOOLSET-256-4b",
-        "TOOLSET-257-bd"
+        "TOOLSET-257-bd",
+        "TOOLSET-258-07"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -764,6 +765,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-258-07",
       "TOOLSET-251-c4",
       "TOOLSET-252-4c",
       "TOOLSET-253-0d",
@@ -1272,6 +1274,14 @@
       "section": "Now",
       "status": "open",
       "title": "The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-258-07",
+      "section": "Now",
+      "status": "open",
+      "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
     },
     {
       "depends_on": [],
