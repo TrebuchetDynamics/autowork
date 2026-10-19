@@ -211,6 +211,15 @@ def _snapshot(repo, common, now):
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
                          paused=bool(slot.get('paused')), blocked_by=[]))
+        if slot['state'] == 'held' and slot.get('cause') == 'conflict' and slot.get('commit'):
+            adoption = state.merge_adoption(repo, slot)
+            rows[-1]['merge_adoption'] = adoption
+            if not adoption['allowed']:
+                rows[-1]['reason'] = adoption['reason']
+            elif adoption['merged_count']:
+                rows[-1]['reason'] = (f'{slot.get("reason") or "merge conflict"}; '
+                                      f'adopted {adoption["merged_count"]} of 3; conflict in: '
+                                      + (', '.join(adoption['files']) or '(unknown files)'))
         gate = current.get(task, {})
         authorization = any(by.startswith('Live authorization: ') for by in gate.get('blocked_by', []))
         if slot.get('paused') and slot['state'] in ('interrupted', 'released'):

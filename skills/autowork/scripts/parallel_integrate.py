@@ -459,8 +459,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
                     try:
                         git(root, 'merge', '--no-ff', '--no-edit', slot['commit'])
                     except ValueError:
+                        conflict_files = git(root, 'diff', '--name-only', '--diff-filter=U').splitlines()
                         git(root, 'merge', '--abort')
-                        raise Hold('conflict', 'merge conflict; worker and canonical checkout preserved')
+                        raise Hold('conflict', 'merge conflict; worker and canonical checkout preserved',
+                                   conflict_files=conflict_files)
                     merge = git(root, 'rev-parse', 'HEAD')
                     if git(repo, 'rev-list', '--parents', '-n', '1', merge).split()[1:] != [baseline, slot['commit']]:
                         raise ValueError('integration candidate must have canonical and worker parents')
@@ -960,19 +962,20 @@ def reverify(repo, owner_pid, task, version):
 
 
 def merged(repo, owner_pid, task):
-    """Adopt a conflict-held commit whose worktree has since merged canonical HEAD (the
-    coordinator's merge resolver, TOOLSET-157-cd), once: the merge commit is judged from
-    that HEAD as its new baseline, so only the task's own changes and its resolution count.
-    A fresh retry would otherwise reimplement work that already exists."""
+    """Adopt a conflict-held commit whose worktree has merged canonical HEAD, up to three
+    times per attempt, each after canonical advances past the last adopted revision.
+    The merge is judged from that HEAD, so only the task's changes and resolution count."""
     repo, common = context(repo, owner_pid)
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
         slot = slot_for(common, task)
-        if (slot is None or slot['state'] != 'held' or slot.get('cause') != 'conflict' or not slot.get('commit')
-                or slot.get('merged_base') or state.worker_live(slot)):
-            raise ValueError('merged is only for a conflict-held commit, once')
+        if slot is None:
+            raise ValueError('merged is only for an idle conflict-held commit')
+        adoption = state.merge_adoption(repo, slot)
+        if not adoption['allowed']:
+            raise ValueError(adoption['reason'])
         root = execution.safe_path(slot['worktree'])
-        base = git(repo, 'rev-parse', 'HEAD')
+        base = adoption['baseline']
         head = git(root, 'rev-parse', 'HEAD')
         if (git(root, 'symbolic-ref', '--short', '-q', 'HEAD') != slot['branch']
                 or git(root, 'status', '--porcelain', '--untracked-files=no')
@@ -984,10 +987,12 @@ def merged(repo, owner_pid, task):
             raise ValueError('merged needs the held commit\'s report.json')
         report.update(commit=head, changed_files=changed(repo, base, head))
         execution.save(data / 'report.json', report)
-        value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'checks', 'integration')}
-        value.update(state='reported', baseline=base, commit=head, merged_base=True)
+        value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'checks', 'integration', 'conflict_files')}
+        value.update(state='reported', baseline=base, commit=head, merged_base=base,
+                     merged_count=adoption['merged_count'] + 1)
         slot = state.write_slot(common, value, slot)
-        return {'outcome': 'MERGED', 'task': task, 'commit': head, 'baseline': base}
+        return {'outcome': 'MERGED', 'task': task, 'commit': head, 'baseline': base,
+                'merged_count': slot['merged_count']}
 
 
 def cleanup_worker(repo, common, slot):

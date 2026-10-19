@@ -980,7 +980,8 @@ def main(argv=None):
     parallel.add_argument('--parallel-reverify', metavar='TASK',
                           help='Send a commit held by validation back to integration, once per --reviewer-version.')
     parallel.add_argument('--parallel-merged', metavar='TASK',
-                          help='Adopt a conflict-held commit whose worktree has merged canonical HEAD, once.')
+                          help='Adopt a conflict-held commit whose worktree has merged canonical HEAD; '
+                               'up to three times per attempt, each against a newer canonical revision.')
     parallel.add_argument('--reviewer-version', help='Fingerprint of the coordinator\'s validation, for --parallel-reverify.')
     parallel.add_argument('--parallel-set-aside', metavar='TASK',
                           help='Retire an exhausted held slot, or an integrated one whose TODO entry changed, keeping its '
