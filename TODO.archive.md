@@ -4491,3 +4491,125 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to attempt budgets for tasks that ran and failed on their work.
 - Planner's call: three quick identical holds are evidence the task cannot start as written; rerunning it spends a worker and a review each time and teaches nothing.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-240-f8"></a>
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-234-d4
+Reason: Duplicate of 234-d4: both hand the main-check evidence to repair workers; 240-f8's update-the-existing-evidence step is folded into 234-d4.
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-240-f8 — A repair task for a red main gets the runner's main-check log and its failing tests
+
+- [ ] TOOLSET-240-f8 — A repair task for a red main gets the runner's main-check log and its failing tests
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [main check](pi-autowork/pi_autowork/main_check.py) (the receipt and `main-check.log` in the runner state), [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (the `MAIN` trigger that writes repair tasks), [worker prompt](skills/autowork/scripts/parallel_dispatch.py) (`prompt`).
+- Evidence (2026-10-18, a fleet runner): two repair tasks for a red main held at once, asking for "the full log of the red MAIN, with exit code, failing phase/test and attempt classification" and "the original MAIN run report"; the runner keeps both in its state directory, but nothing gives them to the worker or the repair task.
+- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/main_check.py, pi-autowork/tests/test_main_check.py, CHANGELOG.md
+- Scope: (1) When the maintainer writes or updates a task for a red main, the task's Sources name the failing revision, the command, the exit code, the failing tests and the log's path, and the runner copies that log and receipt into the task's evidence folder (`.git/autowork-execution/slot-data/<task>/evidence/`), kept until the task closes. (2) The worker prompt of such a task names that folder. (3) A later red main on the same tests updates the same evidence instead of writing another task.
+- Acceptance: In fixtures, a red main produces a repair task whose Sources carry the revision, command, exit code and failing tests; its worker's prompt names the evidence folder holding the log and receipt; a second red main on the same tests updates that folder; the evidence goes when the task closes.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_maintainer.py pi-autowork/tests/test_main_check.py skills/autowork/scripts/test_parallel_dispatch.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when main counts as red.
+- Planner's call: the runner owns the main check, so it hands over its own evidence; a worker should never have to ask for a log the runner holds (owner, 2026-10-18: autowork "must be able to fix these issues easily").
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-170-f6"></a>
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-230-bf
+Reason: 230-bf removes the closeout writer check whose message 170-f6 refines; the session-and-file wording moves to 230-bf's main-checkout landing.
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-170-f6 — Closeout waits only for a main-checkout session that holds the files it writes
+
+- [ ] TOOLSET-170-f6 — Closeout waits only for a main-checkout session that holds the files it writes
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: owner direction (2026-10-17): "plan a task so interactive sessions don't block closeout"; [close and writer checks](skills/autowork/scripts/parallel_integrate.py) (`close`, `_close_writes`, `live_followup`, `require_no_writers`, `touches_none_of`), [coordinator closeout](pi-autowork/pi_autowork/coordinator.py) (`close_task`); the main-checkout session rule of TOOLSET-120-fc (6).
+- Evidence (2026-10-17 12:46-12:55, this repository's runner): an integrated TOOLSET-124-97 failed every minute with `could not close: live or unknown external writer/session; preserve canonical checkout: pid … claude in <repo> (running commands); pid … claude in <repo>`. Both were interactive sessions in the main checkout, which owner direction says is where interactive work happens. `close`, `_close_writes` and `live_followup` call `require_no_writers(repo)` without `files`, so `touches_none_of` returns False and any main-checkout session blocks, although integration already passes the files a merge changes and lets unrelated sessions proceed. The runner showed `paused` while 31 tasks waited.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py
+- Scope: (1) `close`, `_close_writes` and `live_followup` pass the exact files the close writes (`TODO.md`, `goals.json` when indexed, the archive file) to `require_no_writers`, so a session only in the main checkout blocks closeout only when it holds one of them open or has left one uncommitted there, the rule integration already uses. Sessions outside the main checkout, unknown writers and Autowork commands block as today. (2) When a session does block, the reason names the session and the file (`waiting to close until <session> commits or closes <file>`), so the owner knows what to do. (3) The closeout commit and its landing on main keep the existing final-merge rule, which already waits only for files a session touches.
+- Acceptance: In fixtures, an integrated task closes and its close commit lands while an idle interactive session is in the main checkout with unrelated uncommitted files. The same session with `TODO.md` uncommitted, or with the archive open for writing, keeps the close waiting with the new reason naming that file. A session in a sibling worktree and an unknown writer still block. No close is retried more than once per cycle.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator; reconcile TOOLSET-165-f7 output in the same writer check first.
+- Exclusions: No relaxation for sessions holding a planning file, no closeout in the canonical checkout while it is being written, no change to integration's file rule.
+- Done by the owner session (2026-10-17, 14a7d11 and the commit after it): scope (1). `close`, `_close_writes` (both the indexed and the unindexed paths), `live_followup` and worktree cleanup pass the files a close writes, with a fixture that has goals.json; (3) needed no change. Still open: (2), the waiting reason naming the session and file.
+- Planner's call: second in Now, behind TOOLSET-165-f7, which changes the same writer check. Interactive sessions belong in the main checkout, so closeout must not depend on their absence.
+- Blocker reconciliation: The latest retained four-file implementation reports passing focused integration and runner checks, but the full offline inventory failed a budget-controller less-than-two-second timing assertion at 2.510591 seconds under load 50.91; four host-resource skips and the failed full run remain unqualified evidence, not passes. A quiet host is a technical capacity condition, not a new owner decision or permission to bypass tests. Use existing completion-first/check-slot admission and supported disk-backed short scratch; do not ask the owner to stop other runners or provide another host before using the normal resource gate. Do not stabilize an unrelated budget-controller test inside this task's scope or classify the timing failure as proven flaky from one run.
+- Next action: Preserve the existing four modified files and review notes in the held worktree; reconcile current TOOLSET-165-f7/current-baseline writer logic without another implementation. When the existing qualification owner has capacity under the normal guards, rerun only invalidated/missing checks and the mandatory full gate on the actual integrated source, using the current supported disk-backed task scratch and shared check-slot mechanism where delivered. Waiting for capacity is not a failed attempt or a reason to reset cumulative budgets; it must not launch duplicate inventory while another qualification is owned. If the same budget test still fails on a suitable current baseline, retain its actual result and route repair to the existing baseline/test owner, not a longer-sleep workaround, changed expected result or a waived full gate. Close only from accepted integrated verification; no check, retry or service action is launched by this planning answer.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-115-bf"></a>
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-230-bf, TOOLSET-254-80, TOOLSET-255-55, TOOLSET-256-4b, TOOLSET-257-bd
+Reason: A catch-all redesign written against coordinator code main has since redesigned; its Touches serialized all coordinator work. Its remaining scope is covered by the named tasks.
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
+
+- [ ] TOOLSET-115-bf — Redesign pi-autowork around one lifecycle authority
+- Status: open
+- Partial delivery: phases 1-5 done offline (report outcomes, Git safety, health, owner decisions, component port); live fleet qualification remains with TOOLSET-096-7e.
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [design](docs/plans/2026-10-16-pi-autowork-coordinator.md), [engine](skills/autowork/references/parallel-workers.md).; [completion-first delivery](docs/plans/2026-10-16-pi-autowork-coordinator.md#completion-first-delivery-and-recoverable-handoffs).
+- Touches: scripts/pi-autowork.sh, scripts/pi_autowork_touches.py, pi-autowork/, package.json, scripts/check.py, skills/autowork/scripts/parallel_*.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_*.py, skills/autowork/references/parallel-workers.md, tests/test_pi_autowork.py, docs/cross-host.md, docs/plans/2026-10-16-pi-autowork-coordinator.md
+- Scope: Owner direction (2026-10-16, after four runners idled seven hours): stop special-casing stalls in Bash. Implement the design's invariants in phases: worker outcomes from reports (`blockers` defer, `pending_live` never holds); Git safety (disposable review and Touches worktrees, exact closure commits); health (`status.json`, one `STALLED` report); owner decisions (safe-checkpoint self-update with a state schema version, adoption of verifiably idle claims, linked ignored dependencies); deferred causes with automatic actions; a tested Python coordinator behind a thin `pi-autowork.sh`.
+- Acceptance: The design's twelve scenarios pass with controlled subprocess workers and failure injection; no runner path runs `reset --hard`, `clean` or `stash` on the session or canonical checkout; a runner with no worker while runnable work exists reports `STALLED` with root blockers.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py; python3 -m unittest discover -s pi-autowork/tests; python3 scripts/check.py skills/autowork/scripts/test_parallel_state.py skills/autowork/scripts/test_parallel_dispatch.py skills/autowork/scripts/test_parallel_integrate.py skills/autowork/scripts/test_parallel_adversarial.py; python3 scripts/check.py; shellcheck scripts/pi-autowork.sh
+- Dependencies: None.
+- Context: Builds on TOOLSET-099-87 offline work.
+- Ownership: Toolset coordinator under the owner's request.
+- Exclusions: No push by the runner; no direct edits in fleet repositories; live fleet qualification stays with TOOLSET-096-7e.
+- Added (2026-10-17, [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) finding 5): `coordinator.py` is one 1805-line class with about 15 separate engine call sites; `task_execution`, `parallel_dispatch`, `parallel_claims`, `parallel_integrate`, `parallel_state`, `parallel_status` and `worktree_closeout` import each other in one cycle; `git()` is defined in 9 modules. Address them in this redesign, not as separate refactors.
+- Completion handoff: Implement the cited finish-line refinements in the existing engine/coordinator, preserving phases already delivered. Use validated terminal/report/attempt/commit and process-birth evidence for one adoption; distinguish report awaiting exit/adoption from active implementation. Reconcile effective contract changes against retained candidates instead of blindly restarting for informational edits. Resume unfinished review/integration/canonical-closeout steps idempotently after interruption; preserve actual failures, attempts, budgets and live ownership. Existing TOOLSET-119-2b retains atomic creation/transition intent; no competing store or lifecycle authority.
+- Qualification refinement: Pin exact integrated source, command/inventory, relevant dependency/tool/environment closure and effective review policy at launch. Reuse valid execution evidence only while all those inputs match; rerun invalidated checks and mandatory review, never qualify a new integration from old worker/main-green results. Keep running review identity across polling/restart and record a real invalidation separately from a new invocation. Preserve current worker/reviewer contracts and cumulative retry limits; a relevant changed policy cannot be hidden by a stale digest.
+- Completion proof: Extend the existing engine/adversarial/runner journeys with report-before-exit, exit-before-report, missing report, duplicate polls, restart at each boundary, candidate drift, dead/reused identity, note-only versus real contract change, same versus changed qualification inputs, and publication-disabled canonical delivery. Assert one implementation/adoption/delivery for the same proven candidate, no duplicate review while one is owned, and honest failure/incomplete states. New cases are unrun; all original twelve scenarios and full offline/review requirements remain binding.
+- Next action: Reconcile the current delivered engine and retained reports first; implement the narrow remaining terminal/report adoption and resumable qualification/closeout boundaries at existing seams, not phases 1-5 again. Make one source-bound snapshot available to 130-15 and completion occupancy to 118-68. Preserve active owners, current ordering and publication exclusions.
+- Delivery evidence boundary: Existing engine reported state is candidate discovery, not validated report acceptance; preserve that split and dirty residue. Reuse integration and closeout receipts, retaining reviewed merge/integration/closeout identities and the configured canonical ref/observed head. Require accepted integration and closeout ancestry on that ref plus source-bound qualification before canonical Delivered; remote publication additionally needs authorized remote-ref readback. Keep baseline-equivalent/flaky/full-inventory exceptions explicit under existing policy, never call an exception-accepted run all green or erase its original failed/skipped results.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-128-89"></a>
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-158-08
+Reason: Duplicate of 158-08 (fetch, merge the upstream, resolver once per revision, never force-push); its no-runner-push evidence is obsolete since the runner pushes (ef85685). The PI_AUTOWORK_PUSH_BATCH log line moves into 158-08.
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-128-89 — First push of a long-local or diverged main
+
+- [ ] TOOLSET-128-89 — First push of a long-local or diverged main
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: owner request (2026-10-17: audit runners' .worktrees use and merging after each task, then plan improvements), [plan](docs/plans/2026-10-17-runner-landing-and-worktrees.md), audit finding 5.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, docs/cross-host.md
+- Scope: Mains are 39–72 commits ahead of origin and bravo's has diverged (5 ahead, 19 behind); no runner push has run yet. `push` handles a diverged upstream: fetch, merge the upstream into the session (the Pi merge resolver once per upstream revision on a conflict), land, push once more; a push still rejected becomes a runner blocker and a TOOLSET-125-3c landing question, never a force push. A push that would publish more than `PI_AUTOWORK_PUSH_BATCH` commits (default 200) still runs but logs the count once.
+- Acceptance: fixtures with a bare upstream: a main many commits ahead pushes in one step; a diverged upstream with a clean merge is merged, landed and pushed; a conflicting upstream asks the resolver once and, if still conflicting, leaves main local with a runner blocker and no force push.
+- Checks: `python3 -m unittest discover -s tests -p 'test_pi_autowork.py' -k push`; `python3 scripts/check.py`.
+- Dependencies: None.
+- Ownership: Toolset coordinator under the owner's request (2026-10-17).
+- Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
