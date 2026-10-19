@@ -2694,11 +2694,11 @@ class SetupTests(Fixture):
         self.assertIn('(not a Pi package)', result.stdout)
         # A copied launcher must reach the canonical bootstrap before importing
         # an older package whose release helper does not support `launch`.
-        old = self.root / 'hermes-toolset/pi-autowork/pi_autowork'
+        old = self.root / 'old-toolset/pi-autowork/pi_autowork'
         old.mkdir(parents=True)
         (old / 'cli.py').touch()
         (old / 'release.py').write_text('raise SystemExit(2)\n')
-        self.env['FAKE_PI_LIST'] = (f'git:github.com/TrebuchetDynamics/hermes-toolset\n  {old.parents[1]}\n'
+        self.env['FAKE_PI_LIST'] = (f'git:github.com/TrebuchetDynamics/old-toolset\n  {old.parents[1]}\n'
                                     f'git:github.com/TrebuchetDynamics/autowork\n  {package}\n')
         copied = self.repo / 'pi-autowork.sh'
         shutil.copy(RUNNER, copied)
