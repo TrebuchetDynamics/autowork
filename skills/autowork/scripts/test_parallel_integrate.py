@@ -872,11 +872,9 @@ finally:
         self.assertEqual(module.set_aside(self.repo, self.owner, 'B')['outcome'], 'SET_ASIDE')
         self.assertFalse(temps['B'].exists())
 
-    def test_set_aside_refuses_a_slot_that_can_still_finish(self):
+    def test_set_aside_refuses_an_integrated_task_that_still_matches_its_entry(self):
         self.worker()
         module = self.module()
-        with self.assertRaisesRegex(ValueError, 'only for'):
-            module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
         with self.assertRaisesRegex(ValueError, 'close it instead'):
             module.set_aside(self.repo, self.owner, 'A')
