@@ -13,6 +13,7 @@ import time
 import parallel_dispatch as dispatch
 import parallel_plan as plan
 import parallel_state as state
+from parallel_state import close_files  # the close's own file set; re-exported for callers
 import task_execution as execution
 from worktree_paths import canonical_root, worktree_path
 
@@ -76,6 +77,17 @@ def hold(common, slot, reason, **updates):
 
 
 BRANCH_HOLD = 'unexpected worker branch'
+STALE_VALIDATION = 'missing, failed, stale or mismatched integration validation'
+
+
+def landed(repo, commit):
+    """Whether ``commit`` is in the canonical HEAD; None when that cannot be told."""
+    if not commit:
+        return None
+    try:
+        return git(repo, 'merge-base', commit, 'HEAD') == commit
+    except ValueError:
+        return None
 
 
 def expected_branch(slot):
@@ -578,7 +590,7 @@ def validated_receipt(repo, common, slot):
             or git(repo, 'merge-base', info['commit'], 'HEAD') != info['commit']
             or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
                != [info['baseline'], slot['commit']]):
-        raise ValueError('missing, failed, stale or mismatched integration validation')
+        raise ValueError(STALE_VALIDATION)
     return info, checks
 
 
@@ -617,8 +629,10 @@ def recover_integration(repo, common, slot, contracts):
             candidates.append(root)
     if len(candidates) != 1:
         raise ValueError('abandoned integration tree changed or ambiguous; preserve for diagnosis')
-    if git(repo, 'rev-parse', 'HEAD') == info['baseline']:
-        return None  # Pre-FF; remerge and revalidate, retaining worker attempt.
+    if not landed(repo, info['commit']):
+        # Never landed: remerge on the current head and revalidate, retaining the worker attempt.
+        # The head may have moved, since the runner lands its session beside a running review.
+        return None
     validated_receipt(repo, common, slot)
     state.change(common, slot, 'integrated', {})
     return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info}
@@ -703,12 +717,6 @@ def require_task_contract(items, expected, *, archived=False):
     if ((archived and mark.lower() != 'x') or body.strip() not in
             ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
         raise ValueError(CONTRACT_CHANGED)
-
-
-def close_files(repo):
-    """The files a close writes, repository-relative where they can be."""
-    archive = archive_path(repo)
-    return ['TODO.md', 'goals.json', archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
 
 
 def close(repo, owner_pid, task):
@@ -1216,6 +1224,15 @@ def retry_held(args):
                                      == 'CHILDREN_TERMINATED' and passed(s.get('checks'))))), None)
             if misread is not None:
                 slot = state.reoffer(common, misread)
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # Earlier releases held an interrupted review whose merge never landed when main had
+            # moved meanwhile, as if it had landed without evidence: offered again once.
+            unlanded = next((s for s in current if s['state'] == 'held' and s.get('commit')
+                             and s.get('reason') == STALE_VALIDATION and not state.worker_live(s)
+                             and 'stale_validation' not in state.reoffered(s)
+                             and landed(repo, (s.get('integration') or {}).get('commit')) is False), None)
+            if unlanded is not None:
+                slot = state.reoffer(common, dict(unlanded, cause='stale_validation'))
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.

@@ -43,6 +43,15 @@ NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
+def close_files(repo):
+    """The files a close writes, repository-relative where they can be. It lives here so
+    parallel_integrate can re-export it for callers that stage a close's own file set."""
+    repo = Path(repo)
+    archive = execution.archive_file(repo)
+    return ['TODO.md', 'goals.json',
+            archive.relative_to(repo).as_posix() if archive.is_relative_to(repo) else str(archive)]
+
+
 def common_dir(repo):
     return execution.safe_path(Path(execution.git(repo, 'rev-parse', '--path-format=absolute',
                                                   '--git-common-dir')) / 'autowork-execution')

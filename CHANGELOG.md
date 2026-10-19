@@ -237,6 +237,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review cut off by a restart no longer holds its task for good when main moved meanwhile.
+  Recovery took any movement of main as a landing and then found no passing record; the
+  runner lands its own session beside running reviews, so main usually moves. A merge that
+  is not in main is now merged again on the current main and checked again, and a task an
+  earlier release held this way is offered again once.
 - A set-aside request for a finished commit waiting to merge is carried out, keeping the commit
   on a `-set-aside-N` branch, so the task runs fresh on current main: such requests were
   refused, and stale commits that only conflicted stayed in the queue.

@@ -1573,7 +1573,7 @@ finally:
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         self.assertFalse((self.repo / 'TODO.archive.md').exists())
 
-    def test_interrupted_candidate_with_unexplained_head_movement_is_held(self):
+    def interrupted_while_main_moved(self):
         self.worker()
         module = self.module()
         from unittest.mock import patch
@@ -1582,11 +1582,27 @@ finally:
                 module.integrate(self.repo, self.owner, 'A', ['true'], 10)
         (self.repo / 'B.txt').write_text('independent canonical change')
         self.git('add', 'B.txt')
-        self.git('commit', '-qm', 'unexplained movement')
-        head = self.git('rev-parse', 'HEAD')
+        self.git('commit', '-qm', 'the session landed beside the review')
+        return module, self.git('rev-parse', 'HEAD')
+
+    def test_interrupted_candidate_that_never_landed_merges_again_on_the_moved_head(self):
+        module, head = self.interrupted_while_main_moved()
         result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
+        self.assertEqual(state.slots(self.common)[0]['attempt'], 1)
+
+    def test_a_held_review_whose_merge_never_landed_is_offered_again_once(self):
+        module, head = self.interrupted_while_main_moved()
+        slot = state.slots(self.common)[0]
+        held = module.hold(self.common, slot, module.STALE_VALIDATION)
+        self.assertEqual(held['outcome'], 'HELD')
+        self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REOFFERED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        self.assertIn('stale_validation', state.reoffered(slot))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(self.git('rev-parse', 'HEAD^1'), head)
 
     def test_real_validation_interrupt_stops_child_before_recovery(self):
         self.worker()
