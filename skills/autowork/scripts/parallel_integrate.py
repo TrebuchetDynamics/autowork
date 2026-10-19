@@ -848,9 +848,30 @@ def entry_changes(repo, common, slot):
     return sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
 
 
+def blocker_resolved(repo, common, slot, hold):
+    """An explicit answer names this blocker and its producer/evidence, not a cosmetic edit.
+
+    The runner cannot judge prose semantically. Require a fresh, blocker-specific
+    resolution field; the maintainer/owner supplies the evidence, normal checks judge it.
+    """
+    if 'Blocker resolution' not in (entry_changes(repo, common, slot) or []):
+        return False
+    goals = execution.goals_module()
+    items = goals.task_bodies((repo / 'TODO.md').read_text()).get(slot['task_id'], [])
+    if len(items) != 1:
+        return False
+    value = ' '.join(goals.task_fields(items[0][0]).get('Blocker resolution', '').split())
+    previous = slot.get('rescoped_contract') or dispatched_contract(common, slot)
+    before = ' '.join(goals.task_fields(previous or '').get('Blocker resolution', '').split())
+    prefix = hold['fingerprint'] + ';'
+    return (value.casefold() != before.casefold() and value.startswith(prefix)
+            and bool(value[len(prefix):].strip()))
+
+
 def entry_changed(repo, common, slot):
-    """Whether a recorded entry has changed since dispatch or its last accepted rescope."""
-    return bool(entry_changes(repo, common, slot))
+    """A changed entry, or for a repeated quick hold, an answer to its named blocker."""
+    hold = state.quick_hold(common, slot)
+    return bool(entry_changes(repo, common, slot)) and (not hold or blocker_resolved(repo, common, slot, hold))
 
 
 def _retire(repo, common, slot, requeued):
@@ -858,6 +879,10 @@ def _retire(repo, common, slot, requeued):
 
     Caller holds dispatch.lock, integration.lock and writer.lock."""
     task = slot['task_id']
+    hold = state.quick_hold(common, slot)
+    if requeued and hold and not blocker_resolved(repo, common, slot, hold):
+        raise ValueError(f'repeated quick hold: add Blocker resolution: {hold["fingerprint"]}; '
+                         'producer task or decision evidence to the entry before rerunning')
     dispatch.cleanup_tmpdir(common, slot)
     history = execution.safe_path(common / 'slot-history' / task)
     number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
@@ -1022,7 +1047,7 @@ def answer(repo, owner_pid, task, text):
         state.require_owner(common, owner_pid)
         slot = slot_for(common, task)
         if (slot is None or slot['state'] != 'held' or slot.get('cause') != 'blocker' or state.worker_live(slot)
-                or answered(slot) >= ANSWERS):
+                or answered(slot) >= ANSWERS or state.quick_hold(common, slot)):
             raise ValueError(f'answer is only for a blocker-held task, at most {ANSWERS} times')
         with open(answers_path(common, task), 'a') as record:
             record.write(f'- {datetime.now():%Y-%m-%d %H:%M} to: {slot.get("reason") or "a blocker"}\n  {text}\n')
@@ -1119,6 +1144,9 @@ def retry_held(args):
         with execution.lock(common / 'writer.lock'):
             state.require_owner(common, args.owner_pid)
             current = state.slots(common)
+            # No rescope, reoffer or fresh retry may bypass a repeated missing input.
+            current = [s for s in current if not (hold := state.quick_hold(common, s))
+                       or blocker_resolved(repo, common, s, hold)]
             # A retry that produced nothing (often because it judged the first hold
             # binding) gets the first attempt's commit re-verified once instead.
             # Earlier releases held a commit when a live session was in the canonical checkout

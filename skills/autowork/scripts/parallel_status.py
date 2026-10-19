@@ -215,6 +215,8 @@ def _snapshot(repo, common, now):
                          paused=bool(slot.get('paused')),
                          answered=max(int(s.get('answered') or 0) for s in [slot, *slot.get('previous_attempts', [])]),
                          blocked_by=[]))
+        if hold := state.quick_hold(common, slot):
+            rows[-1]['quick_hold'] = hold
         if slot['state'] == 'held' and slot.get('cause') == 'conflict' and slot.get('commit'):
             adoption = state.merge_adoption(repo, slot)
             rows[-1]['merge_adoption'] = adoption

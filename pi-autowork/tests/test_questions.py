@@ -104,6 +104,21 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual([q['id'] for q in questions.build(waiting, TODO, goals, repairs=repairs)], ['T-1'])
         self.assertNotIn('### Q-T-1 ', questions.update(first, questions.build(waiting, TODO, goals), now=later))
 
+    def test_repeated_quick_holds_keep_one_question_with_attempt_times_and_resolution(self):
+        status = snapshot()
+        status['tasks'][0]['quick_hold'] = dict(fingerprint='abc123', reason='missing receipt', attempts=[
+            dict(attempt=f'{n}/1', reason='missing receipt', seconds=60, held_at=1000 + n) for n in range(1, 4)])
+        repairs = [dict(task='T-1', reason='missing receipt', fields=['Evidence'])]
+        found = questions.build(status, TODO, goals, repairs=repairs)
+        question = next(q for q in found if q['id'] == 'T-1')
+        for detail in ('missing receipt', '1/1', '2/1', '3/1', '60s'):
+            self.assertIn(detail, question['needs'])
+        self.assertIn('Blocker resolution: abc123;', question['answer'])
+        self.assertIn('Needs decision', question['answer'])
+        first = questions.update(OWNER, found, now=NOW)
+        self.assertEqual(first.count('### Q-T-1 '), 1)
+        self.assertEqual(questions.update(first, found, now=NOW), first)
+
     def test_a_claim_answered_with_its_holder_is_not_asked_again(self):
         """TOOLSET-198-8f: the owner noted who holds a claimed task, as the question asks, and the
         runner kept asking: /blockers said 0 questions, the TUI said 2."""
