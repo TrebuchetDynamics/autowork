@@ -12,6 +12,7 @@ from unittest.mock import patch
 import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
 import task_execution as execution
@@ -26,7 +27,8 @@ class IntegrationTests(unittest.TestCase):
         previous = ctypes.c_int()
         self.assertEqual(libc.prctl(37, ctypes.byref(previous), 0, 0, 0), 0)
         self.addCleanup(lambda: libc.prctl(36, previous.value, 0, 0, 0))
-        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
+        # Bootstrap independently of the invoking session's runtime dir.
+        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=fixture_runtime_root())
         self.addCleanup(self.runtime.cleanup)
         runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
                                  PI_AUTOWORK_WORKER_ROOT=self.runtime.name)

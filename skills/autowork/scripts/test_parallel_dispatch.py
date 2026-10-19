@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
+from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
 import task_execution as execution
@@ -37,8 +38,9 @@ ALONE = task('S', 's.txt') + '- Resources: exclusive\n'
 
 class DispatchTests(unittest.TestCase):
     def setUp(self):
-        # Bootstrap independently of the worker's inherited, potentially long TMPDIR.
-        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
+        # Bootstrap independently of the invoking session's runtime dir and the worker's
+        # inherited, potentially long TMPDIR.
+        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=fixture_runtime_root())
         self.addCleanup(self.runtime.cleanup)
         runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
                                  PI_AUTOWORK_WORKER_ROOT=self.runtime.name)
@@ -183,6 +185,22 @@ class DispatchTests(unittest.TestCase):
         values = json.loads(output.read_text())
         dispatch.stop(worker, str(self.repo))
         return worker, Path(values[0]), values
+
+    def test_the_fixture_runtime_root_is_short_and_ignores_the_invoking_session(self):
+        """$XDG_RUNTIME_DIR is whoever runs the suite's. On the fleet a stale value failed
+        setUp outright, and a long one moved the fixture's $TMPDIR to the `/tmp` fallback
+        silently: the usual `/run/user/1000` root leaves one byte of slack under the 47-byte
+        worker temp path rule."""
+        for ambient in ('/run/user/1000/' + 'long-' * 20, '/nonexistent/stale-runtime-dir'):
+            with self.subTest(ambient=ambient), patch.dict(os.environ, XDG_RUNTIME_DIR=ambient):
+                root = fixture_runtime_root()
+                self.assertTrue(Path(root).is_dir(), root)
+                made = tempfile.TemporaryDirectory(prefix='awt-', dir=root)
+                self.addCleanup(made.cleanup)
+                candidate = Path(made.name) / f'aw-{os.getuid()}-{"0" * 8}-1'
+                self.assertLessEqual(len(os.fsencode(candidate)), 47, candidate)
+        candidate = Path(self.runtime.name) / f'aw-{os.getuid()}-{"0" * 8}-1'
+        self.assertLessEqual(len(os.fsencode(candidate)), 47, candidate)
 
     def test_launch_exports_a_private_socket_safe_directory_on_disk_with_a_tmp_fallback(self):
         """The runtime directory was a 6.3 GB RAM disk shared by every worker; the $TMPDIR is now
