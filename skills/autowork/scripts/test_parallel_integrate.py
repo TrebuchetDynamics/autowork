@@ -12,6 +12,7 @@ from unittest.mock import patch
 import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from offline_fixtures import fixture_runtime_root
 import parallel_dispatch as dispatch
 import parallel_state as state
 import task_execution as execution
@@ -26,7 +27,8 @@ class IntegrationTests(unittest.TestCase):
         previous = ctypes.c_int()
         self.assertEqual(libc.prctl(37, ctypes.byref(previous), 0, 0, 0), 0)
         self.addCleanup(lambda: libc.prctl(36, previous.value, 0, 0, 0))
-        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
+        # Bootstrap independently of the invoking session's runtime dir.
+        self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=fixture_runtime_root())
         self.addCleanup(self.runtime.cleanup)
         runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
                                  PI_AUTOWORK_WORKER_ROOT=self.runtime.name)
@@ -515,6 +517,54 @@ finally:
                         self.assertEqual(self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
                 finally:
                     proc.communicate('x', timeout=5)
+
+    def test_only_live_slot_descendants_in_their_own_temporary_directory_are_exempt(self):
+        self.worker('A')
+        root, _ = self.worker('B')
+        slots = {s['task_id']: s for s in state.slots(self.common)}
+        temps = {task: dispatch.worker_tmpdir(dispatch.data_dir(self.common, slot), index)
+                 for index, (task, slot) in enumerate(slots.items(), 1)}
+        self.addCleanup(lambda: [dispatch.cleanup_tmpdir(self.common, slot) for slot in slots.values()])
+        # This test is the live intermediate between the recorded leader and its
+        # grandchild; the child starts a new session, as fixture runners do.
+        leader = execution.identity(os.getppid())
+        unrelated = self.agent_process(root)
+        execution.save(state.slot_path(self.common, 'A'),
+                       dict(slots['A'], state='running', worker=execution.identity(unrelated.pid)))
+        data = dispatch.data_dir(self.common, slots['B'])
+        allocation = execution.read(data.parent / 'tmp.json')
+        module = self.module()
+        identity = execution.identity
+        for case, cwd, owner, dead_link, extra, blocked in (
+                ('own temp', temps['B'] / 'state/releases/fixture', leader, False, [], False),
+                ('worktree and own temp', temps['B'], leader, False, [str(root)], False),
+                ('other slot temp', temps['A'], leader, False, [], True),
+                ('dead parent link', temps['B'], leader, True, [], True),
+                ('unrelated in own temp', temps['B'], identity(unrelated.pid), False, [], True),
+                ('unowned var/tmp', Path('/var/tmp'), identity(unrelated.pid), False, [], True),
+                ('temp and canonical', temps['B'], leader, False, [str(self.repo)], True),
+                ('legacy attempt temp', data / 'tmp', leader, False, [], False)):
+            with self.subTest(case=case):
+                if case == 'legacy attempt temp':
+                    (data.parent / 'tmp.json').unlink()
+                    self.addCleanup(execution.save, data.parent / 'tmp.json', allocation)
+                cwd.mkdir(parents=True, exist_ok=True)
+                proc = self.agent_process(cwd)
+                observed = dict(identity(proc.pid), kind='session', active=None, written=[],
+                                workspaces=[str(cwd), *extra], evidence='session: activity unknown')
+                execution.save(state.slot_path(self.common, 'B'),
+                               dict(slots['B'], state='running', worker=owner))
+                def live(pid):
+                    return None if dead_link and pid == os.getpid() else identity(pid)
+                with patch.object(execution, 'external_workers', return_value=[observed]), \
+                        patch.object(execution, 'identity', side_effect=live):
+                    if blocked:
+                        with self.assertRaises(module.WritersBusy):
+                            module.require_no_writers(self.repo)
+                    else:
+                        module.require_no_writers(self.repo)
+                proc.kill()
+                proc.wait()
 
     def test_unattributed_session_in_pool_worktree_is_not_exempt(self):
         self.worker()
@@ -1343,8 +1393,12 @@ finally:
     def test_moved_head_is_remerged_and_revalidated_once(self):
         self.worker()
         argv, marker = self.moving_validation()
+        argv[2] = ('import os,time; fd=int(os.environ["AUTOWORK_CHECK_WAIT_FD"]); '
+                   'os.write(fd,f"{time.monotonic()} 1\\n".encode()); time.sleep(.25); '
+                   'os.write(fd,f"{time.monotonic()} 0\\n".encode()); ' + argv[2])
         result = self.module().integrate(self.repo, self.owner, 'A', argv, 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertGreaterEqual(result['check_slot_wait_seconds'], .5)  # both attempts, not just the final one
         self.assertEqual(marker.read_text(), '2')
         self.assertEqual(self.git('show', 'HEAD^1:B.txt'), '0')
         self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')

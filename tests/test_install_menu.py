@@ -110,12 +110,29 @@ class InstallMenuTests(unittest.TestCase):
 
     def test_tx_keeps_an_existing_tmux_config(self):
         mine = b'set -g mouse on\n# mine\n'
-        (self.home / '.tmux.conf').write_bytes(mine)
+        paths = ('.tmux.conf', '.tmux/style.tmux', '.tmux/git-status.sh', '.tmux/short-path.sh',
+                 '.local/share/bash-completion/completions/tx', '.zsh/completions/_tx',
+                 '.config/fish/completions/tx.fish')
+        for relative in paths:
+            path = self.home / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(mine)
+        preview = self.install('--full', '--skip', 'hermes,pi', '--dry-run')
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        self.assertFalse((self.home / '.local/bin/tx').exists())
         result = self.install('--only', 'tx')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.home / '.tmux.conf').read_bytes(), mine)
+        for relative in paths:
+            self.assertEqual((self.home / relative).read_bytes(), mine, relative)
         self.assertIn('kept your existing .tmux.conf', result.stdout)
         self.assertEqual(self.calls('pi install'), [])
+        config = self.home / '.tmux.conf'
+        config.unlink()
+        config.symlink_to(self.home / 'absent-user-config')
+        result = self.install('--only', 'tx')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(config.is_symlink())
+        self.assertFalse(config.exists())
 
     def test_an_installed_package_is_updated_and_its_runners_move_onto_it(self):
         (self.home / 'pi-installed').write_text(NEW + '\n')
@@ -136,12 +153,25 @@ class InstallMenuTests(unittest.TestCase):
 
     def test_failed_steps_remain_failures_even_when_output_says_already(self):
         self.fake('claude', LOGGING + 'echo "boom: no network" >&2; exit 1\n')
-        self.fake('codex', LOGGING + 'echo "marketplace already added" >&2; exit 1\n')
-        result = self.install('--only', 'claude,codex')
+        self.fake('codex', LOGGING + 'echo "marketplace already added" >&2; exit 4\n')
+        report = self.home / 'install.jsonl'
+        result = self.install('--full', '--skip', 'hermes,pi', '-q',
+                              env={'AUTOWORK_INSTALL_REPORT': str(report)})
         self.assertEqual(result.returncode, 1)
+        import json
+        rows = {r['item']: r for r in map(json.loads, report.read_text().splitlines())}
+        self.assertEqual(rows['claude'], {'item': 'claude', 'status': 'failed', 'exit': 1})
+        self.assertEqual(rows['codex'], {'item': 'codex', 'status': 'failed', 'exit': 4})
+        self.assertEqual(rows['tx'], {'item': 'tx', 'status': 'installed', 'exit': 0})
+        self.assertEqual(rows['hermes'], {'item': 'hermes', 'status': 'skipped', 'exit': None})
         self.assertRegex(result.stdout, r'claude\s+failed\s+boom: no network')
         self.assertRegex(result.stdout, r'codex\s+failed.*marketplace already added')
         self.assertIn('unknown item(s): nope', self.install('--only', 'nope').stderr)
+        (self.bin / 'codex').unlink()
+        self.install('--full', '--skip', 'hermes,pi', '-q',
+                     env={'AUTOWORK_INSTALL_REPORT': str(report)})
+        rows = {r['item']: r for r in map(json.loads, report.read_text().splitlines())}
+        self.assertEqual(rows['codex'], {'item': 'codex', 'status': 'skipped', 'exit': None})
 
     def test_full_selects_all_hosts_and_bundled_skills(self):
         self.fake('hermes', LOGGING)

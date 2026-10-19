@@ -317,9 +317,13 @@ nothing parallel was claimed or started.
   also skips existing set-aside names, preserving earlier attempts.
 - **Resources:** a worker starts only while MemAvailable is at least twice
   `--min-free-mem-mb` (default 1500): one worker's budget plus as much spare, however
-  many already run, since their memory is already out of MemAvailable. The 1-minute
-  load average must also be below the CPU count. pi-autowork removes stale agent
-  scratch from a RAM-backed `/tmp` (`PI_AUTOWORK_TMP_STALE`) so it cannot hold this.
+  many already run, since their memory is already out of MemAvailable. In
+  [dispatch](../scripts/parallel_dispatch.py), the 1-minute load average must be below
+  the CPU count only when this runner already has a live worker; its first worker
+  still obeys the memory and disk floors. [Runner health](../../../pi-autowork/pi_autowork/health.py)
+  shows load-only waits as `waiting for the host (load L on N CPUs)`, never stalled.
+  pi-autowork removes stale agent scratch from a RAM-backed `/tmp`
+  (`PI_AUTOWORK_TMP_STALE`) so it cannot hold this.
 - **Authority** is unchanged: workers inherit no publication, push or deployment
   authority, and the canonical checkout is only ever fast-forwarded.
 

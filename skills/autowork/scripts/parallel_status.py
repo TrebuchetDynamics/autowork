@@ -138,6 +138,8 @@ def pending_tasks(repo, known=()):
             why = execution.contract_reason(repo, task, inputs, lambda: selection_done)
             if why:
                 row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
+            elif fields.get('Kind', '').strip().lower() == 'plan':
+                row['reason'] = 'ready for planning'
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)
     return result
@@ -259,7 +261,8 @@ def _snapshot(repo, common, now):
                 failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
                                                   and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
-                metrics=metrics(events, now))
+                metrics=metrics(events, now),
+                **({'merge_backlog': observed['merge_backlog']} if 'merge_backlog' in observed else {}))
 
 
 def render(value):

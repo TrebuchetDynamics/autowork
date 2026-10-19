@@ -38,7 +38,10 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
 # The runner's full check on the merged tree is the one trusted full run (TOOLSET-227-a8).
 GATE = (' The runner already ran the repository\'s full check (`{command}`) on this merged tree: {outcome}. '
         'Its log is {log}. Do not run the full check again; read that log, and rerun only individual tests you '
-        'need to examine. A Checks entry naming the full check is satisfied by that run.')
+        'need to examine. Every Checks entry that runs tests the full check also runs (a test file, a test '
+        'directory or the full check itself) is satisfied by that run: do not run it again. Run only a check '
+        'the full check does not cover, such as a lint, a build or a script, and single tests to settle a doubt. '
+        'Rerunning whole test files took most of every review\'s 20 to 40 minutes.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
 # pending live become their own TASK-LIVE follow-up, so they must not fail the review.
 LIVE = (' Checks that need a physical device, hardware, production or live services, or a person cannot run '
@@ -159,38 +162,59 @@ def worker_tmp(checkout, task):
         return None
 
 
-def run_suite(command, checkout, limit, log):
+def run_suite(command, checkout, limit, log, progress=None):
     """{code, failures, timed_out} of ``command`` in ``checkout``, its output in ``log``."""
     log.parent.mkdir(parents=True, exist_ok=True)
+    progress = progress or log.with_suffix('.status.json')
     with open(log, 'w') as out:
-        process = subprocess.Popen(['bash', '-c', command], cwd=checkout, stdout=out, stderr=subprocess.STDOUT,
-                                   stdin=subprocess.DEVNULL, start_new_session=True)
-        try:
-            code, timed_out = process.wait(timeout=limit), False
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            code, timed_out = process.wait(), True
+        code, timed_out = main_check.run_command(command, checkout, limit, progress, output=out)
     text = log.read_text(errors='replace')
     return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out}
 
 
-def base_result(state, checkout, command, rev, limit):
-    """The full check on the base revision, run once per revision and cached."""
+def base_tree(checkout, rev):
+    """A Git tree ID excluding root planning files and the docs/ subtree, not the worktree."""
+    listing = subprocess.run(['git', '-C', str(checkout), 'ls-tree', '-z', rev],
+                             check=True, capture_output=True).stdout
+    excluded = {path.encode() for path in PLANNING_FILES}
+    entries = []
+    for entry in listing.split(b'\0'):
+        if not entry:
+            continue
+        metadata, path = entry.split(b'\t', 1)
+        directory = metadata.startswith(b'040000 ')
+        if (path in excluded and not directory) or (path == b'docs' and directory):
+            continue
+        entries.append(entry + b'\0')
+    return subprocess.run(['git', '-C', str(checkout), 'mktree', '-z'], input=b''.join(entries),
+                          check=True, capture_output=True).stdout.decode().strip()
+
+
+def base_result(state, checkout, command, rev, limit, progress=None):
+    """Cache a base check by revision and planning-stripped tree, for the same command only."""
     cache = Path(state) / 'full-check' / f'base-{rev}.json'
-    try:
-        value = json.loads(cache.read_text())
-        if value.get('command') == command:
-            return value
-    except (OSError, ValueError):
-        pass
-    scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
-    git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
-    try:
-        value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log')), command=command)
-    finally:
-        git(checkout, 'worktree', 'remove', '--force', str(scratch))
+    tree = base_tree(checkout, rev)
+    tree_cache = cache.with_name(f'base-tree-{tree}.json')
+    value = None
+    for source in (cache, tree_cache):
+        try:
+            cached = json.loads(source.read_text())
+            if cached.get('command') == command:
+                value = dict(cached, rev=cached.get('rev', rev), tree=tree)
+                break
+        except (OSError, ValueError, AttributeError):
+            pass
+    if value is None:
+        scratch = Path(state) / 'review-tmp' / f'base-{rev[:12]}-{os.getpid()}'
+        git(checkout, 'worktree', 'add', '--detach', str(scratch), rev)
+        try:
+            value = dict(run_suite(command, scratch, limit, cache.with_suffix('.log'), progress),
+                         command=command, rev=rev, tree=tree)
+        finally:
+            git(checkout, 'worktree', 'remove', '--force', str(scratch))
     if value['code'] == 0 or value['failures']:  # a crash may be the host's: run it again next time
         cache.write_text(json.dumps(value))
+        tree_cache.write_text(json.dumps(value))
     return value
 
 
@@ -227,7 +251,8 @@ def run_gate(state, task, checkout, command, base_rev=None):
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
     limit = float(os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or 3600)
     log = gate_log(state, task)
-    merged = run_suite(command, checkout, limit, log)
+    progress = log.with_name(f'{safe_name(task)}.status.json')
+    merged = run_suite(command, checkout, limit, log, progress)
     if merged['code'] == 0:
         return True, ''
     if merged['timed_out']:
@@ -235,7 +260,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
     if not merged['failures']:
         # It crashed before naming a test (TOOLSET-237-35): once more, then never a pass for want
         # of evidence. A crash only this tree has is its own; one the base shares is the host's.
-        merged = run_suite(command, checkout, limit, log)
+        merged = run_suite(command, checkout, limit, log, progress)
         if merged['code'] == 0:
             return True, ''
         if merged['timed_out']:
@@ -253,7 +278,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
         failures = [f for f in failures if f not in flaky]
         if not failures:
             return True, ''
-    base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit)
+    base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit, progress)
     if not merged['failures']:
         crash = main_check.crash_line(log.read_text(errors='replace'))
         if base['code'] == 0:

@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A review no longer reruns the task's test Checks that the runner's full check already ran
+  on the same merged tree; it runs only checks the full check does not cover, and single
+  tests to settle a doubt. Rerunning whole test files took most of every review's 20 to 40
+  minutes, and one review at a time held every runner's queue.
 - Verified candidates waiting together integrate as a batch: one full check on their merged tree and
   their reviews side by side, then each lands on its recorded verdict. One runner had landed six tasks a
   day, one review at a time, while nine waited.
@@ -233,6 +237,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The runner's test fixtures keep their workers' and reviews' scratch in a short directory each
+  fixture owns and removes: every test left `/var/tmp/aw-*` directories that nothing could
+  reclaim once its repository was gone, about 1.2 GB an hour on a busy host.
+- A set-aside request made while a review holds the integration lock waits for a later cycle
+  instead of being dropped: every request made during a review was lost.
+- A held slot whose task was closed on main is set aside like any other, instead of keeping
+  its place and even being retried fresh.
+- A hold from the runner's own integration mechanics (a review a restart interrupted, a
+  commit already on main) no longer counts toward the failure streak: three after one restart
+  paused every new task for an hour.
 - Candidates a batch verified land first, in the order the batch verified them
   (`--batch-order`): each verdict holds only for its step of that chain, so a higher-priority
   task landing between them voided every verdict and the batch's work was lost. Candidates

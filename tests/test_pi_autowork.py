@@ -184,7 +184,56 @@ elif role == 'verify':
     else:
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: ' + ('fail acceptance not met' if behavior == 'fail' else 'pass all checks'))
 elif role == 'maintainer':
-    if behavior == 'add_checks':  # restate A's contract: the Checks line it was missing
+    if behavior.startswith('plan_'):
+        text = open('TODO.md').read()
+        current = re.search(r'- (\S+) \(plan\):', message)[1]
+        text = text.replace('- [ ] ' + current + ' —', '- [x] ' + current + ' —')
+        # Preserve the closed entry in the same planning commit.
+        start = text.index('- [x] ' + current + ' —')
+        text = text[:start] + text[start:].replace('Status: open', 'Status: done', 1)
+        def entry(tid, extra=''):
+            return (f'- [ ] {tid} — Next batch {tid}\n  Goal: PORT\n  Scope: Complete {tid}.txt\n'
+                    f'  Touches: {tid}.txt\n  Acceptance: {tid}.txt says done\n'
+                    f'  Checks: test -s {tid}.txt\n  Dependencies: None.\n  Status: open\n' + extra)
+        if behavior in ('plan_batch', 'plan_last', 'plan_oversize'):
+            text += '\n## Next\n\n' + ''.join(entry(t) for t in (
+                ['BUILD-1', 'BUILD-2'] if behavior != 'plan_oversize' else [f'NEW-{i}' for i in range(9)]))
+        if behavior == 'plan_batch':
+            text += entry('P2', '  Kind: plan\n  Plan round: 2 of 10\n').replace(
+                'Dependencies: None.', 'Dependencies: BUILD-1, BUILD-2.')
+        if behavior == 'plan_decisions':
+            text += '\n## Needs decision\n\n' + entry('CHOICE', '  Question: Which product?\n')
+        if behavior in ('plan_last', 'plan_stop'):
+            text += '\n## Needs decision\n\n' + entry('DECIDE-' + current,
+                '  Question: Goal PORT needs remaining live proof; continue?\n')
+        if behavior in ('plan_last', 'plan_decisions', 'plan_stop'):
+            with open('BLOCKERS.md', 'w') as stream:
+                stream.write(f'### Q-{current} — Planning stopped\n\nGoal PORT still needs live proof; continue?\n')
+            git('add', 'BLOCKERS.md')
+        open('TODO.md', 'w').write(text)
+        if os.path.exists('goals.json'):
+            sys.path.insert(0, os.environ['FAKE_PI_GOALS'])
+            import goals
+            data = json.load(open('goals.json'))
+            indexed = {t['id']: t for t in data['tasks']}
+            bodies = goals.task_bodies(text)
+            for tid, items in bodies.items():
+                body, mark, section = items[0]
+                fields = goals.task_fields(body)
+                indexed[tid] = dict(id=tid, title=tid, goal='PORT', status='done' if mark == 'x' else 'open',
+                    section='Done' if mark == 'x' else section,
+                    depends_on=[] if fields['Dependencies'].startswith('None') else
+                        [d.strip().rstrip('.') for d in fields['Dependencies'].split(',')])
+            data['tasks'] = list(indexed.values())
+            data['goals'][0]['tasks'] = sorted(indexed)
+            data['priority_order'] = dict(schema=1, tasks=[t for t in bodies if indexed[t]['status'] == 'open'])
+            if behavior == 'plan_invalid_root':
+                data = []
+            elif behavior == 'plan_invalid_task':
+                data['tasks'] = [None]
+            open('goals.json', 'w').write(json.dumps(data))
+        git('commit', '-qam', 'docs(tasks): next planning round ' + current)
+    elif behavior == 'add_checks':  # restate A's contract: the Checks line it was missing
         text = open('TODO.md').read().replace('  Acceptance: A.txt says done\n',
                                               '  Acceptance: A.txt says done\n  Checks: test -s A.txt\n', 1)
         open('TODO.md', 'w').write(text)
@@ -381,11 +430,18 @@ class Fixture(unittest.TestCase):
         self.env = {**host_environment(), 'PATH': f"{self.bin}:{os.environ['PATH']}", 'FAKE_PI_LOG': str(self.log),
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
+                    'PI_AUTOWORK_CHECK_SLOTS': '0',  # fixture checks must not queue behind the host suite running them
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
                     'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',  # tiny fixtures also run on a small TMPDIR
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
                     'XDG_STATE_HOME': str(self.root / 'xdg')}
+        # Worker and review scratch in a short root this fixture owns and removes: each test left its
+        # workers' /var/tmp/aw-* directories behind, and nothing could reclaim them once its repository
+        # was gone (about 1.2 GB an hour on the fleet host).
+        scratch = tempfile.mkdtemp(prefix='awt-', dir='/var/tmp' if os.access('/var/tmp', os.W_OK) else '/tmp')
+        self.addCleanup(shutil.rmtree, scratch, True)
+        self.env.update(PI_AUTOWORK_WORKER_ROOT=scratch, PI_AUTOWORK_REVIEW_ROOT=scratch)
         self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
         self.env['PI_AUTOWORK_BATCH'] = '1'  # one review at a time unless a test batches (TOOLSET-258-07)
         self.env.pop('GIT_CONFIG_COUNT', None)
@@ -665,6 +721,59 @@ class EngineTests(Fixture):
         text = (self.repo / 'TODO.md').read_text().replace('  Checks: test -s A.txt\n', '', 1)
         (self.repo / 'TODO.md').write_text(text)
         self.git(self.repo, 'commit', '-qam', 'A lost its Checks line')
+
+    def test_rolling_planning_lands_a_bounded_batch_or_stop_question_never_a_code_worker(self):
+        for case in ('batch', 'last', 'decisions', 'oversize', 'invalid_root', 'invalid_task'):
+            with self.subTest(case=case):
+                self.repo = self.make_repo(self.root / case, [('A', None)])
+                path = self.repo / 'TODO.md'
+                path.write_text(todo([('A', None)]).replace('- [ ] A', '- [x] A').replace('Status: open', 'Status: done')
+                    + '\n- [ ] P — Plan the next port batch\n  Goal: PORT\n  Kind: plan\n'
+                    + f'  Plan round: {"10" if case == "last" else "1"} of 10\n'
+                    + '  Scope: Port the remaining code\n  Acceptance: next batch saved\n'
+                    + '  Checks: inspect saved batch\n  Dependencies: A\n  Status: open\n')
+                ledger = dict(version=1, goals=[dict(id='PORT', title='Port project', status='partial',
+                    source='TODO.md#next', tasks=['A', 'P'])], tasks=[
+                    dict(id='A', title='Finished batch', goal='PORT', status='done', section='Done', depends_on=[]),
+                    dict(id='P', title='Plan next batch', goal='PORT', status='open', section='Next', depends_on=['A'])],
+                    priority_order=dict(schema=1, tasks=['P']))
+                (self.repo / 'goals.json').write_text(json.dumps(ledger))
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qam', 'accepted rolling plan')
+                self.env['FAKE_PI_GOALS'] = str(ROOT / 'skills/docs-sync/scripts')
+                start = len(self.runs())
+                self.plan({'maintainer': ['plan_' + case, 'plan_stop']})
+                result = self.run_runner('--until-empty', '--interval', '0', '--workers', '2')
+                runs = self.runs()[start:]
+                workers = [r['task'] for r in runs if r['role'] == 'worker']
+                self.assertNotIn('P', workers, result.stdout)
+                self.assertNotIn('P2', workers, result.stdout)
+                self.assertFalse((self.repo / '.worktrees/autowork-P').exists())
+                if case in ('oversize', 'invalid_root', 'invalid_task'):
+                    self.assertIn('planning failed: ' + ('more than 8 new tasks' if case == 'oversize'
+                                                       else 'invalid planning documents'), result.stdout)
+                    self.assertIn('- [ ] P —', path.read_text())
+                    self.assertNotIn('NEW-0', path.read_text())
+                    continue
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                check = subprocess.run([sys.executable, str(ROOT / 'skills/docs-sync/scripts/goals.py'),
+                                        'validate', str(self.repo)], capture_output=True, text=True)
+                self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+                commits = self.git(self.repo, 'log', '--format=%H', '--grep', 'next planning round P$').splitlines()
+                self.assertEqual(len(commits), 1)
+                landed = self.git(self.repo, 'show', commits[0] + ':TODO.md')
+                self.assertIn('- [x] P —', landed)
+                if case == 'batch':
+                    self.assertIn('Plan round: 2 of 10', landed)
+                    self.assertIn('Dependencies: BUILD-1, BUILD-2.', landed)
+                    self.assertEqual(set(workers), {'BUILD-1', 'BUILD-2'})
+                else:
+                    self.assertNotIn('Kind: plan', landed.split('- [x] P —')[0])
+                    self.assertNotIn('- [ ] P2', landed)
+                    question = (self.repo / 'BLOCKERS.md').read_text()
+                    self.assertEqual(question.count('### Q-P —'), 1)
+                    self.assertIn('PORT', question)
+                self.assertIn('/skill:plan-for-me', next(r['message'] for r in runs if r['role'] == 'maintainer'))
 
     def test_the_docs_maintainer_restates_a_task_that_is_not_runnable_as_written(self):
         """TOOLSET-164-f1: tasks the engine would not run waited hours for the owner."""
@@ -1842,9 +1951,10 @@ class EngineTests(Fixture):
         while not busy.exists():
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.1)
-        with (self.repo / 'TODO.md').open('a') as todo:  # a person edits the backlog meanwhile
+        with (self.repo / 'TODO.md').open('a') as todo:  # a person is still writing the backlog
             todo.write('\n<!-- a note being written -->\n')
-        out, _ = runner.communicate(timeout=120)
+            todo.flush()
+            out, _ = runner.communicate(timeout=120)
         self.assertEqual(runner.returncode, 4, out)
         self.assertRegex(out, r'Merge pending: main in .* could not take pi-autowork/[0-9-]+: .*TODO\.md')
 
@@ -2198,7 +2308,7 @@ class EngineTests(Fixture):
         text = (self.repo / 'TODO.md').read_text()
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
-        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '600'
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '1'
         runner = self.start_runner('--interval', '1')
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
@@ -2206,10 +2316,12 @@ class EngineTests(Fixture):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.2)
         (self.repo / 'TODO.md').write_text(text)  # the owner's answer, left uncommitted
-        os.utime(self.repo / 'TODO.md', (time.time() - 700,) * 2)  # quiet for longer than 600 s
         # Beside other work still being edited: one repository's plan never reached its runner,
-        # because those files kept the planning-only commit from running at all.
+        # because those files kept the planning-only commit from running at all. Quiet time
+        # now starts when the runner observes the bytes, not an artificially aged mtime.
         (self.repo / 'notes.md').write_text('work in progress\n')
+        held_note = (self.repo / 'notes.md').open('a')
+        self.addCleanup(held_note.close)
         deadline = time.monotonic() + 60
         while not self.done('A'):
             self.assertLess(time.monotonic(), deadline, 'runner never saw the uncommitted answer')

@@ -64,11 +64,68 @@ class HealthTests(unittest.TestCase):
                          [('wait for TASK-140 (overlapping files)', 2), ('on dependencies', 2)])
         self.assertEqual(sum(g['count'] for g in groups), len(reasons))
         labels = {g['label'] for g in groups}
-        self.assertTrue({'wait behind TASK-9, which runs alone', 'on host memory or load', 'for a free worker slot',
+        self.assertTrue({'wait behind TASK-9, which runs alone', 'waiting for the host (load 27.16 on 24 CPUs)',
+                         'for a free worker slot',
                          'something new'} <= labels, labels)
         health.update(self.state, dict(snapshot(), tasks=tasks, max_workers=8), now=0)
         self.assertEqual(self.status()['waiting_groups'], groups)
         self.assertEqual(self.status()['max_workers'], 8)
+
+    def test_only_load_waits_are_host_waiting_not_blocked_or_stalled(self):
+        from pi_autowork import fleet_view
+        reason = 'resource gate: load average 27.16 >= 24 CPUs'
+        snap = {'outcome': 'PARALLEL_STATUS', 'active_workers': 0, 'integration_queue': 0,
+                'tasks': [dict(task=t, state='waiting', reason=reason) for t in ('A', 'B')], 'roots': []}
+        runner = dict(repo='/x/repo', pid=os.getpid())
+        folder = self.state / 'repo'
+        folder.mkdir()
+        (folder / 'runner.json').write_text(json.dumps(runner))
+        for now in (1000, 1000 + health.STALL_AFTER, 1000 + 2 * health.STALL_AFTER):
+            self.assertIsNone(health.update(folder, snap, now=now, runner=runner))
+            status = json.loads((folder / 'status.json').read_text())
+            self.assertEqual((status['state'], status['since']), ('waiting for the host', 1000))
+            self.assertEqual(status['stall_roots'], [])
+        row, = health.fleet(self.state, now=now, service=lambda name: 'active')
+        text = 'waiting for the host (load 27.16 on 24 CPUs)'
+        self.assertIn(text, health.render([row], now=now))
+        view = fleet_view.Runner(name='repo', state=row['state'], waiting_groups=row['waiting_groups'])
+        self.assertEqual(fleet_view.verdict(view), (text, 'bold yellow'))
+        self.assertEqual(view.color, 'yellow')
+        # A host wait must not hide a different reason, an integration hold or a runner failure.
+        for other in ('resource gate: 1000 MB available, need 3000 MB for one more worker',
+                      'resource gate: 1.0 GB free on the repository disk, need 20 GB', 'dependency: C'):
+            with self.subTest(reason=other):
+                mixed = dict(snap, tasks=snap['tasks'] + [dict(task='C', state='waiting', reason=other)])
+                self.assertEqual(health.classify(mixed), 'blocked')
+        self.assertEqual(health.classify(snap, paused=True), 'paused')
+        self.assertEqual(health.classify(dict(snap, active_workers=1)), 'working')
+        self.assertEqual(health.classify(dict(snap, integration_queue=1), stuck=1), 'blocked')
+        failed = dict(runner, blocker='no usable model')
+        health.update(folder, snap, now=now + 1, runner=failed)
+        self.assertIsNotNone(health.update(folder, snap, now=now + 1 + health.STALL_AFTER, runner=failed))
+
+    def test_merge_backlog_is_a_wait_with_one_pause_and_resume_announcement(self):
+        snap = snapshot(queue=3, roots=())
+        snap['tasks'] = [{'task': 'F', 'state': 'waiting',
+                          'reason': 'wait for 3 finished commits to merge', 'blocked_by': []}]
+        snap['merge_backlog'] = {'paused': True, 'count': 3,
+                                 'reason': 'waiting to integrate until another session leaves the main checkout: pid 123 pi'}
+        line = health.update(self.state, snap, now=0)
+        self.assertIn('Fresh dispatch paused: wait for 3 finished commits to merge', line)
+        self.assertIn('pid 123 pi', line)
+        self.assertEqual(self.status()['waiting_groups'],
+                         [{'label': 'wait for 3 finished commits to merge', 'count': 1, 'tasks': ['F']}])
+        self.assertEqual(self.status()['stall_roots'], [])
+        self.assertIsNone(health.update(self.state, snap, now=1900))
+        # An unavailable status is not a resume and does not reset the announcement.
+        self.assertIsNone(health.update(self.state, {'outcome': 'BUSY'}, now=2000))
+        self.assertIsNone(health.update(self.state, snap, now=2100))
+        snap['merge_backlog'] = {'paused': False, 'count': 2}
+        snap['tasks'] = [{'task': 'F', 'state': 'running'}]
+        snap['active_workers'] = 1
+        line = health.update(self.state, snap, now=2200)
+        self.assertIn('Fresh dispatch resumed', line)
+        self.assertIsNone(health.update(self.state, snap, now=2300))
 
     def test_an_unanswered_status_read_shows_snapshot_age_and_keeps_the_stall_clock(self):
         """A busy lock must not leave yesterday's rows looking like a current observation."""
