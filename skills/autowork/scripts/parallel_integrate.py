@@ -18,13 +18,14 @@ import task_execution as execution
 from worktree_paths import canonical_root, worktree_path
 
 
-def git(repo, *argv):
+def git(repo, *argv, raw=False):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     result = subprocess.run(['git', '-C', str(repo), *argv], env=env,
-                            capture_output=True, text=True, timeout=60)
+                            capture_output=True, text=not raw, timeout=60)
     if result.returncode:
-        raise ValueError('git ' + argv[0] + ' failed: ' + result.stderr.strip())
-    return result.stdout if '-z' in argv else result.stdout.strip()
+        error = result.stderr.decode(errors='replace') if raw else result.stderr
+        raise ValueError('git ' + argv[0] + ' failed: ' + error.strip())
+    return result.stdout if raw or '-z' in argv else result.stdout.strip()
 
 
 def ancestor(repo, older, newer):
@@ -217,7 +218,7 @@ def report_matches(repo, common, slot):
 
 
 def verify_scope(repo, common, slot, contracts, files):
-    """Only the coordinator's files and undeclared protected files are out of a worker's reach:
+    """Undeclared protected files hold; coordinator files are stripped before validation:
     Touches schedule work and never hold it, and two tasks editing the same file are settled
     by the merge into the base, in priority order (TOOLSET-161-17)."""
     # A broad directory alone does not reserve hypothetical future manifests.
@@ -230,9 +231,57 @@ def verify_scope(repo, common, slot, contracts, files):
         if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
             raise Hold('scope', 'protected files need serial admission in the original task contract: '
                        + str(protected), outside=protected)
-    coordinator = plan.overlap(files, files, [list(dispatch.COORDINATOR_FILES)])['conflicts']
-    if coordinator:
-        raise Hold('scope', 'changed files the coordinator owns: ' + ', '.join(coordinator), outside=coordinator)
+
+
+def merge_candidate(root, slot, baseline):
+    """Merge every candidate, including adopted resolver merges, without its ledger edits.
+
+    Save original proposal hunks, not concurrent coordinator edits. A base rename can
+    redirect work into a ledger path: capture that delta before resolving its conflicts.
+    Other conflicts still hold. Raw bytes keep blank context, CRLF and binary patches intact.
+    """
+    owned = set(dispatch.COORDINATOR_FILES)
+    proposed = sorted(owned.intersection(changed(root, slot['baseline'], slot['commit'])))
+    redirected, patch = [], b''
+    try:
+        git(root, 'merge', '--no-ff', '--no-edit', slot['commit'])
+    except ValueError:
+        conflicts = git(root, 'diff', '--name-only', '--diff-filter=U', '-z').rstrip('\0').split('\0')
+        if not conflicts or set(conflicts) - owned:
+            git(root, 'merge', '--abort')
+            raise Hold('conflict', 'merge conflict; worker and canonical checkout preserved',
+                       conflict_files=[p for p in conflicts if p])
+        redirected = sorted(set(conflicts) - set(proposed))
+        for path in redirected:
+            if ' 3\t' in git(root, 'ls-files', '--unmerged', '--', path):
+                git(root, 'restore', '--theirs', '--worktree', '--', path)
+                git(root, 'add', '--', path)
+            else:  # worker deleted the source that canonical renamed into a ledger path
+                git(root, 'rm', '-f', '--', path)
+        if redirected:
+            patch = git(root, 'diff', '--no-ext-diff', '--no-textconv', '--binary', '--no-renames',
+                        '--cached', baseline, '--', *redirected, raw=True)
+        existing = [p for p in conflicts if git(root, 'ls-tree', baseline, '--', p)]
+        deleted = sorted(set(conflicts) - set(existing))
+        if deleted:  # restore cannot remove an unmerged path missing from its source tree
+            git(root, 'rm', '-f', '--', *deleted)
+        if existing:
+            git(root, 'restore', '--source=' + baseline, '--staged', '--worktree', '--', *existing)
+        git(root, 'commit', '--no-edit', '--allow-empty')
+    actual = sorted(owned.intersection(changed(root, baseline, 'HEAD')))
+    paths = sorted(set(proposed) | set(actual) | set(redirected))
+    if not paths:
+        return None
+    for before, after, names in ((slot['baseline'], slot['commit'], proposed),
+                                (baseline, 'HEAD', sorted(set(actual) - set(proposed)))):
+        if names:
+            patch += git(root, 'diff', '--no-ext-diff', '--no-textconv', '--binary', '--no-renames',
+                         before, after, '--', *names, raw=True)
+    if actual:
+        # restore also removes worker-created ledger paths absent from the base.
+        git(root, 'restore', '--source=' + baseline, '--staged', '--worktree', '--', *actual)
+        git(root, 'commit', '--amend', '--no-edit', '--allow-empty')
+    return {'paths': paths, 'patch': patch}
 
 
 class WritersBusy(ValueError):
@@ -491,13 +540,11 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                         raise ValueError('worker commit already in canonical HEAD; no fresh two-parent integration')
                     canonical_branch = git(repo, 'symbolic-ref', 'HEAD')
                     root = integration_worktree(repo, common, baseline)
-                    try:
-                        git(root, 'merge', '--no-ff', '--no-edit', slot['commit'])
-                    except ValueError:
-                        conflict_files = git(root, 'diff', '--name-only', '--diff-filter=U').splitlines()
-                        git(root, 'merge', '--abort')
-                        raise Hold('conflict', 'merge conflict; worker and canonical checkout preserved',
-                                   conflict_files=conflict_files)
+                    dropped = merge_candidate(root, slot, baseline)
+                    if dropped:
+                        target = execution.safe_path(dispatch.data_dir(common, slot) / 'ledger-edit.patch')
+                        target.write_bytes(dropped['patch'])
+                        dropped['patch'] = str(target)
                     merge = git(root, 'rev-parse', 'HEAD')
                     if git(repo, 'rev-list', '--parents', '-n', '1', merge).split()[1:] != [baseline, slot['commit']]:
                         raise ValueError('integration candidate must have canonical and worker parents')
@@ -509,7 +556,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                                    'task_contract': contracts[task]['contract'], 'canonical_branch': canonical_branch}
                     # Durable intent precedes validation and FF. An abandoned helper
                     # can only recover this exact candidate, never infer a landing.
-                    slot = state.write_slot(common, dict(slot, integration=integration, checks=None), slot)
+                    slot = state.write_slot(common, dict(slot, integration=integration, checks=None,
+                                                         ledger_edit_dropped=dropped), slot)
                 inputs = {p: execution.digest(root / p) for p in ('TODO.md', 'goals.json')}
                 check = execution.bounded_command(argv, root, common, task, timeout, inputs,
                             receipt_context={'integration_commit': merge}, receipt_writer=save_receipt, run_id=run_id,
@@ -557,6 +605,7 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                         raise ValueError('canonical fast-forward readback mismatch')
                     state.change(common, slot, 'integrated', {'integration': integration, 'checks': check})
                     return {'outcome': 'INTEGRATED', 'task': task, 'integration': integration,
+                            'ledger_edit_dropped': slot.get('ledger_edit_dropped'),
                             'check_slot_wait_seconds': queued}
         except WritersBusy as exc:
             # Not a verdict: an integrating candidate is revalidated on the next call.
@@ -635,7 +684,8 @@ def recover_integration(repo, common, slot, contracts):
         return None
     validated_receipt(repo, common, slot)
     state.change(common, slot, 'integrated', {})
-    return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info}
+    return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info,
+            'ledger_edit_dropped': slot.get('ledger_edit_dropped')}
 
 
 def goals_command(repo, *argv):
@@ -1222,14 +1272,13 @@ def retry_held(args):
             # slot it waited for has integrated or was released. A fresh retry would only
             # reimplement the same change.
             # TOOLSET-161-17: a commit held only for Touches (overlap with another slot, or files
-            # outside its Touches that are neither protected nor the coordinator's) integrates by
-            # merge now: offered again once, in TODO priority order.
+            # outside its Touches that are not protected) integrates by merge now. Ledger-only
+            # scope holds also return unchanged: their proposals are dropped, not reimplemented.
             touches_held = [s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
                             and s.get('cause') not in state.reoffered(s)
                             and (s.get('cause') == 'overlap'
                                  or (s.get('cause') == 'scope' and s.get('outside') and not any(
-                                     plan.protected_path(p) or p in dispatch.COORDINATOR_FILES
-                                     for p in s.get('outside')))
+                                     plan.protected_path(p) for p in s.get('outside')))
                                  or (s.get('cause') == 'scope' and 'changed files violate Touches'
                                      in str(s.get('reason') or '') and not s.get('outside')))]
             if touches_held:

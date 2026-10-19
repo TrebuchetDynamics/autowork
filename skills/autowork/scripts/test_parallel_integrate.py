@@ -302,16 +302,21 @@ class IntegrationTests(unittest.TestCase):
         held = module.integrate(self.repo, self.owner, 'B', ['true'], 10)  # both rewrote A.txt's one line
         self.assertEqual((held['outcome'], held['cause']), ('HELD', 'conflict'), held)
 
-    def test_an_existing_overlap_hold_is_offered_again_and_integrates(self):
-        """TOOLSET-161-17: a commit an earlier release held for overlap integrates by merge."""
+    def test_existing_overlap_and_ledger_scope_holds_are_offered_again_and_integrate(self):
         module = self.module()
-        _, commit = self.worker('B')
-        slot = state.slots(self.common)[0]
-        execution.save(state.slot_path(self.common, 'B'), dict(
-            slot, state='held', cause='overlap', reason='changed files violate Touches or coordinator/other-slot ownership'))
-        self.assertEqual(module.retry_held(self.retry_args()), {'outcome': 'REOFFERED', 'task': 'B', 'commit': commit})
-        self.assertEqual(module.integrate(self.repo, self.owner, 'B', ['true'], 10)['outcome'], 'INTEGRATED')
-        self.assertEqual((self.repo / 'B.txt').read_text(), 'worker\n')
+        for task, cause, outside in [('A', 'scope', ['TODO.md']), ('B', 'overlap', [])]:
+            with self.subTest(cause=cause):
+                files = {task + '.txt': 'worker\n'}
+                if outside:
+                    files['TODO.md'] = (self.repo / 'TODO.md').read_text() + '\nold ledger proposal\n'
+                _, commit = self.worker(task, files)
+                slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                state.write_slot(self.common, dict(slot, state='held', cause=cause, outside=outside,
+                                                   reason='old scope/overlap hold'), slot)
+                self.assertEqual(module.retry_held(self.retry_args()),
+                                 {'outcome': 'REOFFERED', 'task': task, 'commit': commit})
+                self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['outcome'], 'INTEGRATED')
+                self.assertEqual((self.repo / (task + '.txt')).read_text(), 'worker\n')
 
     def session_checkout(self):
         """Integrate in a separate session worktree, as pi-autowork does."""
@@ -1118,17 +1123,25 @@ finally:
         self.assertTrue(root.exists() and other.exists())
         self.assertEqual(state.slots(self.common)[1]['state'], 'reported')
 
-    def test_canonical_rename_cannot_redirect_worker_delta_outside_scope(self):
-        """TOOLSET-161-17: outside Touches is no longer out of scope; a coordinator file still is."""
-        self.worker()
-        self.git('mv', 'A.txt', 'CHANGELOG.md')
-        self.git('commit', '-qm', 'canonical rename')
-        before = self.git('rev-parse', 'HEAD')
-        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('CHANGELOG.md', result['reason'])
-        self.assertEqual(self.git('rev-parse', 'HEAD'), before)
-        self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), 'base\n')
+    def test_canonical_rename_leaves_redirected_ledger_edits_for_the_maintainer(self):
+        context = ''.join(f'unchanged line {n}\n' for n in range(20))
+        for task in 'AB':
+            (self.repo / (task + '.txt')).write_text('base\n' + context)
+        self.git('commit', '-qam', 'rename fixture')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        for task in 'AB':
+            self.worker(task, {task + '.txt': 'worker\n' + context})
+        for task, path, first in [('A', 'CHANGELOG.md', 'base\n'),
+                                  ('B', 'TODO.archive.md', 'coordinator\n')]:
+            with self.subTest(task=task):
+                self.git('mv', task + '.txt', path)
+                (self.repo / path).write_text(first + context)
+                self.git('commit', '-qam', 'canonical rename with optional conflict')
+                result = self.module().integrate(self.repo, self.owner, task, ['true'], 10)
+                self.assertEqual(result['outcome'], 'INTEGRATED', result)
+                self.assertEqual((self.repo / path).read_text(), first + context)
+                self.assertEqual(result['ledger_edit_dropped']['paths'], [path])
+                self.assertIn('+worker', Path(result['ledger_edit_dropped']['patch']).read_text())
 
     def test_head_move_retry_rechecks_actual_merge_scope(self):
         self.worker()
@@ -1139,9 +1152,98 @@ finally:
                   'subprocess.run(["git","-C",r,"commit","-qm","rename"],check=True) if not p.exists() else None; '
                   'p.write_text("yes")')
         result = self.module().integrate(self.repo, self.owner, 'A', [sys.executable, '-c', script], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('CHANGELOG.md', result['reason'])  # a coordinator file (TOOLSET-161-17)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
         self.assertEqual((self.repo / 'CHANGELOG.md').read_text(), 'base\n')
+        self.assertIn('+worker', Path(result['ledger_edit_dropped']['patch']).read_text())
+
+    def test_ledger_edits_are_saved_and_handed_off_for_mixed_and_empty_candidates(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import maintainer
+        from pi_autowork.coordinator import Coordinator
+        import parallel_status
+
+        (self.repo / 'src').mkdir()
+        (self.repo / 'src/x.py').write_text('base = True\n')
+        (self.repo / '.gitattributes').write_text('TODO.md diff=ledger\n')
+        converter = Path(self.temp.name) / 'textconv.py'
+        converter.write_text('import pathlib, sys\nprint(pathlib.Path(sys.argv[1]).read_text()'
+                             '.replace("Worker", "TRANSFORMED"), end="")\n')
+        self.git('config', 'diff.ledger.textconv', f'{sys.executable} {converter}')
+        self.git('add', 'src/x.py', '.gitattributes')
+        self.git('commit', '-qm', 'source fixture')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        original = (self.repo / 'TODO.md').read_text()
+        self.worker('A', {'src/x.py': 'worker = True\n', 'TODO.md': original.replace('# TODO', '# Worker note')})
+        self.worker('B', {'TODO.md': original.replace('# TODO', '# Worker-only note')})
+        runner = Coordinator.__new__(Coordinator)
+        runner.seen, runner.note_state, runner.close_task = {}, lambda *a: None, lambda *a: None
+        for task, line, files in [('A', '+# Worker note', ['src/x.py']), ('B', '+# Worker-only note', [])]:
+            with self.subTest(task=task):
+                current = original if task == 'A' else original.replace('# TODO', '# Current ledger')
+                if task == 'B':
+                    (self.repo / 'TODO.md').write_text(current)
+                    self.git('commit', '-qam', 'coordinator updated the same ledger line')
+                result = self.module().integrate(self.repo, self.owner, task,
+                    [sys.executable, '-c', f'from pathlib import Path; assert Path("TODO.md").read_text() == {current!r}'], 10)
+                self.assertEqual(result['outcome'], 'INTEGRATED', result)
+                slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                dropped = slot['ledger_edit_dropped']
+                self.assertEqual(dropped['paths'], ['TODO.md'])
+                self.assertTrue(Path(dropped['patch']).is_relative_to(dispatch.data_dir(self.common, slot)))
+                self.assertIn(line, Path(dropped['patch']).read_text())
+                self.assertIn('TODO.md', self.git('apply', '--stat', dropped['patch']))
+                self.assertEqual(result['integration']['changed_files'], files)
+                self.assertEqual((self.repo / 'TODO.md').read_text(), current)
+                with patch('pi_autowork.coordinator.LOG.say') as say:
+                    runner.integrated(task, result)
+                self.assertIn(f'{task}: its edit to TODO.md was left out; the docs maintainer will review it',
+                              [call.args[0] for call in say.call_args_list])
+                found = maintainer.triggers(parallel_status.snapshot(self.repo)['tasks'])
+                self.assertTrue(any(t == task and kind == 'ledger edit' and line in why for t, kind, why in found))
+        self.assertEqual((self.repo / 'src/x.py').read_text(), 'worker = True\n')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_canonical_ledger_deletions_win_for_empty_and_mixed_candidates(self):
+        for path in ('CHANGELOG.md', 'TODO.archive.md'):
+            (self.repo / path).write_text('base ledger\n')
+        self.git('add', 'CHANGELOG.md', 'TODO.archive.md')
+        self.git('commit', '-qm', 'ledger fixtures')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        self.worker('A', {'CHANGELOG.md': 'worker ledger\n'})
+        self.worker('B', {'TODO.archive.md': 'worker ledger\n', 'B.txt': 'worker\n'})
+        self.git('rm', 'CHANGELOG.md', 'TODO.archive.md')
+        self.git('commit', '-qm', 'coordinator removed ledger files')
+        for task, path, files in [('A', 'CHANGELOG.md', []), ('B', 'TODO.archive.md', ['B.txt'])]:
+            with self.subTest(task=task):
+                result = self.module().integrate(self.repo, self.owner, task, ['true'], 10)
+                self.assertEqual(result['outcome'], 'INTEGRATED', result)
+                self.assertFalse((self.repo / path).exists())
+                self.assertEqual(result['integration']['changed_files'], files)
+                self.assertIn('+worker ledger', Path(result['ledger_edit_dropped']['patch']).read_text())
+        self.assertEqual((self.repo / 'B.txt').read_text(), 'worker\n')
+
+    def test_an_adopted_resolver_merge_always_uses_the_current_integration_ledger(self):
+        root, _ = self.worker()
+        module = self.module()
+        original = (self.repo / 'TODO.md').read_text()
+        (self.repo / 'A.txt').write_text('canonical conflict\n')
+        self.git('commit', '-qam', 'canonical advanced')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'conflict')
+        merged = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', 'main'], capture_output=True)
+        self.assertEqual(merged.returncode, 1)
+        self.git('checkout', '--ours', '--', 'A.txt', cwd=root)
+        (root / 'TODO.md').write_text(original.replace('# TODO', '# Resolver ledger note'))
+        self.git('add', 'A.txt', 'TODO.md', cwd=root)
+        self.git('commit', '-qm', 'resolver merged the session and edited its ledger', cwd=root)
+        self.assertEqual(module.merged(self.repo, self.owner, 'A')['outcome'], 'MERGED')
+        current = original.replace('# TODO', '# Newer coordinator ledger')
+        (self.repo / 'TODO.md').write_text(current)
+        self.git('commit', '-qam', 'ledger changed after adoption')
+        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertEqual((self.repo / 'TODO.md').read_text(), current)
+        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
+        self.assertIn('+# Resolver ledger note', Path(result['ledger_edit_dropped']['patch']).read_text())
 
     def test_a_change_outside_touches_integrates_when_it_merges_and_passes(self):
         """TOOLSET-161-17: Touches schedule work and never hold it."""
@@ -1237,12 +1339,12 @@ finally:
                     state.slot_path(self.common, task).unlink()  # next fixture case starts without a live slot
 
     def test_a_scope_hold_records_its_cause_and_outside_files(self):
-        # TOOLSET-161-17: only an undeclared protected file or a coordinator file is out of scope.
-        self.worker(files={'A.txt': 'worker\n', 'go.mod': 'module x\n'})
+        self.worker(files={'TODO.md': (self.repo / 'TODO.md').read_text() + '\nworker note\n',
+                           'package-lock.json': '{}\n'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual((result['cause'], result['outside']), ('scope', ['go.mod']))
+        self.assertEqual((result['cause'], result['outside']), ('scope', ['package-lock.json']))
         slot = state.slots(self.common)[0]
-        self.assertEqual((slot['cause'], slot['outside']), ('scope', ['go.mod']))
+        self.assertEqual((slot['cause'], slot['outside']), ('scope', ['package-lock.json']))
 
     def test_other_contract_answers_requeue_even_when_touches_cover_the_commit(self):
         module = self.module()
@@ -1311,7 +1413,7 @@ finally:
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10, 'r4')['outcome'], 'INTEGRATED')
 
     def test_only_validation_holds_are_reverified(self):
-        self.worker(files={'CHANGELOG.md': 'coordinator owned'})  # a scope hold (TOOLSET-161-17)
+        self.worker(files={'go.mod': 'module x\n'})  # undeclared protected paths still hold
         module = self.module()
         self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'scope')
         with self.assertRaisesRegex(ValueError, 'only for a commit held by validation'):
@@ -1320,13 +1422,14 @@ finally:
         legacy.pop('cause')
         self.assertTrue(module.reverifiable(legacy, 'r1'))  # holds from before causes existed
 
-    def test_coordinator_file_is_held_even_if_declared(self):
+    def test_new_coordinator_file_is_left_out_even_if_declared(self):
         todo = self.repo / 'TODO.md'
         todo.write_text(todo.read_text().replace('Touches: A.txt', 'Touches: A.txt, CHANGELOG.md'))
         self.worker(files={'CHANGELOG.md': 'not worker owned'})
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'HELD', result)
-        self.assertIn('CHANGELOG.md', result['reason'])
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertFalse((self.repo / 'CHANGELOG.md').exists())
+        self.assertIn('+not worker owned', Path(result['ledger_edit_dropped']['patch']).read_text())
 
     def test_a_task_source_link_labelled_history_does_not_select_the_archive(self):
         """sierra: bold task IDs stayed unchecked on close, and the archive fallback then

@@ -19,7 +19,7 @@ import time
 
 ROLE = 'DOCS-MAINTAINER'
 PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed', 'no_change')
-PLANNING_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md')
+PLANNING_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md', 'CHANGELOG.md')
 PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 PLAN_TASK_LIMIT = 8
@@ -49,6 +49,15 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
         task, state, reason = row.get('task'), row.get('state'), ' '.join(str(row.get('reason') or '').split())
         if not task:
             continue
+        if state in ('integrated', 'closing', 'closed') and (dropped := row.get('ledger_edit_dropped')):
+            patch = Path(dropped['patch'])
+            try:
+                with patch.open(errors='replace') as stream:
+                    proposal = stream.read(900)
+            except OSError:
+                proposal = '(patch unavailable; inspect the worker commit)'
+            found.append((task, 'ledger edit',
+                          (f"{', '.join(dropped['paths'])}; saved patch: {patch}\n{proposal}")[:900]))
         if state == 'held' and not row.get('worker_live') and row.get('quick_hold'):
             hold = row['quick_hold']
             found.append((task, 'repeated quick hold', f"{hold['fingerprint']}; {hold['reason']}"))
@@ -80,6 +89,10 @@ def planning_only(paths):
 PROMPT = (
     'You are the DOCS-MAINTAINER of {repo}: you repair task docs so that held and unrunnable tasks can '
     'run again, without the owner. The runner cannot run these tasks as they are written:\n{items}\n'
+    'For ledger edit: the task integrated, but its candidate\'s ledger edits (including resolver edits) '
+    'were left out. Review the saved patch against the current ledger; the task may already be archived. '
+    'Apply only justified changes through the docs-sync ledger tools, or drop the proposal. Never apply '
+    'the patch automatically or undo newer planning or task closure. '
     'For each one, read its TODO.md entry, its Sources and accepted plans, and the worker\'s report under '
     '.git/autowork-execution/slot-data/<task>/ when there is one. Then, only from that evidence: restate '
     'an ambiguous contract; correct Touches, Checks or Dependencies (a worker that names the exact files '
@@ -115,7 +128,7 @@ PROMPT = (
     'Acceptance item, and leave it as it is if a finding needs a product decision. Never change product scope or Acceptance, grant '
     'authority, credentials or spending, or decide a product question: leave such a task as it is. Use '
     '/skill:docs-sync and its goals.py commands for TODO.md and goals.json, run python3 {goals} validate . '
-    'and fix what it reports, edit only TODO.md, goals.json, BLOCKERS.md, TODO.archive.md and docs/tasks/, '
+    'and fix what it reports, edit only TODO.md, goals.json, BLOCKERS.md, TODO.archive.md, CHANGELOG.md and docs/tasks/, '
     'and commit once on this checkout with a message that gives each change\'s reason. Do not push or '
     'switch branches. End with one line: PI_AUTOWORK_RESULT: completed or PI_AUTOWORK_RESULT: blocked, '
     'then the tasks you changed.')
@@ -283,14 +296,14 @@ def reason_class(why, task_ids=()):
 def item_key(item):
     if item[1] == 'repeated quick hold':
         return 'quick-hold:' + item[0] + ':' + item[2].split(';', 1)[0]
-    return key([item]) if item[0] in ('MAIN', 'LEDGER') else 'task:' + item[0]
+    return key([item]) if item[0] in ('MAIN', 'LEDGER') or item[1] == 'ledger edit' else 'task:' + item[0]
 
 
 def matches(receipt, item, entry, reasons, task_ids):
     if not receipt:
         return False
-    if item[0] in ('MAIN', 'LEDGER') or item[1] == 'repeated quick hold':
-        return True  # the key already identifies the test/error or normalized blocker
+    if item[0] in ('MAIN', 'LEDGER') or item[1] in ('repeated quick hold', 'ledger edit'):
+        return True  # the key identifies the test/error, blocker or exact patch, even after archival
     why = (reasons or {}).get(item[0], item[2])
     return (receipt.get('digest') == entry.get('digest', '')
             and reason_class(receipt['reason'], task_ids) == reason_class(why, task_ids))
@@ -343,7 +356,8 @@ def stalled(state, found, *, entries, reasons=None):
     for item in found:
         task, _, why = item
         receipt = records.get(item_key(item), {})
-        if (task not in ('MAIN', 'LEDGER') and matches(receipt, item, entries.get(task, {}), reasons, ids)
+        if (task not in ('MAIN', 'LEDGER') and item[1] != 'ledger edit'
+                and matches(receipt, item, entries.get(task, {}), reasons, ids)
                 and receipt.get('outcome') == 'merged' and receipt.get('fields')):
             result.append(dict(task=task, reason=(reasons or {}).get(task, why), fields=receipt['fields']))
     return result

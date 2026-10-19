@@ -58,8 +58,8 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    or `HELD` with a reason when:
    - the commit does not descend from the slot baseline, differs from the branch
      or the report, or the report lists blockers or a check that did not pass;
-   - it changes a coordinator-owned file, or a protected file (manifest, lock file,
-     schema, migration or CI file) its task did not declare for serial work. Files
+   - it changes a protected file (manifest, lock file, schema, migration or CI file)
+     its task did not declare for serial work. Files
      outside `Touches:` and files another slot changed are not held: the merge into the
      base, in priority order, settles them (TOOLSET-161-17);
    - the merge conflicts (aborted; the canonical checkout, its uncommitted files and
@@ -70,6 +70,21 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
      the main checkout (a runner's session worktree), a session in the main checkout
      counts only when the merge changes a file it holds open for writing or has left
      uncommitted there.
+
+   Coordinator-owned edits are left out before validation, including ledger-only
+   conflicts and edits introduced by the runner or resolver merging into the task
+   branch. Those paths always keep the current integration base's content. The
+   [integrator](../scripts/parallel_integrate.py) saves the omitted proposal as
+   `slot-data/<TASK>/attempt-N/ledger-edit.patch` and records `ledger_edit_dropped`
+   (paths and patch path) on the slot. Ledger-only candidates integrate as empty
+   changes; undeclared protected files still hold. Batch checks and reviews use
+   the same stripped merge tree, not the omitted ledger proposal.
+
+   Once integrated, the [docs maintainer](../../../pi-autowork/pi_autowork/maintainer.py)
+   gets a one-time `ledger edit` trigger with a bounded patch preview. It judges the
+   proposal against current planning, then applies justified changes through the
+   ledger tools or drops it; the patch is never applied automatically. Draining
+   runs, including `--once`, service all pending proposal batches before exiting.
 
    Validation runs in the engine's own journaled integration worktree. If it leaves
    changes there, the next integration saves them to
@@ -203,7 +218,9 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
   result lists `adopted`. Only live workers count toward N.
 
 The root files `TODO.md`, `TODO.archive.md`, `goals.json` and `CHANGELOG.md` are
-coordinator-owned: workers never edit them, and integration holds a commit that does.
+coordinator-owned: workers must never edit them. Integration leaves out any such
+edits and hands their patch to the docs maintainer; it grants no worker ledger
+write authority.
 
 ## Hosts
 
@@ -249,11 +266,11 @@ nothing parallel was claimed or started.
   Missing dependencies and other genuine inputs still wait for a person. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
-  `outside`, the coordinator-owned or undeclared protected files), `report`, `conflict`,
+  `outside`, the undeclared protected files), `report`, `conflict`,
   `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice) or
   `launch`. Integration's `HELD` result carries `cause` and `outside` too.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
-  files that are neither protected nor the coordinator's, is offered again once
+  files that are not protected (including coordinator-owned files), is offered again once
   (`REOFFERED`) in priority order and integrates by merge; a worker held with
   `scope_request` (it stopped to ask for files) resumes in its worktree (`RESUMED`).
 - **Reverify:** `--integrate ... --reviewer-version V` records which validation held a
