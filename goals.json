@@ -752,7 +752,11 @@
         "TOOLSET-250-49",
         "TOOLSET-251-c4",
         "TOOLSET-252-4c",
-        "TOOLSET-253-0d"
+        "TOOLSET-253-0d",
+        "TOOLSET-254-80",
+        "TOOLSET-255-55",
+        "TOOLSET-256-4b",
+        "TOOLSET-257-bd"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -780,7 +784,6 @@
       "TOOLSET-217-2d",
       "TOOLSET-219-2c",
       "TOOLSET-220-71",
-      "TOOLSET-215-91",
       "TOOLSET-214-5b",
       "TOOLSET-240-f8",
       "TOOLSET-241-a1",
@@ -811,6 +814,10 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-254-80",
+      "TOOLSET-255-55",
+      "TOOLSET-256-4b",
+      "TOOLSET-257-bd",
       "TOOLSET-248-60",
       "TOOLSET-249-5b",
       "TOOLSET-245-6a",
@@ -852,7 +859,8 @@
       "TOOLSET-123-a0",
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
-      "TOOLSET-145-6d"
+      "TOOLSET-145-6d",
+      "TOOLSET-215-91"
     ]
   },
   "tasks": [
@@ -1090,14 +1098,6 @@
       "section": "Now",
       "status": "open",
       "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
-    },
-    {
-      "depends_on": [],
-      "goal": "PORTABLE",
-      "id": "TOOLSET-215-91",
-      "section": "Now",
-      "status": "open",
-      "title": "Bundle skills load read-only from the plugin, so the skill review never edits them"
     },
     {
       "depends_on": [],
@@ -1636,6 +1636,46 @@
       "title": "A waiting line is logged when the reasons change, not each minute a drain counter moves"
     },
     {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-254-80",
+      "section": "Next",
+      "status": "open",
+      "title": "Explain full-check results from their recorded evidence, never from an absent log"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-254-80"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-255-55",
+      "section": "Next",
+      "status": "open",
+      "title": "Bind task claims to runner-owned evidence without changing legacy acceptance"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-254-80",
+        "TOOLSET-255-55"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-256-4b",
+      "section": "Next",
+      "status": "open",
+      "title": "Attach evidence-bound semantic assessments to the existing Pi review"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-255-55",
+        "TOOLSET-256-4b"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-257-bd",
+      "section": "Next",
+      "status": "open",
+      "title": "Consume claim evidence through bounded repair and exact-target closeout"
+    },
+    {
       "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
@@ -1678,6 +1718,14 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify Pi API-key and subscription login locally with owner credentials"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-215-91",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Bundle skills load read-only from the plugin, so the skill review never edits them"
     },
     {
       "depends_on": [],
