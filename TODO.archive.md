@@ -4183,3 +4183,27 @@ Source section: Now
 - Ownership: Toolset coordinator. A first step towards TOOLSET-231-49: batches need no ref-based integration or host check slots. When the speculative queue lands, it replaces the batch's fallback path.
 - Exclusions: No weaker gate or review: every landed candidate passed the full suite on a tree containing it and its own review.
 - Planner's call: first in Now (owner report, 2026-10-19). Integration is the fleet's narrowest point: one runner finishes a task in about 30 minutes and lands one about every 4 hours. Batching does what the owner session did by hand, keeps every check, and needs none of the speculative queue's prerequisites.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-251-c4"></a>
+
+### TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
+
+- [x] TOOLSET-251-c4 — A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse
+- Status: done 2026-10-19 by the runner, merged as 69a10ef from its commit 251ae3e: (1)-(3). `merge_adoption` (parallel_state.py) records the revision a merge was adopted against and allows another adoption only once canonical HEAD advanced past it, up to 3 (`merged_count`); the coordinator runs the resolver only when the engine allows it, and a refusal names the conflicting files and the count. It replaced the blanket once-only guard of f38d6bd. Seen working on the fleet: `merged the session into its commit again (2 of 3); verifying again` on another runner at 05:52.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [integration](skills/autowork/scripts/parallel_integrate.py) (`merged`: refuses with `merged is only for a conflict-held commit, once` when the slot already has `merged_base`); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`resolve_task_conflict`: asks the Pi merge resolver once per session revision, `seen['resolved-<task>']`, then calls `--parallel-merged`); TOOLSET-157-cd and TOOLSET-233-ba in [the archive](TODO.archive.md) (the session now follows main between reviews, so it moves more often under a held commit).
+- Evidence (2026-10-18 22:03-22:47, one fleet runner): two tasks on their second attempt, holding 8 dependents between them, were held for `merge conflict`. The resolver merged each, and at 22:33 the engine refused to adopt both (`could not adopt its merged commit: merged is only for a conflict-held commit, once`, logged twice each), because each slot's earlier conflict had already been adopted once. At 22:47 the runner asked the resolver to merge one of them again. The once-per-slot rule and the once-per-revision rule disagree, so each session move costs a resolver run and the tasks never leave the hold.
+- Evidence (2026-10-18 23:17, a second fleet runner as well): one task there was refused the same way at 23:06 and 23:17, and one on the first runner again at 23:17: a resolver run about every ten minutes per stuck task.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) `merged_base` records the canonical revision the merge was adopted against, not just `True`. `merged` accepts another adoption when canonical HEAD has moved past that revision, up to 3 adoptions per attempt (`merged_count`). (2) The coordinator asks the engine whether an adoption would be accepted (a read-only `--parallel-merged --check`, or the same rule read from the slot) before it runs the resolver. If not, it runs no resolver and the hold stays a question for the owner, naming the conflicting files and the adoption count. (3) The log says `merged the session into its commit again (<n> of 3)`.
+- Acceptance: In fixtures: a conflict-held slot adopted once, then held for conflict again after canonical HEAD moved, is adopted a second time and reaches review; with HEAD unmoved it is refused and no resolver job runs; a fourth adoption is refused with a question naming the files; the runner journey that reproduces back-to-back conflicts lands the task after two resolutions.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how a conflict is detected or to the resolver's prompt.
+- Planner's call: third in Now (raised 2026-10-18 23:19, two runners): the session moves more since TOOLSET-233-ba, so this loop will grow on every runner whose files overlap, and each turn is a model call with no progress.

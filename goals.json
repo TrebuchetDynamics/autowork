@@ -1256,14 +1256,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-251-c4",
-      "section": "Now",
-      "status": "open",
-      "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-252-4c",
       "section": "Now",
       "status": "open",
@@ -3089,6 +3081,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-251-c4",
+      "section": "Done",
+      "status": "done",
+      "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
     },
     {
       "depends_on": [],
