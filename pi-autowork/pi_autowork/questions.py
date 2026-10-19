@@ -141,6 +141,28 @@ def full_check_question():
                        'offline suite), or set PI_AUTOWORK_VALIDATE in the runner\'s settings.')
 
 
+def update_planning(text, base=None):
+    """Add/remove just the startup question, preserving other questions and owner prose."""
+    block = block_of(text or '')
+    if block is None:
+        return update(text, [planning(base)]) if base else text
+    kept = re.sub(r'^### Q-RUNNER-PLANNING — .*?(?=^### Q-|\Z)', '', block, flags=re.M | re.S)
+    if base:
+        stamp = previous_since(text).get('RUNNER-PLANNING') or datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        question = render([planning(base)], {'RUNNER-PLANNING': stamp})
+        kept = block_of(question) + kept.lstrip('\n')
+    return text[:text.index(START) + len(START)] + kept + text[text.index(END):]
+
+
+def planning(base):
+    """One actionable runner question before a committed plan can reach a session."""
+    return dict(id='RUNNER-PLANNING', type='USER_INPUT', effort='quick', unblocks=0,
+                task='Runner startup', kind='runner',
+                needs=f'planning files are not committed on {base}',
+                answer=f'commit TODO.md and goals.json on {base} first. The runner resumes automatically; '
+                       'it will not commit these files for you at startup.')
+
+
 def previous_since(text):
     """{question id: Since} from an existing block, so a question keeps its first time."""
     block = block_of(text)
