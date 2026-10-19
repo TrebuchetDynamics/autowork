@@ -287,9 +287,17 @@ overlap, and a real conflict goes to the merge resolver. Only coordinator-owned 
 undeclared protected files (manifests, lock files, schema, migration and CI files) hold a
 commit. The runner no longer infers or widens `Touches:`.
 
-When the reviewer changes (its code, `PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW`), the
-runner sends every commit an earlier reviewer held back for review once, by itself,
-even a task with no attempt left; the same reviewer never reviews a commit twice.
+When the review/live/gate prompts, `review`, `full_suite_gate`, `run_gate`,
+`PI_AUTOWORK_VALIDATE` or `PI_AUTOWORK_REVIEW` change, the runner offers an earlier
+reviewer's held commit another review, even with no attempt left. Unrelated worker
+helpers do not change this fingerprint (see
+[`reviewer_version`](../pi-autowork/pi_autowork/coordinator.py)). Reverified commits
+wait behind fresh reported candidates, keeping task priority within each group.
+If that review repeats the same failure line (ignoring revision IDs), the commit
+stays held for the maintainer's `review findings` trigger, not another reviewer
+release. A different verdict or new commit resets this limit (see
+[`reverify`](../skills/autowork/scripts/parallel_integrate.py)); the same reviewer
+version never gets a second try.
 
 A held task is answered by editing its TODO.md entry (scope, Touches, acceptance,
 dependencies or a decision line): the runner notices the changed entry and runs the

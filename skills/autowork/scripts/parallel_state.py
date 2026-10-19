@@ -301,6 +301,9 @@ def change(common, old, target, updates):
             {k: v for k, v in old.items() if k != 'previous_attempts'}]
         for key in FIELDS:
             value.pop(key, None)
+        if not resume:  # A fresh worker commit is not a re-review of the held attempt.
+            for key in ('reverified', 'reverify_verdict'):
+                value.pop(key, None)
         value.update(attempt=old['attempt'] if resume else 2, worker=None, started_at=time.time())
     if updates.get('worker') is not None:
         execution.active_owner({'owner': updates['worker']})

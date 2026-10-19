@@ -599,6 +599,8 @@ class EngineTests(Fixture):
         self.plan({'verify:A': ['fail', 'fail']})
         result = self.run_runner('--until-empty', '--workers', '1')
         self.assertIn('A: failed', result.stdout)
+        held = json.loads((self.repo / '.git/autowork-execution/slots/A.json').read_text())
+        self.assertIn('PI_AUTOWORK_VERIFY: fail acceptance not met', held['reason'])
         self.assertEqual((self.repo / 'A.txt').read_text(), '')
         self.assertTrue(self.done('B'))  # independent work still lands
         self.assertNotIn('- [x] A', (self.repo / 'TODO.md').read_text())
@@ -1735,6 +1737,36 @@ class EngineTests(Fixture):
         self.assertIn('Do not fail for those', reviews['A'])
         self.assertIn('recorded no pending live checks', reviews['B'])  # strict when nothing was recorded
         self.assertIn('A: done offline; its live checks are recorded as A-LIVE', result.stdout)
+
+    def test_reviewer_version_tracks_only_verdict_code_prompts_and_settings(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        runner = object.__new__(coordinator.Coordinator)
+        source = (ROOT / 'pi-autowork/pi_autowork/worker.py').read_text()
+        folder = self.root / 'fingerprint'
+        folder.mkdir()
+        path = folder / 'worker.py'
+        path.write_text(source)
+        with patch.object(coordinator, '__file__', str(folder / 'coordinator.py')):
+            original = runner.reviewer_version()
+            for before, after, changes in (
+                    ('PI_AUTOWORK_LINK_PATHS', 'FIXTURE_LINK_PATHS', False),
+                    ('independent reviewer', 'changed reviewer', True),
+                    ('Checks that need a physical', 'Checks requiring a physical', True),
+                    ('The worker recorded no pending', 'The worker listed no pending', True),
+                    ('The runner already ran', 'The runner executed', True),
+                    ("verdict == 'fail'", "verdict != 'fail'", True),
+                    ('command = main_check.full_check(checkout)', 'command = None', True),
+                    ("or 3600)", "or 3601)", True)):
+                with self.subTest(edit=before):
+                    self.assertIn(before, source)
+                    path.write_text(source.replace(before, after, 1))
+                    self.assertEqual(runner.reviewer_version() != original, changes)
+            path.write_text(source)
+            for setting in ('PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_REVIEW'):
+                with self.subTest(setting=setting), patch.dict(os.environ, {setting: 'changed'}):
+                    self.assertNotEqual(runner.reviewer_version(), original)
 
     def test_a_changed_reviewer_reviews_held_commits_again_by_itself(self):
         """flutter: three commits sat held after an older reviewer failed them; nobody should have to ask."""
