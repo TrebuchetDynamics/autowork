@@ -260,6 +260,11 @@ class DispatchTests(unittest.TestCase):
 
     def test_two_repositories_first_workers_get_ports_no_one_else_holds(self):
         """Every runner's slot 1 got 20100..20199, and two repositories' fixtures collided."""
+        leases = self.root / 'port-leases'  # private: live runners on this host lease the real blocks
+        patcher = patch.object(dispatch, 'port_lease_dir', lambda: leases)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         def start(name):
             data = self.common / 'slot-data' / name / 'attempt-1'
             data.mkdir(parents=True)
