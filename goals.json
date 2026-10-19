@@ -751,7 +751,8 @@
         "TOOLSET-249-5b",
         "TOOLSET-250-49",
         "TOOLSET-251-c4",
-        "TOOLSET-252-4c"
+        "TOOLSET-252-4c",
+        "TOOLSET-253-0d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -759,11 +760,9 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-246-06",
-      "TOOLSET-247-5a",
       "TOOLSET-251-c4",
       "TOOLSET-252-4c",
-      "TOOLSET-243-6d",
+      "TOOLSET-253-0d",
       "TOOLSET-250-49",
       "TOOLSET-244-5d",
       "TOOLSET-232-01",
@@ -1274,6 +1273,14 @@
       "section": "Now",
       "status": "open",
       "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-253-0d",
+      "section": "Now",
+      "status": "open",
+      "title": "The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again"
     },
     {
       "depends_on": [],

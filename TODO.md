@@ -91,6 +91,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No editing of the task's `Dependencies:` line by the engine; the docs maintainer may still record it.
 - Planner's call: Now, after TOOLSET-251-c4. A worker that has found the order the plan missed has told the runner exactly what to wait for; turning that into a wait, rather than a question and a slot that still blocks, removes a whole class of deadlocks between exclusive work and its dependents.
 
+### TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
+
+- [ ] TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-19); [full-suite gate](pi-autowork/pi_autowork/worker.py) (`base_result` caches `full-check/base-<rev>.json` by exact revision); TOOLSET-233-ba in [the archive](TODO.archive.md) (the session now takes main between reviews, so its head moves often, mostly by planning commits); `PLANNING_FILES` in [integration](skills/autowork/scripts/parallel_integrate.py).
+- Evidence (2026-10-19 02:57-03:58, this repository's runner): one candidate's gate took about 60 minutes. The merged-tree suite ran 29 minutes and failed some load-sensitive runner journeys. Isolated reruns took 5 minutes. Then a base suite ran 27 minutes on `c7689a5`, a `docs(blockers): questions for the owner` commit whose only change from the already-cached base `491ef4a` was BLOCKERS.md. Of the 7 consecutive base runs cached on this runner, 3 repeated a cached base whose tree differed only in planning files. Reviews here run one at a time, so each such run delays every waiting candidate by about half an hour.
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py
+- Scope: (1) Base results are also indexed by tree, with the planning-file paths' blobs left out of the key: a tree ID computed with `PLANNING_FILES` and `docs/` removed. Two revisions with the same key share a base result. (2) `base_result` looks up that key before running the suite, and records both the exact revision and the key. (3) The same command is still required. A key match under another command runs again.
+- Acceptance: In fixtures: a base cached at revision R is reused for a revision that adds only a BLOCKERS.md or TODO.md change, with no suite run (counted by a command that appends to a file); a revision that also changes a source file runs the base suite; a different check command runs it again.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No reuse across revisions that differ in any file outside the planning set, and no change to when the base suite is needed.
+- Planner's call: Now, after TOOLSET-252-4c. One review at a time is this runner's bottleneck: five verified candidates waited behind an hour-long gate. Planning-only commits cannot change test results, so their base runs are pure delay, and they are frequent because questions and closures land as planning commits between reviews.
+
 ### TOOLSET-250-49 — A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle
 
 - [ ] TOOLSET-250-49 — A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle
@@ -188,7 +204,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No worker write access to ledger files. The worker prompt still says never to edit them. No automatic application of the dropped patch.
 - Planner's call: Now, after TOOLSET-222-e1. Holding sound work for a ledger edit wastes an attempt, and the maintainer is the role allowed to edit the ledger. A worker usually touches it to fix a link or a status line, and the maintainer can judge that.
-
 
 ### TOOLSET-234-d4 — A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns
 
@@ -478,7 +493,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Blocker reconciliation: The latest retained four-file implementation reports passing focused integration and runner checks, but the full offline inventory failed a budget-controller less-than-two-second timing assertion at 2.510591 seconds under load 50.91; four host-resource skips and the failed full run remain unqualified evidence, not passes. A quiet host is a technical capacity condition, not a new owner decision or permission to bypass tests. Use existing completion-first/check-slot admission and supported disk-backed short scratch; do not ask the owner to stop other runners or provide another host before using the normal resource gate. Do not stabilize an unrelated budget-controller test inside this task's scope or classify the timing failure as proven flaky from one run.
 - Next action: Preserve the existing four modified files and review notes in the held worktree; reconcile current TOOLSET-165-f7/current-baseline writer logic without another implementation. When the existing qualification owner has capacity under the normal guards, rerun only invalidated/missing checks and the mandatory full gate on the actual integrated source, using the current supported disk-backed task scratch and shared check-slot mechanism where delivered. Waiting for capacity is not a failed attempt or a reason to reset cumulative budgets; it must not launch duplicate inventory while another qualification is owned. If the same budget test still fails on a suitable current baseline, retain its actual result and route repair to the existing baseline/test owner, not a longer-sleep workaround, changed expected result or a waived full gate. Close only from accepted integrated verification; no check, retry or service action is launched by this planning answer.
 
-
 ### TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
 
 - [ ] TOOLSET-138-62 — Reconcile the fleet's unmerged parallel-admission branch into main
@@ -498,7 +512,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Owner decision: 2026-10-18 — Verify current-history equivalents; keep any old pin whose actual ancestry is unproven. This changes the 138-62 acceptance/history contract and corresponding 139-62 interpretation only; no service operation, reset, remote publication or history rewrite is authorized.
 - History evidence: Fresh read-only ancestry checks find original 3848aaa5eb07aaec97005360a7827b6401f1dc38, 28d38ebb09f2f73a4108a9216e201d250d800364 and de023264547f9f6e248a8bd28c4175174c307a43 outside both main and the observed origin/main ref, contrary to the former task status. Current 34d988b7962c7942c97dcf703ff8fc17b3741db2 and 3504855659952b9a42ea6b6f78310878d0733f42 are ancestors of both observed refs. Original 3848aaa and current 34d988b have stable patch ID c05c5b1c7932ab86d8d3555ec30202f6f4908aa0. Patch equality is not source qualification or runtime pin ancestry; no engine/full-suite tests were run by this planning pass.
 - Next action: Reuse the current implementation and the retained no-change worker report; verify the cited current-history commits against the actual qualification target, inspect one admission path and run the unchanged named engine/full offline checks. Close only from current executed evidence. Do not remerge retained original history, ask the same ancestry question or mark tests passed from patch identity.
-
 
 ### TOOLSET-139-62 — Heal toolset pin drift so every runner receives released fixes
 
@@ -523,7 +536,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Retained implementation: The held worker report preserves ten changed files, including command.py for the existing CLI status requirement and tests/test_pi_autowork.py; those two exact files are now included in Touches. The report's full-gate resource refusal remains a failure/unqualified result, not owner approval needed for more disk or a passing check.
 - Next action: Reuse the retained ten-file implementation after current ownership/source reconciliation, not a fresh rewrite. Use the existing supported short disk-backed task-scratch path with at least the unchanged 20 GB free-space guard plus fixture headroom; coordinate TOOLSET-212-0d instead of weakening disk checks or placing runtime files in tracked code. Complete invalidated/missing focused/full verification and required review on current code. Add a current-history-equivalent but nonancestor old-pin fixture that leaves the pin untouched, alongside the original clean actual-ancestor, dirty/unmerged and same-attempt adoption cases. No runner restart, env migration, branch deletion, attempt reset or new model job is performed by planning.
 
-
 ### TOOLSET-179-cf — The runner merges the upstream before it dispatches work
 
 - [ ] TOOLSET-179-cf — The runner merges the upstream before it dispatches work
@@ -544,7 +556,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Additional acceptance: With a separate integration held, an owner-open commit does not generate another owner permission question from the old in_progress token; active lease and assigned-input hashes survive unchanged. Missing/changed canonical bytes or a real unresolved decision remain explicit unknown/blocked, never false healthy. After the protected phase completes, the next safe cycle merges the committed answer, recomputes admission and removes its obsolete question. Cover no outgoing commits, no upstream, fetch/push disabled and dirty BLOCKERS without rewriting owner text. All fixtures fake commands and use disposable repos; no live recovery is run by planning.
 - Additional verification: Extend the existing `python3 scripts/check.py tests/test_pi_autowork.py` and `python3 -m unittest discover -s pi-autowork/tests -p test_questions.py` with these composed cases; new cases are planned, unrun. Existing required full offline check remains mandatory after implementation.
 - Next action: Add a fake-coordinator regression for committed canonical-open versus stale session-in_progress during a separate held integration; implement the minimum safe local-plan following/provenance seam, then reuse it for the already planned upstream fetch. Coordinate the read-only consumer with TOOLSET-130-15 without modifying an active worker contract.
-
 
 ### TOOLSET-158-08 — A rejected push with a conflicting upstream is resolved, not left to diverge silently
 
@@ -603,7 +614,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: Reconcile the current delivered engine and retained reports first; implement the narrow remaining terminal/report adoption and resumable qualification/closeout boundaries at existing seams, not phases 1-5 again. Make one source-bound snapshot available to 130-15 and completion occupancy to 118-68. Preserve active owners, current ordering and publication exclusions.
 - Delivery evidence boundary: Existing engine reported state is candidate discovery, not validated report acceptance; preserve that split and dirty residue. Reuse integration and closeout receipts, retaining reviewed merge/integration/closeout identities and the configured canonical ref/observed head. Require accepted integration and closeout ancestry on that ref plus source-bound qualification before canonical Delivered; remote publication additionally needs authorized remote-ref readback. Keep baseline-equivalent/flaky/full-inventory exceptions explicit under existing policy, never call an exception-accepted run all green or erase its original failed/skipped results.
 
-
 ### TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
 
 - [ ] TOOLSET-173-94 — A review that fails only for a missing toolchain gets a provisioning run, then one more review
@@ -625,7 +635,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Planner's call: separate "could not check" from "checked and wrong". The first is the runner's to fix with the repository's own setup; only the second needs the owner.
 - Completion-first environment alignment: Keep environment-unavailable, resource-admission wait and executed regression as different outcomes through the existing bounded provisioning/review path. Coordinate disk-backed scratch with TOOLSET-212-0d, not a competing tmpfs workaround; preserve the short socket-path constraint. Reuse an environment recovery only for the candidate/input bindings it actually qualified, and preserve failed/missing historical checks. Do not launch a second review while the same candidate is already owned, reset its retry budget on restart, or blame a host-resource setup refusal on the product. Existing item (3) remains the concrete next action: report the missing item and attempted setup command after bounded recovery fails. Keep all existing cache-only provisioning and live restrictions.
 - Durable environment recovery: Validate the environment marker against the actual reviewed merge, task and attempt; current missing text alone is insufficient provenance. Preserve one-provision/one-reverify suppression across coordinator restart using existing records keyed by repository, task/attempt, candidate, relevant review-input signature and normalized missing item. Historical mismatched markers do not authorize installing a tool for another candidate. Retain attempted command/result and cumulative retry limits; new key metadata is not a new recovery store, host-toolchain modification or renewed budget.
-
 
 ### TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 
@@ -669,7 +678,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Planner's call: preserve-then-proceed over asking the owner, because the stray file has no live owner and the side branch keeps it recoverable.
 - Blocker reconciliation: The latest retained attempt restored candidate 950ac981e957fa6b49ef7dd870c506314c943ab6 onto baseline 394b87b1817075e2d8212e0506639e3a63034dde and left its two-file staged adaptation in the held worktree. Its focused qualification failed because disposable repositories inherited the small runtime tmpfs and the unchanged 20 GB dispatch guard refused them; no full pass or completed review follows. A different host or owner authorization for more disk is not the missing product input. Reuse the current managed disk-scratch allocation from TOOLSET-212-0d, with a task-owned short alias where needed for socket tests; the allocator must prove ownership, disk backing and free space. Do not improvise unmanaged /tmp or /var/tmp paths, relax guards or discard staged/untracked work.
 - Next action: Reconcile current canonical code and actual ownership with the restored staged two-file candidate in the existing held worktree; do not reimplement or restore the old snapshot over it. Through the existing execution owner, provide the supported task-managed disk-backed qualification path and verify the unchanged free-space guard plus fixture headroom before the focused runner suite, required full offline gate and independent review. Preserve current review/session/landing guards and failed/missing checks; resume only the missing or invalidated qualification. The question refresh must consume already-saved answers without erasing real questions or editing dirty BLOCKERS.md. Keep the retained live observation separate and pending; no runner restart, new verification job or live repository operation is performed by planning.
-
 
 ### TOOLSET-154-d3 — Question IDs are single-line and stable, so BLOCKERS.md changes only when questions do
 
@@ -824,7 +832,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Recovery refinement: Implement the cited owned-worktree detection/healing contract through the existing coordinator and matching-intent engine path. Detect interrupted creation, registration/path/branch mismatches and foreign collisions; reconcile actual process-birth ownership and exact candidate identity before acting. Preserve data/candidates, use canonical .worktrees placement, and allow a fresh uniquely owned collision-free path only after exclusive task ownership is proven. No broad prune, forced cleanup, name-only adoption, budget reset or claimed recovery of missing unsaved files. Reconcile the existing TOOLSET-147-54 dirty-integration handler rather than add another repair engine.
 - Recovery proof: Extend the existing failure-injection fixtures with exact owned recovery, live/unknown owner, foreign collision, missing-data, locked/untracked/ignored and repeated-restart cases. One safe supported repair advances without a person; protected cases remain intact and independent work continues. New cases are planned, not run.
 
-
 ### TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
 
 - [ ] TOOLSET-118-68 — Separate worker, test and memory budgets in the parallel resource gate
@@ -844,7 +851,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Completion admission proof: Existing controlled-process resource/runner fixtures must show saturated completion denying new starts while current workers progress, collection releasing capacity and resuming admission, an external hold leaving independent work possible, stale/reused ownership staying conservative, and identical decisions after restart. Retain original cgroup, heavy-test and descendant-cleanup assertions. Read existing events for stage waits and heavy-check occupancy; no arbitrary latency target, benchmark service, cost-budget change or model/live run. New cases are planned, unrun.
 - Next action: After 115-bf's completion boundary, extend the existing engine gate and coordinator ordering with the cited completion-first policy and source-bound occupancy; exercise saturation/release and safe restart without adding a parallel review pool.
 - Resume classification: A live identity-validated worker continuing is not a new start. A new implementation process, including retry/resume of an old attempt after its process exited, is new admission subject to completion backpressure except the normally guarded bounded prerequisite repair. Never resume an explicit pause. Aged session commits alone do not imply saturation; attempt actionable safe landing/closeout before new admission and expose an external landing gate without freezing unrelated work.
-
 
 ### TOOLSET-099-87 — Run as many independent tasks at once as possible
 
@@ -917,7 +923,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - State precedence proof: Extend existing fleet-view/pilot fixtures for two running workers plus one scope hold, quiet validated work, reviewer-only and main-check-only activity, old maintainer failure with current progress, then workers finishing into a true wait. Include stale/mixed generations, dead/reused identity, disk/exclusive/dependency gates and pause/stop; assert row/header/detail/Needs agreement and no model, control or slot mutation. These new cases are planned, unrun; process existence alone is not a progress oracle.
 - Next action: Reproduce the mixed active-and-held snapshot in existing fake fleet fixtures, then replace transcript-recency-only fallback with the minimum source-bound display precedence and exercise the shared single-frame output. Reuse existing 130-15 provenance when present; label unavailable legacy evidence honestly rather than add a polling repair loop.
 
-
 ### TOOLSET-130-15 — Separate worker activity, delivery evidence and available capacity
 
 - [ ] TOOLSET-130-15 — Separate worker activity, delivery evidence and available capacity
@@ -947,7 +952,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Partial-hold producer parity: Carry the cited independent axes of validated active work, queued/held task causes, fresh main-check/maintainer jobs, actual owner questions and unknown/stale provenance into the existing shared snapshot and CLI/TUI projections. Preserve 129-c4's single-frame precedence and the existing identity/fallback-policy requirements; a global blocked flag cannot override demonstrated current progress, and an auxiliary heartbeat cannot erase a genuine safety or freshness failure. Keep task-level holds and historical failed jobs visible without labeling the whole runner Stuck. Add the composed transition cases to the existing named health/fleet/pilot checks; new cases are unrun. No producer restart, duplicate dashboard or runtime recovery is authorized by planning.
 - Completion-stage projection: Consume the cited engine-authoritative report/terminal, adoption, queued/active verification, qualified integration and canonical-delivery evidence from one generation. A transcript saying committed is not process exit, review or delivery; a pending reviewer-policy invalidation is not an active review. Distinguish current owned work, quiet age, phase/queue duration, session-only integration and actual canonical/remote outcomes without inference from heartbeat/PID/main-green alone. Show completion-first admission reasons and unknown/stale capacity honestly. Reuse existing events for stage-specific wait/qualification timings and repeated-check counts with explicit missing historical coverage; no new telemetry service or refresh mutation. Extend the existing named engine/health/fleet/pilot composition with saturation, report-before-exit, replay/restart and changed qualification inputs. These new cases are unrun; existing source-freshness dependencies and view-only protections remain binding.
 - Verification outcome projection: An integration accepted under existing baseline-equivalent or flaky-rerun policy is not an all-green inventory. Preserve full-run exit, original failures/skips, baseline comparison, rerun results and accepted exception classification in the shared projection; never upgrade them from a generic INTEGRATED label.
-
 
 ### TOOLSET-235-0d — One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read
 
@@ -1035,8 +1039,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Planner's call: Fleet overview first; v for focused details; labelled Overview/Work/Logs tabs with local 1/2/3 navigation; Enter retains its current context. Show one authoritative next action, source freshness and separate execution/verification/to-land counts only where proven. Use neutral semantic color plus text and the existing Textual environment. Wireframe counts/names are illustrative, not runtime evidence.
 - Next action: Reproduce the screenshot's information density with neutral fake fleet data in the existing pilot, then implement the compact overview/runner workspace and the narrow render/read-only identity regressions. Reconcile current headline and overlapping UI work first; do not start another dashboard or modify active runner controls.
 - Builder refinements: Use a dedicated read-only log-navigation action for keyboard and row activation rather than enabling arbitrary run in view-only. Esc from nested inspection returns to its workspace origin, then to fleet; retain existing log q/back. Reserve t without advertising it before 184-1d is delivered. At short height prioritize selected identity, activity/attention, next action and navigation; move optional counts into details. Legacy Lane.minutes is attempt age, not phase age: unavailable phase age/coverage stays unknown and UI observation age never substitutes for producer evidence freshness.
-
-
 
 ### TOOLSET-231-49 — A speculative merge queue validates the next queued commits stacked and lands each that passes in order
 
@@ -1222,7 +1224,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
 - Completion-first fixture alignment: Reuse the cited lifecycle scenarios and existing audit map while thinning the named fixtures; record exactly which unique assertion survives each removal. Keep controlled process/Git evidence for the finish-line boundaries and safety cases, replacing fixed waits with owned milestones where justified. Do not repeat 115-bf's implementation or start another full-gate recovery campaign. Report actual source-bound before/after results only; this planning pass adds no measured speedup.
 
-
 ### TOOLSET-128-69 — Qualify suite thinning and reconcile the test budget
 
 - [ ] TOOLSET-128-69 — Qualify suite thinning and reconcile the test budget
@@ -1236,7 +1237,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Dependencies: TOOLSET-125-e6,TOOLSET-126-6b,TOOLSET-127-b1
 - Ownership: Toolset coordinator; one writer per affected workspace.
 - Exclusions: No live/model runs, new test framework/dependency, publication, hidden test skips, weakened safety cases or changes outside the named batch.
-
 
 ### TOOLSET-133-f5 — Define minimum-sufficient regression protection and test budgets
 
@@ -1329,7 +1329,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 - Command refinement: /pending defaults to five unfinished tasks in human queue order; /done defaults to five latest recorded completions with source/date/partial-history labels. Both share the pending query helper and stay read-only; done never closes a task. Native/portable/Pi and menu fixtures prove both names, argument forwarding, helper closure and absence of a plugin /tasks alias without replacing any Hermes handler. Registration/menu changes are implementation work, not performed by planning.
 
-
 ### TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
 
 - [ ] TOOLSET-122-27 — An autowork command: the TUI home, service runners by default, no tmux
@@ -1365,7 +1364,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator under the owner's request.
 - Current progress: The base full-suite/verbose installer is implemented; missing-harness bootstrap remains unimplemented. The earlier “missing host CLI is skipped” rule is superseded for the selected Pi component only. Historical checkbox-only scope is superseded by the current full/verbose default recorded in 1a955e5; --menu stays supported.
 - Exclusions: Planning does not run the installer, modify Pi/Hermes/profile credentials or model settings, install Node/npm, start Pi interactively, call a model, start/restart services, activate schedules, commit, push, remove the old package or deploy to live profiles. Future implementation is code plus isolated fixtures; real host installation and existing migration steps still need their own authorized operation.
-
 
 ### TOOLSET-144-c0 — Choose repository models and connect Pi provider accounts in Autowork
 
@@ -1538,7 +1536,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: Implement the shared reader/writer and an end-to-end opted-in fixture, then update skills and all named consumers against that boundary.
 - Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
 
-
 ### TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
 
 - [ ] TOOLSET-150-71 — Add a compact active-task index and evidence-preserving history
@@ -1555,7 +1552,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No direct format change in this repository or fleet, archive truncation, runtime/profile installation, live worker repinning, model/provider call, job change or remote publication. Existing task-query work keeps its IDs; adapt its consumer if landed, never recreate it.
 - Next action: Build the focused behavioral regressions on the delivered prerequisite boundary and implement only the named outcome.
 - Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
-
 
 ### TOOLSET-151-01 — Deliver opt-in ledger conversion tools and offline qualification
 
@@ -1574,8 +1570,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: After both support prerequisites are delivered and reviewed, run the write-free preview against a fresh snapshot of this repository, exercise recovery/conservation, and perform its guarded local cutover only when active leases and consumers are compatible. Validate actual compact bytes and archive/contract parity. Do not stop or repin a live attempt to force conversion.
 - Current compact-ledger mandate: The owner now makes 149-df → 150-71 → 151-01 the highest-priority chain and delegates local implementation details. Implement compatible readers/writers first, then active-only TODO/goals, then the guarded first conversion here; do not ask again for those reversible decisions. This supersedes older priority comments and planning-only/no-local-adoption wording only for this chain. Preserve mandatory tests/review, existing IDs, evidence, cumulative attempts, live ownership and genuine pauses. No remote push, service/profile/fleet change, new schedule or destructive history removal. The existing live coordinator remains execution owner; current work is not interrupted.
 
-
-
 ## Needs decision
 
 ### TOOLSET-123-a0 — Reinstall the live Hermes profiles and host plugins as autowork
@@ -1590,7 +1584,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Dependencies: TOOLSET-121-3d.
 - Ownership: Owner or a coordinator with live authorization.
 - Exclusions: No job resumption, cadence, model or delivery change; no direct edits in fleet repositories; no unrelated profile settings changed.
-
 
 ### TOOLSET-129-6c — Qualify landing, push and worktree placement on the live fleet
 
@@ -1667,6 +1660,6 @@ Generated from `goals.json` by `goals.py render`. `met` requires an executed, pa
 | PARALLEL: Run independent Autowork tasks in parallel workers with one coordinator | met | executed <code>TOOLSET-091-00 live 2026-10-15: Pi 1.2.0 workers (gpt-6.1-sol) via pi-autowork.sh on a disposable repo: 2 overlapping workers, sequential integration, C after A, combined check pass, no push, 158 s vs 240 s sequential; SIGKILLed coordinator restart adopted live workers without duplicates. Codex 0.162.1 workers cannot commit in the workspace-write sandbox (sequential fallback). Hermes workers not run by owner decision.</code> → pass | — |
 | POLICY-OPTOUT: Honor the documented runtime-policy opt-out everywhere it is checked | met | executed <code>python3 scripts/check.py --timeout 300 (406/571/197/8 offline tests passed; includes RuntimePolicyOptOutTests; offline only)</code> → pass | — |
 | OMH-SETUP-REPORT: Report OMH memory left off when another provider holds the slot | met | executed <code>python3 scripts/check.py --timeout 300 (410/572/197/8 offline tests passed; includes test_install_omh memory-off regressions; offline only)</code> → pass | — |
-| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-170-f6, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-201-5e, TOOLSET-214-5b, TOOLSET-216-08, TOOLSET-219-2c, TOOLSET-220-71, TOOLSET-222-e1, TOOLSET-223-8e, TOOLSET-224-07, TOOLSET-225-75, TOOLSET-226-d3, TOOLSET-228-0c, TOOLSET-229-d0, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-232-01, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-240-f8, TOOLSET-241-a1, TOOLSET-242-d5, TOOLSET-243-6d, TOOLSET-244-5d, TOOLSET-245-6a, TOOLSET-246-06, TOOLSET-247-5a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-250-49, TOOLSET-251-c4, TOOLSET-252-4c |
+| PI-RUNNER: Run Autowork continuously through Pi with a model fallback | partial | executed <code>TOOLSET-093-01: python3 -m unittest tests/test_pi_autowork.py (20 fake-Pi tests) and shellcheck passed; live --once with openai-codex/gpt-6.1-sol completed one task in a disposable repository; fallback not qualified live</code> → pass; executed <code>TOOLSET-094-65 live 2026-10-15: disposable repository, 5 tasks each completed once; real primary credential failure fell back to openrouter/deepseek/deepseek-v4.1-flash, which resumed and completed the task in the same session; SIGINT mid-task resumed in the same session; no push; tests/test_pi_autowork.py 21 passed</code> → pass; executed <code>TOOLSET-111-b3: four CLI byte-preservation subcases failed then passed; fake-Pi suite 40 passed; python3 scripts/check.py passed 565/715/216/8, one skip/eight excluded modules; exact-source independent review approved; offline only</code> → pass; executed <code>TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run</code> → pass | TOOLSET-096-7e, TOOLSET-099-87, TOOLSET-115-bf, TOOLSET-117-cb, TOOLSET-118-68, TOOLSET-119-2b, TOOLSET-120-fc, TOOLSET-122-27, TOOLSET-125-3c, TOOLSET-126-02, TOOLSET-127-8f, TOOLSET-128-89, TOOLSET-129-6c, TOOLSET-129-c4, TOOLSET-130-15, TOOLSET-131-ac, TOOLSET-132-af, TOOLSET-138-62, TOOLSET-139-62, TOOLSET-144-c0, TOOLSET-145-6d, TOOLSET-147-54, TOOLSET-153-64, TOOLSET-154-d3, TOOLSET-155-e2, TOOLSET-156-75, TOOLSET-158-08, TOOLSET-163-f7, TOOLSET-164-f1, TOOLSET-170-f6, TOOLSET-173-94, TOOLSET-178-47, TOOLSET-179-cf, TOOLSET-182-ce, TOOLSET-184-1d, TOOLSET-192-71, TOOLSET-200-c1, TOOLSET-201-5e, TOOLSET-214-5b, TOOLSET-216-08, TOOLSET-219-2c, TOOLSET-220-71, TOOLSET-222-e1, TOOLSET-223-8e, TOOLSET-224-07, TOOLSET-225-75, TOOLSET-226-d3, TOOLSET-228-0c, TOOLSET-229-d0, TOOLSET-230-bf, TOOLSET-231-49, TOOLSET-232-01, TOOLSET-234-51, TOOLSET-234-d4, TOOLSET-235-0d, TOOLSET-240-f8, TOOLSET-241-a1, TOOLSET-242-d5, TOOLSET-244-5d, TOOLSET-245-6a, TOOLSET-248-60, TOOLSET-249-5b, TOOLSET-250-49, TOOLSET-251-c4, TOOLSET-252-4c, TOOLSET-253-0d |
 
 <!-- goals:coverage:end -->

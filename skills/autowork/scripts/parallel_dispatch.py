@@ -7,6 +7,7 @@ flags that bypass host approvals or sandboxes.
 """
 from datetime import datetime
 import errno
+import fcntl
 import hashlib
 import json
 import os
@@ -227,7 +228,7 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  `git worktree add --detach "$TMPDIR/copy" HEAD`, not a file copy. Install SDKs, toolchains',
         '  and package caches under $AUTOWORK_CACHE/<name>-<version>, shared by this repository\'s',
         '  tasks and reviews (reuse one that is already there); $TMPDIR goes with the task. Use only',
-        '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99.',
+        '  ports from $AUTOWORK_PORT_BASE to $AUTOWORK_PORT_BASE+99: no other worker on this host has them.',
         f'- When done, commit once on {branch}. Never push, rebase, switch branches, or touch',
         '  another worktree. ' + ('Merge or cherry-pick only as permitted in Earlier task work below.'
                                  if earlier else 'Never merge or cherry-pick.'),
@@ -485,6 +486,30 @@ def sweep_retired_tmp(common, current):
             drop_attempt_tmp(record.parent / 'slot-data')
 
 
+PORT_BLOCKS = 127  # 100-port blocks from 20100, below the kernel's ephemeral ports (32768)
+
+
+def port_lease(slot_index):
+    """(base, locked file) for a 100-port block that no other worker on this host holds.
+
+    Slot numbers are per repository, so every runner's first worker got 20100..20199 and two
+    repositories' fixtures collided. The worker inherits the locked file: the block is free
+    again when it exits, however it ends. The slot's own block is tried first."""
+    root = Path(f'/run/user/{os.getuid()}')
+    root = (root if root.is_dir() else Path('/tmp')) / f'autowork-ports-{os.getuid()}'
+    root.mkdir(mode=0o700, exist_ok=True)
+    first = (slot_index - 1) % PORT_BLOCKS
+    for block in sorted(range(PORT_BLOCKS), key=lambda b: (b - first) % PORT_BLOCKS):
+        fd = os.open(root / str(block + 1), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            continue
+        return 20100 + 100 * block, fd
+    raise ValueError(f'every one of the {PORT_BLOCKS} worker port blocks on this host is in use')
+
+
 def launch(argv, worktree, data, slot_index, stdin_path):
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = str(worker_tmpdir(data, slot_index))
@@ -494,12 +519,16 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     # a pinned SDK one task installs is the next task's and every reviewer's too (TOOLSET-169-1d).
     cache = data.parents[2] / 'cache'
     cache.mkdir(exist_ok=True, mode=0o700)
+    base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
-               AUTOWORK_PORT_BASE=str(20000 + 100 * slot_index))
+               AUTOWORK_PORT_BASE=str(base))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
-    with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
-        process = subprocess.Popen(argv, cwd=worktree, env=env, stdin=stdin, stdout=log,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
+            process = subprocess.Popen(argv, cwd=worktree, env=env, stdin=stdin, stdout=log, pass_fds=(lease,),
+                                       stderr=subprocess.STDOUT, start_new_session=True)
+    finally:
+        os.close(lease)
     for _ in range(50):
         found = execution.identity(process.pid)
         if found:
