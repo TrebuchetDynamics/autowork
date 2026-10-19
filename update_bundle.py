@@ -9,6 +9,7 @@ import os
 import re
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import stat
 import sys
@@ -17,6 +18,47 @@ import time
 
 UPSTREAM = 'https://github.com/TrebuchetDynamics/autowork.git'
 PLUGIN = 'autowork'
+HOST_REFRESH_TIMEOUT_S = 300
+HOST_ITEMS = ('autowork', 'tx', 'claude', 'codex')
+
+
+def refresh_hosts(source):
+    """Use the updated release's installer once; host failures never fail Hermes.
+
+    Incremental JSONL receipts survive a timeout. Kill the whole installer process
+    group on expiry, so a native CLI cannot keep installing after we report it.
+    """
+    rows = {}
+    status, code = 'unavailable', None
+    try:
+        if not (source / 'install.sh').is_file():
+            return [{'item': item, 'status': status, 'exit': code} for item in HOST_ITEMS]
+        with tempfile.TemporaryDirectory(prefix='autowork-host-update-') as directory:
+            report = Path(directory) / 'items.jsonl'
+            env = dict(os.environ, AUTOWORK_INSTALL_REPORT=str(report), NO_COLOR='1')
+            with subprocess.Popen(['bash', str(source / 'install.sh'), '--full', '--skip', 'hermes,pi', '-q'],
+                                  cwd=source, stdin=subprocess.DEVNULL, env=env,
+                                  start_new_session=True) as child:
+                try:
+                    code = child.wait(timeout=HOST_REFRESH_TIMEOUT_S)
+                    status = 'failed' if code else 'unreported'
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait()
+                    status = 'timeout'
+            if report.exists():
+                for line in report.read_text(errors='replace').splitlines():
+                    try:
+                        row = json.loads(line)
+                    except ValueError:
+                        continue  # interrupted last write; account for it below
+                    if (isinstance(row, dict) and row.get('item') in HOST_ITEMS
+                            and row.get('status') in ('installed', 'failed', 'skipped')
+                            and (row.get('exit') is None or type(row['exit']) is int)):
+                        rows[row['item']] = {k: row.get(k) for k in ('item', 'status', 'exit')}
+    except (OSError, subprocess.SubprocessError):
+        status, code = 'unavailable', None
+    return [rows.get(item, {'item': item, 'status': status, 'exit': code}) for item in HOST_ITEMS]
 
 
 def plugin_dir(home):
@@ -1379,6 +1421,11 @@ def main(argv=None):
                 result['chat_menus_healed'] = heal_chat_menus(profiles)
                 ready = all(r['status'] == 'ready' for r in result['activation'])
                 result['status'] = ('updated' if changed or missing or healed else 'up_to_date') if ready else 'incomplete'
+                if result['status'] == 'updated':
+                    # The invoking helper can be outside the installed sources; use a
+                    # checkout that apply() actually advanced to the fetched release.
+                    host_source = source if source in plan['sources'] else next(iter(plan['sources']))
+                    result['hosts'] = refresh_hosts(host_source)
                 # A plugin reload rewires handlers, but Telegram menus refresh only on reconnect.
                 if not ready or not (changed or missing or healed):
                     result['gateway_restart'] = 'not_needed'

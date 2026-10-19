@@ -24,7 +24,9 @@ home (`~/.hermes`, or `--hermes-home`/`HERMES_HOME`); a default home that does n
 exist yet counts as missing. The TUI/web view needs `uv`, and using the tmux
 launcher needs `tmux`. A replaced `~/.local/bin/autowork` or `~/.local/bin/tx` is
 kept as `<name>.bak`, then `.bak.1` and so on, so no earlier backup is lost; a
-symlinked `tx` is moved aside, never written through.
+symlinked `tx` is moved aside, never written through. Existing tmux configuration,
+helpers and shell completions are kept, including dangling symlinks; only missing
+files are installed.
 
 Output streams during each install step, including native prompts. Verbose output
 is on by default (`--verbose`) and shows shell-quoted commands; `--quiet` shows summaries and failure diagnostics,
@@ -247,6 +249,34 @@ fits one chat message (outcome, revisions, files written, local edits, healed se
 and menus, gateway restart); `/autowork update status full` shows the whole receipt as JSON. `/autowork update --check`
 fetches upstream and previews changes without advancing checkouts or writing
 profile skills/configuration. It still writes Git fetch metadata and its receipt.
+
+After a changed all-profile update activates successfully, the updater also runs
+that fetched release's `install.sh --full --skip hermes,pi -q` once from its updated
+plugin checkout. This refreshes the `autowork` command/TUI, `tx`, and the Claude Code
+and Codex plugins through the same supported installer used for initial setup.
+Hermes was just updated; Pi package updates remain owned by the runners at their
+safe point. Missing host CLIs are skipped. No privilege escalation or consent flags
+are supplied, and stdin is closed so background updates cannot wait for a person's
+answer. Native host security/dependency requirements still apply.
+
+Host refresh is best effort, with a five-minute limit for the whole installer run;
+on timeout its process group is stopped. It never rolls back or fails a successful
+Hermes update. The receipt's `hosts` list records `item`, `status` and `exit` for
+`autowork`, `tx`, `claude` and `codex`, and chat status adds one `Hosts:` line.
+Completed items retain their outcomes if a later item times out; remaining items
+report `timeout`. An unavailable installer reports `unavailable`; missing or invalid
+item reports use the installer's failure exit, or `unreported` if it exited zero.
+Skipped/unavailable/timed-out items have no item exit code (`null`). The installer
+writes incremental JSONL progress to `AUTOWORK_INSTALL_REPORT` when that internal
+environment variable is set; native output is not parsed as a receipt.
+
+`--check`, scoped local deployments, and pin/unpin operations never run the host
+installer. An `up_to_date` update skips it too: a no-op rerun does not retry failed
+host items. To retry those independently, run `./install.sh --full --skip hermes,pi`
+from the updated checkout. Existing user config, including `~/.tmux.conf` and shell
+completions, is preserved; command replacements retain the `.bak` rule above.
+Offline fixture checks exercise preview mode and a real `install.sh --only tx`
+without contacting host services; they do not establish live plugin acceptance.
 
 An update also self-heals each profile: plugin activation re-applies the bundle's
 command menu, approval and gateway-injection settings, and finalize fails the
