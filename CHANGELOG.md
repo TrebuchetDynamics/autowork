@@ -251,6 +251,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Main's full check waits for a quiet host and a free review slot for at most 30 minutes.
+  With eight workers and batches there was nearly always a review or a load above the core
+  count, so main went unchecked for over two hours while it was red.
 - A review whose verdict line carries a reason after it (`PI_AUTOWORK_VERIFY: pass all
   checks`) passes again. A stricter verdict pattern read every such line as no verdict, so
   each of those reviews failed; only an echo of the prompt's `pass or … fail` line is refused.

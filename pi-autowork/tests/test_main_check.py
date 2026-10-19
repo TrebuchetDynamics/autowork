@@ -282,6 +282,26 @@ class MainCheckTests(unittest.TestCase):
             except ProcessLookupError:
                 pass
 
+    def test_a_busy_host_delays_the_main_check_at_most_half_an_hour(self):
+        """With eight workers a review or a loaded host was nearly always there: main went
+        unchecked for hours while it was red."""
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: [{'task': 'A', 'state': 'integrating'}]
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            with patch('pi_autowork.coordinator.git', return_value='new'), \
+                    patch('os.getloadavg', return_value=(99, 99, 99)):
+                for finished, starts in ((time.time() - 60, False), (time.time() - 3600, True)):
+                    with self.subTest(finished_ago=round(time.time() - finished)):
+                        started.clear()
+                        main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'finished': finished})
+                        runner.check_main()
+                        self.assertEqual(bool(started), starts)
+
     def test_main_check_waiting_is_visible_and_does_not_consume_its_timeout(self):
         from pi_autowork.coordinator import Coordinator
 
