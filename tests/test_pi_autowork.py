@@ -1721,9 +1721,10 @@ class EngineTests(Fixture):
         while not busy.exists():
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.1)
-        with (self.repo / 'TODO.md').open('a') as todo:  # a person edits the backlog meanwhile
+        with (self.repo / 'TODO.md').open('a') as todo:  # a person is still writing the backlog
             todo.write('\n<!-- a note being written -->\n')
-        out, _ = runner.communicate(timeout=120)
+            todo.flush()
+            out, _ = runner.communicate(timeout=120)
         self.assertEqual(runner.returncode, 4, out)
         self.assertRegex(out, r'Merge pending: main in .* could not take pi-autowork/[0-9-]+: .*TODO\.md')
 
@@ -2035,7 +2036,7 @@ class EngineTests(Fixture):
         text = (self.repo / 'TODO.md').read_text()
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
-        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '600'
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '1'
         runner = self.start_runner('--interval', '1')
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
@@ -2043,10 +2044,12 @@ class EngineTests(Fixture):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.2)
         (self.repo / 'TODO.md').write_text(text)  # the owner's answer, left uncommitted
-        os.utime(self.repo / 'TODO.md', (time.time() - 700,) * 2)  # quiet for longer than 600 s
         # Beside other work still being edited: one repository's plan never reached its runner,
-        # because those files kept the planning-only commit from running at all.
+        # because those files kept the planning-only commit from running at all. Quiet time
+        # now starts when the runner observes the bytes, not an artificially aged mtime.
         (self.repo / 'notes.md').write_text('work in progress\n')
+        held_note = (self.repo / 'notes.md').open('a')
+        self.addCleanup(held_note.close)
         deadline = time.monotonic() + 60
         while not self.done('A'):
             self.assertLess(time.monotonic(), deadline, 'runner never saw the uncommitted answer')
