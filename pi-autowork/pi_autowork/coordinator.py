@@ -223,7 +223,7 @@ class Coordinator:
         out.close()
         args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
                 '--integrate', task, '--timeout', str(self.review_limit(task)), '--reviewer-version', self.reviewer_version(),
-                '--base-ref', self.base,
+                '--base-ref', self.base, *(['--batch-order', ','.join(chain)] if (chain := self.batch_chain()) else []),
                 '--run', '/bin/bash', self.process_script, '--verify', str(self.state), task]
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
@@ -252,8 +252,10 @@ class Coordinator:
                 self.process_script, *tasks]
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ)
-        self.integration = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time()}
+        self.integration = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time(),
+                            'members': list(tasks)}
         self.snapshot = None
+        self.batch_members = list(tasks)
         LOG.say(f'Batch of {len(tasks)} candidates ({", ".join(tasks)}): one full check on their merged tree, '
                 'their reviews side by side')
 
@@ -269,7 +271,22 @@ class Coordinator:
             parts.append(f'left out (conflict): {", ".join(result["skipped"])}')
         if result.get('reason'):
             parts.append(str(result['reason']))
+        later = [t for t in getattr(self, 'batch_members', []) if t not in (result.get('tasks') or [])
+                 and t not in (result.get('skipped') or [])]
+        if later:  # past the batch size: they were neither checked nor reported before (11 of 17)
+            parts.append(f'{len(later)} wait for the next batch')
         LOG.say('Batch: ' + '; '.join(parts) + ' — landing them now')
+        # The order they were verified in: each verdict holds only for its step of that chain.
+        order = [t for t in result.get('tasks') or [] if worker.batch_record(self.state, t).exists()]
+        (self.state / 'batch-order.txt').write_text('\n'.join(order) + '\n')
+
+    def batch_chain(self):
+        """Batch-verified candidates not landed yet, in the order the batch verified them."""
+        try:
+            order = (self.state / 'batch-order.txt').read_text().split()
+        except OSError:
+            return []
+        return [t for t in order if worker.batch_record(self.state, t).exists()]
 
     def batch_pending(self):
         """Batch verdicts not used yet: the session holds still for them, or their trees no longer match."""
@@ -1156,6 +1173,8 @@ class Coordinator:
         # wants when asked for another: start that one, never every candidate in turn (13 engine
         # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
         queue = [r['task'] for r in rows if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
+        chain = [t for t in self.batch_chain() if t in queue]
+        queue = chain + [t for t in queue if t not in chain]  # verified together: they land first, in order
         batch = self.batch_due([r['task'] for r in rows if r.get('state') == 'reported' and r['task'] not in handled])
         if batch:
             self.start_batch(batch)
@@ -1569,6 +1588,14 @@ class Coordinator:
         finally:
             self.drop_scratch(scratch)
         done = ok and 'PI_AUTOWORK_RESULT: completed' in text
+        if not done and missing.startswith('a full check that runs to its test results'):
+            # Nothing to install for a crash, and the crash may have been the runner's own (its gate
+            # once ran without $TMPDIR): review it again on this release instead of waiting for a person.
+            if self.engine('--parallel-reverify', task, '--reviewer-version', version + '-env').get('outcome') == 'REVERIFY':
+                self.seen[task] = ''
+                self.settled = True
+                LOG.say(f'{task}: its check crashed and nothing needed installing; verifying it again on this release')
+                return True
         if not done:
             LOG.say(f'{task}: could not install what its review needs ({missing}); it waits for a person')
             return False

@@ -233,6 +233,17 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Candidates a batch verified land first, in the order the batch verified them
+  (`--batch-order`): each verdict holds only for its step of that chain, so a higher-priority
+  task landing between them voided every verdict and the batch's work was lost. Candidates
+  past the batch size are named as waiting for the next batch instead of dropped from the
+  report.
+- A review held because its check crashed is reviewed again on each release when there is
+  nothing to install, instead of waiting for a person: the crash may have been the runner's
+  own, as when its gate ran without `$TMPDIR`.
+- A checkout whose `.git` says `core.bare = true` is named as such, with the command that
+  restores it and a warning to check its `[user]` identity, instead of "A canonical non-bare
+  checkout is required": one repository's own tests had marked it bare and set a test identity.
 - A TUI left open restarts itself on the new release once an update replaces its code,
   between actions and with no dialog open: it kept showing the old release's readings for
   hours after the runners had moved on.

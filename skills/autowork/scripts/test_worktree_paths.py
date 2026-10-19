@@ -39,6 +39,14 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(self.git('branch', '--show-current', cwd=path), branch)
         self.assertEqual(self.git('status', '--porcelain', '--untracked-files=all'), '')
 
+    def test_a_checkout_a_hook_test_marked_bare_is_named_with_its_repair(self):
+        """A test's git commands reached a repository's own .git: bare, with a test identity."""
+        import worktree_paths
+        (self.repo / 'README.md').write_text('a checkout\n')
+        self.git('config', 'core.bare', 'true')
+        with self.assertRaisesRegex(ValueError, r'is a checkout, but .* has core.bare = true.*config core.bare false'):
+            worktree_paths.canonical_root(self.repo)
+
     def test_a_submodule_places_worktrees_in_its_checkout_not_its_git_directory(self):
         """A submodule's Git directory is .git/modules/NAME and `git worktree list` shows it as
         the main worktree; a runner's session was created inside it, with no TODO.md."""

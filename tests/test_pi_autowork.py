@@ -1062,6 +1062,18 @@ class EngineTests(Fixture):
         self.assertIn('the full check crashed before any test result, on the base too: '
                       'Oops; flutter has exited unexpectedly', result.stdout)
 
+    def test_a_crash_with_nothing_to_install_is_reviewed_again_and_lands_once_it_runs(self):
+        """A crash the runner caused (its gate had no $TMPDIR) held a finished task for good."""
+        runs = self.root / 'check-runs'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'  # main's own check would use up the crashing runs
+        # The first review crashes on the merged tree, its rerun and the base: nothing to install.
+        self.env['PI_AUTOWORK_VALIDATE'] = (f'echo run >> {runs}; if [ $(wc -l < {runs}) -le 3 ]; then '
+                                            'echo "bash: TMPDIR: TMPDIR must be set"; exit 1; fi')
+        result = self.run_runner('--until-empty', timeout=240)
+        self.assertIn('A: its check crashed and nothing needed installing; verifying it again on this release',
+                      result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+
     def test_a_full_check_that_crashes_once_is_run_again(self):
         marker = self.root / 'crashed-once'
         self.env['PI_AUTOWORK_VALIDATE'] = (f'if [ ! -e {marker} ]; then touch {marker}; '

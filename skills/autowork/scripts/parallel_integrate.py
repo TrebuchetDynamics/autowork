@@ -396,7 +396,7 @@ def release_unfinished(repo, common, owner_pid, task):
     return {'outcome': 'BUSY', 'task': task, 'reason': 'the repository writer lock stayed busy; integrating again later'}
 
 
-def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
+def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, batch_order=()):
     if not argv or timeout is None or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('--integrate requires --run argv and a positive finite --timeout')
     repo, common = context(repo, owner_pid)
@@ -421,6 +421,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
             # A changed reviewer's second look never jumps ahead of a fresh candidate.
             # Stable sorting preserves TODO priority within each group.
             ordered = sorted((t for t in contracts if t in available), key=lambda t: bool(slots[t].get('reverified')))
+            # Candidates verified together land first, in the order they were verified: each verdict
+            # holds only for its step of that chain, and a task landing between them voided them all.
+            chain = [t for t in batch_order if t in available]
+            ordered = chain + [t for t in ordered if t not in chain]
             first = next(iter(ordered), None)
             if first != task:  # it names the one, so the runner starts it next (TOOLSET-238-11)
                 raise ValueError(f'integrate the highest-priority reported task first: {first}')
