@@ -584,12 +584,13 @@ def main(argv=None):
     parser.add_argument('--state-root', default=os.environ.get('PI_AUTOWORK_STATE_DIR') or f'{state}/pi-autowork')
     parser.add_argument('--env-dir', default=os.environ.get('PI_AUTOWORK_ENV_DIR') or f'{config}/pi-autowork')
     parser.add_argument('--browse-root', default=os.environ.get('AUTOWORK_BROWSE_ROOT'))
+    parser.add_argument('--mouse', action='store_true', help='Capture mouse clicks instead of terminal text selection.')
     parser.add_argument('--view-only', action='store_true', help='Show runners; disable every control key.')
     args = parser.parse_args(argv)
     result = FleetApp(command=args.command, script=args.script, state_root=args.state_root, env_dir=args.env_dir,
                       systemctl=os.environ.get('PI_AUTOWORK_SYSTEMCTL', 'systemctl'),
                       journalctl=os.environ.get('AUTOWORK_JOURNALCTL', 'journalctl'),
-                      agent=fleet_view.blockers_agent(), view_only=args.view_only, browse_root=args.browse_root).run()
+                      agent=fleet_view.blockers_agent(), view_only=args.view_only, browse_root=args.browse_root).run(mouse=args.mouse)
     if result == 'reload':  # the code was updated: the same view, on the new release
         os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()),
                                   *(sys.argv[1:] if argv is None else argv)])

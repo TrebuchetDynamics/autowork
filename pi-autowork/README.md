@@ -53,6 +53,12 @@ In the TUI: Enter opens a runner's full log; `d` browses directories (from `~/gi
 starts its service; `a` start, `s` stop, `R` restart, `p` pause/resume, `m`/`M` model
 and fallback (from Pi's list, type to filter), `u` remove, `x` set aside a held task,
 `b` blockers. Stop, restart, pause, remove, set-aside and model changes ask first.
+Terminal text can be selected by dragging with the mouse, then copied with your
+terminal's copy shortcut (often Ctrl+Shift+C). Mouse capture is off by default;
+keyboard navigation and controls remain available. Use `autowork tui --mouse` to
+restore clickable rows/buttons instead; hold Shift while dragging if your terminal
+or tmux intercepts selection. The browser view retains mouse controls.
+
 The TUI and web view run Textual 8.2.8 (and textual-serve 1.1.3) through `uv`.
 
 Design: [coordinator redesign](../docs/plans/2026-10-16-pi-autowork-coordinator.md),
