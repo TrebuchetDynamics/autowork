@@ -1391,8 +1391,12 @@ finally:
     def test_moved_head_is_remerged_and_revalidated_once(self):
         self.worker()
         argv, marker = self.moving_validation()
+        argv[2] = ('import os,time; fd=int(os.environ["AUTOWORK_CHECK_WAIT_FD"]); '
+                   'os.write(fd,f"{time.monotonic()} 1\\n".encode()); time.sleep(.25); '
+                   'os.write(fd,f"{time.monotonic()} 0\\n".encode()); ' + argv[2])
         result = self.module().integrate(self.repo, self.owner, 'A', argv, 10)
         self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        self.assertGreaterEqual(result['check_slot_wait_seconds'], .5)  # both attempts, not just the final one
         self.assertEqual(marker.read_text(), '2')
         self.assertEqual(self.git('show', 'HEAD^1:B.txt'), '0')
         self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')

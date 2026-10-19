@@ -261,7 +261,8 @@ def _snapshot(repo, common, now):
                 failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
                                                   and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
-                metrics=metrics(events, now))
+                metrics=metrics(events, now),
+                **({'merge_backlog': observed['merge_backlog']} if 'merge_backlog' in observed else {}))
 
 
 def render(value):

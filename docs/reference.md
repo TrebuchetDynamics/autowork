@@ -142,7 +142,24 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | --- | --- | --- |
 | `HERMES_HOME` | Setup, skill installer, `install-plugins.sh` | Default Hermes root when `--hermes-home` is absent. A named-profile home (`ROOT/profiles/NAME`) resolves to `ROOT`. Defaults to `~/.hermes`. `/autowork update` uses the running profile's Hermes root the same way. |
 | `OMH_HOME` | [`install-omh.py`](../install-omh.py) | An exported or `.env` binding is preserved as the OMH store location; see [memory](memory.md). |
+<<<<<<< 26c13b9bcdf3e88224c1f0b5fd5be937d168e25c
+| `PI_AUTOWORK_MERGE_BACKLOG` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog`, `admit` | Finished commits waiting to merge before fresh dispatch can pause; default `3`, `0` disables. Counts slots with commits in `reported` or `integrating`, not held or already integrated work. |
+| `PI_AUTOWORK_MERGE_BACKLOG_AFTER` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog` | Oldest finished commit's queue age in seconds before the count gate pauses fresh dispatch; default `1200`. Queue time starts at reporting, not worker launch. Nonnegative integers; invalid settings use their defaults. |
+=======
+| `PI_AUTOWORK_CHECK_SLOTS` | [`main_check.py`](../pi-autowork/pi_autowork/main_check.py), [`worker.py`](../pi-autowork/pi_autowork/worker.py) | Host-wide full-check concurrency per user: default CPU count divided by 8, rounded down, at least 1; `0` disables admission. Set consistently across runners. Main checks, merged-tree gates and base runs share flock slots; focused worker checks do not. Waiting reports `waiting for a check slot, N ahead` (running checks plus earlier waiters) in main/worker status. The check and integration timeout budgets exclude slot waiting; check execution keeps its full timeout (`PI_AUTOWORK_VALIDATE_TIMEOUT`, default 3600 s). Does not change `scripts/check.py`'s own job count or the dispatch resource gate. |
+>>>>>>> 2820d575b97cae4f8d3513f0ae83698de338e742
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing, from each profile's `.env` (not the process environment) | For each distinct bot token, the chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
+
+Once both merge-backlog thresholds are met, fresh tasks show
+`wait for N finished commits to merge`. Running workers and restartable/interrupted
+work continue; no worker is stopped and the worker-count setting is unchanged.
+Fresh admission resumes automatically on a later dispatch cycle once the waiting
+commit count falls below the threshold (or the gate is disabled), even after a
+coordinator restart. The pause stays in effect while the count remains at or above
+the threshold, even if the oldest commit merges first. The runner's
+[`health.py`](../pi-autowork/pi_autowork/health.py) records one pause and one resume
+announcement per episode, including the recorded integration hold reason when
+available. This is a wait, not a request for a decision.
 
 ## Files and state
 
@@ -152,5 +169,6 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | `ROOT/maintenance/toolset-update/restart.json` | Updater | The last gateway restart the updater requested (process ID), or its deferred-restart waiter (process ID, latest chat-turn count), plus `covers`, the updates that restart will load; used to report progress, avoid overlapping restarts and record the outcome on each covered update. Once finished, also `finished` and the recorded `outcome`, which status shows when a later receipt replaced the covered one. |
 | `ROOT/maintenance/toolset-update/pinned/NAME-*/` | `hermes autowork pin` | One pin: `record.json` (profile, link, checkout, revision), the saved `link`, and after unpinning the kept clone (`unpinned-*`). |
 | `ROOT/maintenance/toolset-update/run.log` | Updater | Output of updates started with `/autowork update` and of gateway restarts the updater requests; terminal `hermes autowork update` prints to the terminal. |
+| `${XDG_RUNTIME_DIR:-/run/user/UID}/autowork-checks-UID/` | Pi runner full checks | Shared per-user slot locks and FIFO waiter tickets, independent of repository and task `$TMPDIR`; falls back to `/var/tmp/autowork-checks-UID/` when the runtime directory is unavailable. Slot locks live with their file descriptors, including in the check subprocess: a dead check cannot leave a stale lock. Do not delete slot/mutex files while runners are active. |
 | `TODO.md`, `goals.json`, `TODO.archive.md` (project) | Docs Sync, Autowork | Work queue, its machine index and completed-task history. |
 | `docs/roles.json` (project, optional) | Docs Sync | Document role manifest. |

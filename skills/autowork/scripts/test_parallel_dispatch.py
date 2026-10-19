@@ -352,6 +352,75 @@ class DispatchTests(unittest.TestCase):
         self.assertNotIn('PLAN', [s['task_id'] for s in state.slots(self.common)])
         with self.assertRaisesRegex(execution.NoEligibleTask, 'ready for planning'):
             execution.select(self.repo, 'PLAN', None)
+    def test_merge_backlog_pauses_only_fresh_dispatch_until_it_drains(self):
+        """Finished commits take precedence, without stopping interrupted work."""
+        # As in the answered-question fixture, integration's subreaper is process-wide.
+        import ctypes
+        libc, subreaper = ctypes.CDLL(None), ctypes.c_int()
+        self.assertEqual(libc.prctl(37, ctypes.byref(subreaper), 0, 0, 0), 0)
+        self.addCleanup(lambda: libc.prctl(36, subreaper.value, 0, 0, 0))
+        for number, (count, age, setting, after, paused) in enumerate(
+                [(3, 1260, '3', '1200', True), (2, 1260, '3', '1200', False),
+                 (3, 300, '3', '1200', False), (3, 1260, '0', '1200', False),
+                 (3, 300, '3', '60', True), (3, 1260, '-1', '1200', True),
+                 (3, 300, '3', '-1', False)]):
+            with self.subTest(count=count, age=age, setting=setting):
+                self.repo = self.root / f'backlog-{number}'
+                self.repo.mkdir()
+                self.git('init', '-q')
+                self.git('config', 'user.email', 'fixture@example.invalid')
+                self.git('config', 'user.name', 'Fixture')
+                self.write_todo(*(task(t, t.lower() + '.txt') for t in ('A', 'B', 'C', 'OLD', 'F')))
+                self.git('add', '.')
+                self.git('commit', '-qm', 'base')
+                self.common = state.common_dir(self.repo)
+                baseline = self.git('rev-parse', 'HEAD')
+                now = time.time()
+                with patch.object(time, 'time', return_value=now - age - 3600):
+                    state.claim(self.repo, self.owner, max_workers=2)
+                    for tid in ['A', 'B', 'C'][:count] + ['OLD']:
+                        root, branch, base = dispatch.create_worktree(self.repo, self.common, tid, baseline)
+                        state.create_slot(self.repo, self.owner, tid, worktree=str(root), branch=branch, baseline=base)
+                # A long worker runtime is not time spent waiting to merge.
+                with patch.object(time, 'time', return_value=now - age):
+                    for slot in state.slots(self.common):
+                        tid, root = slot['task_id'], Path(slot['worktree'])
+                        if tid == 'OLD':
+                            state.transition(self.repo, self.owner, tid, 'interrupted')
+                        else:
+                            (root / (tid.lower() + '.txt')).write_text(tid)
+                            self.git('add', '.', repo=root)
+                            self.git('commit', '-qm', tid, repo=root)
+                            commit = self.git('rev-parse', 'HEAD', repo=root)
+                            slot = state.transition(self.repo, self.owner, tid, 'reported', commit=commit)
+                            execution.save(dispatch.data_dir(self.common, slot) / 'report.json',
+                                           dict(task=tid, commit=commit, changed_files=[tid.lower() + '.txt'],
+                                                blockers=[], checks=[], pending_live=[]))
+                self.set_spec({'OLD': {'sleep': 60}, 'F': {'sleep': 60}})
+                with patch.dict(os.environ, PI_AUTOWORK_MERGE_BACKLOG=setting,
+                                PI_AUTOWORK_MERGE_BACKLOG_AFTER=after):
+                    try:
+                        _, result = self.apply('--tasks', 'OLD,F')
+                        self.assertEqual([s['task'] for s in result['dispatched']],
+                                         ['OLD'] if paused else ['OLD', 'F'])
+                        if paused:
+                            reason = 'wait for 3 finished commits to merge'
+                            self.assertEqual(result['waiting'], [{'id': 'F', 'reason': reason, 'blocked_by': []}])
+                            _, again = self.apply('--tasks', 'OLD,F')
+                            self.assertEqual(again['dispatched'], [])
+                            _, status = self.run_cli('--parallel-status', '--json', worker=False)
+                            self.assertTrue(status['merge_backlog']['paused'])
+                            self.assertEqual(next(t for t in status['tasks'] if t['task'] == 'F')['reason'], reason)
+                            self.assertEqual(status['roots'], [])  # a wait, not a question
+                            _, integrated = self.run_cli('--integrate', 'A', '--timeout', '10',
+                                                         '--run', 'true', worker=False)
+                            self.assertEqual(integrated['outcome'], 'INTEGRATED', integrated)
+                            _, resumed = self.apply('--tasks', 'OLD,F')
+                            self.assertEqual([s['task'] for s in resumed['dispatched']], ['F'])
+                            _, status = self.run_cli('--parallel-status', '--json', worker=False)
+                            self.assertFalse(status['merge_backlog']['paused'])
+                    finally:
+                        self.stop_workers()
 
     def test_dependent_task_waits_until_its_dependency_is_done(self):
         self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))

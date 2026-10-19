@@ -838,8 +838,53 @@ def waiting_streaks(common, now=None):
     return {tid: now - start for tid, start in since.items()}
 
 
+def merge_backlog(common, current, *, now=None, env=os.environ):
+    """Back-pressure from finished commits; only queue time counts, not worker runtime.
+
+    The journal keeps the queue clock and pause across coordinator restarts. A pause
+    lasts until the count drops below the threshold, even if the oldest merges first.
+    """
+    limits = {}
+    for name, default in (('MERGE_BACKLOG', 3), ('MERGE_BACKLOG_AFTER', 1200)):
+        try:
+            value = int(env.get('PI_AUTOWORK_' + name, str(default)))
+            limits[name] = value if value >= 0 else default
+        except ValueError:
+            limits[name] = default
+    queued = {s['task_id']: s for s in current
+              if s['state'] in ('reported', 'integrating') and s.get('commit')}
+    result = dict(paused=False, count=len(queued))
+    threshold = limits['MERGE_BACKLOG']
+    if not threshold or len(queued) < threshold:
+        return result
+    since, paused = {}, False
+    try:
+        with (common / 'journal.jsonl').open() as stream:
+            for line in stream:
+                if '"slot_changed"' not in line and '"dispatch_observed"' not in line:
+                    continue
+                event = json.loads(line)
+                if event.get('event') == 'dispatch_observed':
+                    paused = bool((event.get('merge_backlog') or {}).get('paused'))
+                elif event.get('event') == 'slot_changed' and event.get('task_id') in queued:
+                    tid = event['task_id']
+                    if event.get('state') in ('reported', 'integrating'):
+                        since.setdefault(tid, event['timestamp'])
+                    else:
+                        since.pop(tid, None)
+    except FileNotFoundError:
+        pass
+    now = time.time() if now is None else now
+    age = max(0, now - min(since.values())) if since else 0
+    result.update(paused=paused or bool(since and age >= limits['MERGE_BACKLOG_AFTER']), oldest_seconds=age)
+    held = [s for s in queued.values() if s.get('writers_busy_reason')]
+    if held:
+        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at', 0))['writers_busy_reason']
+    return result
+
+
 def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected,
-          drain_after=None, waited=None, finished=()):
+          drain_after=None, waited=None, finished=(), merge_backlog=None):
     """Admission in two passes, so it agrees with integration about who owns a file
     (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
     held commit that only conflicts with them at integration does not stop them, or each
@@ -853,6 +898,10 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
                    drain_after=drain_after, waited=waited, finished=finished)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
+    if merge_backlog and merge_backlog['paused']:
+        second['waiting'].extend({'id': t['id'], 'reason': f'wait for {merge_backlog["count"]} finished commits to merge',
+                                  'blocked_by': []} for t in second['dispatch'])
+        second['dispatch'] = []
     # Overlap with an interrupted owner never holds new work either (TOOLSET-161-17).
     return {'dispatch': first['dispatch'] + second['dispatch'], 'waiting': first['waiting'] + second['waiting']}
 
@@ -900,10 +949,12 @@ def dispatch_locked(args, repo, common, count, template, host):
     claimed = [t['id'] for t in candidates if (t['id'] not in slotted or t['id'] in restartable)
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
+    backlog = merge_backlog(common, occupying)
     planned = admit(candidates, running, restartable, occupying, everything=everything,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
                     drain_after=drain_after(), waited=waiting_streaks(common),
-                    finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)})
+                    finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)},
+                    merge_backlog=backlog)
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])
@@ -975,9 +1026,9 @@ def dispatch_locked(args, repo, common, count, template, host):
         pending_ids = {v['id'] for v in waiting}
         pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)} | closed)
                              if v['id'] not in pending_ids]
-        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
+        state.event(common, 'dispatch_observed', waiting=pending, max_workers=count, merge_backlog=backlog)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,
-            'active_workers': active, 'dispatched': started, 'waiting': waiting,
+            'active_workers': active, 'dispatched': started, 'waiting': waiting, 'merge_backlog': backlog,
             'adopted': [d['task'] for d in started if d['task'] in idle],
             'timed_out': [s['task_id'] for s in timeouts], 'slots': slots,
             'next': {'DISPATCHED': 'Run --wait to block until a worker finishes, then review its report.',

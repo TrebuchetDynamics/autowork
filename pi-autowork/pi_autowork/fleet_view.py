@@ -152,7 +152,7 @@ def _phases(state_dir):
     return found
 
 
-PHASE_WORDS = ('waiting to integrate', 'set aside', 'verifying', 'implemented', 'integrating', 'integrated',
+PHASE_WORDS = ('waiting for a check slot', 'waiting to integrate', 'set aside', 'verifying', 'implemented', 'integrating', 'integrated',
                'running', 'pending', 'paused', 'done', 'failed', 'held', 'closed')
 
 
@@ -268,6 +268,8 @@ QUIET_AFTER = 300
 
 def doing(lane):
     """What a worker is doing now, in plain words."""
+    if lane.phase == 'waiting for a check slot':
+        return 'waiting for a check slot, ' + (lane.detail or '0 ahead')
     if lane.phase == 'waiting to integrate':
         return 'waiting to integrate: ' + (lane.detail or 'another integration first')
     if lane.phase in ('integrating', 'integrated'):
@@ -280,7 +282,8 @@ def doing(lane):
 
 def quiet(lane):
     """'quiet 12m' when the worker's last action is QUIET_AFTER seconds or older, else ''."""
-    if lane.activity_age is None or lane.activity_age < QUIET_AFTER or lane.phase == 'waiting to integrate':
+    if (lane.activity_age is None or lane.activity_age < QUIET_AFTER
+            or lane.phase in ('waiting to integrate', 'waiting for a check slot')):
         return ''
     return 'quiet ' + duration(lane.activity_age // 60)
 
@@ -418,6 +421,11 @@ def lanes(runner, now=None):
             continue
         task = slot.get('task_id', path.stem)
         phase, detail = phases.get(task, (PHASES[slot['state']], ''))
+        if slot['state'] == 'integrating' and runner.state_dir:
+            # Both the merged and base suites publish here; a dead invocation is never a live wait.
+            progress = main_check.slot_status(Path(runner.state_dir) / 'full-check' / f'{task}.status.json')
+            if progress.get('state') == 'waiting' and main_check.alive(progress.get('pid')):
+                phase, detail = 'waiting for a check slot', f"{progress.get('ahead', 0)} ahead"
         started = slot.get('started_at')
         activity, age = _activity(runner.state_dir, task, now) if runner.state_dir else ('', None)
         out.append(Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),
