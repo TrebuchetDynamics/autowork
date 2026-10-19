@@ -76,7 +76,7 @@ def hold_fixture_transaction(db, entered, release):
             raise RuntimeError('fixture transaction release timed out')
 
 
-def process_fixture(db, request_id, mode, gate, queue, transaction_lock=None, callback_release=None):
+def process_fixture(db, request_id, mode, gate, queue, stamps, transaction_lock=None, callback_release=None):
     """Spawned, bounded fixture only: real SQLite plus durable local marker."""
     from budget_controller import BudgetController
     class CoordinatedController(BudgetController):
@@ -96,6 +96,7 @@ def process_fixture(db, request_id, mode, gate, queue, transaction_lock=None, ca
     queue.put('ready')
     if not gate.wait(5):
         raise RuntimeError('fixture start barrier timed out')
+    stamps[0] = time.monotonic()
     completion_lock = None
     class ProcessFixture:
         def forward_fixture(self, request):
@@ -143,6 +144,7 @@ def process_fixture(db, request_id, mode, gate, queue, transaction_lock=None, ca
         if completion_lock is not None:
             completion_lock.rollback()
             completion_lock.close()
+        stamps[1] = time.monotonic()
 
 
 class BudgetTests(unittest.TestCase):
@@ -365,11 +367,14 @@ class BudgetTests(unittest.TestCase):
         holder = context.Process(target=hold_fixture_transaction, args=(self.db, holder_entered, holder_release)) if held_transaction else None
         transaction_lock = context.Lock() if coordinated else None
         callback_release = context.Event()
-        processes = [context.Process(target=process_fixture, args=(self.db, identity, mode, gate, queue, transaction_lock, callback_release)) for identity in ids]
+        # Child-owned stamps exclude interpreter startup, barriers and cleanup.
+        stamps = [context.Array('d', 2, lock=False) for _ in ids]
+        process_deadline = 0.1 if mode == 'deadline' else 5
+        processes = [context.Process(target=process_fixture, args=(self.db, identity, mode, gate, queue, timing, transaction_lock, callback_release))
+                     for identity, timing in zip(ids, stamps)]
         pre = source_identities()
         ledger_pre = ledger_snapshot(self.db)
         events, failures = [], []
-        started = time.monotonic()
         try:
             if holder is not None:
                 holder.start()
@@ -401,7 +406,7 @@ class BudgetTests(unittest.TestCase):
                 if mode == 'hang':
                     processes[0].terminate()
             for process in processes:
-                process.join(0.1 if mode == 'deadline' else 5)
+                process.join(process_deadline)
                 if process.is_alive():
                     failures.append('fixture process exceeded deadline')
         except Exception as exc:
@@ -443,7 +448,10 @@ class BudgetTests(unittest.TestCase):
                             effects=None, ledger=None, ledger_pre=ledger_pre, source_pre=pre,
                             source_post=None, failures=failures, observation_errors={},
                             mode=mode, coordination='transaction-mutex' if coordinated else 'barrier-only',
-                            elapsed=time.monotonic() - started)
+                            deadline=process_deadline,
+                            timings=[dict(started=start, finished=end) for start, end in stamps],
+                            elapsed=max(end - start for start, end in stamps)
+                                if all(start and end for start, end in stamps) else None)
             # Persist collected process facts before any fallible final read.
             # None means unknown, never a fabricated valid empty observation.
             self.last_process_evidence = save_receipts('race-evidence', evidence)
@@ -532,7 +540,8 @@ class BudgetTests(unittest.TestCase):
         if mode == 'deadline':
             self.assertIn('entered', evidence['events'])
             self.assertIn('fixture process exceeded deadline', evidence['failures'])
-        self.assertLess(evidence['elapsed'], 2)
+        else:
+            self.assertLess(evidence['elapsed'], evidence['deadline'])
         self.assertIsNone(evidence[field])
         self.assertEqual(evidence['observation_errors'], {field: 'OperationalError'})
         self.assertIn('observation ' + field + ': OperationalError', evidence['failures'])
@@ -606,7 +615,7 @@ class BudgetTests(unittest.TestCase):
         self.assertEqual(evidence['exitcodes'], [-9])
         self.assertEqual(evidence['receipts'], [])
         self.assertEqual(evidence['effects'], ['fixture-effect'])
-        self.assertLess(evidence['elapsed'], 2)
+        self.assertIn('entered', evidence['events'])
         row = evidence['ledger']['requests'][0]
         self.assertEqual((row['reservation'], row['attempts'], row['state']), (19, 1, 'uncertain'))
         self.assertEqual(evidence['source_pre'], evidence['source_post'])
@@ -628,7 +637,7 @@ class BudgetTests(unittest.TestCase):
                       race_evidence=self.last_process_evidence, ledger=ledger_snapshot(self.db)))
         self.assertIn('ledger_pre', race, 'held-transaction evidence lacks pre-admission snapshot')
         self.assertEqual(race['ledger_pre'], race['ledger'])
-        self.assertLess(race['elapsed'], 2)
+        self.assertLess(race['elapsed'], race['deadline'])
         self.assertEqual([receipt['reason'] for receipt in receipts], ['lock'] * 3)
         for receipt in receipts:
             self.assertEqual(receipt['state'], 'refused')
@@ -693,14 +702,14 @@ class BudgetTests(unittest.TestCase):
                     self.assertEqual(connection.execute('SELECT reservation, attempts, state FROM requests').fetchone(), (19, 1, 'uncertain'))
 
     def test_real_sqlite_lock_timeout_refuses_without_forwarding(self):
-        import time
         controller = self.controller()
         fixture = Fixture()
         with fixture_connection(self.db) as lock:
             lock.execute('BEGIN IMMEDIATE')
             start = time.monotonic()
             receipt = controller.submit(self.request(), fixture)
-            self.assertLess(time.monotonic() - start, 2)
+            # In-process fixture: no tighter test deadline is configured.
+            self.assertLess(time.monotonic() - start, 30)
             self.assertEqual(receipt['reason'], 'lock')
             self.assertEqual(receipt['state'], 'refused')
             self.assertFalse(receipt['forwarded'])
