@@ -91,6 +91,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No editing of the task's `Dependencies:` line by the engine; the docs maintainer may still record it.
 - Planner's call: Now, after TOOLSET-251-c4. A worker that has found the order the plan missed has told the runner exactly what to wait for; turning that into a wait, rather than a question and a slot that still blocks, removes a whole class of deadlocks between exclusive work and its dependents.
 
+### TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
+
+- [ ] TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-19); [full-suite gate](pi-autowork/pi_autowork/worker.py) (`base_result` caches `full-check/base-<rev>.json` by exact revision); TOOLSET-233-ba in [the archive](TODO.archive.md) (the session now takes main between reviews, so its head moves often, mostly by planning commits); `PLANNING_FILES` in [integration](skills/autowork/scripts/parallel_integrate.py).
+- Evidence (2026-10-19 02:57-03:58, this repository's runner): one candidate's gate took about 60 minutes. The merged-tree suite ran 29 minutes and failed some load-sensitive runner journeys. Isolated reruns took 5 minutes. Then a base suite ran 27 minutes on `c7689a5`, a `docs(blockers): questions for the owner` commit whose only change from the already-cached base `491ef4a` was BLOCKERS.md. Of the 7 consecutive base runs cached on this runner, 3 repeated a cached base whose tree differed only in planning files. Reviews here run one at a time, so each such run delays every waiting candidate by about half an hour.
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py
+- Scope: (1) Base results are also indexed by tree, with the planning-file paths' blobs left out of the key: a tree ID computed with `PLANNING_FILES` and `docs/` removed. Two revisions with the same key share a base result. (2) `base_result` looks up that key before running the suite, and records both the exact revision and the key. (3) The same command is still required. A key match under another command runs again.
+- Acceptance: In fixtures: a base cached at revision R is reused for a revision that adds only a BLOCKERS.md or TODO.md change, with no suite run (counted by a command that appends to a file); a revision that also changes a source file runs the base suite; a different check command runs it again.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No reuse across revisions that differ in any file outside the planning set, and no change to when the base suite is needed.
+- Planner's call: Now, after TOOLSET-252-4c. One review at a time is this runner's bottleneck: five verified candidates waited behind an hour-long gate. Planning-only commits cannot change test results, so their base runs are pure delay, and they are frequent because questions and closures land as planning commits between reviews.
+
 ### TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
 
 - [ ] TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
