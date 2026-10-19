@@ -509,6 +509,19 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual(freed['closed_on_base'], ['A'])
         self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
 
+    def test_a_held_slot_of_a_task_closed_on_the_base_is_set_aside_not_retried(self):
+        """A held task closed on main kept its slot and was even retried fresh."""
+        self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'blockers': ['needs a device']},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        self.apply('--base-ref', 'trunk')
+        self.wait_until_idle()
+        self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'))
+        _, freed = self.apply('--base-ref', 'trunk')
+        self.assertEqual(freed.get('closed_on_base'), ['A'], freed)
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
+        self.assertNotIn('A', [d['task'] for d in freed.get('dispatched') or []])
+
     def test_a_task_closed_only_on_the_base_never_starts(self):
         self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
                            task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))

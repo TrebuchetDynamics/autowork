@@ -1260,7 +1260,8 @@ def retry_held(args):
             return {'outcome': 'RETRIED', 'task': task['id'], 'slot': slot}
 
 
-RETIRABLE = ('dispatched', 'running', 'interrupted', 'released', 'reported')
+# Held too: a held slot whose task was closed on main kept its place and was even retried fresh.
+RETIRABLE = ('dispatched', 'running', 'interrupted', 'released', 'reported', 'held')
 
 
 def retire_closed(args):
