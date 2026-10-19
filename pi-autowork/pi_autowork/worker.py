@@ -38,7 +38,10 @@ REVIEW = ('You are an independent reviewer verifying task {task} in {checkout}, 
 # The runner's full check on the merged tree is the one trusted full run (TOOLSET-227-a8).
 GATE = (' The runner already ran the repository\'s full check (`{command}`) on this merged tree: {outcome}. '
         'Its log is {log}. Do not run the full check again; read that log, and rerun only individual tests you '
-        'need to examine. A Checks entry naming the full check is satisfied by that run.')
+        'need to examine. Every Checks entry that runs tests the full check also runs (a test file, a test '
+        'directory or the full check itself) is satisfied by that run: do not run it again. Run only a check '
+        'the full check does not cover, such as a lint, a build or a script, and single tests to settle a doubt. '
+        'Rerunning whole test files took most of every review\'s 20 to 40 minutes.')
 # Offline completion is separate from live qualification (AGENTS.md): checks recorded as
 # pending live become their own TASK-LIVE follow-up, so they must not fail the review.
 LIVE = (' Checks that need a physical device, hardware, production or live services, or a person cannot run '

@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A review no longer reruns the task's test Checks that the runner's full check already ran
+  on the same merged tree; it runs only checks the full check does not cover, and single
+  tests to settle a doubt. Rerunning whole test files took most of every review's 20 to 40
+  minutes, and one review at a time held every runner's queue.
 - Verified candidates waiting together integrate as a batch: one full check on their merged tree and
   their reviews side by side, then each lands on its recorded verdict. One runner had landed six tasks a
   day, one review at a time, while nine waited.
