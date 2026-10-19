@@ -1176,17 +1176,30 @@ class Coordinator:
     def reverify_after_timeout(self, task, version):
         """A review that ran out of time is run again on the same commit, with twice the limit it
         had, up to the cap: no worker reruns and no attempt is spent (TOOLSET-196-fb)."""
-        given = self.timeout_limits.get(task) or self.review_limit()
-        if given >= self.REVIEW_CAP and self.seen.get('timeout-capped-' + task):
+        _, dispatch = touches_inference.modules(self.toolset)
+        if dispatch.resource_gate(0, float(self.min_free_mb), self.integ):
+            return  # a host/check-only worker hold waits for a quieter host too
+        try:
+            slot = json.loads((Path(self.cfg['git_common']) / 'autowork-execution/slots' / (task + '.json')).read_text())
+            prior = re.search(r'\.t(\d+)$', str(slot.get('reverified') or ''))
+            durable_limit = min(self.REVIEW_CAP, int(prior[1])) if prior else 0
+        except (OSError, ValueError, TypeError):
+            durable_limit = 0
+        given = max(self.timeout_limits.get(task) or self.review_limit(), durable_limit)
+        if given >= self.REVIEW_CAP and (durable_limit >= self.REVIEW_CAP or self.seen.get('timeout-capped-' + task)):
             return
         limit = int(min(self.REVIEW_CAP, 2 * given))
-        if self.engine('--parallel-reverify', task, '--reviewer-version', f'{version}.t{limit}').get('outcome') != 'REVERIFY':
+        result = self.engine('--parallel-reverify', task, '--reviewer-version', f'{version}.t{limit}')
+        if result.get('outcome') != 'REVERIFY':
             return
         self.seen['timeout-capped-' + task] = limit >= self.REVIEW_CAP
         self.timeout_limits[task] = limit
         self.seen[task] = ''
         self.settled = True
-        LOG.say(f'{task}: its review ran out of time; reviewing the same commit again with a {limit // 60}-minute limit')
+        if result.get('resume_worker'):
+            LOG.say(f'{task}: the host has room again; resuming the same attempt to commit its finished work')
+        else:
+            LOG.say(f'{task}: its review ran out of time; reviewing the same commit again with a {limit // 60}-minute limit')
 
     def check_main(self):
         """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once
@@ -1864,7 +1877,10 @@ class Coordinator:
                 else:
                     self.draining = True
                     LOG.say(f'Stopping after {self.failures} failed tasks in a row; finishing running tasks')
-        if not self.draining:
+        # Draining excludes fresh work, not a paused attempt's existing unfinished work.
+        resumes = [r['task'] for r in self.tasks() if self.draining and r.get('state') == 'interrupted'
+                   and r.get('paused') and (not self.once_task or r['task'] == self.once_task)]
+        if not self.draining or resumes:
             chosen, reason = self.choose_model()
             if not chosen:
                 reason = reason or 'primary and fallback not ready'
@@ -1874,15 +1890,15 @@ class Coordinator:
                 return self.blocked_pause(f'no usable model: {reason}')
         self.runner_blocker = ''
         result = {}
-        if not self.draining and time.monotonic() < self.pause_until:
+        if (not self.draining or resumes) and time.monotonic() < self.pause_until:
             outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
-        elif not self.draining:
+        elif not self.draining or resumes:
             # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
-                                 '--base-ref', self.base)
+                                 '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
@@ -1995,6 +2011,11 @@ class Coordinator:
         if self.in_flight():
             self.engine('--parallel', str(self.workers), '--max-workers', '8', '--wait', '--timeout', '5')
             return
+        if self.draining and any(r.get('state') == 'interrupted' and r.get('paused')
+                                 and (not self.once_task or r['task'] == self.once_task) for r in self.tasks()):
+            if outcome in ('WAITING', 'PAUSED'):
+                self.pause(self.interval)  # do not spin on a resource-gated same-attempt resume
+            return  # dispatch only these same-attempt resumes on the next cycle, even in --once
         if outcome in ('WAITING', 'BLOCKED', 'PAUSED'):
             # Tasks remain, but none can start now (held work, dependencies or the resource gate).
             if self.mode != 'continuous':

@@ -133,7 +133,8 @@ def verify(repo, common, slot, contracts):
     blockers = state.report_blockers(common, slot)
     if blockers:
         raise ReportedBlocker(state.blocker_reason(blockers))
-    report['pending_live'] = live_items(report.get('pending_live'))
+    for field in ('pending_live', 'unrelated_failures', 'environment_failures'):
+        report[field] = live_items(report.get(field))
     mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
     if mismatch:
         raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
@@ -963,6 +964,15 @@ def reverify(repo, owner_pid, task, version):
     with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
         state.require_owner(common, owner_pid)
         slot = slot_for(common, task)
+        if (slot and slot['state'] == 'held' and slot.get('cause') == 'timeout'
+                and not slot.get('commit') and dispatch.check_failure_resumed(slot)
+                and not state.worker_live(slot) and slot.get('reverified') != version):
+            # No commit exists yet: resume its finished dirty work, never a fresh -r2 worker.
+            state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
+            value = {k: v for k, v in slot.items() if k not in ('reason', 'cause')}
+            value.update(state='interrupted', paused=True, reverified=version)
+            state.write_slot(common, value, slot)
+            return {'outcome': 'REVERIFY', 'task': task, 'version': version, 'resume_worker': True}
         if slot is None or not reverifiable(slot, version):
             raise ValueError('reverify is only for a commit held by validation, once per validator version; '
                              'the same verdict on the same commit stays held')

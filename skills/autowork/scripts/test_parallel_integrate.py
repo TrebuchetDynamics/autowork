@@ -604,6 +604,22 @@ finally:
         self.assertEqual(self.module().live_items(['a', '', '  ', None, {'command': 'adb'}]), ['a', 'adb'])
         self.assertEqual(self.module().live_items(None), [])
 
+    def test_advisory_check_failures_integrate_but_do_not_override_the_gate(self):
+        self.worker()
+        slot = state.slots(self.common)[0]
+        data = dispatch.data_dir(self.common, slot) / 'report.json'
+        report = execution.read(data)
+        execution.save(data, dict(report, unrelated_failures=' test_old ',
+                                  environment_failures=[{'command': 'flutter test', 'summary': 'tool crashed'}, '', None]))
+        held = self.module().integrate(self.repo, self.owner, 'A', ['false'], 10)
+        self.assertEqual((held['outcome'], held['cause']), ('HELD', 'validation'))
+        self.module().reverify(self.repo, self.owner, 'A', 'fixed-gate')
+        result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(result['outcome'], 'INTEGRATED', result)
+        saved = state.slots(self.common)[0]['report']
+        self.assertEqual(saved['unrelated_failures'], ['test_old'])
+        self.assertEqual(saved['environment_failures'], ['flutter test — tool crashed'])
+
     def test_held_retry_is_fresh_once_and_preserves_first_branch(self):
         root, commit = self.worker()
         state.transition(self.repo, self.owner, 'A', 'held', reason='fixture failure')
