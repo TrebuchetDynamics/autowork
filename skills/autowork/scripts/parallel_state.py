@@ -85,8 +85,8 @@ def event(common, kind, **fields):
 
 def claim(repo, owner_pid, *, profile='', max_workers=2):
     owner = execution.owner_identity(owner_pid)
-    if type(max_workers) is not int or not 1 <= max_workers <= 8:
-        raise ValueError('max_workers must be between 1 and 8')
+    if type(max_workers) is not int or not 1 <= max_workers <= 16:
+        raise ValueError('max_workers must be between 1 and 16')
     common = common_dir(repo)
     workspace = str(Path(execution.git(repo, 'rev-parse', '--show-toplevel')).resolve())
     with execution.lock(common / 'writer.lock'):
