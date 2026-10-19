@@ -282,7 +282,7 @@ class WorkerTmpTests(unittest.TestCase):
         git('add', '-A')
         git('commit', '-qm', 'base')
         runs = Path(self.temp.name) / 'runs'
-        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_ok (test_mod.T.test_ok)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "CHECK . (1 modules)"; echo "FAIL: test_ok (test_mod.T.test_ok)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
         self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
         state = Path(self.temp.name) / 'flaky'
         (self.repo / 'a.txt').write_text('merged\n')
@@ -290,7 +290,7 @@ class WorkerTmpTests(unittest.TestCase):
         git('commit', '-qm', 'merged')
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 1)  # the merged run only
-        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_red (test_mod.T.test_red)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "CHECK . (1 modules)"; echo "FAIL: test_red (test_mod.T.test_red)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 3)  # red alone too: the base, red as well, decides
 
