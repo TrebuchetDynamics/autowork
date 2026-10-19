@@ -145,11 +145,12 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(slots[tid]['commit'], self.git('rev-parse', 'HEAD', repo=worktree))
             self.assertEqual(self.git('symbolic-ref', '--short', 'HEAD', repo=worktree), 'autowork/' + tid)
             self.assertEqual(times[tid, 'start']['slot'], slot_no)
-            self.assertEqual(times[tid, 'start']['port_base'], str(20000 + 100 * int(slot_no)))
+            self.assertEqual(int(times[tid, 'start']['port_base']) % 100, 0)  # a leased block, any free one
             self.assertLessEqual(len(times[tid, 'start']['tmpdir'].encode()), 48)
             # TOOLSET-169-1d: one toolchain cache for every task of the repository, kept after they close.
             self.assertEqual(times[tid, 'start']['cache'], str(self.common / 'cache'))
             self.assertFalse(times[tid, 'start']['marker'])
+        self.assertNotEqual(times['A', 'start']['port_base'], times['B', 'start']['port_base'])
         self.assertTrue((self.common / 'cache').is_dir())
         prompt = (self.common / 'slot-data/A/attempt-1/prompt.md').read_text()
         for text in ('Task: A', 'Touches: a.txt', 'Never edit TODO.md', 'Report file: ', '- Touches: a.txt'):
