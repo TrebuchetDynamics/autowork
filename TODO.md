@@ -146,6 +146,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to the memory or disk floors, or to the load threshold for a runner's second and later workers. No cross-runner coordination file.
 - Planner's call: third in Now, after the two integration-throughput tasks. One worker per runner means every repository progresses; a Pi worker mostly waits on the model, and the threshold still caps everyone's extra workers. A host-wide fair-share scheduler would need state shared between runners; this rule gets most of the benefit without it.
 
+### TOOLSET-238-11 — Only the candidate the engine will integrate next is started, and only it reads 'verifying'
+
+- [ ] TOOLSET-238-11 — Only the candidate the engine will integrate next is started, and only it reads 'verifying'
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`settle`: for every reported row it logs `note_state(task, 'integrating')`, starts an engine `--integrate` child and waits up to 5 s for a quick refusal); [integration](skills/autowork/scripts/parallel_integrate.py) (`integrate` raises `integrate the highest-priority reported task first` for any other task, and `integrated` drops that refusal silently).
+- Evidence (2026-10-18 17:55-17:56, this repository's runner, right after a reload): with 13 reported candidates, the log printed `<task>: verifying` for all 13 within a minute, and the runner launched 13 engine integration processes in a row. Every one but the first was refused at once for priority order. Only one candidate is ever reviewed at a time, so the log and the TUI lanes said 13 reviews were running, and each wrong guess cost an engine process (a ledger parse and a lock round) on a loaded host.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py
+- Scope: (1) The engine's priority refusal names the task that goes first: `integrate the highest-priority reported task first: <id>`. It honors the writers-busy skip from TOOLSET-223-8e. (2) `settle` starts the candidate the status rows put first. On that refusal it starts the named task next, and at most once per cycle; it never walks the whole list. (3) `verifying` is logged when the engine accepted the integration (its child is still running after the quick wait, or it answered INTEGRATED or HELD), never before starting it. The other reported candidates show `implemented — waiting to integrate (<n> ahead)` in status and the TUI lanes. That isn't logged per cycle.
+- Acceptance: In a runner fixture with three reported candidates whose reviews are slow, the log has exactly one `verifying` line at a time, and the run starts one engine integration per review (counted from the runs or engine log), not one per candidate; the refusal text names the first task; the TUI lanes show the others as waiting with their place.
+- Checks: python3 -m unittest tests/test_pi_autowork.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to integration order or to one review at a time.
+- Planner's call: Now, after TOOLSET-222-e1: small, and it removes a false picture (13 reviews "running") that the owner and the fleet monitor read every pass, plus a burst of wasted engine processes after every reload.
+
 ### TOOLSET-229-d0 — A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold
 
 - [ ] TOOLSET-229-d0 — A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold
