@@ -357,7 +357,7 @@ class FleetViewTests(unittest.TestCase):
         self.assertTrue(tui_web.loopback('127.0.0.1') and tui_web.loopback('localhost') and tui_web.loopback('::1'))
         self.assertFalse(tui_web.loopback('0.0.0.0') or tui_web.loopback('100.64.0.5'))
         self.assertEqual(tui_web.command('/bin/autowork', '/opt/pa.sh', python='/py'),
-                         f'/py {tui_web.TUI} --command /bin/autowork --script /opt/pa.sh')
+                         f'/py {tui_web.TUI} --command /bin/autowork --script /opt/pa.sh --mouse')
         self.assertTrue(tui_web.command('autowork', 'pa.sh', view_only=True).endswith('--view-only'))
 
     @unittest.skipUnless(shutil.which('uv'), 'uv is not installed')

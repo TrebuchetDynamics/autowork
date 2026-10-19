@@ -3,9 +3,13 @@
 Notable implemented changes. Commit references identify source history, not a
 claim of a tagged release, completed installation or live workflow qualification.
 
-## Unreleased
+## [Unreleased]
 
 ### Changed
+
+- The terminal TUI leaves mouse dragging to terminal text selection by default.
+  `autowork tui --mouse` opts into clickable controls; keyboard navigation and
+  browser mouse controls remain available.
 
 - The merge backlog that pauses fresh dispatch now defaults to twice the worker
   count instead of a fixed 3 commits, so a full pool's batch no longer leaves an

@@ -19,7 +19,7 @@ TUI = Path(__file__).with_name('tui.py')
 
 def command(autowork, script, view_only=False, python=sys.executable):
     """The command textual-serve runs for each browser session."""
-    argv = [python, str(TUI), "--command", autowork, "--script", script] + (['--view-only'] if view_only else [])
+    argv = [python, str(TUI), "--command", autowork, "--script", script, "--mouse"] + (['--view-only'] if view_only else [])
     return shlex.join(argv)
 
 

@@ -4707,3 +4707,26 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to how a single-batch plan is saved.
 - Planner's call: the skills start a chain only after the runner can run planning tasks (the dependency), so no planning task lands where a code worker would take it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-275-c1"></a>
+
+### TOOLSET-275-c1 — Select and copy terminal TUI text by mouse dragging
+
+- [x] TOOLSET-275-c1 — Select and copy terminal TUI text by mouse dragging
+- Status: done
+- Goal: PI-RUNNER
+- Sources: [accepted continuous runner](docs/project.md#continuous-pi-runner-2026-10-15); owner request and picked clarification (2026-10-19): select and copy TUI text with the mouse.
+- Touches: pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/command.py, pi-autowork/pi_autowork/tui_web.py, pi-autowork/tests/test_tui_mouse.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/README.md, CHANGELOG.md, tests/test_tx.py
+- Verification repair: A full check exposed the tx-help guard matching the dynamic config path instead of commands. Force an autowork-named fixture directory, exclude only the Current config-path line, preserve source/unknown-command guards and add a negative control for actual tx autowork help. First full run had an intermittent planning/merge failure; isolated reruns on candidate and base passed. Retain both failed full runs; do not describe them as passes.
+- Scope: Terminal startup leaves mouse reporting off so the terminal handles drag selection and normal copy shortcuts. Preserve keyboard navigation/actions, view-only restrictions and reload argv. Offer explicit autowork tui --mouse for clickable controls; browser sessions retain mouse capture. Do not change services, profiles, jobs or clipboard contents.
+- Acceptance: Pinned Textual startup tests cover default mouse=False and opt-in mouse=True, public CLI forwarding and browser capture. Existing headless pilot retains keyboard/confirmation behavior. A real isolated PTY renders the TUI and quits by keyboard in both modes; capture sequences are absent by default and present with --mouse. Actual client clipboard behavior is not claimed from fixtures. Full offline check and source review pass; source installation remains separate.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_tui_mouse.py pi-autowork/tests/test_fleet_view.py tests/test_autowork_command.py; python3 scripts/check.py; isolated PTY protocol probe; git diff --check.
+- Dependencies: None.
+- Ownership: Interactive Autowork implementation owner; preserve unrelated main-check edits and live workers.
+- Qualification: Source implementation is complete. Focused TUI/native-command and headless-pilot tests passed; isolated PTY runs rendered both modes, confirmed default mouse-reporting absence versus explicit capture and keyboard quit, and contacted no services. The final complete python3 scripts/check.py passed on source snapshot 29b6d08459fbfb7dc016c6e20d43f9c139dc30c9 (five test directories, zero failed, eight excluded modules); final source review found no issues. Two earlier full runs failed and are retained, including the planning/merge intermittent failure and the corrected tx config-path guard. Actual client clipboard behavior and installed activation are not qualified.
+- Next action: No source reimplementation remains. Load the updated TUI through the existing authorized installation/update path; client clipboard qualification remains a separate observation. No installation, runner restart, job resumption, clipboard access or push is included in this closeout.

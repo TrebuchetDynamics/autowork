@@ -374,6 +374,8 @@ def uv_python(*packages):
 def cmd_tui(args, paths):
     argv = uv_python(TEXTUAL) + [str(COMPONENT / 'pi_autowork' / 'tui.py'), '--command', self_path(),
                                  '--script', script(paths)] + (['--view-only'] if args.view_only else [])
+    if args.mouse:
+        argv.append('--mouse')
     os.execvp(argv[0], argv)
 
 
@@ -466,6 +468,7 @@ def parser():
     web.add_argument('--view-only', action='store_true')
     tui = sub.add_parser('tui', help='the live TUI (also: autowork with no command)')
     tui.add_argument('--view-only', action='store_true')
+    tui.add_argument('--mouse', action='store_true', help='Capture clicks; default allows terminal text selection')
     for name, help_text in (('pause', 'stop the service and keep it off'), ('resume', 'start a paused service again')):
         item = sub.add_parser(name, help=help_text)
         item.add_argument('target', nargs='?')

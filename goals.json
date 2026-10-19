@@ -613,9 +613,18 @@
           "result": "pass"
         },
         {
-          "anchor": "toolset-268-7a",
+          "anchor": "toolset-275-c1",
           "archive": "TODO.archive.md",
           "coverage_current": true,
+          "kind": "executed",
+          "ref": "python3 scripts/check.py; final source snapshot 29b6d08459fbfb7dc016c6e20d43f9c139dc30c9; exit 0; PTY mouse modes and keyboard quit passed; source reviews deleg_d7ba23a9 and deleg_341185ee; prior failed runs retained",
+          "result": "pass",
+          "summary": "Terminal drag selection: offline gate, PTY and source review pass",
+          "task": "TOOLSET-275-c1"
+        },
+        {
+          "anchor": "toolset-268-7a",
+          "archive": "TODO.archive.md",
           "kind": "executed",
           "ref": "python3 scripts/check.py; source snapshot 3667c78722254a0082c69c10d6a09fd445c39035; full offline exit 0; independent source review deleg_915d468e; live gateway unqualified",
           "result": "pass",
@@ -783,7 +792,8 @@
         "TOOLSET-271-d6",
         "TOOLSET-272-1c",
         "TOOLSET-273-e0",
-        "TOOLSET-274-f0"
+        "TOOLSET-274-f0",
+        "TOOLSET-275-c1"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -826,6 +836,7 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-275-c1",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
       "TOOLSET-259-ca",
@@ -3166,6 +3177,14 @@
       "section": "Done",
       "status": "done",
       "title": "Chat status shows repository runners separately from plugin setup"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-275-c1",
+      "section": "Done",
+      "status": "done",
+      "title": "Select and copy terminal TUI text by mouse dragging"
     },
     {
       "depends_on": [
