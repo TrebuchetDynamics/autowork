@@ -243,7 +243,8 @@ nothing parallel was claimed or started.
   this task's local `autowork/<TASK>-set-aside-N` branches (including retired `-r2`
   attempts) and previous attempt branches, excluding the current branch. Each has
   its tip commit, commit date and changed files, newest tip first. Changed files
-  are measured from the merge-base of that tip and the new attempt's baseline.
+  are measured from the merge-base of that tip and the new attempt's baseline;
+  unrelated histories retain their tips with the changed-file list marked unknown.
   All refs are reachable from the worker's worktree without fetching. Only when
   the current task asks to keep or continue earlier work may the worker merge or
   cherry-pick from those tips; otherwise it must ignore them. Nothing is applied
@@ -265,9 +266,15 @@ nothing parallel was claimed or started.
   dead worker with a commit becomes `reported` (keeping any uncommitted changes),
   one with only uncommitted changes `interrupted`, one with neither `released`, and
   one whose HEAD left the baseline `held`. No task gets a second worker.
-- **Name collisions:** a worktree is adopted only when the journal shows Autowork
-  created it. A user branch or folder with the target name is left untouched and
-  dispatch returns `ACTION_REQUIRED` until it is resolved by hand.
+- **Name collisions:** [dispatch](../scripts/parallel_dispatch.py) adopts a clean, idle
+  journaled task worktree after verifying its identity. An orphan task branch without commits
+  beyond the dispatch baseline is removed with `git branch -d` and journaled as
+  `stale_branch_removed`; otherwise its work is kept under the next free
+  `-set-aside-N` name. A clean, idle task worktree can be removed without force before
+  this recovery. Dirty worktrees (including ignored files), unrelated paths and
+  branches checked out elsewhere are preserved: only that task waits, while
+  independent tasks dispatch. [Slot retirement](../scripts/parallel_integrate.py)
+  also skips existing set-aside names, preserving earlier attempts.
 - **Resources:** a worker starts only while MemAvailable is at least twice
   `--min-free-mem-mb` (default 1500): one worker's budget plus as much spare, however
   many already run, since their memory is already out of MemAvailable. The 1-minute

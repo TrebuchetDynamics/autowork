@@ -736,16 +736,19 @@ finally:
         root, retry, commit = self.exhaust()
         module = self.module()
         self.assertTrue(state.exhausted(state.slots(self.common)[0]))
+        # Dispatch may already have preserved an orphan branch before this slot existed.
+        self.git('branch', 'autowork/A-set-aside-1', self.baseline)
         result = module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual((result['outcome'], result['previous_state']), ('SET_ASIDE', 'held'))
         self.assertEqual(state.slots(self.common), [])
         self.assertFalse(root.exists() or retry.exists())
-        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), commit)
-        self.assertEqual(Path(str(retry) + '-set-aside-1', 'wip.txt').read_text(), 'unsaved\n')  # dirty: kept
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), self.baseline)
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-2'), commit)
+        self.assertEqual(Path(str(retry) + '-set-aside-2', 'wip.txt').read_text(), 'unsaved\n')  # dirty: kept
         # TOOLSET-210-53: the clean first attempt's worktree (and its build output) is gone; its branch is kept.
-        self.assertFalse(Path(str(root) + '-set-aside-1').exists())
+        self.assertFalse(Path(str(root) + '-set-aside-2').exists())
         self.assertTrue(any(r.get('worktree_removed') for r in result['renamed']), result['renamed'])
-        self.assertTrue((self.common / 'slot-history' / 'A' / '1' / 'slot.json').exists())
+        self.assertTrue((self.common / 'slot-history' / 'A' / '2' / 'slot.json').exists())
         self.assertFalse((self.common / 'slot-data' / 'A').exists())
         # The task dispatches fresh under its original names.
         fresh, branch, _ = dispatch.create_worktree(self.repo, self.common, 'A', self.baseline)

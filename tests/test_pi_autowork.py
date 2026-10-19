@@ -31,7 +31,10 @@ def setUpModule():
     _toolset_fixture = tempfile.TemporaryDirectory()
     ROOT = Path(_toolset_fixture.name) / 'toolset'
     subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
-    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py', 'scripts/pi-autowork.sh']
+    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py',
+             'pi-autowork/pi_autowork/cli.py', 'pi-autowork/pi_autowork/main_check.py',
+             'pi-autowork/pi_autowork/maintainer.py', 'pi-autowork/pi_autowork/worker.py',
+             'scripts/pi-autowork.sh']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
     if patch:
