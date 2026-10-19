@@ -2039,6 +2039,21 @@ finally:
         self.addCleanup(dispatch.stop, slot['worker'])
         return slot
 
+    def test_a_conflict_hold_planned_first_does_not_stop_the_retry_of_another_hold(self):
+        """The retry plan covers every first-attempt hold; a conflict hold is not retried fresh,
+        and naming it first raised KeyError in every engine cycle."""
+        self.worker()
+        state.transition(self.repo, self.owner, 'A', 'held', reason='merge conflict', cause='conflict')
+        self.worker('B')
+        state.transition(self.repo, self.owner, 'B', 'held', reason='failure')
+        args = self.retry_args()
+        args.worker_command = json.dumps([sys.executable, '-c', 'import time; time.sleep(60)'])
+        from unittest.mock import patch
+        with patch.object(dispatch, 'resource_gate', return_value=''):
+            result = self.module().retry_held(args)
+        self.assertEqual((result['outcome'], result.get('task')), ('RETRIED', 'B'), result)
+        self.addCleanup(dispatch.stop, next(s for s in state.slots(self.common) if s['task_id'] == 'B')['worker'])
+
     def test_bounded_retry_runs_beside_independent_worker(self):
         root, commit = self.worker()
         state.transition(self.repo, self.owner, 'A', 'held', reason='failure')

@@ -1348,7 +1348,9 @@ def retry_held(args):
                 return {'outcome': 'IDLE'}
             # Attempt number is not a mutex: use ordinary parallel admission.
             planned = dispatch.retry_plan(repo, current, args.tasks, args.plan)
-            task = next(iter(planned['dispatch']), None)
+            # The plan covers every first-attempt hold; a conflict hold it may name first is not
+            # retried here (its KeyError stopped the engine every cycle).
+            task = next((t for t in planned['dispatch'] if t['id'] in held), None)
             if task is None:
                 return {'outcome': 'IDLE'}  # unrelated fresh work may still fill spare slots
             template, host = dispatch.worker_command(args, args.owner_pid)
