@@ -157,22 +157,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No skipping of the runner's own full-suite gate. Failures the change causes still fail the check and the task.
 - Planner's call: third in Now, after the two integration-hold tasks (raised 2026-10-18 17:18: it held finished work in three repositories in one pass). Under the load this fleet runs at, a full gate is rarely clean, and every finished worker that obeys the current prompt turns into a question only the runner can answer. The runner's gate already separates new failures from old and flaky ones, so the worker needs no veto.
 
-### TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
-
-- [ ] TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: fleet monitoring (2026-10-18); [writer check](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`, `touches_none_of`: a session in the main checkout blocks integrating elsewhere when the merge changes a file it left uncommitted); `integrate` (`integrate the highest-priority reported task first`); [landing](pi-autowork/pi_autowork/coordinator.py) (`commit_owner_changes` commits quiet owner edits before merging, and `merge_main` keeps the branch when the main checkout cannot take it).
-- Evidence (2026-10-18 13:36, this repository's runner): 8 verified candidates were waiting to integrate and status said `1 verified commit(s) wait for another session in the main checkout (runner, holds 56)`. An interactive planning session had kept TODO.md uncommitted in the main checkout for over 90 minutes while running a polling loop, so it counted as active. Three of the candidates change TODO.md and goals.json (their own Status lines), which made the session a blocker for them. Because integration takes reported tasks strictly in priority order, the first blocked candidate also held back the ones that touch no planning file.
-- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
-- Scope: (1) In `touches_none_of`, uncommitted planning files in the main checkout (TODO.md, goals.json, the TODO archive and BLOCKERS.md) do not count: integration merges in the session worktree, and the landing step already reconciles owner planning edits or keeps the branch. A planning file the session holds open for writing still counts. (2) A reported task refused with `WritersBusy` is recorded on its slot (`writers_busy_at` plus the reason). For the next 10 minutes, the highest-priority-first rule skips it, so the next reported task integrates. It goes back in its place once that time passes or the writer is gone. (3) The coordinator's status line names which candidate waits and why, and how many integrate meanwhile.
-- Acceptance: In fixtures: a main checkout with an uncommitted TODO.md edit and a live session there does not stop a candidate whose merge changes TODO.md, and the later landing commits the owner's edit first; a session holding a source file the merge changes still blocks that candidate; a higher-priority candidate blocked by a writer lets a lower-priority one integrate in the same cycle, and is integrated itself after the writer leaves.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to the landing step's own refusals or to how sessions are detected. A file the session holds open for writing still blocks.
-- Planner's call: second in Now, after TOOLSET-221-8e. Interactive planning is the normal way the owner works, and every task's own Status edit made it block the whole integration queue.
-
 ### TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
 
 - [ ] TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
