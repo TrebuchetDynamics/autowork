@@ -499,7 +499,7 @@ def status_view(repo, base, toolset, state):
     except (OSError, ValueError, KeyError):
         pass
     for row in (snapshot.get('tasks') or [])[:40]:
-        print(f"  {str(row.get('task')):<12} {lifecycle(row.get('state') or ''):<12} "
+        print(f"  {str(row.get('task')):<12} {lifecycle(row.get('state') or '', paused=row.get('paused')):<12} "
               f"{row.get('reason') or row.get('blocked_reason') or ''}")
 
 

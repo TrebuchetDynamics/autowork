@@ -357,6 +357,7 @@ class Fixture(unittest.TestCase):
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
+                    'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',  # tiny fixtures also run on a small TMPDIR
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
                     'XDG_STATE_HOME': str(self.root / 'xdg')}
@@ -1083,9 +1084,21 @@ class EngineTests(Fixture):
                                 '--owner-pid', str(sleeper.pid)], capture_output=True, text=True)
         self.assertEqual(json.loads(claim.stdout)['outcome'], 'BUSY', claim.stdout)
         self.assertIn('parallel coordinator', claim.stdout)
+        slots = self.repo / '.git/autowork-execution/slots'
+        b = json.loads((slots / 'B.json').read_text())
+        (Path(b['worktree']) / 'B.txt').write_text('unfinished')
         runner.send_signal(signal.SIGINT)
         out, _ = runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130, out)
+        reason = 'stopped by a runner restart; resumes on attempt 1'
+        self.assertIn('A: paused — ' + reason, out)
+        self.assertIn('B: paused — ' + reason + ' with uncommitted changes', out)
+        self.assertNotIn(': failed', out)
+        status = self.run_runner('--status')
+        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
+        self.assertIn('0 failed', status.stdout)
+        for task, suffix in (('A', ''), ('B', ' with uncommitted changes')):
+            self.assertRegex(status.stdout, rf'{task}\s+paused\s+{reason}{suffix}')
         signals = [json.loads(l) for l in self.log.read_text().splitlines() if '"signal"' in l]
         self.assertEqual(sorted(s['task'] for s in signals), ['A', 'B'], out + self.log.read_text()[-1500:])
         result = self.run_runner('--until-empty')
@@ -1315,6 +1328,7 @@ class EngineTests(Fixture):
         time.sleep(3)
         self.assertIsNone(runner.poll(), log())  # still serving, not finished
         self.assertNotIn('Finished.', log())
+        self.assertIn('A: failed — dead worker without a commit or changes', log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)

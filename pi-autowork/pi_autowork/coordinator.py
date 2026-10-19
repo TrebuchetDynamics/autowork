@@ -911,11 +911,11 @@ class Coordinator:
         raise Finish(code, text)
 
     # --- Coordinator -------------------------------------------------------------------
-    def note_state(self, task, state, reason='', quiet=False):
+    def note_state(self, task, state, reason='', quiet=False, *, paused=False):
         """Log each task's lifecycle change once. A waiting task is not news (the runner's
         one `No task can start now` line covers them), and states already reached when the
         runner started are not replayed (quiet)."""
-        word = lifecycle(state)
+        word = lifecycle(state, paused=paused)
         if self.seen.get(task) == word:
             return
         self.seen[task] = word
@@ -979,13 +979,11 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            if state == 'interrupted' and row.get('paused'):
-                state = 'resuming'  # a deliberate stop or a granted request, not a failure
             if (state == 'held' and row.get('cause') == 'conflict' and not self.session_busy()
                     and self.resolve_task_conflict(row)):
                 self.settled = True
                 continue
-            self.note_state(task, state, reason, quiet=not self.known_at_start)
+            self.note_state(task, state, reason, quiet=not self.known_at_start, paused=row.get('paused'))
             if task == self.once_task and state == 'held':
                 self.draining = True
             # Only a failure this run watched happen counts toward the streak; holds found

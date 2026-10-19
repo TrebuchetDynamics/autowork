@@ -212,8 +212,12 @@ def _snapshot(repo, common, now):
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
                          paused=bool(slot.get('paused')), blocked_by=[]))
         gate = current.get(task, {})
-        if slot['state'] in ('interrupted', 'released', 'held') and any(
-                by.startswith('Live authorization: ') for by in gate.get('blocked_by', [])):
+        authorization = any(by.startswith('Live authorization: ') for by in gate.get('blocked_by', []))
+        if slot.get('paused') and slot['state'] in ('interrupted', 'released'):
+            waiting = gate if authorization else pending.get(task)
+            if waiting:
+                rows[-1]['reason'] = '; '.join(filter(None, (slot.get('reason'), 'waiting: ' + waiting['reason'])))
+        elif slot['state'] in ('interrupted', 'released', 'held') and authorization:
             rows[-1].update(state='waiting', reason=gate['reason'], blocked_by=gate['blocked_by'])
         pending.pop(task, None)
     # Include dependencies and pre-existing sequential claims that have no slot.
@@ -241,7 +245,8 @@ def _snapshot(repo, common, now):
                          **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
     return dict(outcome='PARALLEL_STATUS', workspace=str(repo), active_workers=active, max_workers=capacity,
                 tasks=rows, roots=roots(rows), completed=sum(r['state'] == 'closed' for r in rows),
-                failed=sum(r['state'] in ('held', 'interrupted', 'released') for r in rows),
+                failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
+                                                  and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),
                 metrics=metrics(events, now))
 
@@ -253,7 +258,8 @@ def render(value):
     lines = ['AUTOWORK — PARALLEL', f"Workers: {value['active_workers']}/{value['max_workers']} active",
              f"{'Task':<20} {'State':<12} {'Slot':>4} {'Elapsed':>9}  Blocked reason"]
     for row in value['tasks']:
-        lines.append(f"{text(row['task'], 20):<20} {row['state']:<12} {str(row['slot'] or '-'):>4} "
+        word = 'paused' if row.get('paused') and row['state'] in ('interrupted', 'released') else row['state']
+        lines.append(f"{text(row['task'], 20):<20} {word:<12} {str(row['slot'] or '-'):>4} "
                      f"{row['elapsed_seconds']:>8.1f}s  {text(row['reason'] or '-', 70)}")
     lines.append(f"Completed: {value['completed']}  Failed: {value['failed']}  Integration queue: {value['integration_queue']}")
     m = value['metrics']
