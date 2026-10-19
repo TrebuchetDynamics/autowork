@@ -777,7 +777,13 @@
         "TOOLSET-265-16",
         "TOOLSET-266-7a",
         "TOOLSET-267-a0",
-        "TOOLSET-268-7a"
+        "TOOLSET-268-7a",
+        "TOOLSET-269-f2",
+        "TOOLSET-270-a9",
+        "TOOLSET-271-d6",
+        "TOOLSET-272-1c",
+        "TOOLSET-273-e0",
+        "TOOLSET-274-f0"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -785,6 +791,12 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
+      "TOOLSET-269-f2",
+      "TOOLSET-270-a9",
+      "TOOLSET-271-d6",
+      "TOOLSET-272-1c",
+      "TOOLSET-273-e0",
+      "TOOLSET-274-f0",
       "TOOLSET-252-4c",
       "TOOLSET-234-d4",
       "TOOLSET-230-bf",
@@ -1127,6 +1139,54 @@
       "section": "Now",
       "status": "open",
       "title": "Route planning-file writes through the docs maintainer without losing owner edits"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-269-f2",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner never commits or publishes uncommitted changes it did not make (GitHub #3)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-270-a9",
+      "section": "Now",
+      "status": "open",
+      "title": "Pushing is opt-in, and autowork start applies or refuses the settings it is given (GitHub #4)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-271-d6",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker-side merge leaves planning files as the base has them, and a hold the runner caused is recovered (GitHub #7)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-272-1c",
+      "section": "Now",
+      "status": "open",
+      "title": "A Touches-only rescope that adds a protected file integrates against the answered contract, or is refused plainly (GitHub #8)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-273-e0",
+      "section": "Now",
+      "status": "open",
+      "title": "Planning merge drivers survive a toolset self-update (GitHub #5)"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-274-f0",
+      "section": "Now",
+      "status": "open",
+      "title": "An unusable repository stops the service deliberately instead of a restart loop (GitHub #6)"
     },
     {
       "depends_on": [],
