@@ -1257,15 +1257,6 @@ def retry_held(args):
             if unlanded is not None:
                 slot = state.reoffer(common, dict(unlanded, cause='stale_validation'))
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
-            # A commit held for a merge conflict is offered again once: integration repeats the
-            # resolver on current main. Technical recovery, like the validation re-offer above;
-            # an explicit `clear-held` asks for the same thing again later.
-            conflicted = next((s for s in current if s['state'] == 'held' and s.get('commit')
-                               and not state.worker_live(s) and s.get('cause') == 'conflict'
-                               and 'conflict' not in state.reoffered(s)), None)
-            if conflicted is not None:
-                slot = state.reoffer(common, conflicted)
-                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
             # A worker that stopped to ask for files outside Touches (an earlier release told it

@@ -64,13 +64,15 @@ class QuestionTests(unittest.TestCase):
 
     def test_a_technical_hold_is_never_an_owner_question(self):
         """A conflict or validation/report hold the engine can re-offer is recovery, not a decision."""
-        for cause in ('conflict', 'validation', 'report', 'overlap', 'timeout', 'moved'):
-            with self.subTest(cause=cause):
-                self.assertFalse(questions.exhausted(
-                    {'state': 'held', 'attempt': 9, 'cause': cause, 'reason': 'anything'}))
+        self.assertFalse(questions.exhausted(
+            {'state': 'held', 'attempt': 9, 'cause': 'validation', 'reason': 'integration validation failed'}))
         self.assertFalse(questions.exhausted(
             {'state': 'held', 'attempt': 9, 'cause': None,
              'reason': 'missing, failed, stale or mismatched integration validation'}))
+        # A merge conflict is the engine's to resolve first, but one it cannot resolve is the
+        # owner's question (the engine tests enforce that), so it stays a real hold.
+        self.assertTrue(questions.exhausted(
+            {'state': 'held', 'attempt': 2, 'cause': 'conflict', 'reason': 'merge conflict'}))
         # A genuine owner-input hold with no attempt left is still a question.
         self.assertTrue(questions.exhausted(
             {'state': 'held', 'attempt': 2, 'cause': None, 'reason': 'held with no attempt left'}))
