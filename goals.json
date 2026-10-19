@@ -746,7 +746,8 @@
         "TOOLSET-244-5d",
         "TOOLSET-245-6a",
         "TOOLSET-246-06",
-        "TOOLSET-247-5a"
+        "TOOLSET-247-5a",
+        "TOOLSET-248-60"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -811,6 +812,7 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-248-60",
       "TOOLSET-245-6a",
       "TOOLSET-234-51",
       "TOOLSET-231-49",
@@ -1664,6 +1666,14 @@
       "section": "Next",
       "status": "open",
       "title": "A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-248-60",
+      "section": "Next",
+      "status": "open",
+      "title": "An idle runner with an empty queue rests: no new session until the plan or main changes"
     },
     {
       "depends_on": [

@@ -1127,6 +1127,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Next
 
+### TOOLSET-248-60 — An idle runner with an empty queue rests: no new session until the plan or main changes
+
+- [ ] TOOLSET-248-60 — An idle runner with an empty queue rests: no new session until the plan or main changes
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (`cycle` calls `ensure_session` and an engine `--apply` every cycle; on `IDLE` the cycle lands the session, releases the lease, calls `end_session` and logs `Queue empty; checking again in {interval}s`; `pause` wakes early only when `plan_signature` changes); TOOLSET-185-74 in [the archive](TODO.archive.md) (the earlier once-a-second version, caused by `packed-refs`).
+- Evidence (2026-10-18 21:34, one fleet runner with an empty queue): 342 `Session pi-autowork/<stamp> started from main` lines in six hours, one each minute, each followed by `Queue empty; checking again in 60s`. No plan or main change woke it in between, since no `changed; checking now` line appears. Each minute it created and removed a session branch and worktree and ran an engine dispatch for an empty queue. The other runners, all with queued work, logged none.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) After a cycle that ended `IDLE` with the session landed and ended, the runner records the plan signature (`plan_signature`) of that moment. Later cycles skip `ensure_session` and dispatch, and pause, until the signature changes: a planning-file edit, a main commit or an owner answer. Health and status writes continue. (2) `Queue empty; checking again in …` is logged once when it begins resting, not every interval. (3) A toolset update or reload still applies while resting (TOOLSET-236-4d), and a stop still ends it.
+- Acceptance: In a runner fixture with an empty queue, ten intervals log one `Queue empty` line and start no second session, and run no engine `--apply` after the first; a TODO.md commit adding a task wakes it within the settle time and dispatches it; a SIGHUP while resting reloads.
+- Checks: python3 -m unittest tests/test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how a non-empty queue cycles.
+- Planner's call: top of Next: no work is lost, but the owner's rule is that an idle runner costs nothing, and today one rewrites refs and spawns an engine every minute and fills its log with two lines a minute.
+
 ### TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
 
 - [ ] TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
