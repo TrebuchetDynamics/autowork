@@ -62,7 +62,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 - [ ] TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [integration](skills/autowork/scripts/parallel_integrate.py) (a worker's `blockers` become a `Hold('blocker')`, a person's question); [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`dispatch_locked`: held slots stay `occupying` unless exhausted or overlap-held); [admission](skills/autowork/scripts/parallel_plan.py) (an exclusive task waits `must run alone (beside <task>)` for every occupying slot).
 - Evidence (2026-10-18 21:23-23:34, one fleet runner): an exclusive task waited more than 70 minutes `must run alone (beside <A>)` while A was reviewed, draining all lower dispatch. A's worker then stopped with a blocker naming that exclusive task: "The existing <exclusive task> owner/coordinator must supply the retained parser repair in the combined baseline". A became a held slot that still occupied, so the exclusive task kept waiting beside it while A waited for the exclusive task. The runner sat at 0 workers with 3 tasks behind A; only a person or the docs maintainer could break it.
 - Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/parallel_state.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py
@@ -73,6 +74,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No editing of the task's `Dependencies:` line by the engine; the docs maintainer may still record it.
 - Planner's call: Now, after TOOLSET-251-c4. A worker that has found the order the plan missed has told the runner exactly what to wait for; turning that into a wait, rather than a question and a slot that still blocks, removes a whole class of deadlocks between exclusive work and its dependents.
+- Owner decision (2026-10-19): Preserve the code; separate coordinator-owned queue edits and reverify this retained implementation. Keep candidate 48070c51f0c65ba28d8ad7542670e69444c926bb and its recorded checks/history; no fresh reimplementation or waiver of mandatory checks.
+- Next action: Existing execution owner: continue from retained candidate 48070c51f0c65ba28d8ad7542670e69444c926bb, preserving its code and tests. Prepare the smallest descendant/reconciled candidate that excludes only attributable worker changes to protected TODO.md/goals.json; any necessary planning repair goes through the coordinator/Docs Sync, never a worker-file guard bypass or restoration of stale queue snapshots. Reverify the exact integrated code with original required checks and review; reuse only still-valid evidence. Keep the same task and cumulative accounting, preserve unrelated work and do not clear slots/leases manually. A saved answer is not verified delivery.
+
 
 ### TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
 
@@ -225,7 +229,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 - [ ] TOOLSET-200-c1 — A status read waits for the writer lock, and a failed read never means nothing is running
 - Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
 - Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 1); [status snapshot](skills/autowork/scripts/parallel_status.py) (`snapshot`, which takes `writer.lock`), [lock helper](skills/autowork/scripts/task_execution.py) (`lock`, `wait=0`; the `--parallel-status` handler turns `BlockingIOError` into `ACTION_REQUIRED`), [coordinator](pi-autowork/pi_autowork/coordinator.py) (`status`, `tasks`, `in_flight` and the decisions they guard: `follow_base`, `merge_main`, `update_toolset`, closeout).
 - Evidence (2026-10-17 23:2x, this repository's session): a direct `--parallel-status --json` answered `{"outcome": "ACTION_REQUIRED", "reason": "[Errno 11] Resource temporarily unavailable"}` while an engine command held the lock. The coordinator reads any non-status answer as an empty task list, so `in_flight()` is false while workers run.
 - Touches: skills/autowork/scripts/parallel_status.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/test_parallel_e2e.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/tests/test_status_cache.py, tests/test_pi_autowork.py
@@ -236,6 +241,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No lock-free read of slot files; no change to how writers take the lock.
 - Planner's call: a short wait plus a conservative "unknown means busy", not a lock-free read, because slot writes and journal appends are only consistent under the lock. Waiting one cycle costs little; acting under running work can lose it. A persistent non-lock failure must not also block the update that would fix it (builder check, 2026-10-17).
+- Owner decision (2026-10-19): Preserve the code; separate coordinator-owned queue edits and reverify this retained implementation. Keep candidate 6e31dfc0138d0adb3a237a9a744b08ce188eb09f and its recorded checks/history; no fresh reimplementation or waiver of mandatory checks.
+- Next action: Existing execution owner: continue from retained candidate 6e31dfc0138d0adb3a237a9a744b08ce188eb09f, preserving its code and tests. Prepare the smallest descendant/reconciled candidate that excludes only attributable worker changes to protected TODO.md/goals.json; any necessary planning repair goes through the coordinator/Docs Sync, never a worker-file guard bypass or restoration of stale queue snapshots. Reverify the exact integrated code with original required checks and review; reuse only still-valid evidence. Keep the same task and cumulative accounting, preserve unrelated work and do not clear slots/leases manually. A saved answer is not verified delivery.
+
 
 ### TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
 
@@ -556,7 +564,8 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 - [ ] TOOLSET-164-f1 — A standing DOCS-MAINTAINER worker repairs, re-sorts and syncs each repository's task docs
 - Status: open; first slice and the review-findings trigger done by the owner session (2026-10-17); the rest below is open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
 - Sources: [accepted docs maintainer plan](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) (owner, 2026-10-17); [coordinator](pi-autowork/pi_autowork/coordinator.py), [question block](pi-autowork/pi_autowork/questions.py), [worker launch](pi-autowork/pi_autowork/worker.py), [status](pi-autowork/pi_autowork/health.py), [fleet view](pi-autowork/pi_autowork/fleet_view.py), [goals.py](skills/docs-sync/scripts/goals.py), [blockers](skills/blockers/SKILL.md).
 - Evidence (2026-10-17): of this repository's recent holds, most were resolved by restating the task (Touches, scope wording, a named file) and running it again, by hand or through `/blockers`. TOOLSET-147-54 only moved after its entry was edited. Planning repair currently has three partial owners (141-c4, 146-bc, `/blockers`).
 - Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, pi-autowork/pi_autowork/questions.py, pi-autowork/pi_autowork/health.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, pi-autowork/tests/test_questions.py, pi-autowork/tests/test_health.py, pi-autowork/tests/test_fleet_view.py, tests/test_pi_autowork.py, skills/blockers/SKILL.md, adapters/skills/blockers/SKILL.md, skills/autowork/references/parallel-workers.md, docs/cross-host.md, README.md, CHANGELOG.md
@@ -572,6 +581,10 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No implementation of product code by the maintainer, no worker cap change, no polling loop, no direct edits to fleet repositories outside their own runner's integration.
 - Evidence (2026-10-17 15:05 monitor pass, `waiting_groups` across the fleet): four of eight runners had been stalled for 1–2.5 hours, and `not runnable as written` (a TODO entry the engine will not run: missing or malformed fields, a ledger disposition that holds it) appears in four runners' waiting groups (4, 3, 2 and 1 tasks), each also an owner question. A worker that repairs entries from the repository's own evidence would turn most of these into runnable work.
 - Planner's call: second in Now, behind TOOLSET-161-17. Most holds need a restated contract, not the owner; one event-driven writer of planning files also removes the coordinator/owner write races.
+- Owner decision (2026-10-19): Finish the remaining scope in smaller verified slices. Preserve delivered functionality, original acceptance and retained work; do not restart implementation from an empty tree or cancel unfinished criteria.
+- Work batches: First finish the sole planning-writer handoff and preservation of owner edits. Next complete the remaining priority-drift, closeout and stale-question triggers with bounded/unchanged-trigger suppression and genuine-owner-question filtering. Finally reconcile actual changed-task reporting, status presentation and any docs/tasks integration required by the accepted plan, using existing compact-ledger compatibility owners before any format conversion. These are ordered implementation batches under this same task, not three new replacement tasks; retain all partial-delivery evidence and full aggregate acceptance.
+- Next action: Existing execution owner: inspect and retain the timed-out attempt-2 worktree and latest partial changes, reconcile delivered coordinator changes, then implement only the first unfinished planning-writer batch with focused preservation/ownership regressions. Verify each bounded batch before proceeding, keep mandatory full offline/review gates for final qualification, and continue with the next unfinished batch without asking the owner to choose routine details. Original retry/time/resource limits remain cumulative; no budget reset or competing worker.
+
 
 ### TOOLSET-147-54 — Merge pending names its real cause and clears a dirty integration worktree safely
 
