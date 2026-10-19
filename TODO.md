@@ -109,6 +109,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to how a conflict is detected or to the resolver's prompt.
 - Planner's call: third in Now (raised 2026-10-18 23:19, two runners): the session moves more since TOOLSET-233-ba, so this loop will grow on every runner whose files overlap, and each turn is a model call with no progress.
 
+### TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
+
+- [ ] TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [integration](skills/autowork/scripts/parallel_integrate.py) (a worker's `blockers` become a `Hold('blocker')`, a person's question); [dispatch](skills/autowork/scripts/parallel_dispatch.py) (`dispatch_locked`: held slots stay `occupying` unless exhausted or overlap-held); [admission](skills/autowork/scripts/parallel_plan.py) (an exclusive task waits `must run alone (beside <task>)` for every occupying slot).
+- Evidence (2026-10-18 21:23-23:34, one fleet runner): an exclusive task waited more than 70 minutes `must run alone (beside <A>)` while A was reviewed, draining all lower dispatch. A's worker then stopped with a blocker naming that exclusive task: "The existing <exclusive task> owner/coordinator must supply the retained parser repair in the combined baseline". A became a held slot that still occupied, so the exclusive task kept waiting beside it while A waited for the exclusive task. The runner sat at 0 workers with 3 tasks behind A; only a person or the docs maintainer could break it.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/parallel_state.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py
+- Scope: (1) When every blocker of a report names, by ID, an open task other than its own that the ledger does not already make a dependency, the hold records `waits_for: [<ids>]` (a new slot field) and is not a person's question. (2) A slot with `waits_for` occupies nothing. Admission treats it like a dependency of its task: it never starts beside, or ahead of, a task it waits for. (3) Once every task in `waits_for` is closed (here or on the base, TOOLSET-218-d0), the slot resumes on the same attempt, with a prompt line naming the landed tasks. (4) A blocker naming no task, or also asking for something else, stays a question as today. A `waits_for` that has not resolved after 24 h becomes one question too.
+- Acceptance: In fixtures: a report whose only blocker names open task B gives a held slot with `waits_for: [B]` and no BLOCKERS question; an exclusive B starts although that slot exists; after B closes, the slot resumes the same attempt and its prompt names B; a blocker naming no task still asks the owner.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No editing of the task's `Dependencies:` line by the engine; the docs maintainer may still record it.
+- Planner's call: Now, after TOOLSET-251-c4. A worker that has found the order the plan missed has told the runner exactly what to wait for; turning that into a wait, rather than a question and a slot that still blocks, removes a whole class of deadlocks between exclusive work and its dependents.
+
 ### TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict
 
 - [ ] TOOLSET-243-6d — A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict

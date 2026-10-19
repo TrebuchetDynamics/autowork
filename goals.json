@@ -750,7 +750,8 @@
         "TOOLSET-248-60",
         "TOOLSET-249-5b",
         "TOOLSET-250-49",
-        "TOOLSET-251-c4"
+        "TOOLSET-251-c4",
+        "TOOLSET-252-4c"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -761,6 +762,7 @@
       "TOOLSET-246-06",
       "TOOLSET-247-5a",
       "TOOLSET-251-c4",
+      "TOOLSET-252-4c",
       "TOOLSET-243-6d",
       "TOOLSET-250-49",
       "TOOLSET-244-5d",
@@ -1288,6 +1290,14 @@
       "section": "Now",
       "status": "open",
       "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-252-4c",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
     },
     {
       "depends_on": [],
