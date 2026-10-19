@@ -238,6 +238,19 @@ def run_gate(state, task, checkout, command):
             return True, ''
         if merged['timed_out']:
             return False, f'the full check ran out of time after {limit:g} s'
+    failures = merged['failures']
+    if failures:
+        # Rerun them alone first: when each passes, there is nothing for the base to explain, and the
+        # base suite (as long as the merged one, on nearly every review) is not run at all.
+        receipt = log.with_suffix('.reruns.json')
+        main_check.rerun_failures(str(log), checkout, str(receipt), 'merged')
+        try:
+            flaky = json.loads(receipt.read_text()).get('flaky') or []
+        except (OSError, ValueError):
+            flaky = []
+        failures = [f for f in failures if f not in flaky]
+        if not failures:
+            return True, ''
     base = base_result(state, checkout, command, git(checkout, 'rev-parse', 'HEAD^1'), limit)
     if not merged['failures']:
         crash = main_check.crash_line(log.read_text(errors='replace'))
@@ -248,15 +261,7 @@ def run_gate(state, task, checkout, command):
         marker.write_text(json.dumps({'missing': f'a full check that runs to its test results (it crashed: {crash})',
                                       'commit': git(checkout, 'rev-parse', 'HEAD')}))
         return False, f'the full check crashed before any test result, on the base too: {crash}'
-    new = merged['failures'] if base['code'] == 0 else [f for f in merged['failures'] if f not in base['failures']]
-    if new:
-        receipt = log.with_suffix('.reruns.json')
-        main_check.rerun_failures(str(log), checkout, str(receipt), 'merged')
-        try:
-            flaky = json.loads(receipt.read_text()).get('flaky') or []
-        except (OSError, ValueError):
-            flaky = []
-        new = [f for f in new if f not in flaky]
+    new = failures if base['code'] == 0 else [f for f in failures if f not in base['failures']]
     if not new:
         return True, ''
     return False, 'the full check has new failures the base does not: ' + ', '.join(new[:10]) + (

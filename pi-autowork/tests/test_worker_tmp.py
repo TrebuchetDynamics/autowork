@@ -63,6 +63,29 @@ class WorkerTmpTests(unittest.TestCase):
         os.environ.pop('PI_AUTOWORK_VALIDATE')
         self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
 
+    def test_failures_that_pass_alone_need_no_base_suite(self):
+        """A base suite as long as the merged one ran on nearly every review, even when each failure
+        passed when rerun alone; a failure that stays red still gets the base comparison."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        (self.repo / 'test_mod.py').write_text('import unittest\nclass T(unittest.TestCase):\n'
+                                               '    def test_ok(self): pass\n'
+                                               '    def test_red(self): self.fail()\n')
+        git('add', '-A')
+        git('commit', '-qm', 'base')
+        runs = Path(self.temp.name) / 'runs'
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_ok (test_mod.T.test_ok)"; exit 1'
+        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
+        state = Path(self.temp.name) / 'flaky'
+        (self.repo / 'a.txt').write_text('merged\n')
+        git('add', '-A')
+        git('commit', '-qm', 'merged')
+        self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
+        self.assertEqual(runs.read_text().count('ran'), 1)  # the merged run only
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "FAIL: test_red (test_mod.T.test_red)"; exit 1'
+        self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
+        self.assertEqual(runs.read_text().count('ran'), 3)  # red alone too: the base, red as well, decides
+
     def test_the_worker_tmpdir_of_the_slot_attempt_is_found(self):
         self.slot()
         tmp = self.execution / 'slot-data' / 'T-1' / 'attempt-2' / 'tmp'
