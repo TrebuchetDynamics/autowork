@@ -362,16 +362,22 @@ def run_gate(state, task, checkout, command, base_rev=None):
         # Rerun them alone first: when each passes, there is nothing for the base to explain, and the
         # base suite (as long as the merged one, on nearly every review) is not run at all.
         receipt = log.with_suffix('.reruns.json')
+        receipt.unlink(missing_ok=True)
+        rev = git(checkout, 'rev-parse', 'HEAD') or ''
         check_stop()
-        main_check.rerun_failures(str(log), checkout, str(receipt), 'merged')
         try:
-            flaky = json.loads(receipt.read_text()).get('flaky') or []
-        except (OSError, ValueError, AttributeError):
-            flaky = []
-        failures = [f for f in failures if f not in flaky]
-        if not failures and (merged['code'] < 0 or merged['code'] >= 128):
-            # Killed by a signal (out of memory, a segfault): what it named passed alone, but the rest
-            # never ran, and a pass here was cached for the tree.
+            main_check.rerun_failures(str(log), checkout, str(receipt), rev)
+            reruns = json.loads(receipt.read_text())
+        except Exception as error:  # the reruns only excuse tests: without them, none is excused
+            print(f'pi-autowork: rerunning the failures of {task} failed: {error}', file=sys.stderr)
+            reruns = {}
+        if not isinstance(reruns, dict) or reruns.get('rev') != rev or not isinstance(reruns.get('flaky'), list):
+            reruns = {}
+        failures = [f for f in failures if f not in (reruns.get('flaky') or [])]
+        # The coordinator's rule for main: signals and shell errors are not ordinary unittest
+        # failures, and the receipt says when the log has no complete summary.
+        if not failures and (merged['code'] != 1 or reruns.get('incomplete')):
+            # What it named passed alone, but the rest never ran, and a pass here was cached for the tree.
             return False, f'the full check stopped before its results were complete (exit {merged["code"]}); the rest never ran'
         if not failures:
             return True, ''
@@ -443,7 +449,9 @@ def batched_verdict(state, task, checkout):
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
-    batched = batched_verdict(state, task, checkout)
+    batch_gate = os.environ.get('PI_AUTOWORK_BATCH_GATE')
+    # A batch child reviews afresh: an unused record from an earlier batch is not its verdict.
+    batched = None if batch_gate else batched_verdict(state, task, checkout)
     if batched is not None:
         ok, reason = batched
         if ok:
@@ -464,7 +472,6 @@ def verify(state, task):
     drop_dead_scratch(checkout, root)
     scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
-    batch_gate = os.environ.get('PI_AUTOWORK_BATCH_GATE')
     try:
         if batch_gate:  # a batch already passed the full check on a tree containing this one
             return batch_review(state, task, checkout, json.loads(batch_gate))
@@ -554,7 +561,10 @@ def batch_review(state, task, checkout, gate):
     record = batch_record(state, task)
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({'tree': git(checkout, 'rev-parse', 'HEAD^{tree}'), 'commit': git(checkout, 'rev-parse', 'HEAD^2'),
-                                  'ok': code == 0, 'reason': reason if code else '', 'at': time.time()}))
+                                  'ok': code == 0, 'at': time.time(),
+                                  # verify prints it as the hold reason, which must never be empty
+                                  'reason': (reason or f'the batch review of {task} failed without a finding '
+                                             '(no verdict, an environment miss or a changed checkout)') if code else ''}))
     return code
 
 
@@ -594,10 +604,10 @@ def verify_batch(state, session, script, tasks):
     root = Path(tempfile.mkdtemp(prefix=f'aw-b-{os.getpid()}-', dir=review_root()))
     chain = root / 'chain'
     steps, skipped, running = [], [], []
+    result = {'outcome': 'BATCH', 'tasks': [], 'skipped': skipped, 'passed': [], 'held': []}
     try:
         if not base or git(session, 'worktree', 'add', '--detach', str(chain), base) is None:
-            print(json.dumps({'outcome': 'BATCH', 'tasks': [], 'skipped': [], 'passed': [], 'held': [],
-                              'reason': f'the batch chain could not be created in {root}'}))
+            print(json.dumps(dict(result, reason=f'the batch chain could not be created in {root}')))
             return 0
         for task in order:
             if len(steps) >= size:  # counted after conflicts, so a conflict does not shrink the batch
@@ -614,7 +624,7 @@ def verify_batch(state, session, script, tasks):
                 skipped.append(task)
                 continue
             steps.append((task, git(chain, 'rev-parse', 'HEAD')))
-        result = {'outcome': 'BATCH', 'tasks': [t for t, _ in steps], 'skipped': skipped, 'passed': [], 'held': []}
+        result['tasks'] = [t for t, _ in steps]
         if len(steps) < 2:
             print(json.dumps(dict(result, reason='fewer than two candidates merge together')))
             return 0
@@ -694,8 +704,15 @@ def review(state, task, checkout, head_before, gate=''):
                             + (CACHE.format(path=cache) if cache else '') + (
                                 LIVE.format(items='; '.join(live)) if (live := pending_live(checkout, task)) else NO_LIVE),
                             f'pi-autowork-verify-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}',
-                            os.environ.get('PI_AUTOWORK_VERIFY_TIMEOUT') or '1800',
+                            f"{setting('PI_AUTOWORK_VERIFY_TIMEOUT', 1800, float):g}",
                             ['--tools', 'read,bash,grep,find,ls'])
+    if dirty(checkout) or git(checkout, 'rev-parse', 'HEAD') != head_before:
+        # Checked first: its verdict is void, so it neither clears nor records findings or a marker.
+        # The engine owns this disposable integration worktree: it keeps the changes as a
+        # patch for diagnosis and resets it before the next integration.
+        print('AUTOWORK_HOLD_REASON: the reviewer changed the checkout, which a review must not do', flush=True)
+        print('pi-autowork: the reviewer changed the checkout; verification fails', file=sys.stderr)
+        return 1
     # Markdown around the line (bold, code) is the reviewer's formatting, not part of the verdict.
     line = next((l for l in (raw.strip().strip('*`_').strip() for raw in reversed(result['text'].splitlines()))
                  if l.startswith('PI_AUTOWORK_VERIFY:')), '')
@@ -717,11 +734,6 @@ def review(state, task, checkout, head_before, gate=''):
         record_findings(state, task, ' '.join(line.split()), head_before)
     elif verdict == 'pass':
         findings_path(state, task).unlink(missing_ok=True)
-    if dirty(checkout) or git(checkout, 'rev-parse', 'HEAD') != head_before:
-        # The engine owns this disposable integration worktree: it keeps the changes as a
-        # patch for diagnosis and resets it before the next integration.
-        print('pi-autowork: the reviewer changed the checkout; verification fails', file=sys.stderr)
-        return 1
     if result['ok'] and verdict == 'pass':
         return 0
     print(f'pi-autowork: review of {task}: {verdict or "no verdict"} {line[:200]}', file=sys.stderr)
@@ -738,7 +750,7 @@ def main(argv):
         return verify_batch(state, session, script, tasks)
     if argv[:1] == ['--worker'] and len(argv) >= 5:
         state, worktree, prompt_file, report = argv[1:5]
-        limit = argv[5] if len(argv) > 5 else os.environ.get('PI_AUTOWORK_TASK_TIMEOUT') or '5400'
+        limit = argv[5] if len(argv) > 5 else f"{setting('PI_AUTOWORK_TASK_TIMEOUT', 5400, float):g}"
         return worker(state, worktree, prompt_file, report, limit)
     if argv[:1] == ['--verify'] and len(argv) == 3:
         return verify(argv[1], argv[2])
