@@ -42,6 +42,7 @@ UNQUALIFIED = {'codex': 'Codex workers cannot commit: its workspace-write sandbo
                         '(qualified 2026-10-15); pass --worker-command to supply your own worker'}
 HOST_NAMES = {'hermes': 'hermes', 'hermes_cli': 'hermes', 'codex': 'codex', 'pi': 'pi', 'claude': 'claude'}
 OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', 'held', 'interrupted')
+FINISHED = ('reported', 'integrating', 'integrated', 'held')  # a commit, or a stop, and no worker
 
 
 def coordinator_host(owner_pid):
@@ -770,7 +771,7 @@ def waiting_streaks(common, now=None):
 
 
 def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected,
-          drain_after=None, waited=None):
+          drain_after=None, waited=None, finished=()):
     """Admission in two passes, so it agrees with integration about who owns a file
     (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
     held commit that only conflicts with them at integration does not stop them, or each
@@ -781,7 +782,7 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     resumable = [t for t in candidates if t['id'] in restartable]
     fresh = [t for t in candidates if t['id'] not in slotted and t['id'] not in restartable]
     options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
-                   drain_after=drain_after, waited=waited)
+                   drain_after=drain_after, waited=waited, finished=finished)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
     # Overlap with an interrupted owner never holds new work either (TOOLSET-161-17).
@@ -833,7 +834,8 @@ def dispatch_locked(args, repo, common, count, template, host):
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = admit(candidates, running, restartable, occupying, everything=everything,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
-                    drain_after=drain_after(), waited=waiting_streaks(common))
+                    drain_after=drain_after(), waited=waiting_streaks(common),
+                    finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)})
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])

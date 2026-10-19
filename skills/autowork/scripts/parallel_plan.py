@@ -237,7 +237,7 @@ def _dependencies(task, known=()):
 
 
 def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_files=None, drain_after=None,
-         waited=None):
+         waited=None, finished=()):
     """Plan ordered runnable contracts against running contracts/live slots.
 
     ``running`` contains task contracts held by live slots. Also pass every
@@ -263,6 +263,9 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
     task that waits on running work stops lower dispatch only once it has waited that long;
     until then it reserves what it declares, like any waiting task (TOOLSET-171-35). None
     drains at once.
+    ``finished`` names running contracts whose worker has ended (the commit awaits review or
+    integration): they still own their files, but nothing runs beside them, so the must-run-alone
+    rule ignores them (one runner idled 54 minutes while an exclusive task waited out a review).
     """
     tasks, running, all_tasks, parked = list(tasks), list(running), list(all_tasks), list(parked)
     # Each task's answers once per call, not once per pair (TOOLSET-221-8e).
@@ -324,7 +327,7 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             if serial(a) and serial(b):
                 return 'serial path shared with ' + other
             return ''
-        alone = exclusive(a) or exclusive(b)
+        alone = '' if b['id'] in finished else exclusive(a) or exclusive(b)
         if alone:
             return alone + ' (beside ' + b['id'] + ')'
         if serial(a) and serial(b):

@@ -411,6 +411,18 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
         self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
 
+    def test_a_must_run_alone_task_starts_while_a_finished_commit_awaits_review(self):
+        """One runner idled 54 minutes: S waited out A's review although A's worker had ended."""
+        self.write_todo(task('A', 'a.txt'), ALONE)
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0.1}, 'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
+        _, first = self.apply()
+        self.assertEqual([d['task'] for d in first['dispatched']], ['A'])  # S must run alone
+        self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'reported')
+        _, then = self.apply()
+        self.assertEqual([d['task'] for d in then['dispatched']], ['S'])
+        self.wait_until_idle()
+
     def test_a_retryable_slot_of_a_closed_task_stops_occupying(self):
         self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
