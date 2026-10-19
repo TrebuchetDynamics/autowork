@@ -1573,8 +1573,15 @@ class Coordinator:
         task, root = row.get('task'), row.get('worktree')
         if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or dirty(root):
             return False
+        adoption = row.get('merge_adoption') or {}
+        if not adoption.get('allowed'):
+            reason = adoption.get('reason') or 'the engine did not authorize merge adoption'
+            if self.seen.get('merge-refused-' + task) != reason:
+                LOG.say(f'{task}: not running the merge resolver: {reason}; it waits for the owner')
+                self.seen['merge-refused-' + task] = reason
+            return False
         head = git(self.integ, 'rev-parse', 'HEAD')
-        if not head or self.seen.get('resolved-' + task) == head:
+        if not head or adoption.get('baseline') != head or self.seen.get('resolved-' + task) == head:
             return False
         self.seen['resolved-' + task] = head
         if not git_ok(root, 'merge', '-q', '--no-edit', head):
@@ -1589,13 +1596,16 @@ class Coordinator:
             if (marker and Path(marker).exists()) or dirty(root) or not git_ok(root, 'merge-base', '--is-ancestor',
                                                                               head, 'HEAD'):
                 git(root, 'merge', '--abort')
-                LOG.say(f'{task}: the merge could not be resolved; it is retried fresh instead')
+                next_step = 'it waits for the owner' if adoption.get('merged_count') else 'it is retried fresh instead'
+                LOG.say(f'{task}: the merge could not be resolved; {next_step}')
                 return False
         result = self.engine('--parallel-merged', task)
         if result.get('outcome') != 'MERGED':
             LOG.say(f'{task}: could not adopt its merged commit: {result.get("reason") or result.get("outcome")}')
             return False
-        LOG.say(f'{task}: merged the session into its commit; verifying again')
+        count = result.get('merged_count', 1)
+        again = f' again ({count} of 3)' if count > 1 else ''
+        LOG.say(f'{task}: merged the session into its commit{again}; verifying again')
         return True
 
     # --- Touches proposals ------------------------------------------------------------

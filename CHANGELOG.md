@@ -226,6 +226,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A conflict-held commit is adopted again after the merge resolver merges it, once the
+  session has moved past the last adoption, up to three times per attempt; with the session
+  unmoved no resolver job runs. The resolver ran about every ten minutes for tasks the
+  engine then refused (TOOLSET-251-c4).
 - A worker that reports, with no commit and no blockers, that nothing needed changing is
   held as `no_change`, and the docs maintainer closes or restates the task. It was read
   as a dead worker and rerun: one task ran three times in an hour, saying so each time.

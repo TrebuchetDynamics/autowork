@@ -56,7 +56,9 @@ def held_by(todo, task, goals, today=None):
 
 def exhausted(row):
     """A held task the runner will not retry: a person must answer."""
-    return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES)
+    adoption = row.get('merge_adoption') or {}
+    return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
+                                          or adoption.get('allowed') is False or bool(adoption.get('merged_count')))
 
 
 def build(snapshot, todo, goals, repairs=()):
