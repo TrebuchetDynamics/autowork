@@ -221,7 +221,7 @@ class RecoveryTests(DirectExecutionTests):
         finally:
             worker.kill(); worker.wait()
 
-    def session(self, cwd, quiet_seconds):
+    def session(self, cwd, quiet_seconds, env=None):
         """A real `pi`-named process on its own pseudo-terminal, last used quiet_seconds ago."""
         import pty
         bindir = Path(self.tmp.name) / 'bin'; bindir.mkdir(exist_ok=True)
@@ -230,7 +230,7 @@ class RecoveryTests(DirectExecutionTests):
         master, slave = pty.openpty()
         self.addCleanup(os.close, master)
         worker = subprocess.Popen([str(bindir / 'pi'), '-c', 'import time; time.sleep(30)'], cwd=cwd,
-                                  stdin=slave, stdout=slave, stderr=slave)
+                                  stdin=slave, stdout=slave, stderr=slave, env=env)
         os.close(slave)
         self.addCleanup(lambda: (worker.kill(), worker.wait()))
         tty = os.readlink(f'/proc/{worker.pid}/fd/0')
@@ -242,6 +242,64 @@ class RecoveryTests(DirectExecutionTests):
         subprocess.run(['git', '-C', str(self.repo), 'add', '.'], check=True)
         subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                         'commit', '-qm', 'fixture'], check=True)
+
+    def test_runner_jobs_do_not_block_integration_but_outside_scratch_sessions_do(self):
+        import parallel_dispatch as dispatch
+        import parallel_integrate as integrate
+        import parallel_state as state
+        from task_execution import git, save
+        self.commit_fixture()
+        for key, value in [('user.name', 'Fixture'), ('user.email', 'fixture@example.invalid')]:
+            subprocess.run(['git', '-C', str(self.repo), 'config', key, value], check=True)
+        owner = os.getppid()
+        state.claim(self.repo, owner)
+        common = state.common_dir(self.repo)
+        scratch = self.repo / '.worktrees/pi-scratch-main-check-fixture'
+        scratch.parent.mkdir()
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'add', '-q', '--detach', str(scratch)], check=True)
+        real_read = Path.read_text
+        for task, source in [('T1', 'marker'), ('T2', 'cgroup')]:
+            with self.subTest(source=source):
+                baseline = git(self.repo, 'rev-parse', 'HEAD')
+                root, branch, _ = dispatch.create_worktree(self.repo, common, task, baseline)
+                state.create_slot(self.repo, owner, task, worktree=str(root), branch=branch, baseline=baseline)
+                (root / 'fixture.py').write_text(f'# {task} repaired\n')
+                git(root, 'add', 'fixture.py')
+                git(root, 'commit', '-qm', task)
+                commit = git(root, 'rev-parse', 'HEAD')
+                slot = state.transition(self.repo, owner, task, 'reported', commit=commit)
+                save(dispatch.data_dir(common, slot) / 'report.json',
+                                        dict(task=task, commit=commit, changed_files=['fixture.py'], checks=[], blockers=[]))
+                # Neither a scratch name, another repository's marker, nor another unit
+                # exempts a person's process, including a fixture runner under a real service.
+                if task == 'T1':
+                    for cwd in (self.repo, scratch):
+                        outsider = self.session(cwd, 60, dict(os.environ, AUTOWORK_EXECUTION_COMMON='/other/.git'))
+                        def other_unit(path, *args, **kwargs):
+                            if path == Path(f'/proc/{outsider.pid}/cgroup'):
+                                return '0::/user.slice/pi-autowork@other.service\n'
+                            return real_read(path, *args, **kwargs)
+                        with patch.object(Path, 'read_text', other_unit):
+                            result = integrate.integrate(self.repo, owner, task, ['true'], 10)
+                        self.assertEqual(result['outcome'], 'BUSY', result)
+                        self.assertIn('(session:', result['reason'])
+                        outsider.kill(); outsider.wait()
+                env = dict(os.environ)
+                env.pop('AUTOWORK_EXECUTION_COMMON', None)
+                if source == 'marker':
+                    env['AUTOWORK_EXECUTION_COMMON'] = str(common.parent)
+                job = self.session(scratch, 60, env)
+                def own_unit(path, *args, **kwargs):
+                    if path == Path(f'/proc/{job.pid}/cgroup'):
+                        return ('0::/user.slice/pi-autowork@repo.service/checks\n' if source == 'cgroup'
+                                else '0::/user.slice/foreground.scope\n')
+                    return real_read(path, *args, **kwargs)
+                with patch.object(Path, 'read_text', own_unit):
+                    result = integrate.integrate(self.repo, owner, task, ['true'], 10)
+                    self.assertEqual(result['outcome'], 'INTEGRATED', result)
+                    self.assertEqual(integrate.close(self.repo, owner, task)['outcome'], 'CLOSED')
+                    self.assertFalse(root.exists())
+                job.kill(); job.wait()
 
     def test_idle_terminal_session_does_not_block(self):
         worker = self.session(self.repo, 2 * 3600)

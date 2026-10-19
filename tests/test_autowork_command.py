@@ -89,6 +89,9 @@ class AutoworkCommandTests(unittest.TestCase):
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
         for f in files:
             (repo / f).write_text('{}\n' if f.endswith('.json') else '# TODO\n')
+        subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qm', 'planning'], check=True)
         return repo
 
     def aw(self, *args, cwd=None):
@@ -168,6 +171,13 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('needs goals.json', result.stderr)
         self.assertIn('Create goals.json from TODO.md', result.stderr)
+        subprocess.run(['git', '-C', str(self.repo), 'rm', '--cached', 'TODO.md', 'goals.json'], check=True,
+                       capture_output=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qm', 'planning only on disk'], check=True)
+        result = self.aw('start', str(self.repo))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('commit TODO.md and goals.json on main first', result.stderr)
         subprocess.run(['git', '-C', str(self.repo), 'checkout', '-q', '-b', 'feature'], check=True)
         self.assertIn('main checked out', self.aw('start', str(self.repo)).stderr)
         self.assertIn('not ready', self.aw('start', str(self.base)).stderr)

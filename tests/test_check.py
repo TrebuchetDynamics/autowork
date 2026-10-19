@@ -263,6 +263,12 @@ class Check(unittest.TestCase):
                 pids = [(module.parent / f'ran-{n}').read_text() for n in range(24)]
                 self.assertEqual(len(set(pids)), 12)  # two tests per shard, not serial or duplicated
                 self.assertNotIn('not selected', result.stdout)
+        for marker in module.parent.glob('ran-*'):
+            marker.unlink()
+        filtered = self.run_check('tests/test_pi_autowork.py', '-k', 'test_23')
+        self.assertEqual(filtered.returncode, 0, filtered.stdout + filtered.stderr)
+        self.assertEqual([p.name for p in module.parent.glob('ran-*')], ['ran-23'])
+        self.assertIn('Ran 1 test', filtered.stdout)
         module.write_text(module.read_text() + '    def test_failure(self): self.fail("shard failure")\n')
         failed = self.run_check('tests/test_pi_autowork.py')
         self.assertEqual(failed.returncode, 1, failed.stdout + failed.stderr)

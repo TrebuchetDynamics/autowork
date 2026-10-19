@@ -31,12 +31,17 @@ def task(tid, touches, depends='None'):
     return '\n'.join(lines) + '\n'
 
 
+# A task that must run alone. A missing Touches no longer makes one (TOOLSET-161-17).
+ALONE = task('S', 's.txt') + '- Resources: exclusive\n'
+
+
 class DispatchTests(unittest.TestCase):
     def setUp(self):
         # Bootstrap independently of the worker's inherited, potentially long TMPDIR.
         self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
         self.addCleanup(self.runtime.cleanup)
-        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name)
+        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
+                                 PI_AUTOWORK_WORKER_ROOT=self.runtime.name)
         runtime_env.start()
         self.addCleanup(runtime_env.stop)
         self.tmp = tempfile.TemporaryDirectory()
@@ -57,7 +62,8 @@ class DispatchTests(unittest.TestCase):
         self.log = self.root / 'workers.jsonl'
         self.log.touch()
         self.set_spec({})
-        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log)),
+        for patcher in (patch.dict(os.environ, FAKE_WORKER_SPEC=str(self.spec), FAKE_WORKER_LOG=str(self.log),
+                                    PI_AUTOWORK_MIN_FREE_DISK_GB='0'),
                         patch.object(dispatch, 'available_memory_mb', return_value=10 ** 6),
                         patch.object(os, 'getloadavg', return_value=(0.0, 0.0, 0.0))):
             patcher.start()
@@ -103,13 +109,25 @@ class DispatchTests(unittest.TestCase):
                 return result
         self.fail('workers did not finish')
 
+    def test_under_a_gating_runner_the_worker_leaves_the_full_check_to_it(self):
+        """TOOLSET-227-a8: workers ran the full suite two or three times before the runner's gate."""
+        task = execution.select_all(self.repo, None, None)[0]
+        plain = dispatch.prompt(task, self.repo, 'b', 'HEAD', self.root / 'r.json')
+        self.assertIn('Run the full offline gate once', plain)
+        with patch.dict(os.environ, AUTOWORK_RUNNER_FULL_CHECK='python3 scripts/check.py'):
+            gated = dispatch.prompt(task, self.repo, 'b', 'HEAD', self.root / 'r.json')
+        self.assertNotIn('Run the full offline gate once', gated)
+        self.assertIn('Do not run the full check (`python3 scripts/check.py`)', gated)
+        self.assertIn('Leave the full check out of the report', gated)
+
     def test_independent_tasks_run_together_in_separate_worktrees(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 1.0},
                        'B': {'files': {'b.txt': 'b'}, 'sleep': 1.0}})
         code, result = self.apply()
         self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
         self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
-        self.assertEqual({w['id']: w['reason'] for w in result['waiting']}['D'], 'overlapping paths with A')
+        # D shares a.txt with A: Touches only rank it, so it waits for a free slot (TOOLSET-161-17).
+        self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['E'])
         self.assertNotIn('C', [w['id'] for w in result['waiting']])  # C's dependency is unfinished
         _, again = self.apply()
@@ -142,57 +160,76 @@ class DispatchTests(unittest.TestCase):
         self.assertLess(moment['B', 'running'], moment['A', 'reported'])
         self.assertLess(moment['A', 'running'], moment['B', 'reported'])
 
-    def test_launch_exports_a_private_socket_safe_directory_with_runtime_fallback(self):
+    def launch_and_read_tmpdir(self, data):
+        prompt = data / 'prompt.md'
+        prompt.write_text('fixture')
+        output = data / 'env.json'
+        script = ('import json, os, socket, sys, time; '
+                  'from pathlib import Path; '
+                  'p = Path(os.environ["TMPDIR"]); '
+                  's = socket.socket(socket.AF_UNIX); s.bind(str(p.resolve() / ("s" * 40))); '
+                  'Path(sys.argv[1]).write_text(json.dumps([os.environ[k] for k in '
+                  '("TMPDIR", "TMP", "TEMP")])); time.sleep(30)')
+        worker = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
+        self.addCleanup(dispatch.stop, worker, str(self.repo))
+        for _ in range(200):
+            if output.exists():
+                break
+            time.sleep(.01)
+        values = json.loads(output.read_text())
+        dispatch.stop(worker, str(self.repo))
+        return worker, Path(values[0]), values
+
+    def test_launch_exports_a_private_socket_safe_directory_on_disk_with_a_tmp_fallback(self):
+        """The runtime directory was a 6.3 GB RAM disk shared by every worker; the $TMPDIR is now
+        a short directory on disk, socket-safe even when resolved, else the short /tmp fallback."""
         key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
-        cases = [(self.runtime.name, None), ('', None), (str(self.root / ('long-' * 20)), None),
+        cases = [(self.runtime.name, None), (str(self.root / ('long-' * 20)), None),
                  (self.runtime.name, errno.ENOSPC), (self.runtime.name, errno.EDQUOT)]
-        for case, (runtime, failure) in enumerate(cases):
-            with self.subTest(runtime=runtime, failure=failure), patch.dict(os.environ, XDG_RUNTIME_DIR=runtime):
+        for case, (root, failure) in enumerate(cases):
+            with self.subTest(root=root, failure=failure), patch.dict(os.environ, PI_AUTOWORK_WORKER_ROOT=root):
+                Path(root).mkdir(parents=True, exist_ok=True)
                 data = self.common / 'slot-data' / f'temp-{case}' / 'attempt-1'
                 data.mkdir(parents=True)
-                prompt = data / 'prompt.md'
-                prompt.write_text('fixture')
-                output = data / 'env.json'
-                if runtime == self.runtime.name and failure is None:
-                    existing = Path(runtime) / 'aw' / key / '1'
-                    existing.mkdir(parents=True, mode=0o755)
+                if failure is None and root == self.runtime.name:
+                    existing = Path(root) / f'aw-{os.getuid()}-{key}-1'
+                    existing.mkdir(mode=0o755)
                     existing.chmod(0o755)
-                script = ('import json, os, socket, sys, time; '
-                          'from pathlib import Path; '
-                          'p = Path(os.environ["TMPDIR"]); '
-                          's = socket.socket(socket.AF_UNIX); s.bind(str(p / ("s" * 40))); '
-                          'Path(sys.argv[1]).write_text(json.dumps([os.environ[k] for k in '
-                          '("TMPDIR", "TMP", "TEMP")])); time.sleep(30)')
                 original_mkdir = Path.mkdir
-                def runtime_full(path, *args, **kwargs):
-                    if failure and path.is_relative_to(Path(self.runtime.name) / 'aw'):
-                        raise OSError(failure, 'fixture: runtime storage full')
+                def disk_full(path, *args, **kwargs):
+                    if failure and path.name.startswith('aw-') and path.parent == Path(self.runtime.name):
+                        raise OSError(failure, 'fixture: disk full')
                     return original_mkdir(path, *args, **kwargs)
-                with patch.object(Path, 'mkdir', runtime_full):
-                    worker = dispatch.launch([sys.executable, '-c', script, str(output)],
-                                             self.repo, data, 1, prompt)
-                self.addCleanup(dispatch.stop, worker, str(self.repo))
-                for _ in range(200):
-                    if output.exists():
-                        break
-                    time.sleep(.01)
-                values = json.loads(output.read_text())
-                path = Path(values[0])
-                self.addCleanup(shutil.rmtree, path)
+                with patch.object(Path, 'mkdir', disk_full):
+                    _, path, values = self.launch_and_read_tmpdir(data)
+                self.addCleanup(shutil.rmtree, path, True)
                 self.assertEqual(values, [str(path)] * 3)
                 self.assertLessEqual(len(os.fsencode(path)), 48)
                 self.assertEqual(path.stat().st_mode & 0o777, 0o700)
                 self.assertEqual(path.stat().st_uid, os.getuid())
-                expected_parent = (Path(runtime) / 'aw' / key
-                                   if runtime == self.runtime.name and failure is None else Path('/tmp'))
-                self.assertEqual(path.parent, expected_parent)
-                if not runtime:
-                    self.assertEqual(path.name, f'aw-{os.getuid()}-{key}-2')
-                dispatch.stop(worker, str(self.repo))
+                self.assertTrue(path.name.startswith(f'aw-{os.getuid()}-{key}-'), path)
+                on_disk = root == self.runtime.name and failure is None
+                self.assertEqual(path.parent, Path(root) if on_disk else Path('/tmp'))
+
+    def test_an_allocation_on_the_runtime_disk_moves_to_disk_with_its_files(self):
+        key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
+        old = Path(self.runtime.name) / 'aw' / key / '3'
+        old.mkdir(parents=True)
+        (old / 'build').mkdir()
+        (old / 'build' / 'kept.txt').write_text('evidence')
+        data = self.common / 'slot-data' / 'M' / 'attempt-2'
+        data.mkdir(parents=True)
+        (data.parent / 'tmp.json').write_text(json.dumps({'path': str(old), 'slot': 3}))
+        _, path, _ = self.launch_and_read_tmpdir(data)
+        self.addCleanup(shutil.rmtree, path, True)
+        self.assertEqual(path, Path(self.runtime.name) / f'aw-{os.getuid()}-{key}-3')
+        self.assertEqual((path / 'build' / 'kept.txt').read_text(), 'evidence')
+        self.assertFalse(old.exists())
+        self.assertEqual(execution.read(data.parent / 'tmp.json'), {'path': str(path), 'slot': 3})
 
     def test_launch_refuses_foreign_owned_or_symlinked_temporary_directory(self):
         key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
-        path = Path(self.runtime.name) / 'aw' / key / '1'
+        path = Path(self.runtime.name) / f'aw-{os.getuid()}-{key}-1'
         path.mkdir(parents=True)
         path.chmod(0o755)
         data = self.common / 'slot-data' / 'A' / 'attempt-1'
@@ -333,7 +370,7 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
     def test_a_held_slot_of_a_closed_task_stops_occupying(self):
         """india: Plan For Me superseded a held second attempt, and its must-run-alone
         successor waited beside the dead slot for ever."""
-        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
                        'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
         for _ in range(2):  # crash, restart once, crash again: held for good
@@ -348,21 +385,77 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual(next(s for s in state.slots(self.common) if s['task_id'] == 'A')['state'], 'held')
 
     def test_a_retryable_slot_of_a_closed_task_stops_occupying(self):
-        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False, 'exit': 1},
                        'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
         self.apply()
         self.wait_until_idle()  # crashed once: interrupted, with its restart still to come
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt']), ('interrupted', 1))
-        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('S', ''))
+        self.write_todo(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), ALONE)
         _, freed = self.apply()
         self.assertEqual([d['task'] for d in freed['dispatched']], ['S'])
+
+    def close_on_base(self, *bodies):
+        """Commit ``bodies`` as TODO.md on a separate base branch, ``trunk``, the way an owner
+        closes tasks on main while the session's own ledger lags (TOOLSET-218-d0)."""
+        base = self.root / 'base'
+        if not base.exists():
+            self.git('worktree', 'add', '-q', '-b', 'trunk', str(base), 'HEAD')
+        (base / 'TODO.md').write_text('# Work queue\n\n## Next\n\n' + '\n'.join(bodies))
+        self.git('commit', '-qam', 'close on the base', repo=base)
+
+    def test_a_worker_whose_task_closes_on_the_base_is_stopped_and_set_aside(self):
+        self.set_spec({'A': {'files': {'a.txt': 'duplicate'}, 'sleep': 30},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 30}, 'D': {'files': {'a.txt': 'd'}, 'sleep': 30}})
+        _, first = self.apply('--base-ref', 'trunk')  # no trunk yet: the session's ledger alone
+        self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
+        worker = next(s for s in state.slots(self.common) if s['task_id'] == 'A')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        _, freed = self.apply('--base-ref', 'trunk')
+        self.assertEqual(freed['closed_on_base'], ['A'], freed)
+        self.assertFalse(state.worker_live(worker))
+        self.assertNotIn('A', [s['task_id'] for s in state.slots(self.common)])
+        self.assertEqual(len(freed['dispatched']), 1, freed)  # the freed slot starts the next task at once
+        self.assertNotIn('A', [d['task'] for d in freed['dispatched']])
+        history = json.loads((self.common / 'slot-history' / 'A' / '1' / 'slot.json').read_text())
+        self.assertEqual(history['cause'], 'closed_on_base')
+        kept = self.repo / '.worktrees' / 'autowork-A-set-aside-1'
+        self.assertEqual((kept / 'a.txt').read_text(), 'duplicate')  # uncommitted work is kept
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
+        self.assertIn('B', [s['task_id'] for s in state.slots(self.common)])  # open on both: untouched
+
+    def test_a_task_closed_only_on_the_base_never_starts(self):
+        self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
+                           task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))
+        _, result = self.apply('4', '--base-ref', 'trunk')
+        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B', 'D'])
+        self.assertNotIn('E', [w['id'] for w in result['waiting']])
+
+    def test_an_unreadable_base_falls_back_to_the_session_ledger(self):
+        _, result = self.apply('--base-ref', 'no-such-branch')
+        self.assertEqual([d['task'] for d in result['dispatched']], ['A', 'B'])
+        self.assertNotIn('closed_on_base', result)
+
+    def test_a_reported_commit_of_a_task_closed_on_the_base_is_set_aside_not_integrated(self):
+        import parallel_integrate as integrate
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.1}})
+        self.apply('1')
+        self.wait_until_idle()
+        self.assertEqual(state.slots(self.common)[0]['state'], 'reported')
+        self.close_on_base(task('A', 'a.txt').replace('- [ ] A', '- [x] A'), task('B', 'b.txt'),
+                           task('C', 'c.txt', 'A'), task('E', 'e.txt'), task('D', 'a.txt'))
+        result = integrate.integrate(self.repo, self.owner, 'A', ['false'], 60, None, 'trunk')
+        self.assertEqual(result['outcome'], 'SET_ASIDE', result)
+        self.assertIn('closed on trunk', result['reason'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.git('rev-parse', 'trunk~1'))  # nothing merged
+        self.assertTrue(self.git('branch', '--list', 'autowork/A-set-aside-1'))
 
     def test_a_worker_that_reports_a_blocker_is_held_for_a_person_not_resumed(self):
         """sierra TASK-022: a worker stopped on purpose with blockers, was read as a crash,
         resumed, and spent both attempts on the same wall."""
-        self.write_todo(task('A', 'a.txt'), task('S', ''))
+        self.write_todo(task('A', 'a.txt'), ALONE)
         self.set_spec({'A': {'files': {'a.txt': 'partial'}, 'sleep': 0.1, 'commit': False,
                              'blockers': ['Needs src/other.go, outside Touches']},
                        'S': {'files': {'s.txt': 'done'}, 'sleep': 0.1}})
@@ -395,8 +488,10 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual([e['task_id'] for e in journal if e['event'] == 'claim_adopted'], ['A'])
         self.wait_until_idle()
 
-    def test_a_worker_asking_for_more_files_resumes_in_place_once_touches_cover_them(self):
-        """sierra TASK-024: a worker needed one test file outside Touches and could only stop."""
+    def test_a_held_scope_request_resumes_in_place_without_a_touches_check(self):
+        """sierra TASK-024: a worker needed one test file outside Touches and could only stop.
+        TOOLSET-161-17: a worker no longer asks; a request an older release held resumes in its
+        own worktree on the same attempt, with no change to Touches."""
         self.write_todo(task('A', 'a.txt'))
         self.git('add', '.')
         self.git('commit', '-qm', 'A')
@@ -406,11 +501,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.apply()
         self.wait_until_idle()
         slot = state.slots(self.common)[0]
-        self.assertEqual((slot['state'], slot['cause'], slot['requested']), ('held', 'scope_request', ['b.txt']))
-        _, again = self.apply()
-        self.assertEqual(again['outcome'], 'IDLE')  # not covered yet: waits for a person or the runner
-        self.write_todo(task('A', 'a.txt, b.txt'))
-        self.git('commit', '-qam', 'widen A')
+        self.assertEqual((slot['state'], slot['cause']), ('held', 'blocker'))  # needs_touches is not read
+        state.write_slot(self.common, {**slot, 'cause': 'scope_request', 'requested': ['b.txt']}, slot)
         _, resumed = self.apply()
         self.assertEqual(resumed['outcome'], 'RESUMED')
         slot = state.slots(self.common)[0]
@@ -422,7 +514,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt']), ('reported', 1))  # same attempt, now committed
         prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
-        self.assertIn('change only paths within Touches: a.txt, b.txt', prompt)
+        self.assertIn('It guides scheduling, not a fence', prompt)
+        self.assertNotIn('needs_touches', prompt)
 
     def test_an_answered_question_requeues_the_held_task_once(self):
         """An answered hold runs fresh and can continue its preserved candidate."""
@@ -599,24 +692,87 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
                             if w['id'] in ('A', 'B')))
         self.assertFalse((self.common / 'slots').exists() and state.slots(self.common))
 
-    def test_existing_user_branch_or_folder_is_refused_untouched(self):
-        self.write_todo(task('A', 'a.txt'))
-        self.git('branch', 'autowork/A')
-        before = self.git('rev-parse', 'autowork/A')
+    def test_leftover_merged_branch_is_removed_before_dispatch(self):
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        baseline = self.git('rev-parse', 'HEAD')
+        self.git('branch', 'autowork/A', baseline)
+        self.set_spec({'A': {'sleep': 60}, 'B': {'sleep': 60}})
         code, result = self.apply()
-        self.assertEqual((code, result['outcome']), (1, 'ACTION_REQUIRED'))
-        self.assertIn('already exists', result['reason'])
-        self.assertEqual(self.git('rev-parse', 'autowork/A'), before)
-        self.git('branch', '-D', 'autowork/A')
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
+        journal = [json.loads(line) for line in (self.common / 'journal.jsonl').read_text().splitlines()]
+        removed = [e for e in journal if e['event'] == 'stale_branch_removed']
+        self.assertEqual([(e['task_id'], e['branch'], e['tip']) for e in removed],
+                         [('A', 'autowork/A', baseline)])
+        self.assertFalse(self.git('branch', '--list', 'autowork/A-set-aside-*'))
+
+    def test_leftover_unique_branch_is_set_aside_before_dispatch(self):
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
+        baseline = self.git('rev-parse', 'HEAD')
+        tree = self.git('rev-parse', 'HEAD^{tree}')
+        tip = self.git('commit-tree', tree, '-p', baseline, '-m', 'prior task work')
+        unrelated = self.git('commit-tree', tree, '-m', 'unrelated task work')
+        self.git('branch', 'autowork/A', tip)
+        self.git('branch', 'autowork/B', unrelated)
+        self.git('branch', 'autowork/A-set-aside-1', baseline)
+        self.set_spec({'A': {'sleep': 60}, 'B': {'sleep': 60}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-2'), tip)
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), baseline)
+        self.assertEqual(self.git('rev-parse', 'autowork/B-set-aside-1'), unrelated)
+        self.assertEqual(self.git('rev-parse', 'autowork/A'), baseline)
+        self.assertEqual(self.git('rev-parse', 'autowork/B'), baseline)
+
+    def test_unsafe_worktree_path_holds_only_its_task_untouched(self):
         folder = self.repo / '.worktrees/autowork-A'
+        self.write_todo(task('A', 'a.txt'), task('B', 'b.txt'))
         folder.mkdir(parents=True)
         (folder / 'mine').write_text('user data')
-        _, result = self.apply()
-        self.assertIn('already exists', result['reason'])
+        self.set_spec({'B': {'sleep': 60}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['B'])
+        self.assertIn('A', [w['id'] for w in result['waiting']])
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['mine'])
-        self.assertEqual(self.events(), [])
-        journal = self.common / 'journal.jsonl'
-        self.assertNotIn('worktree_created', journal.read_text() if journal.exists() else '')
+        self.assertFalse(self.git('branch', '--list', 'autowork/A'))
+
+        # A registered worktree with uncommitted work is no safer to reclaim.
+        (folder / 'mine').unlink()
+        folder.rmdir()
+        self.git('worktree', 'add', '-qb', 'autowork/A', str(folder))
+        (folder / 'mine').write_text('unsaved work')
+        for journaled in (False, True):
+            with self.subTest(journaled=journaled):
+                if journaled:
+                    state.event(self.common, 'worktree_created', task_id='A', worktree=str(folder), branch='autowork/A')
+                _, again = self.apply()
+                self.assertEqual(again['dispatched'], [])
+                self.assertIn('A', [w['id'] for w in again['waiting']])
+                self.assertEqual((folder / 'mine').read_text(), 'unsaved work')
+                self.assertEqual(self.git('symbolic-ref', '--short', 'HEAD', repo=folder), 'autowork/A')
+        (folder / 'mine').unlink()
+        with patch.object(execution, 'external_workers', return_value=[{'workspaces': [str(folder)], 'active': True}]):
+            _, busy = self.apply()
+        self.assertEqual(busy['dispatched'], [])
+        self.assertIn('A', [w['id'] for w in busy['waiting']])
+
+    def test_clean_leftover_worktree_is_replaced_without_losing_its_commit(self):
+        self.write_todo(task('A', 'a.txt'))
+        baseline = self.git('rev-parse', 'HEAD')
+        folder = self.repo / '.worktrees/autowork-A'
+        self.git('worktree', 'add', '-qb', 'autowork/A', str(folder))
+        (folder / 'a.txt').write_text('earlier work')
+        self.git('add', 'a.txt', repo=folder)
+        self.git('commit', '-qm', 'earlier work', repo=folder)
+        tip = self.git('rev-parse', 'HEAD', repo=folder)
+        self.set_spec({'A': {'sleep': 60}})
+        code, result = self.apply()
+        self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
+        self.assertEqual([s['task'] for s in result['dispatched']], ['A'])
+        self.assertEqual(self.git('rev-parse', 'autowork/A-set-aside-1'), tip)
+        self.assertEqual(self.git('rev-parse', 'HEAD', repo=folder), baseline)
 
     def test_unsupported_host_falls_back_to_the_sequential_contract(self):
         for args in (('--worker-host', 'claude'), ('--worker-host', 'hermes')):
@@ -784,21 +940,11 @@ class AdmitTests(unittest.TestCase):
                               + list(parked), parked=list(parked), adopted=set(), protected=None)
 
     def test_an_interrupted_candidate_resumes_before_fresh_work_on_its_files(self):
+        """TOOLSET-161-17: fresh work on the same files is not held; it starts after the resume."""
         fresh, interrupted = contract('FRESH', 'lib/x.dart'), contract('OLD', 'lib/x.dart, test/x_test.dart')
         result = self.admit([fresh, interrupted], restartable={'OLD'}, occupying={'OLD'})
-        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD'])
-        self.assertEqual({w['id']: w['reason'] for w in result['waiting']},
-                         {'FRESH': 'overlapping paths with OLD'})
-
-    def test_an_interrupted_task_that_cannot_start_still_owns_its_files(self):
-        blocker = contract('LIVE', 'lib/y.dart, lib/x.dart')
-        interrupted, fresh, other = contract('OLD', 'lib/x.dart'), contract('FRESH', 'lib/x.dart'), contract('C', 'c.py')
-        result = self.admit([interrupted, fresh, other], running=[blocker], restartable={'OLD'},
-                            occupying={'OLD', 'LIVE'})
-        self.assertEqual([t['id'] for t in result['dispatch']], ['C'])
-        reasons = {w['id']: w['reason'] for w in result['waiting']}
-        self.assertEqual(reasons['OLD'], 'overlapping paths with LIVE')
-        self.assertIn(reasons['FRESH'], ('overlapping paths with LIVE', 'overlapping paths with interrupted OLD'))
+        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD', 'FRESH'])
+        self.assertEqual(result['waiting'], [])
 
     def test_a_commit_held_for_overlap_stops_nothing_but_its_dependents(self):
         held, interrupted = contract('HELD', 'lib/x.dart'), contract('OLD', 'lib/x.dart')

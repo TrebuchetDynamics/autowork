@@ -61,10 +61,34 @@ class BlockersContract(unittest.TestCase):
 
     def test_answers_are_planning_not_runner_management(self):
         for phrase in ('never starts, stops, restarts or reconfigures a runner',
-                       'never launches an execution or repair session', 'never kills a session',
+                       'never launches a competing execution or repair session', 'never kills a session',
                        'never pushes', "Edit that task's TODO.md entry", "never edit inside the runner's marked block",
-                       'Commit only the planning files', 'route separately requested publication through Git Commit Push', '--set-aside TASK` belong to the runner'):
+                       'route separately requested publication through Git Commit Push', '--set-aside TASK` belong to the runner'):
             self.assertIn(phrase, self.ref)
+
+    def test_held_tasks_are_inspected_even_when_question_block_exists(self):
+        for phrase in ('Always inspect both', 'held tasks and owner questions',
+                       'an empty questions block does not mean no held work',
+                       'latest attempt', 'actual writer/session activity'):
+            self.assertIn(phrase, self.ref)
+        self.assertNotIn("- Without that block, the engine's view:", self.ref)
+
+    def test_technical_holds_require_recovery_and_observed_outcomes(self):
+        for phrase in ('Execute authorized local recovery', 'not merely another Next action',
+                       'same task, candidate and cumulative budgets',
+                       'saved answer is not a removed hold', 'missing terminal evidence stays unqualified',
+                       'do not edit a live worker', 'read-only requests execute nothing'):
+            self.assertIn(phrase, self.ref)
+        self.assertNotIn('never launches an execution or repair session', self.ref)
+
+
+    def test_portable_adapter_requires_repair_without_relaxing_guards(self):
+        adapter = text(ROOT / 'adapters/skills/blockers/SKILL.md')
+        for phrase in ('held tasks and owner questions', 'bounded authorized local recovery',
+                       'verify the exact outcome', 'exclusive ownership', 'preserve explicit pauses',
+                       'read-only requests neither execute nor write', 'never pushes'):
+            self.assertIn(phrase, adapter)
+        self.assertNotIn('It changes plans, not runners', adapter)
 
 
 class BlockersRouting(unittest.TestCase):

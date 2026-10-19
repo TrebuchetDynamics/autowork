@@ -163,7 +163,7 @@ class WorkerScreen(Screen):
 
     def __init__(self, runner, task):
         super().__init__()
-        self.runner, self.task = runner, task
+        self.runner, self.task_id = runner, task  # Screen.task is Textual's own, read-only
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -171,13 +171,13 @@ class WorkerScreen(Screen):
         yield Footer()
 
     def on_mount(self):
-        self.title = f'{self.runner.name}: {self.task}'
+        self.title = f'{self.runner.name}: {self.task_id}'
         self.refresh_actions()
         self.set_interval(LOG_REFRESH, self.refresh_actions)
 
     def refresh_actions(self):
         text = Text()
-        actions = fleet_view.recent_actions(self.runner, self.task)
+        actions = fleet_view.recent_actions(self.runner, self.task_id)
         for line, age in actions:
             text.append(f'{fleet_view.ago(age):>9}  ', style='dim')
             text.append(line + '\n')

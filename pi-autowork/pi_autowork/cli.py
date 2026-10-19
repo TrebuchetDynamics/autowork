@@ -411,7 +411,9 @@ def main(argv):
     (state / 'runner.json').write_text(json.dumps({
         'pid': os.getpid(), 'started': datetime.now().astimezone().isoformat(timespec='seconds'), 'repo': repo,
         # `autowork restart` reloads a runner that records this, and sees the reload land when it grows.
-        'reloads': int(os.environ.get('PI_AUTOWORK_RELOADS') or 0)}))
+        'reloads': int(os.environ.get('PI_AUTOWORK_RELOADS') or 0),
+        # The release this process runs: status compares it with the configured one (TOOLSET-236-4d).
+        'toolset_rev': toolset_rev}))
     push_guard()
     os.environ.update(PI_BIN=pi)
     summarize(repo, base, toolset, toolset_rev, skill_args, opts, settings, state)
@@ -449,7 +451,10 @@ def status_view(repo, base, toolset, state):
     if running:
         try:
             owner = json.loads((state / 'runner.json').read_text())
-            print(f"Runner:     running (PID {owner['pid']}, since {owner['started']})")
+            running_rev, current = owner.get('toolset_rev'), git(toolset, 'rev-parse', '--short', 'HEAD')
+            behind = (f'; runs {running_rev} and moves to {current} at its next reload'
+                      if running_rev and current and running_rev != current else '')
+            print(f"Runner:     running (PID {owner['pid']}, since {owner['started']}{behind})")
         except (OSError, ValueError, KeyError):
             print('Runner:     running ()')
     else:
@@ -494,7 +499,7 @@ def status_view(repo, base, toolset, state):
     except (OSError, ValueError, KeyError):
         pass
     for row in (snapshot.get('tasks') or [])[:40]:
-        print(f"  {str(row.get('task')):<12} {lifecycle(row.get('state') or ''):<12} "
+        print(f"  {str(row.get('task')):<12} {lifecycle(row.get('state') or '', paused=row.get('paused')):<12} "
               f"{row.get('reason') or row.get('blocked_reason') or ''}")
 
 

@@ -1,3 +1,11 @@
 # Every change adds its entry at the top of the same CHANGELOG section, so two
 # sessions committing in parallel always collided there. Keep both sides' lines.
 CHANGELOG.md merge=union
+
+# Drivers are registered in local Git config by the Pi runner. Resolved merges
+# finalize cross-file priority and generated coverage before committing.
+goals.json merge=docs-sync-goals
+TODO.md merge=docs-sync-todo
+TODO.archive.md merge=docs-sync-archive
+todo.archive.md merge=docs-sync-archive
+docs/TODO-archive.md merge=docs-sync-archive

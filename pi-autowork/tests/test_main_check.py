@@ -26,6 +26,19 @@ class MainCheckTests(unittest.TestCase):
                                                      'test_ui_taste_bundle.UiTasteBundleTests.test_bundle',
                                                      'test_other.OtherTests.test_fixed', '/repo/tests (timed out)'])
 
+    def test_the_full_check_comes_from_validate_or_agents_md(self):
+        """TOOLSET-180-72: the repository declares its whole offline suite once."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(main_check.full_check(root, {}), '')
+            Path(root, 'AGENTS.md').write_text('# Rules\n\n- Full check: `python3 scripts/check.py`\n')
+            self.assertEqual(main_check.full_check(root, {}), 'python3 scripts/check.py')
+            self.assertEqual(main_check.full_check(root, {'PI_AUTOWORK_VALIDATE': 'make test'}), 'make test')
+            self.assertEqual(main_check.command({}, root), 'python3 scripts/check.py')  # main check falls back
+            self.assertEqual(main_check.command({'PI_AUTOWORK_MAIN_CHECK': 'x'}, root), 'x')
+        self.assertEqual(main_check.failures('FAILED tests/test_a.py::test_b - x\n    --- FAIL: TestC (0.1s)\n'),
+                         ['tests/test_a.py::test_b', 'TestC'])
+
     def test_reruns_are_alone_in_their_directory_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -139,6 +152,39 @@ class MainCheckTests(unittest.TestCase):
                     with self.subTest(revision=revision):
                         runner.finish_main_check({'rev': revision})
                         self.assertEqual(main_check.read(root)['state'], 'red')
+
+    def test_a_check_that_crashes_before_any_result_is_broken_not_red(self):
+        """TOOLSET-237-35: a tool crash made main red with placeholder 'failing tests'."""
+        from pi_autowork import maintainer
+        from pi_autowork.coordinator import Coordinator
+
+        crash = ('Analyzing app...\nNo issues found! (ran in 24.5s)\n\n'
+                 'Oops; flutter has exited unexpectedly: "Bad state: No element".\n'
+                 'A crash report has been written to /x/flutter_01.log\n')
+        self.assertEqual(main_check.crash_line(crash), 'Oops; flutter has exited unexpectedly: "Bad state: No element".')
+        self.assertEqual(main_check.crash_line('a\nlast words\n'), 'last words')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo = root, tmp
+            maintained = []
+            runner.maintain = lambda **_: maintained.append(main_check.read(root)['state'])
+            (root / 'main-check.log').write_text(crash)
+            (root / 'main-check.exit').write_text('1\n')
+            runner.finish_main_check({'rev': 'abc123'})
+            first = main_check.read(root)
+            self.assertEqual((first['state'], first.get('crashed')), ('recheck', 'abc123'))  # once more
+            self.assertEqual(maintained, [])
+            runner.finish_main_check(dict(first, rev='abc123'))
+            record = main_check.read(root)
+            self.assertEqual(record['state'], 'broken')
+            self.assertIn('Bad state: No element', record['crash'])
+            self.assertFalse(record.get('failures'))  # no placeholder test IDs
+            self.assertEqual(maintained, ['broken'])
+            self.assertEqual(main_check.line(record), 'main check broken at abc123: ' + record['crash'])
+            found = maintainer.triggers([], record)
+            self.assertEqual([kind for _, kind, _ in found], ['check broken'])
+            self.assertIn('Never add a repair task for test names', maintainer.prompt(found, '/repo', 'goals.py'))
 
     def test_alive_rejects_zombies_and_reused_pids(self):
         pid = os.fork()

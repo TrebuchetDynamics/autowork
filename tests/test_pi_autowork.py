@@ -30,8 +30,16 @@ def setUpModule():
     source = ROOT
     _toolset_fixture = tempfile.TemporaryDirectory()
     ROOT = Path(_toolset_fixture.name) / 'toolset'
-    subprocess.run(['git', '-C', str(source), 'worktree', 'add', '-q', '--detach', str(ROOT), 'HEAD'], check=True)
-    paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py', 'scripts/pi-autowork.sh']
+    # A clone of its own, not a worktree of the source: under the runner's gate the source is the
+    # live repository, and every fixture toolset and release became a worktree of it.
+    head = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'], check=True,
+                          capture_output=True, text=True).stdout.strip()
+    subprocess.run(['git', 'clone', '-q', '--shared', '--no-checkout', str(source), str(ROOT)], check=True)
+    subprocess.run(['git', '-C', str(ROOT), 'checkout', '-q', '--detach', head], check=True)
+    # Snapshot dependencies together: a merge can change both the engine's CLI
+    # and the helpers it calls, not just the runner entry points.
+    paths = ['pi-autowork/pi_autowork', 'skills/autowork/scripts',
+             'skills/docs-sync/scripts', 'scripts/pi-autowork.sh']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
     if patch:
@@ -43,7 +51,6 @@ def setUpModule():
 
 
 def tearDownModule():
-    subprocess.run(['git', '-C', str(ROOT), 'worktree', 'remove', '--force', str(ROOT)], check=True)
     _toolset_fixture.cleanup()
 
 
@@ -121,6 +128,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
     stream.seek(0); stream.truncate(); json.dump(plan, stream)
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
       'session': opts.get('--session-id'), 'cwd': os.getcwd(), 'tools': opts.get('--tools'),
+      'execution_common': os.environ.get('AUTOWORK_EXECUTION_COMMON'),
       'no_approve': '--no-approve' in args, 'message': message})
 def emit(record):
     print(json.dumps(record), flush=True)
@@ -153,6 +161,12 @@ elif role == 'verify':
     if behavior == 'slow_review':  # a review that runs a long check
         time.sleep(8)
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+    elif behavior == 'move_main':  # another writer commits a conflicting file to main during the review
+        main = os.environ['FAKE_MAIN_REPO']
+        open(os.path.join(main, task + '.txt'), 'w').write('from main\n')
+        subprocess.run(['git', '-C', main, 'add', '-A'])
+        subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
     elif behavior == 'env':  # a required check cannot run: a tool is missing here
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: fail environment — fake-sdk 1.0 (docs/SETUP.md)')
     elif behavior == 'needs_cache':  # passes only once the runner installed the tool
@@ -172,6 +186,23 @@ elif role == 'maintainer':
             '  Checks: test -s FIX.txt\n  Dependencies: None.\n  Status: open\n', 1)
         open('TODO.md', 'w').write(text)
         git('commit', '-qam', 'docs(tasks): FIX repairs the red main')
+    elif behavior == 'repair_ledger':
+        data = json.load(open('goals.json'))
+        next(g for g in data['goals'] if g['id'] == 'PROOF')['tasks'] = ['PROOF-1']
+        data['tasks'].append(dict(id='PROOF-1', title='Remaining proof', goal='PROOF', status='open',
+                                  section='Needs decision', depends_on=[]))
+        open('goals.json', 'w').write(json.dumps(data))
+        with open('TODO.md', 'a') as stream:
+            stream.write('\n- [ ] PROOF-1 — Remaining proof\n  Scope: Remaining proof\n'
+                         '  Acceptance: recorded proof\n  Checks: manual\n  Dependencies: None.\n  Status: open\n')
+        git('commit', '-qam', 'docs(tasks): record remaining ledger proof')
+    elif behavior == 'drop_ledger':
+        os.unlink('goals.json')
+        git('commit', '-qam', 'docs(tasks): removed ledger')
+    elif behavior == 'invalid_ledger':
+        with open('TODO.md', 'a') as stream:
+            stream.write('\nStill missing ledger proof.\n')
+        git('commit', '-qam', 'docs(tasks): incomplete ledger repair')
     elif behavior == 'code':  # oversteps: edits product code
         open('A.txt', 'w').write('maintainer wrote code\n')
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
@@ -197,6 +228,10 @@ elif behavior == 'slow':  # busy for a few seconds, then finishes normally
     open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
     subprocess.run(['sleep', '6'])  # a running tool command, as real Pi has: an active session
     work(); finish(text='done')
+elif behavior == 'long':  # busy for a minute: long enough to be stopped from outside
+    open(os.path.join(os.environ['FAKE_PI_ROOT'], 'busy-' + task), 'w').write(str(os.getpid()))
+    subprocess.run(['sleep', '60'])
+    work(); finish(text='done')
 elif behavior == 'barrier':  # both A and B must be running at once
     mine = os.path.join(os.environ['FAKE_PI_ROOT'], 'ready-' + task)
     open(mine, 'w').write('ready')
@@ -213,6 +248,19 @@ elif behavior == 'move_main':  # another writer commits a conflicting file to ma
     subprocess.run(['git', '-C', main, 'add', '-A'])
     subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
     finish(text='done')
+elif behavior == 'break_ledger':  # a ledger breaks while this worker is in flight
+    work()
+    listing = subprocess.run(['git', '-C', os.environ['FAKE_MAIN_REPO'], 'worktree', 'list', '--porcelain'],
+                             capture_output=True, text=True).stdout
+    session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
+                   if 'branch refs/heads/pi-autowork/' in b)
+    path = os.path.join(session, 'goals.json')
+    data = json.load(open(path))
+    data['goals'].append(dict(id='PROOF', title='Unverified proof', source='TODO.md', status='partial',
+                              tasks=[], priority=2, depends_on=[]))
+    open(path, 'w').write(json.dumps(data))
+    git('-C', session, 'commit', '-qam', 'unverified goal has no open task')
+    finish(text='done')
 elif behavior == 'move_session':  # the session branch changes the task's own file meanwhile
     work()
     listing = subprocess.run(['git', '-C', os.environ['FAKE_MAIN_REPO'], 'worktree', 'list', '--porcelain'],
@@ -220,9 +268,15 @@ elif behavior == 'move_session':  # the session branch changes the task's own fi
     session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
                    if 'branch refs/heads/pi-autowork/' in b)
     open(os.path.join(session, task + '.txt'), 'w').write('from the session\n')
-    subprocess.run(['git', '-C', session, 'add', '-A'])
-    subprocess.run(['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
-                    'commit', '-qm', 'session moved'])
+    for command in (['git', '-C', session, 'add', '-A'],
+                    ['git', '-C', session, '-c', 'user.email=s@example.invalid', '-c', 'user.name=Session',
+                     'commit', '-qm', 'session moved']):
+        observed = subprocess.run(command, capture_output=True, text=True)
+        note({'fixture_git': command, 'returncode': observed.returncode,
+              'stdout': observed.stdout, 'stderr': observed.stderr,
+              'session_status': subprocess.run(['git', '-C', session, 'status', '--porcelain'],
+                                               capture_output=True, text=True).stdout})
+        observed.check_returncode()
     finish(text='done')
 elif behavior == 'provider_error':
     open(task + '-partial.txt', 'w').write('half\n')
@@ -307,8 +361,11 @@ class Fixture(unittest.TestCase):
                     'FAKE_PI_PLAN': str(self.plan_file), 'FAKE_PI_ROOT': str(self.root),
                     'FAKE_MAIN_REPO': str(self.repo),
                     'PI_AUTOWORK_TMP_STALE': '0',  # never sweep the host's real /tmp from a test
+                    'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',  # tiny fixtures also run on a small TMPDIR
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
-                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'XDG_STATE_HOME': str(self.root / 'xdg')}
+                    'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
+                    'XDG_STATE_HOME': str(self.root / 'xdg')}
+        self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
         self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
         # nothing and these runner scenarios fail for the wrong reason. As the engine's own
@@ -341,6 +398,11 @@ class Fixture(unittest.TestCase):
         repo.mkdir()
         self.git(repo, 'init', '-q', '-b', 'main')
         (repo / 'TODO.md').write_text(todo(tasks))
+        # Unrelated runner journeys start after the one-time planning-driver setup.
+        # The startup test below adds a custom owner and verifies its setup commit.
+        (repo / '.gitattributes').write_text('goals.json merge=docs-sync-goals\nTODO.md merge=docs-sync-todo\n'
+            'TODO.archive.md merge=docs-sync-archive\ntodo.archive.md merge=docs-sync-archive\n'
+            'docs/TODO-archive.md merge=docs-sync-archive\n')
         for t, _ in tasks:
             (repo / f'{t}.txt').write_text('')
         self.git(repo, 'add', '-A')
@@ -348,8 +410,25 @@ class Fixture(unittest.TestCase):
         return repo
 
     def git(self, repo, *args):
-        return subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
-                               *args], check=True, capture_output=True, text=True).stdout.strip()
+        result = subprocess.run(['git', '-C', str(repo), '-c', 'user.email=t@example.invalid', '-c', 'user.name=T',
+                                 *args], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0,
+                         f'fixture Git {args} in {repo}: {result.stdout}\n{result.stderr}')
+        return result.stdout.strip()
+
+    def retain_evidence(self):
+        """Keep targeted fake Git/runner/slot diagnostics before disposable cleanup."""
+        target = Path(tempfile.mkdtemp(prefix='runner-evidence-', dir=tempfile.gettempdir()))
+        for source in [self.log, *self.state.rglob('runner.log'), *self.state.rglob('engine.err'),
+                       *self.repo.glob('.git/autowork-execution/slots/*.json')]:
+            if source.is_file():
+                dest = target / source.relative_to(self.root)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest)
+        (target / 'snapshot.json').write_text(json.dumps({
+            'workers': self.runs('worker'), 'main_status': self.git(self.repo, 'status', '--porcelain'),
+            'worktrees': self.git(self.repo, 'worktree', 'list', '--porcelain')}, indent=2))
+        print(f'FIXTURE_EVIDENCE {target}', flush=True)
 
     def plan(self, plan):
         self.plan_file.write_text(json.dumps(plan))
@@ -365,8 +444,15 @@ class Fixture(unittest.TestCase):
         return [json.loads(line) for line in found[0].read_text().splitlines()] if found else []
 
     def run_runner(self, *args, script=None, cwd=None, env=None, timeout=120):
-        return subprocess.run(['bash', str(script or RUNNER), *args], cwd=cwd or self.repo, env=env or self.env,
-                              capture_output=True, text=True, timeout=timeout)
+        try:
+            return subprocess.run(['bash', str(script or RUNNER), *args], cwd=cwd or self.repo, env=env or self.env,
+                                  capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            # A bare "timed out" hid where 58 runs hung in the runner's gate: say what it was doing.
+            out = ''.join(s.decode(errors='replace') if isinstance(s, bytes) else s for s in (e.stdout, e.stderr) if s)
+            log = ''.join(p.read_text(errors='replace') for p in self.state.glob('*/runner.log'))
+            self.fail(f'the runner did not finish in {timeout} s\n--- output ---\n{out[-3000:]}\n'
+                      f'--- runner.log ---\n{log[-3000:]}')
 
     def start_runner(self, *args):
         return subprocess.Popen(['bash', str(RUNNER), *args], cwd=self.repo, env=self.env,
@@ -414,11 +500,29 @@ class EngineTests(Fixture):
         self.assertEqual(roles, {'worker', 'verify'})
 
     def test_once_runs_one_task(self):
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text().replace(
+            '# TODO\n', '# TODO\n\n[Completed tasks](docs/history.md)\n'))
+        (self.repo / 'docs').mkdir()
+        (self.repo / 'docs/history.md').write_text('# Completed tasks\n')
+        self.git(self.repo, 'add', 'TODO.md', 'docs/history.md')
+        self.git(self.repo, 'commit', '-qm', 'custom history owner')
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
         self.assertTrue(self.done('A'))
         self.assertEqual((self.repo / 'B.txt').read_text(), '')
+        for kind, name in (('goals', 'goals.json'), ('todo', 'TODO.md'), ('archive', 'TODO.archive.md')):
+            driver = self.git(self.repo, 'config', '--local', '--get', f'merge.docs-sync-{kind}.driver')
+            self.assertIn('merge-driver ' + kind, driver)
+            self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', name),
+                             f'{name}: merge: docs-sync-{kind}')
+        self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', 'docs/history.md'),
+                         'docs/history.md: merge: docs-sync-archive')
+        attributes = (self.repo / '.gitattributes').read_bytes()
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.repo / '.gitattributes').read_bytes(), attributes)
+        self.assertEqual(self.git(self.repo, 'rev-list', '--count', 'HEAD', '--', '.gitattributes'), '2')
 
     def test_empty_queue_calls_no_model(self):
         # Seed the consumed artifacts of a completed A/B/C session, not another
@@ -499,17 +603,17 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('B'))  # independent work still lands
         self.assertNotIn('- [x] A', (self.repo / 'TODO.md').read_text())
 
-    def test_invalid_touches_hold_the_task_while_independent_work_finishes(self):
+    def test_invalid_touches_are_no_hint_and_never_hold_the_task(self):
+        """TOOLSET-161-17: Touches schedule work; an invalid list only ranks the task lower."""
         text = (self.repo / 'TODO.md').read_text().replace('Touches: A.txt', 'Touches: a/../b')
         (self.repo / 'TODO.md').write_text(text)
         self.git(self.repo, 'commit', '-qam', 'A has invalid Touches')
         result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertEqual([r['task'] for r in self.runs('worker')], ['B'])
-        self.assertTrue(self.done('B'))
-        self.assertIn('A: invalid Touches: a/../b', result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(sorted(r['task'] for r in self.runs('worker')), ['A', 'B', 'C'])
+        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertNotIn('invalid Touches', result.stdout)
         self.assertNotIn('engine needs attention', result.stdout)
-        self.assertIn('invalid Touches: a/../b', self.run_runner('--status').stdout)
 
     def test_a_review_that_could_not_run_for_a_missing_tool_gets_it_installed_and_reviews_again(self):
         """TOOLSET-173-94: a commit was held on its last attempt for want of a pinned SDK."""
@@ -562,6 +666,44 @@ class EngineTests(Fixture):
     def main_record(self):
         found = list(self.state.glob('*/main_check.json'))
         return json.loads(found[0].read_text()) if found else {}
+
+    def test_a_foreground_main_checks_agents_do_not_delay_integration(self):
+        (self.repo / 'TODO.md').write_text(todo([('A', None)]).replace('  Touches: A.txt\n', ''))
+        self.git(self.repo, 'commit', '-qam', 'one task needing Touches')
+        ready, release = self.root / 'check-ready.json', self.root / 'release-check'
+        agent, child = self.root / 'run_agent.py', self.root / 'pi'
+        child.write_text('import time\nfrom pathlib import Path\n'
+                         f'while not Path({str(release)!r}).exists(): time.sleep(0.05)\n')
+        # Offline harnesses strip runner settings before starting fixture agents. Their
+        # real marked parent still attributes them without leaking settings into tests.
+        agent.write_text('import json, os, subprocess, sys\nfrom pathlib import Path\n'
+                         'env = {k: v for k, v in os.environ.items() if not k.startswith("AUTOWORK_")}\n'
+                         f'child = subprocess.Popen([sys.executable, {str(child)!r}], env=env)\n'
+                         f'Path({str(ready)!r}).write_text(json.dumps(dict(pid=child.pid, '
+                         'marker=os.environ.get("AUTOWORK_EXECUTION_COMMON"))))\nchild.wait()\n')
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = shlex.join([sys.executable, str(agent)])
+        runner = self.start_runner('--interval', '1')
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        try:
+            self.wait_for(ready)
+            deadline = time.monotonic() + 60
+            while not self.done('A'):
+                self.assertIsNone(runner.poll(), log())
+                self.assertLess(time.monotonic(), deadline, log())
+                time.sleep(0.1)
+            record = json.loads(ready.read_text())
+            self.assertTrue(Path(f'/proc/{record["pid"]}').exists(), log())
+            self.assertEqual(record['marker'], str(self.repo / '.git'))
+            self.assertNotIn(b'AUTOWORK_EXECUTION_COMMON=', Path(f'/proc/{record["pid"]}/environ').read_bytes())
+            # Touches are scheduling hints now; the reviewer is still a real
+            # auxiliary Pi job and must carry the same repository attribution.
+            self.assertEqual(self.runs('verify')[0]['execution_common'], str(self.repo / '.git'))
+            self.assertNotIn('waiting to integrate until another session', log())
+        finally:
+            release.touch()
+            if runner.poll() is None:
+                runner.send_signal(signal.SIGINT)
+            runner.communicate(timeout=60)
 
     def test_a_main_check_the_busy_host_cut_short_runs_again_before_green(self):
         """TOOLSET-193-54: tests the resource gate skipped are not checked, so main is not green yet."""
@@ -768,7 +910,51 @@ class EngineTests(Fixture):
         text = log()
         self.assertNotIn('abandoned integration', text)
         self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        # No review starts while the reload waits, or a queue of reviews postpones it for hours.
+        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)
         self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
+
+    def test_a_reload_applies_between_back_to_back_reviews(self):
+        """TOOLSET-236-4d: a runner whose reviews ran back to back never found a gap for a reload
+        and kept its old release for hours; it re-executes before the next review starts."""
+        self.plan({'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
+        runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        deadline = time.monotonic() + 120
+        while 'A: verifying' not in log():
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        runner.send_signal(signal.SIGHUP)
+        while not ('Reloading' in log() and self.done('A', 'B')):
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.5)
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=60)
+        text = log()
+        self.assertIn('Reload pending: waiting for the review of A to end', text)
+        self.assertLess(text.index('A: integrated'), text.index('Reloading'), text)
+        self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)  # not after B's review
+        self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
+
+    def test_only_the_candidate_the_engine_takes_next_is_started_and_reads_verifying(self):
+        """TOOLSET-238-11: after a reload the runner logged "verifying" for 13 candidates and started
+        13 engine integrations, all but one refused for priority order."""
+        (self.repo / 'TODO.md').write_text(todo([('B', None), ('A', None), ('C', 'A')]))  # B goes first
+        self.git(self.repo, 'commit', '-qam', 'B first')
+        self.plan({'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
+        result = self.run_runner('--until-empty', timeout=180)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        events = re.findall(r'\] ([ABC]): (verifying|integrated|failed)', result.stdout)
+        reviewing = None
+        for task, word in events:  # one review at a time: each "verifying" ends in its own answer
+            if word == 'verifying':
+                self.assertIsNone(reviewing, result.stdout)
+                reviewing = task
+            elif task == reviewing:
+                reviewing = None
+        self.assertEqual([t for t, w in events if w == 'verifying'], ['B', 'A', 'C'], result.stdout)
 
     def test_an_idle_runner_rests_when_only_other_refs_change(self):
         """TOOLSET-185-74: an idle runner started 213 sessions in 40 minutes: ending each empty
@@ -822,6 +1008,51 @@ class EngineTests(Fixture):
         self.assertEqual([r['task'] for r in self.runs('worker')].count('A'), 1)  # same attempt
         logs = ''.join(p.read_text(errors='replace') for p in self.repo.glob('.git/autowork-execution/slot-data/A/*/worker.log'))
         self.assertIn('stopped a command that ran 0 min (limit 0 min): sleep 60', logs)
+
+    def test_a_candidate_that_breaks_a_test_outside_its_checks_is_held_with_that_test_named(self):
+        """TOOLSET-180-72: a reviewer-approved commit landed while breaking 44 tests its own checks
+        never ran."""
+        self.env['PI_AUTOWORK_VALIDATE'] = ('if grep -q done A.txt; then echo "FAIL: test_x (other.T.test_x)"; '
+                                            'exit 1; fi')
+        result = self.run_runner('--until-empty')
+        self.assertFalse(self.done('A'), result.stdout)
+        self.assertIn('the full check has new failures the base does not: other.T.test_x', result.stdout)
+        self.assertTrue(self.done('B'), result.stdout)  # independent work still lands
+        retry = list(self.repo.glob('.git/autowork-execution/slot-data/A/attempt-2/prompt.md'))
+        self.assertTrue(retry and 'other.T.test_x' in retry[0].read_text(), result.stdout)  # the retry is told
+
+    def test_a_repository_without_a_full_check_gets_one_question(self):
+        self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '1'
+        self.run_runner('--until-empty')
+        text = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertEqual(text.count('### Q-FULL-CHECK '), 1)
+        self.assertIn('`Full check: <command>`', text)
+
+    def test_a_full_check_that_crashes_on_the_base_too_never_passes_a_candidate(self):
+        """TOOLSET-237-35: a test tool crashed before any result, on the base as on the candidate,
+        and the gate called that "nothing new to blame" and landed the candidate untested."""
+        self.env['PI_AUTOWORK_VALIDATE'] = ("echo 'Oops; flutter has exited unexpectedly: \"Bad state: No element\".'; "
+                                            'exit 1')
+        result = self.run_runner('--until-empty', timeout=180)
+        self.assertFalse(self.done('A'), result.stdout)
+        self.assertIn('the full check crashed before any test result, on the base too: '
+                      'Oops; flutter has exited unexpectedly', result.stdout)
+
+    def test_a_full_check_that_crashes_once_is_run_again(self):
+        marker = self.root / 'crashed-once'
+        self.env['PI_AUTOWORK_VALIDATE'] = (f'if [ ! -e {marker} ]; then touch {marker}; '
+                                            'echo "Segmentation fault (core dumped)"; exit 139; fi')
+        result = self.run_runner('--until-empty')
+        self.assertTrue(marker.exists())
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)  # the rerun passed: nothing held
+
+    def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
+        self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'
+        result = self.run_runner('--until-empty')
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertTrue(list(self.state.glob('*/full-check/base-*.json')))  # the base result is cached
+        prompt = next(self.repo.glob('.git/autowork-execution/slot-data/A/attempt-1/prompt.md')).read_text()
+        self.assertIn('Do not run the full check', prompt)  # the runner's gate is the one run (TOOLSET-227-a8)
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
@@ -887,9 +1118,21 @@ class EngineTests(Fixture):
                                 '--owner-pid', str(sleeper.pid)], capture_output=True, text=True)
         self.assertEqual(json.loads(claim.stdout)['outcome'], 'BUSY', claim.stdout)
         self.assertIn('parallel coordinator', claim.stdout)
+        slots = self.repo / '.git/autowork-execution/slots'
+        b = json.loads((slots / 'B.json').read_text())
+        (Path(b['worktree']) / 'B.txt').write_text('unfinished')
         runner.send_signal(signal.SIGINT)
         out, _ = runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130, out)
+        reason = 'stopped by a runner restart; resumes on attempt 1'
+        self.assertIn('A: paused — ' + reason, out)
+        self.assertIn('B: paused — ' + reason + ' with uncommitted changes', out)
+        self.assertNotIn(': failed', out)
+        status = self.run_runner('--status')
+        self.assertEqual(status.returncode, 0, status.stdout + status.stderr)
+        self.assertIn('0 failed', status.stdout)
+        for task, suffix in (('A', ''), ('B', ' with uncommitted changes')):
+            self.assertRegex(status.stdout, rf'{task}\s+paused\s+{reason}{suffix}')
         signals = [json.loads(l) for l in self.log.read_text().splitlines() if '"signal"' in l]
         self.assertEqual(sorted(s['task'] for s in signals), ['A', 'B'], out + self.log.read_text()[-1500:])
         result = self.run_runner('--until-empty')
@@ -1008,6 +1251,8 @@ class EngineTests(Fixture):
         (self.repo / 'TODO.md').write_text(text.replace('Dependencies: None.', 'Dependencies: Z.'))
         self.git(self.repo, 'commit', '-qam', 'everything waits on a missing Z')
         runner = self.start_runner('--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and (runner.kill(), runner.wait()))
+        self.addCleanup(self.retain_evidence)
         deadline = time.monotonic() + 30
         while 'No task can start now' not in (self.state.glob('*/runner.log').__next__().read_text()
                                                if list(self.state.glob('*/runner.log')) else ''):
@@ -1080,18 +1325,6 @@ class EngineTests(Fixture):
             files = set(self.git(self.repo, 'show', '--format=', '--name-only', commit).split())
             self.assertLessEqual(files, {'TODO.md', 'goals.json', 'TODO.archive.md'}, commit)
 
-    def test_the_touches_pass_reads_a_disposable_copy_of_the_session(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        cwd = self.runs('touches')[0]['cwd']
-        self.assertEqual(Path(cwd).parent, self.repo / '.worktrees')
-        self.assertTrue(Path(cwd).name.startswith('pi-scratch-touches-'))
-        self.assertFalse(Path(cwd).exists())
-        self.assertNotIn(cwd, self.git(self.repo, 'worktree', 'list'))
-
     def test_a_set_aside_request_lets_a_blocked_task_run_fresh(self):
         self.plan({'worker:A': ['blocked']})
         first = self.run_runner('--until-empty')
@@ -1129,6 +1362,7 @@ class EngineTests(Fixture):
         time.sleep(3)
         self.assertIsNone(runner.poll(), log())  # still serving, not finished
         self.assertNotIn('Finished.', log())
+        self.assertIn('A: failed — dead worker without a commit or changes', log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
@@ -1214,22 +1448,95 @@ class EngineTests(Fixture):
         self.assertIn('docs(tasks): record TODO.md priority order (pi-autowork)',
                       self.git(self.repo, 'log', '--format=%s'))
 
+    def test_an_invalid_ledger_is_repaired_before_dispatch_or_settling_reported_work(self):
+        for source in ('before_dispatch', 'reported', 'reported_once'):
+            with self.subTest(source=source):
+                self.repo = self.make_repo(self.root / source, [('A', None), ('B', None), ('C', 'A')])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                self.ledger_with_recorded_order()
+                if source == 'before_dispatch':
+                    data = json.loads((self.repo / 'goals.json').read_text())
+                    data['goals'].append(dict(id='PROOF', title='Unverified proof', source='TODO.md', status='partial',
+                                              tasks=[], priority=2, depends_on=[]))
+                    (self.repo / 'goals.json').write_text(json.dumps(data))
+                    self.git(self.repo, 'commit', '-qam', 'unverified goal has no open task')
+                self.plan({'maintainer': ['repair_ledger'],
+                           'worker:A': ['complete'] if source == 'before_dispatch' else ['break_ledger']})
+                result = self.run_runner('--once' if source == 'reported_once' else '--until-empty',
+                                         '--workers', '1')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(result.stdout.count('DOCS-MAINTAINER: repairing the task docs of LEDGER'), 1,
+                                 result.stdout)
+                self.assertIn('DOCS-MAINTAINER: merged', result.stdout)
+                self.assertTrue(self.done(*('A' if source == 'reported_once' else 'ABC')),
+                                result.stdout + result.stderr)
+                self.assertIn('record remaining ledger proof', self.git(self.repo, 'log', '--format=%s'))
+                self.assertNotIn('The engine needs attention', result.stdout)
+
+    def test_a_maintainer_change_that_leaves_an_invalid_ledger_is_refused_and_asked_once(self):
+        for behavior in ('invalid_ledger', 'drop_ledger'):
+            with self.subTest(behavior=behavior):
+                self.repo = self.make_repo(self.root / behavior, [('A', None)])
+                (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'broken ledger')
+                self.plan({'maintainer': [behavior]})
+                result = self.run_runner('--until-empty')
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                self.assertIn('DOCS-MAINTAINER: refused: goals.py validate failed', result.stdout)
+                self.assertTrue((self.repo / 'goals.json').exists())
+                again = self.run_runner('--until-empty')
+                self.assertNotIn('DOCS-MAINTAINER: repairing', again.stdout)
+                self.assertNotIn('The engine needs attention', again.stdout)
+                blockers = (self.repo / 'BLOCKERS.md').read_text()
+                self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
+                self.assertIn('A: unknown goal None', blockers)
+
+    def test_structural_ledger_errors_also_get_a_repair_attempt_and_question(self):
+        for content, error in [('{', 'malformed JSON'), ('{"version": 2, "goals": [], "tasks": []}',
+                                                       'version must be 1')]:
+            with self.subTest(error=error):
+                self.repo = self.make_repo(self.root / error.replace(' ', '-'), [('A', None)])
+                (self.repo / 'goals.json').write_text(content)
+                self.git(self.repo, 'add', 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'structurally broken ledger')
+                result = self.run_runner('--until-empty')
+                self.assertIn('DOCS-MAINTAINER: repairing the task docs of LEDGER', result.stdout)
+                self.assertIn(error, (self.repo / 'BLOCKERS.md').read_text())
+
     def test_a_service_stays_up_and_reports_when_the_engine_needs_attention(self):
-        """An invalid ledger made the runner exit, and systemd does not restart a deliberate exit."""
-        (self.repo / 'goals.json').write_text('{"version": 1, "goals": [], "tasks": [{"id": "A"}]}')
-        self.git(self.repo, 'add', 'goals.json')
-        self.git(self.repo, 'commit', '-qm', 'broken ledger')
+        """A refused ledger must recover even when a reported worker waits for integration."""
+        self.ledger_with_recorded_order()
+        self.plan({'worker:A': ['break_ledger']})  # maintainer defaults to making no change
         env = {**self.env, 'PI_AUTOWORK_STALL_AFTER': '1'}
-        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1'], cwd=self.repo, env=env,
+        runner = subprocess.Popen(['bash', str(RUNNER), '--interval', '1', '--workers', '1'], cwd=self.repo, env=env,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
         log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
         deadline = time.monotonic() + 60
-        while 'STALLED' not in log():
+        while not (self.repo / 'BLOCKERS.md').exists():
             self.assertLess(time.monotonic(), deadline, log())
             self.assertIsNone(runner.poll(), log())
             time.sleep(0.2)
         self.assertEqual(log().count('The engine needs attention'), 1, log())
-        self.assertIn('the engine needs attention: invalid goals.json', log())
+        self.assertIn('The engine needs attention: invalid goals.json', log())
+        self.assertEqual(log().count('DOCS-MAINTAINER: repairing the task docs of LEDGER'), 1, log())
+        listing = self.git(self.repo, 'worktree', 'list', '--porcelain')
+        session = next(Path(b.splitlines()[0].removeprefix('worktree ')) for b in listing.split('\n\n')
+                       if 'branch refs/heads/pi-autowork/' in b)
+        blockers = (session / 'BLOCKERS.md').read_text()
+        self.assertEqual(blockers.count('### Q-LEDGER'), 1, blockers)
+        self.assertIn('PROOF: partial goal has no open task', blockers)
+        # The question has landed, so the session is no longer ahead. Owner fixes on
+        # main must still reach it even though A remains reported (an in-flight slot).
+        self.git(self.repo, 'rm', 'goals.json')
+        self.git(self.repo, 'commit', '-qm', 'owner restored TODO-only plan')
+        deadline = time.monotonic() + 60
+        while not self.done('A', 'B', 'C') or '### Q-LEDGER' in (self.repo / 'BLOCKERS.md').read_text():
+            self.assertLess(time.monotonic(), deadline, log())
+            self.assertIsNone(runner.poll(), log())
+            time.sleep(0.2)
+        self.assertEqual(log().count('The engine needs attention'), 1, log())
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=60)
         self.assertEqual(runner.returncode, 130)
@@ -1305,6 +1612,93 @@ class EngineTests(Fixture):
                 runner.send_signal(signal.SIGINT)
             runner.communicate(timeout=60)
 
+    def test_uncommitted_planning_waits_once_then_dispatches_after_commit(self):
+        for stage_all in (False, True):
+            with self.subTest(stage_all=stage_all):
+                self.repo = self.make_repo(self.root / f'planning-{stage_all}', [('A', None), ('B', None), ('C', 'A')])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                self.log.unlink(missing_ok=True)
+                self.ledger_with_recorded_order()
+                self.git(self.repo, 'rm', '--cached', 'TODO.md', 'goals.json')
+                question = self.repo / 'BLOCKERS.md'
+                question.write_text('# Blockers\n\n## Active\n\nOwner note: preserve me.\n')
+                self.git(self.repo, 'add', 'BLOCKERS.md')
+                self.git(self.repo, 'commit', '-qm', 'planning only on disk')
+                self.env.update(PI_AUTOWORK_PLAN_SETTLE='0', PI_AUTOWORK_PLANNING_QUIET='600')
+                if not stage_all:
+                    # Interrupt recovery just before restoring owner prose; a restart must
+                    # retain the receipt and finish restoration, not leave a dirty scaffold.
+                    shim = self.root / 'idle-host' / 'sitecustomize.py'
+                    with shim.open('a') as stream:
+                        stream.write('\nfrom pathlib import Path\n'
+                                     '_write_text = Path.write_text\n'
+                                     'def write_text(path, data, *args, **kwargs):\n'
+                                     '    insertion = Path(os.environ["FAKE_PI_ROOT"]) / "interrupt-insertion"\n'
+                                     '    if path.name == "BLOCKERS.md" and "Q-RUNNER-PLANNING" in data and insertion.exists():\n'
+                                     '        insertion.unlink()\n'
+                                     '        os._exit(98)\n'
+                                     '    marker = Path(os.environ["FAKE_PI_ROOT"]) / "interrupt-recovery"\n'
+                                     '    if path.name == "BLOCKERS.md" and "Owner note:" in data '
+                                     'and "pi-autowork:questions:start" not in data and marker.exists():\n'
+                                     '        marker.unlink()\n'
+                                     '        os._exit(99)\n'
+                                     '    return _write_text(path, data, *args, **kwargs)\n'
+                                     'Path.write_text = write_text\n')
+                    (self.root / 'interrupt-insertion').touch()
+                self.plan({'worker:A': ['blocked']})
+                runner = self.start_runner('--interval', '1')
+                self.addCleanup(lambda r=runner: r.poll() is None and r.kill())
+                common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+                folder = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+                log = lambda: (folder / 'runner.log').read_text() if (folder / 'runner.log').exists() else ''
+                if not stage_all:
+                    runner.communicate(timeout=30)
+                    self.assertEqual(runner.returncode, 98, log())
+                    self.assertTrue((folder / 'planning-question.json').exists())
+                    time.sleep(1.1)  # cross a timestamp boundary before retrying the pending write
+                    runner = self.start_runner('--interval', '1')
+                    self.addCleanup(lambda r=runner: r.poll() is None and r.kill())
+                deadline = time.monotonic() + 30
+                while 'planning files are not committed on main' not in question.read_text():
+                    self.assertLess(time.monotonic(), deadline, log())
+                    self.assertIsNone(runner.poll(), log())
+                    time.sleep(0.1)
+                before = question.read_text()
+                time.sleep(3)  # several cycles: neither the log nor the question repeats
+                self.assertEqual(question.read_text(), before)
+                self.assertEqual(log().count('Runner blocked:'), 1, log())
+                status = json.loads((folder / 'status.json').read_text())
+                self.assertEqual(len([r for r in status['roots'] if r['kind'] == 'runner']), 1)
+                self.assertIn('planning files are not committed on main', status['blocker'])
+                self.assertEqual(self.runs(), [])
+                self.assertEqual(self.git(self.repo, 'ls-tree', '--name-only', 'main', 'TODO.md', 'goals.json'), '')
+                self.git(self.repo, 'add', 'TODO.md')
+                self.git(self.repo, 'commit', '-qm', 'commit TODO only')
+                time.sleep(3)
+                self.assertEqual(self.runs(), [])  # an uncommitted index still holds dispatch
+                self.assertEqual(log().count('Runner blocked:'), 1, log())
+                if not stage_all:
+                    (self.root / 'interrupt-recovery').touch()
+                self.git(self.repo, 'add', '-A' if stage_all else 'goals.json')
+                self.git(self.repo, 'commit', '-qm', 'commit planning')
+                if not stage_all:
+                    runner.communicate(timeout=30)
+                    self.assertEqual(runner.returncode, 99, log())
+                    self.assertTrue((folder / 'planning-question.json').exists())
+                    runner = self.start_runner('--interval', '1')
+                    self.addCleanup(lambda r=runner: r.poll() is None and r.kill())
+                deadline = time.monotonic() + 90
+                while '### Q-A ' not in question.read_text():
+                    self.assertLess(time.monotonic(), deadline, log())
+                    self.assertIsNone(runner.poll(), log())
+                    time.sleep(0.2)
+                self.assertTrue(self.runs('worker'))
+                runner.send_signal(signal.SIGINT)
+                runner.communicate(timeout=120)
+                self.assertNotIn('The engine needs attention', log())
+                self.assertNotIn('planning files are not committed', question.read_text())
+                self.assertIn('Owner note: preserve me.', question.read_text())
+
     def test_an_idle_runner_starts_new_work_as_soon_as_todo_changes(self):
         """The owner plans; the runner reacts to the plan, not to its polling interval."""
         (self.repo / 'TODO.md').write_text(todo([]))
@@ -1356,88 +1750,16 @@ class EngineTests(Fixture):
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')  # nothing linked is committed
 
-    def test_a_commit_outside_inferred_touches_is_reverified_after_widening(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        self.plan({'worker:A': ['extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its commit changed files outside the inferred Touches (A-extra.txt); widened them', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # same commit, no rerun
-        self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
-
-    def test_a_commit_outside_authored_touches_is_widened_once_and_reverified(self):
-        """TOOLSET-152-d4: the same commit is verified again, with no new attempt."""
+    def test_a_commit_outside_touches_integrates_without_widening(self):
+        """TOOLSET-161-17: Touches never hold a commit; it lands as it is, with no new attempt."""
         self.plan({'worker:A': ['extra', 'extra']})
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its commit changed files outside Touches (A-extra.txt); widened them once and verifying again',
-                      result.stdout)
+        self.assertNotIn('widened them', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
-    def test_a_worker_asking_for_files_outside_inferred_touches_resumes_after_widening(self):
-        """sierra TASK-024, bravo TASK-005: a worker needed one more file and stopped."""
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt); widened them and '
-                      'resuming it in its worktree', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-        workers = [r for r in self.runs('worker') if r['task'] == 'A']
-        self.assertEqual(len(workers), 2)
-        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])  # resumed in the same worktree
         self.assertEqual((self.repo / 'A-extra.txt').read_text(), 'helper\n')
-        self.assertNotIn('A: failed', result.stdout)  # a request is not a failure
-
-    def test_touches_an_older_run_inferred_are_recognized_from_its_commit(self):
-        """Touches inferred before the runner kept a record (sierra TASK-024) can still be widened."""
-        text = (self.repo / 'TODO.md').read_text()
-        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', ''))
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        (self.repo / 'TODO.md').write_text(text)  # as an earlier pi-autowork run recorded it
-        self.git(self.repo, 'commit', '-qam', 'docs(tasks): declare Touches for A (pi-autowork)')
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside the inferred Touches (A-extra.txt)', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-
-    def test_inferred_touches_a_person_edited_since_still_get_the_bounded_widening(self):
-        """A held task's Touches were inferred once, then rewritten by hand: the inferred
-        widening refused and nothing else was tried, so one file waited for the owner."""
-        text = (self.repo / 'TODO.md').read_text()
-        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', ''))
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'docs(tasks): declare Touches for A (pi-autowork)')
-        (self.repo / 'TODO.md').write_text(text.replace('  Touches: A.txt\n', '  Touches: A.txt, notes.md\n'))
-        self.git(self.repo, 'commit', '-qam', 'a person edits A')
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside Touches (A-extra.txt); widened them once', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-
-    def test_a_worker_asking_for_files_outside_authored_touches_resumes_after_one_widening(self):
-        """TOOLSET-152-d4: the worker names the exact file, so no person is needed."""
-        self.plan({'worker:A': ['needs_file', 'extra']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: its worker needs files outside Touches (A-extra.txt); widened them once and resuming it '
-                      'in its worktree', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
-        workers = [r for r in self.runs('worker') if r['task'] == 'A']
-        self.assertEqual(len(workers), 2)
-        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])
-        self.assertNotIn('A: failed', result.stdout)
-        self.assertIn('Touches widened by the runner from worker evidence: A-extra.txt',
-                      self.git(self.repo, 'log', '-p', '-1', '--grep=widen Touches for A from worker evidence'))
-
+        self.assertNotIn('widen', self.git(self.repo, 'log', '--format=%s'))  # Touches stay as written
     def test_a_second_request_after_one_widening_waits_for_a_person(self):
         text = (self.repo / 'TODO.md').read_text().replace(
             '  Touches: A.txt\n', '  Touches: A.txt\n  Touches widened by the runner from worker evidence: A.txt\n')
@@ -1637,6 +1959,53 @@ class EngineTests(Fixture):
         runner.send_signal(signal.SIGINT)
         runner.communicate(timeout=120)
 
+    def test_a_worker_whose_task_the_owner_closes_on_main_is_stopped(self):
+        """TOOLSET-218-d0: the owner shipped two tasks on main while the session could not land;
+        their workers re-implemented finished work for 45 minutes."""
+        self.plan({'worker:A': ['long']})
+        runner = self.start_runner('--workers', '1', '--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A', timeout=60)
+        worker = int((self.root / 'busy-A').read_text())
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text().replace('- [ ] A — Task A', '- [x] A — Task A'))
+        self.git(self.repo, 'commit', '-qam', 'the owner closes A on main')
+        deadline = time.monotonic() + 45
+        while 'A: done — closed on main' not in log():
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(worker, 0)
+        self.assertFalse(self.done('A'))  # stopped, not finished
+        self.assertTrue(any(b.startswith('autowork/A-set-aside-') for b in self.branches()), self.branches())
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
+    def test_the_session_takes_main_while_a_worker_runs(self):
+        """TOOLSET-233-ba: the session followed main only with nothing in flight, so a runner
+        that always had work in flight kept a three-hour-old plan and none of main's fixes."""
+        self.plan({'worker:A': ['long']})
+        runner = self.start_runner('--workers', '1', '--interval', '1')
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        log = lambda: ''.join(p.read_text() for p in self.state.glob('*/runner.log'))
+        self.wait_for(self.root / 'busy-A', timeout=60)
+        (self.repo / 'owner.txt').write_text('a fix on main\n')
+        self.git(self.repo, 'add', 'owner.txt')
+        self.git(self.repo, 'commit', '-qm', 'the owner fixes something on main')
+        main = self.git(self.repo, 'rev-parse', 'main')
+        deadline = time.monotonic() + 45
+        while 'Took 1 commit(s) from main into the session' not in log():
+            self.assertIsNone(runner.poll(), log())
+            self.assertLess(time.monotonic(), deadline, log())
+            time.sleep(0.2)
+        session = next(b for b in self.branches() if b.startswith('pi-autowork/'))
+        self.git(self.repo, 'merge-base', '--is-ancestor', main, session)  # raises if not taken
+        self.assertFalse(self.done('A'))  # taken while A still ran
+        runner.send_signal(signal.SIGINT)
+        runner.communicate(timeout=120)
+
     def test_bold_task_ids_close_into_a_linked_archive(self):
         """sierra: `- [ ] **T-1 — …**` never closed, and a linked docs/TODO-archive.md stayed dirty."""
         text = (self.repo / 'TODO.md').read_text().replace('# TODO\n', '# TODO\n\n[History](docs/TODO-archive.md)\n')
@@ -1654,8 +2023,9 @@ class EngineTests(Fixture):
         self.assertNotIn('Task A', (self.repo / 'TODO.md').read_text())
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
-    def test_tasks_without_touches_get_proposed_ones_and_run_in_parallel(self):
-        """sierra: no task declared Touches, so everything ran one at a time."""
+    def test_tasks_without_touches_run_in_parallel_with_no_touches_pass(self):
+        """sierra: no task declared Touches, so everything ran one at a time. TOOLSET-161-17:
+        a missing Touches is no hint, so they run together and no model proposes any."""
         text = (self.repo / 'TODO.md').read_text()
         for t in 'ABC':
             text = text.replace(f'  Touches: {t}.txt\n', '')
@@ -1664,43 +2034,9 @@ class EngineTests(Fixture):
         self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})  # both must run at once
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: can run beside others; Touches: A.txt', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertIn('  Touches: A.txt', (self.repo / 'TODO.md').read_text()
-                      + ((self.repo / 'TODO.archive.md').read_text() if (self.repo / 'TODO.archive.md').exists() else ''))
-        self.assertTrue(all(r['tools'] == 'read,grep,find,ls' for r in self.runs('touches')))
-        # Device- or screenshot-verified work still has a bounded edit scope (TASK-013 answered NONE).
-        prompt = self.runs('touches')[0]['message']
-        self.assertIn('not how the result is checked', prompt)
-        self.assertIn('NONE - reason', prompt)
-
-    def test_an_unboundable_task_runs_alone_and_is_not_asked_again(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        self.plan({'touches:A': ['none']})
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: runs alone (no Touches proposed: NONE - only a live device operation)', result.stdout)
-        self.assertEqual(len(self.runs('touches')), 1)
-        self.assertNotIn('Touches: NONE', (self.repo / 'TODO.md').read_text())
-        caches = list(self.state.glob('*/touches-*.json'))
-        self.assertEqual(len(caches), 1)
-        self.assertIn('A', json.loads(caches[0].read_text()))
-
-    def test_answers_from_an_older_prompt_do_not_hold_a_task(self):
-        text = (self.repo / 'TODO.md').read_text().replace('  Touches: A.txt\n', '')
-        (self.repo / 'TODO.md').write_text(text)
-        self.git(self.repo, 'commit', '-qam', 'A has no Touches')
-        common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
-        state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
-        state.mkdir(parents=True)
-        (state / 'touches.json').write_text(json.dumps({'A': int(time.time()) + 86400}))
-        (state / 'touches-000000000000.json').write_text(json.dumps({'A': int(time.time()) + 86400}))
-        result = self.run_runner('--until-empty')
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('A: can run beside others; Touches: A.txt', result.stdout)
-        self.assertTrue(self.done('A', 'B', 'C'))
+        self.assertEqual(self.runs('touches'), [])
+        self.assertNotIn('declare Touches', self.git(self.repo, 'log', '--format=%s'))
 
     def test_budget_persists_across_restarts(self):
         self.env['PI_AUTOWORK_MAX_COST'] = '0.05'
@@ -1729,6 +2065,7 @@ class EngineTests(Fixture):
         """TOOLSET-157-cd (2): a conflict hold reran the whole task from scratch."""
         self.plan({'worker:A': ['move_session'], 'merge:A': ['resolve']})
         result = self.run_runner('--until-empty')
+        self.retain_evidence()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: its commit conflicts with the session in: A.txt; asking Pi to resolve the merge '
                       'in its worktree', result.stdout)
@@ -1881,7 +2218,9 @@ class EngineTests(Fixture):
         self.assertIn('Not pushed: main has no upstream branch', log())
 
     def test_an_unresolved_conflict_keeps_the_session(self):
-        self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
+        # Main moves during the review: the session takes it only after (TOOLSET-233-ba), and the
+        # conflict is the landing's. A move while the worker runs is taken at once instead.
+        self.plan({'verify:A': ['move_main'], 'merge': ['no_progress']})
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
         self.assertIn('Merge pending', result.stdout)
@@ -1908,7 +2247,7 @@ class EngineTests(Fixture):
         self.assertTrue(self.registered(other))
 
     def test_a_missing_session_worktree_is_restored_without_pruning_others(self):
-        self.plan({'worker:A': ['move_main'], 'merge': ['no_progress']})
+        self.plan({'verify:A': ['move_main'], 'merge': ['no_progress']})
         self.assertEqual(self.run_runner('--once').returncode, 4)
         session = json.loads(next(self.state.glob('*/session.json')).read_text())
         other = self.stale_registration('someone-else')
@@ -1918,6 +2257,45 @@ class EngineTests(Fixture):
         self.assertIn(f'Merged {session["branch"]}', result.stdout)
         self.assertFalse(self.registered(session['path']))
         self.assertTrue(self.registered(other))
+
+    def test_a_session_at_an_old_location_is_recreated_or_moved_without_losing_work(self):
+        for contents in ('clean', 'committed', 'ignored'):
+            with self.subTest(contents=contents):
+                self.repo = self.make_repo(self.root / f'project-{contents}', [('A', None)])
+                self.env['FAKE_MAIN_REPO'] = str(self.repo)
+                # The runner's state key is the common Git directory's digest.
+                common = self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+                folder = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
+                folder.mkdir(parents=True, exist_ok=True)
+                branch = f'pi-autowork/old-{contents}'
+                old = self.root / f'old-{contents}'
+                (self.repo / '.gitignore').write_text('private-note.txt\n')
+                self.git(self.repo, 'add', '.gitignore')
+                self.git(self.repo, 'commit', '-qm', 'ignored session data')
+                self.git(self.repo, 'worktree', 'add', '-q', '-b', branch, str(old), 'main')
+                saved = 'private-note.txt' if contents == 'ignored' else 'saved.txt'
+                if contents != 'clean':
+                    (old / saved).write_text('keep this work\n')
+                if contents == 'committed':
+                    self.git(old, 'add', saved)
+                    self.git(old, 'commit', '-qm', 'session work')
+                (folder / 'session.json').write_text(json.dumps({'branch': branch, 'path': str(old), 'base': 'main'}))
+                # Hold the final merge so the relocated session remains inspectable.
+                (self.repo / 'A.txt').write_text('owner edit\n')
+                result = self.run_runner('--once')
+                self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+                session = json.loads((folder / 'session.json').read_text())
+                self.assertEqual(Path(session['path']).parent, self.repo / '.worktrees')
+                self.assertFalse(old.exists())
+                if contents != 'clean':
+                    self.assertEqual(session['branch'], branch)
+                    self.assertEqual((Path(session['path']) / saved).read_text(), 'keep this work\n')
+                else:
+                    self.assertNotEqual(session['branch'], branch)
+                self.git(self.repo, 'checkout', '--', 'A.txt')
+                self.assertEqual(self.run_runner('--until-empty').returncode, 0)
+                if contents == 'ignored':
+                    self.assertEqual((Path(session['path']) / saved).read_text(), 'keep this work\n')
 
     def test_user_changes_in_main_block_only_the_final_merge(self):
         (self.repo / 'A.txt').write_text('my note\n')  # uncommitted; the merge would overwrite it
@@ -2210,12 +2588,24 @@ class ServiceTests(Fixture):
         cache = self.root / 'uv-cache'
         build = cache / 'builds-v0' / '.tmpabc' / 'bin'
         build.mkdir(parents=True)
-        self.env.update(UV_CACHE_DIR=str(cache), PATH=f"{build}:{self.env['PATH']}")
+        missing = self.root / '.tmp-gone' / 'bin'
+        temporary = self.root / '.tmp-other-tool' / 'bin'
+        temporary.mkdir(parents=True)
+        gone = self.root / 'gone' / 'bin'
+        archive = cache / 'archive-v0' / 'abc' / 'bin'
+        archive.mkdir(parents=True)
+        xdg_cache = self.root / 'xdg-cache'
+        default_build = xdg_cache / 'uv' / 'builds-v0' / 'abc' / 'bin'
+        default_build.mkdir(parents=True)
+        self.env.update(UV_CACHE_DIR=str(cache), XDG_CACHE_HOME=str(xdg_cache),
+                        PATH=f"{missing}:{build}:{temporary}:{gone}:{archive}:{default_build}:{self.bin}:{self.env['PATH']}")
         result = self.run_runner('--install-service')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         path = next(l for l in (self.envs / 'project.env').read_text().splitlines() if l.startswith('PATH='))
-        self.assertNotIn(str(cache), path)
-        self.assertIn(str(self.bin), path)
+        for dropped in (missing, build, temporary, gone, archive, default_build):
+            self.assertNotIn(str(dropped), path)
+            self.assertIn(str(dropped), result.stdout)
+        self.assertEqual(path.split('=', 1)[1].split(os.pathsep).count(str(self.bin)), 1)
 
     def test_a_name_used_by_another_repository_is_refused(self):
         self.envs.mkdir()

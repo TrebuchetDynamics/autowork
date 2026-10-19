@@ -4,6 +4,7 @@ import argparse
 import ast
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from fnmatch import fnmatchcase
 import math
 import os
 from pathlib import Path
@@ -68,25 +69,28 @@ def test_ids(path):
             and item.name.startswith('test')]
 
 
-def units(root, tests):
+def units(root, tests, pattern=None):
     """Each module runs in its own process; a module in SPLIT spreads its tests round-robin
     over that many processes."""
     for path in tests:
         shards = SPLIT.get(path.relative_to(root).as_posix(), 1)
         ids = test_ids(path) if shards > 1 else []
         if len(ids) > 1:
+            if pattern:
+                match = pattern if '*' in pattern else f'*{pattern}*'
+                ids = [name for name in ids if fnmatchcase(name, match)]
             for index in range(min(shards, len(ids))):
                 yield path.parent, ids[index::shards]
         else:
             yield path.parent, [path.stem]
 
 
-def run_unit(directory, names, env, timeout):
+def run_unit(directory, names, env, timeout, pattern=None):
     """Use the module runner so multiprocessing spawn has a real entry point.
 
     Returns (passed, output); the caller prints output so concurrent processes
     never interleave."""
-    command = [sys.executable, '-m', 'unittest', *names]
+    command = [sys.executable, '-m', 'unittest', *(['-k', pattern] if pattern else []), *names]
     with subprocess.Popen(command, cwd=directory, env=env, text=True,
                           encoding='utf-8', errors='replace',
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -146,6 +150,7 @@ def positive_int(value):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='*', help='owned test modules or directories (default: all offline tests)')
+    parser.add_argument('-k', dest='pattern', help='unittest name pattern for focused reproduction (default: all tests)')
     parser.add_argument('--list', action='store_true', help='list inventory without importing or running tests')
     parser.add_argument('--timeout', type=float, default=1800, help='seconds allowed per test process (default: 1800)')
     parser.add_argument('--jobs', type=positive_int,
@@ -187,13 +192,13 @@ def main(argv=None):
     env = without_push_guard({k: v for k, v in os.environ.items()
                               if k not in LIVE_FLAGS and not k.startswith(('PI_AUTOWORK_', 'AUTOWORK_'))})
     passed = failed = gated = 0
-    work = list(units(root, tests))
+    work = list(units(root, tests, args.pattern))
     # Modules (and shards of split ones) are independent processes; output is still printed
     # whole, by directory and in order. Shards of split modules are the longest, so they start
     # first.
     order = sorted(range(len(work)), key=lambda i: len(work[i][1]) == 1 and '.' not in work[i][1][0])
     with ThreadPoolExecutor(max_workers=args.jobs or default_jobs()) as pool:
-        futures = {i: pool.submit(run_unit, *work[i], env, args.timeout) for i in order}
+        futures = {i: pool.submit(run_unit, *work[i], env, args.timeout, args.pattern) for i in order}
         runs = [(work[i][0], futures[i]) for i in range(len(work))]
         for directory, modules in groups.items():
             print(f'CHECK {directory.relative_to(root)} ({len(modules)} modules)', flush=True)

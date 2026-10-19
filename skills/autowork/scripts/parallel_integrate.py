@@ -64,11 +64,8 @@ class Hold(ValueError):
 
 class ReportedBlocker(Hold):
     """The worker's own report names work it could not finish."""
-    def __init__(self, reason, requested=()):
-        if requested:
-            super().__init__('scope_request', reason, requested=list(requested))
-        else:
-            super().__init__('blocker', reason)
+    def __init__(self, reason):
+        super().__init__('blocker', reason)
 
 
 def hold(common, slot, reason, **updates):
@@ -135,7 +132,7 @@ def verify(repo, common, slot, contracts):
     files = changed(repo, slot['baseline'], commit)
     blockers = state.report_blockers(common, slot)
     if blockers:
-        raise ReportedBlocker(state.blocker_reason(blockers), state.report_scope_request(common, slot))
+        raise ReportedBlocker(state.blocker_reason(blockers))
     report['pending_live'] = live_items(report.get('pending_live'))
     mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
     if mismatch:
@@ -182,6 +179,18 @@ def passed(check):
         and receipt.get('inputs_match') is True)
 
 
+def validation_reason(check):
+    """': <why>' from the validation's own `AUTOWORK_HOLD_REASON: <why>` line, or '' (TOOLSET-180-72:
+    a retry, a person and the DOCS-MAINTAINER see which tests the candidate broke)."""
+    try:
+        text = Path(((check or {}).get('command_receipt') or {}).get('log') or '').read_text(errors='replace')
+    except (OSError, TypeError):
+        return ''
+    found = [line[len('AUTOWORK_HOLD_REASON: '):].strip() for line in text.splitlines()
+             if line.startswith('AUTOWORK_HOLD_REASON: ')]
+    return (': ' + found[-1][:600]) if found and found[-1] else ''
+
+
 def report_matches(repo, common, slot):
     report = execution.read(dispatch.data_dir(common, slot) / 'report.json')
     if not isinstance(report, dict):
@@ -193,33 +202,10 @@ def report_matches(repo, common, slot):
         return False
 
 
-def owned_elsewhere(repo, common, slot, contracts):
-    """What every other unsettled slot owns: its commit's files, else its declared Touches."""
-    others: list[list[str]] = []
-    for other in state.slots(common):
-        # An exhausted hold waits for a person; the planner already lets overlap past it.
-        # A commit held for overlap waits for the others to settle and is then offered
-        # again on current main: it owns nothing meanwhile, or two could hold each other.
-        if (other['task_id'] == slot['task_id'] or other['state'] in ('released', 'closed') or state.exhausted(other)
-                or state.overlap_held(other)):
-            continue
-        if other.get('commit'):
-            others.append(changed(repo, other['baseline'], other['commit']))
-        else:
-            others.append(plan.paths(contracts.get(other['task_id'], {}).get('fields', {}).get('Touches', '')))
-    return others
-
-
-def unowned(repo, common, slot, contracts):
-    """No other unsettled slot owns any file this slot's commit changed."""
-    files = changed(repo, slot['baseline'], slot['commit'])
-    return not plan.overlap(files, files, owned_elsewhere(repo, common, slot, contracts))['conflicts']
-
-
 def verify_scope(repo, common, slot, contracts, files):
-    task = contracts[slot['task_id']]
-    others = [list(dispatch.COORDINATOR_FILES), *owned_elsewhere(repo, common, slot, contracts)]
-    declared = plan.paths(slot['touches'] if 'touches' in slot else task['fields'].get('Touches', ''))
+    """Only the coordinator's files and undeclared protected files are out of a worker's reach:
+    Touches schedule work and never hold it, and two tasks editing the same file are settled
+    by the merge into the base, in priority order (TOOLSET-161-17)."""
     # A broad directory alone does not reserve hypothetical future manifests.
     # Require an explicit serial declaration before accepting newly created shared
     # build/schema/CI state, even if other workers have already finished.
@@ -230,15 +216,9 @@ def verify_scope(repo, common, slot, contracts, files):
         if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
             raise Hold('scope', 'protected files need serial admission in the original task contract: '
                        + str(protected), outside=protected)
-    # A task without Touches was dispatched alone, so every file it changed is its own;
-    # coordinator files and other slots still conflict. (Requiring a declaration here
-    # held every such task: it could never integrate.)
-    overlap = plan.overlap(files, declared or files, others)
-    if overlap['outside'] or overlap['conflicts']:
-        message = 'changed files violate Touches or coordinator/other-slot ownership: ' + str(overlap)
-        if overlap['conflicts']:
-            raise Hold('overlap', message)
-        raise Hold('scope', message, outside=overlap['outside'])
+    coordinator = plan.overlap(files, files, [list(dispatch.COORDINATOR_FILES)])['conflicts']
+    if coordinator:
+        raise Hold('scope', 'changed files the coordinator owns: ' + ', '.join(coordinator), outside=coordinator)
 
 
 class WritersBusy(ValueError):
@@ -246,6 +226,13 @@ class WritersBusy(ValueError):
 
 
 WRITER_HOLD = 'live or unknown external writer'
+# The owner's uncommitted planning files do not stop a merge elsewhere: landing reconciles
+# them or keeps the branch (TOOLSET-223-8e). A planning file the session holds open for
+# writing still counts (it stays in ``mine``).
+PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
+# A reported commit refused for a live writer steps aside in priority order for this long,
+# so one waiting candidate never holds back the rest (TOOLSET-223-8e).
+WRITERS_BUSY_SKIP = 600
 
 
 def main_checkout(repo):
@@ -253,6 +240,38 @@ def main_checkout(repo):
         return str(canonical_root(repo))
     except ValueError:
         return None
+
+
+def planning_only(paths):
+    """Whether every path is a planning file or under docs/ (TOOLSET-233-ba): a session that moved
+    only by such commits during validation changed nothing the validation judged."""
+    return bool(paths) and all(p in PLANNING_FILES or p.startswith('docs/') for p in paths)
+
+
+def remerge_planning(repo, root, merge, head):
+    """The validated ``merge`` on top of a session head that moved only by planning commits:
+    a merge of ``head`` into it in the integration worktree, or None when that conflicts or
+    would change anything else."""
+    try:
+        git(root, 'merge', '--no-ff', '--no-edit', head)
+    except ValueError:
+        git(root, 'merge', '--abort')
+        return None
+    remerged = git(root, 'rev-parse', 'HEAD')
+    brought = changed(repo, merge, remerged)
+    if brought and not planning_only(brought):
+        git(root, 'checkout', '-q', '--detach', merge)
+        return None
+    return remerged
+
+
+def writers_busy(slot, now=None):
+    """A reported task refused for a live writer is skipped for a bounded window."""
+    try:
+        stamp = float(slot.get('writers_busy_at'))
+    except (TypeError, ValueError):
+        return False
+    return (time.time() if now is None else now) - stamp < WRITERS_BUSY_SKIP
 
 
 def touches_none_of(worker, files, main):
@@ -263,6 +282,7 @@ def touches_none_of(worker, files, main):
     mine = {os.path.relpath(path, main) for path in worker.get('written') or []}
     listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
     dirty = {entry[3:] for entry in listing.split('\0') if entry} if listing else set()
+    dirty -= set(PLANNING_FILES)
     return not (set(files) & (mine | dirty))
 
 
@@ -278,29 +298,36 @@ def require_no_writers(repo, files=None):
     blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
     pool = state.slots(common)
+    unattributed = {}
     for worker in workers:
-        if worker in blocking or worker['active'] is False:
+        if worker['active'] is False:
             continue
-        # Only a birth-identity-matched live pool leader (or its still-owned
-        # process group) in that slot's isolated checkout is exempt. An unknown
-        # agent in a sibling worktree is not evidence of pool membership.
+        # Workspace containment is necessary, not proof of pool membership. A
+        # child in a new session still belongs to its birth-checked live leader.
         attributed = False
         for slot in pool:
-            leader = slot.get('worker')
-            if (not leader or execution.identity(leader['pid']) != leader
-                    or slot['state'] not in ('dispatched', 'running')
-                    or not worker['workspaces'] or set(worker['workspaces']) != {slot['worktree']}):
+            worktree = Path(slot['worktree'])
+            inside = [Path(w).is_relative_to(worktree) for w in worker['workspaces']]
+            if not any(inside):
                 continue
-            try:
-                fields = Path(f'/proc/{worker["pid"]}/stat').read_text().rsplit(')', 1)[1].split()
-                same_group = int(fields[2]) == leader['pid']
-            except (OSError, ValueError, IndexError):
-                same_group = False
-            found = {k: worker[k] for k in ('pid', 'start_ticks', 'boot_id')}
-            if execution.identity(worker['pid']) == found and (found == leader or same_group):
+            leader = slot.get('worker')
+            if not all(inside):
+                why = 'process uses workspaces outside the slot'
+            elif slot['state'] not in ('dispatched', 'running'):
+                why = 'slot is not dispatched/running'
+            elif not leader:
+                why = 'no recorded worker leader'
+            elif execution.identity(leader['pid']) != leader:
+                why = 'leader identity is dead or changed'
+            elif not state.owns_process(leader, {k: worker[k] for k in ('pid', 'start_ticks', 'boot_id')}):
+                why = 'parent chain/group does not prove live leader ownership'
+            else:
                 attributed = True
                 break
-        if not attributed:
+            unattributed[worker['pid']] = f"unattributed process in {slot['task_id']}'s worktree: {why}"
+        # Never exempt a process already blocked by the checkout/command rule;
+        # it still benefits from slot diagnostics when it also touches a worker.
+        if not attributed and worker not in blocking:
             blocking.append(worker)
     # A process that exited during these checks (a short tool run) writes nothing; only a
     # writer still alive with the same birth identity blocks.
@@ -309,8 +336,9 @@ def require_no_writers(repo, files=None):
     if blocking:
         def describe(worker):
             name = Path((execution.argv_of(worker['pid']) or ['?'])[0]).name or '?'
+            detail = unattributed.get(worker['pid']) or worker.get('evidence') or worker.get('kind', '')
             return (f"pid {worker['pid']} {name} in {', '.join(worker.get('workspaces') or ['?'])}"
-                    f" ({worker.get('evidence') or worker.get('kind', '')})")
+                    f" ({detail})")
         raise WritersBusy('live or unknown external writer/session; preserve canonical checkout: '
                          + '; '.join(describe(w) for w in blocking[:3]))
 
@@ -366,7 +394,7 @@ def release_unfinished(repo, common, owner_pid, task):
     return {'outcome': 'BUSY', 'task': task, 'reason': 'the repository writer lock stayed busy; integrating again later'}
 
 
-def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
+def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
     if not argv or timeout is None or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('--integrate requires --run argv and a positive finite --timeout')
     repo, common = context(repo, owner_pid)
@@ -377,11 +405,20 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
             slot = slot_for(common, task)
             if not slot or slot['state'] not in ('reported', 'integrating'):
                 raise ValueError('integration requires a reported or abandoned integrating slot')
+            if slot['state'] == 'reported' and task in dispatch.retired(repo, base):
+                # Closed meanwhile (TOOLSET-218-d0): a duplicate of finished work never lands.
+                with execution.lock(common / 'dispatch.lock'):
+                    aside = _retire(repo, common, dict(slot, cause='closed_on_base'), False)
+                state.event(common, 'closed_on_base', task_id=task, base=base or '')
+                return dict(aside, reason=f'{task} is closed on {base or "this branch"}; its commit is set aside')
             contracts = {t['id']: t for t in dispatch.contracts(repo)}
-            reported = {s['task_id'] for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
-            first = next((t for t in contracts if t in reported), None)
-            if first != task:
-                raise ValueError('integrate the highest-priority reported task first')
+            slots = {s['task_id']: s for s in state.slots(common) if s['state'] in ('reported', 'integrating')}
+            # A candidate refused for a live writer steps aside for a bounded window, so one
+            # waiting commit never stops the rest from integrating (TOOLSET-223-8e).
+            available = {tid for tid, held in slots.items() if not writers_busy(held)} or set(slots)
+            first = next((t for t in contracts if t in available), None)
+            if first != task:  # it names the one, so the runner starts it next (TOOLSET-238-11)
+                raise ValueError(f'integrate the highest-priority reported task first: {first}')
             try:
                 files, report = verify(repo, common, slot, contracts)
                 require_no_writers(repo, files)
@@ -390,7 +427,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                     if recovered:
                         return recovered
             except WritersBusy as exc:
-                # The commit stays reported and integrates once that session is gone.
+                # The commit stays reported and integrates once that session is gone; the stamp
+                # lets the next reported task go first until the window passes (TOOLSET-223-8e).
+                slot = state.write_slot(common, dict(slot, writers_busy_at=time.time(),
+                                                     writers_busy_reason=str(exc)), slot)
                 return {'outcome': 'BUSY', 'task': task, 'reason': str(exc)}
             except Hold as exc:
                 return hold(common, slot, str(exc), cause=exc.cause, **exc.details)
@@ -444,7 +484,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                                           f"{receipt.get('elapsed_seconds') or 0:.0f}s (limit {timeout:g}s)")
                 if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
-                    raise Hold('validation', 'integration validation failed or changed the integration tree')
+                    raise Hold('validation', 'integration validation failed or changed the integration tree'
+                               + validation_reason(check))
                 with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                     state.require_owner(common, owner_pid)
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.
@@ -456,11 +497,21 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None):
                     require_no_writers(repo, changed(repo, baseline, merge))
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
                         raise ValueError('canonical branch changed during validation')
-                    if git(repo, 'rev-parse', 'HEAD') != baseline:
-                        state.event(common, 'integration_head_moved', task_id=task, attempt=attempt + 1)
-                        if attempt == 0:
-                            continue
-                        raise Hold('moved', 'canonical HEAD moved twice; fresh integration required')
+                    head = git(repo, 'rev-parse', 'HEAD')
+                    if head != baseline:
+                        # Moved only by planning commits (the runner takes main between and beside
+                        # reviews, TOOLSET-233-ba): land the validated merge on top, unvalidated again.
+                        remerged = (remerge_planning(repo, root, merge, head)
+                                    if ancestor(repo, baseline, head) and planning_only(changed(repo, baseline, head))
+                                    else None)
+                        if remerged:
+                            state.event(common, 'integration_head_moved_planning_only', task_id=task, head=head)
+                            merge = integration['remerged'] = remerged
+                        else:
+                            state.event(common, 'integration_head_moved', task_id=task, attempt=attempt + 1)
+                            if attempt == 0:
+                                continue
+                            raise Hold('moved', 'canonical HEAD moved twice; fresh integration required')
                     # This is the only canonical history-changing command. Git protects dirty files.
                     git(repo, 'merge', '--ff-only', merge)
                     if git(repo, 'rev-parse', 'HEAD') != merge:
@@ -781,12 +832,17 @@ def _retire(repo, common, slot, requeued):
     dispatch.cleanup_tmpdir(common, slot)
     history = execution.safe_path(common / 'slot-history' / task)
     number = 1 + sum(1 for _ in history.glob('*')) if history.exists() else 1
-    target = history / str(number)
     pairs = []
     for attempt in [*slot.get('previous_attempts', []), slot]:
         pair = (attempt.get('worktree'), attempt.get('branch'))
         if pair[1] and pair not in pairs:
             pairs.append(pair)
+    while True:
+        number = dispatch.set_aside_number(repo, pairs, number)
+        target = history / str(number)
+        if not target.exists():
+            break
+        number += 1
     moved = []
     try:
         for worktree, branch in pairs:
@@ -1018,15 +1074,22 @@ def retry_held(args):
             # again, once, when no unsettled slot owns them any more (TOOLSET-157-cd): the
             # slot it waited for has integrated or was released. A fresh retry would only
             # reimplement the same change.
-            overlapped = [s for s in current if state.overlap_held(s) and s.get('commit') and 'overlap' not in state.reoffered(s)]
-            if overlapped:
-                by_id = {t['id']: t for t in dispatch.contracts(repo)}
-                order = list(by_id)  # TODO.md priority: of two such commits the higher one goes first
-                overlapped.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
-                free = next((s for s in overlapped if unowned(repo, common, s, by_id)), None)
-                if free is not None:
-                    slot = state.reoffer(common, free)
-                    return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
+            # TOOLSET-161-17: a commit held only for Touches (overlap with another slot, or files
+            # outside its Touches that are neither protected nor the coordinator's) integrates by
+            # merge now: offered again once, in TODO priority order.
+            touches_held = [s for s in current if s['state'] == 'held' and s.get('commit') and not state.worker_live(s)
+                            and s.get('cause') not in state.reoffered(s)
+                            and (s.get('cause') == 'overlap'
+                                 or (s.get('cause') == 'scope' and s.get('outside') and not any(
+                                     plan.protected_path(p) or p in dispatch.COORDINATOR_FILES
+                                     for p in s.get('outside')))
+                                 or (s.get('cause') == 'scope' and 'changed files violate Touches'
+                                     in str(s.get('reason') or '') and not s.get('outside')))]
+            if touches_held:
+                order = [t['id'] for t in dispatch.contracts(repo)]
+                touches_held.sort(key=lambda s: order.index(s['task_id']) if s['task_id'] in order else len(order))
+                slot = state.reoffer(common, touches_held[0])
+                return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A commit an earlier release held by misreading its evidence is offered again once:
             # a report naming its commit by an abbreviated SHA, or a validation that passed but
             # left build daemons behind. Integration repeats every check.
@@ -1040,15 +1103,13 @@ def retry_held(args):
                 return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
             # A worker that asked for files outside Touches resumes in its own worktree, on
             # the same attempt, once its current Touches cover what it asked for.
+            # A worker that stopped to ask for files outside Touches (an earlier release told it
+            # to) resumes in its own worktree on the same attempt: it may change them now.
             requests = [s for s in current if s['state'] == 'held' and s.get('cause') == 'scope_request'
                         and not state.worker_live(s)]
             if requests:
-                touches = {t['id']: t['fields'].get('Touches', '') for t in dispatch.contracts(repo, args.tasks, args.plan)}
-                covered = next((s for s in requests if s['task_id'] in touches and touches[s['task_id']].strip()
-                                and not plan.overlap(s.get('requested') or [], plan.paths(touches[s['task_id']]), [])['outside']), None)
-                if covered is not None:
-                    slot = state.resume_widened(common, covered)
-                    return {'outcome': 'RESUMED', 'task': slot['task_id'], 'touches': touches[slot['task_id']]}
+                slot = state.resume_widened(common, requests[0])
+                return {'outcome': 'RESUMED', 'task': slot['task_id'], 'touches': ''}
             again = [s for s in current if state.readoptable(s)]
             eligible = {t['id'] for t in dispatch.contracts(repo, args.tasks, args.plan)} if again else set()
             again = next((s for s in again if s['task_id'] in eligible), None)
@@ -1117,6 +1178,44 @@ def retry_held(args):
             return {'outcome': 'RETRIED', 'task': task['id'], 'slot': slot}
 
 
+RETIRABLE = ('dispatched', 'running', 'interrupted', 'released', 'reported')
+
+
+def retire_closed(args):
+    """Stop and set aside the work of tasks closed meanwhile, here or on the base branch
+    (TOOLSET-218-d0): a live worker is stopped, and its slot keeps every commit under a
+    -set-aside-N name. With a review holding the integration lock, setting aside waits for a
+    later cycle; the stopped slot occupies nothing and never restarts meanwhile."""
+    repo = Path(args.consumer).resolve()
+    common = state.common_dir(repo)
+    base = getattr(args, 'base_ref', None)
+    with execution.lock(common / 'dispatch.lock'):
+        slots = [s for s in state.slots(common) if s['state'] in RETIRABLE]
+        if not slots:
+            return []
+        closed = dispatch.retired(repo, base)
+        doomed = [s for s in slots if s['task_id'] in closed]
+        for slot in doomed:
+            if state.worker_live(slot):
+                dispatch.stop(slot.get('worker'), slot.get('worktree'))
+        if not doomed:
+            return []
+        try:
+            with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
+                state.require_owner(common, args.owner_pid)
+                done = []
+                for slot in doomed:
+                    slot = slot_for(common, slot['task_id'])
+                    if slot is None or slot['state'] not in RETIRABLE or state.worker_live(slot):
+                        continue
+                    _retire(repo, common, dict(slot, cause='closed_on_base'), False)
+                    state.event(common, 'closed_on_base', task_id=slot['task_id'], base=base or '')
+                    done.append(slot['task_id'])
+                return done
+        except BlockingIOError:
+            return [s['task_id'] for s in doomed]  # stopped; set aside on a later cycle
+
+
 def dispatch_with_retries(args):
     # Original dispatch owns admission/claims and never imports this adapter.
     # Only try retries when this invocation already owns an existing lease.
@@ -1131,12 +1230,13 @@ def dispatch_with_retries(args):
                               max_workers=dispatch.capacity(args))
         if claimed['outcome'] != 'CLAIMED':
             return dispatch.dispatch(args)  # reports the BUSY owner as before
+    closed = retire_closed(args)
     try:
         result = retry_held(args)
     except BlockingIOError:
         # A review holds the integration lock (it runs beside the coordinator's loop,
         # TOOLSET-183-d6): held retries wait for it; independent fresh work still starts.
         result = {'outcome': 'IDLE'}
-    if result['outcome'] != 'IDLE':
-        return result
-    return dispatch.dispatch(args)
+    if result['outcome'] == 'IDLE':
+        result = dispatch.dispatch(args)
+    return dict(result, closed_on_base=closed) if closed else result

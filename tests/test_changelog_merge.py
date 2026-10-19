@@ -43,7 +43,7 @@ class ChangelogMergeTests(unittest.TestCase):
 
     def test_only_the_changelog_merges_by_union(self):
         rules = (ROOT / '.gitattributes').read_text().splitlines()
-        self.assertEqual([r for r in rules if 'merge=' in r and not r.startswith('#')], ['CHANGELOG.md merge=union'])
+        self.assertEqual([r for r in rules if 'merge=union' in r and not r.startswith('#')], ['CHANGELOG.md merge=union'])
 
 
 if __name__ == '__main__':

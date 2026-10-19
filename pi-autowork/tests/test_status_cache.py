@@ -20,7 +20,7 @@ class StatusCacheTests(unittest.TestCase):
                           f'p = Path({str(self.calls)!r})\n'
                           'n = int(p.read_text()) + 1 if p.exists() else 1\n'
                           'p.write_text(str(n))\n'
-                          'print(json.dumps({"outcome": "PARALLEL_STATUS", "tasks": [{"task": "A", "state": "running", "n": n}]}))\n')
+                          'print(json.dumps({"outcome": "PARALLEL_STATUS", "tasks": [{"task": "A", "state": "running", "n": n, "directory": sys.argv[1]}]}))\n')
         runner = Coordinator.__new__(Coordinator)
         runner.engine_path, runner.integ, runner.state = engine, tmp.name, Path(tmp.name)
         self.runner = runner
@@ -33,6 +33,13 @@ class StatusCacheTests(unittest.TestCase):
         self.assertTrue(self.runner.in_flight())
         self.runner.tasks()
         self.runner.status()
+        self.assertEqual(self.count(), 1)
+
+    def test_status_before_a_session_exists_uses_and_caches_the_repository(self):
+        """Merging status caching must retain the pre-session repository fallback."""
+        self.runner.repo, self.runner.integ = str(self.runner.state), None
+        self.assertEqual(self.runner.tasks()[0]['directory'], str(self.runner.state))
+        self.assertTrue(self.runner.in_flight())
         self.assertEqual(self.count(), 1)
 
     def test_the_runners_own_engine_command_and_time_refresh_it(self):

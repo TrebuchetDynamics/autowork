@@ -190,7 +190,7 @@ class UpdateDefersRestartTests(unittest.TestCase):
         prepare = self.mod.prepare
         with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
              patch.dict('sys.modules', {'setup_bundle': self.stub}), \
-             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p, **_: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
              patch.object(self.mod, 'chat_turns', return_value=turns), \
              patch.object(self.mod, 'request_gateway_restart', return_value=4242) as restart, \
@@ -255,7 +255,7 @@ class UpdateDefersRestartTests(unittest.TestCase):
         prepare = self.mod.prepare
         with patch.object(self.mod, 'prepare', side_effect=lambda *_: prepare(self.repo, self.profiles, upstream=str(self.remote))), \
              patch.dict('sys.modules', {'setup_bundle': self.stub}), \
-             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
+             patch.object(self.mod, 'finalize_profiles', side_effect=lambda s, r, p, **_: [{'profile': n, 'status': 'ready'} for n, _ in p]), \
              patch.object(self.mod, 'gateway_running', return_value=True), \
              patch.object(self.mod, 'gateway_pid', return_value=100), \
              patch.object(self.mod, 'chat_turns', return_value=turns), \

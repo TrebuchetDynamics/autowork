@@ -50,8 +50,10 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    or `HELD` with a reason when:
    - the commit does not descend from the slot baseline, differs from the branch
      or the report, or the report lists blockers or a check that did not pass;
-   - it changes a file outside the task's `Touches:`, a coordinator-owned file, or
-     a file another slot changed;
+   - it changes a coordinator-owned file, or a protected file (manifest, lock file,
+     schema, migration or CI file) its task did not declare for serial work. Files
+     outside `Touches:` and files another slot changed are not held: the merge into the
+     base, in priority order, settles them (TOOLSET-161-17);
    - the merge conflicts (aborted; the canonical checkout, its uncommitted files and
      the worker branch stay untouched);
    - validation fails, or the task contract or canonical branch changes meanwhile;
@@ -92,6 +94,28 @@ reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 
+## Runner jobs versus outside sessions
+
+The [writer scan](../scripts/task_execution.py) excludes this repository's own
+runner jobs before integration, closeout and slot worktree cleanup check for outside
+sessions. The primary attribution is the process's `/proc/<pid>/cgroup`: an exact
+`pi-autowork@<canonical-repository-name>.service` component, including its child
+cgroups. A different repository's unit does not qualify.
+
+For foreground runs, the [coordinator](../../../pi-autowork/pi_autowork/coordinator.py)
+sets `AUTOWORK_EXECUTION_COMMON` to the repository's absolute Git common directory
+on every main check and Pi auxiliary job (DOCS-MAINTAINER, provisioning, merge
+resolution and Touches inference). Children inherit it. If a test harness sanitizes
+its child's environment, a still-live marked ancestor retains attribution; under
+systemd the cgroup also covers detached jobs that drop the environment. Fixture
+repositories do not match the real runner's marker or repository-specific unit.
+
+A `pi-scratch-*` name alone grants no exemption: an outside person's agent there
+still blocks, as does an otherwise blocking session in the main checkout. A blocked
+integration's process evidence explicitly says `session`, so mistaken attribution
+is visible instead of looking like an unidentified check process. These rules do
+not change which outside sessions block or how often the main check runs.
+
 ## Worker temporary directories
 
 `TMPDIR`, `TMP` and `TEMP` all point to the same private, owner-checked directory
@@ -119,18 +143,18 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 
 ## Admission: Touches and Resources
 
-A task runs beside others only when the planner can prove it is independent:
+`Touches:` schedules work; it never holds it (TOOLSET-161-17):
 
 - `Touches:` is a comma-separated list of repository-relative paths or globs the
-  task may change; `*` also matches across `/`, and a trailing `/` covers a
-  directory. Tasks whose `Touches:` intersect never run together, including for
-  files that do not exist yet. An absolute path or a `.`/`..` segment makes
-  dispatch return `ACTION_REQUIRED`.
+  task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
+  directory. It is a hint: tasks whose `Touches:` overlap running or earlier-chosen work
+  are dispatched after independent tasks, never held. A worker may change whatever else
+  its task needs; the merge into the base, one candidate at a time in priority order,
+  settles overlap, and a real conflict goes to the merge resolver. A missing or invalid
+  `Touches:` is no hint (the task ranks after hinted ones).
 - `Resources: live` or `Resources: exclusive` makes a task run alone. Other names
   (for example `Resources: port-8080, test-db`) keep tasks that share a name from
   running together.
-- A task without `Touches:` runs alone. Because it ran alone, it may change any file
-  except coordinator-owned ones when it integrates.
 - A task touching a serial path (dependency manifests and lock files, `migration(s)/`
   and `schema(s)/` directories, CI files such as `.github/workflows/`) never runs beside
   another task that touches a serial path (`serial path shared with <task>`), but runs
@@ -145,20 +169,18 @@ A task runs beside others only when the planner can prove it is independent:
   prerequisites to close. `Dependencies:` counts task-ID-shaped tokens and known task IDs; surrounding
   prose is ignored, a first clause starting with `none` means none, and a line naming
   no task at all stays an unresolved outside condition. A lower-priority task starts past a higher-priority one
-  that cannot start yet only when it shares no path, resource or dependency with it,
-  so priority still decides every overlap. A task that must run alone (no `Touches:`,
-  or a `live`/`exclusive` resource) and waits on running work stops all lower-priority
+  that cannot start yet only when it shares no resource or dependency with it. A task
+  that must run alone (a `live`/`exclusive` resource) and waits on running work stops all lower-priority
   dispatch so the pool drains for it, once it has waited that way for
   `PI_AUTOWORK_DRAIN_AFTER` seconds (default 1800, counted from the journal); until then
   independent work backfills and it reserves only what it declares. A serial task never drains.
-- Slots that are `reported`, `integrated`, `held` or `interrupted` keep blocking
-  overlapping tasks until closed. A `held` or `interrupted` slot whose task is now done
+- Slots that are `reported`, `integrated`, `held` or `interrupted` block only their
+  dependents and shared resources until closed. A `held` or `interrupted` slot whose task is now done
   or superseded (in goals.json, or checked off in TODO.md or its archive) blocks
   nothing; its worktree and record stay for inspection. An `in_progress` task with no live slot is a claim:
-  it is never dispatched and blocks its dependents and tasks whose declared `Touches:`
-  or `Resources:` overlap it, but its own missing `Touches:` does not hold back
-  unrelated tasks (the coordinator holds the repository lease, so no sequential
-  Autowork run is executing it). With `--adopt-idle-claims SECONDS` a claim idle that
+  it is never dispatched and blocks its dependents and tasks whose `Resources:` overlap
+  it (the coordinator holds the repository lease, so no sequential Autowork run is
+  executing it). With `--adopt-idle-claims SECONDS` a claim idle that
   long is planned like an open task: no change to its TODO/ledger entry, no commit on
   a branch named for it, no file change in such a worktree and no live agent there,
   and no active agent session in the canonical checkout holding open a file inside
@@ -215,21 +237,13 @@ nothing parallel was claimed or started.
   work proceeds. A worker-reported blocker holds the same way at once. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
-  `outside`, the changed files outside Touches), `overlap`, `report`, `conflict`,
+  `outside`, the coordinator-owned or undeclared protected files), `report`, `conflict`,
   `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice) or
   `launch`. Integration's `HELD` result carries `cause` and `outside` too.
-- **Scope requests:** a worker blocked only because it must change files outside
-  `Touches:` lists them in its report's `needs_touches` and stops without committing.
-  The slot is held with cause `scope_request` and `requested`; once the task's
-  current `Touches:` cover every requested path, the next refill returns `RESUMED` and
-  the worker continues in its own worktree on the same attempt, its changes intact.
-  Until then it waits like any hold a person must resolve.
-- **Rescope:** when a commit was held only for `scope` and the task's current
-  `Touches:` now cover every `outside` file, the next refill returns `RESCOPED` and
-  sets that commit back to `reported`, once, before any fresh retry. Integration
-  repeats every check, including other slots' files and coordinator files. Only a
-  coordinator that inferred those Touches itself should widen them (pi-autowork
-  does, and never touches a list a person wrote).
+- **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
+  files that are neither protected nor the coordinator's, is offered again once
+  (`REOFFERED`) in priority order and integrates by merge; a worker held with
+  `scope_request` (it stopped to ask for files) resumes in its worktree (`RESUMED`).
 - **Reverify:** `--integrate ... --reviewer-version V` records which validation held a
   commit (`reviewed_by`). `--parallel-reverify TASK --reviewer-version V` sends a commit held
   by validation back to `reported` once per version V, and only when V differs from the
@@ -251,7 +265,8 @@ nothing parallel was claimed or started.
   this task's local `autowork/<TASK>-set-aside-N` branches (including retired `-r2`
   attempts) and previous attempt branches, excluding the current branch. Each has
   its tip commit, commit date and changed files, newest tip first. Changed files
-  are measured from the merge-base of that tip and the new attempt's baseline.
+  are measured from the merge-base of that tip and the new attempt's baseline;
+  unrelated histories retain their tips with the changed-file list marked unknown.
   All refs are reachable from the worker's worktree without fetching. Only when
   the current task asks to keep or continue earlier work may the worker merge or
   cherry-pick from those tips; otherwise it must ignore them. Nothing is applied
@@ -273,9 +288,15 @@ nothing parallel was claimed or started.
   dead worker with a commit becomes `reported` (keeping any uncommitted changes),
   one with only uncommitted changes `interrupted`, one with neither `released`, and
   one whose HEAD left the baseline `held`. No task gets a second worker.
-- **Name collisions:** a worktree is adopted only when the journal shows Autowork
-  created it. A user branch or folder with the target name is left untouched and
-  dispatch returns `ACTION_REQUIRED` until it is resolved by hand.
+- **Name collisions:** [dispatch](../scripts/parallel_dispatch.py) adopts a clean, idle
+  journaled task worktree after verifying its identity. An orphan task branch without commits
+  beyond the dispatch baseline is removed with `git branch -d` and journaled as
+  `stale_branch_removed`; otherwise its work is kept under the next free
+  `-set-aside-N` name. A clean, idle task worktree can be removed without force before
+  this recovery. Dirty worktrees (including ignored files), unrelated paths and
+  branches checked out elsewhere are preserved: only that task waits, while
+  independent tasks dispatch. [Slot retirement](../scripts/parallel_integrate.py)
+  also skips existing set-aside names, preserving earlier attempts.
 - **Resources:** a worker starts only while MemAvailable is at least twice
   `--min-free-mem-mb` (default 1500): one worker's budget plus as much spare, however
   many already run, since their memory is already out of MemAvailable. The 1-minute

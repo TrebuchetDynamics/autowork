@@ -21,6 +21,7 @@ import parallel_dispatch as dispatch
 import parallel_integrate as integrate
 import parallel_state as state
 import test_parallel_dispatch as base
+from offline_fixtures import idle_host_env
 from gate_skip import skip_if_gated
 
 FAKE, task = base.FAKE, base.task
@@ -178,15 +179,20 @@ class AdversarialWorkerTests(unittest.TestCase):
         """Symphony reconcile-before-dispatch; AgwaB out-of-order completion: the later task
         finishes first. Both land exactly once and neither loses the other's change."""
         self.commit_todo(task('A', 'a.txt'), task('B', 'b.txt'))
-        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 2.0}, 'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
-        _, first = self.apply()
-        self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
-        deadline = time.monotonic() + 20
-        while self.slot('B')['state'] != 'reported':
-            self.assertLess(time.monotonic(), deadline)
-            self.wait(1)
-        self.assertEqual(self.slot('A')['state'], 'running')
-        self.assertEqual(self.land('B')['outcome'], 'INTEGRATED')
+        ready, release = self.root / 'a.ready', self.root / 'a.release'
+        self.set_spec({'A': {'files': {'a.txt': 'a'}, 'ready': str(ready), 'release': str(release)},
+                       'B': {'files': {'b.txt': 'b'}, 'sleep': 0.1}})
+        try:
+            _, first = self.apply()
+            self.assertEqual([d['task'] for d in first['dispatched']], ['A', 'B'])
+            deadline = time.monotonic() + 20
+            while not ready.exists() or self.slot('B')['state'] != 'reported':
+                self.assertLess(time.monotonic(), deadline, 'A not ready or B not reported')
+                self.wait(1)
+            self.assertEqual(self.slot('A')['state'], 'running')
+            self.assertEqual(self.land('B')['outcome'], 'INTEGRATED')
+        finally:
+            release.touch()  # A cannot finish before B lands, even on a loaded host.
         self.wait_until_idle()
         self.assertEqual(self.land('A')['outcome'], 'INTEGRATED')
         merges = self.git('log', '--merges', '--format=%P').splitlines()
@@ -204,12 +210,13 @@ class AdversarialWorkerTests(unittest.TestCase):
         self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 2.0}})
         command = [sys.executable, str(CLI), str(self.repo), '--owner-pid', '$$']
         worker = json.dumps([sys.executable, str(FAKE), '{prompt_file}', '{worktree}'])
+        env = idle_host_env(self.root)
 
         def coordinator(*steps):
             # bash is the coordinator: its PID is the owner and it exits afterwards.
             script = '; '.join(' '.join(map(lambda a: a if a == '$$' else "'" + a + "'", command + list(step)))
                                for step in steps) + '; true'
-            out = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=240)
+            out = subprocess.run(['bash', '-c', script], env=env, capture_output=True, text=True, timeout=240)
             return [json.loads(chunk) for chunk in out.stdout.replace('}\n{', '}\x00{').split('\x00') if chunk.strip()]
 
         first = coordinator(['--apply', '--parallel', '--worker-command', worker])

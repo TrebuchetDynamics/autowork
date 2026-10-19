@@ -182,6 +182,43 @@ def strays(worktree):
     return found
 
 
+def owns_process(leader, found):
+    """Birth-checked leader/group/ancestry proof, including children that called setsid.
+
+    Snapshot each parent link and recheck it before accepting: an exited/reused PID
+    or a reparented child is not evidence of ownership. Markers alone prove nothing.
+    """
+    def link(expected):
+        try:
+            fields = Path(f'/proc/{expected["pid"]}/stat').read_text().rsplit(')', 1)[1].split()
+            if (fields[0] in ('Z', 'X') or int(fields[19]) != expected['start_ticks']
+                    or execution.identity(expected['pid']) != expected):
+                return None
+            return int(fields[1]), int(fields[2])  # parent, process group
+        except (OSError, ValueError, IndexError):
+            return None
+
+    if execution.identity(leader['pid']) != leader:
+        return False
+    chain = {}
+    current = found
+    while current['pid'] not in chain:
+        observed = link(current)
+        if observed is None:
+            return False
+        chain[current['pid']] = (current, observed)
+        parent_pid, group = observed
+        if current == leader or (current == found and group == leader['pid']):
+            return (all(link(expected) == saved for expected, saved in chain.values())
+                    and execution.identity(leader['pid']) == leader)
+        parent = execution.identity(parent_pid)
+        if (not parent or parent['boot_id'] != current['boot_id']
+                or parent['start_ticks'] > current['start_ticks']):
+            return False
+        current = parent
+    return False
+
+
 def worker_live(slot):
     """Workers lead their own process group; a surviving child keeps the slot live,
     and so does any process still carrying the slot's worker marker."""
@@ -366,29 +403,6 @@ def report_blockers(common, slot):
     return [b.strip() for b in blockers if b.strip()]
 
 
-def report_scope_request(common, slot):
-    """Repository-relative paths the worker's report asks to add to Touches (needs_touches)."""
-    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
-    try:
-        report = execution.read(execution.safe_path(data / 'report.json'))
-    except (ValueError, OSError):
-        return []
-    wanted = report.get('needs_touches') if isinstance(report, dict) and report.get('task') == slot['task_id'] else None
-    if not isinstance(wanted, list):
-        return []
-    paths = []
-    for item in wanted:
-        if not isinstance(item, str) or not item.strip():
-            continue
-        path = item.strip().strip('`')
-        parts = Path(path).parts
-        if path.startswith(('/', '~')) or '..' in parts or path.rstrip('/') in COORDINATOR_FILES:
-            return []  # a malformed request is not a request: leave it to a person
-        if path not in paths:
-            paths.append(path)
-    return paths
-
-
 def resume_widened(common, old):
     """A scope request whose Touches now cover it resumes in its worktree on the same
     attempt (it was not a failure). Caller holds writer.lock."""
@@ -468,12 +482,14 @@ def reconcile(repo, owner_pid):
                     # It stopped on purpose and said why; resuming would only repeat that
                     # (sierra TASK-022 spent both attempts this way). Its changes stay put.
                     target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
-                    if requested := report_scope_request(common, slot):
-                        updates.update(cause='scope_request', requested=requested)
-                elif dirty:
-                    target, updates = 'interrupted', {'reason': 'dead worker with uncommitted changes'}
                 else:
-                    target, updates = 'released', {'reason': EMPTY}
+                    target = 'interrupted' if dirty else 'released'
+                    reason = ('dead worker with uncommitted changes' if dirty else EMPTY)
+                    if slot.get('paused'):
+                        reason = f'stopped by a runner restart; resumes on attempt {slot["attempt"]}'
+                        if dirty:
+                            reason += ' with uncommitted changes'
+                    updates = {'reason': reason}
             if target != slot['state']:
                 slot = change(common, slot, target, updates)
             result.append(slot)

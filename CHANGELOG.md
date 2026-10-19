@@ -7,6 +7,38 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- The review gate reruns the merged tree's failures alone, side by side, before anything else; when
+  each passes, the base suite is not run. It ran on nearly every review, as long as the merged suite,
+  and the reruns ran one at a time: two suites and 20 minutes of reruns per candidate.
+- The engine tests build their fixture toolset as a clone of its own, not a worktree of the source.
+  Under the runner's gate the source is the live repository: 58 fixture runs each hung to their
+  120 s limit there, and nowhere else. A runner that does not finish now fails with its output and
+  log instead of a bare timeout.
+- A worker's `$TMPDIR` is a short private directory on disk, `/var/tmp/aw-<uid>-<repo key>-<slot>`
+  (`PI_AUTOWORK_WORKER_ROOT` moves it; `/tmp` is the fallback), instead of the runtime directory: a
+  6.3 GB RAM disk shared by every worker, too small for builds and for checks that need free space.
+  A task's existing allocation moves there, with its files, when its next worker starts.
+- A candidate's full check runs once: under a runner, workers leave it to the gate on the merged tree,
+  the gate's verdict is cached per merged tree, and the reviewer reads that run's result and log instead
+  of repeating it. One candidate's suite had run four or five times.
+- While a reload or a new release is waiting, a runner starts no new review, so it reaches the moment
+  with nothing running that a re-exec needs. With a queue of reviews it never did: a reload and four
+  releases waited 2.5 hours, so the runner kept its old reviewer (held commits were never reviewed
+  again by the fixed one) and its old settings (a lowered worker count never applied).
+- `autowork scorecard [--days N] [--json] [target...]` shows, per runner over the last N days (default
+  7): tasks closed (checked entries new in the TODO archive), the share of integrations that ended held,
+  the median time from a task's first dispatch to its integration, and new owner questions in
+  `BLOCKERS.md`. It reads the engine journal and Git history and calls no model.
+- A review's `$TMPDIR` is a short private directory on disk, `/var/tmp/aw-r-<pid>-<random>`
+  (`PI_AUTOWORK_REVIEW_ROOT` moves it). Under the runner's state directory the path was 85 characters
+  before a test added its own, past the 108-byte AF_UNIX limit, so socket tests failed in review while the
+  worker's run passed them; a short link to it was not enough, since code that resolves links got the
+  long path back.
+- `/autowork update` started while the gateway restarts waits for the new gateway (up to 5 minutes) and
+  finalizes profiles whose commands are not wired yet again, instead of reporting `incomplete`.
+- `/plan_with_me` and `/plan_for_me` turn an audit or "is it ready?" into tasks: a one-line verdict, each
+  gap saved as a task (owner-only gaps in `Needs decision` with their question), and what was not
+  checked. "audit" no longer means read-only.
 - `/autowork update` resets every bundle skill a profile edited to the release, saving the edited copy in
   the update's backup and listing it as `reset`; an edited copy of a skill the bundle removed is deleted the
   same way (`removed`). Kept edits blocked releases: Hermes' skill review had rewritten 18 bundle skill

@@ -329,14 +329,59 @@ def session_activity(pid, writing=False, now=None, idle_seconds=SESSION_IDLE_SEC
     return False, f'terminal idle {int(quiet // 3600)} h {int(quiet % 3600 // 60)} min'
 
 
-def external_workers(repo):
-    """Observe live agent processes, never infer activity from historical cards.
+def runner_unit(root):
+    """The repository-specific unit name, matching pi-autowork's service installer."""
+    name = Path(root).name
+    if not re.fullmatch(r'[A-Za-z0-9._-]+', name):
+        try:
+            result = subprocess.run(['systemd-escape', name], capture_output=True, text=True, timeout=10)
+        except OSError:
+            return None
+        if result.returncode:
+            return None
+        name = result.stdout.strip()
+    return f'pi-autowork@{name}.service'
 
-    Each entry is a process identity plus ``kind`` (``autowork`` for commands
-    this helper launched, ``session`` for other agent processes), the worktrees
-    it touches and, for sessions, whether it is active. This supplements
-    cooperative Git-common-dir locking; it cannot lock an unaware editor or a
-    writer on another machine.
+
+def in_runner_unit(entry, unit):
+    try:
+        return bool(unit) and any(unit in line.split(':', 2)[-1].split('/')
+                                  for line in (entry / 'cgroup').read_text().splitlines())
+    except OSError:
+        return False
+
+
+def marked_runner_job(entry, marker, environments, *, parents=False):
+    """Keep attribution through check harnesses that sanitize child environments.
+
+    Match the Git common directory, not just the presence of a runner variable:
+    nested fixture runners belong to their fixture repository, not the real one.
+    """
+    seen = set()
+    while entry.name not in seen and entry.name not in ('0', '1'):
+        seen.add(entry.name)
+        try:
+            if entry.name not in environments:
+                environments[entry.name] = (entry / 'environ').read_bytes().split(b'\0')
+            if marker in environments[entry.name]:
+                return True
+            if not parents:
+                break
+            parent = (entry / 'stat').read_text().rsplit(')', 1)[1].split()[1]
+            entry = entry.parent / parent
+        except (OSError, IndexError, ValueError):
+            break
+    return False
+
+
+def external_workers(repo):
+    """Observe outside agent sessions, excluding this repository's runner jobs.
+
+    A matching systemd unit is primary; the repository marker also covers foreground
+    jobs and their descendants. Scratch names grant no exemption. Each outside entry
+    includes its process identity, worktrees and session activity. This supplements
+    cooperative Git-common-dir locking; it cannot lock an unaware editor or a writer
+    on another machine.
     """
     workspaces = [Path(line[9:]).resolve() for line in
                   git(repo, 'worktree', 'list', '--porcelain').splitlines()
@@ -346,6 +391,8 @@ def external_workers(repo):
     own = ancestors()
     workers = []
     marker = ('AUTOWORK_EXECUTION_COMMON=' + git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')).encode()
+    unit = runner_unit(workspaces[0] if workspaces else canonical_root(repo))
+    environments = {}
     for entry in Path('/proc').glob('[0-9]*'):
         pid = int(entry.name)
         found = identity(pid)
@@ -353,13 +400,11 @@ def external_workers(repo):
             continue
         try:
             argv = (entry / 'cmdline').read_bytes().decode(errors='replace').split('\0')
-            # A detached command still carries its repository attribution after
-            # its launching helper crashes. Never adopt while it is alive.
-            if marker in (entry / 'environ').read_bytes().split(b'\0'):
-                workers.append(dict(found, kind='autowork', workspaces=[str(w) for w in workspaces],
-                                    active=True, evidence='Autowork command for this repository'))
+            # A unit covers detached descendants even after they drop the environment.
+            # Foreground jobs retain the marker (or a still-live marked ancestor).
+            if in_runner_unit(entry, unit) or marked_runner_job(entry, marker, environments):
                 continue
-            if not is_agent(argv):
+            if not is_agent(argv) or marked_runner_job(entry, marker, environments, parents=True):
                 continue
             cwd = (entry / 'cwd').resolve(strict=True)
             paths = [cwd] + [Path(arg).resolve() for arg in argv if arg.startswith('/')]
@@ -388,7 +433,7 @@ def external_workers(repo):
                 writing = any(inside(path, root) for path in written for root in touched)
                 active, evidence = session_activity(pid, writing)
                 workers.append(dict(found, kind='session', workspaces=[str(w) for w in touched],
-                                    active=active, evidence=evidence,
+                                    active=active, evidence=f'session: {evidence}',
                                     written=sorted({str(path) for path in written
                                                     if any(inside(path, root) for root in touched)})))
         except (OSError, ValueError):
@@ -706,12 +751,17 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
                 os.killpg(child.pid, signal.SIGKILL)
                 code = child.wait()
             finally:
-                # A successful shell must not leave background writers past the boundary.
+                # Account for adopted descendants before killing their process group:
+                # SIGKILL can turn them into zombies before identity() observes them,
+                # otherwise a real daemon cleanup is misreported as EXECUTED/CHECK_FAILED.
                 try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                terminated = reap_children(exclude=existing_children)
+                    terminated = reap_children(exclude=existing_children)
+                finally:
+                    # Also stop any process still in the original command group.
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
     finally:
         elapsed = time.monotonic() - started
         if on_finish:
@@ -842,7 +892,7 @@ def parallel_main(args):
             result = parallel_state.pause(Path(args.consumer).expanduser().resolve(), args.owner_pid)
         elif args.integrate:
             result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout,
-                                                  args.reviewer_version)
+                                                  args.reviewer_version, args.base_ref)
         elif args.parallel_close:
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-close does not accept --run or --timeout')
@@ -919,6 +969,8 @@ def main(argv=None):
     parallel.add_argument('--adopt-idle-claims', type=float, default=0, metavar='SECONDS',
                           help='Dispatch in_progress claims idle this long: no task, branch or worktree change '
                                'and no live agent (0, the default, never adopts).')
+    parallel.add_argument('--base-ref', help='The branch this session lands on: a task closed there is closed here '
+                                             '(its worker stops, its commit is set aside).')
     parallel.add_argument('--wait', action='store_true',
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
     parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')

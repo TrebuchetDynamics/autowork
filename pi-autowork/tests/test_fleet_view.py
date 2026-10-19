@@ -111,6 +111,12 @@ class FleetViewTests(unittest.TestCase):
         self.assertIn('Create goals.json from TODO.md', ' '.join(fleet_view.how_to_fix(ready)))
         (repo / 'TODO.md').write_text('# TODO\n')
         (repo / 'goals.json').write_text('{}\n')
+        ready = fleet_view.readiness(repo)
+        self.assertFalse(ready.ready)
+        self.assertIn('commit TODO.md and goals.json on main first', ' '.join(fleet_view.how_to_fix(ready)))
+        subprocess.run(['git', '-C', str(repo), 'add', 'TODO.md', 'goals.json'], check=True)
+        subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                        'commit', '-qm', 'planning'], check=True)
         self.assertTrue(fleet_view.readiness(repo).ready)
         (repo / 'sub').mkdir()
         self.assertIn(f'its repository root ({repo})', fleet_view.readiness(repo / 'sub').problems)
@@ -186,12 +192,15 @@ class FleetViewTests(unittest.TestCase):
             'Mode:       continuous; state in /s',
             '[22:37] Started (PID 244196). Stop with Ctrl+C.',
             '[22:37] TASK-034: pending — dependency: TASK-035',
+            '[22:37] TASK-011: paused — stopped by a runner restart; resumes on attempt 1',
             '[22:37] TASK-011: running — worker started',
             '[22:37] TASK-011: failed — report.json pending_live must be a list of strings',
             '[22:37] Questions for the owner in BLOCKERS.md: 4 open (easiest: TASK-036, decision)'])
         self.assertEqual(fleet_view.log_lines(text), [
             ('[22:26] TASK-011: running — worker started', 'cyan'),
             ('[22:36] ── restarted ──', 'bold'),
+            ('[22:37] TASK-011: paused — stopped by a runner restart; resumes on attempt 1', 'yellow'),
+            ('[22:37] TASK-011: running — worker started', 'cyan'),
             ('[22:37] TASK-011: failed — report.json pending_live must be a list of strings', 'bold red'),
             ('[22:37] Questions for the owner in BLOCKERS.md: 4 open (easiest: TASK-036, decision)', 'yellow')])
 
@@ -321,6 +330,8 @@ class FleetViewTests(unittest.TestCase):
 
     def test_phase_text_is_split_into_a_short_phase_and_its_detail(self):
         self.assertEqual(fleet_view._split_phase('verifying'), ('verifying', ''))
+        self.assertEqual(fleet_view._split_phase('paused; resumes on attempt 1 — with uncommitted changes'),
+                         ('paused', 'resumes on attempt 1; with uncommitted changes'))
         self.assertEqual(fleet_view._split_phase('failed — validation failed'), ('failed', 'validation failed'))
         self.assertEqual(fleet_view._split_phase('its TODO entry changed while it was held'),
                          ('its TODO entry', 'changed while it was held'))

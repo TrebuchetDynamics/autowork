@@ -236,7 +236,36 @@ def apply(plan, backup):
             git(repo, 'merge', '--ff-only', state['after'])
 
 
-def finalize_profiles(source, root, profiles):
+STARTUP_WAIT_S = 5 * 60
+WIRING_RETRY_S = (15, 30, 60)
+
+
+def gateway_state(root):
+    try:
+        return json.loads((root / 'gateway_state.json').read_text()).get('gateway_state')
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def wait_for_gateway(root, folder, limit=STARTUP_WAIT_S, poll=5):
+    """While a restart this updater requested is between gateways (the old one gone, the new one
+    starting), wait for the new one: activation checks command wiring, which no gateway answers
+    then, so a rerun at that moment reported `incomplete`. A draining gateway still serves, and the
+    update joins its restart as before. True if it waited."""
+    deadline, waited = time.monotonic() + limit, False
+    while time.monotonic() < deadline:
+        pending = pending_restart(folder)
+        restarting = pending is not None and pending.get('mode') != 'deferred'
+        if not (restarting and (gateway_state(root) == 'starting' or not gateway_running(root))):
+            return waited
+        waited = True
+        time.sleep(poll)
+    return waited
+
+
+def finalize_profiles(source, root, profiles, retries=()):
+    """Enable and finalize each profile; a profile left incomplete is finalized again after each
+    delay in `retries` (a just-restarted gateway wires its commands a little after it serves)."""
     results = []
     env = dict(os.environ, HERMES_HOME=str(root))
     for name, home in profiles:
@@ -250,6 +279,16 @@ def finalize_profiles(source, root, profiles):
                                 '--hermes-home', str(root), '--bundle-only'], env=env, timeout=120)
         results.append({'profile': name, 'status': 'ready' if enable.returncode == final.returncode == 0 else 'incomplete',
                         'enable_exit': enable.returncode, 'finalize_exit': final.returncode})
+    for delay in retries:
+        if all(r['status'] == 'ready' for r in results):
+            break
+        time.sleep(delay)
+        for row in results:
+            if row['status'] == 'ready' or row['enable_exit']:
+                continue
+            final = subprocess.run(['hermes', '-p', row['profile'], 'autowork', 'finalize', '--hermes-home', str(root),
+                                    '--bundle-only'], env=env, timeout=120)
+            row.update(status='ready' if final.returncode == 0 else 'incomplete', finalize_exit=final.returncode)
     return results
 
 
@@ -1331,7 +1370,9 @@ def main(argv=None):
                 before = config_snapshot(profiles)
                 # Refresh even on equal revisions: a prior setup/reload may have failed.
                 # Plugin activation also re-applies each profile's command menu and settings.
-                result['activation'] = finalize_profiles(source, root, profiles)
+                restarted = wait_for_gateway(root, state_dir)
+                result['activation'] = finalize_profiles(source, root, profiles,
+                                                         retries=WIRING_RETRY_S if restarted else ())
                 healed = [name for name, value in config_snapshot(profiles).items() if value != before[name]]
                 result['settings_healed'] = healed
                 # Best effort: an offline bot API never fails the update.

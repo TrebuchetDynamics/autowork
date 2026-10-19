@@ -71,8 +71,10 @@ def model_of(model):
     return model.split('/', 1)[1] if '/' in model else model
 
 
-def lifecycle(state):
-    """Task lifecycle words for the engine's slot states."""
+def lifecycle(state, *, paused=False):
+    """Task lifecycle words; a deliberate stop does not turn a resumable slot into a failure."""
+    if paused and state in ('interrupted', 'released'):
+        return 'paused'
     return {'waiting': 'pending', 'pending': 'pending', '': 'pending', 'dispatched': 'running',
             'running': 'running', 'reported': 'implemented', 'integrating': 'verifying',
             'integrated': 'integrated', 'closed': 'done', 'held': 'failed', 'interrupted': 'failed',
