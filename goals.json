@@ -1086,14 +1086,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-201-5e",
-      "section": "Now",
-      "status": "open",
-      "title": "An idle runner keeps its session instead of recreating it every interval"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-214-5b",
       "section": "Now",
       "status": "open",
@@ -2796,6 +2788,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task whose Ownership needs the owner or live authorization is never dispatched unattended"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-201-5e",
+      "section": "Done",
+      "status": "done",
+      "title": "An idle runner keeps its session instead of recreating it every interval"
     },
     {
       "depends_on": [],

@@ -147,22 +147,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: Existing execution owner: continue from retained candidate 6e31dfc0138d0adb3a237a9a744b08ce188eb09f, preserving its code and tests. Prepare the smallest descendant/reconciled candidate that excludes only attributable worker changes to protected TODO.md/goals.json; any necessary planning repair goes through the coordinator/Docs Sync, never a worker-file guard bypass or restoration of stale queue snapshots. Reverify the exact integrated code with original required checks and review; reuse only still-valid evidence. Keep the same task and cumulative accounting, preserve unrelated work and do not clear slots/leases manually. A saved answer is not verified delivery.
 
 
-### TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
-
-- [ ] TOOLSET-201-5e — An idle runner keeps its session instead of recreating it every interval
-- Status: open
-- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
-- Sources: [engine graph review](docs/plans/2026-10-17-engine-graph-review.md#engine-graph-review-findings) (finding 3); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `IDLE` branch of the cycle calls `merge_main`, `--release` and `end_session`; the next cycle's `ensure_session` creates a new one).
-- Evidence (2026-10-17 23:26-23:28, one fleet runner on the current release): `Session pi-autowork/20261017-232646 started from master`, `Queue empty`, then a new session at 23:27:52 and 23:28:54. Each interval adds a worktree, a branch and engine calls for nothing.
-- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
-- Scope: (1) On an empty queue the runner lands what the session has, then keeps the session worktree and branch and follows main in place; it ends the session only on a stop, a session older than a day with nothing ahead, or a session it cannot follow (a conflict the resolver cannot fix). (2) An idle cycle that finds main unchanged makes no git writes; its engine calls are the dispatch check and the `--release` it makes today, which stays, so an interactive `owner_cycle.py` or `worktree_closeout.py` run between intervals still finds the coordinator lease free. (3) `Session … started` is logged only when a session is actually created.
-- Acceptance: In a fixture with an empty queue, ten intervals create one session, log one `Session … started` line and leave the same worktree; a task added to main afterwards dispatches from that session; a stop still ends a clean, merged session as today.
-- Checks: python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
-- Dependencies: None.
-- Ownership: Toolset coordinator.
-- Exclusions: No change to landing, pushing or what a stop does.
-- Planner's call: keep and follow the idle session rather than remove it lazily, because following main is already the session's normal state while nothing runs.
-
 ### TOOLSET-220-71 — Plan For Me and Plan With Me end a large plan's batch with a planning task
 
 - [ ] TOOLSET-220-71 — Plan For Me and Plan With Me end a large plan's batch with a planning task
