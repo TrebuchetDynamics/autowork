@@ -770,7 +770,6 @@
       "TOOLSET-250-49",
       "TOOLSET-244-5d",
       "TOOLSET-232-01",
-      "TOOLSET-223-8e",
       "TOOLSET-222-e1",
       "TOOLSET-229-d0",
       "TOOLSET-234-d4",
@@ -1140,14 +1139,6 @@
       "section": "Now",
       "status": "open",
       "title": "A runner with nothing running always gets one worker, whatever the host load"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-223-8e",
-      "section": "Now",
-      "status": "open",
-      "title": "Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest"
     },
     {
       "depends_on": [
@@ -2945,6 +2936,14 @@
       "section": "Done",
       "status": "done",
       "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-223-8e",
+      "section": "Done",
+      "status": "done",
+      "title": "Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest"
     },
     {
       "depends_on": [],

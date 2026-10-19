@@ -4114,3 +4114,26 @@ Source section: Now
 - Ownership: Toolset coordinator.
 - Exclusions: No change to the full-suite gate or to what a review checks.
 - Planner's call: second in Now, behind TOOLSET-165-f7. Each toolset release re-reviewed the same failing commit ahead of the whole queue, so the runner that receives the most releases integrated the least. Ordering, scoping the fingerprint and stopping same-verdict repeats keep the benefit (a fixed reviewer gets one more look) without the stall.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-223-8e"></a>
+
+### TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
+
+- [x] TOOLSET-223-8e — Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest
+- Status: done 2026-10-19, landed by the owner sessions: (1)-(2) in c9243bd (planning files do not block integration; a writer-busy candidate steps aside 10 minutes) and (3) in 10d09c7 (the status line names the waiting candidate and the rest integrating). The runner's own candidate for this task duplicates that work and is set aside as closed on main.
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [writer check](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`, `touches_none_of`: a session in the main checkout blocks integrating elsewhere when the merge changes a file it left uncommitted); `integrate` (`integrate the highest-priority reported task first`); [landing](pi-autowork/pi_autowork/coordinator.py) (`commit_owner_changes` commits quiet owner edits before merging, and `merge_main` keeps the branch when the main checkout cannot take it).
+- Evidence (2026-10-18 13:36, this repository's runner): 8 verified candidates were waiting to integrate and status said `1 verified commit(s) wait for another session in the main checkout (runner, holds 56)`. An interactive planning session had kept TODO.md uncommitted in the main checkout for over 90 minutes while running a polling loop, so it counted as active. Three of the candidates change TODO.md and goals.json (their own Status lines), which made the session a blocker for them. Because integration takes reported tasks strictly in priority order, the first blocked candidate also held back the ones that touch no planning file.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) In `touches_none_of`, uncommitted planning files in the main checkout (TODO.md, goals.json, the TODO archive and BLOCKERS.md) do not count: integration merges in the session worktree, and the landing step already reconciles owner planning edits or keeps the branch. A planning file the session holds open for writing still counts. (2) A reported task refused with `WritersBusy` is recorded on its slot (`writers_busy_at` plus the reason). For the next 10 minutes, the highest-priority-first rule skips it, so the next reported task integrates. It goes back in its place once that time passes or the writer is gone. (3) The coordinator's status line names which candidate waits and why, and how many integrate meanwhile.
+- Acceptance: In fixtures: a main checkout with an uncommitted TODO.md edit and a live session there does not stop a candidate whose merge changes TODO.md, and the later landing commits the owner's edit first; a session holding a source file the merge changes still blocks that candidate; a higher-priority candidate blocked by a writer lets a lower-priority one integrate in the same cycle, and is integrated itself after the writer leaves.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest tests/test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the landing step's own refusals or to how sessions are detected. A file the session holds open for writing still blocks.
+- Planner's call: second in Now, after TOOLSET-221-8e. Interactive planning is the normal way the owner works, and every task's own Status edit made it block the whole integration queue.
