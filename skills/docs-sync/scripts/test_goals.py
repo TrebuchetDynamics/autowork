@@ -36,6 +36,137 @@ def sample():
     }
 
 
+class MergeDriverTests(unittest.TestCase):
+    def test_git_merge_of_independent_closes_finalizes_generated_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            data = {'version': 1, 'goals': [{'id': 'G', 'title': 'Outcome', 'source': 'SPEC.md',
+                    'status': 'partial', 'tasks': ['A', 'B', 'C'], 'evidence': []}],
+                    'tasks': [{'id': tid, 'goal': 'G', 'title': tid, 'status': 'open', 'section': 'Now'}
+                              for tid in 'ABC'], 'priority_order': {'schema': 1, 'tasks': list('ABC')}}
+            paths = [repo / name for name in ('base', 'ours', 'theirs')]
+            def git(*args):
+                return subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Fixture',
+                                       '-c', 'user.email=f@example.invalid', *args],
+                                      capture_output=True, text=True)
+            self.assertEqual(git('init', '-q', '-b', 'main').returncode, 0)
+            (repo / 'goals.json').write_text(json.dumps(data))
+            body = '# TODO\n\n[Completed tasks](TODO.archive.md)\n\n## Now\n\n' + ''.join(
+                f'- [ ] {tid}: {tid}\n  Status: open\n\n' for tid in 'ABC')
+            (repo / 'TODO.md').write_text(body)
+            (repo / 'TODO.archive.md').write_text('# Completed tasks\n')
+            (repo / '.gitattributes').write_text('goals.json merge=docs-sync-goals\n'
+                'TODO.md merge=docs-sync-todo\nTODO.archive.md merge=docs-sync-archive\n')
+            for kind in ('goals', 'todo', 'archive'):
+                git('config', f'merge.docs-sync-{kind}.driver',
+                    f'{shlex.quote(sys.executable)} {shlex.quote(str(SCRIPT))} merge-driver {kind} %O %A %B')
+            self.assertEqual(run('render', str(repo)).returncode, 0)
+            git('add', '.'); git('commit', '-qm', 'base')
+            for branch, tid in (('left', 'A'), ('right', 'B')):
+                git('checkout', '-qb', branch, 'main')
+                self.assertEqual(run('task', str(repo), tid, 'done').returncode, 0)
+                text = (repo / 'TODO.md').read_text().replace(f'- [ ] {tid}: {tid}\n  Status: open',
+                                                           f'- [x] {tid}: {tid}\n  Status: done')
+                (repo / 'TODO.md').write_text(text)
+                self.assertEqual(run('render', str(repo)).returncode, 0)
+                self.assertEqual(run('reorder', str(repo)).returncode, 0)
+                git('add', '.'); git('commit', '-qm', branch)
+            result = git('merge', '--no-commit', '--no-ff', 'left')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr + git('diff').stdout)
+            result = run('merge-finalize', str(repo))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            merged = json.loads((repo / 'goals.json').read_text())
+            self.assertEqual({t['id']: t['status'] for t in merged['tasks']},
+                             {'A': 'done', 'B': 'done', 'C': 'open'})
+            self.assertEqual(merged['priority_order']['tasks'], ['C'])
+            self.assertEqual(run('validate', str(repo)).stdout.strip(), 'ok')
+            self.assertIn('| G: Outcome | partial |', (repo / 'TODO.md').read_text())
+            self.assertNotIn('- [ ] A:', (repo / 'TODO.md').read_text())
+            self.assertNotIn('- [ ] B:', (repo / 'TODO.md').read_text())
+
+    def test_different_reprioritizations_conflict_only_on_that_record(self):
+        with tempfile.TemporaryDirectory() as folder:
+            paths = [Path(folder) / name for name in ('base', 'ours', 'theirs')]
+            for path, section in zip(paths, ('Now', 'Next', 'Needs decision')):
+                side = sample()
+                side['tasks'][0]['section'] = section
+                path.write_text(json.dumps(side))
+            result = run('merge-driver', 'goals', *map(str, paths))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            conflict = paths[1].read_text()
+            self.assertEqual(conflict.count('<<<<<<<'), 1)
+            chunk = conflict.split('<<<<<<<', 1)[1].split('>>>>>>>', 1)[0]
+            self.assertIn('"id": "TASK-001"', chunk)
+            self.assertNotIn('"id": "TASK-002"', chunk)
+            self.assertNotIn('"id": "GOAL-4"', chunk)
+            # Git treats two different moves within one section as independent
+            # insertions and can silently duplicate A. Surface only A's placements.
+            for path, order in zip(paths, ('ABCD', 'BACD', 'BCAD')):
+                path.write_text('# TODO\n\n## Now\n\n' + ''.join(
+                    f'- [ ] {tid}: Task {tid}\n\n' for tid in order))
+            result = run('merge-driver', 'todo', *map(str, paths))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            conflict = paths[1].read_text()
+            chunks = re.findall(r'^<<<<<<<[^\n]*\n(.*?)^>>>>>>>[^\n]*$', conflict, re.M | re.S)
+            self.assertTrue(chunks)
+            for chunk in chunks:
+                self.assertIn('- [ ] A:', chunk)
+                for tid in 'BCD':
+                    self.assertNotIn(f'- [ ] {tid}:', chunk)
+            for tid in 'BCD':
+                self.assertEqual(conflict.count(f'- [ ] {tid}:'), 1)
+
+    def test_new_closeout_evidence_renders_a_short_archive_link_not_scratch_paths(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder)
+            data = sample()
+            data['goals'][0]['evidence'][0]['ref'] = '/scratch/old/' + 'historical/' * 30
+            (repo / 'goals.json').write_text(json.dumps(data))
+            (repo / 'TODO.md').write_text('# TODO\n\n## Done\n\n- [x] TASK-002: Run counter test\n')
+            self.assertEqual(run('task', str(repo), 'TASK-002', 'done').returncode, 0)
+            result = run('evidence', str(repo), 'GOAL-1', '--kind', 'executed', '--result', 'pass',
+                         '--ref', '/scratch/private/' + 'long-path/' * 30, '--task', 'TASK-002',
+                         '--summary', 'Counter check passed')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(run('render', str(repo)).returncode, 0)
+            row = next(line for line in (repo / 'TODO.md').read_text().splitlines() if '| GOAL-1:' in line)
+            self.assertNotIn('/scratch/', row)
+            self.assertIn('Counter check passed', row)
+            self.assertIn('TODO.archive.md#task-002', row)
+            self.assertLess(len(row), 240)
+            result = run('evidence', str(repo), 'GOAL-1', '--kind', 'executed', '--result', 'fail',
+                         '--ref', '/a-new', '--task', 'TASK-002', '--summary', 'NEW FAILED')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(run('render', str(repo)).returncode, 0)
+            self.assertIn('NEW FAILED', (repo / 'TODO.md').read_text())
+            self.assertNotIn('Counter check passed', (repo / 'TODO.md').read_text())
+            # New evidence for old history must use its real heading, not an invented ID anchor.
+            archive = repo / 'TODO.archive.md'
+            archive.write_text('# Completed tasks\n\n### TASK-002 — Historical outcome\n\n'
+                               '- [x] TASK-002: Run counter test\n')
+            result = run('evidence', str(repo), 'GOAL-1', '--kind', 'executed', '--result', 'pass',
+                         '--ref', '/legacy', '--task', 'TASK-002', '--summary', 'Legacy receipt')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(run('render', str(repo)).returncode, 0)
+            self.assertIn('TODO.archive.md#task-002--historical-outcome', (repo / 'TODO.md').read_text())
+
+    def test_todo_driver_ignores_generated_conflicts_but_preserves_prose_conflicts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            paths = [Path(folder) / name for name in ('base', 'ours', 'theirs')]
+            for path, row in zip(paths, ('base', 'ours', 'theirs')):
+                path.write_text('# TODO\n\n## Now\n- [ ] A: A\n\n## Goal coverage\n\n'
+                                '<!-- goals:coverage:begin -->\n' + row + '\n<!-- goals:coverage:end -->\n')
+            result = run('merge-driver', 'todo', *map(str, paths))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('<<<<<<<', paths[1].read_text())
+            for path, title in zip(paths, ('A', 'Left', 'Right')):
+                path.write_text('# TODO\n\n## Now\n- [ ] A: ' + title + '\n')
+            result = run('merge-driver', 'todo', *map(str, paths))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn('Left', paths[1].read_text())
+            self.assertIn('Right', paths[1].read_text())
+
+
 class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

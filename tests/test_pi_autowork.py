@@ -394,6 +394,11 @@ class Fixture(unittest.TestCase):
         repo.mkdir()
         self.git(repo, 'init', '-q', '-b', 'main')
         (repo / 'TODO.md').write_text(todo(tasks))
+        # Unrelated runner journeys start after the one-time planning-driver setup.
+        # The startup test below adds a custom owner and verifies its setup commit.
+        (repo / '.gitattributes').write_text('goals.json merge=docs-sync-goals\nTODO.md merge=docs-sync-todo\n'
+            'TODO.archive.md merge=docs-sync-archive\ntodo.archive.md merge=docs-sync-archive\n'
+            'docs/TODO-archive.md merge=docs-sync-archive\n')
         for t, _ in tasks:
             (repo / f'{t}.txt').write_text('')
         self.git(repo, 'add', '-A')
@@ -484,11 +489,29 @@ class EngineTests(Fixture):
         self.assertEqual(roles, {'worker', 'verify'})
 
     def test_once_runs_one_task(self):
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text().replace(
+            '# TODO\n', '# TODO\n\n[Completed tasks](docs/history.md)\n'))
+        (self.repo / 'docs').mkdir()
+        (self.repo / 'docs/history.md').write_text('# Completed tasks\n')
+        self.git(self.repo, 'add', 'TODO.md', 'docs/history.md')
+        self.git(self.repo, 'commit', '-qm', 'custom history owner')
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([r['task'] for r in self.runs('worker')], ['A'])
         self.assertTrue(self.done('A'))
         self.assertEqual((self.repo / 'B.txt').read_text(), '')
+        for kind, name in (('goals', 'goals.json'), ('todo', 'TODO.md'), ('archive', 'TODO.archive.md')):
+            driver = self.git(self.repo, 'config', '--local', '--get', f'merge.docs-sync-{kind}.driver')
+            self.assertIn('merge-driver ' + kind, driver)
+            self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', name),
+                             f'{name}: merge: docs-sync-{kind}')
+        self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', 'docs/history.md'),
+                         'docs/history.md: merge: docs-sync-archive')
+        attributes = (self.repo / '.gitattributes').read_bytes()
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.repo / '.gitattributes').read_bytes(), attributes)
+        self.assertEqual(self.git(self.repo, 'rev-list', '--count', 'HEAD', '--', '.gitattributes'), '2')
 
     def test_empty_queue_calls_no_model(self):
         # Seed the consumed artifacts of a completed A/B/C session, not another

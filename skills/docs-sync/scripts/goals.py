@@ -23,6 +23,9 @@ Agents change goals.json only through these commands, never by hand-editing JSON
   goals.py redact <repo> --replacements-file JSON --archive-dir PRIVATE
                                                 redact historical refs/sources and render under one lock
   goals.py revision <repo>                       content token for goals.json and TODO.md
+  goals.py merge-driver goals|todo|archive BASE OURS THEIRS
+                                                Git low-level driver; writes OURS only, exits 1 on conflict
+  goals.py merge-finalize <repo>                 rebuild order and coverage before committing a resolved merge
   goals.py render <repo>                         rewrite TODO.md's goal-coverage block from goals.json
   goals.py archive <repo> [--verified-tasks T1,T2]
                                                 move closed task bodies to TODO.archive.md; keep ledger history
@@ -738,9 +741,25 @@ def render_text(repo, data, text=None):
 
     tasks = {t['id']: t for t in data['tasks']}
     rows = ['| Goal | Status | Evidence | Task |', '| --- | --- | --- | --- |']
+    def evidence_cell(entry):
+        if 'summary' in entry:
+            summary = cell(entry['summary'])
+            if entry.get('task') and entry.get('archive'):
+                # Archive links are authored by evidence(), not arbitrary scratch refs.
+                from urllib.parse import quote
+                anchor = entry.get('anchor', entry['task'].lower())
+                target = quote(entry['archive'], safe='/.-_') + ('#' + quote(anchor, safe='-_.') if anchor else '')
+                return summary + f" ([{cell(entry['task'])}]({target}))"
+            return summary
+        return (cell(entry['kind']) + (' (redacted historical evidence)' if entry.get('redacted') else '')
+                + f" <code>{cell(entry['ref'])}</code> → {cell(entry['result'])}")
+
     for g in data['goals']:
-        ev = '; '.join(cell(e['kind']) + (' (redacted historical evidence)' if e.get('redacted') else '')
-                       + f" <code>{cell(e['ref'])}</code> → {cell(e['result'])}" for e in g['evidence']) or '—'
+        compact = [e for e in g['evidence'] if 'summary' in e and e.get('coverage_current') is True]
+        # Keep an explicit identity: canonical evidence sorting is not recency.
+        # Untouched legacy goals retain their existing rows and full refs.
+        visible = compact if compact else g['evidence']
+        ev = '; '.join(evidence_cell(e) for e in visible) or '—'
         open_t = [t for t in g['tasks'] if tasks.get(t, {}).get('status') not in ('done', 'superseded')]
         rows.append(f"| {cell(g['id'])}: {cell(g['title'])} | {cell(g['status'])} | {ev} | {cell(', '.join(open_t)) or '—'} |")
     block = '\n'.join([BEGIN, '', 'Generated from `goals.json` by `goals.py render`. `met` requires an executed, passing check.', '', *rows, '', END])
@@ -1404,7 +1423,10 @@ def main():
     pr.add_argument('--intent', required=True, help='version-1 goals/tasks JSON, as init takes it')
     pr.add_argument('--todo-file', help='complete Markdown bodies when TODO.md is absent')
     sub.add_parser('accept', help="the owner accepted the proposal: mark its sources Accepted and initialize").add_argument('repo')
-    for name in ('validate', 'fmt', 'render', 'revision'):
+    md = sub.add_parser('merge-driver', help='Git low-level driver; writes OURS only')
+    md.add_argument('kind', choices=('goals', 'todo', 'archive'))
+    md.add_argument('ancestor'); md.add_argument('ours'); md.add_argument('theirs')
+    for name in ('validate', 'fmt', 'render', 'revision', 'merge-finalize', 'merge-attributes'):
         sub.add_parser(name).add_argument('repo')
     ar = sub.add_parser('archive'); ar.add_argument('repo')
     ar.add_argument('--verified-tasks', default='', help='explicitly verified closed IDs in a TODO-only repository')
@@ -1434,6 +1456,8 @@ def main():
     e = sub.add_parser('evidence'); e.add_argument('repo'); e.add_argument('goal')
     e.add_argument('--kind', choices=KINDS, required=True); e.add_argument('--ref', required=True)
     e.add_argument('--result', choices=RESULTS, required=True); e.add_argument('--ran-at', default='')
+    e.add_argument('--task', help='completed task whose archive owns this closeout evidence')
+    e.add_argument('--summary', help='short coverage summary (at most 80 characters); exact ref stays in ledger')
     b = sub.add_parser('backlog-check'); b.add_argument('repo')
     b.add_argument('--plan', required=True, help='accepted repo-relative path#heading')
     b.add_argument('--tasks', required=True, help='existing comma-separated task IDs')
@@ -1442,6 +1466,9 @@ def main():
         parser.add_argument('--expected-revision', help='refuse if goals.json or TODO.md changed since revision')
         parser.add_argument('--canonical-repo', help='explicit target checkout of the same Git repository (default: requested repo)')
     a = ap.parse_args()
+    if a.cmd == 'merge-driver':
+        from planning_merge import driver
+        sys.exit(driver(a.kind, a.ancestor, a.ours, a.theirs))
     if a.cmd == 'focus' and sum((a.clear, a.goal is not None, a.json)) != 1:
         f.error('provide exactly one of GOAL, --clear or --json')
     with coordination(a.repo, a.canonical_repo) as repo:
@@ -1476,6 +1503,23 @@ def touches_errors(repo, data):
 
 
 def execute(a):
+    if a.cmd == 'merge-attributes':
+        import todo_archive
+        text = todo_text(a.repo)
+        known = set(task_bodies(text))
+        owner = todo_archive.archive_owner(Path(a.repo), todo_archive.navigation(text, task_prose(text), known))
+        print('goals.json merge=docs-sync-goals\nTODO.md merge=docs-sync-todo')
+        for name in dict.fromkeys((todo_archive.DEFAULT, *todo_archive.LEGACY, owner.as_posix())):
+            print(json.dumps(name) + ' merge=docs-sync-archive' if any(c.isspace() for c in name)
+                  else name + ' merge=docs-sync-archive')
+        return
+    if a.cmd == 'merge-finalize':
+        from planning_merge import finalize
+        try:
+            finalize(a.repo)
+        except ValueError as exc:
+            sys.exit(str(exc))
+        print('ok'); return
     if a.cmd == 'init':
         initialize(a); return
     if a.cmd == 'propose':
@@ -1648,9 +1692,38 @@ def execute(a):
     if a.cmd == 'evidence':
         goal = next((x for x in data['goals'] if x['id'] == a.goal), None) or sys.exit(f'unknown goal {a.goal}')
         entry = {'kind': a.kind, 'ref': a.ref, 'result': a.result}
+        completed = [t['id'] for t in data['tasks'] if t.get('goal') == a.goal and t.get('status') == 'done']
+        task = a.task or (completed[-1] if completed else None)
+        if a.task and a.task not in completed:
+            sys.exit('--task must name a completed task of this goal; no write')
+        summary = a.summary or f'{a.kind.capitalize()} check: {a.result}'
+        if not summary.strip() or len(summary) > 80 or '\n' in summary or '\r' in summary:
+            sys.exit('--summary must be one short line (1–80 characters); no write')
+        entry['summary'] = summary
+        if task:
+            import todo_archive
+            text = todo_text(a.repo)
+            prose = todo_archive.navigation(text, task_prose(text), {t['id'] for t in data['tasks']})
+            owner = todo_archive.archive_owner(Path(a.repo), prose)
+            anchor = task.lower()
+            history = (checked_bytes(Path(a.repo) / owner) or b'').decode('utf-8')
+            if history and task not in task_bodies(text) and f'<a id="{anchor}"></a>' not in history:
+                # Legacy history may have a task heading rather than an ID-only anchor.
+                # Reuse real headings without rewriting append-only historical bytes.
+                spans, _ = todo_archive.entries(history, markdown_prose(history), {task})
+                source = next((start for start, _, tid, _ in spans if tid == task), None)
+                headings = [h for h in heading_rows(markdown_prose(history))
+                            if source is not None and h[1] <= source]
+                own = [h for h in headings if re.search(r'(?<![\w-])' + re.escape(task) +
+                                                       r'(?![\w-])', history[h[1]:h[2]])]
+                anchor = (own or headings)[-1][0] if (own or headings) else ''
+            entry.update(task=task, archive=owner.as_posix(), anchor=anchor)
         if a.ran_at:
             entry['ran_at'] = a.ran_at
         goal['evidence'] = [x for x in goal.get('evidence', []) if (x.get('kind'), x.get('ref')) != (a.kind, a.ref)] + [entry]
+        for previous in goal['evidence']:
+            previous.pop('coverage_current', None)
+        entry['coverage_current'] = True
         if a.kind == 'executed' and a.result == 'pass' and goal.get('status') in ('unmet', 'unverified', 'partial') \
                 and all(t.get('status') == 'done' for t in data['tasks'] if t.get('goal') == a.goal):
             goal['status'] = 'met'
@@ -1660,4 +1733,6 @@ def execute(a):
 
 
 if __name__ == '__main__':
+    # Merge helpers must share this invocation's lock/stale-write context.
+    sys.modules['goals'] = sys.modules[__name__]
     main()

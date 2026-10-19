@@ -13,6 +13,55 @@ IDENTIFIER = r'[A-Za-z0-9][A-Za-z0-9_-]*'
 TASK_HEADING = r'(' + IDENTIFIER + r')(?:[ \t]+[—–-][ \t]+|:[ \t]+)'
 
 
+def merge_entries(base, ours, theirs, *, mask, merge_text):
+    """Union whole archive entries, not lines that could splice two task bodies.
+
+    Preserve different historical versions, deduplicating only identical entries.
+    Unrecognized/overlapping layouts fall back to Git instead of guessing boundaries.
+    """
+    def partition(text):
+        prose = mask(text)
+        known = set(re.findall(r'^[-*] \[[ xX]\][ \t]+`?(' + IDENTIFIER + r')', prose, re.M))
+        records, headings = entries(text, prose, known)
+        if any(left[1] > right[0] for left, right in zip(records, records[1:])):
+            raise ValueError('overlapping archive entries')
+        spans, previous = [], 0
+        for start, end, _, _ in records:
+            wrapper = prose.rfind('<!-- archived from TODO.md -->', previous, start)
+            anchor = re.search(r'<a id="[^"\n]+"></a>\s*$', text[previous:start])
+            begin = wrapper if wrapper >= 0 else previous + anchor.start() if anchor else start
+            group = next((h[0] for h in reversed(headings) if h.start() < start and len(h[1]) <= 2), '')
+            spans.append([begin, end, group])
+            previous = start
+        if not spans:
+            return text, []
+        for left, right in zip(spans, spans[1:]):
+            left[1] = min(left[1], right[0])
+        units, cursor = [], spans[0][0]
+        for start, end, group in spans:
+            units.append(('layout', text[cursor:start].strip('\r\n'), ''))
+            units.append(('entry', text[start:end].strip('\r\n'), group))
+            cursor = end
+        units.append(('layout', text[cursor:].strip('\r\n'), ''))
+        return text[:spans[0][0]], units
+    parts = [partition(text) for text in (base, ours, theirs)]
+    prefix, conflict = merge_text(*(part[0] for part in parts))
+    output, seen = prefix.rstrip('\r\n'), set()
+    groups = re.findall(r'^#{1,2}[ \t]+[^\r\n]+', mask(output), re.M)
+    current_group = groups[-1] if groups else ''
+    for kind, chunk, group in (unit for _, rows in parts[1:] for unit in rows):
+        if not chunk or (kind, chunk) in seen:
+            continue
+        seen.add((kind, chunk))
+        if kind == 'entry' and group and group != current_group:
+            # Restore grouping when an intervening branch appended another section.
+            output += '\n\n' + group
+        output += '\n\n' + chunk
+        groups = re.findall(r'^#{1,2}[ \t]+[^\r\n]+', mask(output), re.M)
+        current_group = groups[-1] if groups else ''
+    return output + '\n', conflict
+
+
 def local_archive(repo, name):
     path = Path(unquote(name.strip('<>')).split('#', 1)[0])
     if (path.is_absolute() or '..' in path.parts or not path.parts
@@ -202,10 +251,13 @@ def prepare(repo, data, text, *, mask, checked_bytes, verified_tasks=(), boundar
     needed = Counter(row[4] for row in selected)
     missing = {block: max(0, count - history.count(block)) for block, count in needed.items()}
     additions = ''
-    for _, _, _, section, block in selected:
+    for _, _, tid, section, block in selected:
         if missing[block]:
+            anchor = f'<a id="{tid.lower()}"></a>\n\n'
+            if anchor.strip() in history + additions:
+                anchor = ''
             additions += ('\n\n<!-- archived from TODO.md -->\n\nSource section: ' + section + '\n\n' +
-                          rebased_references(repo, owner, block) + block)
+                          rebased_references(repo, owner, block) + anchor + block)
             missing[block] -= 1
     has_superseded = any(tasks.get(row[2], {}).get('status') == 'superseded' for row in selected)
     after = (history or ('# Task history\n' if has_superseded else '# Completed tasks\n')) + additions

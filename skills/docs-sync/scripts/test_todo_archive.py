@@ -42,6 +42,32 @@ class TodoArchiveTests(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
+    def test_archive_driver_unions_complete_entries_once(self):
+        paths = [self.repo / name for name in ('base', 'ours', 'theirs')]
+        prefix = '# Completed tasks\n'
+        shared = '\n\n<!-- archived from TODO.md -->\n\nSource section: Done\n\n' + self.done
+        other = shared.replace('T1:', 'T3:').replace('Completed slice', 'Other slice')
+        grouped = prefix + '\n## Previous\n\n' + self.done
+        secret = prefix + shared.replace('exact bytes', 'SECRET')
+        redacted = secret.replace('SECRET', 'REDACTED')
+        cases = [(prefix, prefix + shared, prefix + shared + other),
+                 (grouped, grouped + '## Today\n\n' + self.done.replace('T1:', 'T3:'),
+                  grouped + '## Yesterday\n\n' + self.done.replace('T1:', 'T4:')),
+                 (secret, redacted + other, redacted + other.replace('T3:', 'T4:'))]
+        for inputs in cases:
+            with self.subTest(inputs=inputs):
+                for path, text in zip(paths, inputs):
+                    path.write_text(text)
+                result = subprocess.run([sys.executable, str(SCRIPT), 'merge-driver', 'archive', *map(str, paths)],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                merged = paths[1].read_text()
+                self.assertEqual(merged.count('T1:'), 1)
+                self.assertEqual(merged.count('T3:'), 1)
+                self.assertNotIn('SECRET', merged)
+                if 'T4:' in inputs[2]:
+                    self.assertEqual(merged.count('T4:'), 1)
+
     def test_closeout_archive_ends_with_one_newline_and_passes_diff_check(self):
         # TOOLSET-042: the separator blank line before the next heading is not task content.
         for newline in ('\n', '\r\n'):
