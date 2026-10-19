@@ -1085,8 +1085,13 @@ class Coordinator:
     # task: three of them paused a whole runner for an hour.
     SYSTEMIC = ('crash', 'empty', 'launch', 'validation', None, '')
 
-    def count_failure(self, task, cause=None):
-        if cause not in self.SYSTEMIC or self.seen.get('counted-' + task):
+    # Integration mechanics, not a broken task or host: a review a restart interrupted, or a commit
+    # already on main. Three of them after one restart paused every new task for an hour.
+    MECHANICS = ('already in canonical HEAD', 'abandoned integration tree', 'stale or mismatched integration validation')
+
+    def count_failure(self, task, cause=None, reason=''):
+        if (cause not in self.SYSTEMIC or self.seen.get('counted-' + task)
+                or any(text in (reason or '') for text in self.MECHANICS)):
             return
         if cause == 'validation' and self.environment_hold(task):
             return  # it could not be checked here: the runner provisions it (TOOLSET-173-94)
@@ -1149,7 +1154,7 @@ class Coordinator:
             # Only a failure this run watched happen counts toward the streak; holds found
             # at start (say after a self-restart) were counted by the run that saw them.
             if state == 'held' and before and before != 'failed':
-                self.count_failure(task, row.get('cause'))
+                self.count_failure(task, row.get('cause'), reason)
         self.known_at_start = True
         if self.stop:
             return
@@ -1229,7 +1234,7 @@ class Coordinator:
                 if row and self.resolve_task_conflict(row):
                     return
             self.note_state(task, 'held', reason)
-            self.count_failure(task, result.get('cause'))
+            self.count_failure(task, result.get('cause'), reason)
             if task == self.once_task:
                 self.draining = True
         elif outcome == 'SET_ASIDE':  # closed on the base meanwhile (TOOLSET-218-d0)

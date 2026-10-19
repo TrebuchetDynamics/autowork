@@ -233,6 +233,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A hold from the runner's own integration mechanics (a review a restart interrupted, a
+  commit already on main) no longer counts toward the failure streak: three after one restart
+  paused every new task for an hour.
 - Candidates a batch verified land first, in the order the batch verified them
   (`--batch-order`): each verdict holds only for its step of that chain, so a higher-priority
   task landing between them voided every verdict and the batch's work was lost. Candidates
