@@ -16,6 +16,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 from . import main_check, pi_runtime, workspaces
 from .common import dirty, git, push_guard, safe_name
@@ -197,7 +198,7 @@ def gate_log(state, task):
     return Path(state) / 'full-check' / f'{safe_name(task)}-merged.log'
 
 
-def full_suite_gate(state, task, checkout):
+def full_suite_gate(state, task, checkout, base=None):
     """(ok, reason) of the repository's full check on the merged tree, run once per tree and
     command (TOOLSET-227-a8): a re-review of the same tree, by a changed reviewer or after a
     requeue, reuses the verdict instead of running the suite again. A crash is never cached,
@@ -213,14 +214,14 @@ def full_suite_gate(state, task, checkout):
             return cached['ok'], cached['reason']
     except (OSError, ValueError, KeyError, AttributeError):
         pass
-    ok, reason = run_gate(state, task, checkout, command)
+    ok, reason = run_gate(state, task, checkout, command, base)
     if tree and (ok or reason.startswith(('the full check has new failures', 'the full check exits'))):
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps({'command': command, 'ok': ok, 'reason': reason, 'task': task}))
     return ok, reason
 
 
-def run_gate(state, task, checkout, command):
+def run_gate(state, task, checkout, command, base_rev=None):
     """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
     landed while breaking 44 tests its own checks never ran. Only what the base does not already
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
@@ -252,7 +253,7 @@ def run_gate(state, task, checkout, command):
         failures = [f for f in failures if f not in flaky]
         if not failures:
             return True, ''
-    base = base_result(state, checkout, command, git(checkout, 'rev-parse', 'HEAD^1'), limit)
+    base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'), limit)
     if not merged['failures']:
         crash = main_check.crash_line(log.read_text(errors='replace'))
         if base['code'] == 0:
@@ -269,9 +270,46 @@ def run_gate(state, task, checkout, command):
         f' (+{len(new) - 10} more)' if len(new) > 10 else '')
 
 
+def batch_record(state, task):
+    """A batch's verdict on one candidate's merged tree (TOOLSET-258-07)."""
+    return Path(state) / 'batch' / f'{safe_name(task)}.json'
+
+
+PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
+
+
+def same_code(checkout, left, right):
+    """Whether two trees differ at most in planning files or docs/, which no check reads."""
+    if not left:
+        return False
+    out = subprocess.run(['git', '-C', str(checkout), 'diff', '--name-only', left, right], capture_output=True, text=True)
+    return out.returncode == 0 and all(p in PLANNING_FILES or p.startswith('docs/') for p in out.stdout.split())
+
+
+def batched_verdict(state, task, checkout):
+    """(ok, reason) a batch reached for exactly this merged tree and commit, used once; else None."""
+    record = batch_record(state, task)
+    try:
+        value = json.loads(record.read_text())
+    except (OSError, ValueError):
+        return None
+    if value.get('commit') != git(checkout, 'rev-parse', 'HEAD^2') or not same_code(checkout, value.get('tree'), 'HEAD^{tree}'):
+        return None  # the session moved since by more than planning files: today's full verification
+    record.unlink(missing_ok=True)
+    return bool(value.get('ok')), value.get('reason') or ''
+
+
 def verify(state, task):
     checkout = os.getcwd()
     link_ignored(checkout)
+    batched = batched_verdict(state, task, checkout)
+    if batched is not None:
+        ok, reason = batched
+        if ok:
+            print(f'pi-autowork: {task} passed the full check and its review in a batch', file=sys.stderr)
+            return 0
+        print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
+        return 1
     environment_marker(state, task).unlink(missing_ok=True)  # this run says afresh what was missing
     # Its own private scratch, removed afterwards, on disk (reviewers copied whole repositories
     # into RAM-backed /tmp and left them, 39 GB on one host) and short: under the state directory
@@ -283,7 +321,10 @@ def verify(state, task):
     drop_dead_scratch(checkout, root)
     scratch = Path(tempfile.mkdtemp(prefix=f'aw-r-{os.getpid()}-', dir=root))
     os.environ['TMPDIR'] = str(scratch)
+    batch_gate = os.environ.get('PI_AUTOWORK_BATCH_GATE')
     try:
+        if batch_gate:  # a batch already passed the full check on a tree containing this one
+            return batch_review(state, task, checkout, json.loads(batch_gate))
         ok, reason = full_suite_gate(state, task, checkout)
         if not ok:
             # The engine puts this line into the hold reason, which the retry's prompt quotes.
@@ -336,6 +377,97 @@ def drop_scratch_worktrees(checkout, scratch):
         if path and (path == scratch or scratch in path.parents):
             subprocess.run(['git', '-C', checkout, 'worktree', 'remove', '--force', '--force', str(path)],
                            capture_output=True)
+
+
+def batch_review(state, task, checkout, gate):
+    """The review of one batched candidate, on its own step of the batch's merge chain; the
+    verdict is recorded for the engine's later integration of that same tree."""
+    head = git(checkout, 'rev-parse', 'HEAD')
+    note = GATE.format(command=gate['command'], outcome='it passed', log=gate['log'])
+    code = review(state, task, checkout, head, note)
+    try:
+        reason = json.loads(findings_path(state, task).read_text()).get('verdict') or ''
+    except (OSError, ValueError, AttributeError):
+        reason = ''
+    record = batch_record(state, task)
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({'tree': git(checkout, 'rev-parse', 'HEAD^{tree}'), 'commit': git(checkout, 'rev-parse', 'HEAD^2'),
+                                  'ok': code == 0, 'reason': reason if code else '', 'at': time.time()}))
+    return code
+
+
+def batch_order(session, reported):
+    """The reported tasks in the order the engine integrates them: its contract order, without a
+    task waiting out a writer (TOOLSET-223-8e). A different order gives different trees."""
+    scripts = Path(__file__).resolve().parents[2] / 'skills' / 'autowork' / 'scripts'
+    sys.path.insert(0, str(scripts))
+    import parallel_dispatch
+    import parallel_integrate
+    import parallel_state
+    common = parallel_state.common_dir(Path(session))
+    slots = {s['task_id']: s for s in parallel_state.slots(common)}
+    busy = {t for t, s in slots.items() if parallel_integrate.writers_busy(s)}
+    order = [t['id'] for t in parallel_dispatch.contracts(Path(session))]
+    return [t for t in order if t in reported and t not in busy], {t: slots[t].get('commit') for t in reported if t in slots}
+
+
+def verify_batch(state, session, script, tasks):
+    """TOOLSET-258-07: the reported candidates merged onto the session one after another in the
+    engine's order, the full check run once on the result, and each candidate reviewed side by
+    side on its own step of that chain. Verdicts are recorded per tree; the engine then lands
+    each candidate through its usual integration, which finds its verdict when the tree matches."""
+    order, commits = batch_order(session, set(tasks))
+    order = order[:max(2, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))]
+    base = git(session, 'rev-parse', 'HEAD')
+    root = Path(tempfile.mkdtemp(prefix='aw-b-', dir=review_root()))
+    chain = root / 'chain'
+    git(session, 'worktree', 'add', '--detach', str(chain), base)
+    steps, skipped = [], []
+    try:
+        for task in order:
+            commit = commits.get(task)
+            merged = commit and subprocess.run(['git', '-C', str(chain), 'merge', '--no-ff', '--no-edit', commit],
+                                               capture_output=True).returncode == 0
+            if not merged:
+                subprocess.run(['git', '-C', str(chain), 'merge', '--abort'], capture_output=True)
+                skipped.append(task)
+                continue
+            steps.append((task, git(chain, 'rev-parse', 'HEAD')))
+        result = {'outcome': 'BATCH', 'tasks': [t for t, _ in steps], 'skipped': skipped, 'passed': [], 'held': []}
+        if len(steps) < 2:
+            print(json.dumps(dict(result, reason='fewer than two candidates merge together')))
+            return 0
+        os.environ['TMPDIR'] = str(root)
+        command = main_check.full_check(str(chain))
+        ok, reason = full_suite_gate(state, 'batch', str(chain), base)
+        if not ok:
+            # Which candidate broke it is not known yet: each goes through today's integration.
+            print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason)))
+            return 0
+        gate = json.dumps({'command': command or '', 'log': str(gate_log(state, 'batch'))})
+        limit = max(1, int(os.environ.get('PI_AUTOWORK_REVIEWS') or 3))
+        pending, running = list(steps), []
+        while pending or running:
+            while pending and len(running) < limit:
+                task, head = pending.pop(0)
+                where = root / safe_name(task)
+                git(session, 'worktree', 'add', '--detach', str(where), head)
+                child = subprocess.Popen(['bash', script, '--verify', state, task], cwd=where,
+                                         env=dict(os.environ, PI_AUTOWORK_BATCH_GATE=gate),
+                                         stdout=subprocess.DEVNULL, stderr=sys.stderr)
+                running.append((task, where, child))
+            time.sleep(1)
+            for item in [r for r in running if r[2].poll() is not None]:
+                running.remove(item)
+                task, where, child = item
+                result['passed' if child.returncode == 0 else 'held'].append(task)
+                git(session, 'worktree', 'remove', '--force', str(where))
+        print(json.dumps(result))
+        return 0
+    finally:
+        for path in [p for p in root.iterdir() if p.is_dir()] if root.exists() else []:
+            subprocess.run(['git', '-C', session, 'worktree', 'remove', '--force', str(path)], capture_output=True)
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def gate_note(state, task, checkout):
@@ -402,6 +534,9 @@ def main(argv):
     # A stop reaches the whole process group, Pi included: record it and let Pi exit.
     signal.signal(signal.SIGINT, pi_runtime._stop)
     signal.signal(signal.SIGTERM, pi_runtime._stop)
+    if argv[0] == '--verify-batch':
+        state, session, script, *tasks = argv[1:]
+        return verify_batch(state, session, script, tasks)
     if argv[0] == '--worker':
         state, worktree, prompt_file, report = argv[1:5]
         limit = argv[5] if len(argv) > 5 else os.environ.get('PI_AUTOWORK_TASK_TIMEOUT', '5400')

@@ -1281,14 +1281,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-258-07",
-      "section": "Now",
-      "status": "open",
-      "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -3099,6 +3091,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-258-07",
+      "section": "Done",
+      "status": "done",
+      "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
     },
     {
       "depends_on": [

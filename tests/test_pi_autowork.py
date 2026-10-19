@@ -387,6 +387,7 @@ class Fixture(unittest.TestCase):
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
                     'XDG_STATE_HOME': str(self.root / 'xdg')}
         self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
+        self.env['PI_AUTOWORK_BATCH'] = '1'  # one review at a time unless a test batches (TOOLSET-258-07)
         self.env.pop('GIT_CONFIG_COUNT', None)
         # The engine's load gate reads the real host: under a busy fleet it rightly starts
         # nothing and these runner scenarios fail for the wrong reason. As the engine's own
@@ -1068,6 +1069,33 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertTrue(marker.exists())
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)  # the rerun passed: nothing held
+
+    def test_candidates_that_wait_together_are_checked_once_and_land_from_their_batch(self):
+        """TOOLSET-258-07: one runner landed six tasks a day, one review at a time, while nine waited."""
+        self.env['PI_AUTOWORK_BATCH'] = '6'
+        runs = self.root / 'full-check-runs'
+        self.env['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'  # main's own check is not counted
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier']})  # both finish together
+        result = self.run_runner('--until-empty', timeout=240)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertIn('Batch of 2 candidates (A, B)', result.stdout)
+        self.assertIn('Batch: 2 passed (A, B)', result.stdout)
+        # One run for the batch tree of A and B, one for C alone: not one per candidate.
+        self.assertEqual(runs.read_text().count('ran'), 2, result.stdout)
+        self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'])  # each reviewed once
+
+    def test_a_batched_candidate_that_fails_its_review_is_held_and_the_other_lands(self):
+        self.env['PI_AUTOWORK_BATCH'] = '6'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier'], 'verify:A': ['fail']})
+        result = self.run_runner('--until-empty', timeout=240)
+        self.assertIn('Batch: 1 passed (B); held: A', result.stdout)
+        # A is held with its reviewer's reason; B lands, by a review of its own tree without A in it.
+        self.assertIn('A: failed — integration validation failed or changed the integration tree: '
+                      'PI_AUTOWORK_VERIFY: fail acceptance not met', result.stdout)
+        self.assertLess(result.stdout.index('A: failed'), result.stdout.index('B: integrated'), result.stdout)
+        self.assertTrue(self.done('B', 'C'), result.stdout)  # and A's retry lands later
 
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
         self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'

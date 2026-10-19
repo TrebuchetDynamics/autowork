@@ -230,6 +230,59 @@ class Coordinator:
         self.integration = {'task': task, 'proc': child, 'out': out.name, 'started': time.time()}
         self.snapshot = None
 
+    BATCH = 'batch'
+
+    def batch_due(self, reported):
+        """Two or more candidates wait, batching is on, and this set has not been batched yet."""
+        size = int(os.environ.get('PI_AUTOWORK_BATCH') or 6)
+        fresh = [t for t in reported if not worker.batch_record(self.state, t).exists()]
+        key = ','.join(sorted(fresh))
+        if (size < 2 or len(fresh) < 2 or self.seen.get('batch-tried') == key or self.reexec_due()
+                or self.batch_pending()):  # land the last batch first: a new one would be built on another tree
+            return []
+        self.seen['batch-tried'] = key
+        return fresh
+
+    def start_batch(self, tasks):
+        """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
+        by side, as a child the loop polls like a review; the engine then lands each one."""
+        out = tempfile.NamedTemporaryFile(dir=self.state / 'runs', prefix='batch.', delete=False)
+        out.close()
+        args = ['/bin/bash', self.process_script, '--verify-batch', str(self.state), str(self.integ),
+                self.process_script, *tasks]
+        with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
+            child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL, cwd=self.integ)
+        self.integration = {'task': self.BATCH, 'proc': child, 'out': out.name, 'started': time.time()}
+        self.snapshot = None
+        LOG.say(f'Batch of {len(tasks)} candidates ({", ".join(tasks)}): one full check on their merged tree, '
+                'their reviews side by side')
+
+    def batch_done(self, result):
+        if result.get('outcome') == 'BATCH_GATE_FAILED':
+            LOG.say(f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
+                    'its candidates integrate one at a time')
+            return
+        parts = [f'{len(result.get("passed") or [])} passed ({", ".join(result.get("passed") or []) or "none"})']
+        if result.get('held'):
+            parts.append(f'held: {", ".join(result["held"])}')
+        if result.get('skipped'):
+            parts.append(f'left out (conflict): {", ".join(result["skipped"])}')
+        if result.get('reason'):
+            parts.append(str(result['reason']))
+        LOG.say('Batch: ' + '; '.join(parts) + ' — landing them now')
+
+    def batch_pending(self):
+        """Batch verdicts not used yet: the session holds still for them, or their trees no longer match."""
+        folder = self.state / 'batch'
+        now = time.time()
+        for path in folder.glob('*.json') if folder.is_dir() else []:
+            try:
+                if now - float(json.loads(path.read_text()).get('at') or 0) < 7200:
+                    return True
+            except (OSError, ValueError, TypeError):
+                continue
+        return False
+
     REVIEW_CAP = 4 * 3600
 
     def review_limit(self, task=None):
@@ -889,8 +942,8 @@ class Coordinator:
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes(planning_only=True)
         behind = git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') if self.integ else ''
-        if not behind or dirty(self.integ):
-            return
+        if not behind or dirty(self.integ) or (self.batch_pending() and not self.session_busy()):
+            return  # batch verdicts wait to land on the trees they were reached on (TOOLSET-258-07)
         if self.session_busy():
             # A review is running. Planning-only commits are taken at once: integration lands the
             # review's merge on top without validating again (TOOLSET-233-ba). Anything else waits
@@ -1087,7 +1140,9 @@ class Coordinator:
             return  # one review at a time; it is collected when it ends
         handled = set()
         finished = self.collect_integration()
-        if finished:
+        if finished and finished[0] == self.BATCH:
+            self.batch_done(finished[1])
+        elif finished:
             handled.add(finished[0])
             self.integrated(*finished)
             if self.stop:
@@ -1101,6 +1156,10 @@ class Coordinator:
         # wants when asked for another: start that one, never every candidate in turn (13 engine
         # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
         queue = [r['task'] for r in rows if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
+        batch = self.batch_due([r['task'] for r in rows if r.get('state') == 'reported' and r['task'] not in handled])
+        if batch:
+            self.start_batch(batch)
+            return  # it runs beside the loop; its candidates land when it ends
         while queue:
             task = queue.pop(0)
             if self.stop:

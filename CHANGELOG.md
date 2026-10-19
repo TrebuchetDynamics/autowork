@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Verified candidates waiting together integrate as a batch: one full check on their merged tree and
+  their reviews side by side, then each lands on its recorded verdict. One runner had landed six tasks a
+  day, one review at a time, while nine waited.
 - `/autowork` and `/autowork start` in Claude Code, Codex and Pi start the repository's runner
   service (`autowork start .`) and report it, instead of doing the work in the session. The
   work runs by hand in the session only when the service can't run, or when the user asks
