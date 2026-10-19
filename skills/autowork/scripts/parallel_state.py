@@ -28,7 +28,7 @@ TRANSITIONS = {
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
-          'outside', 'requested', 'reviewed_by'}
+          'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
@@ -463,9 +463,17 @@ def reconcile(repo, owner_pid):
         require_owner(common, owner_pid)
         result = []
         for slot in slots(common):
-            if slot['state'] not in ('dispatched', 'running'):
+            # Also recover reports an older runner already held as a person's question.
+            old_blocker = (slot['state'] == 'held' and slot.get('cause') == 'blocker'
+                           and not slot.get('commit') and not worker_live(slot))
+            if slot['state'] not in ('dispatched', 'running') and not old_blocker:
                 result.append(slot)
                 continue
+            if old_blocker:
+                import parallel_dispatch as dispatch
+                if not dispatch.check_only_blockers(report_blockers(common, slot)):
+                    result.append(slot)
+                    continue  # no valid host-only report: preserve the original hold
             updates = {}
             if worker_live(slot):
                 target = 'running'
@@ -473,6 +481,9 @@ def reconcile(repo, owner_pid):
                 root = workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
                 head = execution.git(root, 'rev-parse', 'HEAD')
                 dirty = bool(execution.git(root, 'status', '--porcelain', '--untracked-files=all'))
+                if old_blocker and (head != slot['baseline'] or not dirty):
+                    result.append(slot)
+                    continue  # only a dirty, uncommitted candidate can resume an old blocker
                 if head != slot['baseline']:
                     # merge-base equality proves descent without treating divergence as a result.
                     if execution.git(root, 'merge-base', slot['baseline'], head) != slot['baseline']:
@@ -482,9 +493,21 @@ def reconcile(repo, owner_pid):
                         if dirty:
                             updates['reason'] = 'commit retained; uncommitted work also preserved'
                 elif blockers := report_blockers(common, slot):
-                    # It stopped on purpose and said why; resuming would only repeat that
-                    # (sierra TASK-022 spent both attempts this way). Its changes stay put.
-                    target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
+                    import parallel_dispatch as dispatch
+                    if dirty and dispatch.check_only_blockers(blockers):
+                        # One same-attempt resume, durable in the slot history. A repeated
+                        # report waits for the coordinator's quieter-host timeout recovery.
+                        repeated = dispatch.check_failure_resumed(slot)
+                        target = 'held' if repeated else 'interrupted'
+                        updates = {'reason': blocker_reason(blockers), 'check_failure_resumed': True,
+                                   'paused': not repeated, 'cause': 'timeout' if repeated else None}
+                        if old_blocker:
+                            slot = write_slot(common, dict(slot, state=target, **updates), slot)
+                            result.append(slot)
+                            continue
+                    else:
+                        # A genuine missing input still waits for a person; preserve its work.
+                        target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
                 else:
                     target = 'interrupted' if dirty else 'released'
                     reason = ('dead worker with uncommitted changes' if dirty else EMPTY)

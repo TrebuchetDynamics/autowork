@@ -226,6 +226,25 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A review that could not run gets one provisioning job per reviewer version across reloads:
+  the record was in memory, so each reload started the same job again, and the next reload
+  ended it.
+- A must-run-alone task no longer waits beside a task whose worker has ended: a commit
+  awaiting review or integration still owns its files, but nothing runs beside it. One
+  runner sat at 0 workers for 54 minutes while its exclusive task waited out a review.
+- A conflict-held commit the engine already adopted once after a merge is not merged with
+  the session again: the engine refused it, and each session revision and reload added an
+  unused merge commit to its worktree and logged "could not adopt its merged commit".
+- The review gate runs the full check with a private `$TMPDIR` on disk, as main's check
+  already did: the runner has none, so a check that requires one crashed on every candidate
+  and its base, and gate suites wrote into RAM-backed `/tmp`. A base run that crashed is no
+  longer cached for its revision.
+- A task marked `in_progress` whose worker died without leaving work is taken over once idle,
+  like any other stale claim: its released slot kept it out of adoption while admission
+  still held it as a claim, and one runner stalled for five hours.
+- Worker port ranges no longer collide across repositories: `AUTOWORK_PORT_BASE` was
+  20000 + 100 × the slot number, which is per repository, so every runner's first worker
+  got 20100–20199. A worker now holds a host-wide lease on a free 100-port block while it runs.
 - Auto work commits and merges all work: before each merge the runner commits whatever
   is left uncommitted in its session worktree, and in the main checkout it commits every
   quiet change no process holds open (not only planning files); untracked files that
@@ -435,6 +454,15 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- The runner answers worker blockers it can resolve, and the attempt resumes in its own
+  worktree instead of waiting for the owner: a short triage job reads the report and
+  either answers from what the runner guarantees and the repository's evidence (private
+  ports and `$TMPDIR`, merge at integration, prerequisite repairs the worker may make) or
+  confirms that only a person can help. It runs once per task and reason, with at most two
+  answers per task (`--parallel-answer`). Workers are told what a blocker is for, and the
+  planning craft and docs maintainer now write tasks an unattended worker can finish.
+- `autowork ls --json`: every runner with every field the TUI shows, for scripts and
+  agents that watch the fleet.
 - An idle pi-autowork runner reacts to the plan: a change to `TODO.md`, `goals.json`,
   `BLOCKERS.md`, the TODO archive or the main branch ends its wait within seconds
   (after `PI_AUTOWORK_PLAN_SETTLE`, default 3, of quiet), so a new task or an answered

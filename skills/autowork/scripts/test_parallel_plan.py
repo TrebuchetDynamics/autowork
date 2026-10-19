@@ -221,6 +221,17 @@ class PlanTests(unittest.TestCase):
         result = plan([task('X', ''), task('B', 'b.py')], [task('RUN', 'run.py')])
         self.assertEqual([t['id'] for t in result['dispatch']], ['B', 'X'])  # ranked after hinted work
 
+    def test_nothing_waits_to_run_alone_beside_a_finished_worker(self):
+        """One runner idled 54 minutes: an exclusive task waited out another task's review."""
+        from parallel_plan import plan
+        done = task('DONE', 'd.py')  # its commit awaits review; no worker runs
+        result = plan([task('X', 'x.py', resources='exclusive'), task('B', 'b.py')], [done], finished={'DONE'})
+        self.assertEqual([t['id'] for t in result['dispatch']], ['X'])  # X then runs alone
+        result = plan([task('B', 'b.py')], [task('X', 'x.py', resources='exclusive')], finished={'X'})
+        self.assertEqual([t['id'] for t in result['dispatch']], ['B'])
+        result = plan([task('X', 'x.py', resources='exclusive')], [done])
+        self.assertEqual(result['dispatch'], [])  # a running worker still makes it wait
+
     def test_conflicts_serialize_in_priority_order(self):
         from parallel_plan import plan
         cases = [  # overlapping Touches no longer serialize (TOOLSET-161-17); these still do

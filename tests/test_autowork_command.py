@@ -285,6 +285,9 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('autowork runners: 1 (1 working)', brief)
         self.assertRegex(brief, r'india\s+service\s+working [45]m\s+1 running, 4 waiting')
         self.assertIn('model openai-codex/gpt-6.1-sol', self.aw('ls', '--long').stdout)
+        listed = json.loads(self.aw('ls', '--json').stdout)['runners']
+        self.assertEqual([(r['name'], r['state'], r['running'], r['waiting']) for r in listed],
+                         [('india', 'working', 1, 4)])
         self.aw('pause', 'india')
         self.assertRegex(self.aw('ls').stdout, r'india\s+service\s+paused\s')
 

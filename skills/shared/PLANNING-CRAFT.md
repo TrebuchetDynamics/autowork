@@ -67,6 +67,34 @@ when none exists) only when all three hold: hard to reverse, surprising without
 context, and the result of a real trade-off. Otherwise one line in the task's
 decisions is enough. An ADR can be a single paragraph: context, decision, why.
 
+## Plan for an unattended worker
+
+An Autowork worker runs a task alone and can only finish it or stop. Every stop
+that a person must answer costs hours. So write each task so that it can be
+finished without anyone:
+
+- **Inputs it can reach.** Name each input and where it comes from, or how the
+  worker makes it. Never write "the coordinator must provide", "obtain a handoff",
+  "await a receipt" or "verify exclusivity". The runner provides no more than its
+  worker prompt states: private ports and `$TMPDIR`, a fresh baseline, integration
+  by merge, and the full check run on the merged tree.
+- **Prerequisites are in scope.** If a defect already in the code would stop the
+  task's checks, such as a broken test or a missing fixture, the task may repair
+  it. Do not forbid "unrelated" fixes that the task's own checks depend on.
+- **Offline acceptance.** Acceptance is what the worker can check here. Devices,
+  production, live services and human review go under live checks, not Acceptance.
+- **Resources mean resources.** Use `Resources: exclusive` or `live` only for a
+  real shared thing, such as a device, a port the code cannot move, or a live
+  account. Never use them for caution: a task marked so runs alone and holds back
+  the queue.
+- **No process gates the repository lacks.** Signatures, registries, ownership
+  ledgers and evidence bundles belong in a task only if the repository already has
+  the mechanism, and the task says how to use it.
+- **Questions only for the owner's part.** These are credentials, devices,
+  spending, a change to third-party software, and product, security or scope
+  decisions. Anything else is the planner's call, recorded as such. Don't leave
+  it for the worker to ask about.
+
 ## Builder check before handoff
 
 Before reporting a written plan as ready, have it read as the builder who cannot ask
@@ -78,7 +106,10 @@ questions. Dispatch a fresh subagent (`delegate_task`, or the host's equivalent)
 > places where you would have to guess and a wrong guess would matter. For each,
 > give the question and why the answer changes the work, ranked by importance. Skip
 > anything the tasks leave to the implementer, anything you could reasonably decide,
-> and wording nitpicks. If nothing important is left, say "nothing important left".
+> and wording nitpicks. Also list anything that would make you stop and wait for
+> someone: an input you could not get, a check you could not run here, or a
+> prerequisite the task forbids you to fix. If nothing important is left, say
+> "nothing important left".
 
 Without a subagent tool, read the tasks as that builder yourself. Sort the questions:
 

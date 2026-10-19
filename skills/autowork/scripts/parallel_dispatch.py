@@ -42,6 +42,7 @@ UNQUALIFIED = {'codex': 'Codex workers cannot commit: its workspace-write sandbo
                         '(qualified 2026-10-15); pass --worker-command to supply your own worker'}
 HOST_NAMES = {'hermes': 'hermes', 'hermes_cli': 'hermes', 'codex': 'codex', 'pi': 'pi', 'claude': 'claude'}
 OCCUPYING = ('dispatched', 'running', 'reported', 'integrating', 'integrated', 'held', 'interrupted')
+FINISHED = ('reported', 'integrating', 'integrated', 'held')  # a commit, or a stop, and no worker
 
 
 def coordinator_host(owner_pid):
@@ -188,7 +189,36 @@ def full_check_rule():
             '  the runner\'s gate records it.']
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None):
+def check_only_blockers(blockers):
+    """Conservatively recognize host/check-only requests, never a missing input or decision."""
+    incidental = (r'lower[- ]load|host load|load average|quiet (?:validation )?window|'
+                  r'resource[- ]gat\w* skips?|flaky (?:tests?|checks?)|'
+                  r'unrelated [\w -]*(?:test|check|failure)|(?:test|check)[\w -]*unrelated')
+    needs_input = (r'\b(?:missing|dependency|dependencies|credentials?|secrets?|permission|'
+                   r'decid\w*|decision|approv\w*|SDK|API key|tokens?|password|choose|'
+                   r'SSH|access|devices?|hardware|production|private key)\b')
+    requests = r'\b(?:provide|needs?|requires?|await(?:ing)?|supply|install|configure|grant)\s+'
+    host_target = (r'(?:a |an |the )?(?:(?:lower[- ]load|quieter?) (?:(?:offline|validation) )*host|'
+                   r'quiet (?:validation )?window|(?:lower|reduced) (?:host )?load)')
+    for blocker in blockers or []:
+        if not re.search(incidental, blocker, re.I) or re.search(needs_input, blocker, re.I):
+            return False
+        for request in re.finditer(requests, blocker, re.I):
+            # Check the entire requested target, not just its first words: a quiet
+            # window AND a database URL is still a genuine external-input request.
+            target = re.split(r'\s+(?:to|for|so|before|after|without)\b|[.;\n]',
+                              blocker[request.end():], maxsplit=1, flags=re.I)[0]
+            targets = re.split(r'\s+(?:and|or)\s+|,\s*', target, flags=re.I)
+            if not all(re.fullmatch(host_target, t.strip(), re.I) for t in targets):
+                return False
+    return bool(blockers)
+
+
+def check_failure_resumed(slot):
+    return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
+
+
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -221,6 +251,15 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  One command that runs',
         '  longer than $PI_AUTOWORK_COMMAND_TIMEOUT seconds (default 1800) is stopped: wrap browser,',
         '  device and other long suites in `timeout` and select narrower tests rather than waiting.',
+        '- For a full-gate failure, or a failure of the task\'s own Checks commands, only in tests',
+        '  the change does not touch, rerun each alone once. If it passes alone, or the same test',
+        '  fails on the baseline (use `git worktree add --detach "$TMPDIR/baseline" ' + str(baseline) + '`,',
+        '  never stash), commit anyway. List the test IDs in "unrelated_failures", not failed checks.',
+        '  Host load, resource-gate skips and flaky/unrelated tests are never blockers.',
+        '- A check that cannot run to results (tool crash before any test ran, command time limit,',
+        '  or missing third-party package) goes in "environment_failures" as command and summary',
+        '  strings, never failed checks or blockers. Commit the finished work; the runner\'s gate',
+        '  and provisioning judge it. Failures caused by this change still fail the check and task.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
         '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
         '  holds the task). Put every temporary file and copy under $TMPDIR, never directly under',
@@ -235,10 +274,18 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
-        '  "blockers": [...], "pending_live": [...], "changelog": "..."}.',
-        '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
-        '  what a person must decide or provide (for example a missing dependency or a decision).',
-        '  If blocked, report commit null with blockers and stop.',
+        '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
+        '  "environment_failures": [...], "changelog": "..."}.',
+        '- "blockers" is only for what a person alone can provide: credentials or an account, a',
+        '  physical device or operator access, spending, a change to third-party software, or a',
+        '  product, security or scope decision the task and its sources leave open. Everything else',
+        '  is yours. The runner gives nothing beyond this prompt (no receipt, handoff, source refresh',
+        '  or verification to ask it for): your ports and $TMPDIR are yours alone on this host, your',
+        '  baseline is the current session, and overlapping work by other tasks merges at integration.',
+        '  A defect already in the baseline that stops a required check (a broken or unparsable test,',
+        '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
+        '  the task\'s sources say how to make, you make. If blocked, report commit null with',
+        '  blockers and stop.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -266,7 +313,22 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
     if resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
+    if commit_finished:
+        lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
+                  'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
+                  'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
+    if answers:
+        lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
+                  'task; do not report the same blocker again. A blocker that remains after this answer must',
+                  'name what only a person can provide.', answers.strip()]
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def answers_text(common, task):
+    try:
+        return (common / 'slot-data' / task / 'answers.md').read_text()
+    except OSError:
+        return ''
 
 
 def created_by_autowork(common, path, branch):
@@ -770,7 +832,7 @@ def waiting_streaks(common, now=None):
 
 
 def admit(candidates, running, restartable, occupying, *, everything, parked, adopted, protected,
-          drain_after=None, waited=None):
+          drain_after=None, waited=None, finished=()):
     """Admission in two passes, so it agrees with integration about who owns a file
     (TOOLSET-157-cd). Interrupted candidates go first: their work already exists, and a
     held commit that only conflicts with them at integration does not stop them, or each
@@ -781,7 +843,7 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     resumable = [t for t in candidates if t['id'] in restartable]
     fresh = [t for t in candidates if t['id'] not in slotted and t['id'] not in restartable]
     options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
-                   drain_after=drain_after, waited=waited)
+                   drain_after=drain_after, waited=waited, finished=finished)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
     # Overlap with an interrupted owner never holds new work either (TOOLSET-161-17).
@@ -826,12 +888,15 @@ def dispatch_locked(args, repo, common, count, template, host):
     # A restartable slot's own files are not someone else's running work.
     running = [t for t in running if t['id'] not in restartable]
     slotted = {s['task_id'] for s in current}
-    claimed = [t['id'] for t in candidates if t['id'] not in slotted
+    # A restartable slot's task marked in_progress is a claim like any other: left out, it was
+    # neither adopted nor restarted, and one dead worker stalled a runner for five hours.
+    claimed = [t['id'] for t in candidates if (t['id'] not in slotted or t['id'] in restartable)
                and re.split(r'[;.\s]', t['fields'].get('Status', 'open'))[0] == 'in_progress']
     idle = parallel_claims.idle_claims(repo, claimed, getattr(args, 'adopt_idle_claims', 0)) if claimed else {}
     planned = admit(candidates, running, restartable, occupying, everything=everything,
                     parked=[contract(s) for s in parked], adopted=set(idle), protected=protected_files(repo),
-                    drain_after=drain_after(), waited=waiting_streaks(common))
+                    drain_after=drain_after(), waited=waiting_streaks(common),
+                    finished={s['task_id'] for s in occupying if s['state'] in FINISHED and not state.worker_live(s)})
     used = {meta(common, s).get('slot_index') for s in live}
     baseline = execution.git(repo, 'rev-parse', 'HEAD')
     started, waiting = [], list(planned['waiting'])
@@ -864,7 +929,10 @@ def dispatch_locked(args, repo, common, count, template, host):
         prompt_file = data / 'prompt.md'
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
-                                      adopted=idle.get(task['id'])))
+                                      adopted=idle.get(task['id']),
+                                      commit_finished=bool(previous and check_failure_resumed(previous)),
+                                      answers=answers_text(common, task['id']) if previous and previous.get('answered')
+                                      else ''))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])

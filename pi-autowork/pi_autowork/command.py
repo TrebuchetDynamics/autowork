@@ -1,7 +1,7 @@
 """`autowork`: run, watch and control pi-autowork runners. Standard library only.
 
     autowork                      the live TUI (on a terminal; help otherwise)
-    autowork ls [--long]          every runner: state, workers, what it waits on
+    autowork ls [--long] [--json] every runner: state, workers, what it waits on
     autowork status [target]      one runner's full status
     autowork logs [-f] [target]   the runner's service journal
     autowork start [dir]          install (if needed) and start the repository's service
@@ -28,6 +28,8 @@ repository's runner. A target is a runner name (sierra), a repository path, or `
 Nothing here calls a model; the TUI and web view run Textual through `uv`.
 """
 import argparse
+import dataclasses
+import json
 import os
 from pathlib import Path
 import re
@@ -305,6 +307,10 @@ def paint(text, color, enabled):
 
 def cmd_ls(args, paths):
     found = runners(paths)
+    if args.json:
+        # Everything the TUI shows, for a script or an agent watching the fleet.
+        print(json.dumps({'runners': [dataclasses.asdict(r) for r in found]}, indent=2, default=str))
+        return 0
     color = os.environ.get('NO_COLOR') is None and (os.environ.get('AUTOWORK_COLOR') == 'always'
                                                     or (os.environ.get('AUTOWORK_COLOR') != 'never' and sys.stdout.isatty()))
     width = shutil.get_terminal_size((100, 24)).columns
@@ -343,7 +349,6 @@ def cmd_scorecard(args, paths):
         found = [(r.repo, r.name) for r in runners(paths) if r.repo]
     rows = {name: scorecard.measure(repo, args.days) for repo, name in found}
     if args.json:
-        import json
         print(json.dumps({'days': args.days, 'runners': rows}, indent=2))
     else:
         print('\n'.join(scorecard.table(rows, args.days)))
@@ -387,6 +392,7 @@ def parser():
     sub = top.add_subparsers(dest='command')
     ls = sub.add_parser('ls', help='every runner, one line each')
     ls.add_argument('--long', '-v', action='store_true', help='add workers in flight and blockers')
+    ls.add_argument('--json', action='store_true', help="every field the TUI shows, as JSON")
     ls.add_argument('--brief', '-b', action='store_true', help=argparse.SUPPRESS)
     for name, help_text in (('status', "one runner's full status"), ('stop', 'stop the runner'),
                             ('remove', 'stop and remove the service'),

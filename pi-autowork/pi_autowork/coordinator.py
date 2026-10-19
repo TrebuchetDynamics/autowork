@@ -71,6 +71,40 @@ def publishable(repo, paths):
     return keep, held
 
 
+TRIAGE_PROMPT = (
+    'You triage a blocker for the runner of {repo}. The worker of task {task} stopped and reported blockers '
+    'instead of finishing; read them in full in {report}, then the task\'s TODO.md entry, its Sources and, if '
+    'needed, the worker log beside the report. Its worktree is {root}: read it, but do not edit, commit or run '
+    'anything that writes there (scratch goes in $TMPDIR). Decide whether only a person can resolve the '
+    'blockers. Only these need the owner: credentials, secrets or an account; a physical device, hardware or '
+    'operator access; spending; a change to third-party software the repository does not contain; a product, '
+    'security or scope decision that the task, its sources and the repository\'s docs leave open. Anything '
+    'else gets an answer the worker can act on. State as fact what the runner guarantees: the worker\'s ports '
+    '$AUTOWORK_PORT_BASE to +99 are leased to it alone on this host; its $TMPDIR is private and on disk; its '
+    'baseline is the session\'s current HEAD; other tasks\' overlapping work merges at integration, in priority '
+    'order; the runner verifies an idle in_progress claim before adopting it; the runner\'s review runs the full '
+    'check on the merged tree and tells new failures from old and flaky ones. No coordinator receipt, handoff, '
+    'source refresh, registry or verification exists beyond these: the worker proceeds without one. A defect '
+    'already in the baseline that stops a required check (a broken or unparsable test, a missing fixture, a '
+    'stale generated file) is the worker\'s to repair as a separate commit on its branch. A missing input whose '
+    'making the task\'s sources describe, the worker makes. Host load, a slow or flaky check or a time budget: '
+    'the worker commits the finished work and reports the check\'s result. Be specific: name the files, commands '
+    'and facts the worker needs, from what you read. Never grant authority, credentials or spending, never '
+    'change Acceptance, and never decide a product or security question yourself. End with exactly one of two '
+    'blocks: the line PI_AUTOWORK_TRIAGE: owner and then one line saying what the person must provide, or the '
+    'line PI_AUTOWORK_TRIAGE: answer and then the answer for the worker, at most 15 lines.')
+TRIAGE = re.compile(r'^PI_AUTOWORK_TRIAGE:\s*(answer|owner)\s*$', re.M)
+
+
+def triage_verdict(text):
+    """('answer'|'owner', text) from a triage job's output, or None when it ended without a verdict."""
+    found = list(TRIAGE.finditer(text or ''))
+    if not found:
+        return None
+    body = text[found[-1].end():].strip()
+    return (found[-1].group(1), body[:4000]) if body else None
+
+
 PROVISION_PROMPT = (
     'In {repo}, the review of task {task} could not run its checks because this is missing: {missing}. '
     'Install what is missing so that the checks can run, following the repository\'s own setup docs '
@@ -1035,6 +1069,10 @@ class Coordinator:
                     and self.resolve_task_conflict(row)):
                 self.settled = True
                 continue
+            if (state == 'held' and row.get('cause') == 'blocker' and not self.session_busy()
+                    and self.triage_blocker(row)):
+                self.settled = True
+                continue
             self.note_state(task, state, reason, quiet=not self.known_at_start, paused=row.get('paused'))
             if task == self.once_task and state == 'held':
                 self.draining = True
@@ -1176,17 +1214,30 @@ class Coordinator:
     def reverify_after_timeout(self, task, version):
         """A review that ran out of time is run again on the same commit, with twice the limit it
         had, up to the cap: no worker reruns and no attempt is spent (TOOLSET-196-fb)."""
-        given = self.timeout_limits.get(task) or self.review_limit()
-        if given >= self.REVIEW_CAP and self.seen.get('timeout-capped-' + task):
+        _, dispatch = touches_inference.modules(self.toolset)
+        if dispatch.resource_gate(0, float(self.min_free_mb), self.integ):
+            return  # a host/check-only worker hold waits for a quieter host too
+        try:
+            slot = json.loads((Path(self.cfg['git_common']) / 'autowork-execution/slots' / (task + '.json')).read_text())
+            prior = re.search(r'\.t(\d+)$', str(slot.get('reverified') or ''))
+            durable_limit = min(self.REVIEW_CAP, int(prior[1])) if prior else 0
+        except (OSError, ValueError, TypeError):
+            durable_limit = 0
+        given = max(self.timeout_limits.get(task) or self.review_limit(), durable_limit)
+        if given >= self.REVIEW_CAP and (durable_limit >= self.REVIEW_CAP or self.seen.get('timeout-capped-' + task)):
             return
         limit = int(min(self.REVIEW_CAP, 2 * given))
-        if self.engine('--parallel-reverify', task, '--reviewer-version', f'{version}.t{limit}').get('outcome') != 'REVERIFY':
+        result = self.engine('--parallel-reverify', task, '--reviewer-version', f'{version}.t{limit}')
+        if result.get('outcome') != 'REVERIFY':
             return
         self.seen['timeout-capped-' + task] = limit >= self.REVIEW_CAP
         self.timeout_limits[task] = limit
         self.seen[task] = ''
         self.settled = True
-        LOG.say(f'{task}: its review ran out of time; reviewing the same commit again with a {limit // 60}-minute limit')
+        if result.get('resume_worker'):
+            LOG.say(f'{task}: the host has room again; resuming the same attempt to commit its finished work')
+        else:
+            LOG.say(f'{task}: its review ran out of time; reviewing the same commit again with a {limit // 60}-minute limit')
 
     def check_main(self):
         """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once
@@ -1436,10 +1487,16 @@ class Coordinator:
         the repository's toolchain cache from its own setup docs, then the same commit is
         reviewed once more. Once per task and reviewer version; True when it went back to review."""
         missing = self.environment_hold(task)
-        key = 'provisioned-' + task
-        if not missing or self.seen.get(key) == version:
+        # On disk, not in memory: every reload started the same job again, and a reload ended it.
+        record = self.state / 'provisioned.json'
+        try:
+            done = json.loads(record.read_text())
+        except (OSError, ValueError):
+            done = {}
+        if not missing or done.get(task) == version:
             return False
-        self.seen[key] = version
+        done[task] = version
+        record.write_text(json.dumps(done, indent=1))
         cache = worker.repository_cache(self.integ)
         scratch = self.scratch_checkout('provision') if cache else None
         if not scratch:
@@ -1466,12 +1523,58 @@ class Coordinator:
             return True
         return False
 
+    def triage_blocker(self, row):
+        """A worker-reported blocker is answered by the runner and the attempt resumes, unless only a
+        person can resolve it: most blockers asked for what the runner already provides, or for a repair
+        the worker may make itself, and waited hours for the owner. Once per task and reason."""
+        task, root, reason = row.get('task'), row.get('worktree'), ' '.join(str(row.get('reason') or '').split())
+        if (self.stop or row.get('worker_live') or int(row.get('answered') or 0) >= 2 or not root
+                or not Path(root).is_dir()):
+            return False
+        record = self.state / 'triage.json'
+        try:
+            done = json.loads(record.read_text())
+        except (OSError, ValueError):
+            done = {}
+        key = hashlib.sha256(reason.encode()).hexdigest()[:16]
+        if done.get(task) == key:
+            return False
+        before = (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all'))
+        report = Path(self.cfg['git_common']) / 'autowork-execution' / 'slot-data' / task
+        report = max(report.glob('attempt-*/report.json'), default=report / 'attempt-1' / 'report.json',
+                     key=lambda p: int(p.parent.name.split('-')[1]))
+        LOG.say(f'{task}: triaging its blocker: can the runner answer it?')
+        _, text = self.pi_job('triage', task, root, TRIAGE_PROMPT.format(repo=self.repo, task=task, report=report,
+                                                                          root=root),
+                              f'pi-autowork-triage-{task}-{datetime.now():%Y%m%d%H%M%S}', 900)
+        done[task] = key
+        record.write_text(json.dumps(done, indent=1))
+        verdict = triage_verdict(text)
+        if (git(root, 'rev-parse', 'HEAD'), git(root, 'status', '--porcelain', '--untracked-files=all')) != before:
+            LOG.say(f'{task}: its blocker triage changed the worktree; the blocker stays a question')
+            return False
+        if verdict is None or verdict[0] == 'owner':
+            LOG.say(f'{task}: its blocker needs the owner' + (f': {fleet_view.short(verdict[1], 200)}' if verdict else ''))
+            return False
+        answer = self.state / 'runs' / f'answer-{task}.txt'
+        answer.write_text(verdict[1] + '\n')
+        result = self.engine('--parallel-answer', task, '--answer-file', str(answer))
+        answer.unlink(missing_ok=True)
+        if result.get('outcome') != 'ANSWERED':
+            LOG.say(f'{task}: could not answer its blocker: {result.get("reason") or result.get("outcome")}')
+            return False
+        LOG.say(f'{task}: the runner answered its blocker; resuming its attempt ({fleet_view.short(verdict[1], 160)})')
+        return True
+
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own
         worktree, Pi resolving the conflict, and the engine judges the merge from there
         (TOOLSET-157-cd): once per session revision, instead of reimplementing the task."""
         task, root = row.get('task'), row.get('worktree')
-        if self.stop or row.get('worker_live') or not root or not Path(root).is_dir() or dirty(root):
+        # The engine adopts a merged commit once: merging again only added a merge commit it then
+        # refused, on every session revision and every reload.
+        if (self.stop or row.get('worker_live') or row.get('merged_base') or not root or not Path(root).is_dir()
+                or dirty(root)):
             return False
         head = git(self.integ, 'rev-parse', 'HEAD')
         if not head or self.seen.get('resolved-' + task) == head:
@@ -1861,7 +1964,10 @@ class Coordinator:
                 else:
                     self.draining = True
                     LOG.say(f'Stopping after {self.failures} failed tasks in a row; finishing running tasks')
-        if not self.draining:
+        # Draining excludes fresh work, not a paused attempt's existing unfinished work.
+        resumes = [r['task'] for r in self.tasks() if self.draining and r.get('state') == 'interrupted'
+                   and r.get('paused') and (not self.once_task or r['task'] == self.once_task)]
+        if not self.draining or resumes:
             chosen, reason = self.choose_model()
             if not chosen:
                 reason = reason or 'primary and fallback not ready'
@@ -1871,15 +1977,15 @@ class Coordinator:
                 return self.blocked_pause(f'no usable model: {reason}')
         self.runner_blocker = ''
         result = {}
-        if not self.draining and time.monotonic() < self.pause_until:
+        if (not self.draining or resumes) and time.monotonic() < self.pause_until:
             outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
-        elif not self.draining:
+        elif not self.draining or resumes:
             # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
-                                 '--base-ref', self.base)
+                                 '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
@@ -1992,6 +2098,11 @@ class Coordinator:
         if self.in_flight():
             self.engine('--parallel', str(self.workers), '--max-workers', '8', '--wait', '--timeout', '5')
             return
+        if self.draining and any(r.get('state') == 'interrupted' and r.get('paused')
+                                 and (not self.once_task or r['task'] == self.once_task) for r in self.tasks()):
+            if outcome in ('WAITING', 'PAUSED'):
+                self.pause(self.interval)  # do not spin on a resource-gated same-attempt resume
+            return  # dispatch only these same-attempt resumes on the next cycle, even in --once
         if outcome in ('WAITING', 'BLOCKED', 'PAUSED'):
             # Tasks remain, but none can start now (held work, dependencies or the resource gate).
             if self.mode != 'continuous':
