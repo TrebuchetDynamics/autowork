@@ -1027,7 +1027,7 @@ def main(argv=None):
     parallel = parser.add_argument_group('parallel workers (opt-in; see references/parallel-workers.md)')
     parallel.add_argument('--parallel', nargs='?', const=2, type=int, metavar='N',
                           help='With --apply, start up to N workers (default 2, at most 4 unless --max-workers).')
-    parallel.add_argument('--max-workers', type=int, help='Raise the --parallel cap (hard limit 8).')
+    parallel.add_argument('--max-workers', type=int, help='Raise the --parallel cap (hard limit 16).')
     parallel.add_argument('--worker-host', choices=('auto', 'hermes', 'codex', 'pi', 'claude'), default='auto',
                           help='Worker CLI template; auto uses the coordinator host.')
     parallel.add_argument('--worker-command', help='JSON argv template with {worktree}, {prompt_file}, {timeout}.')

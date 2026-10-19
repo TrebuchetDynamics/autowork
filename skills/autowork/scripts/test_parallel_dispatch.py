@@ -1164,7 +1164,7 @@ Path(report).write_text(json.dumps({'task': 'A', 'commit': git('rev-parse', 'HEA
         for argv in ([str(self.repo), '--apply', '--parallel'],
                      [str(self.repo), '--owner-pid', str(self.owner), '--apply', '--parallel', '5'],
                      [str(self.repo), '--owner-pid', str(self.owner), '--apply', '--parallel', '3',
-                      '--max-workers', '9'],
+                      '--max-workers', '17'],
                      [str(self.repo), '--owner-pid', str(self.owner), '--parallel', '--wait']):
             out = io.StringIO()
             with self.subTest(argv=argv[1:]), contextlib.redirect_stdout(out):

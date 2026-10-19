@@ -1319,7 +1319,7 @@ class Coordinator:
         if self.integ:
             self.merge_main()
             if not self.merge_pending and not self.in_flight():
-                self.engine('--parallel', str(self.workers), '--max-workers', '8', '--release')
+                self.engine('--parallel', str(self.workers), '--max-workers', '16', '--release')
                 if self.ahead() == 0:
                     self.end_session()
         if self.merge_pending and code == 0:
@@ -2304,7 +2304,7 @@ class Coordinator:
                     pass
         # Interrupted workers stay in their worktrees; the next start resumes them.
         for _ in range(4):
-            self.engine('--parallel', str(self.workers), '--max-workers', '8', '--wait', '--timeout', '5')
+            self.engine('--parallel', str(self.workers), '--max-workers', '16', '--wait', '--timeout', '5')
         self.settle()
         self.finish(130, 'Stopped. Unfinished tasks keep their worktrees and resume on the next start.')
 
@@ -2425,7 +2425,7 @@ class Coordinator:
         elif not self.draining or resumes:
             # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
             os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
-            result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
+            result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '16',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
                                  '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
                                  '--base-ref', self.base, *(['--tasks', ','.join(resumes)] if resumes else []))
@@ -2541,7 +2541,7 @@ class Coordinator:
         if self.settled:
             return  # closing work can make dependents runnable: dispatch again first
         if self.in_flight():
-            self.engine('--parallel', str(self.workers), '--max-workers', '8', '--wait', '--timeout', '5')
+            self.engine('--parallel', str(self.workers), '--max-workers', '16', '--wait', '--timeout', '5')
             return
         if self.draining and any(r.get('state') == 'interrupted' and r.get('paused')
                                  and (not self.once_task or r['task'] == self.once_task) for r in self.tasks()):
@@ -2572,7 +2572,7 @@ class Coordinator:
                 self.finish(1 if self.failures >= self.max_failures else 0, 'Finished.')
         if outcome == 'IDLE':
             if self.merge_main():
-                self.engine('--parallel', str(self.workers), '--max-workers', '8', '--release')
+                self.engine('--parallel', str(self.workers), '--max-workers', '16', '--release')
                 # Keep the worktree and branch: follow_base() takes main's next plan in
                 # place. Release the lease nevertheless, so interactive engine users can
                 # work between intervals. Only a day-old, fully landed session rotates.

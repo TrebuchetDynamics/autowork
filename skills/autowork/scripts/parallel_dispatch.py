@@ -25,7 +25,7 @@ import task_execution as execution
 from worktree_paths import worktree_path
 
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
-DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 8
+DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 16
 # Verified against the installed CLIs' --help (2026-10-15). The prompt also
 # arrives on stdin, which Codex reads for `-`.
 TEMPLATES = {
