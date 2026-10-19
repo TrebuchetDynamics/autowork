@@ -307,61 +307,85 @@ def _private_tmp_dir(path, *, create=True):
     return path
 
 
+def _tmp_name(common, number):
+    key = hashlib.sha256(str(common.parent).encode()).hexdigest()[:8]
+    return f'aw-{os.getuid()}-{key}-{number}'
+
+
 def _tmp_record(common, value):
-    """Validate durable allocation before reusing or deleting an external path."""
+    """Validate durable allocation before reusing or deleting an external path: a short
+    `aw-<uid>-<repo key>-<slot>` directory (on disk, or the `/tmp` fallback), or an older
+    allocation under the runtime directory (`.../aw/<repo key>/<slot>`), moved on next use."""
     key = hashlib.sha256(str(common.parent).encode()).hexdigest()[:8]
     if (not isinstance(value, dict) or type(value.get('slot')) is not int or value['slot'] < 1
             or not isinstance(value.get('path'), str)):
         raise ValueError('invalid temporary directory allocation')
     path = execution.safe_path(value['path'])
     number = str(value['slot'])
-    runtime_suffix = ('aw', key, number)
-    fallback = Path(f'/tmp/aw-{os.getuid()}-{key}-{number}')
     if (not Path(value['path']).is_absolute() or '..' in path.parts
             or len(os.fsencode(path)) > 47
-            or (path != fallback and path.parts[-3:] != runtime_suffix)):
+            or (path.name != _tmp_name(common, number) and path.parts[-3:] != ('aw', key, number))):
         raise ValueError('invalid temporary directory path')
     return path
+
+
+def worker_root():
+    """Where workers' $TMPDIRs live: a short directory on disk. The runtime directory was a small
+    RAM disk shared by every worker (6.3 GB on one host), too small for builds and for checks
+    that need free space, which workers then improvised around."""
+    return Path(os.environ.get('PI_AUTOWORK_WORKER_ROOT') or '/var/tmp')
+
+
+def _disk_tmpdir(common, number):
+    """The preferred $TMPDIR for this slot, created private, or None when it cannot be used."""
+    root = worker_root()
+    candidate = root / _tmp_name(common, number)
+    if (not root.is_absolute() or not root.is_dir() or len(os.fsencode(candidate)) > 47
+            or any((p / '.git').exists() for p in candidate.parents)):
+        return None
+    try:
+        return _private_tmp_dir(candidate)
+    except OSError as exc:
+        if exc.errno not in (errno.EACCES, errno.ENOENT, errno.EROFS, errno.ENOSPC, errno.EDQUOT):
+            raise
+        return None
 
 
 def worker_tmpdir(data, slot_index):
     """Allocate under dispatch.lock; a task keeps its temp slot across attempts.
 
     Worker lanes/ports can be reused while reported or paused tasks retain their
-    files, so the compact temp slot number has its own durable reservation.
+    files, so the compact temp slot number has its own durable reservation. An allocation
+    from before $TMPDIRs moved to disk moves there, with its files, the next time a worker
+    starts (no worker of the task is running then).
     """
     common = data.parents[2]
     record = data.parent / 'tmp.json'
     saved = execution.read(record)
     if saved is not None:
         path = _tmp_record(common, saved)
-        if path.parent != Path('/tmp'):
-            for parent in (path.parents[2], path.parents[1], path.parent):
-                _private_tmp_dir(parent)
-        return _private_tmp_dir(path)
+        preferred = _disk_tmpdir(common, saved['slot']) if path.name != _tmp_name(common, saved['slot']) else None
+        if preferred is None:
+            if path.name != _tmp_name(common, saved['slot']):
+                for parent in (path.parents[2], path.parents[1], path.parent):
+                    _private_tmp_dir(parent)
+            return _private_tmp_dir(path)
+        if path.is_dir() and not path.is_symlink():
+            _private_tmp_dir(path, create=False)
+            for child in list(path.iterdir()):
+                shutil.move(str(child), str(preferred / child.name))
+            shutil.rmtree(path, ignore_errors=True)
+        execution.save(record, {'path': str(preferred), 'slot': saved['slot']})
+        return preferred
     used = set()
     for other in (common / 'slot-data').glob('*/tmp.json'):
         value = execution.read(other)
         _tmp_record(common, value)
         used.add(value['slot'])
     number = slot_index if slot_index not in used else next(i for i in range(1, len(used) + 2) if i not in used)
-    key = hashlib.sha256(str(common.parent).encode()).hexdigest()[:8]
-    runtime = os.environ.get('XDG_RUNTIME_DIR', '')
-    path = None
-    if runtime and Path(runtime).is_absolute():
-        candidate = Path(runtime) / 'aw' / key / str(number)
-        if (len(os.fsencode(candidate)) <= 47 and Path(runtime).is_dir()
-                and not any((p / '.git').exists() for p in candidate.parents)):
-            try:
-                for parent in (Path(runtime), candidate.parent.parent, candidate.parent, candidate):
-                    _private_tmp_dir(parent)
-                path = candidate
-            except OSError as exc:
-                if exc.errno not in (errno.EACCES, errno.ENOENT, errno.EROFS, errno.ENOSPC, errno.EDQUOT):
-                    raise
-                # Unavailable runtime storage: use the short /tmp fallback.
+    path = _disk_tmpdir(common, number)
     if path is None:
-        path = Path(f'/tmp/aw-{os.getuid()}-{key}-{number}')
+        path = Path('/tmp') / _tmp_name(common, number)  # the short fallback, in RAM
         _tmp_record(common, {'path': str(path), 'slot': number})
         _private_tmp_dir(path)
     execution.save(record, {'path': str(path), 'slot': number})

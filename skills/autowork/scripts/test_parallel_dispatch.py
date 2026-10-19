@@ -40,7 +40,8 @@ class DispatchTests(unittest.TestCase):
         # Bootstrap independently of the worker's inherited, potentially long TMPDIR.
         self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
         self.addCleanup(self.runtime.cleanup)
-        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name)
+        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
+                                 PI_AUTOWORK_WORKER_ROOT=self.runtime.name)
         runtime_env.start()
         self.addCleanup(runtime_env.stop)
         self.tmp = tempfile.TemporaryDirectory()
@@ -158,57 +159,76 @@ class DispatchTests(unittest.TestCase):
         self.assertLess(moment['B', 'running'], moment['A', 'reported'])
         self.assertLess(moment['A', 'running'], moment['B', 'reported'])
 
-    def test_launch_exports_a_private_socket_safe_directory_with_runtime_fallback(self):
+    def launch_and_read_tmpdir(self, data):
+        prompt = data / 'prompt.md'
+        prompt.write_text('fixture')
+        output = data / 'env.json'
+        script = ('import json, os, socket, sys, time; '
+                  'from pathlib import Path; '
+                  'p = Path(os.environ["TMPDIR"]); '
+                  's = socket.socket(socket.AF_UNIX); s.bind(str(p.resolve() / ("s" * 40))); '
+                  'Path(sys.argv[1]).write_text(json.dumps([os.environ[k] for k in '
+                  '("TMPDIR", "TMP", "TEMP")])); time.sleep(30)')
+        worker = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
+        self.addCleanup(dispatch.stop, worker, str(self.repo))
+        for _ in range(200):
+            if output.exists():
+                break
+            time.sleep(.01)
+        values = json.loads(output.read_text())
+        dispatch.stop(worker, str(self.repo))
+        return worker, Path(values[0]), values
+
+    def test_launch_exports_a_private_socket_safe_directory_on_disk_with_a_tmp_fallback(self):
+        """The runtime directory was a 6.3 GB RAM disk shared by every worker; the $TMPDIR is now
+        a short directory on disk, socket-safe even when resolved, else the short /tmp fallback."""
         key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
-        cases = [(self.runtime.name, None), ('', None), (str(self.root / ('long-' * 20)), None),
+        cases = [(self.runtime.name, None), (str(self.root / ('long-' * 20)), None),
                  (self.runtime.name, errno.ENOSPC), (self.runtime.name, errno.EDQUOT)]
-        for case, (runtime, failure) in enumerate(cases):
-            with self.subTest(runtime=runtime, failure=failure), patch.dict(os.environ, XDG_RUNTIME_DIR=runtime):
+        for case, (root, failure) in enumerate(cases):
+            with self.subTest(root=root, failure=failure), patch.dict(os.environ, PI_AUTOWORK_WORKER_ROOT=root):
+                Path(root).mkdir(parents=True, exist_ok=True)
                 data = self.common / 'slot-data' / f'temp-{case}' / 'attempt-1'
                 data.mkdir(parents=True)
-                prompt = data / 'prompt.md'
-                prompt.write_text('fixture')
-                output = data / 'env.json'
-                if runtime == self.runtime.name and failure is None:
-                    existing = Path(runtime) / 'aw' / key / '1'
-                    existing.mkdir(parents=True, mode=0o755)
+                if failure is None and root == self.runtime.name:
+                    existing = Path(root) / f'aw-{os.getuid()}-{key}-1'
+                    existing.mkdir(mode=0o755)
                     existing.chmod(0o755)
-                script = ('import json, os, socket, sys, time; '
-                          'from pathlib import Path; '
-                          'p = Path(os.environ["TMPDIR"]); '
-                          's = socket.socket(socket.AF_UNIX); s.bind(str(p / ("s" * 40))); '
-                          'Path(sys.argv[1]).write_text(json.dumps([os.environ[k] for k in '
-                          '("TMPDIR", "TMP", "TEMP")])); time.sleep(30)')
                 original_mkdir = Path.mkdir
-                def runtime_full(path, *args, **kwargs):
-                    if failure and path.is_relative_to(Path(self.runtime.name) / 'aw'):
-                        raise OSError(failure, 'fixture: runtime storage full')
+                def disk_full(path, *args, **kwargs):
+                    if failure and path.name.startswith('aw-') and path.parent == Path(self.runtime.name):
+                        raise OSError(failure, 'fixture: disk full')
                     return original_mkdir(path, *args, **kwargs)
-                with patch.object(Path, 'mkdir', runtime_full):
-                    worker = dispatch.launch([sys.executable, '-c', script, str(output)],
-                                             self.repo, data, 1, prompt)
-                self.addCleanup(dispatch.stop, worker, str(self.repo))
-                for _ in range(200):
-                    if output.exists():
-                        break
-                    time.sleep(.01)
-                values = json.loads(output.read_text())
-                path = Path(values[0])
-                self.addCleanup(shutil.rmtree, path)
+                with patch.object(Path, 'mkdir', disk_full):
+                    _, path, values = self.launch_and_read_tmpdir(data)
+                self.addCleanup(shutil.rmtree, path, True)
                 self.assertEqual(values, [str(path)] * 3)
                 self.assertLessEqual(len(os.fsencode(path)), 48)
                 self.assertEqual(path.stat().st_mode & 0o777, 0o700)
                 self.assertEqual(path.stat().st_uid, os.getuid())
-                expected_parent = (Path(runtime) / 'aw' / key
-                                   if runtime == self.runtime.name and failure is None else Path('/tmp'))
-                self.assertEqual(path.parent, expected_parent)
-                if not runtime:
-                    self.assertEqual(path.name, f'aw-{os.getuid()}-{key}-2')
-                dispatch.stop(worker, str(self.repo))
+                self.assertTrue(path.name.startswith(f'aw-{os.getuid()}-{key}-'), path)
+                on_disk = root == self.runtime.name and failure is None
+                self.assertEqual(path.parent, Path(root) if on_disk else Path('/tmp'))
+
+    def test_an_allocation_on_the_runtime_disk_moves_to_disk_with_its_files(self):
+        key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
+        old = Path(self.runtime.name) / 'aw' / key / '3'
+        old.mkdir(parents=True)
+        (old / 'build').mkdir()
+        (old / 'build' / 'kept.txt').write_text('evidence')
+        data = self.common / 'slot-data' / 'M' / 'attempt-2'
+        data.mkdir(parents=True)
+        (data.parent / 'tmp.json').write_text(json.dumps({'path': str(old), 'slot': 3}))
+        _, path, _ = self.launch_and_read_tmpdir(data)
+        self.addCleanup(shutil.rmtree, path, True)
+        self.assertEqual(path, Path(self.runtime.name) / f'aw-{os.getuid()}-{key}-3')
+        self.assertEqual((path / 'build' / 'kept.txt').read_text(), 'evidence')
+        self.assertFalse(old.exists())
+        self.assertEqual(execution.read(data.parent / 'tmp.json'), {'path': str(path), 'slot': 3})
 
     def test_launch_refuses_foreign_owned_or_symlinked_temporary_directory(self):
         key = hashlib.sha256(str(self.common.parent).encode()).hexdigest()[:8]
-        path = Path(self.runtime.name) / 'aw' / key / '1'
+        path = Path(self.runtime.name) / f'aw-{os.getuid()}-{key}-1'
         path.mkdir(parents=True)
         path.chmod(0o755)
         data = self.common / 'slot-data' / 'A' / 'attempt-1'

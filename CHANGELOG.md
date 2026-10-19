@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A worker's `$TMPDIR` is a short private directory on disk, `/var/tmp/aw-<uid>-<repo key>-<slot>`
+  (`PI_AUTOWORK_WORKER_ROOT` moves it; `/tmp` is the fallback), instead of the runtime directory: a
+  6.3 GB RAM disk shared by every worker, too small for builds and for checks that need free space.
+  A task's existing allocation moves there, with its files, when its next worker starts.
 - A candidate's full check runs once: under a runner, workers leave it to the gate on the merged tree,
   the gate's verdict is cached per merged tree, and the reviewer reads that run's result and log instead
   of repeating it. One candidate's suite had run four or five times.

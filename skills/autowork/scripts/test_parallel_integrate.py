@@ -28,7 +28,8 @@ class IntegrationTests(unittest.TestCase):
         self.addCleanup(lambda: libc.prctl(36, previous.value, 0, 0, 0))
         self.runtime = tempfile.TemporaryDirectory(prefix='awt-', dir=os.environ.get('XDG_RUNTIME_DIR') or '/var/tmp')
         self.addCleanup(self.runtime.cleanup)
-        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name)
+        runtime_env = patch.dict(os.environ, XDG_RUNTIME_DIR=self.runtime.name,
+                                 PI_AUTOWORK_WORKER_ROOT=self.runtime.name)
         runtime_env.start()
         self.addCleanup(runtime_env.stop)
         self.temp = tempfile.TemporaryDirectory(prefix='toolset-088-', dir=os.environ.get('TMPDIR'))
