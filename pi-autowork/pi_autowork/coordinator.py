@@ -2549,6 +2549,10 @@ class Coordinator:
                 return self.blocked_pause(f'the engine needs attention: {reason}')
             if self.mode != 'continuous':
                 self.finish(4, f'The engine needs attention: {reason}')
+            if self.integration:
+                # Read an ended review's answer: a reload onto a release that fixes the engine waits
+                # for it, and it was never read while the engine failed (a deadlock until a restart).
+                self.settle()
             # A service that exits here stops silently (deliberate exits are not restarted):
             # report it once, keep it visible in health, and look again next interval.
             if self.last_waiting != 'engine:' + reason:
