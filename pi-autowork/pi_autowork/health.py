@@ -22,10 +22,12 @@ STALE_AFTER = 600       # a status this old means the runner is not cycling
 MOVING = ('running', 'integrating', 'restarting')
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')  # unsafe to update under
 NEEDS_PERSON = ('runner', 'held', 'claim', 'contract', 'outside', 'cycle')
+HOST_WAIT = 'waiting for the host'
+LOAD_WAIT = r'^resource gate: load average (\S+) >= (\S+) CPUs$'
 
 
 def classify(snapshot, *, paused=False, stuck=0):
-    """'working', 'paused', 'idle' (nothing waits) or 'blocked' (work waits, none runs).
+    """Working, paused, idle, host-waiting (load only), or blocked (other work waits).
 
     ``stuck`` integrations only wait for another session to leave the main checkout:
     they are in flight but make no progress (flutter, 2026-10-16)."""
@@ -34,6 +36,8 @@ def classify(snapshot, *, paused=False, stuck=0):
     if paused:
         return 'paused'
     waiting = [t for t in snapshot.get('tasks', []) if t.get('state') == 'waiting']
+    if waiting and not stuck and all(re.match(LOAD_WAIT, str(t.get('reason') or '')) for t in waiting):
+        return HOST_WAIT
     return 'blocked' if waiting or stuck else 'idle'
 
 
@@ -74,7 +78,8 @@ WAIT_KINDS = (
     (r'^priority (?:waits for|task) (\S+?):?(?:\s|$)', 'priority:{0}', 'wait behind {0}, which runs alone'),
     (r'^shared resource with (?:in_progress )?(\S+)', 'resource:{0}', 'share a resource with {0}'),
     (r'^dependency', 'dependency', 'on dependencies'),
-    (r'^resource gate', 'gate', 'on host memory or load'),
+    (LOAD_WAIT, 'load', HOST_WAIT + ' (load {0} on {1} CPUs)'),
+    (r'^resource gate', 'gate', 'on host memory or disk'),
     (r'^all \d+ worker slots busy', 'slots', 'for a free worker slot'),
     (r'^already running/live slot or in_progress', 'claim', 'claimed elsewhere'),
     (r'^sequential task in progress', 'sequential', 'behind a sequential task'),
@@ -147,6 +152,8 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
         return None
     paused = float(runner.get('paused_until') or 0) > now
     state = classify(snapshot, paused=paused, stuck=int(runner.get('stuck_integrations') or 0))
+    if state == HOST_WAIT and runner.get('blocker'):
+        state = 'blocked'  # a load observation must not hide a runner failure
     observed_state = previous.get('snapshot_state', previous.get('state', ''))
     since = previous.get('since', now) if observed_state.replace('stalled', 'blocked') == state else now
     roots = list(snapshot.get('roots', []))
@@ -271,7 +278,9 @@ def render(rows, *, now=None):
     lines = []
     for row in rows:
         since = f" for {int((now - row['since']) // 60)} min" if row.get('since') else ''
-        lines.append(f"{row['name']:<24} service {row['service']:<9} {row['state']}{since}; "
+        word = (row['waiting_groups'][0]['label']
+                if row['state'] == HOST_WAIT and row.get('waiting_groups') else row['state'])
+        lines.append(f"{row['name']:<24} service {row['service']:<9} {word}{since}; "
                      f"{row['workers']} running, {row['waiting']} waiting")
         if row.get('blocker', '').startswith('status unavailable since '):
             lines.append('    ' + row['blocker'])

@@ -23,7 +23,7 @@ CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'ne
           'launch': 'launch failed', 'contract_changed': 'entry changed', 'moved': 'main moved'}
 ORDER = ['runner', 'cycle', 'held', 'contract', 'claim', 'outside']
 COLORS = {'working': 'green', 'idle': 'green', 'blocked': 'yellow', 'paused': 'yellow', 'starting': 'yellow',
-          'restarting': 'cyan'}
+          'restarting': 'cyan', health.HOST_WAIT: 'yellow'}
 # systemd sub-states of a unit that is stopping or starting again, not stopped.
 RESTARTING = ('stop', 'stop-sigterm', 'stop-sigkill', 'stop-post', 'final-sigterm', 'auto-restart', 'start-pre',
               'start-post', 'activating', 'deactivating')
@@ -355,6 +355,9 @@ def verdict(runner):
         return text, 'bold green'
     if runner.state == 'idle':
         return 'Idle — nothing left to run in Now/Next', 'bold green'
+    if runner.state == health.HOST_WAIT:
+        text = runner.waiting_groups[0]['label'] if runner.waiting_groups else health.HOST_WAIT
+        return text, 'bold yellow'
     if runner.gate and not runner.lanes:
         return f'Host busy — {runner.gate}', 'bold yellow'
     if runner.questions:
@@ -690,7 +693,7 @@ def summary(runners):
     counts = {}
     for runner in runners:
         counts[runner.state] = counts.get(runner.state, 0) + 1
-    order = ['working', 'idle', 'restarting', 'paused', 'blocked', 'stalled', 'not running', 'not cycling',
+    order = ['working', 'idle', 'restarting', 'paused', health.HOST_WAIT, 'blocked', 'stalled', 'not running', 'not cycling',
              'starting', 'unknown']
     return [(state, counts[state]) for state in order + sorted(set(counts) - set(order)) if state in counts]
 
