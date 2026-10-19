@@ -1637,6 +1637,8 @@ class Coordinator:
         else:
             LOG.say(f'{task}: its review ran out of time; reviewing the same commit again with a {limit // 60}-minute limit')
 
+    MAIN_CHECK_WAIT = 1800
+
     def check_main(self):
         """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once
         per main revision, when the host has room and nothing is being verified (TOOLSET-176-98).
@@ -1669,13 +1671,16 @@ class Coordinator:
         rev = git(self.repo, 'rev-parse', self.base)
         if not rev or rev == record.get('rev'):
             return
-        try:
-            if os.getloadavg()[0] >= (os.cpu_count() or 1):
+        # It waits for room at most MAIN_CHECK_WAIT: with eight workers and batches a review or a
+        # loaded host was nearly always there, and main went unchecked for hours while it was red.
+        if time.time() - float(record.get('finished') or 0) < self.MAIN_CHECK_WAIT:
+            try:
+                if os.getloadavg()[0] >= (os.cpu_count() or 1):
+                    return
+            except OSError:
+                pass
+            if any(t.get('state') == 'integrating' for t in self.tasks()):
                 return
-        except OSError:
-            pass
-        if any(t.get('state') == 'integrating' for t in self.tasks()):
-            return
         path = self.scratch_checkout('main-check', rev)
         if not path:
             return
