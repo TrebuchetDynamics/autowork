@@ -771,7 +771,6 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-251-c4",
       "TOOLSET-252-4c",
       "TOOLSET-253-0d",
       "TOOLSET-244-5d",
@@ -1252,14 +1251,6 @@
       "section": "Now",
       "status": "open",
       "title": "The crash line is the tool's own exit message, not an earlier warning that mentions an error"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-251-c4",
-      "section": "Now",
-      "status": "open",
-      "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
     },
     {
       "depends_on": [],
@@ -3089,6 +3080,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-251-c4",
+      "section": "Done",
+      "status": "done",
+      "title": "A conflict-held commit merged again by the resolver is adopted again when the session moved, and the resolver never runs for a merge the engine will refuse"
     },
     {
       "depends_on": [],
