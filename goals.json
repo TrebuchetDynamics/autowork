@@ -757,7 +757,13 @@
         "TOOLSET-255-55",
         "TOOLSET-256-4b",
         "TOOLSET-257-bd",
-        "TOOLSET-258-07"
+        "TOOLSET-258-07",
+        "TOOLSET-259-ca",
+        "TOOLSET-260-ae",
+        "TOOLSET-261-15",
+        "TOOLSET-262-13",
+        "TOOLSET-263-94",
+        "TOOLSET-264-39"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -815,6 +821,12 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-259-ca",
+      "TOOLSET-260-ae",
+      "TOOLSET-261-15",
+      "TOOLSET-262-13",
+      "TOOLSET-263-94",
+      "TOOLSET-264-39",
       "TOOLSET-254-80",
       "TOOLSET-255-55",
       "TOOLSET-256-4b",
@@ -1675,6 +1687,67 @@
       "section": "Next",
       "status": "open",
       "title": "Consume claim evidence through bounded repair and exact-target closeout"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-259-ca",
+      "section": "Next",
+      "status": "open",
+      "title": "Plans prefer independent tasks; a long dependency chain needs a reason"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-222-e1",
+        "TOOLSET-228-0c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-260-ae",
+      "section": "Next",
+      "status": "open",
+      "title": "Every worker on the host takes a slot from one shared worker pool, shared fairly among runners"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-228-0c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-261-15",
+      "section": "Next",
+      "status": "open",
+      "title": "A worker's long test runs take a host check slot"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-260-ae"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-262-13",
+      "section": "Next",
+      "status": "open",
+      "title": "A worker can run up to three read-only helpers for its task"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-230-bf",
+        "TOOLSET-260-ae"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-263-94",
+      "section": "Next",
+      "status": "open",
+      "title": "A second attempt runs two workers when spare slots exist, and the first to pass review lands"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-156-75",
+        "TOOLSET-260-ae"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-264-39",
+      "section": "Next",
+      "status": "open",
+      "title": "Spare capacity triggers the task split before dispatch"
     },
     {
       "depends_on": [
