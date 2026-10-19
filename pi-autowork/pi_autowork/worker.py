@@ -660,6 +660,8 @@ def verify_batch(state, session, script, tasks):
                 git(session, 'worktree', 'remove', '--force', '--force', str(where))
         for task, _ in pending:  # left by a stop: unreviewed, so each integrates on its own
             result['tasks'].remove(task)
+        for verdict in ('passed', 'held'):  # in batch order, not the order reviews exited
+            result[verdict].sort(key=order.index)
         print(json.dumps(result))
         return 0
     except main_check.Stopped:
