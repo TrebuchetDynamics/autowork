@@ -20,9 +20,10 @@ START = '<!-- pi-autowork:questions:start -->'
 END = '<!-- pi-autowork:questions:end -->'
 EFFORT_ORDER = ('quick', 'decision', 'input', 'investigate')
 INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
-# Holds the engine recovers without a person: it re-offers the commit, re-verifies the
-# validation failure, or (on request) clears the hold. They are never the owner's question.
-TECHNICAL_CAUSES = ('conflict', 'validation', 'report', 'overlap', 'timeout', 'moved')
+# Holds the engine recovers without a person: it re-verifies the validation failure, or (on
+# request) clears the hold. A merge conflict is different — the engine resolves it during
+# integration, and one it cannot resolve stays the owner's question — so it is not listed here.
+TECHNICAL_CAUSES = ('validation',)
 
 
 def _title(todo, task, goals):

@@ -235,15 +235,19 @@ class Coordinator:
     BATCH = 'batch'
 
     def batch_due(self, reported):
-        """Two or more candidates wait, batching is on, and this set has not been batched yet."""
+        """Two or more candidates wait, batching is on, and this exact set of revisions has not
+        been batched yet. ``reported`` is (task, commit) pairs. The commit is part of the key: a
+        conflict the resolver merged with the session is a new revision, so the candidates the
+        last batch had to skip are offered to a new batch once they merge (one check, not one
+        each) instead of being held back for the process's lifetime."""
         size = int(os.environ.get('PI_AUTOWORK_BATCH') or 6)
-        fresh = [t for t in reported if not worker.batch_record(self.state, t).exists()]
-        key = ','.join(sorted(fresh))
+        fresh = [(t, commit) for t, commit in reported if not worker.batch_record(self.state, t).exists()]
+        key = ','.join(f'{t}@{commit}' for t, commit in sorted(fresh))
         if (size < 2 or len(fresh) < 2 or self.seen.get('batch-tried') == key or self.reexec_due()
                 or self.batch_pending()):  # land the last batch first: a new one would be built on another tree
             return []
         self.seen['batch-tried'] = key
-        return fresh
+        return [t for t, _ in fresh]
 
     def start_batch(self, tasks):
         """TOOLSET-258-07: one full check on the candidates' merged tree and their reviews side
@@ -1436,7 +1440,8 @@ class Coordinator:
         queue = [r['task'] for r in rows if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
         chain = [t for t in self.batch_chain() if t in queue]
         queue = chain + [t for t in queue if t not in chain]  # verified together: they land first, in order
-        batch = self.batch_due([r['task'] for r in rows if r.get('state') == 'reported' and r['task'] not in handled])
+        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows
+                                if r.get('state') == 'reported' and r['task'] not in handled])
         if batch:
             self.start_batch(batch)
             return  # it runs beside the loop; its candidates land when it ends

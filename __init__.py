@@ -94,7 +94,8 @@ def blockers_args(raw_args):
 
 
 def _autowork(run_skill, run_blockers, raw_args):
-    """`/autowork update|status|list` maintain the bundle; `blockers` is `/blockers`;
+    """`status` reads runners; `plugin status`, `update` and `list` inspect/maintain the bundle;
+    `blockers` is `/blockers`;
     any other arguments run the skill."""
     from .bundle import maintenance_reply
 

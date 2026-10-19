@@ -428,8 +428,9 @@ under `plugins.entries.hermes-toolset` and rewire existing cron jobs with
 Package contents have changed since some isolated-install runs. The
 [cross-host verification record](docs/cross-host.md#behavior-and-verification) names
 the tested versions and gaps; [testing and compatibility](docs/testing.md) covers
-Hermes. `/autowork status` reports registrations, not connected services; Hermes' `/toolsets`
-is a different tool-group inventory. No registration or package test proves model
+Hermes. `/autowork status` reads the runner fleet; `/autowork status NAME` reads one
+repository's workers, holds and waiting reasons. `/autowork plugin status` reports
+registrations and setup gaps; Hermes' `/toolsets` is a different tool-group inventory. No registration or package test proves model
 output quality, Git delivery or live Telegram execution.
 
 ## Documentation

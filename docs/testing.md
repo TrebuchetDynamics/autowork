@@ -20,6 +20,25 @@ claiming or starting anything.
 
 ## Verify
 
+Repository-status chat coverage runs through the normal offline entry point:
+
+```sh
+python3 scripts/check.py tests/test_bundle.py tests/test_bundle_repo_status.py tests/test_autowork_command.py tests/test_workflow_commands.py pi-autowork/tests/test_release.py pi-autowork/tests/test_fleet_view.py
+```
+
+It exercises the public maintenance dispatcher with real disposable
+Python subprocesses for bare fleet and literal named/absolute targets, retains the
+plugin setup overview, and tests argument refusal, failed/empty/timed-out reads and
+bounded literal gateway output. Native regressions additionally require status to
+leave release worktrees unchanged, service-discovery failure to remain unavailable,
+and unknown engine data not to become zero workers. The child uses the bundled
+reader rather than an inherited older launcher. A real native CLI subprocess with
+fixture providers also asserts that status never invokes authentication checks or
+refreshes. These offline cases do not qualify live Telegram
+routing or activate a gateway. A read-only invocation against installed local runner
+records additionally checks the source handler; it still does not prove the gateway
+loaded that revision.
+
 README-audit fixtures (TOOLSET-116-fc) exclude Markdown/HTML image examples in
 single-line backtick spans, including mixed prose and literal shorter backtick runs.
 They retain real image checks beside unmatched/escaped runs, across block boundaries,

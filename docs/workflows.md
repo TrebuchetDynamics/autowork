@@ -24,9 +24,11 @@ model adherence, successful recovery or service delivery.
 
 ## Commands
 
-Use `/autowork status` for a short overview: the bundle version and revision, the profile serving
-the chat, which workflow commands are ready, the last update, other plugins' load status
-and counts, and what still needs setup. These are registered capabilities, not a claim
+Use `/autowork status` for the read-only runner fleet and `/autowork status NAME`
+for one repository's activity, workers, holds and waiting reasons. Use a registered
+runner name or a quoted absolute path; the gateway does not guess a repository.
+Use `/autowork plugin status` for the bundle version and revision, the profile serving
+the chat, ready workflow commands, the last update, plugin load status and setup gaps. These are registered capabilities, not a claim
 that every tool is enabled in the current chat. Hermes's `/toolsets` lists tool
 groups; plugins that provide skills, commands, or hooks need not appear there.
 Use `/autowork list` in CLI chat or Telegram for the installed command inventory,
@@ -51,7 +53,8 @@ capacity limit, so some commands must be typed rather than selected in the menu.
 | `/ui-taste` | `/ui_taste` | Uizze's UI Taste playbooks for building, polishing and reviewing web and iOS interfaces |
 | `/beautify-github-readme` | `/beautify_github_readme` | Redesign or audit a GitHub README with project-native SVG assets |
 | `/engineering` | `/engineering` | Select one engineering protocol for a concrete method gap |
-| `/autowork status` | `/autowork status` | Inspect registered capabilities and setup gaps; `/autowork update [--check\|status [full]]` updates all profiles |
+| `/autowork status [NAME]` | `/autowork status [NAME]` | Read runner fleet/repository status without a model call or state changes |
+| `/autowork plugin status` | `/autowork plugin status` | Inspect registered capabilities and setup gaps; `/autowork update [--check\|status [full]]` updates all profiles |
 
 Both planners use the pinned Autoresearch planning method and save evidence,
 decisions and actionable tasks through Docs Sync, following the shared

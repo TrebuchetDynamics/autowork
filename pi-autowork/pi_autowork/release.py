@@ -191,7 +191,7 @@ def launch(component, script, argv):
     state_root = env.get('PI_AUTOWORK_STATE_DIR') or str(
         Path(env.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'pi-autowork')
     # These commands perform no engine work and need no snapshot.
-    inspect_only = any(a in argv for a in ('--help', '-h', '--fleet', '--install-service', '--remove-service'))
+    inspect_only = any(a in argv for a in ('--help', '-h', '--status', '--fleet', '--install-service', '--remove-service'))
     if inspect_only:
         env['PI_AUTOWORK_TOOLSET'] = str(selected)
         env['PI_AUTOWORK_COMPONENT'] = str(selected / 'pi-autowork')
