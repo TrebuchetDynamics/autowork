@@ -1338,8 +1338,12 @@ def retry_held(args):
             capacity = dispatch.capacity(args)
             if len(live) >= capacity:
                 return {'outcome': 'IDLE'}  # ordinary dispatch reports the occupied pool
+            # A conflict with the session is not fixable by a fresh worker (it conflicts again):
+            # the resolver merges the session into the commit, or the owner decides. Keeping it
+            # out of this set lets the coordinator hold it briefly to group siblings for one check.
             held = {s['task_id']: s for s in current if s['state'] == 'held' and s['attempt'] == 1
-                    and not state.exhausted(s) and not state.worker_live(s)}
+                    and not state.exhausted(s) and not state.worker_live(s)
+                    and s.get('cause') != 'conflict'}
             if not held:
                 return {'outcome': 'IDLE'}
             # Attempt number is not a mutex: use ordinary parallel admission.
