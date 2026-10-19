@@ -743,7 +743,8 @@
         "TOOLSET-241-a1",
         "TOOLSET-242-d5",
         "TOOLSET-243-6d",
-        "TOOLSET-244-5d"
+        "TOOLSET-244-5d",
+        "TOOLSET-245-6a"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -807,6 +808,7 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-245-6a",
       "TOOLSET-234-51",
       "TOOLSET-231-49",
       "TOOLSET-225-75",
@@ -1643,6 +1645,14 @@
       "section": "Next",
       "status": "open",
       "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-245-6a",
+      "section": "Next",
+      "status": "open",
+      "title": "A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause"
     },
     {
       "depends_on": [

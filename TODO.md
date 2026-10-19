@@ -1105,6 +1105,7 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
 - Sources: fleet monitoring (2026-10-18); [health](pi-autowork/pi_autowork/health.py) (`update`: any snapshot other than `PARALLEL_STATUS` writes `state='unavailable'` with `since=previous['since']`); [status and TUI](pi-autowork/pi_autowork/fleet_view.py), `autowork status`.
 - Evidence (2026-10-18 15:57, one fleet runner): `autowork status` said `Health: unavailable since 2026-10-18 14:43` while `autowork ls` showed the same runner `working 1h14m` with a worker running. The only failed read was one at 15:57, `Repository busy (Repository execution lock is held by a live operation.)`, an ordinary moment of lock contention. The `14:43` was the previous state's `since` (working since 14:43), not when reads began to fail, so one blip read as an hour-long outage.
+- Evidence (2026-10-18 20:04, another runner): its status read `unavailable since 19:07` for an hour while it was working (a review running, a good snapshot 9 s old). The failed reads were `[Errno 11] Resource temporarily unavailable`, a lock its own review held for a moment, and they kept the 19:07 date across good reads in between. Status reads by hand at that time all answered `PARALLEL_STATUS`.
 - Touches: pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py
 - Scope: (1) A `BUSY` snapshot keeps the previous state and its `since`, and adds `status_busy_since`. Status and the TUI show the last state with `(status read busy <n>s)` after it. (2) `unavailable` starts only after busy or failed reads have lasted 5 minutes (`PI_AUTOWORK_STATUS_GRACE`, seconds), and its `since` is `status_unavailable_since`, the first failed read. (3) A successful read clears both fields.
 - Acceptance: In fixtures: one BUSY snapshot after a working state leaves `state='working'` with its old `since` and a busy note; BUSY reads for over 5 minutes yield `unavailable` with `since` equal to the first failed read; a good read afterwards clears it; the status text never shows the previous state's `since` as when it became unavailable.
@@ -1113,6 +1114,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: No change to how the engine takes its locks.
 - Planner's call: Next: it misleads the owner (and the fleet monitor) about a healthy runner but blocks no work.
+### TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
+
+- [ ] TOOLSET-245-6a — A dispatch refused by the runner's own review lock tries again in seconds, not after a full pause
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [coordinator](pi-autowork/pi_autowork/coordinator.py) (the `BUSY` outcome of `--apply`: `Repository busy (...); checking again in {interval}s` and `blocked_pause`, or `finish(4)` in `--once`/`--until-empty`); [engine](skills/autowork/scripts/task_execution.py) (`BlockingIOError` becomes `BUSY: Repository execution lock is held by a live operation.`); TOOLSET-238-11 in [the archive](TODO.archive.md) (an attempt to return to the loop as soon as a review was accepted exposed this race in fixtures and was dropped).
+- Evidence (2026-10-18): `Repository busy (Repository execution lock is held by a live operation.); checking again in 60s` at 17:03, 17:19 and 17:34 on this repository's runner and at 19:54 and 20:04 on another, each while that runner's own review was running and holding an engine lock for a moment (a receipt write or the landing). In a fixture the same race ended a `--until-empty` run with exit 4.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py
+- Scope: (1) When `--apply` answers BUSY with the engine's lock message while this runner's own review child runs (`session_busy()`), it is retried after 2 s, up to 5 times in the cycle, before any pause. (2) Only if it is still busy does the existing path apply, and never `finish(4)` in a bounded run while the runner's own review holds the lock: the cycle waits for the review instead. (3) The `Repository busy` line is logged only when the BUSY is not the runner's own.
+- Acceptance: In a fixture whose review holds the engine's writer lock for 3 s, a dispatch during it starts its task within that cycle, without a `Repository busy` line or a 60 s pause; a `--until-empty` run with a fast review beside a dispatch ends 0; a lock held by an outside process still logs and pauses as today.
+- Checks: python3 -m unittest tests/test_pi_autowork.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the engine's locks.
+- Planner's call: Next: about a minute lost each time, a few times an hour on a busy runner. The fixture failure shows it can also end a bounded run.
+
 ### TOOLSET-234-51 — Make the TUI a compact fleet overview with a focused runner workspace
 
 - [ ] TOOLSET-234-51 — Make the TUI a compact fleet overview with a focused runner workspace
