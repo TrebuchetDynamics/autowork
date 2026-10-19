@@ -741,7 +741,8 @@
         "TOOLSET-239-d4",
         "TOOLSET-240-f8",
         "TOOLSET-241-a1",
-        "TOOLSET-242-d5"
+        "TOOLSET-242-d5",
+        "TOOLSET-243-6d"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -750,11 +751,11 @@
     "schema": 1,
     "tasks": [
       "TOOLSET-165-f7",
+      "TOOLSET-243-6d",
       "TOOLSET-195-ee",
       "TOOLSET-232-01",
       "TOOLSET-223-8e",
       "TOOLSET-222-e1",
-      "TOOLSET-238-11",
       "TOOLSET-229-d0",
       "TOOLSET-234-d4",
       "TOOLSET-211-71",
@@ -772,7 +773,9 @@
       "TOOLSET-220-71",
       "TOOLSET-215-91",
       "TOOLSET-214-5b",
-      "TOOLSET-212-0d",
+      "TOOLSET-240-f8",
+      "TOOLSET-241-a1",
+      "TOOLSET-242-d5",
       "TOOLSET-184-b3",
       "TOOLSET-170-f6",
       "TOOLSET-172-40",
@@ -1285,6 +1288,14 @@
       "section": "Now",
       "status": "open",
       "title": "A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-243-6d",
+      "section": "Now",
+      "status": "open",
+      "title": "A reviewer change re-reviews a held commit behind fresh candidates, once, and only when the change could alter its verdict"
     },
     {
       "depends_on": [],
