@@ -47,7 +47,10 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
         task, state, reason = row.get('task'), row.get('state'), ' '.join(str(row.get('reason') or '').split())
         if not task:
             continue
-        if state == 'held' and not row.get('worker_live') and row.get('cause') in PLANNING_CAUSES:
+        if state == 'held' and not row.get('worker_live') and row.get('quick_hold'):
+            hold = row['quick_hold']
+            found.append((task, 'repeated quick hold', f"{hold['fingerprint']}; {hold['reason']}"))
+        elif state == 'held' and not row.get('worker_live') and row.get('cause') in PLANNING_CAUSES:
             found.append((task, 'held: ' + row['cause'], reason[:400]))
         elif (state == 'held' and not row.get('worker_live') and row.get('cause') == 'validation'
               and int(row.get('attempt') or 0) >= 2 and (findings or {}).get(task)):
@@ -91,6 +94,11 @@ PROMPT = (
     'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
     'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
     'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
+    'For repeated quick hold: three consecutive attempts held within ten minutes on the same missing input. '
+    'This blocker gets one repair, not repeated cosmetic entry edits. Restate the task so the named missing '
+    'input is produced (add a producer task and dependency), or move it to Needs decision. Only when the '
+    'blocker is addressed, add `Blocker resolution: <fingerprint from the item>; <producer task or decision '
+    'evidence>` to its entry; other entry edits cannot restart it. Never invent an input or receipt. '
     'For held: no_change (the worker ran the task and found nothing to change; its report says why): when '
     'the report\'s evidence shows the Acceptance is already met, close the task as done with that evidence '
     'through {goals}; otherwise restate the task so it names the change to make. '
@@ -152,14 +160,16 @@ def reason_class(why, task_ids=()):
 
 
 def item_key(item):
+    if item[1] == 'repeated quick hold':
+        return 'quick-hold:' + item[0] + ':' + item[2].split(';', 1)[0]
     return key([item]) if item[0] in ('MAIN', 'LEDGER') else 'task:' + item[0]
 
 
 def matches(receipt, item, entry, reasons, task_ids):
     if not receipt:
         return False
-    if item[0] in ('MAIN', 'LEDGER'):
-        return True  # the key already identifies the exact test/error
+    if item[0] in ('MAIN', 'LEDGER') or item[1] == 'repeated quick hold':
+        return True  # the key already identifies the test/error or normalized blocker
     why = (reasons or {}).get(item[0], item[2])
     return (receipt.get('digest') == entry.get('digest', '')
             and reason_class(receipt['reason'], task_ids) == reason_class(why, task_ids))

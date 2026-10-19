@@ -28,6 +28,24 @@ class MaintainerTests(unittest.TestCase):
         self.assertEqual(maintainer.key(found), maintainer.key(maintainer.triggers(list(reversed(rows)))))
         self.assertEqual(maintainer.triggers([r for r in rows if r['task'] in 'DEFG']), [])
 
+    def test_repeated_quick_hold_is_repaired_once_even_after_cosmetic_entry_edits(self):
+        row = dict(task='A', state='held', cause='blocker', reason='missing receipt',
+                   quick_hold=dict(fingerprint='abc123', reason='missing receipt', attempts=[]))
+        found = maintainer.triggers([row])
+        self.assertEqual([(task, kind) for task, kind, _ in found], [('A', 'repeated quick hold')])
+        self.assertIn('abc123', found[0][2])
+        with tempfile.TemporaryDirectory() as state:
+            entries = {'A': dict(digest='original', fields={})}
+            self.assertEqual(maintainer.pending(state, found, entries=entries), found)
+            maintainer.remember(state, trigger_key=maintainer.key(found), found=found, entries=entries,
+                                outcome='no change')
+            maintainer.remember(state, trigger_key='other', found=[('MAIN', 'main red', 'x')], outcome='merged')
+            entries['A']['digest'] = 'cosmetic edit'
+            self.assertEqual(maintainer.pending(state, found, entries=entries), [])
+            row['quick_hold']['fingerprint'] = 'different'
+            changed = maintainer.triggers([row])
+            self.assertEqual(maintainer.pending(state, changed, entries=entries), changed)
+
     def test_a_last_attempt_reviewed_and_found_wanting_is_a_trigger_with_its_findings(self):
         rows = [{'task': 'A', 'state': 'held', 'cause': 'validation', 'attempt': 2},
                 {'task': 'B', 'state': 'held', 'cause': 'validation', 'attempt': 1},   # it gets a fresh retry

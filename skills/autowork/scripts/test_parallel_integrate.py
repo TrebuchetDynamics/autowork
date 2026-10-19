@@ -1115,6 +1115,68 @@ finally:
             max_workers=None, worker_command=json.dumps([sys.executable, '-c', 'pass']), worker_host='auto',
             worker_profile=None, worker_timeout=10, min_free_mem_mb=0, tasks=None, plan=None)
 
+    def test_three_quick_identical_input_holds_require_a_named_resolution(self):
+        import parallel_status
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        for task, third_reason, seconds, cause, resumed, stopped in (
+                ('A', 'missing receipt', 60, 'blocker', False, True),
+                ('B', 'missing credentials', 60, 'blocker', False, False),
+                ('C', 'missing receipt', 601, 'blocker', False, False),
+                ('D', 'missing receipt', 60, 'validation', False, False),
+                ('E', 'missing receipt', 700, 'blocker', True, False),
+                ('F', 'missing receipt', 30, 'blocker', True, True)):
+            with self.subTest(task=task):
+                if task not in 'AB':
+                    todo.write_text(todo.read_text() + f'\n- [ ] {task} — Task {task}\n  Scope: fixture\n'
+                                    f'  Touches: {task}.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                    '  Dependencies: None.\n  Status: open\n')
+                for attempt in range(1, 4):
+                    self.worker(task)
+                    slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                    contract = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
+                    (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+                    slot = state.write_slot(self.common, dict(slot, state='running' if resumed else 'reported',
+                                                             started_at=time.time() - seconds), slot)
+                    if resumed:
+                        state.transition(self.repo, self.owner, task, 'interrupted', paused=True)
+                        slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
+                        slot = state.change(self.common, slot, 'dispatched', {})
+                        start = time.time() - 30
+                        state.write_slot(self.common, dict(slot, started_at=start, runtime_started_at=start), slot)
+                    reason = (third_reason if attempt == 3 else 'missing receipt')
+                    reason += f' /var/tmp/run-{attempt}/receipt.json for TASK-{attempt}'
+                    state.transition(self.repo, self.owner, task, 'held', reason=reason, cause=cause)
+                    todo.write_text(todo.read_text().replace(contract, contract + f'\n  Evidence: edit {attempt}', 1))
+                    result = module.retry_held(self.retry_args())
+                    if attempt < 3 or not stopped:
+                        self.assertEqual(result['outcome'], 'REQUEUED', result)
+                if stopped:
+                    self.assertEqual(result['outcome'], 'IDLE', result)
+                    row = next(r for r in parallel_status.snapshot(self.repo)['tasks'] if r['task'] == task)
+                    hold = row['quick_hold']
+                    self.assertEqual(len(hold['attempts']), 3)
+                    self.assertTrue(all(60 <= a['seconds'] < 61 for a in hold['attempts']))
+                    self.assertEqual(len({a['reason'] for a in hold['attempts']}), 3)
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+                    with self.assertRaisesRegex(ValueError, 'Blocker resolution'):
+                        module.set_aside(self.repo, self.owner, task)
+                    with self.assertRaisesRegex(ValueError, 'answer is only'):
+                        module.answer(self.repo, self.owner, task, 'try again')
+                    current = execution.goals_module().task_bodies(todo.read_text())[task][0][0].strip()
+                    resolved = current.replace('Dependencies: None.', 'Dependencies: INPUT-1')
+                    resolved += f'\n  Blocker resolution: {hold["fingerprint"]}; INPUT-1 produces the receipt'
+                    todo.write_text(todo.read_text().replace(current, resolved, 1))
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'REQUEUED')
+                    # If that answer failed, formatting it differently is not a new answer.
+                    self.worker(task)
+                    slot = state.slots(self.common)[0]
+                    (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(resolved + '\n')
+                    state.transition(self.repo, self.owner, task, 'held', reason=reason, cause=cause)
+                    todo.write_text(todo.read_text().replace('  Blocker resolution:', '   Blocker resolution:'))
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+                    state.slot_path(self.common, task).unlink()  # next fixture case starts without a live slot
+
     def test_a_scope_hold_records_its_cause_and_outside_files(self):
         # TOOLSET-161-17: only an undeclared protected file or a coordinator file is out of scope.
         self.worker(files={'A.txt': 'worker\n', 'go.mod': 'module x\n'})
