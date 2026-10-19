@@ -1794,7 +1794,9 @@ class EngineTests(Fixture):
             session = json.loads(session_file.read_text())
             path = Path(session['path'])
             admin = Path(self.git(path, 'rev-parse', '--absolute-git-dir'))
-            unchanged = [admin / 'index', admin / 'HEAD', admin / 'logs/HEAD', session_file]
+            # Not the index: any `git status` may refresh its stat data (racily clean entries), which
+            # depends on the host's timing; HEAD, its log and the session file show a recreated session.
+            unchanged = [admin / 'HEAD', admin / 'logs/HEAD', session_file]
             stamps = [p.stat().st_mtime_ns for p in unchanged]
             wait_for_intervals(10)
             self.assertEqual(json.loads(session_file.read_text()), session)
