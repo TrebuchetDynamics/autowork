@@ -2022,6 +2022,8 @@ class Coordinator:
             result = self.engine('--parallel-set-aside', task)
             if 'live parallel coordinator owner' in json.dumps(result):
                 continue  # before this runner's first dispatch it holds no lease: keep it
+            if result.get('outcome') == 'BUSY':
+                continue  # a review holds the integration lock: keep the request for a later cycle
             request.unlink(missing_ok=True)
             if result.get('outcome') == 'SET_ASIDE':
                 self.seen[task] = 'pending'

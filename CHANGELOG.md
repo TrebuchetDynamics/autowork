@@ -233,6 +233,8 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A set-aside request made while a review holds the integration lock waits for a later cycle
+  instead of being dropped: every request made during a review was lost.
 - A held slot whose task was closed on main is set aside like any other, instead of keeping
   its place and even being retried fresh.
 - A hold from the runner's own integration mechanics (a review a restart interrupted, a
