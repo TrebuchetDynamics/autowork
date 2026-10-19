@@ -7,6 +7,16 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Chat `/autowork status` reads the repository runner fleet instead of plugin setup
+  health; `/autowork status NAME` reads one runner and `/autowork plugin status`
+  retains the previous setup overview. Status uses the existing read-only native
+  command with a bounded wait, literal arguments and bounded fenced chat output;
+  unavailable reads are not reported as an empty healthy fleet. Native status skips
+  release-worktree initialization/pruning; failed service discovery and unknown
+  engine reads stay unavailable. Chat pins its bundled reader rather than an older
+  inherited launcher and skips provider authentication checks/refreshes. Installed
+  gateway activation remains separate from source and offline verification.
+
 - A review no longer reruns the task's test Checks that the runner's full check already ran
   on the same merged tree; it runs only checks the full check does not cover, and single
   tests to settle a doubt. Rerunning whole test files took most of every review's 20 to 40

@@ -76,6 +76,25 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertTrue(latest.is_dir())
         self.assertEqual(len(list((self.state_root / 'releases').glob('*/'))), 2)
 
+    def test_status_does_not_create_or_prune_release_worktrees(self):
+        cli = self.toolset / 'pi-autowork/pi_autowork/cli.py'
+        cli.parent.mkdir(parents=True)
+        cli.write_text('print("STATUS fixture")\n')
+        before = subprocess.check_output(['git', '-C', str(self.toolset), 'worktree', 'list', '--porcelain'])
+        env = dict(os.environ, PYTHONPATH=str(Path(release.__file__).resolve().parents[1]),
+                   PI_AUTOWORK_PACKAGE=str(self.toolset), PI_AUTOWORK_TOOLSET=str(self.toolset),
+                   PI_AUTOWORK_RESELECT='', PI_AUTOWORK_STATE_DIR=str(self.state_root),
+                   PI_AUTOWORK_ENV_DIR=str(self.state_root / 'settings'))
+        result = subprocess.run([sys.executable, '-c',
+                                 'from pi_autowork import release; import sys; '
+                                 'release.launch(sys.argv[1], sys.argv[2], ["--status", "--repo", sys.argv[3]])',
+                                 str(cli.parent.parent), str(self.toolset / 'scripts/pi-autowork.sh'), str(self.work)],
+                                env=env, text=True, capture_output=True, timeout=30)
+        self.assertFalse((self.state_root / 'releases').exists(), 'a read-only status created release state')
+        self.assertEqual(subprocess.check_output(['git', '-C', str(self.toolset), 'worktree', 'list', '--porcelain']), before)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), 'STATUS fixture')
+
     def test_a_compatible_release_may_be_installed(self):
         self.assertEqual(self.check(), dict(ok=False, current=True, reason='already at the newest release'))
         self.publish('STATE_SCHEMA = 2\nSTATE_SCHEMA_READS = (1, 2)\n', 'release 2 reads 1')

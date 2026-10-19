@@ -61,10 +61,13 @@ class BundleTests(unittest.TestCase):
 
     def test_autowork_maintenance_forms_are_exact(self):
         with patch.object(self.bundle, 'handle_chat', return_value='update') as chat, \
-                patch.object(self.bundle, 'list_commands', return_value='listed') as listing:
+                patch.object(self.bundle, 'list_commands', return_value='listed') as listing, \
+                patch.object(self.bundle, 'repository_status', return_value='runners') as status:
             for args in ('update', 'UPDATE --check', 'update status', 'update status full'):
                 self.assertEqual(self.bundle.maintenance_reply(args), 'update')
-            self.assertEqual(self.bundle.maintenance_reply('status'), 'listed')
+            self.assertEqual(self.bundle.maintenance_reply('status'), 'runners')
+            status.assert_called_once_with(None)
+            self.assertEqual(self.bundle.maintenance_reply('plugin status'), 'listed')
             listing.assert_called_with('')
             self.assertEqual(self.bundle.maintenance_reply('list omh'), 'listed')
             listing.assert_called_with('list omh')

@@ -429,7 +429,9 @@ def summarize(repo, base, toolset, rev, skill_args, opts, settings, state):
     print(f'Repository: {repo} (merges into {base})')
     print(f'Toolset:    {toolset} at {rev} ({"not a Pi package" if skill_args else "Pi package"})')
     print(f'Engine:     Parallel Autowork, up to {opts["workers"]} worker(s)')
-    ready = lambda model: 'ready' if pi_runtime.auth_ready(settings, model) else 'not ready'
+    # Status observes runner state; it must not refresh credentials or contact a provider.
+    ready = lambda model: ('not checked: read-only status' if opts.get('status') else
+                           'ready' if pi_runtime.auth_ready(settings, model) else 'not ready')
     print(f'Primary:    {settings.primary} ({ready(settings.primary)})')
     print(f'Fallback:   {settings.fallback} ({ready(settings.fallback)})' if settings.fallback_enabled
           else 'Fallback:   disabled')
@@ -477,6 +479,11 @@ def status_view(repo, base, toolset, state):
     try:
         snapshot = json.loads(out)
     except ValueError:
+        print('Workers:    unavailable — engine returned invalid status data')
+        return
+    if not isinstance(snapshot, dict) or snapshot.get('outcome') != 'PARALLEL_STATUS':
+        reason = snapshot.get('reason') if isinstance(snapshot, dict) else None
+        print('Workers:    unavailable — ' + (' '.join(str(reason).split())[:300] if reason else 'engine status not available'))
         return
     print(f"Workers:    {snapshot.get('active_workers') or 0} running; {snapshot.get('completed') or 0} done, "
           f"{snapshot.get('failed') or 0} failed, {snapshot.get('integration_queue') or 0} awaiting integration")

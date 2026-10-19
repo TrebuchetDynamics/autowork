@@ -33,11 +33,13 @@ live profile under the same Hermes root.
 ## Chat: `/autowork status`, `list` and `update`
 
 Source: [`bundle.py`](../bundle.py) `handle_chat`, `list_commands`, `start_update`,
-`update_status`. Works in CLI chat and Telegram.
+`update_status`, `repository_status`. Works in CLI chat and Telegram.
 
 | Form | Effect |
 | --- | --- |
-| `/autowork status` | Bundle version, revision and profile; ready workflow commands; the last update; other plugins' load status and counts; missing imports with the setup command. |
+| `/autowork status` | Read-only fleet summary from the existing native runner command: repositories, activity, running/waiting/held counts. No repository is guessed from the gateway's working directory. |
+| `/autowork status NAME` | Read-only status for that registered runner, including repository, workers, holds and waiting reasons. A quoted absolute repository path is also supported; relative paths and options are refused. |
+| `/autowork plugin status` | Bundle version, revision and profile; ready workflow commands; last update; plugin load status and setup gaps (the former status overview). |
 | `/autowork list` | Every available command with its owner and Telegram spelling. |
 | `/autowork list TEXT` | Commands whose name or owner contains `TEXT`, for example `/autowork list omh`. |
 | `/autowork update` | Starts the all-profile updater in the background and returns immediately. |
@@ -45,6 +47,14 @@ Source: [`bundle.py`](../bundle.py) `handle_chat`, `list_commands`, `start_updat
 | `/autowork update status` | Summarizes the durable result from `maintenance/toolset-update/latest.json` at the Hermes root in a few lines, and lists profiles linked to a working checkout. |
 | `/autowork update status full` | Shows that whole receipt as JSON. |
 | `/autowork` with other arguments | Runs the Autowork skill with them as instructions, for example `/autowork update the README`. |
+
+Repository status invokes the bundled Python runner entry point with literal argv,
+no shell or model call, and a bounded wait. Failed, empty or timed-out reads report
+unavailable, never a healthy empty fleet. Long output is explicitly truncated in chat;
+use terminal `autowork status NAME` for the full output. This does not install, update,
+start, stop, clear holds or change schedules. Named status reports provider readiness
+as `not checked: read-only status`; it does not check or refresh authentication.
+Plugin/gateway activation is separate from offline handler tests.
 
 ## Source-checkout scripts
 

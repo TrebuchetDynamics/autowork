@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import os
 import sys
@@ -158,7 +159,7 @@ def _last_update():
 
 
 def overview(report):
-    """A short, actionable /autowork status reply: what is installed, ready, missing and next."""
+    """A short /autowork plugin status reply: installed capabilities and setup gaps."""
     revision, profile = _identity()
     own = next((p for p in report['plugins'] if p['name'] == 'autowork'), None)
     version = f" {own['version']}" if own and own.get('version') else ''
@@ -207,7 +208,7 @@ def overview(report):
         lines.append('Needs setup: ' + '; '.join(gaps) + ' → hermes autowork setup')
     if report['telegram_menu_hidden']:
         lines.append(f"Telegram menu hides {report['telegram_menu_hidden']} commands; type them directly.")
-    lines.append('More: /autowork list · /autowork update · hermes autowork doctor')
+    lines.append('More: /autowork status · /autowork list · /autowork update · hermes autowork doctor')
     return lines
 
 
@@ -494,8 +495,42 @@ def handle_chat(raw_args=''):
     return list_commands(raw_args)
 
 
+def _repository_status_text(text):
+    # Match update-status replies: paths remain text, never gateway attachments.
+    text = text.replace('`', "'")
+    encoded = text.encode('utf-16-le')
+    if len(encoded) > 6000:
+        text = encoded[:6000].decode('utf-16-le', errors='ignore') + '\n[Output truncated; use the terminal for full details.]'
+    return ('```text\n' + text + '\n```\n'
+            'Details: /autowork status NAME · Setup: /autowork plugin status')
+
+
+def repository_status(target=None):
+    """Read the existing fleet command, without invoking a skill or setup."""
+    command = ROOT / 'pi-autowork/pi_autowork/command.py'
+    args = ['status', target] if target is not None else ['ls']
+    # Use this bundle's read-only launcher, never an older service/parent reader
+    # that may prepare or prune release worktrees even for --status. Child only.
+    env = dict(os.environ, PI_AUTOWORK_SCRIPT=str(ROOT / 'scripts/pi-autowork.sh'),
+               PI_AUTOWORK_COMPONENT=str(ROOT / 'pi-autowork'), PI_AUTOWORK_TOOLSET=str(ROOT),
+               PI_AUTOWORK_PACKAGE=str(ROOT), PI_AUTOWORK_RESELECT='')
+    try:
+        result = subprocess.run([sys.executable, str(command), *args], cwd=Path.home(), env=env,
+                                capture_output=True, text=True, errors='replace', timeout=20)
+    except subprocess.TimeoutExpired:
+        return 'Repository status unavailable: the read-only status command timed out. Try again shortly.'
+    except OSError as error:
+        return f'Repository status unavailable: {type(error).__name__}. Check the local Autowork installation.'
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or f'exit {result.returncode}'
+        return _repository_status_text('Repository status unavailable: ' + detail)
+    if not result.stdout.strip():
+        return 'Repository status unavailable: the read-only command returned no data.'
+    return _repository_status_text(result.stdout.strip())
+
+
 def maintenance_reply(raw_args=''):
-    """Reply to `/autowork update|status|list`, or None: other arguments run the Autowork skill.
+    """Read-only runner status, plugin status and bundle maintenance, or None for skill instructions.
 
     Only these exact forms are maintenance, so instructions such as
     `/autowork update the README` still reach the skill.
@@ -503,8 +538,20 @@ def maintenance_reply(raw_args=''):
     words = raw_args.strip().lower().split()
     if words[:1] == ['update'] and words[1:] in ([], ['--check'], ['status'], ['status', 'full']):
         return handle_chat(raw_args)
-    if words == ['status']:
+    if words == ['plugin', 'status']:
         return list_commands('')
+    if words[:1] == ['status']:
+        try:
+            parts = shlex.split(raw_args)
+        except ValueError:
+            return 'Usage: /autowork status [NAME|"/absolute/repository path"]'
+        if len(parts) <= 2:
+            target = parts[1] if len(parts) == 2 else None
+            if target is not None and (not target or target.startswith('-') or target in ('.', '..')
+                    or any(c in target for c in '\n\r\x00')
+                    or ('/' in target and not Path(target).is_absolute())):
+                return 'Usage: /autowork status [NAME|\"/absolute/repository path\"]'
+            return repository_status(target)
     if words[:1] == ['list'] and len(words) <= 2:
         return list_commands(' '.join(words))
     return None
@@ -628,6 +675,6 @@ def handle_cli(args):
 
 def register_bundle(ctx, invoke):
     register_imported_skills(ctx, invoke)
-    # Chat maintenance is `/autowork update|status|list`, dispatched by maintenance_reply.
+    # Chat status and maintenance forms are dispatched by maintenance_reply.
     ctx.register_cli_command('autowork', help='Install, update and diagnose the Autowork bundle',
                              setup_fn=setup_parser, handler_fn=handle_cli)

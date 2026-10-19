@@ -611,6 +611,16 @@
           "kind": "executed",
           "ref": "TOOLSET-116-c1 9c46aaf: 7 adversarial fixtures (3 failed before the fix), python3 scripts/check.py 583/764/217/9/15 passed, one skip, eight excluded; offline only, no live Pi run",
           "result": "pass"
+        },
+        {
+          "anchor": "toolset-268-7a",
+          "archive": "TODO.archive.md",
+          "coverage_current": true,
+          "kind": "executed",
+          "ref": "python3 scripts/check.py; source snapshot 3667c78722254a0082c69c10d6a09fd445c39035; full offline exit 0; independent source review deleg_915d468e; live gateway unqualified",
+          "result": "pass",
+          "summary": "Read-only repository chat status: offline gate and source review pass",
+          "task": "TOOLSET-268-7a"
         }
       ],
       "id": "PI-RUNNER",
@@ -766,7 +776,8 @@
         "TOOLSET-264-39",
         "TOOLSET-265-16",
         "TOOLSET-266-7a",
-        "TOOLSET-267-a0"
+        "TOOLSET-267-a0",
+        "TOOLSET-268-7a"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -805,6 +816,7 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-268-7a",
       "TOOLSET-266-7a",
       "TOOLSET-267-a0",
       "TOOLSET-259-ca",
@@ -3089,6 +3101,14 @@
       "section": "Done",
       "status": "done",
       "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-268-7a",
+      "section": "Done",
+      "status": "done",
+      "title": "Chat status shows repository runners separately from plugin setup"
     },
     {
       "depends_on": [

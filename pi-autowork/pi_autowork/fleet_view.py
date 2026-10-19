@@ -612,11 +612,19 @@ def blockers(runner, limit=6):
     return [(KINDS[k], joined(groups[k])) for k in ORDER if k in groups]
 
 
-def _lines(argv, timeout=10):
+class DiscoveryUnavailable(RuntimeError):
+    """Service discovery failed; an empty list would be misleading."""
+
+
+def _lines(argv, timeout=10, *, strict=False):
     try:
         out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as error:
+        if strict:
+            raise DiscoveryUnavailable(f'runner discovery unavailable: {type(error).__name__}') from error
         return []
+    if out.returncode and strict:
+        raise DiscoveryUnavailable(f'runner discovery unavailable: service query exited {out.returncode}')
     return out.stdout.splitlines() if out.returncode == 0 else []
 
 
@@ -626,7 +634,7 @@ def paused_marker(env_dir, name):
     return Path(env_dir) / f'{name}.paused'
 
 
-def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
+def collect(state_root, env_dir, *, systemctl='systemctl', now=None, strict=False):
     """Every runner: pi-autowork@ services and their runner state, merged by name."""
     now = time.time() if now is None else now
     found = {}
@@ -635,7 +643,7 @@ def collect(state_root, env_dir, *, systemctl='systemctl', now=None):
         return found.setdefault(name, Runner(name=name))
 
     services = {}
-    for line in _lines([systemctl, '--user', 'list-units', 'pi-autowork@*', '--all', '--plain', '--no-legend']):
+    for line in _lines([systemctl, '--user', 'list-units', 'pi-autowork@*', '--all', '--plain', '--no-legend'], strict=strict):
         parts = line.split()
         if len(parts) >= 4 and parts[0].startswith('pi-autowork@') and parts[0].endswith('.service'):
             services[parts[0][len('pi-autowork@'):-len('.service')]] = parts[3]

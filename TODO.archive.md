@@ -4637,3 +4637,25 @@ Source section: Now
 - Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits questions.py.
 - Exclusions: No new question kinds and no model call; held, claim, cycle, contract and live-authorization questions keep their rules. No change to the blockers protocol beyond keeping its runner-recognized forms in step with this rule.
 - Planner's call: the owner's deferral is the answer, recorded where the queue already reads it (`Needs decision` plus a dated `Owner decision:` line), so no separate answer field is needed. Placed in Now (owner, 2026-10-18: "blockers skill is weak and misleading").
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-268-7a"></a>
+
+### TOOLSET-268-7a — Chat status shows repository runners separately from plugin setup
+
+- [x] TOOLSET-268-7a — Chat status shows repository runners separately from plugin setup
+- Status: done
+- Goal: PI-RUNNER
+- Sources: [accepted continuous runner](docs/project.md#continuous-pi-runner-2026-10-15); [chat status contract](docs/reference.md#chat-autowork-status-list-and-update); owner request (2026-10-19): add repository status instead of only setup health.
+- Touches: bundle.py, __init__.py, tests/test_bundle.py, tests/test_bundle_repo_status.py, pi-autowork/pi_autowork/cli.py, pi-autowork/pi_autowork/release.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/command.py, tests/test_autowork_command.py, pi-autowork/tests/test_release.py, README.md, docs/reference.md, docs/workflows.md, docs/troubleshooting.md, docs/testing.md, CHANGELOG.md
+- Scope: Bare /autowork status reads the runner fleet; status NAME or a quoted absolute repository path reads that runner; plugin status retains the former setup overview. No model invocation, guessed gateway repository, lifecycle command or installation. Use literal argv and this bundle's status reader; status cannot initialize or prune release worktrees. Failed discovery, unknown engine reads and empty/failed/timed-out outer reads remain unavailable, never healthy zero-worker results. Preserve workflow prose routing and all update/list/blocker behavior. Bound and fence chat output without enabling file attachments.
+- Acceptance: Offline dispatcher/native regression cases cover fleet/named/quoted targets, flags/relative paths/malformed quotes, outer failures, strict native discovery failure versus genuine empty fleet, unknown engine reads, inherited older launcher pins, release-worktree preservation, bounded Unicode/fence-safe output and retained plugin diagnostics. Real read-only source-handler smoke returns host fleet and named runner state. Existing native/workflow command regressions and the required full offline gate pass on the exact candidate. Source implementation is separate from installed gateway activation or Telegram delivery; no such live acceptance is inferred.
+- Checks: python3 scripts/check.py tests/test_bundle.py tests/test_bundle_repo_status.py tests/test_autowork_command.py tests/test_workflow_commands.py pi-autowork/tests/test_release.py pi-autowork/tests/test_fleet_view.py; python3 scripts/check.py; git diff --check. Offline fixtures use fake services/providers; a source-handler read uses existing local runner records without changing services/profiles/jobs.
+- Dependencies: None.
+- Ownership: Interactive Autowork implementation owner; preserve other workers' code and the existing execution lease. No competing worker is launched.
+- Qualification: Source implementation is complete. The six-module focused native/bundle/workflow union passed; the complete offline entry point passed on reviewed source snapshot 3667c78722254a0082c69c10d6a09fd445c39035 (five test directories, zero failed, eight excluded modules). The native authentication regression went RED with primary/fallback checks and GREEN with no auth checks. Independent final source review found no remaining issues. A source-handler smoke returned fleet and named runner output with unchanged parent environment. Excluded native/integration modules, installed gateway activation and Telegram delivery are not qualified.
+- Next action: No source reimplementation remains. Installed gateway activation and chat qualification stay separate under the existing authorized installation/live follow-up; preserve all pauses, settings and profile boundaries. No push, install or restart is included in this source closeout.

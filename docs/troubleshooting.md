@@ -8,7 +8,9 @@ hermes autowork doctor --core     # bundled skills and commands only
 hermes autowork doctor --json     # full stack, machine-readable
 ```
 
-In chat, `/autowork status` shows load status and `/autowork list` shows which of this
+In chat, `/autowork status` shows runner fleet status and `/autowork status NAME`
+shows one repository. `/autowork plugin status` shows plugin load/setup status,
+and `/autowork list` shows which of this
 bundle's plugins (or a skill) owns each command; Hermes' `/commands` lists only
 built-in and skill commands, not plugin commands. Diagnostics check registration only: they never prove that a model
 ran, a worker is available or a Telegram message was delivered.
