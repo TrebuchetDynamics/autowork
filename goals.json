@@ -737,7 +737,11 @@
         "TOOLSET-235-0d",
         "TOOLSET-236-4d",
         "TOOLSET-237-35",
-        "TOOLSET-238-11"
+        "TOOLSET-238-11",
+        "TOOLSET-239-d4",
+        "TOOLSET-240-f8",
+        "TOOLSET-241-a1",
+        "TOOLSET-242-d5"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1134,14 +1138,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-212-0d",
-      "section": "Now",
-      "status": "open",
-      "title": "Each worker gets a disk-backed scratch folder that is removed when its task retires"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-214-5b",
       "section": "Now",
       "status": "open",
@@ -1273,6 +1269,30 @@
       "section": "Now",
       "status": "open",
       "title": "Only the candidate the engine will integrate next is started, and only it reads 'verifying'"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-240-f8",
+      "section": "Now",
+      "status": "open",
+      "title": "A repair task for a red main gets the runner's main-check log and its failing tests"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-241-a1",
+      "section": "Now",
+      "status": "open",
+      "title": "A task that fails the same way within minutes stops and asks, instead of rerunning"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-242-d5",
+      "section": "Now",
+      "status": "open",
+      "title": "A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it"
     },
     {
       "depends_on": [],
@@ -2843,6 +2863,14 @@
       "title": "A check that crashes before reporting test results is a broken check: never a red main with placeholder failures, never a pass"
     },
     {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-239-d4",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker's TMPDIR is a short directory on disk, not the shared RAM disk"
+    },
+    {
       "depends_on": [
         "TOOLSET-012"
       ],
@@ -2903,6 +2931,18 @@
       ],
       "supersession_reason": "duplicate: same own-worker writer bug, planned in parallel",
       "title": "A runner's own worker is never an outside session that holds integration"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-212-0d",
+      "section": "Superseded",
+      "status": "superseded",
+      "superseded_by": [
+        "TOOLSET-239-d4"
+      ],
+      "supersession_reason": "TOOLSET-239-d4 puts the worker's $TMPDIR itself on disk, which makes a separate disk folder unnecessary (owner, 2026-10-18)",
+      "title": "Each worker gets a disk-backed scratch folder that is removed when its task retires"
     }
   ],
   "version": 1

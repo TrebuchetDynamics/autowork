@@ -3741,3 +3741,30 @@ Source section: Now
 - Exclusions: No weaker gate: the runner's full check on the merged tree stays required; no reuse of a worker-reported result (a receipt the runner did not produce proves nothing).
 - Priority (2026-10-18 17:34): moved up to fourth in Now. On one runner 13 verified candidates waited for reviews that take 17-65 minutes each, one at a time, with the full suite run twice per review.
 - Planner's call: the runner's gate is the one trusted full run, so it is the one kept; the worker's and the reviewer's repeat runs add time and host load, not assurance. Expected effect: two to four fewer full checks per candidate, about 15 to 30 minutes at today's load.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+Disposition: Superseded; not completed
+Successors: TOOLSET-239-d4
+Reason: TOOLSET-239-d4 puts the worker's $TMPDIR itself on disk, which makes a separate disk folder unnecessary (owner, 2026-10-18)
+Original task and unchecked acceptance retained below.
+
+### TOOLSET-212-0d — Each worker gets a disk-backed scratch folder that is removed when its task retires
+
+- [ ] TOOLSET-212-0d — Each worker gets a disk-backed scratch folder that is removed when its task retires
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [worker launch and temp allocation](skills/autowork/scripts/parallel_dispatch.py) (`worker_tmpdir`, `launch`, `cleanup_tmpdir`, `drop_attempt_tmp`, `sweep_retired_tmp`, `prompt`), [reviewer temp](pi-autowork/pi_autowork/worker.py) (`verify`, `worker_tmp`, `PROVISIONED`).
+- Evidence (2026-10-18, this host): the disk filled to 320 KB free and Hermes stopped saving conversations. A worker's `$TMPDIR` is a short path under `$XDG_RUNTIME_DIR`, a 6.3 GB RAM-backed tmpfs shared by every worker, so workers improvise disk space for builds: one symlinked `$TMPDIR/disk` into its worktree's `build/` folder, another made `/var/tmp/aw165.*` for a full check and left it after its task closed. Nothing the pipeline owns removes such folders. 1f05447 now removes each attempt's `$TMPDIR` at retirement, but large output still has no supported place.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py, CHANGELOG.md
+- Scope: (1) `launch` creates a per-task disk folder at `<git common dir>/autowork-execution/slot-data/<task>/disk` (mode 0700, refused if it is a link or has a foreign owner, like `_private_tmp_dir`) and exports it as `AUTOWORK_DISK_TMP`; the task keeps it across attempts. (2) The worker prompt says `$TMPDIR` is small and in RAM: build output, target directories, scratch copies and anything large go under `$AUTOWORK_DISK_TMP`; never `/tmp`, `/var/tmp` or a new folder outside the worktree, and reusable downloads still go to `$AUTOWORK_CACHE`. (3) The reviewer is told the worker's disk folder read-only, as it is told the worker's `$TMPDIR` today. (4) `cleanup_tmpdir` removes the disk folder when the task closes or is set aside, a held commit keeps it for its review, and `sweep_retired_tmp` removes it for slots already retired.
+- Acceptance: In fixtures, a launched worker's environment has `AUTOWORK_DISK_TMP` at the task's `slot-data/<task>/disk`, private and not under the runtime tmpfs; a second attempt gets the same folder. Closing and setting aside the task remove it; a held slot keeps it; a link or foreign-owned folder at that path is neither followed nor removed. The worker prompt names `$AUTOWORK_DISK_TMP` and forbids `/var/tmp`; the review prompt names the worker's disk folder when it is not empty.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_parallel_dispatch.py pi-autowork/tests/test_worker_tmp.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the per-repository cache (`AUTOWORK_CACHE`) or its retention, to the short `$TMPDIR` (socket paths must fit) or to set-aside worktrees; no sweeping of `/tmp` or `/var/tmp` entries the pipeline did not create.
+- Planner's call: the folder lives under the slot data in the repository's git directory: on the repository's own disk, private to the task, and removed by the same retirement code that removes the rest of its temp files, so no new allocation record is needed. Placed in Now (owner, 2026-10-18: temp folders must be deleted after each task, "critical").
