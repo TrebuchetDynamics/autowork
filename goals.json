@@ -771,7 +771,6 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-258-07",
       "TOOLSET-251-c4",
       "TOOLSET-252-4c",
       "TOOLSET-253-0d",
@@ -1277,14 +1276,6 @@
       "section": "Now",
       "status": "open",
       "title": "The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-258-07",
-      "section": "Now",
-      "status": "open",
-      "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
     },
     {
       "depends_on": [],
@@ -3098,6 +3089,14 @@
       "section": "Done",
       "status": "done",
       "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-258-07",
+      "section": "Done",
+      "status": "done",
+      "title": "Verified candidates integrate as a batch: one merged tree, one full check, their reviews side by side"
     },
     {
       "depends_on": [

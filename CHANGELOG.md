@@ -7,6 +7,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- Verified candidates waiting together integrate as a batch: one full check on their merged tree and
+  their reviews side by side, then each lands on its recorded verdict. One runner had landed six tasks a
+  day, one review at a time, while nine waited.
 - `/autowork` and `/autowork start` in Claude Code, Codex and Pi start the repository's runner
   service (`autowork start .`) and report it, instead of doing the work in the session. The
   work runs by hand in the session only when the service can't run, or when the user asks
@@ -230,6 +233,18 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A TUI left open restarts itself on the new release once an update replaces its code,
+  between actions and with no dialog open: it kept showing the old release's readings for
+  hours after the runners had moved on.
+- A task's resources are the names its `Resources:` line starts with, not every word of
+  the line: one task whose line explained it had been changed from exclusive ran alone and
+  drained its runner's pool for five hours, and common words made unrelated tasks share a
+  resource. A leading `exclusive` or `live` still counts, followed by prose or not.
+- The TUI headline counts live workers, not every task in flight, and names finished
+  commits waiting to merge separately: one runner read "Working — 16 of 1 workers busy".
+- `install.sh` updates an installed Pi package (`pi update`) instead of leaving it to the
+  runners, which kept this host's `autowork` command and skills a release behind until each
+  runner reached a safe point; the runners still move onto it at their own safe point.
 - `install.sh` refreshes the Claude Code and Codex plugins, not only their marketplaces: both
   hosts cache a plugin by its version, which rarely changes, so a reinstall kept old workflows
   (sessions lacked the `blockers` and `pending` skills). It updates the marketplace and drops

@@ -340,9 +340,14 @@ def verdict(runner):
     if runner.state == 'working' and runner.job and not runner.lanes:
         return f"Working — {job_text(runner.job)} ({duration(runner.minutes) or '0m'})", 'bold green'
     if runner.state == 'working':
-        busy = sum(lane.phase not in ('waiting to integrate',) for lane in runner.lanes) or runner.running
+        # Live workers, not every task in flight: 15 finished commits waiting to merge read as
+        # "16 of 1 workers busy".
+        queued = sum(lane.phase in ('implemented', 'waiting to integrate') for lane in runner.lanes)
+        busy = runner.running or sum(lane.phase not in ('implemented', 'waiting to integrate') for lane in runner.lanes)
         of = f' of {runner.max_workers}' if runner.max_workers else ''
         text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
+        if queued:
+            text += f"; {queued} commit{'s' if queued != 1 else ''} waiting to merge"
         if runner.gate:
             text += f'; no more start: {runner.gate}'
         if asks:

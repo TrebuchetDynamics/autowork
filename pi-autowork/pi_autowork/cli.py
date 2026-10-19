@@ -253,7 +253,7 @@ def in_catalog(pi, model):
 
 def main(argv):
     script = os.environ.get('PI_AUTOWORK_SCRIPT') or str(Path(__file__).resolve().parents[2] / 'scripts/pi-autowork.sh')
-    if argv[:1] in (['--worker'], ['--verify']):
+    if argv[:1] in (['--worker'], ['--verify'], ['--verify-batch']):
         return worker.main(argv)
     opts = parse(argv)
     pi = os.environ.get('PI_BIN', 'pi')

@@ -106,6 +106,45 @@ class WorkerTmpTests(unittest.TestCase):
             self.assertEqual(worker.verify(Path(self.temp.name) / 'state', 'T-1'), 0)
         self.assertEqual(list(root.iterdir()), [])  # and the scratch is gone
 
+    def test_a_batch_verdict_is_used_once_for_its_tree_or_one_differing_only_in_planning_files(self):
+        """TOOLSET-258-07: the engine lands a batched candidate on its recorded verdict."""
+        git = lambda *a, cwd=self.repo: subprocess.run(['git', '-C', str(cwd), '-c', 'user.email=t@example.invalid',
+                                                        '-c', 'user.name=T', *a], check=True, capture_output=True,
+                                                       text=True).stdout.strip()
+        (self.repo / 'a.txt').write_text('base\n')
+        git('add', '-A')
+        git('commit', '-qm', 'base')
+        git('checkout', '-qb', 'task')
+        (self.repo / 'a.txt').write_text('task\n')
+        git('commit', '-qam', 'task')
+        commit = git('rev-parse', 'HEAD')
+        git('checkout', '-q', '-')
+        git('merge', '--no-ff', '--no-edit', '-q', commit)
+        state = Path(self.temp.name) / 'state'
+        record = worker.batch_record(state, 'T-1')
+        record.parent.mkdir(parents=True)
+        write = lambda tree: record.write_text(json.dumps({'tree': tree, 'commit': commit, 'ok': True, 'reason': '', 'at': 0}))
+        merged_tree = git('rev-parse', 'HEAD^{tree}')
+        write(merged_tree)
+        self.assertEqual(worker.batched_verdict(state, 'T-1', str(self.repo)), (True, ''))
+        self.assertIsNone(worker.batched_verdict(state, 'T-1', str(self.repo)))  # used once
+        (self.repo / 'TODO.md').write_text('planning\n')  # the session took a planning commit since
+        git('add', 'TODO.md')
+        git('commit', '-qm', 'questions')
+        write(merged_tree)
+        self.assertEqual(worker.batched_verdict(state, 'T-1', str(self.repo)), None)  # HEAD is not the merge any more
+        git('reset', '-q', '--hard', 'HEAD~1')
+        (self.repo / 'TODO.md').write_text('planning\n')
+        git('add', 'TODO.md')
+        git('commit', '-q', '--amend', '--no-edit')  # same merge, plus a planning file
+        write(merged_tree)
+        self.assertEqual(worker.batched_verdict(state, 'T-1', str(self.repo)), (True, ''))
+        (self.repo / 'b.py').write_text('code\n')
+        git('add', 'b.py')
+        git('commit', '-q', '--amend', '--no-edit')  # same merge, plus code: not the tree that was checked
+        write(merged_tree)
+        self.assertIsNone(worker.batched_verdict(state, 'T-1', str(self.repo)))
+
     def test_the_worker_tmpdir_of_the_slot_attempt_is_found(self):
         self.slot()
         tmp = self.execution / 'slot-data' / 'T-1' / 'attempt-2' / 'tmp'

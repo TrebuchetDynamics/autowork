@@ -156,7 +156,21 @@ def _hint(task):
 
 
 def _resources(task):
-    return set(re.split(r'[,\s]+', task.get('fields', {}).get('Resources', '').strip())) - {''}
+    """The resource names a Resources line starts with, before its explanation.
+
+    Every word used to count: `install-transaction — ... changed from exclusive ...` made a task
+    run alone for 5 hours, and words such as `the` made unrelated tasks share a resource.
+    A line of prose only (`Documentation review only; ...`) names none."""
+    text = task.get('fields', {}).get('Resources', '').strip()
+    head = re.split(r'\s+[—–-]\s+|[;:(]|\.(?:\s|$)', text, maxsplit=1)[0]
+    found = set()
+    for name in (name.strip(' `*') for name in head.split(',')):
+        first = name.split(' ', 1)[0]
+        if re.fullmatch(r'[A-Za-z0-9][\w./-]*', name):
+            found.add(name)
+        elif first in ('exclusive', 'live'):  # `exclusive managed installation ...`: still a gate
+            found.add(first)
+    return found
 
 
 def authorization_wait(task):

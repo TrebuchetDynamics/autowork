@@ -147,6 +147,26 @@ async def main():
             await pilot.press('enter')
             await pilot.pause()
             assert isinstance(viewer.screen, LogScreen)  # but the log can be read
+        # A TUI left open restarts itself on new code, but never over an open dialog.
+        reloader = FleetApp(command='aw', script='pa.sh', state_root=base / 'state', env_dir=env,
+                            systemctl=str(systemctl), journalctl=str(journal), agent=['claude'], runner_cmd=run,
+                            view_only=True)
+        async with reloader.run_test(size=(140, 40)) as pilot:
+            await pilot.pause()
+            reloader.reload_if_updated()
+            await pilot.pause()
+            assert reloader.return_value is None    # unchanged code: it stays
+            await pilot.press('enter')
+            await pilot.pause()
+            reloader.code = -1                      # an update replaced the files
+            reloader.reload_if_updated()
+            await pilot.pause()
+            assert reloader.return_value is None    # the log screen is open: not now
+            await pilot.press('escape')
+            await pilot.pause()
+            reloader.reload_if_updated()
+            await pilot.pause()
+        assert reloader.return_value == 'reload'
     print('PILOT OK')
 
 
