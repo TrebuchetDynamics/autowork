@@ -226,6 +226,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A task closed on main while a review holds the integration lock reads `closing` until its
+  work is set aside, logged once, instead of flipping between `done` and `implemented` about
+  four times a minute (TOOLSET-250-49).
 - A conflict-held commit is adopted again after the merge resolver merges it, once the
   session has moved past the last adoption, up to three times per attempt; with the session
   unmoved no resolver job runs. The resolver ran about every ten minutes for tasks the

@@ -1256,14 +1256,14 @@ def retire_closed(args):
     with execution.lock(common / 'dispatch.lock'):
         slots = [s for s in state.slots(common) if s['state'] in RETIRABLE]
         if not slots:
-            return []
+            return [], []
         closed = dispatch.retired(repo, base)
         doomed = [s for s in slots if s['task_id'] in closed]
         for slot in doomed:
             if state.worker_live(slot):
                 dispatch.stop(slot.get('worker'), slot.get('worktree'))
         if not doomed:
-            return []
+            return [], []
         try:
             with execution.lock(common / 'integration.lock'), execution.lock(common / 'writer.lock'):
                 state.require_owner(common, args.owner_pid)
@@ -1275,9 +1275,19 @@ def retire_closed(args):
                     _retire(repo, common, dict(slot, cause='closed_on_base'), False)
                     state.event(common, 'closed_on_base', task_id=slot['task_id'], base=base or '')
                     done.append(slot['task_id'])
-                return done
+                return done, []
         except BlockingIOError:
-            return [s['task_id'] for s in doomed]  # stopped; set aside on a later cycle
+            # Stopped; set aside on a later cycle. Marked `closing` meanwhile, so status never reads
+            # it as implemented again: 270 `done`/`implemented` lines in 11 minutes for seven tasks.
+            try:
+                with execution.lock(common / 'writer.lock'):
+                    for slot in doomed:
+                        slot = slot_for(common, slot['task_id'])
+                        if slot is not None and slot['state'] in RETIRABLE and not slot.get('closing'):
+                            state.write_slot(common, dict(slot, closing=True), slot)
+            except BlockingIOError:
+                pass  # marked on a later cycle
+            return [], [s['task_id'] for s in doomed]
 
 
 def dispatch_with_retries(args):
@@ -1294,7 +1304,7 @@ def dispatch_with_retries(args):
                               max_workers=dispatch.capacity(args))
         if claimed['outcome'] != 'CLAIMED':
             return dispatch.dispatch(args)  # reports the BUSY owner as before
-    closed = retire_closed(args)
+    closed, closing = retire_closed(args)
     try:
         result = retry_held(args)
     except BlockingIOError:
@@ -1303,4 +1313,6 @@ def dispatch_with_retries(args):
         result = {'outcome': 'IDLE'}
     if result['outcome'] == 'IDLE':
         result = dispatch.dispatch(args)
-    return dict(result, closed_on_base=closed) if closed else result
+    news = dict(closed_on_base=closed) if closed else {}
+    news.update(closing=closing) if closing else None
+    return dict(result, **news)

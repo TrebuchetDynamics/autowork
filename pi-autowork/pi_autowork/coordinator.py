@@ -1996,6 +1996,8 @@ class Coordinator:
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
             for task in result.get('closed_on_base') or []:
                 self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
+            for task in result.get('closing') or []:
+                self.note_state(task, 'closing', f'closed on {self.base}; set aside once the running review ends')
             if outcome != 'ACTION_REQUIRED':
                 self.ledger_errors = []  # an owner repair must also retire its question
         else:

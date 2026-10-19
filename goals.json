@@ -1258,14 +1258,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-250-49",
-      "section": "Now",
-      "status": "open",
-      "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-251-c4",
       "section": "Now",
       "status": "open",
@@ -3099,6 +3091,14 @@
       "section": "Done",
       "status": "done",
       "title": "A maintainer repair that leaves a task unrunnable for the same reason is not repeated; the owner gets one question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-250-49",
+      "section": "Done",
+      "status": "done",
+      "title": "A task closed on main whose set-aside must wait for a review is reported once, as closing, not each cycle"
     },
     {
       "depends_on": [
