@@ -1066,14 +1066,6 @@
       "title": "A status read waits for the writer lock, and a failed read never means nothing is running"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-214-5b",
-      "section": "Now",
-      "status": "open",
-      "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
-    },
-    {
       "depends_on": [
         "TOOLSET-219-2c"
       ],
@@ -2872,6 +2864,14 @@
       "section": "Done",
       "status": "done",
       "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-214-5b",
+      "section": "Done",
+      "status": "done",
+      "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
     },
     {
       "depends_on": [],

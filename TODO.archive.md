@@ -4613,3 +4613,27 @@ Original task and unchecked acceptance retained below.
 - Dependencies: None.
 - Ownership: Toolset coordinator under the owner's request (2026-10-17).
 - Exclusions: No edits to the runner log output or the TUI log view (ht2, 2026-10-17), nor to `update_toolset`/`release.py`; no force push; never delete uncommitted or unpushed work.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-214-5b"></a>
+
+### TOOLSET-214-5b — A deferred dependency asks nothing, and only owner questions read as Waiting on you
+
+- [x] TOOLSET-214-5b — A deferred dependency asks nothing, and only owner questions read as Waiting on you
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [runner questions](pi-autowork/pi_autowork/questions.py) (`build`, the `outside` branch), [headline](pi-autowork/pi_autowork/fleet_view.py) (`Waiting on you — …`), [wait summary](pi-autowork/pi_autowork/health.py) (`WAIT_KINDS`, `describe`), [blockers protocol](skills/blockers/SKILL.md) (the runner-recognized resolutions and the owner report).
+- Evidence (2026-10-18, a fleet runner): `/blockers` reported 0 owner decisions while the runner's headline said `Waiting on you — 5 questions`. The questions that remained were dependencies on two tasks the owner had already deferred to `Needs decision`; the runner asks about such a dependency every cycle, because nothing an answer records removes the question except dropping the dependency. The same view listed 5 tasks as waiting for another task's files after that task was done. The owner read every hold as theirs.
+- Touches: pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, pi-autowork/pi_autowork/fleet_view.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py
+- Scope: (1) `questions.build` asks nothing for an `outside` root that is a task in TODO.md's `Needs decision` section with a dated `Owner decision:` line: the owner deferred it, and its dependents wait with it. (2) Those dependents show in status and the TUI as waiting on the deferred task (`wait for deferred <ID>`), a wait, not a question. (3) The headline says `Waiting on you` only when the questions block holds a question; with none, a held or waiting queue reads `Waiting — <cause>` (deferred task, overlapping files, dependencies), never "on you". (4) A wait summary never names a task as holding files once that task is done or integrated in the runner's session; find why the stale entry appeared and fix that source.
+- Acceptance: In fixtures, an `outside` root on a `Needs decision` task with a dated `Owner decision:` line yields no question, and the same root without that line yields today's question. With an empty questions block and tasks waiting on a deferred task or on overlapping files, the headline does not contain `on you` and names the cause. A task done in the session is not named in any `wait for … (overlapping files)` group. Existing question, claim (`Held by:`) and live-authorization fixtures keep passing unchanged.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_questions.py pi-autowork/tests/test_fleet_view.py pi-autowork/tests/test_health.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits questions.py.
+- Exclusions: No new question kinds and no model call; held, claim, cycle, contract and live-authorization questions keep their rules. No change to the blockers protocol beyond keeping its runner-recognized forms in step with this rule.
+- Planner's call: the owner's deferral is the answer, recorded where the queue already reads it (`Needs decision` plus a dated `Owner decision:` line), so no separate answer field is needed. Placed in Now (owner, 2026-10-18: "blockers skill is weak and misleading").
