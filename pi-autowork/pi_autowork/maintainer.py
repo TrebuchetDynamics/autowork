@@ -22,6 +22,8 @@ PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed', 'no_
 PLANNING_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md')
 PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
+PLAN_TASK_LIMIT = 8
+PLAN_ROUNDS = 10
 
 
 def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT):
@@ -53,6 +55,8 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
               and int(row.get('attempt') or 0) >= 2 and (findings or {}).get(task)):
             # Its last attempt was reviewed and found wanting: split or restate it by the findings.
             found.append((task, 'review findings', ' '.join(findings[task].split())[:600]))
+        elif state == 'waiting' and reason == 'ready for planning':
+            found.append((task, 'plan', reason))
         elif state == 'waiting' and reason.startswith('not runnable'):
             found.append((task, 'not runnable', reason[:400]))
     return sorted(found)[:limit]
@@ -111,7 +115,124 @@ PROMPT = (
 
 def prompt(found, repo, goals):
     items = '\n'.join(f'- {task} ({kind}): {why}' for task, kind, why in found)
-    return PROMPT.format(repo=repo, items=items, goals=goals)
+    message = PROMPT.format(repo=repo, items=items, goals=goals)
+    if any(kind == 'plan' for _, kind, _ in found):
+        message += (
+            '\nFor the single plan trigger, run /skill:plan-for-me on that entry\'s Scope, not a backlog sweep. '
+            'Read its Goal, Sources and Dependencies, the finished batch\'s reports under the execution '
+            'common directory\'s slot-data/, the current code and the goal\'s remaining proof in goals.json. '
+            f'Save at most {PLAN_TASK_LIMIT} new tasks TOTAL (including the successor planning task), '
+            'all under the entry\'s Goal. Never truncate an oversized proposal: revise the batch or fail planning. '
+            'Put owner-only gaps in Needs decision with their one Question; continue with independent building tasks. '
+            'Close the current planning task as done, preserving its evidence in TODO.md or its archive. '
+            f'Read Plan round: N of M (default 1 of {PLAN_ROUNDS}). If the goal is not met, N < M and '
+            'there is a new building task, finish the batch with exactly one open Kind: plan task, '
+            'Plan round: N+1 of M, depending on EVERY new building task (not Needs decision items). '
+            'If N == M or there is no new building task, save NO successor planning task. In those stopping '
+            'cases, unless executed evidence proves the goal met under the existing ledger rules, write one stop question '
+            'in BLOCKERS.md under ### Q-<current planning task ID> — Planning stopped, naming the Goal '
+            'and what remains, asking whether/how to continue. Preserve other questions. For an indexed '
+            'unmet goal, keep or add a Needs decision task for that remaining proof/continuation question '
+            'so closing the plan never leaves the goal without an open task; count it in the 8-task cap. '
+            'Never mark a goal '
+            'met merely because its queue is empty. Save the batch, closure and stop question together in '
+            'ONE planning commit; do not implement any building task.')
+    return message
+
+
+def plan_round(fields):
+    value = fields.get('Plan round', f'1 of {PLAN_ROUNDS}').strip().rstrip('.')
+    match = re.fullmatch(r'([1-9][0-9]*) of ([1-9][0-9]*)', value)
+    if not match or int(match[1]) > int(match[2]):
+        raise ValueError('Plan round must be N of M with 1 <= N <= M')
+    return int(match[1]), int(match[2])
+
+
+def goal_id(fields):
+    return (fields.get('Goal', '').split() or [''])[0].rstrip('.')
+
+
+def plan_entries(repo, goals, archive):
+    """Include archived and ledger-only IDs so neither hiding nor reusing IDs evades the cap."""
+    result = entries(archive.read_text(), goals) if archive.exists() else {}
+    result.update(entries((Path(repo) / 'TODO.md').read_text(), goals))
+    path = Path(repo) / 'goals.json'
+    if path.exists():
+        data = goals.parse_ledger(path.read_text())
+        problems = goals.shape_errors(data)
+        if problems:
+            raise ValueError('; '.join(problems))
+        for task in data['tasks']:
+            result.setdefault(task['id'], dict(fields={'Goal': task.get('goal', ''),
+                                                       'Section': task.get('section', ''),
+                                                       'Status': task.get('status', '')}))
+    return result
+
+
+def plan_error(found, before, after, repo, dependency_ids):
+    """Refuse an invalid model proposal as a whole, before its planning commit lands."""
+    plans = [task for task, kind, _ in found if kind == 'plan']
+    if not plans:
+        return None
+    if len(plans) != 1:
+        return 'only one planning task may run at a time'
+    task = plans[0]
+    original = before.get(task, {}).get('fields', {})
+    if original.get('Kind', '').strip().lower() != 'plan' or not goal_id(original):
+        return 'planning needs an explicit Kind: plan and Goal'
+    try:
+        round_, maximum = plan_round(original)
+    except ValueError as exc:
+        return str(exc)
+    closed = after.get(task, {}).get('fields', {})
+    if closed.get('Checkbox', '').lower() != 'x' or closed.get('Status', 'done').split()[0] != 'done':
+        return 'the planning task was not closed with its entry preserved'
+    new = {tid: entry['fields'] for tid, entry in after.items() if tid not in before}
+    if any(entry.get('count', 1) != 1 for entry in after.values()):
+        return 'duplicate task entries in the planning proposal'
+    if len(new) > PLAN_TASK_LIMIT:
+        return f'more than {PLAN_TASK_LIMIT} new tasks; the whole proposal is refused'
+    goal = goal_id(original)
+    if any(goal_id(fields) != goal for fields in new.values()):
+        return 'new tasks must stay under the planning task goal'
+    if any(f.get('Section') not in ('Now', 'Next', 'Needs decision') or f.get('Checkbox') != ' '
+           or f.get('Status', 'open') != 'open' for f in new.values()):
+        return 'new tasks must have open TODO entries in Now, Next or Needs decision'
+    successors = {tid: f for tid, f in new.items() if f.get('Kind', '').strip().lower() == 'plan'}
+    building = {tid for tid, f in new.items() if tid not in successors and f.get('Section') in ('Now', 'Next')}
+    decisions = [f for f in new.values() if f.get('Section') == 'Needs decision']
+    if any('?' not in '\n'.join(f.values()) for f in decisions):
+        return 'Needs decision items must name their question'
+    path = Path(repo) / 'goals.json'
+    data = json.loads(path.read_text()) if path.exists() else {}
+    met = any(g.get('id') == goal and g.get('status') == 'met' for g in data.get('goals', []))
+    if not met and round_ < maximum and building:
+        if len(successors) != 1:
+            return 'the unfinished goal needs exactly one successor planning task'
+        successor = next(iter(successors.values()))
+        try:
+            if plan_round(successor) != (round_ + 1, maximum):
+                return 'the successor must carry Plan round: N+1 of M'
+        except ValueError as exc:
+            return str(exc)
+        if (successor.get('Section') not in ('Now', 'Next') or successor.get('Checkbox') != ' '
+                or successor.get('Status', 'open') != 'open'):
+            return 'the successor planning task must be open in Now or Next'
+        # Use the engine's semantics, including its explicit "None" first clause.
+        dependencies = dependency_ids(successor.get('Dependencies', ''), set(before) | set(after))
+        if not building <= dependencies:
+            return 'the successor must depend on every new building task'
+    else:
+        if successors:
+            return 'no successor is allowed when the goal is met, the round limit is reached or no building task was added'
+        if not met:
+            path = Path(repo) / 'BLOCKERS.md'
+            text = path.read_text() if path.exists() else ''
+            questions = re.findall(r'^### Q-' + re.escape(task) + r' — [^\n]*\n(.*?)(?=^### |\Z)',
+                                   text, re.M | re.S)
+            if len(questions) != 1 or goal not in questions[0] or questions[0].count('?') != 1:
+                return 'planning stopped without one BLOCKERS.md question naming the goal and remaining work'
+    return None
 
 
 def record_path(state):
@@ -139,7 +260,7 @@ def entries(todo, goals):
                       Checkbox=mark, Section=section)
         content = [(text.rstrip(), checkbox, heading) for text, checkbox, heading in bodies]
         digest = hashlib.sha256(json.dumps(content).encode()).hexdigest()
-        result[task] = dict(digest=digest, fields=fields)
+        result[task] = dict(digest=digest, fields=fields, count=len(bodies))
     return result
 
 
@@ -197,7 +318,10 @@ def pending(state, found, *, entries=None, reasons=None):
               and run.get('outcome') != RETRYABLE):
             continue  # pre-item-receipt MAIN records
         selected.append(item)
-    return selected[:LIMIT]
+    # Isolate a rolling round from ordinary repairs so its additions and limits are
+    # attributable to that round. The runner lease and synchronous job serialize writes.
+    planning = [item for item in selected if item[1] == 'plan']
+    return planning[:1] if planning else selected[:LIMIT]
 
 
 def stalled(state, found, *, entries, reasons=None):

@@ -356,6 +356,9 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
         if tid in active or tid in claims:
             waiting.append({'id': tid, 'reason': 'already running/live slot or in_progress', 'blocked_by': [tid]})
             continue
+        if task.get('fields', {}).get('Kind', '').strip().lower() == 'plan':
+            waiting.append({'id': tid, 'reason': 'ready for planning', 'blocked_by': []})
+            continue
         busy = first(task, [*active.values(), *dispatch])
         reason, by = (stopped if stopped[0] else busy if busy[0] else first(task, claims.values(), claim=True))
         if not reason:
