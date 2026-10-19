@@ -11,6 +11,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import worker  # noqa: E402
 
 
+def setUpModule():
+    """Reviews in these tests keep their scratch in a temporary folder, never the host's /var/tmp."""
+    global _root
+    _root = tempfile.TemporaryDirectory()
+    os.environ['PI_AUTOWORK_REVIEW_ROOT'] = _root.name
+
+
+def tearDownModule():
+    os.environ.pop('PI_AUTOWORK_REVIEW_ROOT', None)
+    _root.cleanup()
+
+
 class WorkerTmpTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -145,8 +157,10 @@ class ReviewScratchTests(unittest.TestCase):
             git('worktree', 'add', '-q', '--detach', str(other), 'HEAD')
             shutil.rmtree(other)
 
+            used = {}
+
             def job(settings, role, task, checkout, prompt, *rest):
-                tmp = Path(os.environ['TMPDIR'])
+                tmp = used['tmp'] = Path(os.environ['TMPDIR'])
                 git('worktree', 'add', '-q', '--detach', str(tmp / 'copy'), 'HEAD')
                 git('worktree', 'add', '-q', '--detach', str(tmp / 'gone'), 'HEAD')
                 shutil.rmtree(tmp / 'gone')  # a reviewer that deleted its copy itself
@@ -167,8 +181,10 @@ class ReviewScratchTests(unittest.TestCase):
             registered = [Path(line[len('worktree '):]) for line in git('worktree', 'list', '--porcelain').splitlines()
                           if line.startswith('worktree ')]
             self.assertIn(other.resolve(), [p.resolve() for p in registered])
-            self.assertFalse([p for p in registered if p.resolve().name.startswith('aw-r-')
-                              or any(q.name.startswith('aw-r-') for q in p.resolve().parents)])
+            # Only the review's own scratch counts: run inside a review, the test's own folder
+            # lies under that review's `aw-r-` scratch too.
+            scratch = used['tmp'].resolve()
+            self.assertFalse([p for p in registered if p.resolve() == scratch or scratch in p.resolve().parents])
 
 
 class DeadReviewScratchTests(unittest.TestCase):
