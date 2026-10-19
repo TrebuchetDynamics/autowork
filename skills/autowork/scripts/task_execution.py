@@ -751,12 +751,17 @@ def bounded_command(argv, repo, common, task_id, timeout, before=None, *,
                 os.killpg(child.pid, signal.SIGKILL)
                 code = child.wait()
             finally:
-                # A successful shell must not leave background writers past the boundary.
+                # Account for adopted descendants before killing their process group:
+                # SIGKILL can turn them into zombies before identity() observes them,
+                # otherwise a real daemon cleanup is misreported as EXECUTED/CHECK_FAILED.
                 try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                terminated = reap_children(exclude=existing_children)
+                    terminated = reap_children(exclude=existing_children)
+                finally:
+                    # Also stop any process still in the original command group.
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
     finally:
         elapsed = time.monotonic() - started
         if on_finish:

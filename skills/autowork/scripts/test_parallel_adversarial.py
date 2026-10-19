@@ -21,6 +21,7 @@ import parallel_dispatch as dispatch
 import parallel_integrate as integrate
 import parallel_state as state
 import test_parallel_dispatch as base
+from offline_fixtures import idle_host_env
 from gate_skip import skip_if_gated
 
 FAKE, task = base.FAKE, base.task
@@ -209,12 +210,13 @@ class AdversarialWorkerTests(unittest.TestCase):
         self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 2.0}})
         command = [sys.executable, str(CLI), str(self.repo), '--owner-pid', '$$']
         worker = json.dumps([sys.executable, str(FAKE), '{prompt_file}', '{worktree}'])
+        env = idle_host_env(self.root)
 
         def coordinator(*steps):
             # bash is the coordinator: its PID is the owner and it exits afterwards.
             script = '; '.join(' '.join(map(lambda a: a if a == '$$' else "'" + a + "'", command + list(step)))
                                for step in steps) + '; true'
-            out = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=240)
+            out = subprocess.run(['bash', '-c', script], env=env, capture_output=True, text=True, timeout=240)
             return [json.loads(chunk) for chunk in out.stdout.replace('}\n{', '}\x00{').split('\x00') if chunk.strip()]
 
         first = coordinator(['--apply', '--parallel', '--worker-command', worker])
