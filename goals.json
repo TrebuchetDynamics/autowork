@@ -1048,14 +1048,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-172-40",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker paused by a runner restart shows as paused, not failed"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-173-94",
       "section": "Now",
       "status": "open",
@@ -1072,50 +1064,10 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-181-02",
-      "section": "Now",
-      "status": "open",
-      "title": "Planning files merge without conflicts: union archive, keyed goals.json, re-rendered coverage"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-182-ce",
       "section": "Now",
       "status": "open",
       "title": "Back-to-back question updates make one commit"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-184-b3",
-      "section": "Now",
-      "status": "open",
-      "title": "Restore the full offline check after the red main at 36e2b7c"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-189-96",
-      "section": "Now",
-      "status": "open",
-      "title": "A new runner starts cleanly: a lasting PATH and committed planning files"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-195-ee",
-      "section": "Now",
-      "status": "open",
-      "title": "The runner's own jobs never count as outside sessions"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-197-4f",
-      "section": "Now",
-      "status": "open",
-      "title": "An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop"
     },
     {
       "depends_on": [],
@@ -1132,14 +1084,6 @@
       "section": "Now",
       "status": "open",
       "title": "An idle runner keeps its session instead of recreating it every interval"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-211-71",
-      "section": "Now",
-      "status": "open",
-      "title": "A leftover task branch with nothing of its own never stops dispatch"
     },
     {
       "depends_on": [],
@@ -2663,6 +2607,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-172-40",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker paused by a runner restart shows as paused, not failed"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-174-1d",
       "section": "Done",
       "status": "done",
@@ -2703,10 +2655,26 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-181-02",
+      "section": "Done",
+      "status": "done",
+      "title": "Planning files merge without conflicts: union archive, keyed goals.json, re-rendered coverage"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-183-d6",
       "section": "Done",
       "status": "done",
       "title": "A review runs beside the runner's loop, so dispatch, status and questions continue while a commit is verified"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-184-b3",
+      "section": "Done",
+      "status": "done",
+      "title": "Restore the full offline check after the red main at 36e2b7c"
     },
     {
       "depends_on": [],
@@ -2743,6 +2711,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-189-96",
+      "section": "Done",
+      "status": "done",
+      "title": "A new runner starts cleanly: a lasting PATH and committed planning files"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-190-bf",
       "section": "Done",
       "status": "done",
@@ -2775,10 +2751,26 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-195-ee",
+      "section": "Done",
+      "status": "done",
+      "title": "The runner's own jobs never count as outside sessions"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-196-fb",
       "section": "Done",
       "status": "done",
       "title": "A review that runs out of time is retried with a longer limit, without spending the task's attempt"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-197-4f",
+      "section": "Done",
+      "status": "done",
+      "title": "An invalid goals.json is a DOCS-MAINTAINER trigger, not an endless engine-attention loop"
     },
     {
       "depends_on": [],
@@ -2859,6 +2851,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-211-71",
+      "section": "Done",
+      "status": "done",
+      "title": "A leftover task branch with nothing of its own never stops dispatch"
     },
     {
       "depends_on": [],
