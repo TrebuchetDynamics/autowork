@@ -85,6 +85,25 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(questions.update(text, found, now=NOW), text)
         self.assertNotIn('### Q-LEDGER', questions.update(text, questions.build({}, TODO, goals), now=NOW))
 
+    def test_an_unchanged_maintainer_repair_becomes_one_question_with_its_changed_fields(self):
+        status = snapshot()  # T-1 already has a held/root question: enrich it, do not duplicate it.
+        repairs = [dict(task='T-1', reason='not runnable: ledger dependency or disposition holds execution',
+                        fields=['Checks', 'Dependencies'])]
+        found = questions.build(status, TODO, goals, repairs=repairs)
+        question = next(q for q in found if q['id'] == 'T-1')
+        self.assertEqual(question['task'], 'T-1 — Port the tuner')
+        self.assertIn(repairs[0]['reason'], question['needs'])
+        self.assertIn('Checks, Dependencies', question['needs'])
+        self.assertIn('DOCS-MAINTAINER', question['needs'])
+        first = questions.update(OWNER, found, now=NOW)
+        self.assertEqual(first.count('### Q-T-1 '), 1)
+        later = datetime(2026, 10, 17, tzinfo=timezone.utc)
+        self.assertEqual(questions.update(first, found, now=later), first)
+        # Waiting tasks need the same question even when they are not a root blocker.
+        waiting = {'tasks': [{'task': 'T-1', 'state': 'waiting', 'reason': repairs[0]['reason']}]}
+        self.assertEqual([q['id'] for q in questions.build(waiting, TODO, goals, repairs=repairs)], ['T-1'])
+        self.assertNotIn('### Q-T-1 ', questions.update(first, questions.build(waiting, TODO, goals), now=later))
+
     def test_a_claim_answered_with_its_holder_is_not_asked_again(self):
         """TOOLSET-198-8f: the owner noted who holds a claimed task, as the question asks, and the
         runner kept asking: /blockers said 0 questions, the TUI said 2."""
