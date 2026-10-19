@@ -117,6 +117,9 @@ class DispatchTests(unittest.TestCase):
         self.assertNotIn('Run the full offline gate once', gated)
         self.assertIn('Do not run the full check (`python3 scripts/check.py`)', gated)
         self.assertIn('Leave the full check out of the report', gated)
+        for text in ('unrelated_failures', 'environment_failures', 'rerun each alone once',
+                     'git worktree add --detach', 'commit anyway', 'never blockers'):
+            self.assertIn(text, gated)
 
     def test_independent_tasks_run_together_in_separate_worktrees(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 1.0},
@@ -448,6 +451,48 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual([d['task'] for d in refill['dispatched']], ['S'])
         self.wait_until_idle()
         self.assertEqual([e['task'] for e in self.events() if e['event'] == 'start'], ['A', 'S'])
+        # Losing a report never authorizes resuming an already-held genuine request.
+        (dispatch.data_dir(self.common, slot) / 'report.json').unlink()
+        state.reconcile(self.repo, self.owner)
+        self.assertEqual(state.slots(self.common)[0]['state'], 'held')
+
+    def test_dirty_external_input_blockers_are_not_misread_as_host_only(self):
+        self.write_todo(*(task(t, t.lower() + '.txt') for t in 'ABCD'))
+        self.set_spec({t: {'files': {t.lower() + '.txt': 'partial'}, 'commit': False, 'blockers': [text]}
+                       for t, text in [('A', 'Provide the SDK path to rerun the unrelated test'),
+                                       ('B', 'Host load is high; provide an API key to finish the implementation'),
+                                       ('C', 'Host load is high; need SSH access to the validation host'),
+                                       ('D', 'Provide a quiet validation window and the database URL '
+                                             'to run the flaky test')]})
+        self.run_cli('--apply', '--parallel', '4')
+        self.wait_until_idle()
+        self.assertEqual([(s['state'], s['cause']) for s in state.slots(self.common)],
+                         [('held', 'blocker'), ('held', 'blocker'), ('held', 'blocker'), ('held', 'blocker')])
+
+    def test_a_dirty_host_check_blocker_resumes_once_then_waits_as_timeout(self):
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'finished'}, 'commit': False,
+                             'blockers': ['Provide a lower-load offline validation host or a quiet validation '
+                                          'window to rerun the required full gate without the unrelated '
+                                          'budget-controller timing failure and resource-gated skips']}})
+        self.apply()
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot.get('paused')), ('interrupted', 1, True))
+        self.apply()
+        prompt = (dispatch.data_dir(self.common, slot) / 'prompt.md').read_text()
+        self.assertIn('commit the finished work', prompt)
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['cause'], slot['attempt']), ('held', 'timeout', 1))
+        self.assertEqual((Path(slot['worktree']) / 'a.txt').read_text(), 'finished')
+        self.set_spec({'A': {'files': {'a.txt': 'finished'}}})
+        _, result = self.run_cli('--parallel-reverify', 'A', '--reviewer-version', 'quiet-host', worker=False)
+        self.assertEqual(result['outcome'], 'REVERIFY', result)
+        self.apply()
+        self.wait_until_idle()
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['attempt'], slot['branch']), ('reported', 1, 'autowork/A'))
 
     def test_an_idle_claim_is_adopted_only_when_asked_and_names_its_prior_work(self):
         """sierra: 28 of 36 tasks were in_progress claims of sessions idle for a day."""

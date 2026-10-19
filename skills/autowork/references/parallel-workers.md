@@ -40,7 +40,11 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
    must decide; a worker that reports any is held with `cause: blocker`, with or
    without a commit, and gets neither a resume nor a fresh attempt. `pending_live`
    lists device, production, hardware or human checks the worker could not run;
-   they never hold the task.
+   they never hold the task. `unrelated_failures` lists test IDs that passed a single isolated
+   rerun or also failed on the baseline; `environment_failures` lists command/summary strings
+   for checks that could not reach results (tool crashes before tests, command time limits,
+   missing third-party packages). Both are normalized like `pending_live`, never hold a
+   finished commit, and never bypass the runner's merged-tree validation gate.
 4. **Integrate.** `--integrate TASK --timeout S --run ARGV...`, where TASK is the
    highest-priority `reported` task (otherwise `ACTION_REQUIRED`). It merges the
    worker commit with `--no-ff` in the detached integration worktree
@@ -212,7 +216,11 @@ nothing parallel was claimed or started.
   the worker was dispatched with (from its prompt), not by Touches recorded later. A second failure stays held:
   send it to Plan For Me to fix or skip. Until then it blocks only its dependents:
   it reruns fresh from the code of that time, never merges as is, so overlapping
-  work proceeds. A worker-reported blocker holds the same way at once. Closing a
+  work proceeds. A worker-reported blocker holds the same way at once, except a host/check-only
+  blocker with uncommitted work: it resumes the same attempt once with an instruction to
+  commit finished work using the advisory failure fields. A repeated such report becomes
+  `timeout`, not an owner question; the coordinator resumes it when the resource gate allows.
+  Missing dependencies and other genuine inputs still wait for a person. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
   `outside`, the coordinator-owned or undeclared protected files), `report`, `conflict`,

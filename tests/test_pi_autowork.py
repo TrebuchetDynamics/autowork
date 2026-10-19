@@ -34,7 +34,8 @@ def setUpModule():
     paths = ['pi-autowork/pi_autowork/release.py', 'pi-autowork/pi_autowork/coordinator.py',
              'pi-autowork/pi_autowork/cli.py', 'pi-autowork/pi_autowork/main_check.py',
              'pi-autowork/pi_autowork/maintainer.py', 'pi-autowork/pi_autowork/worker.py',
-             'scripts/pi-autowork.sh']
+             'scripts/pi-autowork.sh', 'skills/autowork/scripts/parallel_dispatch.py',
+             'skills/autowork/scripts/parallel_integrate.py', 'skills/autowork/scripts/parallel_state.py']
     patch = subprocess.run(['git', '-C', str(source), 'diff', '--binary', 'HEAD', '--', *paths],
                            check=True, capture_output=True).stdout
     if patch:
@@ -277,6 +278,13 @@ elif behavior == 'needs_file':  # needs a file outside its Touches: stops and as
         json.dump({'task': task, 'commit': None, 'changed_files': [], 'checks': [],
                    'blockers': [task + '-extra.txt is outside Touches'], 'needs_touches': [task + '-extra.txt'],
                    'changelog': ''}, out)
+    finish(text='blocked')
+elif behavior in ('load_blocked', 'dependency_blocked'):
+    open(task + '.txt', 'w').write('done ' + task + '\n')
+    report(None, ['Provide a lower-load offline validation host or a quiet validation window to rerun '
+                  'the required full gate without the unrelated budget-controller timing failure '
+                  'and resource-gated skips'] if behavior == 'load_blocked' else
+                 ['Provide the missing dependency vendor/sdk.txt; rerun the flaky test afterwards'])
     finish(text='blocked')
 elif behavior == 'needs_vendor':  # builds only with the ignored vendor/ tree of the main checkout
     if os.path.exists('vendor/sdk.txt'):
@@ -1178,6 +1186,48 @@ class EngineTests(Fixture):
         self.assertIn('A: set aside on request', second.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertIn('autowork/A-set-aside-1', self.git(self.repo, 'branch', '--list', 'autowork/*'))
+
+    def test_host_check_blocker_commits_in_the_same_attempt_without_an_owner_question(self):
+        self.plan({'worker:A': ['load_blocked', 'complete'], 'worker:B': ['dependency_blocked']})
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A'), result.stdout + result.stderr)
+        self.assertEqual([r['task'] for r in self.runs('worker')], ['A', 'A'])
+        result = self.run_runner('--until-empty', '--workers', '1')
+        self.assertIn('B: failed — worker reported a blocker: Provide the missing dependency',
+                      result.stdout, result.stdout + result.stderr)
+        self.assertTrue(self.done('A', 'C'), result.stdout + result.stderr)
+        workers = [r for r in self.runs('worker') if r['task'] == 'A']
+        self.assertEqual(len(workers), 2)
+        self.assertEqual(workers[0]['cwd'], workers[1]['cwd'])
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        slot = json.loads((common / 'autowork-execution/slots/A.json').read_text())
+        self.assertEqual(slot['attempt'], 1)
+        prompt = (common / 'autowork-execution/slot-data/A/attempt-1/prompt.md').read_text()
+        self.assertIn('commit the finished work', prompt)
+        questions = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertNotIn('### Q-A', questions)
+        self.assertIn('### Q-B', questions)
+        self.assertIn('missing dependency', questions)
+
+    def test_a_repeated_host_check_hold_can_resume_after_a_runner_restart(self):
+        self.plan({'worker:A': ['load_blocked', 'load_blocked', 'sleep', 'load_blocked', 'complete']})
+        runner = self.start_runner('--once')
+        try:
+            self.wait_for(self.root / 'sleeping-A', timeout=60)
+        finally:
+            runner.send_signal(signal.SIGINT)
+            out, err = runner.communicate(timeout=60)
+        self.assertEqual(runner.returncode, 130, out + err)
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.done('A'))
+        common = Path(self.git(self.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+        slot = json.loads((common / 'autowork-execution/slots/A.json').read_text())
+        self.assertEqual(slot['attempt'], 1)
+        self.assertTrue(slot['reverified'].endswith('.t7200'), slot['reverified'])
+        self.assertNotIn('worker reported a blocker', (self.repo / 'BLOCKERS.md').read_text()
+                         if (self.repo / 'BLOCKERS.md').exists() else '')
 
     def test_holds_found_at_start_do_not_count_toward_the_failure_streak(self):
         """flutter: three self-restarts re-counted the same old holds and the service quit."""

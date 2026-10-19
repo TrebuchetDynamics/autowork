@@ -187,7 +187,36 @@ def full_check_rule():
             '  the runner\'s gate records it.']
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None):
+def check_only_blockers(blockers):
+    """Conservatively recognize host/check-only requests, never a missing input or decision."""
+    incidental = (r'lower[- ]load|host load|load average|quiet (?:validation )?window|'
+                  r'resource[- ]gat\w* skips?|flaky (?:tests?|checks?)|'
+                  r'unrelated [\w -]*(?:test|check|failure)|(?:test|check)[\w -]*unrelated')
+    needs_input = (r'\b(?:missing|dependency|dependencies|credentials?|secrets?|permission|'
+                   r'decid\w*|decision|approv\w*|SDK|API key|tokens?|password|choose|'
+                   r'SSH|access|devices?|hardware|production|private key)\b')
+    requests = r'\b(?:provide|needs?|requires?|await(?:ing)?|supply|install|configure|grant)\s+'
+    host_target = (r'(?:a |an |the )?(?:(?:lower[- ]load|quieter?) (?:(?:offline|validation) )*host|'
+                   r'quiet (?:validation )?window|(?:lower|reduced) (?:host )?load)')
+    for blocker in blockers or []:
+        if not re.search(incidental, blocker, re.I) or re.search(needs_input, blocker, re.I):
+            return False
+        for request in re.finditer(requests, blocker, re.I):
+            # Check the entire requested target, not just its first words: a quiet
+            # window AND a database URL is still a genuine external-input request.
+            target = re.split(r'\s+(?:to|for|so|before|after|without)\b|[.;\n]',
+                              blocker[request.end():], maxsplit=1, flags=re.I)[0]
+            targets = re.split(r'\s+(?:and|or)\s+|,\s*', target, flags=re.I)
+            if not all(re.fullmatch(host_target, t.strip(), re.I) for t in targets):
+                return False
+    return bool(blockers)
+
+
+def check_failure_resumed(slot):
+    return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
+
+
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -220,6 +249,15 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  One command that runs',
         '  longer than $PI_AUTOWORK_COMMAND_TIMEOUT seconds (default 1800) is stopped: wrap browser,',
         '  device and other long suites in `timeout` and select narrower tests rather than waiting.',
+        '- For a full-gate failure, or a failure of the task\'s own Checks commands, only in tests',
+        '  the change does not touch, rerun each alone once. If it passes alone, or the same test',
+        '  fails on the baseline (use `git worktree add --detach "$TMPDIR/baseline" ' + str(baseline) + '`,',
+        '  never stash), commit anyway. List the test IDs in "unrelated_failures", not failed checks.',
+        '  Host load, resource-gate skips and flaky/unrelated tests are never blockers.',
+        '- A check that cannot run to results (tool crash before any test ran, command time limit,',
+        '  or missing third-party package) goes in "environment_failures" as command and summary',
+        '  strings, never failed checks or blockers. Commit the finished work; the runner\'s gate',
+        '  and provisioning judge it. Failures caused by this change still fail the check and task.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
         '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
         '  holds the task). Put every temporary file and copy under $TMPDIR, never directly under',
@@ -234,7 +272,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
-        '  "blockers": [...], "pending_live": [...], "changelog": "..."}.',
+        '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
+        '  "environment_failures": [...], "changelog": "..."}.',
         '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
         '  what a person must decide or provide (for example a missing dependency or a decision).',
         '  If blocked, report commit null with blockers and stop.',
@@ -265,6 +304,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
     if resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
+    if commit_finished:
+        lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
+                  'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
+                  'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
 
 
@@ -811,7 +854,8 @@ def dispatch_locked(args, repo, common, count, template, host):
         prompt_file = data / 'prompt.md'
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
-                                      adopted=idle.get(task['id'])))
+                                      adopted=idle.get(task['id']),
+                                      commit_finished=bool(previous and check_failure_resumed(previous))))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])
