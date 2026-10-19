@@ -233,6 +233,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The runner's test fixtures keep their workers' and reviews' scratch in a short directory each
+  fixture owns and removes: every test left `/var/tmp/aw-*` directories that nothing could
+  reclaim once its repository was gone, about 1.2 GB an hour on a busy host.
 - A set-aside request made while a review holds the integration lock waits for a later cycle
   instead of being dropped: every request made during a review was lost.
 - A held slot whose task was closed on main is set aside like any other, instead of keeping

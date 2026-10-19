@@ -436,6 +436,12 @@ class Fixture(unittest.TestCase):
                     'PI_AUTOWORK_STATE_DIR': str(self.state), 'PI_AUTOWORK_HERMES_HOME': str(self.root / 'hermes'),
                     'PI_AUTOWORK_BACKOFF': '0', 'PI_AUTOWORK_MIN_FREE_MB': '0', 'PI_AUTOWORK_MIN_FREE_DISK_GB': '0',
                     'XDG_STATE_HOME': str(self.root / 'xdg')}
+        # Worker and review scratch in a short root this fixture owns and removes: each test left its
+        # workers' /var/tmp/aw-* directories behind, and nothing could reclaim them once its repository
+        # was gone (about 1.2 GB an hour on the fleet host).
+        scratch = tempfile.mkdtemp(prefix='awt-', dir='/var/tmp' if os.access('/var/tmp', os.W_OK) else '/tmp')
+        self.addCleanup(shutil.rmtree, scratch, True)
+        self.env.update(PI_AUTOWORK_WORKER_ROOT=scratch, PI_AUTOWORK_REVIEW_ROOT=scratch)
         self.env['PI_AUTOWORK_ASK_FULL_CHECK'] = '0'  # fixture repositories declare no full check
         self.env['PI_AUTOWORK_BATCH'] = '1'  # one review at a time unless a test batches (TOOLSET-258-07)
         self.env.pop('GIT_CONFIG_COUNT', None)
