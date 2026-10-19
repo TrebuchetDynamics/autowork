@@ -763,7 +763,10 @@
         "TOOLSET-261-15",
         "TOOLSET-262-13",
         "TOOLSET-263-94",
-        "TOOLSET-264-39"
+        "TOOLSET-264-39",
+        "TOOLSET-265-16",
+        "TOOLSET-266-7a",
+        "TOOLSET-267-a0"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -776,11 +779,9 @@
       "TOOLSET-234-d4",
       "TOOLSET-230-bf",
       "TOOLSET-200-c1",
-      "TOOLSET-201-5e",
       "TOOLSET-220-71",
       "TOOLSET-214-5b",
       "TOOLSET-240-f8",
-      "TOOLSET-241-a1",
       "TOOLSET-242-d5",
       "TOOLSET-170-f6",
       "TOOLSET-138-62",
@@ -790,6 +791,7 @@
       "TOOLSET-155-e2",
       "TOOLSET-115-bf",
       "TOOLSET-173-94",
+      "TOOLSET-265-16",
       "TOOLSET-164-f1",
       "TOOLSET-147-54",
       "TOOLSET-154-d3",
@@ -808,6 +810,8 @@
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
+      "TOOLSET-266-7a",
+      "TOOLSET-267-a0",
       "TOOLSET-259-ca",
       "TOOLSET-260-ae",
       "TOOLSET-261-15",
@@ -1036,7 +1040,11 @@
       "title": "A claim question says why the claim is kept and quotes the note that holds it"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-265-16",
+        "TOOLSET-266-7a",
+        "TOOLSET-267-a0"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-164-f1",
       "section": "Now",
@@ -1159,6 +1167,14 @@
       "section": "Now",
       "status": "open",
       "title": "A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-265-16",
+      "section": "Now",
+      "status": "open",
+      "title": "Route planning-file writes through the docs maintainer without losing owner edits"
     },
     {
       "depends_on": [],
@@ -1613,6 +1629,26 @@
       "section": "Next",
       "status": "open",
       "title": "Spare capacity triggers the task split before dispatch"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-265-16"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-266-7a",
+      "section": "Next",
+      "status": "open",
+      "title": "Batch remaining docs-maintainer triggers and ask only unresolved owner questions"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-266-7a"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-267-a0",
+      "section": "Next",
+      "status": "open",
+      "title": "Bound docs-maintainer repair loops and report actual changed task bodies"
     },
     {
       "depends_on": [
