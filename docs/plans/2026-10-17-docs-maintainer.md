@@ -66,3 +66,45 @@ docs/tasks heavily, we need that now."
   costs one run, not one per hold.
 - Its run history and results appear in status as `DOCS-MAINTAINER` with the last
   trigger, outcome and the tasks it changed.
+
+## Remaining implementation slices (2026-10-19)
+
+Status: Accepted
+
+The owner chose to finish the remaining scope in smaller verified slices on
+2026-10-19 and reiterated that the timed-out parent needs splitting. The previous
+Work batches prose did not create independently selectable tasks. This split now
+books real child outcomes; original 164-f1 acceptance and partial-delivery history
+remain the aggregate closeout, not a claim that splitting implements the feature.
+
+- TOOLSET-265-16: Route planning-file writes through the docs maintainer without losing owner edits.
+- TOOLSET-266-7a: Batch remaining docs-maintainer triggers and ask only unresolved owner questions.
+- TOOLSET-267-a0: Bound docs-maintainer repair loops and report actual changed task bodies.
+
+The children form one ordered chain; only the first is Now, successors are Next.
+Place the first at the original parent frontier and preserve the relative order
+of unrelated work. The parent depends on every child and performs only aggregate
+verification/closeout after they finish. Children do not depend on the parent.
+The scope excludes duplicate implementation of already delivered trigger/repair
+behavior. 149/150/151 retain format compatibility and conversion ownership; no
+child or this pass converts the ledger.
+
+Planner decisions: deterministic projection uses the same guarded maintainer-owned
+planning path without requiring a new model call; substantive jobs remain batched
+and event-driven. Daily repair accounting uses UTC calendar days and existing
+source-bound receipts; it never resets task execution budgets or treats the
+maintainer's own edits as external permission for another repair. Original owner
+edit, no-acceptance-change, no-profile/service/cron and required check/review
+boundaries remain. These implementation regressions are planned, unrun.
+
+Source inspection found update_questions still writes the generated block directly,
+maintainer.triggers lacks explicit refused-reorder/closeout/stale-question events,
+and maintain still initially detects some changes by ID mention. Existing item
+receipts and post-merge body comparison are reused rather than replaced. The old
+164-f1 worktree and branch are absent; no current slot exists for that task. Do not
+promise recovery of unlocated dirty files: reconcile current delivered source and
+retained history before implementing the missing deltas.
+
+215-91 is unrelated to these children and remains owner-deferred until its native
+safety probe passes on supported Hermes. That decision authorizes no upgrade,
+weaker rule or upstream patch; no dependency on it is introduced.
