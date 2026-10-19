@@ -232,6 +232,18 @@ class PlanTests(unittest.TestCase):
         result = plan([task('X', 'x.py', resources='exclusive')], [done])
         self.assertEqual(result['dispatch'], [])  # a running worker still makes it wait
 
+    def test_resources_are_the_names_a_line_starts_with_not_its_explanation(self):
+        """Every word counted: a line saying it was changed from exclusive ran alone for 5 hours."""
+        from parallel_plan import _resources
+        cases = {'exclusive': {'exclusive'}, 'live, device-lab': {'live', 'device-lab'},
+                 'exclusive — serialize the shared fixture': {'exclusive'},
+                 'install-transaction — changed from exclusive; need not run alone.': {'install-transaction'},
+                 'exclusive managed installation publication; preserve coordinators.': {'exclusive'},
+                 'Documentation review only; the external live checks are separate': set()}
+        for line, expected in cases.items():
+            with self.subTest(line=line):
+                self.assertEqual(_resources({'fields': {'Resources': line}}), expected)
+
     def test_conflicts_serialize_in_priority_order(self):
         from parallel_plan import plan
         cases = [  # overlapping Touches no longer serialize (TOOLSET-161-17); these still do

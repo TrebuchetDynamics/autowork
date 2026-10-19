@@ -233,6 +233,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A task's resources are the names its `Resources:` line starts with, not every word of
+  the line: one task whose line explained it had been changed from exclusive ran alone and
+  drained its runner's pool for five hours, and common words made unrelated tasks share a
+  resource. A leading `exclusive` or `live` still counts, followed by prose or not.
 - The TUI headline counts live workers, not every task in flight, and names finished
   commits waiting to merge separately: one runner read "Working — 16 of 1 workers busy".
 - `install.sh` updates an installed Pi package (`pi update`) instead of leaving it to the
