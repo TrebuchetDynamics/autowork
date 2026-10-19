@@ -77,6 +77,14 @@ class CycleGuidanceTests(unittest.TestCase):
         self.assertIn('consumed budget', native)
         self.assertIn('consumed budget', portable)
 
+    def test_autowork_starts_the_runner_service_and_works_by_hand_only_when_it_cannot(self):
+        """`/autowork start` did the work in the session while the repository's runner sat unused."""
+        portable = (ROOT / 'adapters/skills/autowork/SKILL.md').read_text()
+        start, by_hand = portable.index('Run `autowork start .`'), portable.index('Do the work by hand in this session')
+        self.assertLess(start, by_hand)
+        for phrase in ('If `AUTOWORK_SLOT` is set', 'only when the service\n   can\'t run', 'the runner owns them'):
+            self.assertIn(phrase, portable)
+
     def test_default_guidance_does_not_route_through_native_card_tools(self):
         paths = ('skills/autowork/SKILL.md',
                  'skills/autowork/references/scheduled-policy.md',

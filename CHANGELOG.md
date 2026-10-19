@@ -7,6 +7,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- `/autowork` and `/autowork start` in Claude Code, Codex and Pi start the repository's runner
+  service (`autowork start .`) and report it, instead of doing the work in the session. The
+  work runs by hand in the session only when the service can't run, or when the user asks
+  for that.
 - The review gate reruns the merged tree's failures alone, side by side, before anything else; when
   each passes, the base suite is not run. It ran on nearly every review, as long as the merged suite,
   and the reruns ran one at a time: two suites and 20 minutes of reruns per candidate.
