@@ -120,7 +120,7 @@ class InstalledToolsetTests(unittest.TestCase):
         from pi_autowork import cli
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder).resolve()
-            old, new = base / 'hermes-toolset', base / 'autowork'
+            old, new = base / 'old-toolset', base / 'autowork'
             for copy in (old, new):
                 for name in ('skills/autowork/scripts/owner_cycle.py', 'skills/docs-sync/scripts/goals.py'):
                     (copy / name).parent.mkdir(parents=True, exist_ok=True)
@@ -132,10 +132,10 @@ class InstalledToolsetTests(unittest.TestCase):
                               + ''.join(f'echo "  {src}"\necho "    {path}"\n' for src, path in rows))
                 pi.chmod(0o755)
                 return cli.installed_toolset(str(pi))
-            self.assertEqual(listing(('git:github.com/TrebuchetDynamics/hermes-toolset', old),
+            self.assertEqual(listing(('git:github.com/TrebuchetDynamics/old-toolset', old),
                                      ('git:github.com/TrebuchetDynamics/autowork (filtered)', new)),
                              str(new.resolve()))
-            self.assertEqual(listing(('npm:other', base), ('git:github.com/TrebuchetDynamics/hermes-toolset', old)),
+            self.assertEqual(listing(('npm:other', base), ('git:github.com/TrebuchetDynamics/old-toolset', old)),
                              str(old.resolve()))
             self.assertIsNone(listing(('npm:other', base)))
 
