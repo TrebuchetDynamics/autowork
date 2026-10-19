@@ -2834,7 +2834,7 @@ class SetupTests(Fixture):
         self.env['PI_AUTOWORK_PRIMARY'] = 'openai-codex/gpt-nope'
         self.assertIn('not in Pi', self.run_runner('--once').stderr)
         self.env.pop('PI_AUTOWORK_PRIMARY')
-        self.assertIn('--workers must be 1 to 8', self.run_runner('--workers', '9').stderr)
+        self.assertIn('--workers must be 1 to 16', self.run_runner('--workers', '17').stderr)
         self.git(self.repo, 'switch', '-q', '-c', 'feature')
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 2)

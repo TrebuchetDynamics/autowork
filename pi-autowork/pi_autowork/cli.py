@@ -47,7 +47,7 @@ Options:
                        no attempt left, or merged with a changed TODO entry); its work is
                        kept under renamed branches and the task runs fresh
   --repo PATH          Use the repository at PATH
-  --workers N          Tasks run at once, 1-8 (default 8; PI_AUTOWORK_WORKERS); the engine's
+  --workers N          Tasks run at once, 1-16 (default 8; PI_AUTOWORK_WORKERS); the engine's
                        memory and load gate starts fewer when the machine is busy
   --interval SECONDS   Longest idle wait (default 60); a change to TODO.md, goals.json,
                        BLOCKERS.md or the main branch ends it within seconds
@@ -187,8 +187,8 @@ def parse(argv):
             sys.exit(2)
     opts.update(interval=int(opts['interval']), max_cycles=int(opts['max_cycles']), workers=int(opts['workers']),
                 claim_idle=int(claim_idle))
-    if not 1 <= opts['workers'] <= 8:
-        die(2, '--workers must be 1 to 8')
+    if not 1 <= opts['workers'] <= 16:
+        die(2, '--workers must be 1 to 16')
     if opts['mode'] == 'once':
         opts['workers'] = 1
     return opts
@@ -296,8 +296,8 @@ def main(argv):
             if not re.fullmatch(r'[0-9]+', value):
                 die(2, f'Expected a whole number, got: {value}')
             opts[key] = int(value)
-    if not 1 <= opts['workers'] <= 8:
-        die(2, '--workers must be 1 to 8')
+    if not 1 <= opts['workers'] <= 16:
+        die(2, '--workers must be 1 to 16')
     if opts['mode'] == 'once':
         opts['workers'] = 1
 
