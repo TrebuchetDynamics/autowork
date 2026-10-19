@@ -59,7 +59,7 @@ even in Next; all eligible fallback tasks remain available after them in next --
 import argparse
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import fcntl
 from graphlib import CycleError, TopologicalSorter
 import hashlib
@@ -981,6 +981,26 @@ def task_bodies(text):
                 section = explicit[0]
         bodies.setdefault(match[2], []).append((block, match[1], section))
     return bodies
+
+
+def deferred_tasks(bodies):
+    """Owner-answered deferrals from parsed TODO bodies, not unanswered decisions."""
+    deferred = set()
+    for task, entries in bodies.items():
+        if len(entries) != 1:
+            continue
+        body, mark, section = entries[0]
+        if section != 'Needs decision' or mark.lower() == 'x':
+            continue
+        decision = task_fields(body).get('Owner decision', '')
+        stamp = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', decision)
+        if stamp:
+            try:
+                date.fromisoformat(stamp[1])
+            except ValueError:
+                continue
+            deferred.add(task)
+    return deferred
 
 
 def backlog_receipt(a, *, candidate=None):

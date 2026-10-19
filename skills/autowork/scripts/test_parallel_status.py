@@ -13,6 +13,66 @@ import parallel_status as status
 import task_execution as execution
 
 
+class StatusWaitTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        self.todo = '# TODO\n\n## Now\n\n' + ''.join(
+            f'- [ ] {t} — Task {t}\n  Scope: {t}.py\n  Acceptance: works\n'
+            '  Checks: python3 -V\n  Dependencies: None.\n  Status: open\n' for t in ('A', 'B'))
+        (self.repo / 'TODO.md').write_text(self.todo)
+        self.common = self.repo / '.git/autowork-execution'
+        (self.common / 'slots').mkdir(parents=True)
+
+    def test_completed_owners_invalidate_historical_file_waits_only(self):
+        event = dict(timestamp=1, event='dispatch_observed', waiting=[
+            dict(id='B', reason='overlapping paths with A', blocked_by=['A'])])
+        (self.common / 'journal.jsonl').write_text(json.dumps(event) + '\n')
+        for phase, obsolete in (('running', False), ('reported', False), ('integrating', False),
+                                ('integrated', True), ('closing', True), ('closed', True), ('done', True),
+                                ('running-done', False), ('claimed', False), ('unknown', False),
+                                ('legacy-closed', True)):
+            with self.subTest(phase=phase):
+                slot = self.common / 'slots/A.json'
+                slot.unlink(missing_ok=True)
+                todo = self.todo.replace('- [ ] A', '- [x] A') if phase in ('done', 'running-done') else self.todo
+                if phase == 'claimed':
+                    todo = todo.replace('Status: open', 'Status: in_progress', 1)
+                (self.repo / 'TODO.md').write_text(todo)
+                if phase not in ('done', 'claimed', 'unknown'):
+                    state = 'integrated' if phase == 'closing' else phase.removeprefix('legacy-').split('-')[0]
+                    slot.write_text(json.dumps(dict(task_id='A', state=state, closing=phase == 'closing',
+                                                    attempt=1, started_at=0, worktree='/fixture/A', worker=None)))
+                if phase == 'legacy-closed':
+                    del event['waiting'][0]['blocked_by']
+                    (self.common / 'journal.jsonl').write_text(json.dumps(event) + '\n')
+                value = status.snapshot(self.repo, now=10)
+                row = next(r for r in value['tasks'] if r['task'] == 'B')
+                self.assertEqual((row['reason'], row['blocked_by']),
+                                 ('awaiting dispatch', []) if obsolete else ('overlapping paths with A', ['A']))
+                self.assertEqual('overlapping paths with A' in status.render(value), not obsolete)
+
+    def test_deferred_dependencies_are_named_in_status_without_new_question_kinds(self):
+        todo = self.todo.replace('Dependencies: None.', 'Dependencies: D.', 1)
+        todo = todo.replace('Dependencies: None.', 'Dependencies: A.', 1)
+        todo += ('\n## Needs decision\n\n- [ ] D — Device qualification\n'
+                 '  Owner decision: 2026-10-18: defer until hardware arrives.\n')
+        (self.repo / 'TODO.md').write_text(todo)
+        value = status.snapshot(self.repo, now=10)
+        self.assertEqual([(r['task'], r['reason'], r['blocked_by']) for r in value['tasks']],
+                         [('A', 'wait for deferred D', ['D']), ('B', 'wait for deferred D', ['A'])])
+        self.assertIn('wait for deferred D', status.render(value))
+        self.assertEqual([(r['id'], r['kind'], r.get('deferred')) for r in value['roots']],
+                         [('D', 'outside', True)])
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import health, questions
+        self.assertEqual(questions.build(value, todo, execution.goals_module()), [])
+        self.assertEqual(health.waiting_groups(value['tasks'])[0]['label'], 'wait for deferred D')
+        self.assertIn('deferred by owner', health.describe(value['roots'][0]))
+
+
 class LargeQueueTests(unittest.TestCase):
     def test_large_queue_status_is_unchanged_and_dispatch_releases_its_lock_promptly(self):
         with tempfile.TemporaryDirectory() as folder:

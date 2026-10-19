@@ -7,6 +7,7 @@ per task); wall time is elapsed coordinator-run time, excluding released gaps.
 import json
 import math
 from pathlib import Path
+import re
 import time
 
 import parallel_dispatch as dispatch
@@ -92,9 +93,14 @@ def snapshot(repo, *, now=None):
 
 def pending_tasks(repo, known=()):
     """Visible TODO-only and indexed tasks that do not yet have execution slots."""
+    return _pending_tasks(repo, known)[0]
+
+
+def _pending_tasks(repo, known=()):
+    """Pending rows plus current completion/deferral evidence from the same checkout."""
     todo = repo / 'TODO.md'
     if not todo.exists():
-        return []
+        return [], set(), set()
     goals = execution.goals_module()
     bodies = execution.task_bodies(todo)
     done = {task for task, items in bodies.items() if len(items) == 1 and items[0][1].lower() == 'x'}
@@ -111,6 +117,7 @@ def pending_tasks(repo, known=()):
             inputs = None
     except (ValueError, OSError):
         inputs = None
+    deferred = goals.deferred_tasks(bodies)
     known_ids = set(bodies) | set(indexed)
     selection_done = {key for key, items in bodies.items() if items[0][1].lower() == 'x'} | done
     result = []
@@ -142,12 +149,25 @@ def pending_tasks(repo, known=()):
                 row['reason'] = 'ready for planning'
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)
-    return result
+    return result, done, deferred
 
 
 ROOT_KINDS = {'held': 'held', 'interrupted': 'restarting', 'released': 'restarting', 'dispatched': 'running',
               'running': 'running', 'reported': 'integrating', 'integrating': 'integrating',
               'integrated': 'integrating'}
+
+
+def _ends(tid, by_id, seen):
+    """Terminal blockers, stopping at live slots and claims rather than looking past them."""
+    row = by_id.get(tid)
+    if row is not None and (row['state'] == 'closed' or (row['state'] == 'waiting' and not row.get('blocked_by'))):
+        return set()  # finished, or ready to dispatch (or only waiting for capacity)
+    if row is None or row['state'] != 'waiting' or row.get('blocked_by') == [tid]:
+        return {tid}
+    fresh = [other for other in row.get('blocked_by', []) if other not in seen]
+    if not fresh:
+        return {tid}  # every blocker leads back here: a cycle
+    return set().union(*(_ends(other, by_id, seen | {other}) for other in fresh))
 
 
 def roots(rows):
@@ -161,23 +181,12 @@ def roots(rows):
     """
     by_id = {r['task']: r for r in rows}
 
-    def ends(tid, seen):
-        row = by_id.get(tid)
-        if row is not None and (row['state'] == 'closed' or (row['state'] == 'waiting' and not row.get('blocked_by'))):
-            return set()  # finished, or ready to dispatch (or only waiting for capacity)
-        if row is None or row['state'] != 'waiting' or row.get('blocked_by') == [tid]:
-            return {tid}
-        fresh = [other for other in row.get('blocked_by', []) if other not in seen]
-        if not fresh:
-            return {tid}  # every blocker leads back here: a cycle
-        return set().union(*(ends(other, seen | {other}) for other in fresh))
-
     counts = {}
     for row in rows:
         if row['state'] == 'waiting' and row.get('root_kind') == 'contract':
             counts[row['task']] = counts.get(row['task'], 0) + 1  # stuck work of its own, not someone else's
         if row['state'] == 'waiting' and row.get('blocked_by') and row['blocked_by'] != [row['task']]:
-            for root in ends(row['task'], {row['task']}):
+            for root in _ends(row['task'], by_id, {row['task']}):
                 counts[root] = counts.get(root, 0) + 1
     result = []
     for tid, count in counts.items():
@@ -198,11 +207,14 @@ def _snapshot(repo, common, now):
     observed = next((e for e in reversed(events) if e['event'] == 'dispatch_observed'), {})
     capacity = observed.get('max_workers', capacity)
     pending = {v['id']: v for v in observed.get('waiting', [])}
-    current = {v['id']: v for v in pending_tasks(repo)}
-    rows = []
+    pending_rows, done, deferred = _pending_tasks(repo)
+    current = {v['id']: v for v in pending_rows}
+    rows, settled = [], set()
     active = 0
     for slot in state.slots(common):
         task = slot['task_id']
+        if slot['state'] in ('closed', 'integrated'):
+            settled.add(task)  # includes an integrated slot displayed as closing
         live = slot['state'] in ('running', 'dispatched') and state.worker_live(slot)
         active += live
         changes = [e for e in events if e['event'] == 'slot_changed' and e['task_id'] == task]
@@ -237,6 +249,10 @@ def _snapshot(repo, common, now):
         pending.pop(task, None)
     # Include dependencies and pre-existing sequential claims that have no slot.
     slotted = {r['task'] for r in rows}
+    # A TODO checkmark cannot release a live/unsettled slot's file ownership.
+    # Conversely an integrated owner no longer holds files while its closure finishes.
+    done.difference_update(slotted)
+    done.update(settled)
     for task, item in current.items():
         if task in slotted:
             continue
@@ -251,15 +267,35 @@ def _snapshot(repo, common, now):
         # recording it must remove the question without requiring another dispatch.
         authorization = any(by.startswith('Live authorization: ')
                             for by in pending.get(task, {}).get('blocked_by', []))
-        source = item if dependency or authorization or item.get('root_kind') or task not in pending else pending[task]
+        previous_blockers = pending.get(task, {}).get('blocked_by', [])
+        if not previous_blockers:
+            # Older observations may name an owner only in the reason. Require positive
+            # completion evidence, never merely an absent slot, before discarding a wait.
+            owner = re.match(r'^overlapping paths with (?:(?:in_progress|interrupted) )?(\S+)',
+                             pending.get(task, {}).get('reason', ''))
+            previous_blockers = [owner[1]] if owner else []
+        obsolete = previous_blockers and all(by in done for by in previous_blockers)
+        source = item if dependency or authorization or obsolete or item.get('root_kind') or task not in pending else pending[task]
         rows.append(dict(task=task, state='waiting', slot=None,
                          elapsed_seconds=max(0, now - observations[0]) if observations else 0,
                          reason=source['reason'], worktree=None, checks=None,
                          commit=None, integration=None, attempt=0, worker_live=False,
                          blocked_by=list(source.get('blocked_by', item['blocked_by'])),
                          **({'root_kind': item['root_kind']} if item.get('root_kind') else {})))
+    root_rows = roots(rows)
+    for root in root_rows:
+        if root['kind'] == 'outside' and root['id'] in deferred:
+            root['deferred'] = True  # same root kind, already answered by the owner
+    deferred_roots = {r['id'] for r in root_rows if r.get('deferred')}
+    if deferred_roots:
+        by_id = {r['task']: r for r in rows}
+        for row in rows:
+            if row['state'] == 'waiting' and (row.get('reason') or '').startswith('dependency'):
+                waits = sorted(deferred_roots & _ends(row['task'], by_id, {row['task']}))
+                if waits:
+                    row['reason'] = 'wait for deferred ' + ', '.join(waits)
     return dict(outcome='PARALLEL_STATUS', workspace=str(repo), active_workers=active, max_workers=capacity,
-                tasks=rows, roots=roots(rows), completed=sum(r['state'] == 'closed' for r in rows),
+                tasks=rows, roots=root_rows, completed=sum(r['state'] == 'closed' for r in rows),
                 failed=sum(r['state'] == 'held' or (r['state'] in ('interrupted', 'released')
                                                   and not r.get('paused')) for r in rows),
                 integration_queue=sum(r['state'] in ('reported', 'integrating') for r in rows),

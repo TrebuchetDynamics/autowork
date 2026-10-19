@@ -135,6 +135,18 @@ class QuestionTests(unittest.TestCase):
         plain = next(q for q in questions.build(snapshot(), TODO, goals) if q['id'] == 'T-2')
         self.assertIn('`Held by: <who>; until <YYYY-MM-DD>`', plain['answer'])
 
+    def test_only_a_recorded_owner_deferral_answers_an_outside_task(self):
+        status = {'roots': [{'id': 'D', 'kind': 'outside', 'blocks': 2}]}
+        for section, decision, asked in (
+                ('Needs decision', 'Owner decision: 2026-10-18: defer until hardware arrives.', False),
+                ('Needs decision', '', True),
+                ('Needs decision', 'Owner decision: defer until hardware arrives.', True),
+                ('Needs decision', 'Owner decision: 2026-02-30: defer.', True),
+                ('Next', 'Owner decision: 2026-10-18: defer.', True)):
+            with self.subTest(section=section, decision=decision):
+                todo = f'# TODO\n\n## {section}\n\n- [ ] D — Device check\n  {decision}\n'
+                self.assertEqual([q['id'] for q in questions.build(status, todo, goals)], ['D'] if asked else [])
+
     def test_the_block_sits_under_active_and_nothing_else_changes(self):
         text = questions.update(OWNER, questions.build(snapshot(), TODO, goals), now=NOW)
         start, end = text.index(questions.START), text.index(questions.END) + len(questions.END)

@@ -56,7 +56,8 @@ class HealthTests(unittest.TestCase):
         """TOOLSET-166-b4: the view shows why tasks wait without calling the engine."""
         reasons = ['overlapping paths with TASK-140', 'overlapping paths with in_progress TASK-140',
                    'dependency: TASK-1', 'dependency: TASK-2, TASK-3', 'priority waits for TASK-9',
-                   'resource gate: load average 27.16 >= 24 CPUs', 'all 8 worker slots busy', 'something new']
+                   'resource gate: load average 27.16 >= 24 CPUs', 'all 8 worker slots busy', 'something new',
+                   'wait for deferred TASK-D']
         tasks = [{'task': f'W{i}', 'state': 'waiting', 'reason': r} for i, r in enumerate(reasons)]
         tasks.append({'task': 'R', 'state': 'running'})
         groups = health.waiting_groups(tasks)
@@ -65,8 +66,7 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(sum(g['count'] for g in groups), len(reasons))
         labels = {g['label'] for g in groups}
         self.assertTrue({'wait behind TASK-9, which runs alone', 'waiting for the host (load 27.16 on 24 CPUs)',
-                         'for a free worker slot',
-                         'something new'} <= labels, labels)
+                         'for a free worker slot', 'something new', 'wait for deferred TASK-D'} <= labels, labels)
         health.update(self.state, dict(snapshot(), tasks=tasks, max_workers=8), now=0)
         self.assertEqual(self.status()['waiting_groups'], groups)
         self.assertEqual(self.status()['max_workers'], 8)
@@ -180,6 +180,20 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.status()['since'], 2200)  # a new episode starts its own clock
         self.assertIsNone(health.update(self.state, snapshot(), now=2300))
 
+    def test_a_held_only_queue_is_a_wait_not_an_empty_queue(self):
+        from pi_autowork import fleet_view
+        snap = dict(snapshot(waiting=(), roots=()), tasks=[
+            {'task': 'T-9', 'state': 'held', 'cause': 'overlap'}])
+        health.update(self.state, snap, now=0)
+        record = self.status()
+        self.assertEqual(record['state'], 'blocked')
+        runner = fleet_view.Runner('r', state=record['state'],
+                                   held=[(h['task'], h['cause']) for h in record['held']])
+        headline = fleet_view.verdict(runner)[0]
+        self.assertTrue(headline.startswith('Waiting — T-9:'), headline)
+        self.assertIn("another task's files", headline)
+        self.assertNotIn('on you', headline)
+
     def test_moving_work_or_a_pause_is_not_a_stall(self):
         moving = {'id': 'R', 'kind': 'running', 'blocks': 2}
         health.update(self.state, snapshot(roots=(moving,)), now=0)
@@ -187,7 +201,7 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(self.status()['state'], 'blocked')
         self.assertIsNone(health.update(self.state, snapshot(), now=0, runner={'paused_until': '5000'}))
         self.assertEqual(self.status()['state'], 'paused')
-        self.assertEqual(health.classify(snapshot(waiting=())), 'idle')
+        self.assertEqual(health.classify(dict(snapshot(waiting=()), tasks=[])), 'idle')
         self.assertEqual(health.classify(snapshot(queue=1)), 'working')
 
     def test_a_runner_that_cannot_dispatch_is_a_stall_too(self):

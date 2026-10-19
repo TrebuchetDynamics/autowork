@@ -110,9 +110,10 @@ or a running dependency is scheduling, never a blocker.
 Resolve each runner question in the form the runner recognizes, so it leaves the
 block on the next cycle; a question you only filtered out keeps showing as "Waiting
 on you". A changed entry ends a held-task question, `Held by:` a claim question. A
-task whose dependency the owner deferred is deferred with it: move it to
-`Needs decision` with a dated `Owner decision:` line naming that dependency, rather
-than leaving it in Now/Next, where the runner asks again every cycle.
+task in `Needs decision` with a dated `Owner decision:` line is an answered
+outside dependency: the runner stops asking about it, and its dependents wait with
+it (`wait for deferred <ID>`). Dependents may stay in Now/Next; no dependency needs
+to be dropped and no separate answer field is required.
 
 A questions-only/read-only invocation records proposed repairs in chat rather than
 editing files. With no genuine questions left, report what was reconciled and what

@@ -27,7 +27,7 @@ LOAD_WAIT = r'^resource gate: load average (\S+) >= (\S+) CPUs$'
 
 
 def classify(snapshot, *, paused=False, stuck=0):
-    """Working, paused, idle, host-waiting (load only), or blocked (other work waits).
+    """Working, paused, idle (nothing waits or is held), host-waiting (load only), or blocked.
 
     ``stuck`` integrations only wait for another session to leave the main checkout:
     they are in flight but make no progress (flutter, 2026-10-16)."""
@@ -35,8 +35,9 @@ def classify(snapshot, *, paused=False, stuck=0):
         return 'working'
     if paused:
         return 'paused'
-    waiting = [t for t in snapshot.get('tasks', []) if t.get('state') == 'waiting']
-    if waiting and not stuck and all(re.match(LOAD_WAIT, str(t.get('reason') or '')) for t in waiting):
+    waiting = [t for t in snapshot.get('tasks', []) if t.get('state') in ('waiting', 'held')]
+    if waiting and not stuck and all(t.get('state') == 'waiting'
+                                    and re.match(LOAD_WAIT, str(t.get('reason') or '')) for t in waiting):
         return HOST_WAIT
     return 'blocked' if waiting or stuck else 'idle'
 
@@ -63,6 +64,8 @@ def describe(root):
             'outside': 'outside condition or task not in Now/Next', 'cycle': 'dependency cycle',
             'running': 'running', 'integrating': 'being integrated', 'restarting': 'restarting'}
     kind = what.get(root['kind'], root['kind'])
+    if root['kind'] == 'outside' and root.get('deferred'):
+        kind = 'deferred by owner'
     if root['kind'] == 'held' and root.get('cause') == 'overlap':
         kind = 'held'  # the engine offers it again by itself; no person is needed
     if root['kind'] == 'held' and root.get('cause'):
@@ -73,6 +76,7 @@ def describe(root):
 # Why a task waits, as a person reads it: (pattern, group key, label). The key keeps one
 # group per blocking task; the label names it. First match wins.
 WAIT_KINDS = (
+    (r'^wait for deferred (.+)$', 'deferred:{0}', 'wait for deferred {0}'),
     (r'^wait for (\d+) finished commits to merge', 'merge_backlog', 'wait for {0} finished commits to merge'),
     (r'^overlapping paths with (?:in_progress |interrupted )?(\S+)', 'overlap:{0}', 'wait for {0} (overlapping files)'),
     (r'^serial path shared with (?:in_progress )?(\S+)', 'serial:{0}', 'wait for {0} (serial files)'),
