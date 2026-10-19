@@ -35,7 +35,9 @@ FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_
 # with the same Touches cannot pass, so the files go to the owner as a question.
 # Not retried with a fresh attempt. 'timeout': the host was slow, not the task; the coordinator
 # reviews the same commit again with a longer limit (TOOLSET-196-fb).
-NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout')
+# 'no_change': the worker reported, cleanly, that nothing needed changing; a fresh attempt would only
+# say so again, so the docs maintainer closes or restates the task.
+NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
@@ -414,6 +416,23 @@ def resume_widened(common, old):
     return write_slot(common, value, old)
 
 
+def no_change_summary(common, slot):
+    """What a report with nothing to change said: its notes and checks, briefly."""
+    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+    try:
+        report = execution.read(execution.safe_path(data / 'report.json'))
+    except (ValueError, OSError):
+        report = None
+    if not isinstance(report, dict):
+        return 'see report.json'
+    known = {'task', 'commit', 'changed_files', 'checks', 'blockers', 'pending_live', 'unrelated_failures',
+             'environment_failures', 'changelog'}
+    notes = [str(v) for k, v in report.items() if k not in known and isinstance(v, str) and v.strip()]
+    checks = [f"{c.get('command')}: {c.get('result')}" for c in report.get('checks') or [] if isinstance(c, dict)]
+    text = ' '.join('; '.join(notes + checks).split()) or 'see report.json'
+    return text[:400] + ('…' if len(text) > 400 else '')
+
+
 def blocker_reason(blockers):
     first = ' '.join(blockers[0].split())
     more = f' (+{len(blockers) - 1} more in report.json)' if len(blockers) > 1 else ''
@@ -508,6 +527,11 @@ def reconcile(repo, owner_pid):
                     else:
                         # A genuine missing input still waits for a person; preserve its work.
                         target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
+                elif blockers == [] and not dirty and not slot.get('paused'):
+                    # A report with no commit and no blockers says nothing needed changing: rerun, it
+                    # said so again, three times in an hour for one task.
+                    target, updates = 'held', {'reason': 'its worker found nothing to change: ' + no_change_summary(
+                        common, slot), 'cause': 'no_change'}
                 else:
                     target = 'interrupted' if dirty else 'released'
                     reason = ('dead worker with uncommitted changes' if dirty else EMPTY)

@@ -42,6 +42,7 @@ CAUSES = {'blocker': 'its worker reported a blocker', 'scope': 'changed files ou
           'overlap': "changed another task's files; offered again once they are free", 'report': 'report did not match its commit',
           'conflict': 'merge conflict', 'validation': 'validation failed', 'crash': 'worker died twice',
           'empty': 'its worker stopped without a commit, changes or report',
+          'no_change': 'its worker found nothing to change',
           'launch': 'worker could not start', 'contract_changed': 'its TODO entry changed',
           'moved': 'main kept moving during validation'}
 

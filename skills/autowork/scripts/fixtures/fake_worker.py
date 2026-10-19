@@ -78,5 +78,9 @@ elif spec.get('blockers'):  # stopped on purpose: no commit, says why
     report.write_text(json.dumps({'task': task, 'commit': None, 'changed_files': sorted(spec.get('files', {})),
                                   'checks': [], 'blockers': spec['blockers'],
                                   'needs_touches': spec.get('needs_touches', []), 'changelog': ''}))
+elif spec.get('nothing'):  # finished: nothing needed changing, and it says why
+    report.write_text(json.dumps({'task': task, 'commit': None, 'changed_files': [], 'blockers': [],
+                                  'checks': [{'command': 'full check', 'result': 'pass', 'summary': 'green'}],
+                                  'finding': spec['nothing'], 'changelog': ''}))
 note('end')
 sys.exit(spec.get('exit', 0))

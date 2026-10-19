@@ -226,6 +226,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A worker that reports, with no commit and no blockers, that nothing needed changing is
+  held as `no_change`, and the docs maintainer closes or restates the task. It was read
+  as a dead worker and rerun: one task ran three times in an hour, saying so each time.
 - A review that could not run gets one provisioning job per reviewer version across reloads:
   the record was in memory, so each reload started the same job again, and the next reload
   ended it.
