@@ -288,6 +288,21 @@ def touches_none_of(worker, files, main):
     return not (set(files) & (mine | dirty))
 
 
+def slot_workspace_roots(common, slot):
+    """Read the slot's saved temp allocation without allocating or migrating it."""
+    roots = [Path(slot['worktree'])]
+    try:
+        data = dispatch.data_dir(common, slot)
+        allocation = execution.read(data.parent / 'tmp.json')
+        temporary = (dispatch._tmp_record(common, allocation) if allocation is not None
+                     else execution.safe_path(data / 'tmp'))  # older attempt-local TMPDIR
+        if temporary.is_dir() and temporary.stat().st_uid == os.getuid():
+            roots.append(temporary)
+    except (OSError, ValueError):
+        pass  # Missing or unsafe temp evidence never widens containment.
+    return roots
+
+
 def require_no_writers(repo, files=None):
     """Refuse while another agent may be writing. Integrating outside the main checkout
     (a runner's session worktree) with ``files`` (the paths the merge changes), a session
@@ -299,7 +314,7 @@ def require_no_writers(repo, files=None):
         workers = [w for w in workers if not (w['kind'] == 'session' and touches_none_of(w, files, main))]
     blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
-    pool = state.slots(common)
+    pool = [(slot, slot_workspace_roots(common, slot)) for slot in state.slots(common)]
     unattributed = {}
     for worker in workers:
         if worker['active'] is False:
@@ -307,9 +322,8 @@ def require_no_writers(repo, files=None):
         # Workspace containment is necessary, not proof of pool membership. A
         # child in a new session still belongs to its birth-checked live leader.
         attributed = False
-        for slot in pool:
-            worktree = Path(slot['worktree'])
-            inside = [Path(w).is_relative_to(worktree) for w in worker['workspaces']]
+        for slot, roots in pool:
+            inside = [any(Path(w).is_relative_to(root) for root in roots) for w in worker['workspaces']]
             if not any(inside):
                 continue
             leader = slot.get('worker')
