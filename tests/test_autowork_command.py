@@ -165,6 +165,29 @@ class AutoworkCommandTests(unittest.TestCase):
             (package / 'scripts' / 'pi-autowork.sh').unlink()
             self.assertIsNone(command.package_script())
 
+    def test_clear_held_requests_technical_recovery(self):
+        """One command turns every held task into a request the runner clears, no decision asked."""
+        self.aw('start', str(self.repo))
+        state = self.state / 'deadbeef'
+        state.mkdir()
+        (state / 'runner.json').write_text(json.dumps(
+            {'repo': str(self.repo), 'pid': os.getpid(), 'started': '2026-01-01T00:00:00', 'reloads': 0,
+             'toolset_rev': 'test'}))
+        (state / 'status.json').write_text(json.dumps(
+            {'schema': 1, 'repo': str(self.repo), 'state': 'working',
+             'held': [{'task': 'ALPHA-1', 'cause': 'conflict'}, {'task': 'BETA-2', 'cause': None}]}))
+        dry = self.aw('clear-held', 'india', '--dry-run')
+        self.assertEqual(dry.returncode, 0, dry.stderr)
+        self.assertIn('would clear 2 held task(s): ALPHA-1, BETA-2', dry.stdout)
+        self.assertFalse((state / 'requests').exists())
+        done = self.aw('clear-held', 'india')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue((state / 'requests' / 'clear-held-ALPHA-1').exists())
+        self.assertTrue((state / 'requests' / 'clear-held-BETA-2').exists())
+        one = self.aw('clear-held', 'india', 'ALPHA-1')
+        self.assertIn('ALPHA-1', one.stdout)
+        self.assertNotIn('BETA-2', one.stdout)
+
     def test_start_refuses_a_repository_that_is_not_ready(self):
         bare = self.make_repo('bare', files=('TODO.md',))
         result = self.aw('start', str(bare))

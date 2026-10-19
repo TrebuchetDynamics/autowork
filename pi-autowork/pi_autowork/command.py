@@ -19,6 +19,9 @@
     autowork run [dir]            run the runner here, in the foreground (debugging)
     autowork web [--port N] [--host H] [--view-only]
     autowork blockers [dir]       answer what blocks the queue (/blockers in an agent)
+    autowork clear-held [target] [TASK...]
+                                  return held commits to integration as technical recovery
+                                  (keeps the worktrees); no owner decision is asked
     autowork scorecard [--days N] [--json] [target...]
                                   per runner: tasks closed, held share, start to merge, owner
                                   questions over the last N days (default 7)
@@ -386,6 +389,38 @@ def cmd_blockers(args, paths):
     os.execvp(agent[0], [*agent, fleet_view.blockers_prompt(agent, repo)])
 
 
+def cmd_clear_held(args, paths):
+    """Return held commits to integration as technical recovery; no owner decision is asked."""
+    repo, name = resolve(args.target, paths)
+    runner = next((r for r in runners(paths) if r.name == name), None)
+    if runner is None:
+        raise Fail(f'no runner named {name}')
+    held = [task for task, _ in runner.held]
+    if args.tasks:
+        wanted = {t for t in re.split(r'[,\s]+', ' '.join(args.tasks)) if t}
+        unknown = sorted(wanted - set(held))
+        if unknown:
+            raise Fail('not held: ' + ', '.join(unknown))
+        held = [t for t in held if t in wanted]
+    if not held:
+        print(f'{name}: no held tasks to clear.')
+        return 0
+    if args.dry_run:
+        print(f'{name}: would clear {len(held)} held task(s): ' + ', '.join(held))
+        return 0
+    if not runner.state_dir:
+        raise Fail(f'{name}: no state directory yet; start the runner once: autowork start {repo}')
+    requests = Path(runner.state_dir) / 'requests'
+    requests.mkdir(parents=True, exist_ok=True)
+    for task in held:
+        (requests / f'clear-held-{task}').touch()
+    print(f'{name}: requested technical recovery for {len(held)} held task(s): ' + ', '.join(held))
+    print('Each held commit goes back to integration with its worktrees kept; the runner acts within a cycle.')
+    if runner.service not in ('running', 'start', 'reload'):
+        print(f'Start the runner to apply it: autowork start {repo}')
+    return 0
+
+
 def parser():
     top = argparse.ArgumentParser(prog='autowork', description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -401,6 +436,10 @@ def parser():
                             ('blockers', 'answer what blocks the queue')):
         item = sub.add_parser(name, help=help_text)
         item.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    clear = sub.add_parser('clear-held', help='return held commits to integration (technical recovery, no decision)')
+    clear.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    clear.add_argument('tasks', nargs='*', help='task IDs to clear (default: every held task)')
+    clear.add_argument('--dry-run', action='store_true', help='list what would be cleared')
     again = sub.add_parser('restart', help='reload the runner in place; running workers keep running')
     again.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     again.add_argument('--stop-workers', action='store_true',
@@ -436,7 +475,8 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'stop': cmd_stop, 'restart': cmd_restart, 'remove': cmd_remove,
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
-            'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard}
+            'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
+            'clear-held': cmd_clear_held}
 
 
 def main(argv=None):

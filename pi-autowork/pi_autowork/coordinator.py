@@ -2052,6 +2052,23 @@ class Coordinator:
                 LOG.say(f'{task}: set aside on request; its earlier work is kept as {kept}; the task will run fresh')
             else:
                 LOG.say(f'{task}: could not set aside: {result.get("reason") or result.get("outcome")}')
+        # `--clear-held TASK` requests: return a held commit to integration as technical
+        # recovery. The commit and worktrees are kept; no person has to decide anything.
+        for request in sorted((self.state / 'requests').glob('clear-held-*')):
+            task = request.name.removeprefix('clear-held-')
+            result = self.engine('--parallel-clear-held', task)
+            if 'live parallel coordinator owner' in json.dumps(result):
+                continue  # before this runner's first dispatch it holds no lease: keep it
+            if result.get('outcome') == 'BUSY':
+                continue  # a review holds the integration lock: keep the request for a later cycle
+            request.unlink(missing_ok=True)
+            if result.get('outcome') == 'CLEARED':
+                for name in result.get('tasks') or []:
+                    self.seen[name] = 'pending'
+                self.settled = True
+                LOG.say(f'{task}: cleared its hold for technical recovery; its commit goes back to integration')
+            else:
+                LOG.say(f'{task}: could not clear its hold: {result.get("reason") or result.get("outcome")}')
 
     def health_update(self, snapshot=None):
         snapshot = self.status() if snapshot is None else snapshot

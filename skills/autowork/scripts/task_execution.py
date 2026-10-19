@@ -972,6 +972,10 @@ def parallel_main(args):
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-set-aside does not accept --run or --timeout')
             result = parallel_integrate.set_aside(args.consumer, args.owner_pid, args.parallel_set_aside)
+        elif args.parallel_clear_held:
+            if args.run is not None or args.timeout is not None:
+                raise ValueError('--parallel-clear-held does not accept --run or --timeout')
+            result = parallel_integrate.clear_held(args.consumer, args.owner_pid, args.parallel_clear_held)
         elif args.wait:
             if args.timeout is None or args.timeout <= 0:
                 raise ValueError('--wait requires a positive --timeout')
@@ -1057,14 +1061,17 @@ def main(argv=None):
     parallel.add_argument('--parallel-set-aside', metavar='TASK',
                           help='Retire an exhausted held slot, or an integrated one whose TODO entry changed, keeping its '
                                'worktrees and branches renamed; the task then dispatches fresh.')
+    parallel.add_argument('--parallel-clear-held', metavar='TASK',
+                          help='Return held commit(s) to integration as technical recovery (TASK, a comma-separated list, '
+                               'or all). The commit and its worktrees are kept; integration repeats every check.')
     parallel.add_argument('--parallel-status', action='store_true', help='Read-only parallel progress and journal metrics; no owner required.')
     parallel.add_argument('--json', action='store_true', help='Machine-readable output with --parallel-status.')
     args = parser.parse_args(argv)
     if args.parallel_status:
         try:
             if any((args.apply, args.wait, args.release, args.integrate, args.parallel_close, args.parallel_pause,
-                    args.parallel_set_aside, args.parallel_reverify, args.parallel_merged, args.parallel_answer,
-                    args.run is not None, args.writers, args.parallel is not None)):
+                    args.parallel_set_aside, args.parallel_clear_held, args.parallel_reverify, args.parallel_merged,
+                    args.parallel_answer, args.run is not None, args.writers, args.parallel is not None)):
                 raise ValueError('--parallel-status cannot be combined with execution operations')
             import parallel_status
             result = parallel_status.snapshot(args.consumer)
@@ -1076,7 +1083,8 @@ def main(argv=None):
     if args.json:
         parser.error('--json requires --parallel-status')
     if (args.parallel is not None or args.wait or args.integrate or args.parallel_close or args.parallel_pause
-            or args.parallel_set_aside or args.parallel_reverify or args.parallel_merged or args.parallel_answer):
+            or args.parallel_set_aside or args.parallel_clear_held or args.parallel_reverify or args.parallel_merged
+            or args.parallel_answer):
         return parallel_main(args)
     if args.writers:
         try:
