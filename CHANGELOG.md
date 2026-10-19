@@ -247,6 +247,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A worker's temporary directory holding a Go module cache is removed again. Go makes the
+  cache read-only, so removing the directory failed with "Permission denied" and the engine
+  stopped until a person cleaned it up; other removals left the cache behind for good.
 - A review cut off by a restart no longer holds its task for good when main moved meanwhile.
   Recovery took any movement of main as a landing and then found no passing record; the
   runner lands its own session beside running reviews, so main usually moves. A merge that
