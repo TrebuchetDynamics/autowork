@@ -288,11 +288,14 @@ def failures(log_text, limit=20):
     return list(dict.fromkeys(found))[:limit]
 
 
-def complete_results(text, root):
+def complete_results(text, root, cmd=None):
     """Do not excuse a flaky test alongside a process that died without a summary.
 
     The offline inventory may shard modules, so count its units, not just modules.
     Unknown shell commands without CHECK boundaries cannot prove completeness.
+    ``cmd`` is the command that produced ``text``: the gate's check may be declared in
+    AGENTS.md and never enter this process's environment, so only main's own check passes it
+    explicitly; every other caller means the repository's full check.
     """
     summary = re.compile(r'^Ran \d+ tests? in [\d.]+s\n\n(?:OK\b|FAILED\b)', re.M)
     sections = list(re.finditer(r'^CHECK (.+) \((\d+) modules\)$', text, re.M))
@@ -308,12 +311,13 @@ def complete_results(text, root):
         if set(expected) != {section[1] for section in sections}:
             return False
     if not sections:
+        cmd = full_check(str(root)) if cmd is None else cmd
         try:
-            args = shlex.split(command())
+            args = shlex.split(cmd)
         except ValueError:
             return False
         return (len(args) >= 3 and args[1:3] == ['-m', 'unittest']
-                and not re.search(r'[;&|<>()\n]', command()) and len(summary.findall(text)) == 1)
+                and not re.search(r'[;&|<>()\n]', cmd) and len(summary.findall(text)) == 1)
     for index, section in enumerate(sections):
         end = sections[index + 1].start() if index + 1 < len(sections) else len(text)
         if len(summary.findall(text[section.end():end])) != expected.get(section[1], int(section[2])):
@@ -321,11 +325,13 @@ def complete_results(text, root):
     return True
 
 
-def rerun_failures(log, root, receipt, rev, timeout=600):
+def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None):
     """Rerun up to ten IDs in their original CHECK directory, before scratch cleanup.
 
     A separate revision-bound receipt lists only completed, ungated passes. Missing
     modules, ambiguous directories, skips, timeouts and excess failures stay red.
+    ``cmd`` is the command whose log this is; without it, the repository's declared full
+    check explains a gate log, and main's own check passes its command explicitly.
     """
     root, receipt = Path(root).resolve(), Path(receipt)
     text = Path(log).read_text(errors='replace')
@@ -397,7 +403,7 @@ def rerun_failures(log, root, receipt, rev, timeout=600):
         for notes in (notes for _, notes in outcomes):
             diagnostics.write(notes)
     flaky = [test_id for (test_id, _), (passed, _) in zip(runs, outcomes) if passed]
-    result = dict(rev=rev, flaky=flaky, incomplete=not complete_results(text, root))
+    result = dict(rev=rev, flaky=flaky, incomplete=not complete_results(text, root, cmd))
     tmp = receipt.with_suffix('.tmp')
     tmp.write_text(json.dumps(result) + '\n')
     tmp.replace(receipt)
@@ -458,4 +464,5 @@ if __name__ == '__main__':
     if sys.argv[1] == '--run':
         code, _ = run_command(sys.argv[2], os.getcwd(), float(sys.argv[3]), sys.argv[4])
         sys.exit(code if code >= 0 else 128 - code)
-    rerun_failures(*sys.argv[1:])
+    # Main's check may differ from the repository's gate check: name it here, not by env order.
+    rerun_failures(*sys.argv[1:], cmd=command(repo=sys.argv[2]))
