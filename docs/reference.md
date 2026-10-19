@@ -142,7 +142,20 @@ lists, except in opted-out profiles. Full setup additionally applies the `omh` b
 | --- | --- | --- |
 | `HERMES_HOME` | Setup, skill installer, `install-plugins.sh` | Default Hermes root when `--hermes-home` is absent. A named-profile home (`ROOT/profiles/NAME`) resolves to `ROOT`. Defaults to `~/.hermes`. `/autowork update` uses the running profile's Hermes root the same way. |
 | `OMH_HOME` | [`install-omh.py`](../install-omh.py) | An exported or `.env` binding is preserved as the OMH store location; see [memory](memory.md). |
+| `PI_AUTOWORK_MERGE_BACKLOG` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog`, `admit` | Finished commits waiting to merge before fresh dispatch can pause; default `3`, `0` disables. Counts slots with commits in `reported` or `integrating`, not held or already integrated work. |
+| `PI_AUTOWORK_MERGE_BACKLOG_AFTER` | [`parallel_dispatch.py`](../skills/autowork/scripts/parallel_dispatch.py) `merge_backlog` | Oldest finished commit's queue age in seconds before the count gate pauses fresh dispatch; default `1200`. Queue time starts at reporting, not worker launch. Nonnegative integers; invalid settings use their defaults. |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` | Update menu healing, from each profile's `.env` (not the process environment) | For each distinct bot token, the chats whose leftover command lists the updater checks; see [installation](installation.md#update-all-profiles). |
+
+Once both merge-backlog thresholds are met, fresh tasks show
+`wait for N finished commits to merge`. Running workers and restartable/interrupted
+work continue; no worker is stopped and the worker-count setting is unchanged.
+Fresh admission resumes automatically on a later dispatch cycle once the waiting
+commit count falls below the threshold (or the gate is disabled), even after a
+coordinator restart. The pause stays in effect while the count remains at or above
+the threshold, even if the oldest commit merges first. The runner's
+[`health.py`](../pi-autowork/pi_autowork/health.py) records one pause and one resume
+announcement per episode, including the recorded integration hold reason when
+available. This is a wait, not a request for a decision.
 
 ## Files and state
 
