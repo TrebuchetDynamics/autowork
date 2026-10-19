@@ -138,6 +138,8 @@ def pending_tasks(repo, known=()):
             why = execution.contract_reason(repo, task, inputs, lambda: selection_done)
             if why:
                 row.update(reason='not runnable: ' + why, blocked_by=[task], root_kind='contract')
+            elif fields.get('Kind', '').strip().lower() == 'plan':
+                row['reason'] = 'ready for planning'
         # A claim blocks as itself; a dependency by what it names; otherwise nothing.
         result.append(row)
     return result

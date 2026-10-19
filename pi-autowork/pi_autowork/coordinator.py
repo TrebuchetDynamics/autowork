@@ -1743,13 +1743,16 @@ class Coordinator:
                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
         before = {}
         if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
-            goals, _ = touches_inference.modules(self.toolset)
+            goals, dispatch = touches_inference.modules(self.toolset)
             before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
         reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
         found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
         trigger_key = maintainer.key(found)
+        rolling = any(kind == 'plan' for _, kind, _ in found)
+        plan_before = maintainer.plan_entries(self.integ, goals, dispatch.execution.archive_file(Path(self.integ))) \
+            if rolling else before
         scratch = self.scratch_checkout('maintainer')
         if not scratch:
             return False
@@ -1758,14 +1761,29 @@ class Coordinator:
         outcome, changed = 'no change', []
         try:
             base = git(scratch, 'rev-parse', 'HEAD')
+            message = maintainer.prompt(found, self.repo, self.goals)
+            if rolling:
+                message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
             ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
-                                   maintainer.prompt(found, self.repo, self.goals),
+                                   message,
                                    f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             head = git(scratch, 'rev-parse', 'HEAD')
             paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
             diff = git(scratch, 'diff', base, head) or '' if paths else ''
             changed = [task for task in names if task in diff]
-            if not paths:
+            plan_error = None
+            if rolling:
+                try:
+                    proposed = maintainer.plan_entries(scratch, goals, dispatch.execution.archive_file(Path(scratch)))
+                    plan_error = maintainer.plan_error(found, plan_before, proposed, scratch,
+                                                       dispatch.parallel_plan.dependency_ids)
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    plan_error = 'invalid planning documents: ' + str(exc)
+                if not ok or git(scratch, 'rev-list', '--count', f'{base}..{head}') != '1':
+                    plan_error = 'planning must finish successfully in one commit'
+            if rolling and plan_error:
+                outcome = 'planning failed: ' + plan_error
+            elif not paths:
                 outcome = 'no change' if ok else 'failed'
             elif not maintainer.planning_only(paths) or dirty(scratch):
                 outcome = 'refused: it changed more than planning files'

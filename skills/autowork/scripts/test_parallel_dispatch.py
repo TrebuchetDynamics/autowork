@@ -334,6 +334,25 @@ class DispatchTests(unittest.TestCase):
         paths = {e['task']: e['tmpdir'] for e in self.events() if e['event'] == 'start'}
         self.assertEqual(len(set(paths.values())), 3)  # a reused worker lane is not a reused temp slot
 
+    def test_a_planning_task_waits_for_its_batch_then_never_gets_a_worker(self):
+        self.write_todo(task('A', 'a.txt'), task('PLAN', 'TODO.md', 'A') + '- Kind: plan\n')
+        _, first = self.apply()
+        self.assertEqual([s['task'] for s in first['dispatched']], ['A'])
+        self.wait_until_idle()
+        self.write_todo(task('A', 'a.txt').replace('- [ ]', '- [x]'),
+                        task('PLAN', 'TODO.md', 'A') + '- Kind: plan\n')
+        _, result = self.apply()
+        self.assertEqual(result['dispatched'], [])
+        self.assertEqual(next(w['reason'] for w in result['waiting'] if w['id'] == 'PLAN'),
+                         'ready for planning')
+        _, status = self.run_cli('--parallel-status', '--json', worker=False)
+        self.assertEqual(next(r['reason'] for r in status['tasks'] if r['task'] == 'PLAN'),
+                         'ready for planning')
+        self.assertFalse((self.repo / '.worktrees/autowork-PLAN').exists())
+        self.assertNotIn('PLAN', [s['task_id'] for s in state.slots(self.common)])
+        with self.assertRaisesRegex(execution.NoEligibleTask, 'ready for planning'):
+            execution.select(self.repo, 'PLAN', None)
+
     def test_dependent_task_waits_until_its_dependency_is_done(self):
         self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2}})

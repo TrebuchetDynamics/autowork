@@ -71,6 +71,42 @@ relative to this repository.
 | [`skills/docs-sync/scripts/goals.py`](../skills/docs-sync/scripts/goals.py) | `init`, `validate`, `fmt`, `render`, `revision`, `archive`, `next`, `reorder`, `bootstrap-order`, `focus`, `task`, `supersede`, `section`, `new-id`, `add-task`, `redact`, `evidence`, `backlog-check` | `goals.py --help`; [document scaffold](../skills/docs-sync/references/document-scaffold.md#first-task-index-initialization) |
 | [`skills/docs-sync/scripts/docs.py`](../skills/docs-sync/scripts/docs.py) | `validate`, `check`, `stale`, `profiles` | `docs.py --help`; [role manifest](../skills/docs-sync/references/document-scaffold.md#optional-role-manifest) |
 
+## Rolling planning tasks (Pi runner)
+
+Source: [`parallel_plan.py`](../skills/autowork/scripts/parallel_plan.py),
+[`maintainer.py`](../pi-autowork/pi_autowork/maintainer.py) and
+[`coordinator.py`](../pi-autowork/pi_autowork/coordinator.py); accepted
+[rolling planning design](plans/2026-10-18-rolling-planning.md#rolling-planning-design).
+
+A normal TODO contract may add `Kind: plan`, `Goal: <goal ID>` and
+`Plan round: N of M` (default `1 of 10`). Once its dependencies are done, the
+engine reports **ready for planning** rather than allocating a code-worker
+worktree. Sequential execution also leaves it to the maintainer.
+
+The runner handles one such entry at a time in its disposable docs-maintainer
+checkout, when task work and session writes have settled. Plan For Me reads the
+entry's scope, finished-batch reports, current code and remaining goal proof.
+The planning commit closes that entry and saves at most **8 new tasks total**
+under its goal, including any successor planning task. Owner-only gaps belong
+in `Needs decision` with their question; they do not block independent work.
+
+For an unmet goal, a batch with building tasks ends with one open `Kind: plan`
+entry, `Plan round: N+1 of M`, depending on every new building task. At round M,
+or with no new building task, there is no successor: `BLOCKERS.md` gets one
+`### Q-<planning task ID> — Planning stopped` question naming the goal and what
+remains. An indexed unmet goal retains or adds an open `Needs decision` task
+for the remaining-proof/continuation question, within the same eight-task cap;
+closing the plan must not leave that goal without an open task. A goal proven
+met by the existing ledger rules needs neither a successor nor a stop question.
+Limits, closure, goal membership and successor shape are checked before landing;
+an oversized proposal fails as a whole,
+never by truncation. An unchanged failed proposal is not called repeatedly.
+
+Planning does not grant code workers access to coordinator files, add a goal
+schema, or start another round without an explicit `Kind: plan` entry. Existing
+maintainer repair triggers remain available in repositories without these entries.
+Offline fixture checks cover scheduling and landing, not real-model plan quality.
+
 ## Plugin settings
 
 Source: [`runtime_defaults.py`](../runtime_defaults.py),

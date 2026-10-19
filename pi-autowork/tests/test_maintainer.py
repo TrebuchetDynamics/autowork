@@ -171,6 +171,59 @@ class MaintainerTests(unittest.TestCase):
                 entries['A']['digest'] = 'owner edit'
                 self.assertEqual(maintainer.pending(state, found, entries=entries), found)
 
+    def test_ready_planning_entries_run_one_at_a_time_without_changing_other_triggers(self):
+        rows = [dict(task=t, state='waiting', reason='ready for planning') for t in ('P', 'Q')]
+        found = maintainer.triggers(rows + [dict(task='A', state='held', cause='scope')])
+        self.assertEqual([x for x in found if x[1] == 'plan'],
+                         [('P', 'plan', 'ready for planning'), ('Q', 'plan', 'ready for planning')])
+        with tempfile.TemporaryDirectory() as state:
+            first = maintainer.pending(state, found)
+            self.assertEqual(first, [('P', 'plan', 'ready for planning')])
+            maintainer.remember(state, trigger_key=maintainer.key(first), found=first, outcome='failed')
+            self.assertEqual(maintainer.pending(state, found), [('Q', 'plan', 'ready for planning')])
+
+    def test_planning_landing_refuses_malformed_chains_and_stops_for_a_met_goal(self):
+        from pi_autowork.touches_inference import modules
+        _, dispatch = modules(Path(__file__).resolve().parents[2])
+        def entry(kind='', round_='', goal='G', section='Next', mark=' '):
+            return dict(fields={'Kind': kind, 'Plan round': round_, 'Goal': goal,
+                                'Section': section, 'Checkbox': mark, 'Status': 'done' if mark == 'x' else 'open'})
+        before = {'P': entry('plan', '1 of 10')}
+        for case in ('met', 'unclosed', 'wrong_round', 'missing_dependency', 'wrong_goal',
+                     'missing_question', 'invalid_round', 'duplicate', 'missing_decision_question', 'none_dependency'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp)
+                old = {'P': entry('plan', '1 of 10')}
+                new = {'P': entry('plan', '1 of 10', mark='x')}
+                if case != 'met':
+                    new['B'] = entry()
+                    new['NEXT'] = entry('plan', '2 of 10')
+                    new['NEXT']['fields']['Dependencies'] = 'B'
+                if case == 'invalid_round':
+                    old['P']['fields']['Plan round'] = '11 of 10'
+                if case == 'duplicate':
+                    new['B']['count'] = 2
+                if case == 'missing_decision_question':
+                    new['B'] = entry(section='Needs decision')
+                if case == 'unclosed':
+                    new['P'] = before['P']
+                if case == 'wrong_round':
+                    new['NEXT']['fields']['Plan round'] = '3 of 10'
+                if case in ('missing_dependency', 'none_dependency'):
+                    new['NEXT']['fields']['Dependencies'] = 'None.' if case == 'missing_dependency' else 'None. B'
+                if case == 'wrong_goal':
+                    new['B']['fields']['Goal'] = 'OTHER'
+                if case == 'missing_question':
+                    new.pop('NEXT')
+                ledger = dict(goals=[dict(id='G', status='met', evidence=[dict(kind='executed', result='pass')])], tasks=[])
+                (repo / 'goals.json').write_text(json.dumps(ledger if case == 'met' else {'goals': []}))
+                error = maintainer.plan_error([('P', 'plan', '')], old, new, repo,
+                                              dispatch.parallel_plan.dependency_ids)
+                if case == 'met':
+                    self.assertIsNone(error)
+                else:
+                    self.assertTrue(error, case)
+
     def test_only_planning_files_may_change(self):
         self.assertTrue(maintainer.planning_only(['TODO.md', 'goals.json', 'docs/tasks/A.md']))
         self.assertFalse(maintainer.planning_only(['TODO.md', 'src/app.py']))

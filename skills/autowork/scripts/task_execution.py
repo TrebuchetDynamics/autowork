@@ -646,6 +646,9 @@ def _contracts(repo, requested, plan, *, parallel=False):
             continue
         body, mark, section = bodies[tid][0]
         fields = contract_fields(body)
+        if not parallel and fields.get('Kind', '').strip().lower() == 'plan':
+            reasons.append(f'{tid}: ready for planning (maintainer only)')
+            continue
         if parallel and inputs['ledger'] and 'Status' not in fields:
             fields['Status'] = indexed[tid]['status']
         yield {'id': tid, 'title': body.splitlines()[0].strip(' —:-'),
