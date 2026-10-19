@@ -117,12 +117,13 @@ class InstallMenuTests(unittest.TestCase):
         self.assertIn('kept your existing .tmux.conf', result.stdout)
         self.assertEqual(self.calls('pi install'), [])
 
-    def test_an_installed_package_is_left_to_its_runners(self):
+    def test_an_installed_package_is_updated_and_its_runners_move_onto_it(self):
         (self.home / 'pi-installed').write_text(NEW + '\n')
         result = self.install('--only', 'pi')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls('pi install'), [])
-        self.assertIn('its runners update it themselves', result.stdout)
+        self.assertEqual(self.calls('pi update'), [f'pi update {NEW}'])
+        self.assertRegex(result.stdout, r'pi\s+installed')
 
     def test_menu_toggles_items_and_needs_a_terminal(self):
         result = self.install('--dry-run', '--menu', stdin='3 5 6\n\n', env={'AUTOWORK_INSTALL_UI': 'text'})
@@ -303,10 +304,11 @@ class InstallMenuTests(unittest.TestCase):
         package = self.home / 'pkg/autowork'
         (package / 'pi-autowork/bin').mkdir(parents=True)
         (package / 'pi-autowork/bin/autowork').touch()
-        self.fake('pi', LOGGING + f'[ "$1" = list ] && printf "User packages:\\n  {NEW} (filtered)\\n    {package}\\n"\n')
+        self.fake('pi', LOGGING + f'[ "$1" = list ] && printf "User packages:\\n  {NEW} (filtered)\\n    {package}\\n"\ntrue\n')
         result = self.install('--only', 'pi,autowork')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.calls('pi install'), [])
+        self.assertEqual(self.calls('pi update'), [f'pi update {NEW}'])
         self.assertEqual(Path(os.readlink(self.home / '.local/bin/autowork')), package / 'pi-autowork/bin/autowork')
 
     def test_setup_only_hermes_options_are_refused_for_profile_clones(self):

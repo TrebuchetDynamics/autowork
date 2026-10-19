@@ -253,7 +253,10 @@ def items(hermes_args):
     package = pi_package()
     pi = Item('pi', 'Pi package', needs='pi', note='needs Node 22+')
     if package:
-        pi.note = f'installed at {package}; its runners update it themselves at a safe point'
+        # Brought to the latest release here; the runners move onto it at their next safe point.
+        # Leaving it to them kept this host's command and skills a release behind for hours.
+        pi.note = f'installed at {package}; updated here, and its runners move onto it at a safe point'
+        pi.steps.append(Step(f'pi update {PI_SOURCE}', ['pi', 'update', PI_SOURCE]))
     else:
         pi.steps.append(Step(f'pi install {PI_SOURCE}', ['pi', 'install', PI_SOURCE]))
     # The command follows the package the runners update, once it is installed.

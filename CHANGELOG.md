@@ -230,6 +230,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `install.sh` updates an installed Pi package (`pi update`) instead of leaving it to the
+  runners, which kept this host's `autowork` command and skills a release behind until each
+  runner reached a safe point; the runners still move onto it at their own safe point.
 - `install.sh` refreshes the Claude Code and Codex plugins, not only their marketplaces: both
   hosts cache a plugin by its version, which rarely changes, so a reinstall kept old workflows
   (sessions lacked the `blockers` and `pending` skills). It updates the marketplace and drops
