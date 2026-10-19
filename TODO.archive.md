@@ -4659,3 +4659,27 @@ Source section: Next
 - Ownership: Interactive Autowork implementation owner; preserve other workers' code and the existing execution lease. No competing worker is launched.
 - Qualification: Source implementation is complete. The six-module focused native/bundle/workflow union passed; the complete offline entry point passed on reviewed source snapshot 3667c78722254a0082c69c10d6a09fd445c39035 (five test directories, zero failed, eight excluded modules). The native authentication regression went RED with primary/fallback checks and GREEN with no auth checks. Independent final source review found no remaining issues. A source-handler smoke returned fleet and named runner output with unchanged parent environment. Excluded native/integration modules, installed gateway activation and Telegram delivery are not qualified.
 - Next action: No source reimplementation remains. Installed gateway activation and chat qualification stay separate under the existing authorized installation/live follow-up; preserve all pauses, settings and profile boundaries. No push, install or restart is included in this source closeout.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-229-d0"></a>
+
+### TOOLSET-229-d0 — A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold
+
+- [x] TOOLSET-229-d0 — A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [scope check](skills/autowork/scripts/parallel_integrate.py) (`verify_scope`: `changed files the coordinator owns: ...` raises `Hold('scope')`); `integrate` (merges the worker commit with `merge --no-ff` in the integration worktree); `COORDINATOR_FILES` in [dispatch](skills/autowork/scripts/parallel_dispatch.py); [maintainer triggers](pi-autowork/pi_autowork/maintainer.py) (`triggers`, `PLANNING_CAUSES`).
+- Evidence (2026-10-18 13:56, a newly added fleet runner's first candidate): the worker changed five files (one new module, its 261-line test, a client doc, a registry line) and one line of TODO.md's introduction. That line repointed a link to a task the runner had archived meanwhile, so the link no longer resolved. The whole candidate was held with `changed files the coordinator owns: TODO.md`. A held scope commit is offered again, so a worker would spend a second attempt removing a one-line link fix, and the stale link stays for someone to notice.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, pi-autowork/pi_autowork/coordinator.py
+- Scope: (1) When a candidate's only out-of-reach changes are to `COORDINATOR_FILES`, integration does not hold it. After the merge, those paths take their content from the integration base (`git checkout HEAD^1 -- <paths>`, amended into the merge commit), and the rest is validated and reviewed as usual. (2) The dropped hunks are saved as a patch in the slot's data and recorded on the slot (`ledger_edit_dropped`: the paths and the patch path). The log says `<task>: its edit to <paths> was left out; the docs maintainer will review it`. (3) `maintainer.triggers` raises a `ledger edit` trigger for such a slot once it integrates. Its reason carries the patch (up to 900 characters), so the maintainer applies it through the ledger tools or drops it. (4) Undeclared protected paths still hold as before.
+- Acceptance: In fixtures: a candidate changing `src/x.py` and one line of TODO.md integrates, main has the `src/x.py` change and the base's TODO.md, the patch is saved, the log line appears, and the maintainer's triggers include `ledger edit` with the dropped line; a candidate changing only TODO.md integrates as an empty change and still raises the trigger; a candidate changing an undeclared lockfile is still held for scope.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_maintainer.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No worker write access to ledger files. The worker prompt still says never to edit them. No automatic application of the dropped patch.
+- Planner's call: Now, after TOOLSET-222-e1. Holding sound work for a ledger edit wastes an attempt, and the maintainer is the role allowed to edit the ledger. A worker usually touches it to fix a link or a status line, and the maintainer can judge that.
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): This also applies to merges the runner or its resolver makes into a task branch: ledger paths always take the integration base's content. That removes the ledger holds of 252-4c and 200-c1, which came from those merges, not from their Scopes; run it before them.

@@ -1086,14 +1086,6 @@
       "title": "Plan For Me and Plan With Me end a large plan's batch with a planning task"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-229-d0",
-      "section": "Now",
-      "status": "open",
-      "title": "A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold"
-    },
-    {
       "depends_on": [
         "TOOLSET-165-f7",
         "TOOLSET-195-ee"
@@ -2980,6 +2972,14 @@
       "section": "Done",
       "status": "done",
       "title": "Full checks from every runner on the host share a few check slots"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-229-d0",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold"
     },
     {
       "depends_on": [],
