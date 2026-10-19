@@ -977,7 +977,12 @@ class Coordinator:
             if self.stop:
                 return
             self.close_task(task)
-        for task in [r['task'] for r in rows if r.get('state') in ('reported', 'integrating')]:
+        # The engine integrates one candidate at a time, in priority order, and names the one it
+        # wants when asked for another: start that one, never every candidate in turn (13 engine
+        # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
+        queue = [r['task'] for r in rows if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
+        while queue:
+            task = queue.pop(0)
             if self.stop:
                 return
             if task in handled:
@@ -987,14 +992,24 @@ class Coordinator:
                 # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
                 self.restart_if_updated()
                 return
-            if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
-                self.note_state(task, 'integrating')
             self.follow_base()  # each review validates against the main branch as it is now
             self.start_integration(task)
-            finished = self.collect_integration(wait=5)  # quick refusals are handled at once
+            # Quick refusals (another task first, a busy writer) answer at once; one still running
+            # after a moment is the review, and only it reads "verifying".
+            finished = self.collect_integration(wait=1.5)
+            if finished is None:
+                self.note_state(task, 'integrating')
+                finished = self.collect_integration(wait=3.5)
             if finished is None:
                 return  # a real review: it runs beside the loop until it ends
             handled.add(task)
+            first = re.search(r'highest-priority reported task first: (\S+)', finished[1].get('reason') or '')
+            if first:
+                if first[1] not in handled:
+                    queue.insert(0, first[1])
+                continue
+            if finished[1].get('outcome') in ('INTEGRATED', 'HELD'):
+                self.note_state(task, 'integrating')  # a quick review still ran: say so before its answer
             self.integrated(*finished)
 
     def integrated(self, task, result):

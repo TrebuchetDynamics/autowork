@@ -1265,14 +1265,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-238-11",
-      "section": "Now",
-      "status": "open",
-      "title": "Only the candidate the engine will integrate next is started, and only it reads 'verifying'"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-240-f8",
       "section": "Now",
       "status": "open",
@@ -2861,6 +2853,14 @@
       "section": "Done",
       "status": "done",
       "title": "A check that crashes before reporting test results is a broken check: never a red main with placeholder failures, never a pass"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-238-11",
+      "section": "Done",
+      "status": "done",
+      "title": "Only the candidate the engine will integrate next is started, and only it reads 'verifying'"
     },
     {
       "depends_on": [],

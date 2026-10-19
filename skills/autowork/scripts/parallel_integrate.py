@@ -409,8 +409,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
             # waiting commit never stops the rest from integrating (TOOLSET-223-8e).
             available = {tid for tid, held in slots.items() if not writers_busy(held)} or set(slots)
             first = next((t for t in contracts if t in available), None)
-            if first != task:
-                raise ValueError('integrate the highest-priority reported task first')
+            if first != task:  # it names the one, so the runner starts it next (TOOLSET-238-11)
+                raise ValueError(f'integrate the highest-priority reported task first: {first}')
             try:
                 files, report = verify(repo, common, slot, contracts)
                 require_no_writers(repo, files)

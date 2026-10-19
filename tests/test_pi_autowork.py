@@ -807,6 +807,24 @@ class EngineTests(Fixture):
         self.assertLess(text.index('Reloading'), text.index('B: verifying'), text)  # not after B's review
         self.assertEqual(len([r for r in self.runs('verify') if r['task'] == 'A']), 1, text)
 
+    def test_only_the_candidate_the_engine_takes_next_is_started_and_reads_verifying(self):
+        """TOOLSET-238-11: after a reload the runner logged "verifying" for 13 candidates and started
+        13 engine integrations, all but one refused for priority order."""
+        (self.repo / 'TODO.md').write_text(todo([('B', None), ('A', None), ('C', 'A')]))  # B goes first
+        self.git(self.repo, 'commit', '-qam', 'B first')
+        self.plan({'verify:A': ['slow_review'], 'verify:B': ['slow_review']})
+        result = self.run_runner('--until-empty', timeout=180)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        events = re.findall(r'\] ([ABC]): (verifying|integrated|failed)', result.stdout)
+        reviewing = None
+        for task, word in events:  # one review at a time: each "verifying" ends in its own answer
+            if word == 'verifying':
+                self.assertIsNone(reviewing, result.stdout)
+                reviewing = task
+            elif task == reviewing:
+                reviewing = None
+        self.assertEqual([t for t, w in events if w == 'verifying'], ['B', 'A', 'C'], result.stdout)
+
     def test_an_idle_runner_rests_when_only_other_refs_change(self):
         """TOOLSET-185-74: an idle runner started 213 sessions in 40 minutes: ending each empty
         session rewrote packed-refs, which counted as main changing."""
