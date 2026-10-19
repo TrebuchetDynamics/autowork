@@ -1289,3 +1289,230 @@ Implementation owners remain 115-bf (completion handoff), 118-68 (admission budg
 escalation). 118-68 already follows 115-bf; no reciprocal dependency is introduced.
 Preserve unrelated queue ordering and live-work exclusions; planning does not promote
 this chain above the current frontier or supersede the compact-ledger tasks.
+
+## Evidence-bound claim verification (2026-10-19)
+
+Status: Accepted
+
+The owner requested further research and a plan for artifact plus claims →
+deterministic evidence checks → selective semantic review → explicit outcomes →
+bounded repair in the existing delivery pipeline. This section accepts that
+planning scope; the concrete defaults below are delegated planner decisions, not
+claims of separate owner selections. No implementation, dispatch, model benchmark,
+service/profile change or publication is performed by saving the plan.
+
+### Outcome, boundaries and chosen approach
+
+Make an agent's completion claims inspectable against the exact artifact and
+producer evidence, without creating another lifecycle authority or another agent
+pool. Existing engine acceptance, full-check exceptions, review and canonical
+closeout remain authoritative. First repair gate explanation fidelity under
+TOOLSET-254-80. Then add a small versioned evidence adapter to that lane, selectively
+annotate semantic claims during the existing review, and consume those results
+through the existing bounded recovery path. TOOLSET-130-15 owns presentation.
+
+Planner's call: choose an additive adapter and runner-produced observation in
+existing attempt-owned state, not a new receipt database, scheduler, fact crawler,
+Obsidian integration or independent verifier service. Do not revive retired
+check_receipt/delivery_state machinery. Do not widen or repin TOOLSET-115-bf's
+reported candidate; reconcile delivered changes before touching shared files.
+Completed check-reuse tasks remain completed. Preserve original queue ordering,
+check policy, cumulative attempts/budgets, leases and intentional pauses.
+
+Alternatives rejected: a second cheap-model worker on every claim adds calls and
+correlated-error risk before calibration; another signed-attestation stack solves
+a different distribution/authentication problem; a new global truth ledger would
+compete with existing engine state. No external package/API is required for the
+initial adapter. No Hermes or Pi upstream changes.
+
+Anti-goals: “supported” inferred from a URL, a judge's confidence, a worker's pass
+string, an absent log, an omitted claim, or a self-declared digest; model approval
+overriding failed machine checks; all-unknown output presented as successful
+verification; retries continuing until a permissive judge answers pass.
+
+### Evidence contract and trust boundary
+
+Runner-owned expected context comes from the admitted task/attempt, current
+candidate/merged tree, stage, command/policy inputs and existing receipts—not from
+the worker report. Bind each observation to those identities and an adapter version.
+The worker may propose claims and evidence references; it cannot declare the
+required set, mark its own proof trusted, or modify acceptance. Pin a launch-time required-set snapshot beside existing contract.txt, referencing
+its digest in attempt metadata. Start required machine claims from existing stage
+requirements: artifact/task identity, declared changed files, required command/review
+outcomes and actual delivery target. Preserve complete authored Acceptance text as
+one semantic criterion rather than automatically decomposing it; this is the existing
+review obligation, not proof that a generated partial list is exhaustive. Preserve
+Checks command text/interpretation and existing offline/live rules.
+Do not pretend that free-text Acceptance can be exhaustively compiled into facts.
+Stage policy is explicit: integration_close requires proof of the reviewed merged
+candidate at the engine's session integration target before engine ledger mutation.
+It does not prove canonical main delivery. canonical_delivery is assessed separately
+after existing land() readback and requires the implementation commit's actual
+inclusion in canonical main. Preserve the reviewed tree and delivery target/tree
+separately; descendant reachability is delivery proof, not a claim that every test
+ran on the later main tree. Unknown main inclusion stays unknown. This successor
+does not reorder legacy close_task, move ledger closure after land(), or rewrite
+115-bf's lifecycle contract; 115-bf remains its authority.
+
+Use a compact JSON-compatible contract: claim ID/text/kind/scope, artifact and
+source locator/digest, producer/task/attempt/tree/command binding, observation or
+reason, check method/version and outcome. Link original inventory, failures,
+skips/reruns/exceptions and producing evidence instead of duplicating or overwriting
+it. A worker's all-green claim is different from policy-accepted exceptions.
+Optional research claims need a pinned local source snapshot and exact passage,
+entity, period and units when relevant. A matching passage proves support within
+that source, not independent real-world truth. External retrieval is not automatic.
+
+Coverage has its own result: expected IDs, observed IDs, missing/duplicate/extra IDs
+and stage. Report separately how many worker-proposed claims were assessed. An
+empty/all-omitted claim list cannot establish complete coverage. Research-wide
+coverage is unknown without an independently specified claim inventory; the first
+adapter must not promise exhaustive fact extraction.
+
+Resolve evidence only inside runner-selected owned locations; reject traversal,
+escaping symlinks, nonregular files, invalid/oversized JSON and ambiguous duplicate
+IDs. Record bounded size/excerpt limits. Do not execute commands or fetch URLs
+supplied inside a claim, or copy secrets into evidence. Changed source, required
+policy or relevant execution inputs make old support stale. Cache lookup must
+compare actual inputs, not a claimant-supplied key or a short reviewer version.
+Reuse actual producer records across tasks where existing policy permits it. The
+outer command receipt attests its validation process and declared inputs, not every
+inner command mentioned by a worker; report.checks=[] is not execution proof. Use
+bounded descriptor-based no-follow reads, reject duplicate JSON keys, hash exactly
+the captured bytes and retain evidence before temporary directories are removed.
+
+Local records assume the existing execution boundary is trustworthy. A digest
+binds bytes; it does not authenticate who generated them. Same-user local workers
+are not rendered tamper-proof by this adapter. Prompt boundaries and path checks
+are useful defenses, not proof against a malicious process with equivalent host
+permissions. Strong process isolation/signing is outside this plan.
+
+### Outcomes and selective review
+
+Separate two axes instead of making four interchangeable task states:
+
+- Execution: executed, unrun, unknown or not_applicable, with exit/timeout/skip
+  details separate. Unrun requires an affirmative record that it did not execute;
+  absent, unreadable or legacy evidence means execution unknown.
+- Semantic support: supported, contradicted, unknown or not_applicable. Static
+  support cannot imply that a related live execution happened. Validity/freshness
+  and coverage are separate.
+
+“Unknown” includes absent/inadequate source support and unresolved ambiguity;
+absence of support is not a contradiction. “Contradicted” requires counterevidence.
+The UI may render unrun as the fourth user-facing label, but these labels are
+observations, never replacements for implemented/verified/integrated/delivered.
+
+Machine checks decide artifact identity, source matching, command outcomes,
+coverage and actual integration/delivery from existing records. A model cannot
+upgrade those facts. Give semantic review only claims not decidable by those
+checks, along with fixed bounded excerpts, rubric and allowed claim IDs. Treat
+artifact text and source passages as untrusted data, including instructions to
+approve, forged verdict markers and role delimiters. Returned claim IDs, enums,
+source references and quotes need structural validation against the supplied set.
+Preserve an unknown result on invalid output rather than infer support.
+
+Planner's call: put semantic annotations into the existing reviewer invocation;
+no added per-claim jobs or parallel judge pool. Preserve required code review and
+its existing read-only/mutation guards. A model's quoted rationale is not a machine
+receipt. The grading transport is a run-ID-named sidecar, normalized into existing
+checks.context.claim_evidence and slot.checks before reviewer scratch cleanup; only
+the existing saved validation receipt is authoritative. Parse the designated final
+review output, never a pass-looking string found inside source/tool content. Bind
+worker commit separately from reviewed merged commit/tree, producing data_attempt,
+validation run ID, required-set and effective policy digests. Verify durable equality
+and context through validated_receipt in both ordinary close and recovery. For
+integration_close, the required target is the session integration merge, not main
+before the later closeout planning commit.
+Prompt formatting alone is not a proven injection defense. Keep semantic findings
+advisory to the existing review decision until a separately authorized real-model
+calibration establishes an appropriate policy; fake graders verify plumbing only.
+No cheap-model accuracy or provider independence is assumed.
+
+### Repair and delivery policy
+
+Route observations through existing runner/engine recovery, not a new loop:
+
+- Supported, current and complete for this stage: continue the existing gate.
+- Deterministically contradicted report text with a valid artifact: correct the
+  report from producer evidence; do not rerun an unchanged full suite.
+- Reproducible product failure: same task/candidate's existing repair route under
+  the original cumulative attempts, time and resource limits.
+- Missing/stale evidence: recover/relink a matching owned producer record first;
+  otherwise report unknown and use existing required-check/environment policy.
+- Semantic ambiguity or unsupported research assertion: narrow/remove the assertion
+  or mark it unknown; do not generate a new implementation just to please a judge.
+- Unrun/live-only requirement: keep the existing offline/live separation and its
+  explicit follow-up. Unrun never becomes supported because another check passed.
+
+Planner's call: at most one additional targeted claim-repair cycle within—not on
+top of—the existing task allowance. Repeated identical findings or unchanged
+relevant inputs stop that cycle; restart, a new claim ID, prompt, source reference
+or report rewrite cannot replenish it. Preserve the artifact and exact reason on
+exhaustion; no discarded branch, invented pass, automatic owner question for every
+unknown or pause/resume. A genuine unavailable owner decision/credential remains
+external; routine repair stays autonomous. Preserve completion-first admission.
+
+Default observation mode must add no new holds or acceptance requirements to
+legacy tasks. Prospective required deterministic claims may only express existing
+admitted criteria, with an explicit task-bound policy; legacy aggregate-only
+records disclose unavailable detail without weakening or strengthening their
+original passing policy. Semantic annotations cannot silently become a new gate. Bind the complete relevant
+validator/schema/prompt/mode closure into reviewer identity: reviewer_version currently
+fingerprints selected functions only. Unknown extension versions are unavailable in
+shadow and fail validation only for explicitly enrolled enforcing attempts. A disabled
+reviewer cannot yield semantic proof. Enforcing eligibility must carry a reader/update
+compatibility boundary using existing parallel_state/release machinery so a supported
+downgrade cannot ignore the policy; legacy attempts stay unchanged.
+Preserve reviewed_commit/tree separately from landed_commit/tree: the existing
+planning-only remerge may change the landing tree without repeating validation.
+In observation mode report that gap honestly. An enrolled exact-target requirement
+must reuse the existing revalidation path if its pertinent binding changes; never
+relocate old proof by rewriting its digest. No new run merely to render a summary.
+Code/review/claim observations remain distinct from the existing integration and
+canonical-delivery receipts. The UI consumes them; it never reconstructs authority.
+
+### Verification, rollout and remaining qualification
+
+Implement as three bounded outcome slices after 254-80: deterministic evidence
+adapter in observation mode; selective annotations and offline labelled corpus in
+the existing review lane; bounded recovery/consumer wiring with composed restart
+and delivery regressions. Reuse existing fake-runner/engine tests, one compact
+case table per boundary and existing records—no broad duplicate test harness.
+
+The planned case matrix includes genuine positive controls, exception-accepted
+full gates, wrong task/attempt/tree/command, stale/missing producer data, empty or
+omitted required claims, duplicate/invented IDs, unsupported versus contradicted
+passages, wrong entity/period/units, injected approval instructions, malformed
+review output, path/symlink/size escapes, retry exhaustion/restart and unrelated
+ownership loss. Verify both honest positive flow and negative preservation guards;
+not every case needs a new process or repeated full suite.
+
+Measure false acceptance/rejection and unknown rate against independently labelled
+held-out cases; record coverage/validity errors separately. An all-unknown grader
+fails positive controls, and zero false accepts on a small seeded corpus is not a
+universal guarantee. Fake-provider tests establish only protocol/transition logic.
+Real-model accuracy, prompt-injection robustness, dollars and latency are unmeasured;
+no 100 ms, zero-error or speedup claim is made. Any future calibration records
+actual model/prompt/source versions, held-out labels, calls, cost if available,
+latency distribution and stopping limits; it requires its own bounded execution
+budget rather than this research request authorizing spend.
+
+Use one existing full-check/review lane: unchanged input evidence inspection must
+launch zero additional full suites or model jobs. Confirm old reports remain
+readable, observation mode leaves existing pass/fail unchanged, no hidden fallback
+or model/profile change occurs, and stale evidence never implies canonical delivery.
+Only then consider explicit opt-in deterministic enforcement for new contracts;
+semantic rollout remains advisory pending real calibration. Existing required full
+offline checks/review are still mandatory for implementation qualification.
+
+Builder-check resolution (planner's call): only explicitly enrolled deterministic
+attempts hold ledger mutation for invalid required claim evidence. Shadow attempts
+record would_hold and retain all existing pass/fail behavior. Main-delivery evidence
+is a later observation, not a new universal pre-close gate.
+
+The saved plan is not runtime qualification. The next implementation action stays
+254-80's existing table-driven gate-record regression; no worker is dispatched by
+this handoff. TOOLSET-130-15 remains the presentation owner, 118-68/228-0c capacity
+owners, 115-bf lifecycle owner and 120-fc/173-94 recovery owners. No dependencies or
+accepted contracts on those existing tasks are rewritten by this successor plan.

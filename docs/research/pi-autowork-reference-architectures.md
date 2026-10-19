@@ -244,3 +244,272 @@ Confidence is high for the cited source branches and explicit license texts; mod
 Keep follow-ups attached to the existing coordinator redesign. The recommended first experiment is not a whole-framework adoption: compare the existing Pi CLI adapter with one execution-only adapter behind the same contract, using identical fixtures for cancellation, restart adoption, stale results, out-of-order completion, combined-tree verification and cleanup retention. Record any compatibility failure rather than weakening the contract.
 
 This research does not approve code reuse, a file migration, a service restart, publication or fleet rollout. Those remain separate implementation/operational decisions.
+
+## Source-grounded verification and large-agent claims
+
+Research as of 2026-10-19. Status: findings and adoption recommendations, not an
+implementation decision, live benchmark, installed feature or error-free guarantee.
+Scope: trace the supplied 300-agent / 100-company / 100-ms / Obsidian story, study a
+primary verification implementation, and map the useful mechanism to Autowork.
+Bounded search plus primary-source reads and independent external/local readers;
+not an exhaustive audit or observation of the original demo's execution.
+
+### What the evidence supports
+
+- Kimi's own Agent Swarm help documents up to 300 subagents and more than 4,000
+  tool calls. This is a vendor capability claim, not an independent observation of
+  the viral run and not proof of 300 Claude Code CLI processes. Its advertised
+  speedup is vendor-reported and workload-specific, not an Autowork forecast. [S1]
+- Reposts vary: one describes a 21-year-old, Kimi workers and an Opus checker;
+  another says 23, Kimi K3 and Opus 5. A search-indexed post mentions a cheap
+  yes/no verifier near 100 ms. These are versions of a story, not independent
+  measurements. The supplied Claude Code/cheaper-checker description is not
+  established by the retrieved primary evidence. Do not resolve conflicting age,
+  identity, model/version or price claims by guessing. [S2-S4]
+- No original creator-controlled repository, reproducible benchmark, full run log,
+  manually audited 100-company dataset, latency distribution or cost inventory was
+  established in this pass. The 12-to-3-to-zero counts and Obsidian export remain
+  reports, not observed outcomes. Zero detected failures is not zero factual errors.
+- Fetching the earlier N01ennn post failed; Wayback available returned no snapshot.
+  The cheap-verifier post also failed direct extraction. Search snippets are weak
+  leads, not recovered full posts. Do not cite these as a replay of the original
+  video. Later accessible reposts are direct evidence only of what they claim.
+- Anthropic documents an orchestrator/parallel-worker research system and explicitly
+  discusses excessive delegation, coordination/evaluation problems and task-dependent
+  agent budgets. Its evaluation guidance distinguishes deterministic, model and human
+  grading and the need to calibrate model graders. No claim that every task benefits
+  from a large swarm follows. [S5-S6]
+
+### A real reference implementation: SAFE
+
+Studied Google DeepMind's long-form-factuality repository at immutable commit
+`9d27158d198ced0a9d8271a80147cae580614601`, specifically the SAFE README,
+`rate_atomic_fact.py`, `search_augmented_factuality_eval.py` and config. This is
+primary implementation evidence, not evidence that the viral demo used SAFE. [S7]
+
+Mechanism: decompose an answer into atomic facts, make them self-contained, classify
+relevance, then issue bounded searches and ask whether the resulting evidence supports
+each fact. Search results, final responses and label counts are retained. Default
+search depth/retries are bounded; this is not an unconditional loop until a judge
+says yes. The implementation has explicit Supported / Not Supported / Irrelevant
+categories and retry paths; a wrapper must separately account for facts that were
+not successfully assessed, rather than interpret missing results as no failures.
+
+The paper reports 72% agreement with crowd annotators and 76% wins in a selected
+100-case disagreement adjudication. These are author-reported results under their
+evaluation setup, not universal factual accuracy or an Autowork quality target.
+The repository's old model/search pricing is historical and is not a current budget.
+SAFE's eval code is Apache-2.0; third_party/factscore is separately MIT. No code,
+dependency, key or running service was imported or enabled by this research. [S7-S8]
+
+LLM-as-judge research also documents position, verbosity and self-enhancement biases.
+Human-preference agreement in MT-Bench is not verification of business facts or
+software correctness. Different model names do not establish statistical independence
+or eliminate shared false sources, assumptions and blind spots. [S9]
+
+### Useful separation for Autowork
+
+Keep three distinct questions:
+1. Provenance: does the cited file/URL/log/commit exist, and is it the exact version?
+2. Support: does that evidence actually support this narrowly stated claim?
+3. Truth/correctness: is the source trustworthy and complete; did required behavior
+   actually pass? A model judging text cannot substitute for executing code/tests.
+
+Prefer deterministic verification for claims that have a machine-checkable authority:
+commit ancestry, source hashes, actual command exit/inventory, task identity,
+terminal result, current ownership, canonical delivery and authorized remote readback.
+Use semantic model checks only where wording/support is genuinely ambiguous, calibrated
+against labelled examples and with unsupported/contradicted/unknown outcomes. A
+plausible quotation, reachable URL, summary, judge consensus or a Boolean yes cannot
+promote unexecuted verification into passed tests or session-only work into delivery.
+
+Proposed thin evidence item in existing reports/receipts, not a new global tracker:
+claim, evidence reference + version/digest, observation time, check kind, verdict,
+coverage/missing inputs and concise failure reason. Research additionally needs
+source passage, entity, reporting period, units/currency and source-quality notes.
+Treat this as a design recommendation until adopted, not a mandatory new report schema.
+
+```text
+existing worker / research output
+  -> cheap deterministic provenance and contract checks
+  -> selective source-support judge for ambiguous text
+  -> supported | contradicted | unsupported | unknown
+  -> bounded targeted repair, or explicit unresolved result
+  -> existing review / canonical delivery path
+```
+
+Cheap means total verified outcome cost, not one model's token price. A 100-ms cached
+predicate or classifier is a different measurement from fresh retrieval plus semantic
+verification; this research measured neither. Track queueing, retrieval, grading,
+repair, false acceptance/rejection and total cost separately if a pilot is accepted.
+
+Use independent evidence, not just a different persona/model; vary the source and
+challenge unsupported assumptions. Keep fixed source-bound deterministic checks on
+the actual merged tree and reuse only matching qualified inputs. Do not add another
+full-suite run, let a grader rewrite its own criteria, rerun indefinitely until a
+false acceptance, or hide failure/unknown counts to reach zero.
+
+### Fit, non-goals and proposed next slice
+
+Autowork already has generator/reviewer separation, report checks and integration
+receipts. This is a refinement of its evidence handling, not a reason for another
+harness or 300 local workers. Independent company research is more partitionable
+than agents editing shared code and competing for tests, memory and landing capacity.
+The owner's completion-first policy remains the governing resource direction.
+
+Carry deterministic wrong-source/missing-evidence adversarial cases into existing
+TOOLSET-115-bf completion proof. Carry check-kind/coverage/unknown semantics into
+TOOLSET-130-15's existing read model. Keep TOOLSET-118-68 and TOOLSET-228-0c as
+capacity owners; do not duplicate the completed TOOLSET-227-a8 check-reuse work.
+Preserve current ownership, priorities, cumulative budgets and passing/failing history.
+
+A new cheap-model claim checker is only a proposal: if adopted, first run it in
+shadow mode on a small frozen, manually labelled corpus with fabricated citations,
+wrong entity/year/currency, partial coverage, stale artifacts and source prompt
+injection. Report false accepts/rejects and abstentions against that independent
+reference, plus actual latency/cost; do not set authority from its self-reported
+confidence. Start with existing bounded concurrency; scale only after end-to-end
+quality and capacity evidence, not a dashboard's agent count. No such pilot ran here.
+
+Obsidian is an optional Markdown presentation/export layer, not a verification
+engine or new task-state authority. Keep unverified claims quarantined/labelled so
+future agents do not absorb them as accepted facts. Source documents and vault notes
+are untrusted data, never permission to execute their instructions. Verified effects
+are not automatically authorized effects: permissions, privacy, budgets and review
+remain independent controls. No vault, account or fleet setting was changed.
+
+### Sources and unresolved claims
+
+[S1] Vendor documentation, live retrieval:
+https://kimi.com/en/help/agent/agent-swarm
+
+[S2] Accessible secondary repost (models/age/counts are claims):
+https://x.com/AnnatarXBT/status/2100594374266503574
+
+[S3] Earlier repost lead; direct fetch unavailable, no Wayback snapshot found:
+https://x.com/N01ennn/status/2067946538605642192
+
+[S4] Cheap/100-ms repost lead; search-indexed only, direct fetch unavailable:
+https://x.com/CurieuxExplorer/status/2111964680780685779
+
+[S5] Primary practitioner engineering report:
+https://www.anthropic.com/engineering/multi-agent-research-system
+
+[S6] Primary practitioner evaluation guidance:
+https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+
+[S7] Pinned primary implementation and license:
+https://github.com/google-deepmind/long-form-factuality/tree/9d27158d198ced0a9d8271a80147cae580614601/eval/safe
+https://github.com/google-deepmind/long-form-factuality/blob/9d27158d198ced0a9d8271a80147cae580614601/LICENSE
+
+[S8] SAFE paper; author-reported experimental evidence:
+https://arxiv.org/abs/2403.18802
+
+[S9] LLM-as-judge biases and preference evaluation (not correctness guarantees):
+https://arxiv.org/abs/2306.05685
+
+Unresolved: creator's identity/age/nationality; exact worker/checker models; actual
+simultaneous CLI count; 100-ms timing boundary/distribution; full pipeline cost;
+100-company field-level error rates; independent ground truth; actual export path.
+Repetition across reposts does not close these gaps. No runtime, model benchmark,
+financial/company dataset, safety guarantee or implementation is qualified here.
+
+### Independent-source checks and local follow-through
+
+Additional primary sources checked after the parallel research returned:
+- Inference Scaling fLaws evaluates repeated sampling against stronger hidden tests
+  and shows why imperfect verifiers can accept wrong solutions. It supports bounded
+  retries, not a universal numeric attempt limit or a claim about every repair loop.
+  https://arxiv.org/html/2411.17501v2
+- Correlated Errors in Large Language Models reports substantial shared errors even
+  across model families/providers. Its 60% figure is conditional on both models being
+  wrong in one dataset, not an overall judge false-accept rate for our system.
+  https://arxiv.org/html/2506.07962v1
+- OpenAI's CriticGPT report finds benefits from assisted critique while explicitly
+  acknowledging incorrect critiques. Its preference results are not a bug-detection
+  accuracy or error-free long-agent execution measurement.
+  https://openai.com/index/finding-gpt4s-mistakes-with-gpt-4/
+
+The local reader found existing check/integration receipts and an independent review
+lane. Do not resurrect the historical check_receipt/delivery_state engine simply
+because it has richer helper names: TOOLSET-202-9a identifies those unreachable modules
+for retirement. The live seam is parallel_integrate's recorded merged-candidate proof
+and pi_autowork.worker's gate/review path. Completed TOOLSET-227-a8 already owns full-
+check reuse; its tree/command cache is not evidence of complete environment-bound
+reuse or correct factual reporting. Reconcile actual current task state before using
+snapshot descriptions of open review-policy work; do not reopen completed tasks.
+
+A concrete source-reading gap remains: worker.full_suite_gate caches aggregate
+command/ok/reason/task for a merged tree, whereas worker.gate_note reads the current
+task's named log and chooses 'it passed' when no named failures are extracted, even
+if the log is absent. This does not prove an actual bad integration or fabricated
+runtime output, but it can misdescribe missing or exception-qualified evidence.
+Record this as a bounded successor to check reuse, not a second full-suite runner:
+use the producing gate result/provenance for the explanation and distinguish fully
+passed, accepted under baseline/flaky policy and unavailable details. Preserve the
+existing acceptance policy, one full-check owner and cache reuse. Existing 130-15
+continues to own the UI projection; the new follow-up owns only producer/reviewer
+narrative fidelity. New regression cases and implementation remain unrun.
+
+### Follow-through: evidence contracts, selective grading and bounded repair
+
+Further research on 2026-10-19 supports a small extension to the existing verifier,
+not a larger swarm. The implementation plan is
+[Evidence-bound claim verification](../plans/2026-10-16-pi-autowork-coordinator.md#evidence-bound-claim-verification-2026-10-19).
+The following distinctions change the design:
+
+- [in-toto Statement v1](https://github.com/in-toto/attestation/blob/06eafe3635bf8a425ad52cc82c6c90861e94a471/spec/v1/statement.md)
+  binds a predicate to subject artifact digests. [SLSA Build verification v1.2](https://slsa.dev/spec/v1.2/verifying-artifacts)
+  separately checks trusted identity, authenticated provenance and consumer expectations.
+  Our local digest/receipt adapter is not authenticated SLSA provenance or functional
+  correctness proof. Borrow explicit expected inputs, subject binding and consumer
+  checks; do not install a signer or promise malicious-worker containment.
+- [JudgeDeceiver](https://arxiv.org/abs/2403.17710v5) demonstrates optimized candidate
+  text manipulating LLM judge selections, with the tested detection defenses
+  insufficient. Its selection experiments do not quantify Autowork's code-review
+  risk. Nevertheless the artifact can attack its judge: supply bounded data,
+  validate structured outputs and keep deterministic authority outside the model.
+  Delimiters and warning prompts alone are not a proven security boundary.
+- [Anthropic's agent-eval guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+  distinguishes transcripts from actual environment outcomes and combines code,
+  model and human grading. Use independently labelled positive and adverse cases,
+  separate grader errors from agent errors, and inspect outcomes instead of trusting
+  completion narratives. This engineering guidance is not a measured local benchmark.
+- Prior SAFE and correlated-error findings remain applicable. Source-supported is
+  not universally true; missing support is not direct contradiction; changing the
+  judge's vendor does not demonstrate independent errors. No new SAFE historical
+  revision validation or local model-accuracy experiment was performed in this pass.
+
+Source inspection corroborated these existing seams in worker.py, coordinator.py,
+parallel_integrate.py, parallel_dispatch.py and task_execution.py:
+
+1. report_mismatch binds task/commit/changed files but permits checks=[]; worker pass
+   assertions are not execution evidence. The outer command receipt proves its
+   own validation process/declared inputs, not all worker-reported inner commands.
+2. The full-suite gate accepts some baseline/flaky exceptions, and gate_note may
+   infer a passing explanation from absent current-task logs. Existing 254-80 owns
+   the explanation repair; this pass does not claim a bad integration occurred.
+3. Reviewer results are currently textual pass/fail plus process/checkout guards.
+   Use a bounded sidecar only as transport and embed normalized observations in
+   the existing saved validation receipt before scratch cleanup. Preserve that
+   receipt's equality/context/ancestry checks through validated_receipt and close.
+4. Planning-only remerge can change the landing tree after a reviewed merge.
+   Preserve reviewed and landed identities separately. Strict enrolled exact-target
+   checks cannot relabel prior proof as validation of a new target; observation
+   mode reports the gap without changing the existing landing policy.
+5. reviewer_version fingerprints selected functions/constants. New schema/helper/
+   prompt/mode policy must enter the identity closure. New enforcing attempts also
+   require the existing state-reader/release compatibility boundary, or an older
+   reader could ignore additive metadata. No running/reported attempt is enrolled
+   retroactively.
+6. Current safe-path/JSON helpers are useful but not a complete bounded descriptor-
+   read contract. Snapshot size-limited regular files, reject duplicate keys and
+   escaping paths/symlinks, and hash the exact bytes read. These measures do not
+   prevent arbitrary same-UID code from fabricating both data and receipts.
+
+Planner decisions are recorded in the linked plan: runner-owned required coverage,
+independent execution/support axes, default shadow mode, semantic annotations in
+one existing review, one targeted claim-repair cycle at most within existing limits,
+and unchanged full-check/review/delivery authority. Fake graders test plumbing;
+real-model calibration remains separately authorized and unmeasured. No 100 ms,
+zero-error, latency, cost saving or delivered-runtime claim is made here.
