@@ -1035,14 +1035,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-165-f7",
-      "section": "Now",
-      "status": "open",
-      "title": "A runner's own worker processes never count as an outside session in the main checkout"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-170-f6",
       "section": "Now",
       "status": "open",
@@ -2598,6 +2590,14 @@
       "section": "Done",
       "status": "done",
       "title": "The memory gate counts only what a new worker needs, and agent scratch stops filling RAM-backed /tmp"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-165-f7",
+      "section": "Done",
+      "status": "done",
+      "title": "A runner's own worker processes never count as an outside session in the main checkout"
     },
     {
       "depends_on": [],
