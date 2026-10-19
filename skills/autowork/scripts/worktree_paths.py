@@ -22,6 +22,13 @@ def canonical_root(repo):
     first = git(repo, 'worktree', 'list', '--porcelain', '-z').split('\0\0')[0]
     fields = first.split('\0')
     if 'bare' in fields or not fields[0].startswith('worktree '):
+        listed = Path(fields[0][9:]) if fields[0].startswith('worktree ') else None
+        if listed and (listed / '.git').is_dir() and any(p.name != '.git' for p in listed.iterdir()):
+            # A checkout whose .git says bare stopped every runner command there: say how to restore it.
+            raise ValueError(f'{listed} is a checkout, but {listed / ".git"} has core.bare = true: a `git init` or '
+                             f'`git config` reached this repository (for example a test whose git commands '
+                             f'found it). Restore it with `git -C {listed} config core.bare false`, and '
+                             f'check its [user] identity, which the same commands may have set')
         raise ValueError('A canonical non-bare checkout is required')
     # A submodule's main worktree is listed as its Git directory (.git/modules/NAME, whose
     # core.worktree names the checkout); its top level is the checkout either way.
