@@ -995,6 +995,50 @@ finally:
         self.assertTrue(root.exists())
         self.assertEqual(self.git('rev-parse', 'autowork/A'), commit)
 
+    def test_conflict_adoptions_follow_canonical_revisions_up_to_three_per_attempt(self):
+        import parallel_status
+        root, _ = self.worker()
+        module = self.module()
+        for count in range(1, 5):
+            (self.repo / 'A.txt').write_text(f'canonical {count}\n')
+            self.git('commit', '-qam', f'canonical {count}')
+            base = self.git('rev-parse', 'HEAD')
+            held = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+            self.assertEqual(held['cause'], 'conflict', held)
+            before = {p: p.read_bytes() for p in [state.slot_path(self.common, 'A'),
+                                                 self.common / 'journal.jsonl']}
+            row = parallel_status.snapshot(self.repo)['tasks'][0]
+            self.assertEqual({p: p.read_bytes() for p in before}, before)
+            self.assertEqual(row['merge_adoption']['allowed'], count <= 3)
+            if count == 4:
+                self.assertIn('A.txt', row['reason'])
+                self.assertIn('3 of 3', row['reason'])
+                self.assertTrue(state.exhausted(state.slots(self.common)[0]))
+                with self.assertRaisesRegex(ValueError, '3 of 3'):
+                    module.merged(self.repo, self.owner, 'A')
+                break
+            merge = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', base], capture_output=True)
+            self.assertEqual(merge.returncode, 1)
+            self.git('checkout', '--ours', 'A.txt', cwd=root)
+            self.git('add', 'A.txt', cwd=root)
+            self.git('commit', '-qm', 'resolve', cwd=root)
+            adopted = module.merged(self.repo, self.owner, 'A')
+            self.assertEqual(adopted['merged_count'], count)
+            slot = state.slots(self.common)[0]
+            self.assertEqual((slot['state'], slot['baseline'], slot['merged_base']), ('reported', base, base))
+            if count == 1:  # old boolean records stored the adopted revision in baseline
+                slot['merged_base'] = True
+                slot.pop('merged_count')
+                slot = state.write_slot(self.common, slot, slot)
+            module.hold(self.common, slot, 'merge conflict', cause='conflict', conflict_files=['A.txt'])
+            row = parallel_status.snapshot(self.repo)['tasks'][0]
+            self.assertFalse(row['merge_adoption']['allowed'])
+            self.assertIn(f'{count} of 3', row['reason'])
+            with self.assertRaises(ValueError):
+                module.merged(self.repo, self.owner, 'A')
+            slot = state.slots(self.common)[0]
+            state.write_slot(self.common, dict(slot, state='reported'), slot)
+
     def test_merge_conflict_preserves_canonical_dirty_files_and_other_slot(self):
         root, commit = self.worker()
         other, other_commit = self.worker('B')

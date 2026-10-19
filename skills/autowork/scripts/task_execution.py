@@ -985,7 +985,8 @@ def main(argv=None):
     parallel.add_argument('--parallel-reverify', metavar='TASK',
                           help='Send a commit held by validation back to integration, once per --reviewer-version.')
     parallel.add_argument('--parallel-merged', metavar='TASK',
-                          help='Adopt a conflict-held commit whose worktree has merged canonical HEAD, once.')
+                          help='Adopt a conflict-held commit whose worktree has merged canonical HEAD; '
+                               'up to three times per attempt, each against a newer canonical revision.')
     parallel.add_argument('--parallel-answer', metavar='TASK',
                           help='Answer a worker-reported blocker and resume its attempt in its own worktree.')
     parallel.add_argument('--answer-file', help='The answer to the blocker, for --parallel-answer.')

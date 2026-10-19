@@ -616,6 +616,19 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         _, refused = self.run_cli('--parallel-answer', 'A', '--answer-file', str(answer), worker=False)
         self.assertEqual(refused['outcome'], 'ACTION_REQUIRED')  # a third time, it is the owner's
 
+    def test_a_report_that_nothing_needed_changing_is_held_not_rerun(self):
+        """One task ran three times in an hour: each worker found nothing to change and said so."""
+        self.write_todo(task('A', 'a.txt'))
+        self.git('commit', '-qam', 'A')
+        self.set_spec({'A': {'sleep': 0.1, 'nothing': 'the flaky test no longer fails'}})
+        self.apply()
+        self.wait_until_idle()
+        _, again = self.apply()
+        self.assertEqual(again['dispatched'], [])
+        slot = state.slots(self.common)[0]
+        self.assertEqual((slot['state'], slot['cause']), ('held', 'no_change'))
+        self.assertIn('the flaky test no longer fails; full check: pass', slot['reason'])
+
     def test_a_held_scope_request_resumes_in_place_without_a_touches_check(self):
         """sierra TASK-024: a worker needed one test file outside Touches and could only stop.
         TOOLSET-161-17: a worker no longer asks; a request an older release held resumes in its

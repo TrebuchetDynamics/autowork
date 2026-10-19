@@ -226,15 +226,19 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A conflict-held commit is adopted again after the merge resolver merges it, once the
+  session has moved past the last adoption, up to three times per attempt; with the session
+  unmoved no resolver job runs. The resolver ran about every ten minutes for tasks the
+  engine then refused (TOOLSET-251-c4).
+- A worker that reports, with no commit and no blockers, that nothing needed changing is
+  held as `no_change`, and the docs maintainer closes or restates the task. It was read
+  as a dead worker and rerun: one task ran three times in an hour, saying so each time.
 - A review that could not run gets one provisioning job per reviewer version across reloads:
   the record was in memory, so each reload started the same job again, and the next reload
   ended it.
 - A must-run-alone task no longer waits beside a task whose worker has ended: a commit
   awaiting review or integration still owns its files, but nothing runs beside it. One
   runner sat at 0 workers for 54 minutes while its exclusive task waited out a review.
-- A conflict-held commit the engine already adopted once after a merge is not merged with
-  the session again: the engine refused it, and each session revision and reload added an
-  unused merge commit to its worktree and logged "could not adopt its merged commit".
 - The review gate runs the full check with a private `$TMPDIR` on disk, as main's check
   already did: the runner has none, so a check that requires one crashed on every candidate
   and its base, and gate suites wrote into RAM-backed `/tmp`. A base run that crashed is no

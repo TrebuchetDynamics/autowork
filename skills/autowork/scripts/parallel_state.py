@@ -28,14 +28,17 @@ TRANSITIONS = {
 STATE_SCHEMA = 1
 STATE_SCHEMA_READS = (1,)
 FIELDS = {'worker', 'report', 'commit', 'reason', 'checks', 'integration', 'log_path', 'paused', 'cause',
-          'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered'}
+          'outside', 'requested', 'reviewed_by', 'check_failure_resumed', 'answered', 'merged_base',
+          'merged_count', 'conflict_files'}
 # Hold causes no fresh attempt can fix: the worker itself reported what it needs
 # (scope_request: files outside Touches, listed in `requested`).
 # scope: a commit changed files outside Touches the runner could not widen; a fresh retry
 # with the same Touches cannot pass, so the files go to the owner as a question.
 # Not retried with a fresh attempt. 'timeout': the host was slow, not the task; the coordinator
 # reviews the same commit again with a longer limit (TOOLSET-196-fb).
-NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout')
+# 'no_change': the worker reported, cleanly, that nothing needed changing; a fresh attempt would only
+# say so again, so the docs maintainer closes or restates the task.
+NEEDS_PERSON = ('blocker', 'scope_request', 'scope', 'timeout', 'no_change')
 COORDINATOR_FILES = ('TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md')
 
 
@@ -387,9 +390,37 @@ def rescope(common, old, touches, *, contract=None):
     return write_slot(common, value, old)
 
 
+def merge_adoption(repo, slot):
+    """Read-only eligibility shared by adoption and the runner's status preflight.
+
+    Legacy boolean merged_base records keep the adopted revision in baseline.
+    A fresh attempt clears adoption evidence with the other attempt-local fields.
+    """
+    base = execution.git(repo, 'rev-parse', 'HEAD')
+    previous = slot.get('merged_base')
+    count = slot.get('merged_count', 1 if previous else 0)
+    previous = slot['baseline'] if previous is True else previous
+    reason = None
+    if (slot['state'] != 'held' or slot.get('cause') != 'conflict' or not slot.get('commit')
+            or worker_live(slot)):
+        reason = 'merged is only for an idle conflict-held commit'
+    elif count >= 3:
+        reason = 'merge adoption limit reached'
+    elif previous and (previous == base or execution.git(repo, 'merge-base', previous, base) != previous):
+        reason = 'canonical HEAD has not advanced past the last adopted revision'
+    files = slot.get('conflict_files')
+    if files is None:  # pre-upgrade holds have no exact list; retain their task paths
+        files = (execution.git(repo, 'diff', '--name-only', slot['baseline'], slot['commit']).splitlines()
+                 if slot.get('commit') else [])
+    if reason:
+        reason += f'; adopted {count} of 3; conflict in: ' + (', '.join(files) or '(unknown files)')
+    return dict(allowed=reason is None, baseline=base, merged_count=count, reason=reason, files=files)
+
+
 def exhausted(slot):
-    """A held slot no attempt can finish: it waits for a person, not for the pool."""
-    return (slot['state'] == 'held' and (slot['attempt'] >= 2 or slot.get('cause') in NEEDS_PERSON)
+    """A held slot no fresh attempt should replace; a resolver can still adopt its commit."""
+    return (slot['state'] == 'held' and (slot['attempt'] >= 2 or slot.get('cause') in NEEDS_PERSON
+            or (slot.get('cause') == 'conflict' and bool(slot.get('merged_base'))))
             and not readoptable(slot))
 
 
@@ -412,6 +443,23 @@ def resume_widened(common, old):
     value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'requested', 'outside')}
     value.update(state='interrupted', paused=True)
     return write_slot(common, value, old)
+
+
+def no_change_summary(common, slot):
+    """What a report with nothing to change said: its notes and checks, briefly."""
+    data = common / 'slot-data' / slot['task_id'] / f'attempt-{slot.get("data_attempt", slot["attempt"])}'
+    try:
+        report = execution.read(execution.safe_path(data / 'report.json'))
+    except (ValueError, OSError):
+        report = None
+    if not isinstance(report, dict):
+        return 'see report.json'
+    known = {'task', 'commit', 'changed_files', 'checks', 'blockers', 'pending_live', 'unrelated_failures',
+             'environment_failures', 'changelog'}
+    notes = [str(v) for k, v in report.items() if k not in known and isinstance(v, str) and v.strip()]
+    checks = [f"{c.get('command')}: {c.get('result')}" for c in report.get('checks') or [] if isinstance(c, dict)]
+    text = ' '.join('; '.join(notes + checks).split()) or 'see report.json'
+    return text[:400] + ('…' if len(text) > 400 else '')
 
 
 def blocker_reason(blockers):
@@ -508,6 +556,11 @@ def reconcile(repo, owner_pid):
                     else:
                         # A genuine missing input still waits for a person; preserve its work.
                         target, updates = 'held', {'reason': blocker_reason(blockers), 'cause': 'blocker'}
+                elif blockers == [] and not dirty and not slot.get('paused'):
+                    # A report with no commit and no blockers says nothing needed changing: rerun, it
+                    # said so again, three times in an hour for one task.
+                    target, updates = 'held', {'reason': 'its worker found nothing to change: ' + no_change_summary(
+                        common, slot), 'cause': 'no_change'}
                 else:
                     target = 'interrupted' if dirty else 'released'
                     reason = ('dead worker with uncommitted changes' if dirty else EMPTY)

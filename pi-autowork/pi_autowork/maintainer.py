@@ -18,7 +18,7 @@ import re
 import time
 
 ROLE = 'DOCS-MAINTAINER'
-PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed')
+PLANNING_CAUSES = ('scope', 'scope_request', 'blocker', 'contract_changed', 'no_change')
 PLANNING_FILES = ('TODO.md', 'goals.json', 'BLOCKERS.md', 'TODO.archive.md')
 PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
@@ -91,6 +91,9 @@ PROMPT = (
     'reporting any test result, so no test is known to fail. Never add a repair task for test names. Unless an open task '
     'covers it, add one task to make the full check run to its results (pin or provision the crashing tool from the '
     'repository\'s setup docs, or restate the repository\'s `Full check:` line), with the crash line as Evidence. '
+    'For held: no_change (the worker ran the task and found nothing to change; its report says why): when '
+    'the report\'s evidence shows the Acceptance is already met, close the task as done with that evidence '
+    'through {goals}; otherwise restate the task so it names the change to make. '
     'For MAIN (main red, main fails its full offline check): unless an '
     'open task already covers those failures, add one repair task first in Now with python3 {goals} add-task '
     'and write its entry with the failing tests and the commits as Evidence, Touches from the failing tests '

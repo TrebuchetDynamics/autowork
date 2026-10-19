@@ -169,6 +169,13 @@ elif role == 'verify':
         subprocess.run(['git', '-C', main, 'add', '-A'])
         subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+    elif behavior == 'move_session':  # a second conflict, after the first merge was adopted
+        listing = git('worktree', 'list', '--porcelain').stdout
+        session = next(b.split('\n')[0][len('worktree '):] for b in listing.split('\n\n')
+                       if 'branch refs/heads/pi-autowork/' in b)
+        open(os.path.join(session, task + '.txt'), 'w').write('from the session again\n')
+        git('-C', session, 'commit', '-qam', 'session moved during review').check_returncode()
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
     elif behavior == 'env':  # a required check cannot run: a tool is missing here
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: fail environment — fake-sdk 1.0 (docs/SETUP.md)')
     elif behavior == 'needs_cache':  # passes only once the runner installed the tool
@@ -2093,16 +2100,58 @@ class EngineTests(Fixture):
         self.assertEqual(self.branches(), ['main'])
 
     def test_a_task_commit_that_conflicts_with_the_session_is_merged_not_reimplemented(self):
-        """TOOLSET-157-cd (2): a conflict hold reran the whole task from scratch."""
-        self.plan({'worker:A': ['move_session'], 'merge:A': ['resolve']})
+        """TOOLSET-251-c4: another session move after adoption must not strand the same commit."""
+        self.plan({'worker:A': ['move_session'], 'verify:A': ['move_session']})
         result = self.run_runner('--until-empty')
         self.retain_evidence()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: its commit conflicts with the session in: A.txt; asking Pi to resolve the merge '
                       'in its worktree', result.stdout)
         self.assertIn('A: merged the session into its commit; verifying again', result.stdout)
+        self.assertIn('A: merged the session into its commit again (2 of 3); verifying again', result.stdout)
+        self.assertEqual(len([r for r in self.runs('merge') if Path(r['cwd']).name == 'autowork-A']), 2)
         self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)  # no fresh attempt
         self.assertTrue(self.done('A', 'B', 'C'))
+
+    def test_an_unresolved_repeat_merge_stays_an_owner_question(self):
+        self.plan({'worker:A': ['move_session'], 'verify:A': ['move_session'], 'merge': ['resolve', 'leave']})
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual([r['run'] for r in self.runs('merge')], ['resolve', 'leave'])
+        self.assertEqual(len([r for r in self.runs('worker') if r['task'] == 'A']), 1)
+        question = (self.repo / 'BLOCKERS.md').read_text()
+        self.assertIn('Q-A', question)
+        self.assertIn('A.txt', question)
+        self.assertIn('1 of 3', question)
+        self.assertIn('the merge could not be resolved; it waits for the owner', result.stdout)
+
+    def test_a_refused_adoption_asks_the_owner_without_running_the_resolver(self):
+        self.plan({'verify:A': ['fail', 'fail']})
+        first = self.run_runner('--until-empty')
+        self.assertEqual(first.returncode, 1, first.stdout + first.stderr)
+        slot_path = self.repo / '.git/autowork-execution/slots/A.json'
+        original = json.loads(slot_path.read_text())
+        self.assertEqual(original['cause'], 'validation')
+        original.update(cause='conflict', reason='merge conflict', conflict_files=['A.txt'])
+        (self.repo / 'A.txt').write_text('conflicting session change\n')
+        self.git(self.repo, 'commit', '-qam', 'session conflict')
+        before = len(self.runs('merge'))
+        for count, moved in [(1, False), (3, True)]:
+            with self.subTest(count=count, moved=moved):
+                base = self.git(self.repo, 'rev-parse', 'HEAD')
+                slot = dict(original, attempt=1, merged_base=base, merged_count=count)
+                slot_path.write_text(json.dumps(slot))
+                if moved:
+                    (self.repo / 'A.txt').write_text('session advanced again\n')
+                    self.git(self.repo, 'commit', '-qam', 'another session move')
+                result = self.run_runner('--once')
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertEqual(len(self.runs('merge')), before, result.stdout)
+                self.assertEqual(json.loads(slot_path.read_text())['state'], 'held')
+                question = (self.repo / 'BLOCKERS.md').read_text()
+                self.assertIn('Q-A', question)
+                self.assertIn('A.txt', question)
+                self.assertIn(f'{count} of 3', question)
 
     def test_a_waiting_runner_commits_the_owners_quiet_planning_without_a_merge(self):
         """TOOLSET-157-cd (5): answers to held tasks stayed uncommitted while nothing merged."""
