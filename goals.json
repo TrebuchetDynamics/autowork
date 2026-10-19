@@ -1133,7 +1133,9 @@
       "title": "A task archived as done is done in the ledger too, and a not-runnable reason names what blocks it"
     },
     {
-      "depends_on": [],
+      "depends_on": [
+        "TOOLSET-229-d0"
+      ],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-252-4c",
       "section": "Now",
