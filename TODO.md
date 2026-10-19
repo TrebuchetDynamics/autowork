@@ -113,6 +113,22 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Exclusions: No change to when a check counts as crashed.
 - Planner's call: Now, right after TOOLSET-243-6d: a small fix to my own TOOLSET-237-35 that otherwise points provisioning and the maintainer at a harmless warning.
 
+### TOOLSET-246-06 — Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits
+
+- [ ] TOOLSET-246-06 — Budget-controller fixtures bound a hang, not the host's speed: no 2-second wall-clock limits
+- Status: open
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [budget-controller tests](skills/autowork/scripts/test_budget_controller.py) (`assert_final_observation_failure_retains_evidence` and two race cases: `self.assertLess(evidence['elapsed'], 2)` and `self.assertLess(race['elapsed'], 2)` over fixture subprocesses).
+- Evidence (2026-10-18 20:32, this repository's runner, load average 21-27): main went red at 539b926 with one failure, `test_budget_controller.BudgetTests.test_final_source_read_error_fails_qualification_without_erasing_evidence`: `AssertionError: 3.0635160729289055 not less than 2`. Its isolated rerun under the same load failed the same way, so it counted as red, not flaky. Reruns of the module from the owner session at that load also failed `test_failed_race_evidence_survives_assertion_and_temp_cleanup` and `test_final_effect_read_error_fails_qualification_without_erasing_evidence`. Earlier the same day a worker reported "the unrelated budget-controller timing failure" as a reason it could not finish (TOOLSET-170-f6). The test logic held in each case; only the elapsed bound failed.
+- Touches: skills/autowork/scripts/test_budget_controller.py
+- Scope: (1) Each `elapsed < 2` assertion becomes a bound tied to what it guards. A fixture that ends normally must finish well inside the fixture's own deadline (the deadline the test sets, or 30 s if none), which still catches a hang. A deadline-mode fixture must have been stopped by that deadline, which the events and failures already assert. (2) Any timing that remains reads the fixture's own monotonic stamps, not the test's wall clock around process start-up. (3) No skip or retry is added: the tests stay deterministic.
+- Acceptance: The three named tests pass with the host loaded (for example with `AUTOWORK_GATE_CPUS=1` and a CPU-burning helper running beside them, or 8 parallel runs of the module), and still fail when the fixture is made to hang past its deadline.
+- Checks: python3 scripts/check.py skills/autowork/scripts/test_budget_controller.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the budget controller itself.
+- Planner's call: Now, after TOOLSET-244-5d. A red main hides real regressions and blocks main-green signals for every candidate, and the maintainer would otherwise add a product-code repair task for a test-speed problem.
+
 ### TOOLSET-195-ee — The runner's own jobs never count as outside sessions
 
 - [ ] TOOLSET-195-ee — The runner's own jobs never count as outside sessions
