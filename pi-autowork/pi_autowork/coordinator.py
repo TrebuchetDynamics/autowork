@@ -1340,8 +1340,9 @@ class Coordinator:
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
-        planning files alone and goals.py validate passes. One run per distinct trigger set; no
-        trigger, no model call. True when its repair merged."""
+        planning files alone and goals.py validate passes. Only unhandled trigger items enter
+        the prompt; an unchanged unsuccessful repair needs an owner, not another run.
+        True when its repair merged."""
         if self.stop or not self.integ:
             return False
         self.ledger_errors = self.validate_ledger() if ledger_errors is None else ledger_errors
@@ -1355,13 +1356,17 @@ class Coordinator:
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
         main = main_check.read(self.state)
-        found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors,
+        found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
+        before = {}
+        if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
+            goals, _ = touches_inference.modules(self.toolset)
+            before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
+        reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
+        found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
         trigger_key = maintainer.key(found)
-        if not maintainer.due(self.state, trigger_key, found=found):
-            return False
         scratch = self.scratch_checkout('maintainer')
         if not scratch:
             return False
@@ -1392,7 +1397,14 @@ class Coordinator:
                 outcome = maintainer.RETRYABLE
         finally:
             self.drop_scratch(scratch)
-        maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed)
+        after = before
+        if outcome == 'merged' and before:
+            after = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
+            changed = [task for task in names if before.get(task) != after.get(task)
+                       or (task in ('MAIN', 'LEDGER') and task in changed)]
+            self.snapshot = None  # waiting reasons must be reread against the repaired entries
+        maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
+                            entries=after, before=before, reasons=reasons)
         LOG.say(f'{maintainer.ROLE}: {outcome}' + (f'; changed {", ".join(changed)}' if changed else ''))
         if self.ledger_errors:
             if outcome == 'merged':
@@ -1589,7 +1601,14 @@ class Coordinator:
         path = Path(self.integ) / 'BLOCKERS.md'
         try:
             old = path.read_text() if path.exists() else None
-            found = questions.build(snapshot, (Path(self.integ) / 'TODO.md').read_text(), goals)
+            todo = (Path(self.integ) / 'TODO.md').read_text()
+            rows = self.tasks(snapshot)
+            findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
+                        if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
+            triggers = maintainer.triggers(rows, findings=findings, limit=None)
+            reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
+            repairs = maintainer.stalled(self.state, triggers, entries=maintainer.entries(todo, goals), reasons=reasons)
+            found = questions.build(snapshot, todo, goals, repairs=repairs)
             if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
                 # TOOLSET-180-72: nothing guards the suite
                 found.append(questions.full_check_question())

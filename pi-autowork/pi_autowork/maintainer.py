@@ -3,16 +3,18 @@
 Accepted plan: docs/plans/2026-10-17-docs-maintainer.md (TOOLSET-164-f1). Many holds are
 not product questions: a wrong Touches list, an ambiguous or incomplete contract, a task
 the engine will not run as written. The fix is to restate the task from the repository's
-own evidence and run it again. One maintainer run handles every pending trigger at once;
-an unchanged trigger set never reruns, and no trigger means no model call.
+own evidence and run it again. One maintainer run handles pending items in a batch;
+handled items stay handled across batches until their entry or reason class changes.
+An unchanged unsuccessful repair becomes an owner question, not another model call.
 
-This module holds the pure parts (triggers, the trigger-set key, the prompt, the run
+This module holds the pure parts (triggers, item receipts, the prompt, the run
 record); the coordinator runs the job in a disposable checkout and merges what it
 commits. Standard library only.
 """
 import hashlib
 import json
 from pathlib import Path
+import re
 import time
 
 ROLE = 'DOCS-MAINTAINER'
@@ -22,7 +24,7 @@ PLANNING_DIRS = ('docs/tasks/',)
 LIMIT = 12
 
 
-def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=()):
+def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(), limit=LIMIT):
     """[(task, kind, why)] planning holds, unrunnable tasks, MAIN failures or invalid LEDGER.
     Ledger errors take precedence: nothing can run until they validate. Sorted, so
     the same queue/errors give the same set."""
@@ -53,7 +55,7 @@ def triggers(rows, main=None, findings=None, reported_flakes=(), ledger_errors=(
             found.append((task, 'review findings', ' '.join(findings[task].split())[:600]))
         elif state == 'waiting' and reason.startswith('not runnable'):
             found.append((task, 'not runnable', reason[:400]))
-    return sorted(found)[:LIMIT]
+    return sorted(found)[:limit]
 
 
 def key(found):
@@ -122,30 +124,128 @@ RETRYABLE = 'refused: it conflicts with the session'
 TRIES = 2
 
 
-def due(state, trigger_key, found=None):
-    """Whether this trigger set still needs a run: a new set, or one whose last run was refused
-    only because the session moved under it, tried fewer than TRIES times (one runner stalled
-    for hours: the same set never reran after such a refusal)."""
+def entries(todo, goals):
+    """Entry digests and named fields, using the same task parser as the engine."""
+    result = {}
+    for task, bodies in goals.task_bodies(todo).items():
+        body, mark, section = bodies[0]
+        fields = dict(goals.task_fields(body), Title=body.partition('\n')[0].strip(),
+                      Checkbox=mark, Section=section)
+        content = [(text.rstrip(), checkbox, heading) for text, checkbox, heading in bodies]
+        digest = hashlib.sha256(json.dumps(content).encode()).hexdigest()
+        result[task] = dict(digest=digest, fields=fields)
+    return result
+
+
+def reason_class(why, task_ids=()):
+    """Waiting reason without known task IDs or ID-shaped tokens/counts; keep prose intact."""
+    ids = set(task_ids)
+    why = re.sub(r'\b[A-Za-z0-9][\w-]*\b', lambda m: '' if m[0] in ids else m[0], why)
+    why = re.sub(r'\b(?:[A-Z][A-Z0-9]*(?:[-_][A-Za-z0-9]+)+|[A-Z]|[A-Za-z][\w-]*\d[\w-]*|\d+[A-Za-z][\w-]*)\b|\d+', '', why)
+    return ' '.join(why.split())
+
+
+def item_key(item):
+    return key([item]) if item[0] in ('MAIN', 'LEDGER') else 'task:' + item[0]
+
+
+def matches(receipt, item, entry, reasons, task_ids):
+    if not receipt:
+        return False
+    if item[0] in ('MAIN', 'LEDGER'):
+        return True  # the key already identifies the exact test/error
+    why = (reasons or {}).get(item[0], item[2])
+    return (receipt.get('digest') == entry.get('digest', '')
+            and reason_class(receipt['reason'], task_ids) == reason_class(why, task_ids))
+
+
+def pending(state, found, *, entries=None, reasons=None):
+    """Only unhandled items, bounded after filtering so old holds cannot starve overflow."""
+    run = last(state)
+    records = run.get('items', {})
+    # Keep ID context after tasks are archived. Compare both raw reasons with that
+    # same context, so learning a new ID cannot change only one side's identity.
+    ids = set(run.get('task_ids', [])) | set(entries or {})
+    updated = ids != set(run.get('task_ids', []))
+    run['task_ids'] = sorted(ids)
+    if 'items' not in run and run.get('key') == key(found[:LIMIT]):
+        # Upgrade only the exact batch the old record proves was handled. It had no
+        # entry/field evidence: anchor to today's entries without inventing changed fields.
+        records = {item_key(item): dict(outcome=run.get('outcome'), tries=int(run.get('tries') or 1), fields=[],
+                                       reason=(reasons or {}).get(item[0], item[2]),
+                                       digest=(entries or {}).get(item[0], {}).get('digest', ''))
+                   for item in found[:LIMIT]}
+        run['items'] = records
+        updated = True
+    if updated:
+        save(state, run)
+    selected = []
+    for item in found:
+        if item[0] == 'LEDGER' and key([item]) in run.get('ledger_attempts', {}):
+            continue
+        receipt = records.get(item_key(item))
+        if matches(receipt, item, (entries or {}).get(item[0], {}), reasons, ids):
+            if receipt['outcome'] != RETRYABLE or receipt['tries'] >= TRIES:
+                continue
+        elif (item[0] == 'MAIN' and key([item]) in run.get('handled_triggers', [])
+              and run.get('outcome') != RETRYABLE):
+            continue  # pre-item-receipt MAIN records
+        selected.append(item)
+    return selected[:LIMIT]
+
+
+def stalled(state, found, *, entries, reasons=None):
+    """Merged task repairs that left the same entry waiting for the same reason class."""
+    run = last(state)
+    records = run.get('items', {})
+    ids = set(run.get('task_ids', [])) | set(entries)
+    result = []
+    for item in found:
+        task, _, why = item
+        receipt = records.get(item_key(item), {})
+        if (task not in ('MAIN', 'LEDGER') and matches(receipt, item, entries.get(task, {}), reasons, ids)
+                and receipt.get('outcome') == 'merged' and receipt.get('fields')):
+            result.append(dict(task=task, reason=(reasons or {}).get(task, why), fields=receipt['fields']))
+    return result
+
+
+def due(state, trigger_key, found=None, *, entries=None, reasons=None):
+    """Per-item due-ness; retain set-key compatibility for callers without item details."""
+    if found is not None:
+        return bool(pending(state, found, entries=entries, reasons=reasons))
     run = last(state)
     if trigger_key in run.get('ledger_attempts', {}):
         return False  # each ledger error set runs once, even across unrelated maintainer runs
-    # Acknowledged flakes disappear from the next prompt. A remaining subset of
-    # the last presented batch was already handled, but omitted overflow was not.
-    if (found and run.get('outcome') != RETRYABLE
-            and all(key([item]) in run.get('handled_triggers', []) for item in found)):
-        return False
     if run.get('key') != trigger_key:
         return True
     return run.get('outcome') == RETRYABLE and int(run.get('tries') or 1) < TRIES
 
 
-def remember(state, *, trigger_key, found, outcome, changed=(), now=None):
+def remember(state, *, trigger_key, found, outcome, changed=(), entries=None, before=None, reasons=None, now=None):
     previous = last(state)
     tries = int(previous.get('tries') or 1) + 1 if previous.get('key') == trigger_key else 1
     value = dict(role=ROLE, key=trigger_key, at=time.time() if now is None else now, outcome=outcome,
                  triggers=[task for task, _, _ in found], changed=list(changed), tries=tries)
-    if any(task == 'MAIN' for task, _, _ in found):
-        value['handled_triggers'] = [key([item]) for item in found]
+    records = previous.get('items', {}).copy()
+    ids = set(previous.get('task_ids', [])) | set(entries or {}) | set(before or {})
+    if ids:
+        value['task_ids'] = sorted(ids)
+    for item in found:
+        task = item[0]
+        entry = (entries or {}).get(task, {})
+        identity = item_key(item)
+        prior = records.get(identity, {})
+        attempts = prior.get('tries', 0) if matches(prior, item, entry, reasons, ids) else 0
+        old = (before or {}).get(task, {}).get('fields', {})
+        new = entry.get('fields', {})
+        fields = sorted(field for field in old.keys() | new.keys() if old.get(field) != new.get(field))
+        why = (reasons or {}).get(task, item[2])
+        records[identity] = dict(task=task, reason=why, reason_class=reason_class(why, ids),
+                                 digest=entry.get('digest', ''), outcome=outcome, tries=attempts + 1,
+                                 fields=(fields or ['entry text']) if outcome == 'merged' and task in changed else [])
+    value['items'] = records
+    if previous.get('handled_triggers'):
+        value['handled_triggers'] = previous['handled_triggers']
     flaky_tests = set(previous.get('flaky_tests') or [])
     if outcome != RETRYABLE:
         flaky_tests.update(why.split('; flaky on revisions:')[0] for _, kind, why in found if kind == 'flaky test')
@@ -156,8 +256,12 @@ def remember(state, *, trigger_key, found, outcome, changed=(), now=None):
         ledger_attempts[trigger_key] = outcome
     if ledger_attempts:
         value['ledger_attempts'] = ledger_attempts
+    save(state, value)
+    return value
+
+
+def save(state, value):
     path = record_path(state)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(value) + '\n')
     tmp.replace(path)
-    return value
