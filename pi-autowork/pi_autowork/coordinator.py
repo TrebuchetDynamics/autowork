@@ -8,6 +8,7 @@ for Touches proposals and conflict resolution, health, requests, self-update and
 graceful stop. Every decision about a task is the engine's answer, not a guess here.
 """
 from datetime import datetime
+import ast
 import hashlib
 import json
 import os
@@ -1133,9 +1134,17 @@ class Coordinator:
             LOG.say(f'{task}: integration needs attention: {reason or outcome}')
 
     def reviewer_version(self):
-        """Fingerprint of this runner's validation: the reviewer's code and prompts plus the
-        settings that change what validation runs."""
-        digest = hashlib.sha256(Path(__file__).with_name('worker.py').read_bytes())
+        """Fingerprint only verdict code and prompts, not unrelated worker helpers."""
+        source = Path(__file__).with_name('worker.py').read_text()
+        parts = {}
+        for node in ast.parse(source).body:
+            if isinstance(node, ast.FunctionDef) and node.name in ('review', 'full_suite_gate', 'run_gate'):
+                parts[node.name] = ast.get_source_segment(source, node)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id in ('REVIEW', 'LIVE', 'NO_LIVE', 'GATE'):
+                        parts[target.id] = ast.literal_eval(node.value)
+        digest = hashlib.sha256(json.dumps(parts, sort_keys=True).encode())
         for name in ('PI_AUTOWORK_VALIDATE', 'PI_AUTOWORK_REVIEW'):
             digest.update(f'{name}={os.environ.get(name, "")}'.encode())
         return 'review-' + digest.hexdigest()[:12]

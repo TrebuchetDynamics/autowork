@@ -179,7 +179,7 @@ def passed(check):
         and receipt.get('inputs_match') is True)
 
 
-def validation_reason(check):
+def validation_reason(check, limit=600):
     """': <why>' from the validation's own `AUTOWORK_HOLD_REASON: <why>` line, or '' (TOOLSET-180-72:
     a retry, a person and the DOCS-MAINTAINER see which tests the candidate broke)."""
     try:
@@ -188,7 +188,7 @@ def validation_reason(check):
         return ''
     found = [line[len('AUTOWORK_HOLD_REASON: '):].strip() for line in text.splitlines()
              if line.startswith('AUTOWORK_HOLD_REASON: ')]
-    return (': ' + found[-1][:600]) if found and found[-1] else ''
+    return (': ' + found[-1][:limit]) if found and found[-1] else ''
 
 
 def report_matches(repo, common, slot):
@@ -416,7 +416,10 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None):
             # A candidate refused for a live writer steps aside for a bounded window, so one
             # waiting commit never stops the rest from integrating (TOOLSET-223-8e).
             available = {tid for tid, held in slots.items() if not writers_busy(held)} or set(slots)
-            first = next((t for t in contracts if t in available), None)
+            # A changed reviewer's second look never jumps ahead of a fresh candidate.
+            # Stable sorting preserves TODO priority within each group.
+            ordered = sorted((t for t in contracts if t in available), key=lambda t: bool(slots[t].get('reverified')))
+            first = next(iter(ordered), None)
             if first != task:  # it names the one, so the runner starts it next (TOOLSET-238-11)
                 raise ValueError(f'integrate the highest-priority reported task first: {first}')
             try:
@@ -929,13 +932,22 @@ def set_aside(repo, owner_pid, task):
 VALIDATION_HOLD = 'integration validation failed'
 
 
+def validation_verdict(slot):
+    """A failure line belongs to the worker commit, not the changing integration revision."""
+    # The display reason is shortened; compare the full line from its receipt when available.
+    reason = validation_reason(slot.get('checks'), limit=None) or str(slot.get('reason') or '')
+    line = re.sub(r'\b[0-9a-fA-F]{7,40}\b', '<revision>', reason)
+    return {'commit': slot.get('commit'), 'line': ' '.join(line.split())}
+
+
 def reverifiable(slot, version):
-    """A commit held because validation or review failed, by a validator other than ``version``
-    (a hold without ``reviewed_by`` predates the record), not yet re-verified under it."""
+    """A changed validator gets one more look, unless it repeated the same commit's verdict.
+    Timeouts are not verdicts: the coordinator may still retry them with a longer limit."""
     return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
             and (slot.get('cause') in ('validation', 'timeout')
                  or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
-            and slot.get('reverified') != version and slot.get('reviewed_by') != version)
+            and slot.get('reverified') != version and slot.get('reviewed_by') != version
+            and (slot.get('cause') == 'timeout' or slot.get('reverify_verdict') != validation_verdict(slot)))
 
 
 def reverify(repo, owner_pid, task, version):
@@ -952,9 +964,10 @@ def reverify(repo, owner_pid, task, version):
         state.require_owner(common, owner_pid)
         slot = slot_for(common, task)
         if slot is None or not reverifiable(slot, version):
-            raise ValueError('reverify is only for a commit held by validation, once per validator version')
+            raise ValueError('reverify is only for a commit held by validation, once per validator version; '
+                             'the same verdict on the same commit stays held')
         value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'checks', 'integration')}
-        value.update(state='reported', reverified=version)
+        value.update(state='reported', reverified=version, reverify_verdict=validation_verdict(slot))
         slot = state.write_slot(common, value, slot)
         return {'outcome': 'REVERIFY', 'task': task, 'commit': slot['commit'], 'version': version}
 

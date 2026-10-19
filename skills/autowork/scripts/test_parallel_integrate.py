@@ -1095,21 +1095,39 @@ finally:
                     state.slot_path(self.common, task).unlink(missing_ok=True)
 
     def test_a_validation_hold_is_reverified_once_per_reviewer_version(self):
-        """flutter TASK-006: an old reviewer failed it for want of a device; the fix should count."""
-        self.worker()
+        """A changed verdict earns another look; the same failure, apart from SHAs, does not."""
+        root, _ = self.worker()
         module = self.module()
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10, 'r0')['outcome'], 'HELD')
-        self.assertEqual(state.slots(self.common)[0]['cause'], 'validation')
+        def fail(line, reviewer):
+            argv = ['bash', '-c', f'echo "AUTOWORK_HOLD_REASON: {line}"; exit 1']
+            self.assertEqual(module.integrate(self.repo, self.owner, 'A', argv, 10, reviewer)['outcome'], 'HELD')
+        fail('fail — missing device at 123abcd', 'r0')
         with self.assertRaisesRegex(ValueError, 'once per validator version'):
-            module.reverify(self.repo, self.owner, 'A', 'r0')  # the reviewer that held it: no free second try
+            module.reverify(self.repo, self.owner, 'A', 'r0')
         self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r1')['outcome'], 'REVERIFY')
         slot = state.slots(self.common)[0]
         self.assertEqual((slot['state'], slot['attempt'], slot['reverified']), ('reported', 1, 'r1'))
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10)['outcome'], 'HELD')
+        long_failure = 'fail — required offline checks are red: ' + 'test_name ' * 65
+        fail(long_failure + 'first failure at 123abcd', 'r1')
         with self.assertRaisesRegex(ValueError, 'once per validator version'):
             module.reverify(self.repo, self.owner, 'A', 'r1')
         self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r2')['outcome'], 'REVERIFY')
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        fail(long_failure + 'different failure at 123abcd', 'r2')
+        self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r3')['outcome'], 'REVERIFY')
+        fail(long_failure + 'different failure at fedcba9876543210', 'r3')
+        with self.assertRaisesRegex(ValueError, 'same verdict'):
+            module.reverify(self.repo, self.owner, 'A', 'r4')
+        self.assertEqual(state.slots(self.common)[0]['state'], 'held')
+        # A new worker commit is not bound by the old commit's repeated verdict.
+        (root / 'A.txt').write_text('fixed\n')
+        self.git('commit', '-qam', 'fix', cwd=root)
+        commit = self.git('rev-parse', 'HEAD', cwd=root)
+        slot = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(slot, commit=commit), slot)
+        report_path = dispatch.data_dir(self.common, slot) / 'report.json'
+        execution.save(report_path, dict(execution.read(report_path), commit=commit))
+        self.assertEqual(module.reverify(self.repo, self.owner, 'A', 'r4')['outcome'], 'REVERIFY')
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10, 'r4')['outcome'], 'INTEGRATED')
 
     def test_only_validation_holds_are_reverified(self):
         self.worker(files={'CHANGELOG.md': 'coordinator owned'})  # a scope hold (TOOLSET-161-17)
@@ -1194,6 +1212,42 @@ finally:
         result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
         self.assertEqual(result['outcome'], 'HELD', result)
         self.assertIn('lineage', result['reason'])
+
+    def test_reverified_candidates_follow_fresh_candidates_then_keep_task_priority(self):
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        todo.write_text(todo.read_text() + ''.join(
+            f'\n- [ ] {t} — Task {t}\n  Scope: {t}.txt\n  Touches: {t}.txt\n'
+            '  Acceptance: fixture\n  Checks: true\n  Dependencies: None.\n  Status: open\n' for t in ('C', 'D')))
+        self.git('commit', '-qam', 'add C and D')
+        self.baseline = self.git('rev-parse', 'HEAD')
+        for task in ('A', 'B'):
+            self.worker(task)
+            self.assertEqual(module.integrate(self.repo, self.owner, task, ['false'], 10, 'r0')['outcome'], 'HELD')
+        for task in ('A', 'B'):
+            module.reverify(self.repo, self.owner, task, 'r1')
+        self.worker('C')
+        with self.assertRaisesRegex(ValueError, 'highest-priority reported task first: C'):
+            module.integrate(self.repo, self.owner, 'A', ['true'], 10)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'C', ['true'], 10)['outcome'], 'INTEGRATED')
+        with self.assertRaisesRegex(ValueError, 'highest-priority reported task first: A'):
+            module.integrate(self.repo, self.owner, 'B', ['true'], 10)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10, 'r1')['outcome'], 'HELD')
+        # A newly implemented retry is fresh, not a re-review of the old commit.
+        slot = module.slot_for(self.common, 'A')
+        retry = Path(slot['worktree'] + '-r2')
+        self.git('worktree', 'add', '-q', '-b', 'autowork/A-r2', str(retry), self.baseline)
+        state.change(self.common, slot, 'dispatched', {'worktree': str(retry), 'branch': 'autowork/A-r2',
+                                                     'baseline': self.baseline})
+        (retry / 'A.txt').write_text('fixed\n')
+        self.git('commit', '-qam', 'retry A', cwd=retry)
+        commit = self.git('rev-parse', 'HEAD', cwd=retry)
+        slot = state.transition(self.repo, self.owner, 'A', 'reported', commit=commit)
+        execution.save(dispatch.data_dir(self.common, slot) / 'report.json', {
+            'task': 'A', 'commit': commit, 'changed_files': ['A.txt'], 'checks': [], 'blockers': [], 'changelog': 'fix'})
+        self.worker('D')
+        for task in ('A', 'D', 'B'):
+            self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['outcome'], 'INTEGRATED')
 
     def test_priority_order_is_enforced(self):
         self.worker('B')

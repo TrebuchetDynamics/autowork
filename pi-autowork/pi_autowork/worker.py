@@ -374,6 +374,10 @@ def review(state, task, checkout, head_before, gate=''):
     else:
         marker.unlink(missing_ok=True)
     findings = findings_path(state, task)
+    if verdict == 'fail':
+        # Preserve the failure line in the engine's hold reason, not just a generic validation
+        # failure: a changed reviewer only gets another look while its verdict changes.
+        print(f'AUTOWORK_HOLD_REASON: {line}', flush=True)
     if verdict == 'fail' and not missing:  # checked and found wanting: what the maintainer acts on
         findings.parent.mkdir(parents=True, exist_ok=True)
         findings.write_text(json.dumps({'verdict': ' '.join(line.split())[:800], 'commit': head_before}))
