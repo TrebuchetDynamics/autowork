@@ -226,6 +226,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Worker port ranges no longer collide across repositories: `AUTOWORK_PORT_BASE` was
+  20000 + 100 × the slot number, which is per repository, so every runner's first worker
+  got 20100–20199. A worker now holds a host-wide lease on a free 100-port block while it runs.
 - Auto work commits and merges all work: before each merge the runner commits whatever
   is left uncommitted in its session worktree, and in the main checkout it commits every
   quiet change no process holds open (not only planning files); untracked files that
@@ -435,6 +438,8 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `autowork ls --json`: every runner with every field the TUI shows, for scripts and
+  agents that watch the fleet.
 - An idle pi-autowork runner reacts to the plan: a change to `TODO.md`, `goals.json`,
   `BLOCKERS.md`, the TODO archive or the main branch ends its wait within seconds
   (after `PI_AUTOWORK_PLAN_SETTLE`, default 3, of quiet), so a new task or an answered
