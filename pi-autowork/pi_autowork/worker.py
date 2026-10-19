@@ -63,6 +63,31 @@ VERDICT = re.compile(r'^PI_AUTOWORK_VERIFY: (?:(pass)(?:ed)?\.?\s*$|(fail)\b)')
 PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
 
 
+def setting(name, default, kind=int):
+    """A numeric setting from the environment; a malformed one falls back to the default."""
+    try:
+        return kind(os.environ.get(name) or default)
+    except ValueError:
+        print(f'pi-autowork: ignoring {name}={os.environ.get(name)!r}: not a number', file=sys.stderr)
+        return default
+
+
+def first_ten(items):
+    """``items`` for a reason, cut at ten."""
+    return ', '.join(items[:10]) + (f' (+{len(items) - 10} more)' if len(items) > 10 else '')
+
+
+def timed_out_failures(failures):
+    """The directories check.py gave up on, which it reports as failures."""
+    return [f for f in failures if f.endswith('(timed out)')]
+
+
+def check_stop():
+    """Give up between suites once the engine said stop: the next one would not be stopped."""
+    if pi_runtime.STOP:
+        raise main_check.Stopped('stopped')
+
+
 def link_ignored(checkout):
     """Gitignored dependencies the service names are linked from the canonical checkout first."""
     paths, repo = os.environ.get('PI_AUTOWORK_LINK_PATHS'), os.environ.get('PI_AUTOWORK_REPO')
@@ -181,10 +206,12 @@ def worker_tmp(checkout, task):
 
 def run_suite(command, checkout, limit, log, progress=None):
     """{code, failures, timed_out} of ``command`` in ``checkout``, its output in ``log``."""
+    check_stop()
     log.parent.mkdir(parents=True, exist_ok=True)
     progress = progress or log.with_suffix('.status.json')
     with open(log, 'w') as out:
-        code, timed_out = main_check.run_command(command, checkout, limit, progress, output=out)
+        code, timed_out = main_check.run_command(command, checkout, limit, progress, output=out,
+                                                 stop=lambda: pi_runtime.STOP)
     text = log.read_text(errors='replace')
     return {'code': code, 'failures': main_check.failures(text, limit=None), 'timed_out': timed_out}
 
@@ -216,7 +243,7 @@ def conclusive(value):
     """
     return (bool(value['code'] == 0 or value['failures'])
             and not value.get('timed_out')
-            and not [f for f in value['failures'] if f.endswith('(timed out)')])
+            and not timed_out_failures(value['failures']))
 
 
 def base_result(state, checkout, command, rev, limit, progress=None):
@@ -270,7 +297,8 @@ def replay_gate_log(state, task, cached):
     """
     target, source = gate_log(state, task), Path(cached.get('log') or '')
     try:
-        if not target.exists() and source.is_file():
+        # Replaced even when present: it may be this task's log of an earlier tree.
+        if source.is_file() and not (target.exists() and target.samefile(source)):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
     except OSError:
@@ -313,7 +341,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
     """(ok, reason) of ``command`` on the merged tree (TOOLSET-180-72): a reviewer-approved commit
     landed while breaking 44 tests its own checks never ran. Only what the base does not already
     fail rejects a candidate; a test that passes when rerun alone is flaky, not new."""
-    limit = float(os.environ.get('PI_AUTOWORK_VALIDATE_TIMEOUT') or 3600)
+    limit = setting('PI_AUTOWORK_VALIDATE_TIMEOUT', 3600, float)
     log = gate_log(state, task)
     progress = log.with_name(f'{safe_name(task)}.status.json')
     merged = run_suite(command, checkout, limit, log, progress)
@@ -334,6 +362,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
         # Rerun them alone first: when each passes, there is nothing for the base to explain, and the
         # base suite (as long as the merged one, on nearly every review) is not run at all.
         receipt = log.with_suffix('.reruns.json')
+        check_stop()
         main_check.rerun_failures(str(log), checkout, str(receipt), 'merged')
         try:
             flaky = json.loads(receipt.read_text()).get('flaky') or []
@@ -349,10 +378,9 @@ def run_gate(state, task, checkout, command, base_rev=None):
     # A directory check.py gave up on is not a failure the base can excuse. It reports the timeout
     # as a failure, so with the same directory timing out on a loaded base this left nothing new
     # to reject and the gate passed a tree whose full check never ran that directory.
-    incomplete = [f for f in merged['failures'] if f.endswith('(timed out)')]
+    incomplete = timed_out_failures(merged['failures'])
     if incomplete:
-        return False, 'the full check did not complete ' + ', '.join(incomplete[:10]) + (
-            f' (+{len(incomplete) - 10} more)' if len(incomplete) > 10 else '')
+        return False, 'the full check did not complete ' + first_ten(incomplete)
     try:
         base = base_result(state, checkout, command, base_rev or git(checkout, 'rev-parse', 'HEAD^1'),
                            limit, progress)
@@ -378,8 +406,7 @@ def run_gate(state, task, checkout, command, base_rev=None):
     new = failures if base['code'] == 0 else [f for f in failures if f not in base['failures']]
     if not new:
         return True, ''
-    return False, 'the full check has new failures the base does not: ' + ', '.join(new[:10]) + (
-        f' (+{len(new) - 10} more)' if len(new) > 10 else '')
+    return False, 'the full check has new failures the base does not: ' + first_ten(new)
 
 
 def batch_record(state, task):
@@ -425,6 +452,8 @@ def verify(state, task):
         print(f'AUTOWORK_HOLD_REASON: {reason}', flush=True)
         return 1
     environment_marker(state, task).unlink(missing_ok=True)  # this run says afresh what was missing
+    # So do its findings: a pass, an unreviewed pass or no verdict left an earlier commit's in place.
+    findings_path(state, task).unlink(missing_ok=True)
     # Its own private scratch, removed afterwards, on disk (reviewers copied whole repositories
     # into RAM-backed /tmp and left them, 39 GB on one host) and short: under the state directory
     # the path was 85 characters before a test added its own, past the 108-byte AF_UNIX limit.
@@ -451,6 +480,9 @@ def verify(state, task):
             return 0
         head_before = git(checkout, 'rev-parse', 'HEAD')
         return review(state, task, checkout, head_before, gate_note(state, task, checkout))
+    except main_check.Stopped:
+        print(f'pi-autowork: verification of {task} stopped', file=sys.stderr)
+        return 1
     finally:
         drop_scratch_worktrees(checkout, scratch)
         shutil.rmtree(scratch, ignore_errors=True)
@@ -472,15 +504,31 @@ def drop_dead_scratch(checkout, folder):
                 continue
         except OSError:
             continue  # a parallel review removed it first
-        try:
-            os.kill(int(pid), 0)
-            continue  # still running, or a reused PID: a later review removes it
-        except ProcessLookupError:
-            pass
-        except PermissionError:
-            continue
+        if alive(int(pid)) and not started_after(int(pid), old):
+            continue  # still running
         drop_scratch_worktrees(checkout, old)
         shutil.rmtree(old, ignore_errors=True)
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def started_after(pid, path):
+    """Whether ``pid`` started after ``path`` was last changed: a reused PID, not the scratch's owner,
+    which started before it made the folder. Unknown is False, so the scratch is kept."""
+    try:
+        ticks = int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19])
+        boot = next(int(l.split()[1]) for l in Path('/proc/stat').read_text().splitlines() if l.startswith('btime '))
+        return boot + ticks / os.sysconf('SC_CLK_TCK') > path.stat().st_mtime + 1
+    except (OSError, ValueError, IndexError, StopIteration):
+        return False
 
 
 def drop_scratch_worktrees(checkout, scratch):
@@ -501,8 +549,7 @@ def batch_review(state, task, checkout, gate):
     head = git(checkout, 'rev-parse', 'HEAD')
     # An environment fail or no verdict writes no findings: an earlier review's would be recorded.
     findings_path(state, task).unlink(missing_ok=True)
-    note = GATE.format(command=gate['command'], outcome='it passed', log=gate['log'])
-    code = review(state, task, checkout, head, note)
+    code = review(state, task, checkout, head, gate['note'])
     reason = review_findings(state, task)
     record = batch_record(state, task)
     record.parent.mkdir(parents=True, exist_ok=True)
@@ -540,7 +587,7 @@ def verify_batch(state, session, script, tasks):
     each candidate through its usual integration, which finds its verdict when the tree matches."""
     order, slots = batch_order(session, set(tasks))
     _, parallel_integrate, _ = engine_modules()
-    size = max(2, int(os.environ.get('PI_AUTOWORK_BATCH') or 6))
+    size = max(2, setting('PI_AUTOWORK_BATCH', 6))
     drop_dead_scratch(session, review_root())
     base = git(session, 'rev-parse', 'HEAD')
     # `aw-b-<pid>-*`, so drop_dead_scratch sweeps a killed batch's chain as it does a review's.
@@ -572,14 +619,14 @@ def verify_batch(state, session, script, tasks):
             print(json.dumps(dict(result, reason='fewer than two candidates merge together')))
             return 0
         os.environ['TMPDIR'] = str(root)
-        command = main_check.full_check(str(chain))
         ok, reason = full_suite_gate(state, 'batch', str(chain), base)
         if not ok:
             # Which candidate broke it is not known yet: each goes through today's integration.
             print(json.dumps(dict(result, outcome='BATCH_GATE_FAILED', reason=reason)))
             return 0
-        gate = json.dumps({'command': command or '', 'log': str(gate_log(state, 'batch'))})
-        limit = max(1, int(os.environ.get('PI_AUTOWORK_REVIEWS') or 3))
+        # The same note a single review gets, with any failures the gate excused.
+        gate = json.dumps({'note': gate_note(state, 'batch', str(chain))})
+        limit = max(1, setting('PI_AUTOWORK_REVIEWS', 3))
         pending = list(steps)
         # A stop reaches only the reviews already running: start no more, and let those record theirs.
         while (pending and not pi_runtime.STOP) or running:
@@ -593,7 +640,8 @@ def verify_batch(state, session, script, tasks):
                                          env=dict(os.environ, PI_AUTOWORK_BATCH_GATE=gate),
                                          stdout=subprocess.DEVNULL, stderr=sys.stderr)
                 running.append((task, where, child))
-            time.sleep(1)
+            if running:  # until a review exits; WNOWAIT leaves reaping to its Popen
+                os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOWAIT)
             for item in [r for r in running if r[2].poll() is not None]:
                 running.remove(item)
                 task, where, child = item
@@ -603,6 +651,9 @@ def verify_batch(state, session, script, tasks):
             result['tasks'].remove(task)
         print(json.dumps(result))
         return 0
+    except main_check.Stopped:
+        print('pi-autowork: the batch stopped', file=sys.stderr)
+        return 1
     finally:
         for _, _, child in running:  # an error mid-batch left reviews running in removed worktrees
             if child.poll() is None:
@@ -623,7 +674,7 @@ def gate_note(state, task, checkout):
     log = gate_log(state, task)
     named = main_check.failures(log.read_text(errors='replace'), limit=None) if log.exists() else []
     outcome = ('it passed' if not named else 'it passed apart from failures the base already has or that '
-               'passed when rerun alone: ' + ', '.join(named[:10]))
+               'passed when rerun alone: ' + first_ten(named))
     return GATE.format(command=command, outcome=outcome, log=log)
 
 
