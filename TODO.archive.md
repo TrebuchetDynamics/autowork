@@ -4232,3 +4232,167 @@ Source section: Now
 - Ownership: Toolset coordinator. Coordinates with TOOLSET-227-a8: once workers stop running the full check there, rule (1) applies to the failures of the task's own `Checks:` commands, and (2)-(3) are unchanged.
 - Exclusions: No skipping of the runner's own full-suite gate. Failures the change causes still fail the check and the task.
 - Planner's call: third in Now, after the two integration-hold tasks (raised 2026-10-18 17:18: it held finished work in three repositories in one pass). Under the load this fleet runs at, a full gate is rarely clean, and every finished worker that obeys the current prompt turns into a question only the runner can answer. The runner's gate already separates new failures from old and flaky ones, so the worker needs no veto.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-253-0d"></a>
+
+### TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
+
+- [x] TOOLSET-253-0d — The gate reuses a base run whose tree differs only in planning files, instead of running the base suite again
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-19); [full-suite gate](pi-autowork/pi_autowork/worker.py) (`base_result` caches `full-check/base-<rev>.json` by exact revision); TOOLSET-233-ba in [the archive](TODO.archive.md) (the session now takes main between reviews, so its head moves often, mostly by planning commits); `PLANNING_FILES` in [integration](skills/autowork/scripts/parallel_integrate.py).
+- Evidence (2026-10-19 02:57-03:58, this repository's runner): one candidate's gate took about 60 minutes. The merged-tree suite ran 29 minutes and failed some load-sensitive runner journeys. Isolated reruns took 5 minutes. Then a base suite ran 27 minutes on `c7689a5`, a `docs(blockers): questions for the owner` commit whose only change from the already-cached base `491ef4a` was BLOCKERS.md. Of the 7 consecutive base runs cached on this runner, 3 repeated a cached base whose tree differed only in planning files. Reviews here run one at a time, so each such run delays every waiting candidate by about half an hour.
+- Touches: pi-autowork/pi_autowork/worker.py, pi-autowork/tests/test_worker_tmp.py
+- Scope: (1) Base results are also indexed by tree, with the planning-file paths' blobs left out of the key: a tree ID computed with `PLANNING_FILES` and `docs/` removed. Two revisions with the same key share a base result. (2) `base_result` looks up that key before running the suite, and records both the exact revision and the key. (3) The same command is still required. A key match under another command runs again.
+- Acceptance: In fixtures: a base cached at revision R is reused for a revision that adds only a BLOCKERS.md or TODO.md change, with no suite run (counted by a command that appends to a file); a revision that also changes a source file runs the base suite; a different check command runs it again.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_worker_tmp.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No reuse across revisions that differ in any file outside the planning set, and no change to when the base suite is needed.
+- Planner's call: Now, after TOOLSET-252-4c. One review at a time is this runner's bottleneck: five verified candidates waited behind an hour-long gate. Planning-only commits cannot change test results, so their base runs are pure delay, and they are frequent because questions and closures land as planning commits between reviews.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-244-5d"></a>
+
+### TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
+
+- [x] TOOLSET-244-5d — The crash line is the tool's own exit message, not an earlier warning that mentions an error
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); TOOLSET-237-35 in [the archive](TODO.archive.md); [main check](pi-autowork/pi_autowork/main_check.py) (`CRASH`, `crash_line`: the first line matching any of `exited unexpectedly`, `Segmentation fault`, `core dumped`, `Bad state`, `panic:`, `Fatal error`, `Killed`, `Aborted`, `out of memory`).
+- Evidence (2026-10-18 19:05, one fleet runner): the gate held a candidate whose test tool crashed on the base and the candidate alike, as TOOLSET-237-35 intends. But the crash line it recorded was an ordinary app warning printed during the tests, `[warn][wallpaper] Set wallpaper failed {"error":"Bad state: channel unavailable"}`, because it matched `Bad state` before the tool's own `Oops; flutter has exited unexpectedly: "Bad state: No element".` further down. That wrong line went into the hold reason, the provisioning request ("installing it into the toolchain cache") and the maintainer's input. The main check of the same repository picked the right line, because its log had no such warning.
+- Touches: pi-autowork/pi_autowork/main_check.py, pi-autowork/tests/test_main_check.py
+- Scope: (1) Patterns are ranked. A process-ending message (`exited unexpectedly`, `Segmentation fault`, `core dumped`, `panic:`, `Fatal error`, `Killed`, a line starting with a Python exception after `Traceback`) beats a weak one (`Bad state`, `Aborted`, `out of memory`). (2) Within a rank the last matching line wins, since a crash ends the output. (3) Log-level prefixes such as `[warn]`, `[info]` and `WARNING:` never count as a crash line.
+- Acceptance: In fixtures: the logged sequence (an earlier `[warn] ... Bad state: channel unavailable` line, then `Oops; flutter has exited unexpectedly: "Bad state: No element".`) yields the `Oops` line; a Python traceback yields its final exception line; a log with only a warning-level match falls back to the last non-blank line.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_main_check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to when a check counts as crashed.
+- Planner's call: Now, right after TOOLSET-243-6d: a small fix to my own TOOLSET-237-35 that otherwise points provisioning and the maintainer at a harmless warning.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-222-e1"></a>
+
+### TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
+
+- [x] TOOLSET-222-e1 — A runner with nothing running always gets one worker, whatever the host load
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [resource gate](skills/autowork/scripts/parallel_dispatch.py) (`resource_gate`: refuses any worker while the 1-minute load average is at or above the CPU count, the same for every runner on the host); [health](pi-autowork/pi_autowork/health.py) (`blocked` when work waits and none runs).
+- Evidence (2026-10-18 13:19-13:22): a small fleet runner with two runnable tasks and no worker logged `No task can start now: <task>: resource gate: load average 27.75 >= 24 CPUs` every cycle and showed `blocked` in the TUI. The load came from another runner's six workers, its review checks and a minutes-long planning call (TOOLSET-221-8e). In the last 6 hours four runners logged 1 to 10 load-gate refusals each. The first runner to start workers keeps the load high, so the others wait whatever their queues hold.
+- Touches: skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_health.py
+- Scope: (1) The load-average check applies only when this runner already has a live worker (`running >= 1`). A runner's first worker is refused only by memory or disk, which still apply to every worker. (2) A wait that is only the load gate shows as `waiting for the host (load L on N CPUs)` in status and the TUI, not `blocked`, and never counts toward `stalled`.
+- Acceptance: In fixtures with the load average patched above the CPU count: a runner with no live worker dispatches one task and the second waits with the load reason; a runner with one live worker dispatches nothing new; with memory below the floor, even the first worker is refused. Health reports a runner whose only waits are load-gate waits as waiting for the host, and never stalled after the stall threshold.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to the memory or disk floors, or to the load threshold for a runner's second and later workers. No cross-runner coordination file.
+- Planner's call: third in Now, after the two integration-throughput tasks. One worker per runner means every repository progresses; a Pi worker mostly waits on the model, and the threshold still caps everyone's extra workers. A host-wide fair-share scheduler would need state shared between runners; this rule gets most of the benefit without it.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-224-07"></a>
+
+### TOOLSET-224-07 — A worker's own test processes in its private temp directory are the worker's, not an outside session
+
+- [x] TOOLSET-224-07 — A worker's own test processes in its private temp directory are the worker's, not an outside session
+- Status: done
+- Goal: PI-RUNNER — Run Autowork continuously through Pi with a model fallback.
+- Sources: fleet monitoring (2026-10-18); [writer attribution](skills/autowork/scripts/parallel_integrate.py) (`require_no_writers`: a pool process is exempt only when every workspace it uses is the slot's worktree); [worker launch](skills/autowork/scripts/parallel_dispatch.py) (`launch`: each worker gets a private TMPDIR under `$XDG_RUNTIME_DIR/aw/<state>/<slot>/`); `scripts/check.py` (removes `AUTOWORK_*` from test processes, so the worktree marker does not reach them); TOOLSET-165-f7 (descendant attribution, implemented and waiting to integrate).
+- Evidence (2026-10-18, this repository's runner): integration was refused twice with `pid <n> python3 in /var/tmp/aw161/<tmp>/state/releases/<sha> (no terminal; activity unknown)` and `pid <n> python3 in $XDG_RUNTIME_DIR/aw/<state>/16/<tmp>/state/releases/<sha> (running commands)`. Both were fixture runners that a worker's own test suite started: their working directory is a release copy inside the worker's temp directory, not its worktree. TOOLSET-165-f7 attributes descendants only when every workspace is inside the slot's worktree, so these would still block.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py
+- Scope: (1) A process that descends from a live slot leader (the chain rule from TOOLSET-165-f7) is the slot's when each workspace it uses is inside the slot's worktree or the slot's private temp directory (`worker_tmpdir` for that slot, from its `meta.json`). (2) A process in a temp directory that is no live slot's own stays fail-closed, as does a non-descendant in any temp directory.
+- Acceptance: In fixtures: a leader's grandchild whose cwd is inside that slot's TMPDIR does not block integration; the same process under another slot's TMPDIR, or with a dead link in its parent chain, still blocks; an unrelated process in `/var/tmp` still blocks.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 scripts/check.py
+- Dependencies: TOOLSET-165-f7.
+- Ownership: Toolset coordinator.
+- Exclusions: No exemption by command name or by path pattern alone; descent from a live leader is required.
+- Planner's call: right after TOOLSET-165-f7, which owns the descent rule; this widens only where a descendant may stand. Toolset workers run the runner's own fixtures, so without it every integration here waits while any worker tests.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-216-08"></a>
+
+### TOOLSET-216-08 — Landing merges past someone's uncommitted planning edits, and quiet means unchanged content
+
+- [x] TOOLSET-216-08 — Landing merges past someone's uncommitted planning edits, and quiet means unchanged content
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [owner changes and landing](pi-autowork/pi_autowork/coordinator.py) (`commit_owner_changes`, the `recent` mtime test against `PI_AUTOWORK_PLANNING_QUIET`, `merge_main`, the `Merge pending: … Your local changes … would be overwritten by merge` path).
+- Evidence (2026-10-18, this repository): for about three hours the main checkout held the same uncommitted 66-line edit to `TODO.md` and a plan document from another session, yet both files were rewritten (same bytes) often enough that the runner always found them `changed in the last 10 min`. It neither committed them nor merged: `Merge pending: main … could not take pi-autowork/…: error: Your local changes to the following files would be overwritten by merge: TODO.md`, retried every cycle. Interactive sessions committed around the edit by hand: commit the merged content to `main` without touching the working file, then 3-way merge the uncommitted edit back into it.
+- Touches: pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, pi-autowork/tests/test_landing.py, CHANGELOG.md
+- Scope: (1) A change counts as recent only while its content changes: the runner records each uncommitted file's content hash with the time it first saw it, and the quiet interval runs from the last content change, not from the file's modification time. (2) When `main` cannot take the session because files it changes hold uncommitted edits, the runner lands without the working tree: it builds the merge commit in the index of a temporary index file (or `git merge-tree`), moves `main` to it with a compare-and-swap on the ref, then for each dirty file 3-way merges the uncommitted edit (base: the old `HEAD` blob, theirs: the working file) onto the new blob and writes the result to the working file only when the merge is clean and the working file is unchanged since it was read. The uncommitted edit stays uncommitted. (3) A conflicting edit, a file open for writing, or a working file that changed meanwhile leaves `main` where it was and keeps today's `Merge pending` wait, naming the file and the reason.
+- Acceptance: In fixtures, a main checkout with an uncommitted edit to `TODO.md` in a different section than the session's change lands the session: `main` has the session's change, the working `TODO.md` has both, and `git diff` still shows only the uncommitted edit. An edit rewritten with identical bytes every minute counts as quiet after the interval. A conflicting edit, or a working file changed between read and write, lands nothing and keeps the edit byte for byte.
+- Checks: python3 scripts/check.py tests/test_pi_autowork.py pi-autowork/tests/test_landing.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits coordinator.py.
+- Exclusions: No stash, reset or checkout of someone else's edit; no change to what is auto-committed or to the secret-file rule; no landing while a merge, rebase or cherry-pick is in progress.
+- Planner's call: the owner's direction (2026-10-18, "manage this better") is that a parked edit must not hold finished work; landing around it with a clean 3-way merge keeps the edit and its owner undisturbed, while a conflict still waits for a person.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-217-2d"></a>
+
+### TOOLSET-217-2d — /autowork update also refreshes this host's other installs through install.sh
+
+- [x] TOOLSET-217-2d — /autowork update also refreshes this host's other installs through install.sh
+- Status: done
+- Goal: PORTABLE
+- Payoff: Align portable workflow discovery.
+- Sources: [updater](update_bundle.py) (`main`, the receipt), [install entry point](install.sh) and [its menu](scripts/install_menu.py) (items `pi`, `autowork`, `tx`, `hermes`, `claude`, `codex`; `--only`, `--skip`, `--dry-run`; tx "keeps your existing ~/.tmux.conf"), [chat summary](bundle.py) (`summarize_update`).
+- Evidence (2026-10-18, this host): after `/autowork update` brought every Hermes profile to the latest release, the host's other installs stayed behind (the Claude Code plugin cache still held release 0.3.0 of the workflows); only the runners update themselves. The owner: "autowork update must also update host by running install.sh".
+- Touches: update_bundle.py, tests/test_update_bundle.py, bundle.py, tests/test_bundle.py, scripts/install_menu.py, tests/test_install_menu.py, docs/installation.md, CHANGELOG.md
+- Scope: (1) After the profiles are updated and activated, a non-check update runs the fetched release's `install.sh --full --skip hermes,pi -q` from the updated plugin checkout: Hermes was just updated by this run, and the runners update the Pi package themselves only while no work is in flight. (2) It is best effort and bounded (a timeout per run): a host item that fails or is unavailable is recorded per item in the receipt (`hosts`: item, status, exit) and in the chat summary as one line, and never fails or rolls back the Hermes update. (3) It never overwrites a user's own dotfiles: before shipping, verify with `--dry-run` and a fixture home that no item replaces an existing `~/.tmux.conf` or other user config, and keep `~/.local/bin` replacements behind the existing `.bak` rule. (4) An update with nothing new (`up_to_date`) skips the host refresh, so a rerun stays a no-op.
+- Acceptance: In fixtures with a fake `install.sh`, an update that changed the release runs it once with `--full --skip hermes,pi`, records each item's outcome, and still reports the Hermes update `updated` when an item fails; an `up_to_date` rerun does not run it; `--check` never runs it. A fixture home with an existing `~/.tmux.conf` keeps it byte for byte after a real `install.sh --only tx` run.
+- Checks: python3 scripts/check.py tests/test_update_bundle.py tests/test_bundle.py tests/test_install_menu.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to how runners update the Pi package; no `install.sh` run from `--check`, from a scoped profile update or from a pinned profile; no privilege escalation (host prompts that need a person stay skipped and reported).
+- Planner's call: the release's own `install.sh` is the one supported way each host installs, so the update reuses it rather than calling host CLIs itself; `hermes` and `pi` are skipped because this run and the runners already own them. Placed in Now (owner, 2026-10-18).
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-219-2c"></a>
+
+### TOOLSET-219-2c — A planning task runs in the maintainer and saves the next batch, until its goal is met
+
+- [x] TOOLSET-219-2c — A planning task runs in the maintainer and saves the next batch, until its goal is met
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [accepted rolling planning design](docs/plans/2026-10-18-rolling-planning.md#rolling-planning-design), [docs maintainer](pi-autowork/pi_autowork/maintainer.py) (`triggers`, `prompt`, `planning_only`, `LIMIT`), [runner](pi-autowork/pi_autowork/coordinator.py) (the maintainer run and its planning landing), [coordinator files](skills/autowork/scripts/parallel_dispatch.py) (`COORDINATOR_FILES`, which a code worker may not change), [plan protocol](skills/plan-for-me/SKILL.md).
+- Evidence (2026-10-18, owner): a large request such as porting a project to Flutter should plan, build, then plan the next batch from what the first one found, "like a goal tool". Today a plan saves one batch; once it is done the queue is empty although the goal is not met, and no worker may write `TODO.md` or `goals.json` to plan more.
+- Touches: pi-autowork/pi_autowork/maintainer.py, pi-autowork/tests/test_maintainer.py, pi-autowork/pi_autowork/coordinator.py, tests/test_pi_autowork.py, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py, docs/reference.md, CHANGELOG.md
+- Scope: (1) The engine never dispatches a task with `Kind: plan` to a code worker; once its dependencies are done it reports it as ready for planning. (2) The runner adds such a task to the maintainer's triggers as `plan` and the maintainer runs Plan For Me on the entry's scope with the finished batch's evidence (reports, code, the goal's remaining proof), saves at most 8 new tasks under the entry's goal, puts owner-only gaps in `Needs decision` with their question, closes the planning task, and lands all of it in one planning commit. (3) While the goal is not met it ends the new batch with the next planning task, `Kind: plan`, `Plan round: N+1 of M`, depending on the new batch. (4) At round M, or when a round adds no building task, it saves no further planning task and writes one `BLOCKERS.md` question naming the goal and what is left. (5) Planning tasks run one at a time per repository.
+- Acceptance: In fixtures, a `Kind: plan` task with done dependencies is never given a worktree; the maintainer's planning commit adds the new tasks, closes the planning task and adds `Plan round: 2 of 10` on the next one, which depends on every new building task; at `Plan round: 10 of 10`, and in a round that adds only `Needs decision` items, no planning task is added and one question is written; more than 8 proposed tasks are refused as a planning failure, not truncated. A repository without planning tasks behaves as today.
+- Checks: python3 scripts/check.py pi-autowork/tests/test_maintainer.py tests/test_pi_autowork.py skills/autowork/scripts/test_parallel_dispatch.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator. Runs after TOOLSET-197-4f, which edits maintainer.py and coordinator.py.
+- Exclusions: No code worker gains write access to coordinator files; no new `goals.json` schema; no planning without a `Kind: plan` entry (the maintainer's existing triggers are unchanged).
+- Planner's call: as recorded in the [design](docs/plans/2026-10-18-rolling-planning.md#rolling-planning-design): the maintainer runs planning tasks, the chain is a dependency, and the limits (10 rounds, 8 tasks a round) are defaults.
