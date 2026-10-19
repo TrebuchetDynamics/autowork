@@ -51,23 +51,6 @@ def files_at(repo, revision):
     return result
 
 
-def merge_file(old, local, new, path):
-    if local == new or new == old:
-        return local
-    if local == old:
-        return new
-    if old is None or local is None or new is None:
-        raise ValueError(f'Local skill conflict: {path}; reconcile this file before updating')
-    with tempfile.TemporaryDirectory() as temporary:
-        paths = [Path(temporary) / str(n) for n in range(3)]
-        for target, value in zip(paths, (local, old, new)):
-            target.write_bytes(value)
-        result = subprocess.run(['git', 'merge-file', '-p', *map(str, paths)], capture_output=True)
-        if result.returncode:
-            raise ValueError(f'Local skill conflict: {path}; reconcile this file before updating')
-        return result.stdout
-
-
 HISTORY_LIMIT = 100
 
 
@@ -97,44 +80,6 @@ def historical_copy(repo, state, relative, local):
                 blobs[oid] = git(repo, 'cat-file', 'blob', oid.decode())
         cache[relative] = [blobs[oid] for oid in oids]
     return local in cache[relative]
-
-
-def closest_base(repo, state, relative, local):
-    """The same-path version a local edit started from, or None when ambiguous.
-
-    Candidates are only this path's own blobs in bounded trusted history (the set
-    historical_copy loads) plus the release, never other paths or branches. The
-    single version with the fewest differing lines wins. A tie between distinct
-    versions is ambiguous, and so is a copy closest to the release that does not
-    purely add to it (stale copy or deliberate edit cannot be told apart): both
-    return None so the caller stops instead of guessing. Results are cached per
-    path and copy, since profiles often carry the same edit.
-    """
-    import difflib
-    key = (relative, hashlib.sha256(local).hexdigest())
-    cache = state.setdefault('bases', {})
-    if key in cache:
-        return cache[key]
-    historical_copy(repo, state, relative, local)
-    new = state['new'].get(relative)
-    candidates = list(dict.fromkeys(state['history'][relative] + ([new] if new is not None else [])))
-    lines = local.splitlines(keepends=True)
-    def matched(blob):
-        theirs = blob.splitlines(keepends=True)
-        matcher = difflib.SequenceMatcher(None, theirs, lines, autojunk=False)
-        return len(theirs), sum(block.size for block in matcher.get_matching_blocks())
-    scored = []
-    for blob in candidates:
-        size, common = matched(blob)
-        scored.append((size + len(lines) - 2 * common, blob, common == size))
-    best = min((score for score, _, _ in scored), default=None)
-    tied = [(blob, only_adds) for score, blob, only_adds in scored if score == best]
-    base = None
-    if len(tied) == 1:
-        blob, only_adds = tied[0]
-        base = blob if blob != new or only_adds else None
-    cache[key] = base
-    return base
 
 
 def skill_destination(home, relative, roots):
@@ -191,32 +136,14 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
             safe_path(path)
             local = path.read_bytes() if path.exists() else None
             old, new = state['old'].get(relative), state['new'].get(relative)
-            try:
-                # Missing native copies are provisioned, including on profiles not installed yet.
-                if local is None and new is not None:
-                    merged = new
-                elif local is not None and local != new and local != old and historical_copy(repo, state, relative, local):
-                    merged = new
-                elif old == new and local is not None and new is not None and local != new:
-                    # A profile edited its installed copy. Merge the edit onto the
-                    # release from the version it started from, and report it.
-                    base = closest_base(repo, state, relative, local)
-                    if base is None:
-                        raise ValueError(f'Local skill conflict: {path}; no single version it started from')
-                    merged = local if base == new else merge_file(base, local, new, path)
-                    local_edits.append({'profile': name, 'path': str(path),
-                                        'action': 'kept' if base == new else 'merged',
-                                        'base': hashlib.sha256(base).hexdigest()[:12]})
-                else:
-                    merged = merge_file(old, local, new, path)
-            except ValueError as error:
-                if not str(error).startswith('Local skill conflict'):
-                    raise
-                # The profile's own edit stays exactly as it is and is reported; the rest of
-                # the update goes on. One profile's conflicting edit used to stop every
-                # profile's update, so none of them received releases.
-                local_edits.append({'profile': name, 'path': str(path), 'action': 'conflict', 'base': None})
-                continue
+            # A released skill is the release, byte for byte, and a removed one goes. A profile's
+            # edited copy (Hermes' skill review rewrites them) is reset or removed and reported,
+            # its bytes in the update's backup: kept edits blocked every later release of that
+            # file and were reported again on every run.
+            merged = new
+            if local not in (None, old, new) and not historical_copy(repo, state, relative, local):
+                local_edits.append({'profile': name, 'path': str(path),
+                                    'action': 'reset' if new is not None else 'removed', 'base': None})
             current_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
             mode = current_mode | (0o111 if relative in state['executables'] else 0)
             if merged != local or (merged is not None and mode != current_mode):
@@ -240,10 +167,9 @@ def prepare(source, profiles, *, upstream=UPSTREAM):
             if not path.is_file():
                 continue
             local = path.read_bytes()
-            if historical_copy(repo, state, relative, local):
-                writes.append((path, local, None, stat.S_IMODE(path.stat().st_mode)))
-            else:
-                local_edits.append({'profile': name, 'path': str(path), 'action': 'kept_retired', 'base': None})
+            writes.append((path, local, None, stat.S_IMODE(path.stat().st_mode)))
+            if not historical_copy(repo, state, relative, local):
+                local_edits.append({'profile': name, 'path': str(path), 'action': 'removed', 'base': None})
     return {'sources': sources, 'writes': writes, 'drift': drift, 'local_edits': local_edits,
             'profiles': [n for n, _ in profiles]}
 
@@ -274,14 +200,15 @@ def apply(plan, backup):
     for repo, state in plan['sources'].items():
         if git(repo, 'rev-parse', 'HEAD').decode().strip() != state['before'] or git(repo, 'status', '--porcelain').strip():
             raise ValueError(f'Checkout changed since preflight: {repo}')
-    backup.mkdir(parents=True, exist_ok=False)
-    records = []
-    for index, (path, old, new, mode) in enumerate(plan['writes']):
-        if old is not None:
-            (backup / str(index)).write_bytes(old)
-        records.append({'path': str(path), 'backup': str(index) if old is not None else None,
-                        'mode': stat.S_IMODE(path.stat().st_mode) if path.exists() else None})
-    (backup / 'manifest.json').write_text(json.dumps(records, indent=2) + '\n')
+    if plan['writes']:  # a run with nothing to write leaves no backup behind
+        backup.mkdir(parents=True, exist_ok=False)
+        records = []
+        for index, (path, old, new, mode) in enumerate(plan['writes']):
+            if old is not None:
+                (backup / str(index)).write_bytes(old)
+            records.append({'path': str(path), 'backup': str(index) if old is not None else None,
+                            'mode': stat.S_IMODE(path.stat().st_mode) if path.exists() else None})
+        (backup / 'manifest.json').write_text(json.dumps(records, indent=2) + '\n')
     for path, old, new, mode in plan['writes']:
         safe_path(path)
         if (path.read_bytes() if path.exists() else None) != old:
@@ -309,7 +236,36 @@ def apply(plan, backup):
             git(repo, 'merge', '--ff-only', state['after'])
 
 
-def finalize_profiles(source, root, profiles):
+STARTUP_WAIT_S = 5 * 60
+WIRING_RETRY_S = (15, 30, 60)
+
+
+def gateway_state(root):
+    try:
+        return json.loads((root / 'gateway_state.json').read_text()).get('gateway_state')
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def wait_for_gateway(root, folder, limit=STARTUP_WAIT_S, poll=5):
+    """While a restart this updater requested is between gateways (the old one gone, the new one
+    starting), wait for the new one: activation checks command wiring, which no gateway answers
+    then, so a rerun at that moment reported `incomplete`. A draining gateway still serves, and the
+    update joins its restart as before. True if it waited."""
+    deadline, waited = time.monotonic() + limit, False
+    while time.monotonic() < deadline:
+        pending = pending_restart(folder)
+        restarting = pending is not None and pending.get('mode') != 'deferred'
+        if not (restarting and (gateway_state(root) == 'starting' or not gateway_running(root))):
+            return waited
+        waited = True
+        time.sleep(poll)
+    return waited
+
+
+def finalize_profiles(source, root, profiles, retries=()):
+    """Enable and finalize each profile; a profile left incomplete is finalized again after each
+    delay in `retries` (a just-restarted gateway wires its commands a little after it serves)."""
     results = []
     env = dict(os.environ, HERMES_HOME=str(root))
     for name, home in profiles:
@@ -323,6 +279,16 @@ def finalize_profiles(source, root, profiles):
                                 '--hermes-home', str(root), '--bundle-only'], env=env, timeout=120)
         results.append({'profile': name, 'status': 'ready' if enable.returncode == final.returncode == 0 else 'incomplete',
                         'enable_exit': enable.returncode, 'finalize_exit': final.returncode})
+    for delay in retries:
+        if all(r['status'] == 'ready' for r in results):
+            break
+        time.sleep(delay)
+        for row in results:
+            if row['status'] == 'ready' or row['enable_exit']:
+                continue
+            final = subprocess.run(['hermes', '-p', row['profile'], 'autowork', 'finalize', '--hermes-home', str(root),
+                                    '--bundle-only'], env=env, timeout=120)
+            row.update(status='ready' if final.returncode == 0 else 'incomplete', finalize_exit=final.returncode)
     return results
 
 
@@ -1388,8 +1354,8 @@ def main(argv=None):
             changed = bool(plan['writes']) or any(s['before'] != s['after'] for s in plan['sources'].values())
             missing = any(not plugin_dir(h).exists() for _, h in profiles)
             result['drift'] = plan['drift']
-            # Profile edits merged onto (or kept over) the release; review and port
-            # any that should reach every profile.
+            # Profile edits reset to the release or removed (bytes in the backup); port any
+            # lesson that should reach every profile into the bundle.
             result['local_edits'] = plan.get('local_edits', [])
             if plan['drift']:
                 result.update(status='incomplete',
@@ -1398,12 +1364,15 @@ def main(argv=None):
                 result['status'] = 'update_available' if changed or missing else 'up_to_date'
             else:
                 stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-                result['backup'] = str(state_dir / stamp)
-                apply(plan, Path(result['backup']))
+                if plan['writes']:
+                    result['backup'] = str(state_dir / stamp)
+                apply(plan, state_dir / stamp)
                 before = config_snapshot(profiles)
                 # Refresh even on equal revisions: a prior setup/reload may have failed.
                 # Plugin activation also re-applies each profile's command menu and settings.
-                result['activation'] = finalize_profiles(source, root, profiles)
+                restarted = wait_for_gateway(root, state_dir)
+                result['activation'] = finalize_profiles(source, root, profiles,
+                                                         retries=WIRING_RETRY_S if restarted else ())
                 healed = [name for name, value in config_snapshot(profiles).items() if value != before[name]]
                 result['settings_healed'] = healed
                 # Best effort: an offline bot API never fails the update.

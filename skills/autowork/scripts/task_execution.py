@@ -887,7 +887,7 @@ def parallel_main(args):
             result = parallel_state.pause(Path(args.consumer).expanduser().resolve(), args.owner_pid)
         elif args.integrate:
             result = parallel_integrate.integrate(args.consumer, args.owner_pid, args.integrate, args.run, args.timeout,
-                                                  args.reviewer_version)
+                                                  args.reviewer_version, args.base_ref)
         elif args.parallel_close:
             if args.run is not None or args.timeout is not None:
                 raise ValueError('--parallel-close does not accept --run or --timeout')
@@ -964,6 +964,8 @@ def main(argv=None):
     parallel.add_argument('--adopt-idle-claims', type=float, default=0, metavar='SECONDS',
                           help='Dispatch in_progress claims idle this long: no task, branch or worktree change '
                                'and no live agent (0, the default, never adopts).')
+    parallel.add_argument('--base-ref', help='The branch this session lands on: a task closed there is closed here '
+                                             '(its worker stops, its commit is set aside).')
     parallel.add_argument('--wait', action='store_true',
                           help='With --parallel and --timeout S, block until a worker exits or S passes.')
     parallel.add_argument('--integrate', metavar='TASK', help='Merge the next reported task, validate --run in isolation, then fast-forward canonical HEAD.')

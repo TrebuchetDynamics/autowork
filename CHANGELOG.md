@@ -7,6 +7,35 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Changed
 
+- A candidate's full check runs once: under a runner, workers leave it to the gate on the merged tree,
+  the gate's verdict is cached per merged tree, and the reviewer reads that run's result and log instead
+  of repeating it. One candidate's suite had run four or five times.
+- While a reload or a new release is waiting, a runner starts no new review, so it reaches the moment
+  with nothing running that a re-exec needs. With a queue of reviews it never did: a reload and four
+  releases waited 2.5 hours, so the runner kept its old reviewer (held commits were never reviewed
+  again by the fixed one) and its old settings (a lowered worker count never applied).
+- `autowork scorecard [--days N] [--json] [target...]` shows, per runner over the last N days (default
+  7): tasks closed (checked entries new in the TODO archive), the share of integrations that ended held,
+  the median time from a task's first dispatch to its integration, and new owner questions in
+  `BLOCKERS.md`. It reads the engine journal and Git history and calls no model.
+- A review's `$TMPDIR` is a short private directory on disk, `/var/tmp/aw-r-<pid>-<random>`
+  (`PI_AUTOWORK_REVIEW_ROOT` moves it). Under the runner's state directory the path was 85 characters
+  before a test added its own, past the 108-byte AF_UNIX limit, so socket tests failed in review while the
+  worker's run passed them; a short link to it was not enough, since code that resolves links got the
+  long path back.
+- `/autowork update` started while the gateway restarts waits for the new gateway (up to 5 minutes) and
+  finalizes profiles whose commands are not wired yet again, instead of reporting `incomplete`.
+- `/plan_with_me` and `/plan_for_me` turn an audit or "is it ready?" into tasks: a one-line verdict, each
+  gap saved as a task (owner-only gaps in `Needs decision` with their question), and what was not
+  checked. "audit" no longer means read-only.
+- `/autowork update` resets every bundle skill a profile edited to the release, saving the edited copy in
+  the update's backup and listing it as `reset`; an edited copy of a skill the bundle removed is deleted the
+  same way (`removed`). Kept edits blocked releases: Hermes' skill review had rewritten 18 bundle skill
+  files across 9 profiles, so the new `/blockers` reached 2 of 11. The update is idempotent: a second run
+  with no new release writes nothing, reports nothing, leaves no backup and restarts nothing.
+- `/plan_with_me` opens with a short playback (what you want, what it builds on, the draft tasks) and one
+  question about what the request leaves open; it never asks to confirm what the request already says, a
+  choice carries its recommendation first, and the offer to skip the questions comes last instead of first.
 - `/blockers` reports for the owner: a first-line verdict that agrees with what the runner shows, then
   one plain line per task in three groups (needs you, the runner handles it, waits on other work), without
   commit hashes or internal terms. It resolves each runner question in a form the runner recognizes, so a

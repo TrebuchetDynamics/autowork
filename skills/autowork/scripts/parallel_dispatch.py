@@ -161,12 +161,30 @@ def earlier_task_work(worktree, task_id, branch, baseline):
         name = ref.removeprefix('refs/heads/')
         if name == branch or not pattern.fullmatch(name):
             continue
-        base = execution.git(worktree, 'merge-base', baseline, tip)
+        try:
+            base = execution.git(worktree, 'merge-base', baseline, tip)
+        except ValueError:  # A preserved orphan branch may have an unrelated root.
+            work.append(f'- branch {name}; tip {tip}; date {date}; '
+                        'changed files: unknown (no shared history with baseline)')
+            continue
         # A status prefix protects leading filename whitespace from git()'s strip().
         files = execution.git(worktree, 'diff', '--name-status', '-z', '--no-renames', base, tip, '--')
         changed = files.split('\0')[1::2]
         work.append(f'- branch {name}; tip {tip}; date {date}; changed files: {json.dumps(changed)}')
     return work
+
+
+def full_check_rule():
+    """The worker prompt's line about the repository's full check. Under a runner that runs it on the
+    merged tree before review (AUTOWORK_RUNNER_FULL_CHECK), the worker does not repeat it
+    (TOOLSET-227-a8: one candidate's suite ran four or five times); otherwise it runs it once."""
+    command = os.environ.get('AUTOWORK_RUNNER_FULL_CHECK', '').strip()
+    if not command:
+        return ['  Run the full offline gate once, at the end, after focused checks pass.']
+    return [f'  Do not run the full check (`{command}`): the runner runs it on the merged tree before',
+            '  review, and that run is the one that counts. Run every other Checks command, and named tests',
+            '  from the full suite when you need them. Leave the full check out of the report\'s "checks":',
+            '  the runner\'s gate records it.']
 
 
 def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None):
@@ -186,7 +204,9 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         'own subagents for this task.',
         '',
         'Rules:',
-        f'- Work only inside {worktree}; change only paths within Touches: {touches}',
+        f'- Work only inside {worktree}. Touches names the paths this task is expected to change: {touches}.',
+        '  It guides scheduling, not a fence: change whatever else the task truly needs, keeping the',
+        '  change as small as the task allows.',
         '- New dependency manifests, lock files, schema/migration or CI files need an explicit',
         '  protected path in Touches before editing; a broad directory alone does not reserve them.',
         '- Never edit ' + ', '.join(COORDINATOR_FILES) + '; the coordinator owns them.',
@@ -196,7 +216,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  repeats an existing case. Keep each test small. While working run the focused tests and the',
         '  task\'s Checks, not the whole suite after every edit. Run focused modules through the',
         '  repository\'s sharded check runner when available (for example: python3 scripts/check.py PATH ...).',
-        '  Run the full offline gate once, at the end, after focused checks pass.',
+        *full_check_rule(),
+        '  One command that runs',
+        '  longer than $PI_AUTOWORK_COMMAND_TIMEOUT seconds (default 1800) is stopped: wrap browser,',
+        '  device and other long suites in `timeout` and select narrower tests rather than waiting.',
         '- Run the task\'s relevant offline checks. Report each check once, with its final result',
         '  on your commit; do not list earlier failing runs you have since fixed (a listed failure',
         '  holds the task). Put every temporary file and copy under $TMPDIR, never directly under',
@@ -211,13 +234,10 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
         '  A finished commit is not task completion; the coordinator integrates.',
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
-        '  "blockers": [...], "pending_live": [...], "needs_touches": [...], "changelog": "..."}.',
+        '  "blockers": [...], "pending_live": [...], "changelog": "..."}.',
         '- "blockers" is only for work in this task\'s offline scope you could not finish; each says',
-        '  what a person must decide or provide (for example a path outside Touches you need, or a',
-        '  missing dependency). If blocked, report commit null with blockers and stop.',
-        '- If you are blocked only because you must change files outside Touches, also list exactly',
-        '  those repository-relative paths in "needs_touches": [...] and leave your work uncommitted.',
-        '  If Touches are widened you resume in this worktree with your changes intact.',
+        '  what a person must decide or provide (for example a missing dependency or a decision).',
+        '  If blocked, report commit null with blockers and stop.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -230,9 +250,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None)
                   'Only when this task asks to keep or continue earlier work, you may merge or cherry-pick',
                   'from these tips into your assigned branch; otherwise ignore them. Inspect the diff first:',
                   'earlier work is evidence, not accepted work, and may no longer fit the current task.',
-                  'The current entry\'s Touches still apply: bring in nothing outside them, including',
-                  'coordinator-owned files or unreserved protected paths. For a mixed-scope tip, reuse only',
-                  'allowed paths instead of merging or cherry-picking the whole commit.',
+                  'Bring in no coordinator-owned files and no protected paths the entry does not declare.',
+                  'For a mixed-scope tip, reuse only what this task needs instead of the whole commit.',
                   'Keep one final task commit (for example cherry-pick --no-commit or merge --squash).',
                   'Never modify the earlier branches or their worktrees; no work is applied automatically.']
     if adopted:
@@ -256,18 +275,61 @@ def created_by_autowork(common, path, branch):
         for e in map(json.loads, journal.read_text().splitlines()))
 
 
+def set_aside_number(repo, pairs, start=1):
+    """Next suffix free for every attempt's branch and worktree; never overwrite prior work."""
+    number = start
+    while any((path and os.path.lexists(str(path) + f'-set-aside-{number}'))
+              or execution.git(repo, 'branch', '--list', branch + f'-set-aside-{number}')
+              for path, branch in pairs):
+        number += 1
+    return number
+
+
 def create_worktree(repo, common, task_id, baseline):
-    """Return (path, branch, baseline); adopt only a worktree the journal shows Autowork created."""
+    """Return (path, branch, baseline), preserving any work left under the task's names."""
     safe = re.sub(r'[^A-Za-z0-9._-]+', '-', task_id)
     branch = 'autowork/' + safe
     path = worktree_path(repo, 'autowork-' + safe)
-    exists = path.exists() or bool(execution.git(repo, 'branch', '--list', branch))
-    if exists and created_by_autowork(common, path, branch) and path.is_dir():
-        # A previous dispatch stopped between creating the worktree and its slot.
-        return path, branch, execution.git(path, 'merge-base', baseline, 'HEAD')
-    if exists:
-        raise ValueError(f'{path} or branch {branch} already exists and was not created by parallel '
-                         'Autowork; resolve it by hand')
+    registrations = [dict(field.partition(' ')[::2] for field in entry.split('\0') if field)
+                     for entry in execution.git(repo, 'worktree', 'list', '--porcelain', '-z').split('\0\0')]
+    here = next((w for w in registrations if w.get('worktree') == str(path)), None)
+    elsewhere = [w for w in registrations if w.get('branch') == 'refs/heads/' + branch and w != here]
+    if elsewhere:
+        raise ValueError(f'branch {branch} is checked out elsewhere; preserve its worktree')
+    if path.exists() or here:
+        if (not here or here.get('branch') != 'refs/heads/' + branch or path.is_symlink()
+                or not path.is_dir() or execution.git(path, 'rev-parse', '--show-toplevel') != str(path)
+                or state.common_dir(path) != common):
+            raise ValueError(f'{path} already exists but is not the task worktree; resolve it by hand')
+        if execution.git(path, 'status', '--porcelain', '--untracked-files=all', '--ignored'):
+            raise ValueError(f'{path} has uncommitted changes; preserve its worktree')
+        if any(str(path) in w.get('workspaces', []) and w.get('active') is not False
+               for w in execution.external_workers(repo)):
+            raise ValueError(f'{path} has a live or unknown writer; preserve its worktree')
+        if created_by_autowork(common, path, branch):
+            # A previous dispatch stopped between creating the worktree and its slot.
+            return path, branch, execution.git(path, 'merge-base', baseline, 'HEAD')
+        execution.git(repo, 'worktree', 'remove', str(path))  # no force, even after the clean check
+    if execution.git(repo, 'branch', '--list', branch):
+        ref = 'refs/heads/' + branch
+        tip = execution.git(repo, 'rev-parse', ref)
+        unique = int(execution.git(repo, 'rev-list', '--count', baseline + '..' + ref))
+        removed = False
+        if not unique:
+            try:
+                execution.git(repo, 'branch', '-d', branch)  # Git also refuses an unmerged/checked-out tip.
+                removed = True
+            except ValueError:
+                pass  # An upstream may differ from our baseline: keep it under a set-aside name.
+        if removed:
+            event, details = 'stale_branch_removed', {}
+        else:
+            number = set_aside_number(repo, [(str(path), branch)])
+            renamed = branch + f'-set-aside-{number}'
+            execution.git(repo, 'branch', '-m', branch, renamed)
+            event, details = 'stale_branch_set_aside', {'branch_now': renamed}
+        with execution.lock(common / 'writer.lock'):
+            state.event(common, event, task_id=task_id, branch=branch, tip=tip, baseline=baseline, **details)
     result = subprocess.run(['git', '-C', str(repo), 'worktree', 'add', '-q', '-b', branch, str(path), baseline],
                             capture_output=True, text=True, timeout=60)
     if result.returncode:
@@ -527,19 +589,51 @@ def fallback(repo, args, reason):
             'next': 'Run the ordinary owner_cycle.py --apply for this task in the current session.'}
 
 
-def retired(repo):
+LEDGER_ARCHIVES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md')
+
+
+def retired(repo, base=None):
     """Task IDs closed since their slot stopped: done or superseded in goals.json, or
-    checked off in TODO.md or its archive. A held or interrupted slot of such a task is
+    checked off in TODO.md or its archive, here or on the ``base`` branch. A held or interrupted slot of such a task is
     history and occupies nothing; Plan For Me's supersession of a held second attempt
     otherwise left a must-run-alone successor waiting beside it for ever."""
     ids = set()
     if (repo / 'goals.json').is_file():
         ids.update(t['id'] for t in execution.task_ledger(repo).get('tasks', [])
                    if t.get('status') in ('done', 'superseded'))
-    for name in ('TODO.md', 'TODO.archive.md', 'todo.archive.md'):
+    for name in LEDGER_ARCHIVES:
         path = repo / name
         if path.is_file():
             ids.update(key for key, items in execution.task_bodies(path).items()
+                       if items and items[0][1].lower() == 'x')
+    return ids | (closed_on(repo, base) if base else set())
+
+
+def closed_on(repo, base):
+    """Task IDs closed on the ``base`` branch (TOOLSET-218-d0). A session's ledger takes the
+    base only when the session lands, so a task the owner closed there kept its worker for
+    as long as landing waited; an unreadable base adds nothing."""
+    goals, ids = execution.goals_module(), set()
+
+    def show(name):
+        try:
+            out = subprocess.run(['git', '-C', str(repo), 'show', f'{base}:{name}'],
+                                 capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            return None
+        return out.stdout if out.returncode == 0 else None
+
+    ledger = show('goals.json')
+    if ledger:
+        try:
+            ids.update(t['id'] for t in goals.parse_ledger(ledger).get('tasks', [])
+                       if t.get('status') in ('done', 'superseded'))
+        except (ValueError, AttributeError, TypeError, KeyError):
+            pass  # a malformed base ledger is the docs maintainer's; the session's still counts
+    for name in LEDGER_ARCHIVES:
+        text = show(name)
+        if text:
+            ids.update(key for key, items in goals.task_bodies(text.replace('\r\n', '\n')).items()
                        if items and items[0][1].lower() == 'x')
     return ids
 
@@ -636,25 +730,9 @@ def admit(candidates, running, restartable, occupying, *, everything, parked, ad
     options = dict(all_tasks=everything, parked=parked, adopted=adopted, protected_files=protected,
                    drain_after=drain_after, waited=waited)
     first = parallel_plan.plan(resumable, running, **options) if resumable else {'dispatch': [], 'waiting': []}
-    resumed = {t['id'] for t in first['dispatch']}
     second = parallel_plan.plan(fresh, running + first['dispatch'], **options)
-    by_id = {t['id']: t for t in everything}
-    waiting_owners = [by_id[tid] for tid in restartable if tid not in resumed and tid in by_id]
-    dispatch, waiting = [], first['waiting'] + second['waiting']
-    def shares(task, other):
-        try:
-            return parallel_plan._shared(parallel_plan._touches(task), parallel_plan._touches(other))
-        except ValueError:  # invalid Touches hold their own task (plan); they reserve nothing
-            return False
-
-    for task in second['dispatch']:
-        owner = next((o['id'] for o in waiting_owners if shares(task, o)), None)
-        if owner:
-            waiting.append({'id': task['id'], 'reason': 'overlapping paths with interrupted ' + owner,
-                            'blocked_by': [owner]})
-        else:
-            dispatch.append(task)
-    return {'dispatch': first['dispatch'] + dispatch, 'waiting': waiting}
+    # Overlap with an interrupted owner never holds new work either (TOOLSET-161-17).
+    return {'dispatch': first['dispatch'] + second['dispatch'], 'waiting': first['waiting'] + second['waiting']}
 
 
 def dispatch(args):
@@ -679,9 +757,10 @@ def dispatch_locked(args, repo, common, count, template, host):
     everything = contracts(repo)
     by_id = {t['id']: t for t in everything}
     candidates = contracts(repo, args.tasks, args.plan) if (args.tasks or args.plan) else everything
-    closed = retired(repo)
+    closed = retired(repo, getattr(args, 'base_ref', None))
+    candidates = [t for t in candidates if t['id'] not in closed]  # closed work never starts
     occupying = [s for s in current if s['state'] in OCCUPYING
-                 and not (s['state'] in ('held', 'interrupted') and s['task_id'] in closed)]
+                 and not (s['state'] in ('held', 'interrupted', 'released', 'reported') and s['task_id'] in closed)]
     contract = lambda s: by_id.get(s['task_id'], {'id': s['task_id'], 'fields': {}})
     # A second failure gets no further attempt: it waits for a person, not the pool. A commit
     # held for overlap owns nothing while it waits either (integration agrees): it is offered
@@ -715,7 +794,11 @@ def dispatch_locked(args, repo, common, count, template, host):
         if previous:
             worktree, branch, base = Path(previous['worktree']), previous['branch'], previous['baseline']
         else:
-            worktree, branch, base = create_worktree(repo, common, task['id'], baseline)
+            try:
+                worktree, branch, base = create_worktree(repo, common, task['id'], baseline)
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                waiting.append({'id': task['id'], 'reason': str(exc), 'blocked_by': []})
+                continue  # An unsafe leftover holds this task, not the rest of the queue.
             state.create_slot(repo, args.owner_pid, task['id'], worktree=str(worktree), branch=branch,
                               baseline=base)
         slot = next(s for s in state.slots(common) if s['task_id'] == task['id'])
@@ -762,7 +845,7 @@ def dispatch_locked(args, repo, common, count, template, host):
         state.require_owner(common, args.owner_pid)
         from parallel_status import pending_tasks
         pending_ids = {v['id'] for v in waiting}
-        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)})
+        pending = waiting + [v for v in pending_tasks(repo, {s['task_id'] for s in state.slots(common)} | closed)
                              if v['id'] not in pending_ids]
         state.event(common, 'dispatch_observed', waiting=pending, max_workers=count)
     return {'outcome': outcome, 'workspace': str(repo), 'host': host, 'max_workers': count,

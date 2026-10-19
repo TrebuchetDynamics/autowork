@@ -3,7 +3,7 @@ name: plan-for-me
 description: "Use to research and save a plan without an interview."
 license: MIT
 metadata:
-  version: 0.3.0
+  version: 0.3.1
   hermes:
     tags: [research, requirements, documentation, planning]
 ---
@@ -158,6 +158,11 @@ Planning includes saving this work by default. Explicit read-only, chat-only,
 no-write or dry-run requests save nothing. Planning alone does not authorize
 implementation, commits, worker dispatch or a recurring schedule. Preserve any
 separate implementation authority already given and the normal Autowork gates.
+
+An audit or an "is it ready?" request is planning too: give the verdict in one line,
+then save each gap as a task (or name the existing task it updates), owner-only gaps
+in `Needs decision` with their one question. Findings without task IDs are not a
+finished plan.
 
 Finish with the chosen approach, supporting evidence, the planner's calls, changed
 document paths, task IDs, unresolved questions and the next executable task. Report consumer

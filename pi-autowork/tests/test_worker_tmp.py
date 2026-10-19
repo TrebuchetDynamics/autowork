@@ -11,6 +11,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import worker  # noqa: E402
 
 
+def setUpModule():
+    """Reviews in these tests keep their scratch in a temporary folder, never the host's /var/tmp."""
+    global _root
+    _root = tempfile.TemporaryDirectory()
+    os.environ['PI_AUTOWORK_REVIEW_ROOT'] = _root.name
+
+
+def tearDownModule():
+    os.environ.pop('PI_AUTOWORK_REVIEW_ROOT', None)
+    _root.cleanup()
+
+
 class WorkerTmpTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -22,6 +34,34 @@ class WorkerTmpTests(unittest.TestCase):
 
     def slot(self, **fields):
         (self.execution / 'slots' / 'T-1.json').write_text(json.dumps({'task_id': 'T-1', 'attempt': 2, **fields}))
+
+    def test_the_gate_runs_once_per_merged_tree_and_the_reviewer_is_told_its_result(self):
+        """TOOLSET-227-a8: one candidate's full suite ran four or five times."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        (self.repo / 'a.txt').write_text('base\n')
+        git('add', '-A')
+        git('commit', '-qm', 'base')
+        (self.repo / 'a.txt').write_text('merged\n')
+        git('commit', '-qam', 'merged')
+        runs = Path(self.temp.name) / 'runs'
+        state = Path(self.temp.name) / 'state'
+        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
+        for _ in range(2):  # a re-review of the same tree, as after a reviewer change
+            self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
+        self.assertEqual(runs.read_text().count('ran'), 1)
+        note = worker.gate_note(state, 'T-1', str(self.repo))
+        self.assertIn(f'`echo ran >> {runs}`', note)
+        self.assertIn('it passed', note)
+        self.assertIn(str(worker.gate_log(state, 'T-1')), note)
+        self.assertIn('Do not run the full check again', note)
+        (self.repo / 'a.txt').write_text('changed\n')  # a new tree runs it again
+        git('commit', '-qam', 'changed')
+        worker.full_suite_gate(state, 'T-1', str(self.repo))
+        self.assertEqual(runs.read_text().count('ran'), 2)
+        os.environ.pop('PI_AUTOWORK_VALIDATE')
+        self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
 
     def test_the_worker_tmpdir_of_the_slot_attempt_is_found(self):
         self.slot()
@@ -73,6 +113,7 @@ class ReviewScratchTests(unittest.TestCase):
 
             def job(settings, role, task, checkout, prompt, *rest):
                 seen['tmp'] = Path(os.environ['TMPDIR'])
+                seen['real'] = seen['tmp'].resolve()
                 seen['prompt'] = prompt
                 (seen['tmp'] / 'copy.txt').write_text('scratch')
                 return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
@@ -80,7 +121,8 @@ class ReviewScratchTests(unittest.TestCase):
             old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
             os.chdir(repo)
             try:
-                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []), \
+                        patch.dict(os.environ, {'PI_AUTOWORK_REVIEW_ROOT': str(state)}):
                     self.assertEqual(worker.verify(str(state), 'T-1'), 0)
             finally:
                 os.chdir(old_cwd)
@@ -88,7 +130,11 @@ class ReviewScratchTests(unittest.TestCase):
                     os.environ.pop('TMPDIR', None)
                 else:
                     os.environ['TMPDIR'] = old_tmp
-            self.assertTrue(str(seen['tmp']).startswith(str(state / 'review-tmp')), seen['tmp'])
+            # A real directory, not a link: code that resolves links must get the same short path,
+            # so a socket under it fits the 108-byte AF_UNIX limit.
+            self.assertEqual(seen['real'], seen['tmp'].absolute())
+            self.assertEqual(seen['tmp'].parent, state)
+            self.assertTrue(seen['tmp'].name.startswith(f'aw-r-{os.getpid()}-'), seen['tmp'])
             self.assertFalse(seen['tmp'].exists())
             self.assertIn('never directly under /tmp', seen['prompt'])
             cache = repo / '.git' / 'autowork-execution' / 'cache'
@@ -111,8 +157,10 @@ class ReviewScratchTests(unittest.TestCase):
             git('worktree', 'add', '-q', '--detach', str(other), 'HEAD')
             shutil.rmtree(other)
 
+            used = {}
+
             def job(settings, role, task, checkout, prompt, *rest):
-                tmp = Path(os.environ['TMPDIR'])
+                tmp = used['tmp'] = Path(os.environ['TMPDIR'])
                 git('worktree', 'add', '-q', '--detach', str(tmp / 'copy'), 'HEAD')
                 git('worktree', 'add', '-q', '--detach', str(tmp / 'gone'), 'HEAD')
                 shutil.rmtree(tmp / 'gone')  # a reviewer that deleted its copy itself
@@ -121,7 +169,8 @@ class ReviewScratchTests(unittest.TestCase):
             old_cwd, old_tmp = os.getcwd(), os.environ.get('TMPDIR')
             os.chdir(repo)
             try:
-                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []):
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []), \
+                        patch.dict(os.environ, {'PI_AUTOWORK_REVIEW_ROOT': str(state)}):
                     self.assertEqual(worker.verify(str(state), 'T-1'), 0)
             finally:
                 os.chdir(old_cwd)
@@ -132,7 +181,10 @@ class ReviewScratchTests(unittest.TestCase):
             registered = [Path(line[len('worktree '):]) for line in git('worktree', 'list', '--porcelain').splitlines()
                           if line.startswith('worktree ')]
             self.assertIn(other.resolve(), [p.resolve() for p in registered])
-            self.assertFalse([p for p in registered if (state / 'review-tmp').resolve() in p.resolve().parents])
+            # Only the review's own scratch counts: run inside a review, the test's own folder
+            # lies under that review's `aw-r-` scratch too.
+            scratch = used['tmp'].resolve()
+            self.assertFalse([p for p in registered if p.resolve() == scratch or scratch in p.resolve().parents])
 
 
 class DeadReviewScratchTests(unittest.TestCase):
@@ -147,7 +199,7 @@ class DeadReviewScratchTests(unittest.TestCase):
             git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'base')
             dead = subprocess.Popen(['true'])
             dead.wait()
-            gone, live = scratch / f'T-1-{dead.pid}', scratch / f'T-2-{os.getpid()}'
+            gone, live = scratch / f'aw-r-{dead.pid}-abc', scratch / f'aw-r-{os.getpid()}-def'
             for path in (gone, live):
                 path.mkdir(parents=True)
             git('worktree', 'add', '-q', '--detach', str(gone / 'copy'), 'HEAD')

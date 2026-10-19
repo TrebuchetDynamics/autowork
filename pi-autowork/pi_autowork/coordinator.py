@@ -25,19 +25,10 @@ from . import health, janitor, main_check, maintainer, pi_runtime, questions, re
 from .common import LOG, dirty, git, git_ok, lifecycle, open_for_writing, safe_name, summary_list
 
 IN_FLIGHT = ('dispatched', 'running', 'reported', 'integrating', 'integrated')
+# The engine's planning files (parallel_integrate.PLANNING_FILES): a session that moves only by
+# commits to these, or under docs/, does not invalidate a running review (TOOLSET-233-ba).
+PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
 CONTRACT_CHANGED = 'task contract changed since integration; no close'
-TOUCHES_PROMPT = (
-    'Plan the file scope of task {task} in {checkout} so it can run beside other tasks. Read its entry in TODO.md, '
-    'then the files and directories its Sources, Scope and acceptance name, and the repository layout around them. '
-    'List the repository-relative files, directories (ending in /) or globs the task\'s change will edit, including '
-    'its tests and docs; prefer a component\'s directory over guessing single files, and when unsure widen to the '
-    'owning directories rather than give up: a worker that edits outside the list is only held and retried alone. '
-    'Scope is about which files change, not how the result is checked: a task verified on a device, emulator, '
-    'screenshot harness or live service still lists the code and test files it edits. Never list TODO.md, '
-    'TODO.archive.md, goals.json or CHANGELOG.md. Answer NONE only when the task edits no repository file (purely '
-    'live, manual or device operation) or would edit files across most of the repository, and give the reason. '
-    'Do not change any file. End with exactly one line: PI_AUTOWORK_TOUCHES: path, path, ... or '
-    'PI_AUTOWORK_TOUCHES: NONE - reason')
 MERGE_PROMPT = (
     '/skill:git-commit-push This worktree is on branch {branch} with an unfinished merge of {base} that conflicts '
     "in: {files}. Resolve every conflict keeping both sides' work: keep both task entries in TODO.md and "
@@ -160,10 +151,6 @@ class Coordinator:
         self.stall_after = env.get('PI_AUTOWORK_STALL_AFTER', '1800')
         self.engine_path = Path(self.toolset) / 'skills/autowork/scripts/owner_cycle.py'
         self.goals = Path(self.toolset) / 'skills/docs-sync/scripts/goals.py'
-        self.touches_helper = Path(__file__).with_name('touches_inference.py')
-        self.inferred_file = self.state / 'touches-inferred.json'
-        self.touches_cache = self.state / ('touches-' + hashlib.sha256(
-            TOUCHES_PROMPT.format(task='TASK', checkout='DIR').encode()).hexdigest()[:12] + '.json')
         self.process_script = str(Path(self.toolset) / 'scripts/pi-autowork.sh')
         self.worker_command = json.dumps(['/bin/bash', self.process_script, '--worker', str(self.state), '{worktree}',
                                           '{prompt_file}', '{report_file}', '{timeout}'])
@@ -197,6 +184,7 @@ class Coordinator:
         out.close()
         args = [sys.executable, str(self.engine_path), str(self.integ), '--owner-pid', str(os.getpid()),
                 '--integrate', task, '--timeout', str(self.review_limit(task)), '--reviewer-version', self.reviewer_version(),
+                '--base-ref', self.base,
                 '--run', '/bin/bash', self.process_script, '--verify', str(self.state), task]
         with open(out.name, 'w') as stream, open(self.state / 'engine.err', 'a') as err:
             child = subprocess.Popen(args, stdout=stream, stderr=err, stdin=subprocess.DEVNULL)
@@ -780,24 +768,49 @@ class Coordinator:
             LOG.say(f'Committed uncommitted changes left in the session worktree ({self.integ})')
 
     def follow_base(self):
-        """While nothing is in flight the session follows the main branch, so the owner's
-        plan is seen; a running worker's base never moves under it. A conflict (the owner's
-        TODO.md edit against the session's own bookkeeping) is resolved at once through the
-        session merge, not left for a final merge a stalled runner never reaches; a merge
-        that still fails is a runner blocker the owner sees."""
+        """The session follows the main branch whenever no review is running, and takes
+        planning-only commits even beside one, so the owner's plan and toolset fixes reach
+        dispatch and validation within one review (TOOLSET-233-ba). With nothing in flight, a
+        conflict (the owner's TODO.md edit against the session's own bookkeeping) is resolved at
+        once through the session merge, not left for a final merge a stalled runner never
+        reaches; a merge that still fails is a runner blocker the owner sees."""
         if self.integ and not self.in_flight():
             # The owner's quiet planning edits (answers to held tasks) are committed even when
             # there is nothing to merge, or a stalled runner never sees them (TOOLSET-157-cd).
             self.commit_owner_changes(planning_only=True)
+        behind = git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') if self.integ else ''
+        if not behind or dirty(self.integ):
+            return
         if self.session_busy():
-            return  # a review is running: the session follows main after it
-        if not git(self.repo, 'rev-list', f'{self.integ_branch}..{self.base}') or dirty(self.integ) \
-                or self.in_flight():
-            return
-        if git_ok(self.integ, 'merge', '-q', '--no-edit', self.base):
+            # A review is running. Planning-only commits are taken at once: integration lands the
+            # review's merge on top without validating again (TOOLSET-233-ba). Anything else waits
+            # for the review to end, which is at most one review, not until the session lands.
+            changed = git(self.repo, 'diff', '--name-only', f'{self.integ_branch}...{self.base}').split()
+            if not changed or not all(p in PLANNING_FILES or p.startswith('docs/') for p in changed):
+                return
+        # Workers have their own worktrees and integration merges their commits into the session
+        # as it is then, so work in flight never keeps the session from following main: a stale
+        # session hid the owner's plan and every toolset fix for hours (TOOLSET-233-ba).
+        import fcntl
+        path = Path(self.cfg['git_common']) / 'autowork-execution' / 'writer.lock'
+        path.parent.mkdir(exist_ok=True)
+        with open(path, 'a') as lock:
+            try:  # the engine moves the session under this lock; never beside it
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return  # the next cycle tries again
+            merged = git_ok(self.integ, 'merge', '-q', '--no-edit', self.base)
+            if not merged:
+                git(self.integ, 'merge', '--abort')
+        if merged:
             self.merge_blocker = ''
+            rev = git(self.repo, 'rev-parse', self.base)
+            if self.seen.get('took-base') != rev:
+                self.seen['took-base'] = rev
+                LOG.say(f'Took {len(behind.split())} commit(s) from {self.base} into the session')
             return
-        git(self.integ, 'merge', '--abort')
+        if self.session_busy() or self.in_flight():
+            return  # a conflict waits for the resolver at the next landing
         if self.merge_main():
             self.merge_blocker = ''
         else:
@@ -942,16 +955,8 @@ class Coordinator:
         for row in rows:
             task, state, reason = row.get('task'), row.get('state') or '', row.get('reason') or ''
             before = self.seen.get(task)
-            # A worker that asked for files outside Touches this runner inferred: widen the
-            # guess and the engine resumes it in its worktree (not counted as a failure).
             if state == 'interrupted' and row.get('paused'):
                 state = 'resuming'  # a deliberate stop or a granted request, not a failure
-            if state == 'held' and row.get('cause') == 'scope_request' and not self.session_busy():
-                if self.seen.get('awaiting-' + task):
-                    continue  # widened already: the next refill resumes it
-                if not self.stop and self.widen_inferred(task, ', '.join(row.get('requested') or []), requested=True):
-                    self.settled = True
-                    continue
             if (state == 'held' and row.get('cause') == 'conflict' and not self.session_busy()
                     and self.resolve_task_conflict(row)):
                 self.settled = True
@@ -985,8 +990,14 @@ class Coordinator:
                 return
             if task in handled:
                 continue
+            if self.reexec_due():
+                # Back-to-back reviews left no gap for a reload: one runner kept its morning
+                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
+                self.restart_if_updated()
+                return
             if not self.seen.get('busy-' + task):  # a waiting commit is not announced every cycle
                 self.note_state(task, 'integrating')
+            self.follow_base()  # each review validates against the main branch as it is now
             self.start_integration(task)
             finished = self.collect_integration(wait=5)  # quick refusals are handled at once
             if finished is None:
@@ -1005,8 +1016,6 @@ class Coordinator:
             self.close_task(task)
         elif outcome == 'HELD':
             self.settled = True
-            if result.get('cause') == 'scope' and self.widen_inferred(task, ', '.join(result.get('outside') or [])):
-                return  # the next refill verifies the same commit again (RESCOPED)
             if (result.get('cause') == 'validation' and self.environment_hold(task)
                     and self.provision_and_reverify(task, self.reviewer_version())):
                 return  # reviewed again before a refill can start a fresh retry
@@ -1018,6 +1027,8 @@ class Coordinator:
             self.count_failure(task, result.get('cause'))
             if task == self.once_task:
                 self.draining = True
+        elif outcome == 'SET_ASIDE':  # closed on the base meanwhile (TOOLSET-218-d0)
+            self.note_state(task, 'closed', reason)
         elif outcome == 'BUSY':  # a live session in the main checkout: wait, said once
             if self.seen.get('busy-' + task) != reason:
                 if reason.startswith(('the repository writer lock', 'Repository execution lock')):
@@ -1080,7 +1091,7 @@ class Coordinator:
         """Main's declared full offline check (PI_AUTOWORK_MAIN_CHECK), in the background, once
         per main revision, when the host has room and nothing is being verified (TOOLSET-176-98).
         A red result gives the DOCS-MAINTAINER a trigger to add one repair task."""
-        cmd = main_check.command()
+        cmd = main_check.command(repo=self.repo)
         if not cmd or self.stop:
             return
         record = main_check.read(self.state)
@@ -1136,7 +1147,7 @@ class Coordinator:
                                           start_time=main_check.start_time(child.pid), started=time.time(), path=path,
                                           tmp=tmp, green=record.get('green'), failures=record.get('failures'),
                                           red_since=record.get('red_since'), gated=record.get('gated'),
-                                          flaky_history=record.get('flaky_history') or {}))
+                                          crashed=record.get('crashed'), flaky_history=record.get('flaky_history') or {}))
         LOG.say(f'Checking main at {rev[:7]} in the background: {cmd}')
 
     def finish_main_check(self, record):
@@ -1159,8 +1170,8 @@ class Coordinator:
             log_text = (self.state / 'main-check.log').read_text(errors='replace')
         except OSError:
             log_text = ''
-        failures = (main_check.failures(log_text, limit=None) or [f'the check exited {code}']) if code else []
-        flaky = []
+        failures = named = main_check.failures(log_text, limit=None) if code else []
+        flaky, incomplete = [], False
         if code:
             incomplete = code != 1  # signals and shell errors are not ordinary unittest failures
             try:
@@ -1171,12 +1182,27 @@ class Coordinator:
             except (OSError, ValueError, AttributeError, TypeError):
                 pass
             failures = [test_id for test_id in failures if test_id not in flaky]
-            if incomplete:
-                failures.append(f'the check exited {code} without a complete test result')
             for test_id in flaky:
                 revisions = history.setdefault(test_id, [])
                 if rev not in revisions and len(revisions) < 3:
                     revisions.append(rev)
+        if code and not failures and (not named or incomplete):
+            # It crashed before naming a test, or was cut short with only flaky ones named
+            # (TOOLSET-237-35): no placeholder test IDs for the maintainer to repair. Once more;
+            # a second crash is a broken check, not a red main.
+            crash = main_check.crash_line(log_text)
+            if record.get('crashed') != rev:
+                main_check.write(self.state, dict(state='recheck', rev='', crashed=rev, green=green,
+                                                  failures=record.get('failures'), red_since=record.get('red_since'),
+                                                  flaky_history=history, **child))
+                LOG.say(f'The main check at {rev[:7]} crashed before any test result ({crash}); checking it once more')
+                return
+            main_check.write(self.state, dict(state='broken', rev=rev, green=green, crash=crash, finished=time.time(),
+                                              failures=record.get('failures'), red_since=record.get('red_since'),
+                                              flaky_history=history, **child))
+            LOG.say(f'The main check is broken at {rev[:7]}: it crashed twice before any test result ({crash})')
+            self.maintain(main_only=True)
+            return
         skipped = main_check.gate_skips(log_text)
         if not failures and skipped and record.get('gated') != rev:
             # A busy host skipped some tests (TOOLSET-193-54): check this revision once more when
@@ -1302,74 +1328,6 @@ class Coordinator:
             return True
         return False
 
-    # --- Scope: widening Touches this runner inferred ------------------------------
-    def inferred(self):
-        try:
-            value = json.loads(self.inferred_file.read_text())
-        except (OSError, ValueError):
-            return {}
-        return value if isinstance(value, dict) else {}
-
-    def remember_inferred(self, task, touches):
-        value = self.inferred()
-        value[task] = touches
-        tmp = self.inferred_file.with_suffix('.tmp')
-        tmp.write_text(json.dumps(value) + '\n')
-        os.replace(tmp, self.inferred_file)
-
-    def helper(self, *argv):
-        with open(self.state / 'engine.err', 'a') as err:
-            result = subprocess.run([sys.executable, str(self.touches_helper), *argv], stdout=subprocess.PIPE,
-                                    stderr=err, text=True)
-        return result.stdout.strip() if result.returncode == 0 else None
-
-    def recorded_touches(self, task):
-        """Touches this runner recorded for the task: from its record, or for older runs from
-        its own `declare Touches` commit (the helper still refuses if they changed since)."""
-        recorded = self.inferred().get(task)
-        if recorded:
-            return recorded
-        commit = git(self.integ, 'log', '-1', '--format=%H', '--fixed-strings',
-                     f'--grep=docs(tasks): declare Touches for {task} (pi-autowork)')
-        text = git(self.integ, 'show', f'{commit}:TODO.md') if commit else None
-        if not text:
-            return None
-        goals, _ = touches_inference.modules(self.toolset)
-        bodies = goals.task_bodies(text).get(task) or []
-        value = goals.task_fields(bodies[0][0]).get('Touches', '').strip() if len(bodies) == 1 else ''
-        return value or None
-
-    def widen_inferred(self, task, outside, requested=False):
-        """Touches this runner inferred are a guess: widen them once to the files a held
-        commit changed (the engine verifies it again) or a worker asked for (the engine
-        resumes it in place). Touches a person wrote, or edited since, only get the bounded
-        widening from worker evidence."""
-        if not outside or dirty(self.integ) or self.seen.get('widened-' + task) or self.session_busy():
-            return False
-        recorded = self.recorded_touches(task)
-        if not recorded:
-            return self.widen_from_evidence(task, outside, requested)
-        widened = self.helper('widen', self.integ, self.toolset, task, recorded, outside)
-        if widened is None:
-            # A person edited the list since the runner inferred it: the bounded grant still
-            # applies (a held task's Touches had been inferred once, then rewritten by hand).
-            return self.widen_from_evidence(task, outside, requested)
-        if requested:
-            self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
-                        f'Its worker needs {outside}, outside the inferred Touches; it resumes in its worktree.')
-        else:
-            self.commit(['TODO.md'], f'docs(tasks): widen inferred Touches for {task} (pi-autowork)',
-                        f"The worker's commit changed {outside}, outside the inferred Touches; the engine verifies it again.")
-        self.remember_inferred(task, widened)
-        self.seen['widened-' + task] = True
-        if requested:
-            self.seen['awaiting-' + task] = True
-            LOG.say(f'{task}: its worker needs files outside the inferred Touches ({outside}); widened them and '
-                    'resuming it in its worktree')
-        else:
-            LOG.say(f'{task}: its commit changed files outside the inferred Touches ({outside}); widened them and verifying again')
-        return True
-
     def resolve_task_conflict(self, row):
         """A commit held for a merge conflict with the session is merged with it in its own
         worktree, Pi resolving the conflict, and the engine judges the merge from there
@@ -1402,39 +1360,7 @@ class Coordinator:
         LOG.say(f'{task}: merged the session into its commit; verifying again')
         return True
 
-    def widen_from_evidence(self, task, outside, requested):
-        """Touches a person wrote are widened once, by at most three exact files the worker
-        named and no other slot's task declares (TOOLSET-152-d4); the helper refuses the
-        rest, which stays a question. The engine then resumes or reverifies the same work."""
-        added = self.helper('grant', self.integ, self.toolset, task, outside)
-        if added is None:
-            return False
-        why = ('Its worker needs ' if requested else "The worker's commit changed ") + added
-        self.commit(['TODO.md'], f'docs(tasks): widen Touches for {task} from worker evidence (pi-autowork)',
-                    f'{why}, outside Touches; widened once, without a person.')
-        self.seen['widened-' + task] = True
-        if requested:
-            self.seen['awaiting-' + task] = True
-            LOG.say(f'{task}: its worker needs files outside Touches ({added}); widened them once and resuming it '
-                    'in its worktree')
-        else:
-            LOG.say(f'{task}: its commit changed files outside Touches ({added}); widened them once and verifying again')
-        return True
-
     # --- Touches proposals ------------------------------------------------------------
-    def touches_held_until(self):
-        try:
-            return json.loads(self.touches_cache.read_text())
-        except (OSError, ValueError):
-            return {}
-
-    def touches_hold(self, task, seconds):
-        value = self.touches_held_until()
-        value[task] = int(time.time()) + seconds
-        tmp = self.touches_cache.with_name(self.touches_cache.name + f'.{os.getpid()}')
-        tmp.write_text(json.dumps(value))
-        os.replace(tmp, self.touches_cache)
-
     def scratch_checkout(self, purpose, rev='HEAD'):
         """A disposable detached checkout inside the canonical .worktrees directory."""
         target = workspaces.task_path(self.toolset, self.repo, 'pi-scratch-' + purpose)
@@ -1456,57 +1382,6 @@ class Coordinator:
             return
         if git_ok(self.integ, 'worktree', 'remove', '--force', path):
             owned.remove(path)
-
-    def infer_touches(self):
-        """For the top runnable tasks without Touches, a read-only Pi pass proposes the
-        paths; recorded in the session branch, the engine then enforces them."""
-        if os.environ.get('PI_AUTOWORK_INFER_TOUCHES', '1') == '0':
-            return
-        listing = self.helper('missing', self.integ, self.toolset, str(self.workers))
-        try:
-            rows = json.loads(listing or '[]')
-        except ValueError:
-            return
-        # A task with a slot keeps the scope it was dispatched with: a Touches commit for it
-        # would read as an answered question and re-queue it.
-        slotted = {r.get('task') for r in self.tasks() if r.get('state') not in ('waiting', None)}
-        for task in [r.get('id') for r in rows if isinstance(r, dict) and r.get('id') not in slotted]:
-            if self.stop:
-                return
-            if task in self.touches_tried:
-                continue
-            self.touches_tried.add(task)
-            # A task judged unboundable is asked again after a day, not every cycle.
-            if float(self.touches_held_until().get(task) or 0) > time.time():
-                continue
-            # A planning pass reads a disposable copy of the session; nothing it does can
-            # touch the session checkout. The copy is removed afterwards.
-            scratch = self.scratch_checkout('touches')
-            if not scratch:
-                LOG.say(f'{task}: could not create a scratch checkout; skipping the Touches pass')
-                continue
-            ok, text = self.pi_job('touches', task, scratch, TOUCHES_PROMPT.format(task=task, checkout=scratch),
-                                   f'pi-autowork-touches-{safe_name(task)}-{datetime.now():%Y%m%d%H%M%S}', 900,
-                                   ['--tools', 'read,grep,find,ls'])
-            self.drop_scratch(scratch)
-            line = next((l for l in text.splitlines() if l.startswith('PI_AUTOWORK_TOUCHES:')), '')
-            answer = line.removeprefix('PI_AUTOWORK_TOUCHES:').strip()
-            recorded = None
-            if ok and answer and not re.match(r'^NONE([^A-Za-z0-9_./]|$)', answer):
-                recorded = self.helper('apply', self.integ, self.toolset, task, answer)
-            if recorded is not None:
-                self.commit(['TODO.md'], f'docs(tasks): declare Touches for {task} (pi-autowork)',
-                            'Proposed by a read-only planning pass; the engine holds any change outside it.')
-                self.remember_inferred(task, recorded)
-                LOG.say(f'{task}: can run beside others; Touches: {recorded}')
-            elif not ok or not answer:
-                # No answer (provider failure, timeout, missing result line) is not a judgment.
-                self.touches_hold(task, 3600)
-                self.touches_tried.discard(task)
-                LOG.say(f'{task}: runs alone for now (the Touches pass gave no answer; asking again within the hour)')
-            else:
-                self.touches_hold(task, 86400)
-                LOG.say(f'{task}: runs alone (no Touches proposed: {answer})')
 
     # --- Priority, requests, health, self-update --------------------------------------
     def goals_cli(self, *argv):
@@ -1563,12 +1438,15 @@ class Coordinator:
         snapshot = self.status()
         paused = int(time.time() + self.pause_until - time.monotonic()) if self.pause_until > time.monotonic() else 0
         # Commits that only wait for another session to leave the main checkout are no progress.
-        waiting = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')
-                   and self.seen.get('busy-' + str(t.get('task')))]
+        reported = [t for t in self.tasks(snapshot) if t.get('state') in ('reported', 'integrating')]
+        waiting = [t for t in reported if self.seen.get('busy-' + str(t.get('task')))]
         blocker = self.runner_blocker or self.merge_blocker
         if waiting and not blocker:
-            blocker = (f'{len(waiting)} verified commit(s) wait for another session in the main checkout: '
-                       + self.seen['busy-' + waiting[0]['task']])
+            candidate = waiting[0].get('task')
+            meanwhile = len(reported) - len(waiting)
+            blocker = (f'{candidate} waits for another session in the main checkout'
+                       + (f'; {meanwhile} other reported commit(s) integrate meanwhile' if meanwhile else '')
+                       + ': ' + self.seen['busy-' + str(candidate)])
         runner = {'repo': str(self.repo), 'pid': str(os.getpid()), 'toolset_rev': self.toolset_rev,
                   'mode': self.mode, 'paused_until': str(paused), 'blocker': blocker,
                   'stuck_integrations': str(len(waiting)), 'maintainer': maintainer.last(self.state),
@@ -1592,6 +1470,9 @@ class Coordinator:
         try:
             old = path.read_text() if path.exists() else None
             found = questions.build(snapshot, (Path(self.integ) / 'TODO.md').read_text(), goals)
+            if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
+                # TOOLSET-180-72: nothing guards the suite
+                found.append(questions.full_check_question())
             new = questions.update(old, found)
         except (OSError, ValueError):
             return
@@ -1647,6 +1528,17 @@ class Coordinator:
             if rc:
                 LOG.say(f'Toolset update failed (see {self.state / "engine.err"}); keeping {self.toolset_rev}')
 
+    def reexec_due(self):
+        """'reload' or 'update' when the runner should re-execute at its next safe point: an
+        asked-for reload, or a package that moved past the release this process runs."""
+        if self.reload:
+            return 'reload'
+        if self.mode == 'continuous' and self.toolset_rev != 'unknown' and self.package:
+            rev = git(self.package, 'rev-parse', '--short', 'HEAD')
+            if rev and rev != self.package_rev:
+                return 'update'
+        return ''
+
     def restart_if_updated(self):
         """Only a re-exec selects the package's next immutable release.
 
@@ -1679,6 +1571,10 @@ class Coordinator:
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
         if self.integration or self.child:
+            what = (f"the review of {self.integration['task']}" if self.integration else 'a Pi job')
+            if self.seen.get('reexec-pending') != what:
+                self.seen['reexec-pending'] = what
+                LOG.say(f'Reload pending: waiting for {what} to end')
             return
         package = self.package
         if reload:
@@ -1772,12 +1668,15 @@ class Coordinator:
         if not self.draining and time.monotonic() < self.pause_until:
             outcome = 'PAUSED'  # after a failure streak: settle running work, start nothing new
         elif not self.draining:
-            if not self.session_busy():
-                self.infer_touches()
+            # Workers leave the full check to the gate the runner runs on the merged tree (TOOLSET-227-a8).
+            os.environ['AUTOWORK_RUNNER_FULL_CHECK'] = main_check.full_check(self.integ) if self.integ else ''
             result = self.engine('--apply', '--parallel', str(self.workers), '--max-workers', '8',
                                  '--worker-command', self.worker_command, '--worker-timeout', self.task_timeout,
-                                 '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle))
+                                 '--min-free-mem-mb', self.min_free_mb, '--adopt-idle-claims', str(self.claim_idle),
+                                 '--base-ref', self.base)
             outcome = result.get('outcome') or 'ACTION_REQUIRED'
+            for task in result.get('closed_on_base') or []:
+                self.note_state(task, 'closed', f'closed on {self.base}; its worker is stopped and its work set aside')
         else:
             outcome = 'DRAINING'
         if outcome in ('DISPATCHED', 'RETRIED'):

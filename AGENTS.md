@@ -12,6 +12,7 @@ runtime state out of Git. Do not edit or patch upstream Hermes Agent.
   needed. Fall back to `rg` when tools are unavailable or results insufficient.
 - Use Context7 (resolve library ID, then query docs) for current external library
   or CLI contracts. Local business logic and instruction edits need no lookup.
+- Full check: `python3 scripts/check.py`
 - Use focused offline regression tests for runtime changes. `python3 scripts/check.py`
   runs the safe offline check inventory; inspect native/live tests before running
   them. Registration checks do not prove model execution or Telegram delivery.

@@ -22,8 +22,25 @@ FAILURE = re.compile(r'^(FAIL|ERROR|UNEXPECTED SUCCESS): (\S+) \(([^)]+)\)', re.
 TIMEOUT = re.compile(r'^TIMEOUT: (\S+) after', re.M)
 
 
-def command(env=os.environ):
-    return env.get('PI_AUTOWORK_MAIN_CHECK', '').strip()
+FULL_CHECK = re.compile(r'^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Full check:(?:\*\*)?[ \t]*`?([^`\n]+?)`?[ \t]*$', re.M)
+
+
+def full_check(repo, env=os.environ):
+    """The repository's whole offline suite (TOOLSET-180-72): PI_AUTOWORK_VALIDATE, else the
+    `Full check: <command>` line of its AGENTS.md; '' when it declares none."""
+    declared = env.get('PI_AUTOWORK_VALIDATE', '').strip()
+    if declared or not repo:
+        return declared
+    try:
+        found = FULL_CHECK.search((Path(repo) / 'AGENTS.md').read_text(errors='replace'))
+    except OSError:
+        return ''
+    return found[1].strip() if found else ''
+
+
+def command(env=os.environ, repo=None):
+    """Main's check: PI_AUTOWORK_MAIN_CHECK, else the repository's full check."""
+    return env.get('PI_AUTOWORK_MAIN_CHECK', '').strip() or full_check(repo, env)
 
 
 def record_path(state):
@@ -54,9 +71,24 @@ def exit_code(state):
         return None
 
 
+# A tool that died rather than a test that failed (TOOLSET-237-35): a crashed check names no test.
+CRASH = re.compile(r'exited unexpectedly|Segmentation fault|core dumped|Bad state|panic:|Fatal error|'
+                   r'Killed|Aborted|out of memory', re.I)
+
+
+def crash_line(log_text):
+    """What a check that crashed before reporting test results died of: the first line that
+    says so, else its last non-blank line."""
+    lines = [' '.join(l.split()) for l in log_text.splitlines() if l.strip()]
+    hit = next((l for l in lines if CRASH.search(l)), None)
+    return (hit or (lines[-1] if lines else 'no output'))[:300]
+
+
 def failures(log_text, limit=20):
     """Failing tests as 'module.Class.test' (or a timed-out directory), first ones first."""
     found = [where for _, _, where in FAILURE.findall(log_text)]
+    found += re.findall(r'^FAILED (\S+::\S+)', log_text, re.M)  # pytest
+    found += re.findall(r'^\s*--- FAIL: (\S+)', log_text, re.M)  # go test
     found += [f'{directory} (timed out)' for directory in TIMEOUT.findall(log_text)]
     return list(dict.fromkeys(found))[:limit]
 
@@ -202,6 +234,10 @@ def line(record, now=None):
     state = record.get('state')
     if state == 'red':
         return f"main red since {record.get('rev', '')[:7]}: {len(record.get('failures') or [])} failing"
+    if state == 'broken':
+        return f"main check broken at {record.get('rev', '')[:7]}: {record.get('crash') or 'it crashed'}"
+    if state == 'recheck' and record.get('crashed'):
+        return f"main check again at {record.get('crashed', '')[:7]}: it crashed before any test result"
     if state == 'recheck':
         return f"main check again at {record.get('gated', '')[:7]} when the host is quieter"
     if state == 'green':

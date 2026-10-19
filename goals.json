@@ -30,7 +30,9 @@
         "TOOLSET-123-a0",
         "TOOLSET-123-de",
         "TOOLSET-143-62",
-        "TOOLSET-172-92"
+        "TOOLSET-172-92",
+        "TOOLSET-215-91",
+        "TOOLSET-217-2d"
       ],
       "title": "Align portable workflow discovery"
     },
@@ -711,7 +713,31 @@
         "TOOLSET-211-71",
         "TOOLSET-212-0d",
         "TOOLSET-213-45",
-        "TOOLSET-214-5b"
+        "TOOLSET-214-5b",
+        "TOOLSET-215-a8",
+        "TOOLSET-216-08",
+        "TOOLSET-218-d0",
+        "TOOLSET-219-2c",
+        "TOOLSET-220-71",
+        "TOOLSET-221-8e",
+        "TOOLSET-222-e1",
+        "TOOLSET-223-8e",
+        "TOOLSET-224-07",
+        "TOOLSET-225-75",
+        "TOOLSET-226-d3",
+        "TOOLSET-227-a8",
+        "TOOLSET-228-0c",
+        "TOOLSET-229-d0",
+        "TOOLSET-230-bf",
+        "TOOLSET-231-49",
+        "TOOLSET-232-01",
+        "TOOLSET-233-ba",
+        "TOOLSET-234-51",
+        "TOOLSET-234-d4",
+        "TOOLSET-235-0d",
+        "TOOLSET-236-4d",
+        "TOOLSET-237-35",
+        "TOOLSET-238-11"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -719,20 +745,31 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-213-45",
-      "TOOLSET-211-71",
-      "TOOLSET-189-96",
-      "TOOLSET-197-4f",
       "TOOLSET-165-f7",
       "TOOLSET-195-ee",
+      "TOOLSET-232-01",
+      "TOOLSET-223-8e",
+      "TOOLSET-222-e1",
+      "TOOLSET-238-11",
+      "TOOLSET-229-d0",
+      "TOOLSET-234-d4",
+      "TOOLSET-189-96",
+      "TOOLSET-197-4f",
+      "TOOLSET-224-07",
+      "TOOLSET-226-d3",
+      "TOOLSET-230-bf",
+      "TOOLSET-228-0c",
       "TOOLSET-200-c1",
       "TOOLSET-201-5e",
+      "TOOLSET-216-08",
+      "TOOLSET-217-2d",
+      "TOOLSET-219-2c",
+      "TOOLSET-220-71",
+      "TOOLSET-215-91",
       "TOOLSET-214-5b",
       "TOOLSET-212-0d",
       "TOOLSET-184-b3",
-      "TOOLSET-180-72",
       "TOOLSET-170-f6",
-      "TOOLSET-161-17",
       "TOOLSET-172-40",
       "TOOLSET-138-62",
       "TOOLSET-139-62",
@@ -759,6 +796,10 @@
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
+      "TOOLSET-235-0d",
+      "TOOLSET-234-51",
+      "TOOLSET-231-49",
+      "TOOLSET-225-75",
       "TOOLSET-202-9a",
       "TOOLSET-192-71",
       "TOOLSET-172-92",
@@ -960,14 +1001,6 @@
       "title": "A rejected push with a conflicting upstream is resolved, not left to diverge silently"
     },
     {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-161-17",
-      "section": "Now",
-      "status": "open",
-      "title": "Touches schedules work but never holds it: integrate by merge, rebase on conflict"
-    },
-    {
       "depends_on": [
         "TOOLSET-154-d3"
       ],
@@ -1024,14 +1057,6 @@
       "section": "Now",
       "status": "open",
       "title": "The runner merges the upstream before it dispatches work"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-180-72",
-      "section": "Now",
-      "status": "open",
-      "title": "A candidate lands only if the merged tree's full suite has no new failures"
     },
     {
       "depends_on": [],
@@ -1100,14 +1125,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-211-71",
-      "section": "Now",
-      "status": "open",
-      "title": "A leftover task branch with nothing of its own never stops dispatch"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-212-0d",
       "section": "Now",
       "status": "open",
@@ -1116,18 +1133,137 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-213-45",
-      "section": "Now",
-      "status": "open",
-      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-214-5b",
       "section": "Now",
       "status": "open",
       "title": "A deferred dependency asks nothing, and only owner questions read as Waiting on you"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-215-91",
+      "section": "Now",
+      "status": "open",
+      "title": "Bundle skills load read-only from the plugin, so the skill review never edits them"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-216-08",
+      "section": "Now",
+      "status": "open",
+      "title": "Landing merges past someone's uncommitted planning edits, and quiet means unchanged content"
+    },
+    {
+      "depends_on": [],
+      "goal": "PORTABLE",
+      "id": "TOOLSET-217-2d",
+      "section": "Now",
+      "status": "open",
+      "title": "/autowork update also refreshes this host's other installs through install.sh"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-219-2c",
+      "section": "Now",
+      "status": "open",
+      "title": "A planning task runs in the maintainer and saves the next batch, until its goal is met"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-219-2c"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-220-71",
+      "section": "Now",
+      "status": "open",
+      "title": "Plan For Me and Plan With Me end a large plan's batch with a planning task"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-222-e1",
+      "section": "Now",
+      "status": "open",
+      "title": "A runner with nothing running always gets one worker, whatever the host load"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-223-8e",
+      "section": "Now",
+      "status": "open",
+      "title": "Integration never waits on the owner's uncommitted planning edits, and one waiting candidate never stops the rest"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-165-f7"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-224-07",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker's own test processes in its private temp directory are the worker's, not an outside session"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-226-d3",
+      "section": "Now",
+      "status": "open",
+      "title": "Dispatch pauses while finished commits wait to merge, and resumes when the queue drains"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-228-0c",
+      "section": "Now",
+      "status": "open",
+      "title": "Full checks from every runner on the host share a few check slots"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-229-d0",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker's edit to a ledger file is left out of its candidate and handed to the docs maintainer, not a hold"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-165-f7",
+        "TOOLSET-195-ee"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-230-bf",
+      "section": "Now",
+      "status": "open",
+      "title": "Integration and closeout move the runner's branch with a ref update, never through a working copy"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-232-01",
+      "section": "Now",
+      "status": "open",
+      "title": "A worker never stops for a full-check failure it did not cause: it commits, and the runner's gate judges it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-d4",
+      "section": "Now",
+      "status": "open",
+      "title": "A main-repair worker gets the runner's main-check evidence: log, exit code, revisions and isolated reruns"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-238-11",
+      "section": "Now",
+      "status": "open",
+      "title": "Only the candidate the engine will integrate next is started, and only it reads 'verifying'"
     },
     {
       "depends_on": [],
@@ -1427,6 +1563,44 @@
       "section": "Next",
       "status": "open",
       "title": "Retire the owner-cycle engine modules no live entry point reaches"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-225-75",
+      "section": "Next",
+      "status": "open",
+      "title": "Status and the TUI never list a task closed on the base branch as waiting"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-227-a8",
+        "TOOLSET-228-0c",
+        "TOOLSET-230-bf"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-231-49",
+      "section": "Next",
+      "status": "open",
+      "title": "A speculative merge queue validates the next queued commits stacked and lands each that passes in order"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-234-51",
+      "section": "Next",
+      "status": "open",
+      "title": "Make the TUI a compact fleet overview with a focused runner workspace"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-235-0d",
+      "section": "Next",
+      "status": "open",
+      "title": "One busy status read is not 'unavailable': the last state stays, and unavailable dates from the first failed read"
     },
     {
       "depends_on": [
@@ -2350,6 +2524,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-161-17",
+      "section": "Done",
+      "status": "done",
+      "title": "Touches schedules work but never holds it: integrate by merge, rebase on conflict"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-162-d2",
       "section": "Done",
       "status": "done",
@@ -2418,6 +2600,14 @@
       "section": "Done",
       "status": "done",
       "title": "A runner busy with its own job shows that job, not 'not cycling'"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-180-72",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate lands only if the merged tree's full suite has no new failures"
     },
     {
       "depends_on": [],
@@ -2578,6 +2768,78 @@
       "section": "Done",
       "status": "done",
       "title": "A runner keeps the disk from filling: a free-space gate, build caches pruned from idle worktrees, and a restart after it fails"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-211-71",
+      "section": "Done",
+      "status": "done",
+      "title": "A leftover task branch with nothing of its own never stops dispatch"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-213-45",
+      "section": "Done",
+      "status": "done",
+      "title": "A Touches value that is not a list of paths is a contract error, not a silent outside-Touches hold"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-215-a8",
+      "section": "Done",
+      "status": "done",
+      "title": "One stuck command cannot use up a worker's attempt: tool commands get their own time limit"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-218-d0",
+      "section": "Done",
+      "status": "done",
+      "title": "A worker whose task closes on main stops at once, and a task closed on main never starts"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-221-8e",
+      "section": "Done",
+      "status": "done",
+      "title": "Planning a dispatch takes seconds, not minutes: path overlap is matched once, cheaply"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-227-a8",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate's full check runs once, by the runner, and the worker and reviewer reuse it"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-233-ba",
+      "section": "Done",
+      "status": "done",
+      "title": "The session takes main between reviews, so planning and fixes on main reach dispatch and validation within one review"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-236-4d",
+      "section": "Done",
+      "status": "done",
+      "title": "A pending reload or toolset update applies when the current review ends: no new review or Pi job starts first"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-237-35",
+      "section": "Done",
+      "status": "done",
+      "title": "A check that crashes before reporting test results is a broken check: never a red main with placeholder failures, never a pass"
     },
     {
       "depends_on": [

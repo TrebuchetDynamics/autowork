@@ -337,10 +337,11 @@ def summarize_update(result):
             edits[edit.get('action', 'edited')] = edits.get(edit.get('action', 'edited'), 0) + 1
         lines.append(f"Skill files written: {result['skill_files']}; local edits: "
                      + (', '.join(f'{n} {a}' for a, n in sorted(edits.items())) or 'none'))
-        conflicts = [e['path'] for e in result.get('local_edits') or [] if e.get('action') == 'conflict']
-        if conflicts:
-            lines.append('Not updated, the profile edited them and they conflict with the release (reconcile each): '
-                         + ', '.join(conflicts[:6]) + (f' (+{len(conflicts) - 6} more)' if len(conflicts) > 6 else ''))
+        reset = [e['path'] for e in result.get('local_edits') or [] if e.get('action') in ('reset', 'removed')]
+        if reset:
+            lines.append('Reset to the release or removed with it, the profile had edited them (old copies in '
+                         + (result.get('backup') or 'the update backup') + '): '
+                         + ', '.join(reset[:6]) + (f' (+{len(reset) - 6} more)' if len(reset) > 6 else ''))
     if result.get('settings_healed'):
         lines.append('Settings healed: ' + ', '.join(result['settings_healed']))
     menus = result.get('chat_menus_healed') or []
@@ -470,7 +471,7 @@ def start_update(*, check=False):
         request.write_text(json.dumps({'pid': process.pid, 'started_ns': started_ns}) + '\n')
     except OSError as error:
         return f'Update could not start: {type(error).__name__}.'
-    return ('Upstream check' if check else 'All-profile update') + ' requested. Use /autowork update status for the result. Local conflicts are preserved; workers and schedules are not restarted.'
+    return ('Upstream check' if check else 'All-profile update') + ' requested. Use /autowork update status for the result. Edited bundle skills are reset to the release (old copies in the backup); workers and schedules are not restarted.'
 
 
 def handle_chat(raw_args=''):

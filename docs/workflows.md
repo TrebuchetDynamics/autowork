@@ -779,3 +779,140 @@ Sources: existing FleetApp screens/bindings in `pi-autowork/pi_autowork/tui.py`,
 Rejected: displaying only lane slots omits most tasks; a second ledger/parser
 would drift from /pending and /done; eager history queries on fleet timers would
 block/overload the UI. No task editing or new slash-command alias is in scope.
+
+## Focused TUI overview and runner workspace
+
+Status: Accepted
+
+Owner request: propose a better TUI after the supplied phone-terminal screenshot,
+then plan it rather than implement. The screenshot shows fleet, long runner details,
+worker table and raw logs competing in one view. It is historical visual evidence,
+not a live runtime assessment. Source inspection confirms FleetApp.compose stacks
+those four widgets; the fleet table has Runner/State/Needs/Tasks/Now columns and
+worker lanes add Task/Phase/Try/For/Doing. Existing pilots cover 150x45 and 80x30,
+not the full proposed narrow matrix. No new visual implementation has been rendered.
+
+### Design choice
+
+Planner's call: use progressive disclosure within the current Textual application,
+not a new dashboard/framework/theme or a side-by-side layout that shrinks columns.
+Keep fleet orientation and move detailed work/log inspection into a focused runner
+screen. Reject cosmetic colors-only changes (they leave the hierarchy problem),
+more simultaneous panels (more competing text) and a phone/web-specific replacement
+(unrequested frontend and operational scope). Terminal font scaling belongs to the
+client; do not pretend the TUI can guarantee physical phone readability at any zoom.
+
+The home answers: Is progress happening? What needs me? What happens next? Show:
+- Compact fleet list: Runner, Activity, Your action. No raw model/provider strings,
+  command output, per-task histories or long wait explanations in fleet cells.
+- Selected-runner summary: engine-backed execution / verification / waiting-to-land
+  counts with explicit coverage, one evidence-backed next action and source age.
+  Incomplete evidence is unknown/stale, never a healthy zero. Counts use one snapshot
+  and distinct task identities, not substring counting from transcripts.
+- Small contextual footer for inspection. Raw logs and long diagnostics are not
+  permanently embedded; errors and required owner actions remain visible in the
+  summary and reachable without reading logs.
+
+Illustrative wireframe only; names and counts below are examples, not observations:
+
+```text
+autowork                         Fleet
+Runner          Activity         Your action
+example-repo    Verifying        None
+another-repo    Working          1 decision
+
+example-repo
+2 executing | 1 verifying | 4 to land
+Next: finish current review
+Evidence: current snapshot, observed age
+
+v details  Enter logs  b decisions
+? actions/help                         q quit
+```
+
+`v` is a new inspection shortcut for the selected runner's focused workspace.
+Keep Enter's existing fleet-log behavior and contextual worker inspection behavior;
+do not silently remap it to another command. The workspace has Overview, Work and
+Logs tabs, with visible labels and keyboard navigation (1/2/3 in that screen only,
+without intercepting input typing). Overview shows the same authoritative headline,
+then separate owner action / runner recovery / ordinary wait sections. Keep task IDs
+secondary but copyable and visible in details. Work shows phase, task, phase age and
+last activity separately; optional attempt/model/command details expand on selection.
+No transcripts saying committed become verified/delivered states. Logs opens the
+existing raw-log view; planned search/copy/anchor improvements stay with 132-af.
+Esc returns to fleet with the same runner, focus and scroll. The future `t` task
+browser remains 184-1d's independent read-only screen, not duplicated by Work.
+
+### Fit and safe interaction
+
+At 80x24 keep a single-column fleet with a scrollable bounded list, compact summary
+and reachable footer; no four competing scroll regions. Below 80 columns, use
+stacked labelled rows and move secondary fields into runner details rather than
+shrink type or require horizontal scrolling. At 40x20 the name, activity, owner
+attention indicator and navigation must remain reachable; long identities can wrap
+in details. Wide terminals may show more rows/detail, not restore the permanent
+log wall. Keep selection visible while navigating a fleet longer than the viewport.
+
+Use restrained semantic color with textual labels: working/verification, ordinary
+wait, real owner action, failure and unknown are distinct. Do not use color alone,
+an animated heartbeat as proof of progress, or task-level holds as a global failure.
+Current safety errors, stale evidence, real questions and paused/stopped status
+cannot disappear through disclosure or filtering.
+
+Preserve every supported start/stop/pause/restart/model/remove/set-aside/browse
+command and its existing shortcut/preconditions; show infrequent controls under
+labelled actions/help without making unsafe keys unguarded. Reuse existing action
+objects and confirmations, binding every action to the selected canonical repository
+and service identity, not a table row/name. Refresh/reorder/removal cannot retarget it.
+No control action on tab change, Enter on logs, navigation, refresh or resize.
+In view-only mode details/log/task inspection remains possible but every mutation
+path stays disabled. Specifically distinguish read-only Enter/log navigation from
+the current broad `run` action guard; never allow arbitrary `run` to solve that.
+TOOLSET-178-47 continues to own modal geometry/repaint; use its fixes when available
+without duplicating them or adding a dependency on unrelated live migration.
+
+Keep tab/runner/focus/scroll state across ticks and return; reject old async results
+for a different runner/screen generation. A refresh failure preserves last good data
+marked stale. A shorter screen alone must not reset phase ages or recreate sessions.
+Use existing bounded data refresh and Textual; no model/network requests, runtime
+repair, second parser, admission policy or state authority in the presentation layer.
+
+### Ownership and proof
+
+Create one bounded layout successor, depending on 129-c4 for the shared action
+headline. Its no-redesign limitation remains intact; this successor explicitly adds
+layout/navigation instead of silently expanding 129-c4. Consume 130-15's richer
+projection when delivered and label legacy unavailable fields honestly, without
+making the entire layout wait on its broad usage/uptime work. Preserve 132-af,
+178-47 and 184-1d as their existing log, confirmation and all-task-browser owners.
+No changes to task counts/order/status in order to make the screenshot look healthy.
+
+Planned verification: extend existing fleet fixtures and Textual pilot, not a new
+harness. Capture baseline/candidate controlled cell renders at 40x20, 60x24, 80x24,
+120x36 and 150x45 using the supported pinned UI environment. Cover a fleet longer
+than viewport, long labels, no runners, partial/stale data, verification-only work,
+zero real questions, a real owner question, partial task holds and unknown counts.
+Assert visible/reachable navigation and no clipping of required actions; stable
+selection/tab/anchors on refresh, resize, runner disappearance and back navigation;
+consistent home/detail state and source age; literal hostile text; no shortcut leaks
+while typing/filtering; view-only inspection and zero control/provider calls.
+Reuse confirmation negative tests and verify deliberate fake actions execute exactly
+once against their original target. A skipped pilot or headless-state-only check
+is not a visual/repaint pass. New cases and renderings are planned, unrun.
+
+Scope is planning and the later offline UI change only. No service migration,
+runner/model/profile/job change, frontend dependency, paid reference tool, commit,
+push, live operation or new telemetry project is authorized by this request.
+
+Sources: `pi-autowork/pi_autowork/tui.py` (FleetApp.compose, bindings, action guards),
+`pi-autowork/pi_autowork/fleet_view.py`, `pi-autowork/tests/tui_pilot.py`,
+`pi-autowork/tests/test_fleet_view.py`, and the existing task owners named above.
+
+Builder refinements: route read-only log opening through its own guarded action for
+keyboard and row activation. Nested inspection Esc returns to its originating
+workspace before fleet; retain log q/back. Reserve t and show it only when the task
+browser is delivered. Under height pressure retain selected identity, textual
+activity/attention, next action and navigation; collapse optional counts/metadata.
+Legacy Lane.minutes is attempt age, not phase age. Unavailable phase age/coverage
+stays unknown; UI observation age is not producer evidence freshness. These are
+planner/builder choices, not new owner requirements.

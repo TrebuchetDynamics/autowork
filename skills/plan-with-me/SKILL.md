@@ -3,7 +3,7 @@ name: plan-with-me
 description: "Use to plan together through research and questions."
 license: MIT
 metadata:
-  version: 0.3.1
+  version: 0.3.3
   hermes:
     tags: [interview, requirements, documentation, planning]
 ---
@@ -25,9 +25,11 @@ jurisdiction changes, long interviews and live gates, load the matching section 
 current repository; arguments narrow the topic. `/plan_with_me blockers [repo|name]`
 is [`/blockers`](../blockers/SKILL.md): routine planning repairs first, then genuine
 owner questions, easiest first, planning each task that needs it with this skill ([special cases](references/special-cases.md#blockers-and-recovery)). Its default scope includes saving
-answered decisions and maintaining affected docs. `questions only`, `audit` or
-`read-only` means no file changes. It does not authorize code changes or start
-autowork. Honor any separate implementation authority already given.
+answered decisions and maintaining affected docs. Only `questions only`,
+`read-only`, `no changes` or `dry run` means no file changes; an audit or an "is it
+ready?" question is planning like any other and ends with tasks
+([audits and readiness](#audits-and-readiness-questions)). It does not authorize code
+changes or start autowork. Honor any separate implementation authority already given.
 
 The public skill ID is `plan-with-me`, and the source directory is
 `skills/plan-with-me/`. The public command means ask the user and plan together.
@@ -51,16 +53,24 @@ settled answers without new contradictory evidence.
 
 Then size the work ([planning craft](../shared/PLANNING-CRAFT.md#know-what-you-know)).
 A clear task needs no interview: say so, save the task and stop. Otherwise the first
-response is two things, in this order:
+response is three things, in this order:
 
-1. One line saying they can skip the questions ("say *plan it for me* and I'll
-   decide"). If they take it, continue as Plan For Me in this conversation with the
-   evidence already gathered; say any significant how-it-gets-made choice in one line.
-2. One question. When intent is thin, make it an open question that gets them
-   describing a real moment ("What happened the last time you wished this existed?").
-   When intent is clear, ask the highest-impact decision.
+1. A short playback: what they want and why, in their words; what already exists
+   that it builds on; and the draft shape, the tasks you would save, one line each
+   and marked as a draft. Mark guesses as guesses.
+2. One question, the highest-impact decision still open. The request's own words
+   are answers: never ask to confirm what it already says. After "so we can add tasks
+   automatically", do not ask "automatically, or after review?"; ask what the request
+   leaves open (when a finding counts as real, how many a run may add). When intent is
+   thin, make it an open question that gets them describing a real moment ("What
+   happened the last time you wished this existed?"). A choice between options gives
+   your recommendation first, with its trade-off.
+3. Last, one line: they can skip the rest ("say *plan it for me* and I'll decide").
+   If they take it, continue as Plan For Me in this conversation with the evidence
+   already gathered; say any significant how-it-gets-made choice in one line.
 
-Do not return only an interview plan, a process explanation or a list of topics.
+Do not open with the skip line or with process talk, and do not return only an
+interview plan, a process explanation or a list of topics.
 
 For a concrete method gap or explicit protocol request, select one technique through
 [engineering](../engineering/SKILL.md); consult
@@ -142,6 +152,23 @@ user requests a new simpler replacement, save the successor and supersede the ol
 task without marking its unproven outcome passed. Creating that replacement does
 not implement it, renew an execution budget or dispatch a worker.
 
+## Audits and readiness questions
+
+"Audit X", "is X ready?" or "what is left?" asks what to do next, not only for a
+report. Inspect read-only, then answer in this order:
+
+1. The verdict in one line (ready, or not ready and why in a few words).
+2. The gaps that stand between now and ready, each as a task: saved through Docs
+   Sync with acceptance, checks and `Touches:` like any other, or, when it already
+   exists, named by its task ID with what changed. Tasks the runner can do now go to
+   Now or Next; a gap that needs the owner (live authorization, a product choice, an
+   outside input) goes to `Needs decision` with the one question it needs.
+3. What was not checked, in one line.
+
+A list of findings or a "smallest path" without task IDs is not a finished answer.
+When the request is explicitly read-only, propose the same tasks with their full
+text and say they are not saved.
+
 ## Save answers and finish the plan
 
 During an ongoing interview, save material explicit answers in the existing owner
@@ -188,8 +215,8 @@ Docs-only scope leaves ready tasks undispatched. Existing implementation authori
 permits the established autowork handoff without another permission question;
 preserve review and owned-commit requirements.
 
-Example: for "interview me about onboarding", inspect the current setup docs, offer
-the skip line, then ask them to walk you through the last time someone got stuck
-setting up. Use the answer to establish an observable onboarding outcome before
+Example: for "interview me about onboarding", inspect the current setup docs, play
+back what they cover, ask them to walk you through the last time someone got stuck
+setting up, and close with the skip line. Use the answer to establish an observable onboarding outcome before
 discussing installer details. Save it in the existing product/setup owner, not a
 competing interview spec.
