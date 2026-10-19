@@ -1,4 +1,5 @@
 """Public workflow names preserve skill identity, arguments and gateway routing."""
+import re
 import unittest
 import test_plugin as fixture
 
@@ -52,6 +53,39 @@ class WorkflowCommands(unittest.TestCase):
         self.assertEqual(self.ctx.skills['autoresearch'], fixture.ROOT / 'skills/autoresearch/SKILL.md')
         installed = self.root.parent / 'home/skills/plan-for-me/SKILL.md'
         self.assertEqual(installed.read_bytes(), source.read_bytes())
+
+    def test_planners_describe_a_rolling_flutter_batch_but_not_a_small_task(self):
+        # Text-only fixtures: this checks the saved skill contract, not model execution.
+        self.plugin.SKILLS_DIR = fixture.ROOT / 'skills'
+        self.plugin.register(self.ctx)
+        work_center = (fixture.ROOT / 'skills/shared/TODO-WORKCENTER.md').read_text()
+        for command, skill in (('plan_for_me', 'plan-for-me'), ('plan_with_me', 'plan-with-me')):
+            text = self.ctx.skills[skill].read_text()
+            for required in ('TODO-WORKCENTER.md#rolling-planning', 'Kind: plan',
+                             'Plan round: 1 of 10', 'every building task', 'Needs decision',
+                             'continue on its own'):
+                self.assertIn(required, text)
+            for request, want_plans in (('port this project to Flutter', 1), ('fix a README typo', 0)):
+                with self.subTest(command=command, request=request):
+                    self.ctx.commands[command](request)
+                    self.assertTrue(self.ctx.messages[-1][0].endswith(request))
+                    example = work_center.split('### Example: ' + request + '\n', 1)[1].split('\n### ', 1)[0]
+                    entries = re.findall(
+                        r'^- \[ \] (\S+) — [^\n]+\n(.*?)(?=^- \[ \] |\n```)', example, re.M | re.S)
+                    self.assertTrue(entries)
+                    plans = [body for _, body in entries if 'Kind: plan' in body]
+                    self.assertEqual(len(plans), want_plans)
+                    if plans:
+                        building_ids = [task for task, body in entries if 'Kind: plan' not in body]
+                        self.assertTrue(building_ids)
+                        self.assertLessEqual(len(entries), 8)
+                        self.assertEqual(entries[-1][1], plans[0])
+                        self.assertTrue(all('Goal: PORT' in body for _, body in entries))
+                        self.assertIn('Dependencies: ' + ', '.join(building_ids), plans[0])
+                        self.assertIn('Plan round: 1 of 10', plans[0])
+                        self.assertRegex(plans[0], r'Scope:.*PORT.*find out')
+                    else:
+                        self.assertEqual(len(entries), 1)
 
     def test_plan_for_me_reserves_both_spellings_for_existing_owners(self):
         self.skill('plan-for-me')

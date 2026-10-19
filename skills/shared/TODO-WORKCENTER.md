@@ -70,6 +70,82 @@ acceptance. If research finds no new work, retain existing bytes and report why.
 Missing Graphify or a failed readiness gate must be reported honestly; saving a
 plan and qualifying its execution are distinct outcomes.
 
+## Rolling planning
+
+When accepted work is too large for one batch, save the first batch whose content
+is known now, not speculative implementation tasks for the whole project. End it
+with exactly one planning task under the same `Goal:`, depending on every building
+task in that batch. Its `Scope:` names the goal, what the next round must find out,
+and the evidence to read: finished task reports, current code and remaining goal
+proof. Keep normal task fields, source links and acceptance/checks; planning is an
+explicit task, not an invitation for code workers to edit the queue.
+
+| Field | Meaning |
+| --- | --- |
+| `Kind: plan` | The runner routes this task to its docs maintainer for planning-only writes, never to a code worker. Ordinary building tasks need no Kind field. |
+| `Plan round: N of M` | Planning round and limit, with `1 <= N <= M`. Start at `Plan round: 1 of 10` by default; a successor carries `N+1 of M`. Preserve an existing chain's limit; a smaller M may be chosen. |
+
+Each round saves at most 8 new tasks total, including its closing planning task
+and any `Needs decision` items, all under the same goal. Revise an oversized batch;
+do not silently drop tasks. Put owner-only gaps in `Needs decision` with their one
+question; they are not dependencies of the closing planning task, so independent
+building work can continue.
+
+After the batch finishes, the authorized runner runs the planning task through
+Plan For Me, saves the next known batch, and closes the current planning task in
+the same planning commit. If the goal is still unmet, N < M and new building work
+was added, end that batch with one successor depending on every new building task.
+At round M, or when a round adds no building task, save no successor. If the goal
+is still unmet, record what remains and one continuation question in `BLOCKERS.md`;
+keep an open `Needs decision` task for the remaining goal proof/continuation.
+Never mark a goal met merely because its queue is empty. Planning tasks run one
+at a time per repository because they share queue ownership.
+
+The report says the chain will continue on its own with an already running,
+authorized runner, states its round limit (10 by default), and explains how to stop
+it: move the planning task to `Needs decision`. Saving a chain does not dispatch
+workers, start a runner or schedule, or widen execution/publication authority.
+Read-only modes save nothing. Small tasks and plans that fit one batch add no
+planning task; their existing saving flow is unchanged.
+
+### Example: port this project to Flutter
+
+Illustrative first batch after repository research and platform/screen scope are
+settled. These abbreviated bodies show the chain; real tasks also carry Sources,
+Touches, Acceptance and Checks derived from that repository, as required above.
+
+```markdown
+- [ ] PORT-001-a1 — Build the Flutter app shell
+  Goal: PORT
+  Scope: Add the agreed Flutter target with navigation and the existing design tokens.
+  Dependencies: None.
+  Status: open
+- [ ] PORT-002-b2 — Port the agreed first screen
+  Goal: PORT
+  Scope: Connect that screen to the existing API and prove its agreed parity checks.
+  Dependencies: PORT-001-a1
+  Status: open
+- [ ] PORT-003-c3 — Plan the next Flutter port batch
+  Goal: PORT
+  Kind: plan
+  Plan round: 1 of 10
+  Scope: For PORT, read the shell/screen reports and code; find out which remaining screens can reuse them and what API parity gaps the next batch must close.
+  Dependencies: PORT-001-a1, PORT-002-b2
+  Status: open
+```
+
+### Example: fix a README typo
+
+A clear task is saved normally, without a closing planning task:
+
+```markdown
+- [ ] DOC-001-d4 — Fix the README typo
+  Goal: DOCS
+  Scope: Correct the identified typo without changing the documented behavior.
+  Dependencies: None.
+  Status: open
+```
+
 ## Make the queue easy to operate
 
 Reuse the repository's existing sections and renderer contract. At the top provide

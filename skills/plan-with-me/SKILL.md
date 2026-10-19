@@ -198,6 +198,16 @@ requests this persistence, so do not ask again whether to save. Accepted intent
 becomes bounded Now/Next tasks with dependencies, acceptance, verification and
 `Touches:` (plus `Resources:` where needed) per the
 [TODO work center](../shared/TODO-WORKCENTER.md).
+For accepted work too large for one batch, follow
+[rolling planning](../shared/TODO-WORKCENTER.md#rolling-planning): save only the
+first batch whose content is known now, at most 8 new tasks total including one
+closing `Kind: plan` task under the same Goal. Give it `Plan round: 1 of 10` by
+default and dependencies on every building task in the batch. Its Scope names the
+goal and what the next round must find out from the finished batch's evidence.
+When continuing an existing chain, advance N in `Plan round: N of M` without
+resetting its limit; apply the shared stopping rules. A small or single-batch plan
+adds no planning task and keeps the existing saving flow.
+
 Unanswered product choices remain outside executable work. Run the
 [builder check](../shared/PLANNING-CRAFT.md#builder-check-before-handoff) on the
 saved tasks and fold its answers in. Validate changed docs and ledger, then run the
@@ -211,6 +221,10 @@ Finish with changed document paths, decisions captured, the planner's calls, ope
 questions and the actual readiness result when a consumer check was applicable and
 executed; otherwise state that readiness was not assessed. Questions-only/read-only
 mode finishes with a conversational summary, no Maintain pass and no writes.
+For a rolling plan, the final report says the chain will continue on its own under
+an already running, authorized Autowork runner, gives its round limit (10 by default),
+and explains how to stop it: move the planning task to `Needs decision`. Saving the
+chain does not start a runner or grant execution authority.
 Docs-only scope leaves ready tasks undispatched. Existing implementation authority
 permits the established autowork handoff without another permission question;
 preserve review and owned-commit requirements.
