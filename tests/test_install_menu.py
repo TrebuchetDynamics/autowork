@@ -67,9 +67,15 @@ class InstallMenuTests(unittest.TestCase):
         result = self.install('--all')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.calls('pi install'), [f'pi install {NEW}'])
+        # The cached plugin is dropped first: Claude Code caches by version, and a reinstall of the
+        # same version kept the old workflows.
         self.assertEqual(self.calls('claude'), ['claude plugin marketplace add TrebuchetDynamics/autowork',
+                                                'claude plugin marketplace update autowork',
+                                                'claude plugin uninstall --keep-data autowork@autowork',
                                                 'claude plugin install autowork@autowork'])
         self.assertEqual(self.calls('codex'), ['codex plugin marketplace add TrebuchetDynamics/autowork --ref main',
+                                               'codex plugin marketplace upgrade autowork-marketplace',
+                                               'codex plugin remove autowork@autowork-marketplace',
                                                'codex plugin add autowork@autowork-marketplace'])
         link = self.home / '.local/bin/autowork'
         self.assertEqual(Path(os.readlink(link)), self.home / 'pkg/autowork/pi-autowork/bin/autowork')  # the package's
@@ -232,7 +238,7 @@ class InstallMenuTests(unittest.TestCase):
             try:
                 with selectors.DefaultSelector() as selector:
                     selector.register(proc.stdout, selectors.EVENT_READ)
-                    for _ in range(2):
+                    for _ in range(3):  # marketplace add, marketplace upgrade, plugin add
                         pending = b''
                         while b'waiting for input: ' not in pending:
                             self.assertTrue(selector.select(timeout=5), seen.decode(errors='replace'))

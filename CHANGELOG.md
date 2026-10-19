@@ -230,6 +230,10 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- `install.sh` refreshes the Claude Code and Codex plugins, not only their marketplaces: both
+  hosts cache a plugin by its version, which rarely changes, so a reinstall kept old workflows
+  (sessions lacked the `blockers` and `pending` skills). It updates the marketplace and drops
+  the cached plugin (keeping Claude's plugin data) before installing.
 - A task closed on main while a review holds the integration lock reads `closing` until its
   work is set aside, logged once, instead of flipping between `done` and `implemented` about
   four times a minute (TOOLSET-250-49).

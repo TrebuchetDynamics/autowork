@@ -233,6 +233,22 @@ def hermes_item(hermes_args):
     return item
 
 
+def drop_claude_plugin():
+    """Claude Code caches a plugin by its version, which changes rarely: a reinstall of the same
+    version kept the old workflows (sessions lacked two skills a release had added). Uninstalling
+    first makes the install copy the current release; not being installed yet is fine."""
+    done = subprocess.run(['claude', 'plugin', 'uninstall', '--keep-data', 'autowork@autowork'], stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=120)
+    return 'dropped the cached plugin' if done.returncode == 0 else 'no cached plugin to drop'
+
+
+def drop_codex_plugin():
+    """Codex caches a plugin by its version too (see drop_claude_plugin)."""
+    done = subprocess.run(['codex', 'plugin', 'remove', 'autowork@autowork-marketplace'], stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=120)
+    return 'dropped the cached plugin' if done.returncode == 0 else 'no cached plugin to drop'
+
+
 def items(hermes_args):
     package = pi_package()
     pi = Item('pi', 'Pi package', needs='pi', note='needs Node 22+')
@@ -253,10 +269,16 @@ def items(hermes_args):
         hermes_item(hermes_args),
         Item('claude', 'Claude Code plugin and full portable skill suite', needs='claude',
              steps=[Step(f'claude plugin marketplace add {SOURCE}', ['claude', 'plugin', 'marketplace', 'add', SOURCE]),
+                    Step('claude plugin marketplace update autowork',
+                         ['claude', 'plugin', 'marketplace', 'update', 'autowork']),
+                    Step('drop the cached plugin, keeping its data', run=drop_claude_plugin),
                     Step('claude plugin install autowork@autowork', ['claude', 'plugin', 'install', 'autowork@autowork'])]),
         Item('codex', 'Codex plugin and full portable skill suite', needs='codex',
              steps=[Step(f'codex plugin marketplace add {SOURCE} --ref main',
                          ['codex', 'plugin', 'marketplace', 'add', SOURCE, '--ref', 'main']),
+                    Step('codex plugin marketplace upgrade autowork-marketplace',
+                         ['codex', 'plugin', 'marketplace', 'upgrade', 'autowork-marketplace']),
+                    Step('drop the cached plugin', run=drop_codex_plugin),
                     Step('codex plugin add autowork@autowork-marketplace',
                          ['codex', 'plugin', 'add', 'autowork@autowork-marketplace'])]),
     ]
