@@ -2,10 +2,12 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import release  # noqa: E402
@@ -75,6 +77,30 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertFalse(selected.exists())
         self.assertTrue(latest.is_dir())
         self.assertEqual(len(list((self.state_root / 'releases').glob('*/'))), 2)
+
+    def test_legacy_driver_pins_a_stopped_runners_release_until_registration_moves(self):
+        # Isolate driver references from live-process retention on a busy host.
+        glob = Path.glob
+        self.enterContext(patch.object(Path, 'glob', lambda path, pattern:
+            iter(()) if path == Path('/proc') else glob(path, pattern)))
+        selected = release.prepare(self.state_root, self.toolset)
+        (self.own / 'status.json').write_text(json.dumps({'repo': str(self.work)}))
+        key = 'merge.docs-sync-archive.driver'
+        self.git(self.work, 'config', '--local', key,
+                 f'{shlex.quote(sys.executable)} '
+                 f'{shlex.quote(str(selected / "skills/docs-sync/scripts/goals.py"))} '
+                 'merge-driver archive %O %A %B')
+        for number in (2, 3):
+            self.publish(f'STATE_SCHEMA = 1\n# {number}\n', f'release {number}')
+            self.git(self.toolset, 'pull', '-q', '--ff-only')
+            release.prepare(self.state_root, self.toolset)
+        self.assertTrue(selected.is_dir(), 'Git still names this release even though its runner stopped')
+        self.git(self.work, 'config', '--local', key,
+                 f'{shlex.quote(sys.executable)} '
+                 f'{shlex.quote(str(self.toolset / "skills/docs-sync/scripts/goals.py"))} '
+                 'merge-driver archive %O %A %B')
+        release.prepare(self.state_root, self.toolset)
+        self.assertFalse(selected.exists(), 'a replaced registration must no longer pin the old release')
 
     def test_status_does_not_create_or_prune_release_worktrees(self):
         cli = self.toolset / 'pi-autowork/pi_autowork/cli.py'
