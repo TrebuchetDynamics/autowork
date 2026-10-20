@@ -10,7 +10,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pi_autowork import fleet_view  # noqa: E402
-from pi_autowork.tui import BrowseScreen, FleetApp, LogScreen, WorkerScreen, doing  # noqa: E402
+from pi_autowork.tui import REFRESH, BrowseScreen, FleetApp, LogScreen, TasksScreen, WorkerScreen, doing  # noqa: E402
 
 
 class Result:
@@ -29,10 +29,14 @@ async def main():
         state, env = base / 'state' / 'india', base / 'env'
         state.mkdir(parents=True)
         env.mkdir()
-        (env / 'india.env').write_text('PI_AUTOWORK_REPO=/git/india\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6.1-sol\n')
-        (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': '/git/india'}))
+        india = base / 'india'
+        india.mkdir()
+        (india / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] TASK-034 — Ship the thing\n- Short: Ship it\n\n'
+                                       '- [ ] T-9 — Held task\n\n- [ ] TASK-040 — Waits\n')
+        (env / 'india.env').write_text(f'PI_AUTOWORK_REPO={india}\nPI_AUTOWORK_PRIMARY=openai-codex/gpt-6.1-sol\n')
+        (state / 'runner.json').write_text(json.dumps({'pid': os.getpid(), 'repo': str(india)}))
         (state / 'status.json').write_text(json.dumps({
-            'repo': '/git/india', 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(),
+            'repo': str(india), 'state': 'stalled', 'since': time.time() - 3600, 'updated_at': time.time(),
             'waiting': 23, 'held': [{'task': 'T-9', 'cause': 'blocker'}],
             'roots': [{'id': 'TASK-036', 'kind': 'outside', 'blocks': 19}],
             'waiting_groups': [{'label': 'wait for TASK-036 (overlapping files)', 'count': 19, 'tasks': ['TASK-040']},
@@ -82,9 +86,9 @@ async def main():
             assert '24 open: 0 working · 0 to land · 23 waiting · 1 held' in detail, detail
             # The keys, each word's first letter highlighted in it; one key per action.
             hints = app.query_one('#detail').render()
-            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Aside  New  Quit'), str(hints)
+            assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Tasks  New  Quit'), str(hints)
             marked = {str(hints)[span.start:span.end] for span in hints.spans if 'underline' in str(span.style)}
-            assert marked == set('LPSRMFANQ'), marked
+            assert marked == set('LPSRMFTNQ'), marked
             log = '\n'.join(line.text for line in app.query_one('#log').lines)
             assert 'TASK-036: waiting' in log and 'pending —' not in log, log
             await pilot.press('s')                      # stop asks first; n declines
@@ -115,6 +119,36 @@ async def main():
             await pilot.press('enter')                  # Enter: the full-screen log
             await pilot.pause()
             assert isinstance(app.screen, LogScreen), app.screen
+            # Its footer lists its own keys only, and the runner keys are off under it.
+            shown = {b.binding.key for b in app.active_bindings.values() if b.binding.show}
+            assert shown <= {'escape', 'q', 'ctrl+p'}, shown  # back (esc or q) only
+            await pilot.press('s')
+            await pilot.pause()
+            assert isinstance(app.screen, LogScreen), app.screen  # no stop dialog over the log
+            await pilot.press('escape')
+            await pilot.pause()
+            await pilot.press('t')                      # Tasks: every open task in TODO.md order
+            await pilot.pause()
+            assert isinstance(app.screen, TasksScreen), app.screen
+            await pilot.pause(REFRESH + 0.5)            # the main screen's refresh runs beneath it
+            tasks = app.screen.query_one('#tasks')
+            assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['TASK-034', 'T-9', 'TASK-040']
+            assert str(tasks.get_row_at(0)[2]) == 'Ship it'  # Short:, else the title
+            await pilot.press('3')                      # the Held view
+            await pilot.pause()
+            assert [str(tasks.get_row_at(i)[1]) for i in range(tasks.row_count)] == ['T-9'], tasks.row_count
+            keys = str(app.screen.query_one('#task-detail').render())
+            assert keys.rstrip().endswith('Up  Down  Clear  Aside  esc Back'), keys
+            await pilot.press('u')                      # re-sort: an autowork move
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            assert calls[-1] == ['aw', 'move', 'T-9', 'up', 'india'], calls
+            await pilot.press('c')                      # clear the hold, confirmed
+            await pilot.pause()
+            await pilot.press('y')
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            assert calls[-1] == ['aw', 'clear-held', 'india', 'T-9'], calls
             await pilot.press('escape')
             await pilot.pause()
             app.push_screen(WorkerScreen(app.current(), 'TASK-036'))  # a worker row's screen opens
@@ -159,7 +193,7 @@ async def main():
         async with viewer.run_test(size=(140, 40)) as pilot:
             await pilot.pause()
             assert 'view only' in str(viewer.query_one('#detail').render())
-            for key in ('s', 'p', 'm', 'f', 'r', 'a', 'b', 'u', 'n'):
+            for key in ('s', 'p', 'm', 'f', 'r', 'u', 'n'):
                 await pilot.press(key)
                 await pilot.pause()
             assert len(calls) == before, calls          # view-only: no key runs anything

@@ -188,6 +188,30 @@ class AutoworkCommandTests(unittest.TestCase):
         self.assertIn('ALPHA-1', one.stdout)
         self.assertNotIn('BETA-2', one.stdout)
 
+    def test_move_re_sorts_an_open_task_in_todo(self):
+        """The Tasks window's Up and Down: TODO.md order is the priority the runner records."""
+        (self.repo / 'TODO.md').write_text('# TODO\n\n## Now\n\n- [ ] A-1 — First\n\n- [ ] A-2 — Second\n')
+        result = self.aw('move', 'A-2', 'up', str(self.repo))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('ok A-2 moved up', result.stdout)
+        text = (self.repo / 'TODO.md').read_text()
+        self.assertLess(text.index('A-2'), text.index('A-1'))
+        result = self.aw('move', 'A-2', 'up', str(self.repo))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('A-2 is already first in Now; no write', result.stdout)
+
+    def test_blockers_starts_the_agent_in_the_repository(self):
+        """From the TUI or the home directory, Claude Code asked to trust the whole home
+        directory: the agent ran where autowork was started, not in the repository."""
+        agent = self.base / 'agent'
+        agent.write_text('#!/usr/bin/env bash\npwd > "$0.cwd"; printf %s "$*" > "$0.args"\n')
+        agent.chmod(0o755)
+        result = subprocess.run([str(AUTOWORK), 'blockers', str(self.repo)], cwd=self.base,
+                                env={**self.env, 'AUTOWORK_AGENT': str(agent)}, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(Path(str(agent) + '.cwd').read_text().strip(), str(self.repo.resolve()))
+        self.assertEqual(Path(str(agent) + '.args').read_text(), f'/blockers {self.repo.resolve()}')
+
     def test_update_runs_the_configured_installer(self):
         installer = self.base / 'bin' / 'install.sh'
         installer.write_text('#!/usr/bin/env bash\necho "install.sh $*" >> "$FAKE_LOG"\n')

@@ -15,6 +15,8 @@ Agents change goals.json only through these commands, never by hand-editing JSON
   goals.py next <repo> [--json]                  next eligible open task (dependencies satisfied);
                                                 exit 3 with a PRIORITY_DRIFT report when TODO.md order changed
   goals.py reorder <repo>                        record TODO.md task order as the human priority (goals.json only)
+  goals.py move <repo> <task> up|down            move an open task among its TODO.md group's open tasks
+                                                (TODO.md only; reorder records the new order)
   goals.py bootstrap-order <repo> [--dry-run]    one-time move of legacy priority into TODO.md order;
                                                 apply requires --expected-revision from the dry run
   goals.py focus <repo> <GOAL>                   set the primary milestone without changing priorities
@@ -1461,6 +1463,8 @@ def main():
     sup = sub.add_parser('supersede'); sup.add_argument('repo'); sup.add_argument('task')
     sup.add_argument('--by', required=True, help='comma-separated existing successor task IDs')
     sup.add_argument('--reason', required=True, help='accepted disposition, never passing evidence')
+    mv = sub.add_parser('move', help='move an open task up or down among the open tasks of its TODO.md group')
+    mv.add_argument('repo'); mv.add_argument('task'); mv.add_argument('direction', choices=('up', 'down'))
     s2 = sub.add_parser('section'); s2.add_argument('repo'); s2.add_argument('task')
     s2.add_argument('section', choices=[s for s in SECTIONS if s not in ('Done', 'Superseded')])
     ni = sub.add_parser('new-id'); ni.add_argument('repo')
@@ -1507,6 +1511,55 @@ def main():
         if a.cmd == 'backlog-check':
             sys.exit(backlog_check(a))
         execute(a)
+
+
+SHORT_LIMIT = 40  # `Short:` fits a task list's column (the autowork TUI's Tasks window)
+
+
+def short_errors(repo, data):
+    """Open tasks whose `Short:` title is longer than SHORT_LIMIT characters or spans lines."""
+    text = checked_bytes(Path(repo) / 'TODO.md')
+    if text is None:
+        return []
+    bodies = task_bodies(text.decode('utf-8'))
+    found = []
+    for task in data.get('tasks') or []:
+        if task.get('status') in ('done', 'superseded') or not bodies.get(task['id']):
+            continue
+        value = task_fields(bodies[task['id']][0][0]).get('Short')
+        if value is not None and (len(value) > SHORT_LIMIT or '\n' in value):
+            found.append(f'{task["id"]}: Short is one line of at most {SHORT_LIMIT} characters, not {len(value)}: '
+                         f'{" ".join(value.split())[:60]}')
+    return found
+
+
+def move_block(text, task, step):
+    """(new TODO.md text, '') with open task ``task`` swapped with the open task ``step`` places
+    away in its own group (-1 up, 1 down), or (None, why it cannot move). Blocks never cross a
+    group heading, and every block keeps its exact bytes."""
+    blocks = task_blocks(text)
+    block = next((b for b in blocks if b['id'] == task), None)
+    if block is None:
+        return None, f'{task} has no TODO.md entry'
+    if block['mark'] != ' ':
+        return None, f'{task} is checked off'
+    peers = [b for b in blocks if b['region'] == block['region'] and b['mark'] == ' ']
+    index = peers.index(block) + step
+    if not 0 <= index < len(peers):
+        where = block['region'][1] or 'its section'
+        return None, f'{task} is already {"first" if step < 0 else "last"} in {where}'
+    other = peers[index]
+    if block['foreign_heading'] or other['foreign_heading']:
+        return None, f'{task} or {other["id"]} contains another heading; move it by hand'
+    swap = {id(block): other, id(other): block}
+    output, cursor = [], 0
+    for b in blocks:
+        output.append(text[cursor:b['start']] + swap.get(id(b), b)['core'] + b['sep'])
+        cursor = b['end']
+    new_text = ''.join(output) + text[cursor:]
+    if sorted(b['core'] for b in blocks) != sorted(b['core'] for b in task_blocks(new_text)):
+        return None, 'task block bytes would change'
+    return new_text, ''
 
 
 def touches_errors(repo, data):
@@ -1558,6 +1611,17 @@ def execute(a):
         print(json.dumps(result)); return
     if a.cmd == 'new-id':
         print(new_task_id(a.repo, load(a.repo) if path_of(a.repo).exists() else None, a.prefix)); return
+    if a.cmd == 'move':  # TODO.md only: goals.json is neither read nor written
+        todo = Path(a.repo) / 'TODO.md'
+        before = checked_bytes(todo)
+        if before is None:
+            sys.exit('TODO.md not found; no write')
+        new_text, why = move_block(before.decode('utf-8'), a.task, -1 if a.direction == 'up' else 1)
+        if why:
+            sys.exit(why + '; no write')
+        atomic_write(todo, new_text, expected_bytes=before)
+        # goals.json is untouched: `reorder` (the runner runs it) records the new order as priority.
+        print(f'ok {a.task} moved {a.direction}'); return
     data = load(a.repo)
 
     if a.cmd == 'redact':
@@ -1575,7 +1639,7 @@ def execute(a):
         dump(a.repo, data); print(f'ok focus -> {a.goal}'); return
 
     if a.cmd == 'validate':
-        errs = errors(data) + touches_errors(a.repo, data)
+        errs = errors(data) + touches_errors(a.repo, data) + short_errors(a.repo, data)
         print('\n'.join(errs) if errs else 'ok')
         sys.exit(1 if errs else 0)
     if a.cmd == 'fmt':

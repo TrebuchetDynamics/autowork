@@ -23,6 +23,9 @@
     autowork clear-held [target] [TASK...]
                                   return held commits to integration as technical recovery
                                   (keeps the worktrees); no owner decision is asked
+    autowork move TASK up|down [target]
+                                  move an open task among its TODO.md group's open tasks;
+                                  the runner records the new order as its priority
     autowork scorecard [--days N] [--json] [target...]
                                   per runner: tasks closed, held share, start to merge, owner
                                   questions over the last N days (default 7)
@@ -400,6 +403,9 @@ def cmd_blockers(args, paths):
     agent = fleet_view.blockers_agent()
     if not agent:
         raise Fail('no agent for /blockers: install claude or pi, or set AUTOWORK_AGENT')
+    # In the repository: started from the TUI or the home directory, Claude Code asked whether
+    # to trust the whole home directory, and the session was not the repository's.
+    os.chdir(repo)
     os.execvp(agent[0], [*agent, fleet_view.blockers_prompt(agent, repo)])
 
 
@@ -433,6 +439,16 @@ def cmd_clear_held(args, paths):
     if runner.service not in ('running', 'start', 'reload'):
         print(f'Start the runner to apply it: autowork start {repo}')
     return 0
+
+
+def cmd_move(args, paths):
+    """Re-sort TODO.md (the human priority) one place, as the TUI's Tasks window does."""
+    repo, _ = resolve(args.target, paths)
+    goals = TOOLSET / 'skills' / 'docs-sync' / 'scripts' / 'goals.py'
+    result = subprocess.run([sys.executable, str(goals), 'move', repo, args.task, args.direction],
+                            capture_output=True, text=True)
+    print((result.stdout or result.stderr).strip())
+    return result.returncode
 
 
 def parser():
@@ -484,6 +500,10 @@ def parser():
     card.add_argument('--days', type=int, default=7)
     card.add_argument('--json', action='store_true')
     card.add_argument('target', nargs='*', help='runner names or repository paths (default: every runner)')
+    move = sub.add_parser('move', help="move an open task up or down in its TODO.md group (the priority)")
+    move.add_argument('task')
+    move.add_argument('direction', choices=('up', 'down'))
+    move.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     sub.add_parser('help', help='this help')
     return top
 
@@ -493,7 +513,7 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
-            'clear-held': cmd_clear_held, 'update': cmd_update}
+            'clear-held': cmd_clear_held, 'update': cmd_update, 'move': cmd_move}
 
 
 def main(argv=None):
