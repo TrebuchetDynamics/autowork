@@ -67,15 +67,16 @@ def release_lock(state_root):
         yield root
 
 
-def prune(root, keep=()):
+def prune(root, keep=(), proc='/proc'):
     """Retain the newest two snapshots and releases used by processes or Git drivers.
 
     Unreadable environments of interpreter processes mean usage is unknown:
     retain everything. Ignore privileged system daemons and exited zombies;
-    other users cannot select this user's private state root.
+    other users cannot select this user's private state root. A process with no command line
+    is exiting (its memory is gone): it can select nothing, so it does not count.
     """
     used = set(map(str, keep))
-    for process in Path('/proc').glob('[0-9]*'):
+    for process in Path(proc).glob('[0-9]*'):
         try:
             if process.stat().st_uid != os.getuid():
                 continue
@@ -92,7 +93,9 @@ def prune(root, keep=()):
                 continue
             except OSError:
                 return
-            if state != 'Z' and (not command or re.search(rb'(python[^/]*|bash|node|pi)$', command)):
+            # Exiting processes (no command line, state R or D) stopped every fourth prune while
+            # processes churned, as under the full check: the release a runner left stayed on disk.
+            if command and state != 'Z' and re.search(rb'(python[^/]*|bash|node|pi)$', command):
                 return  # an interpreter whose environment we cannot inspect
         except OSError:
             return  # cannot prove unused

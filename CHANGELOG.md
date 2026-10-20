@@ -309,6 +309,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Release pruning no longer stops at a process caught exiting (no command line, its
+  environment unreadable): under process churn every fourth prune kept every old release,
+  and `test_late_imports_keep_the_selected_release_while_unused_releases_are_pruned`
+  failed in the full check. An interpreter whose environment cannot be read still keeps
+  them all.
 - A `--once` or `--until-empty` run that finds the execution lock held (a killed runner's
   engine helper still finishing) waits up to `PI_AUTOWORK_BUSY_WAIT` seconds (default 60)
   for it instead of exiting 4 at once; a live sequential owner still exits 4 immediately.

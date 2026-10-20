@@ -78,6 +78,38 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertTrue(latest.is_dir())
         self.assertEqual(len(list((self.state_root / 'releases').glob('*/'))), 2)
 
+    def test_an_exiting_process_does_not_stop_pruning_but_an_unreadable_interpreter_does(self):
+        """Under the full check every fourth prune stopped at a process caught exiting: no command
+        line, state R, its environment unreadable. It can select nothing; an interpreter can."""
+        with patch.object(release, 'prune'):  # three releases first, none pruned yet
+            for number in range(3):
+                self.publish(f'STATE_SCHEMA = 1\n# {number}\n', f'release {number}')
+                self.git(self.toolset, 'pull', '-q', '--ff-only')
+                release.prepare(self.state_root, self.toolset)
+        root = self.state_root / 'releases'
+        proc = self.state_root / 'proc'
+
+        def process(pid, command, state):
+            folder = proc / str(pid)
+            folder.mkdir(parents=True)
+            (folder / 'cmdline').write_bytes(command)
+            (folder / 'stat').write_text(f'{pid} (x) {state} 1 1 1\n')
+            (folder / 'environ').write_bytes(b'')
+            (folder / 'environ').chmod(0)  # unreadable, as /proc makes an exiting process's
+        process(101, b'', 'R')
+        if os.access(proc / '101' / 'environ', os.R_OK):
+            self.skipTest('file modes do not restrict this user (root)')
+        process(102, b'', 'D')
+        release.prune(root, proc=str(proc))
+        self.assertEqual(len(list(root.glob('*/'))), 2)
+        with patch.object(release, 'prune'):
+            self.publish('STATE_SCHEMA = 1\n# 3\n', 'release 3')
+            self.git(self.toolset, 'pull', '-q', '--ff-only')
+            release.prepare(self.state_root, self.toolset)
+        process(103, b'/usr/bin/python3\0-u\0', 'S')
+        release.prune(root, proc=str(proc))
+        self.assertEqual(len(list(root.glob('*/'))), 3)  # usage unknown: everything kept
+
     def test_legacy_driver_pins_a_stopped_runners_release_until_registration_moves(self):
         # Isolate driver references from live-process retention on a busy host.
         glob = Path.glob
