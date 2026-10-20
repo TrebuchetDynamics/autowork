@@ -552,7 +552,8 @@
         "TOOLSET-089-72",
         "TOOLSET-090-2d",
         "TOOLSET-091-00",
-        "TOOLSET-279-eb"
+        "TOOLSET-279-eb",
+        "TOOLSET-292-6a"
       ],
       "title": "Run independent Autowork tasks in parallel workers with one coordinator"
     },
@@ -814,7 +815,8 @@
         "TOOLSET-286-32",
         "TOOLSET-287-44",
         "TOOLSET-288-cf",
-        "TOOLSET-289-71"
+        "TOOLSET-289-71",
+        "TOOLSET-291-ae"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -1161,6 +1163,14 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
+      "id": "TOOLSET-276-11",
+      "section": "Now",
+      "status": "open",
+      "title": "Split tests/test_pi_autowork.py into per-feature modules over one fixture module"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
       "id": "TOOLSET-277-52",
       "section": "Now",
       "status": "open",
@@ -1189,6 +1199,22 @@
       "section": "Now",
       "status": "open",
       "title": "A merge conflict the resolver may still adopt is never an owner question"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-291-ae",
+      "section": "Now",
+      "status": "open",
+      "title": "Split coordinator.py into mixin modules along its section markers"
+    },
+    {
+      "depends_on": [],
+      "goal": "PARALLEL",
+      "id": "TOOLSET-292-6a",
+      "section": "Now",
+      "status": "open",
+      "title": "Split parallel_integrate.py and its tests into integrate, close and retry modules"
     },
     {
       "depends_on": [],
@@ -1646,14 +1672,6 @@
       "section": "Next",
       "status": "open",
       "title": "Bound docs-maintainer repair loops and report actual changed task bodies"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-276-11",
-      "section": "Next",
-      "status": "open",
-      "title": "Split tests/test_pi_autowork.py into per-feature modules over one fixture module"
     },
     {
       "depends_on": [],

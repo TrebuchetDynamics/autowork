@@ -52,6 +52,64 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ## Now
 
+### TOOLSET-291-ae — Split coordinator.py into mixin modules along its section markers
+
+- [ ] TOOLSET-291-ae — Split coordinator.py into mixin modules along its section markers
+- Short: Split coordinator.py into mixins
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [coordinator](pi-autowork/pi_autowork/coordinator.py) (one `Coordinator` class, 101 methods, sections `# --- Engine`, `Pi`, `Signals and pauses`, `Session`, `Coordinator`, `Touches proposals`, `Priority, requests, health, self-update`, `Main loop`); [fix hotspots](scripts/fix_hotspots.py); [reliability research](docs/research/orchestrator-reliability.md) (hot files).
+- Evidence: 2,935 lines; 78 of its 110 commits in 14 days were fixes, the longest fix-on-fix chain in the repository (66); 38 open tasks name it in `Touches:`, so nearly every pair of runner tasks conflicts on it.
+- Touches: pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/coordinator_session.py, pi-autowork/pi_autowork/coordinator_integration.py, pi-autowork/pi_autowork/coordinator_upkeep.py, pi-autowork/tests/test_coordinator_layout.py, tests/test_pi_autowork.py, pi-autowork/tests/test_worker_tmp.py, pi-autowork/tests/test_maintainer.py, pi-autowork/tests/test_release.py
+- Produces: `coordinator_session.SessionMixin`, `coordinator_integration.IntegrationMixin`, `coordinator_upkeep.UpkeepMixin`; `class Coordinator(SessionMixin, IntegrationMixin, UpkeepMixin)` stays in coordinator.py.
+- Scope: (1) Move the `Session` section to `coordinator_session.py`, the `Coordinator` and `Touches proposals` sections to `coordinator_integration.py`, and `Signals and pauses` with `Priority, requests, health, self-update` to `coordinator_upkeep.py`, each as a mixin class; coordinator.py keeps the module helpers, `__init__`, `Engine`, `Pi` and `Main loop`. Methods move verbatim: same names, bodies and comments. (2) Module-level names a moved method uses are imported where it now lives; tests that patch such a name (`pi_autowork.coordinator.LOG`, …) patch the module that uses it; no other test changes. (3) The commit message lists, for every open task whose `Touches:` names coordinator.py, the module(s) defining the methods its Scope names; the planner applies them to TODO.md (the coordinator's file) after this lands. Touches only rank, so nothing waits on that meanwhile.
+- Acceptance: Given the split, the set of attribute names on `Coordinator` (methods and class attributes, from `dir()`) is unchanged and each is defined in exactly one module (`pi-autowork/tests/test_coordinator_layout.py::test_the_split_keeps_every_method_once`); no module exceeds 950 lines (`test_no_coordinator_module_exceeds_950_lines`); the same test IDs pass as before, compared in the commit message.
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p 'test_*.py'; python3 -m unittest discover -s tests -p test_pi_autowork.py; python3 scripts/check.py
+- Dependencies: None.
+- Resources: exclusive (moves the file 38 open tasks edit; with the shared-file rule it starts once the unlanded commits naming coordinator.py have landed).
+- Ownership: Toolset coordinator.
+- Exclusions: No behaviour change, renaming, reordering inside a section or new abstraction; no edits to methods beyond import lines. Tasks already running or holding an unlanded commit are not rewritten.
+- Planner's call: mixins along the existing section markers, not a redesign, so every pending task's mental model and method names still hold; the layout test keeps the move honest.
+
+### TOOLSET-292-6a — Split parallel_integrate.py and its tests into integrate, close and retry modules
+
+- [ ] TOOLSET-292-6a — Split parallel_integrate.py and its tests into integrate, close and retry modules
+- Short: Split parallel_integrate.py three ways
+- Status: open
+- Goal: PARALLEL
+- Payoff: Run independent Autowork tasks in parallel workers with one coordinator.
+- Sources: [integration](skills/autowork/scripts/parallel_integrate.py) (verify/merge 22–600, `integrate`/`recover_integration` 619–848, `goals_command`…`_close_writes` 848–1033, `dispatched_contract`…`dispatch_with_retries` 1033–1722); [integration tests](skills/autowork/scripts/test_parallel_integrate.py) (`IntegrationTests`, one 2,630-line class); [check](scripts/check.py) (`SPLIT` runs it in 4 processes); callers in [task_execution](skills/autowork/scripts/task_execution.py), [parallel_dispatch](skills/autowork/scripts/parallel_dispatch.py) and [worker](pi-autowork/pi_autowork/worker.py).
+- Evidence: 1,722 and 2,683 lines; 64 and 61 fix commits in 14 days with fix-on-fix chains of 43 and 40; 14 open tasks name the module.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_close.py, skills/autowork/scripts/parallel_retry.py, skills/autowork/scripts/test_parallel_integrate.py, skills/autowork/scripts/test_parallel_close.py, skills/autowork/scripts/test_parallel_retry.py, skills/autowork/scripts/integration_fixture.py, skills/autowork/scripts/task_execution.py, skills/autowork/scripts/parallel_dispatch.py, pi-autowork/pi_autowork/worker.py, scripts/check.py
+- Scope: (1) Move `goals_command` through `_close_writes` and `retire_closed` to `parallel_close.py`; `dispatched_contract` through `dispatch_with_retries` (set-aside, clear-held, reverify, answers, review rework, `retry_held`) to `parallel_retry.py`; the rest stays. Functions move verbatim. (2) Callers import from the module that now defines a function; no re-exports or aliases (a clean cut). (3) `IntegrationTests` splits by the module its tests exercise into `test_parallel_close.py` and `test_parallel_retry.py` over a shared base in `integration_fixture.py`; test bodies unchanged. (4) The `SPLIT` entry follows the new test modules. (5) The commit message lists the new paths each open task naming parallel_integrate.py or its test needs; the planner applies them to TODO.md after this lands.
+- Acceptance: Given the split, each function is defined in exactly one of the three modules and every caller resolves (`test_parallel_close.py::test_layout_defines_each_function_once`, which imports all three and the callers); no module exceeds 900 lines and no test module 1,200; the same test IDs pass as before, compared in the commit message.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p 'test_parallel_*.py'; python3 -m unittest discover -s skills/autowork/scripts -p test_task_execution*.py; python3 scripts/check.py
+- Dependencies: None.
+- Resources: exclusive (moves a module 14 open tasks edit).
+- Ownership: Toolset coordinator.
+- Exclusions: No behaviour change or renamed functions; tests that need more than an import or patch-target change are reported, not changed.
+- Planner's call: independent of TOOLSET-291-ae (no shared file), so the two can land in either order.
+
+### TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+
+- [ ] TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
+- Short: Split test_pi_autowork.py by feature
+- Status: open
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [reliability research](docs/research/orchestrator-reliability.md) (hot files); [check](scripts/check.py) (`SPLIT` runs the module in 12 processes); [planning craft](skills/shared/PLANNING-CRAFT.md#disjoint-write-sets).
+- Evidence: the module is 2,980 lines, has had 47 fix commits, appears in about 38 open tasks' `Touches:`, and took 764 s of a 1,324 s full check as one process.
+- Touches: tests/test_pi_autowork.py, tests/pi_autowork_fixtures.py, tests/test_pi_autowork_*.py, scripts/check.py
+- Scope: (1) Move the shared runner fixtures (toolset clone, fake Pi CLI, repository builders) into `tests/pi_autowork_fixtures.py`. (2) Move the test classes into modules by feature (landing, integration, status, questions, lifecycle, maintainer…), unchanged. (3) Replace the `SPLIT` entry with the new modules. Run this alone: no other task touching `tests/test_pi_autowork.py` may run beside it.
+- Acceptance: Given the split, the same test IDs (by class and method name) pass as before, counted by a one-off comparison recorded in the commit message; no new module exceeds 800 lines (`tests/test_check.py::test_the_pi_autowork_suite_is_split_under_800_lines`); `python3 scripts/check.py --list` shows the new modules.
+- Checks: python3 scripts/check.py tests/
+- Dependencies: TOOLSET-291-ae, TOOLSET-270-a9, TOOLSET-271-d6.
+- Resources: exclusive (moves a file most open tasks edit; it must not run beside them).
+- Ownership: Toolset coordinator.
+- Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
+- Planner's call: after TOOLSET-291-ae, which changes this module's patch targets, and the Now tasks still editing it (2026-10-20: 269-f2 and 273-e0 have landed); the shared-file rule also holds it until unlanded commits naming the module land. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
+
 ### TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
 
 - [ ] TOOLSET-287-44 — A merge conflict the resolver may still adopt is never an owner question
@@ -796,25 +854,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Ownership: Toolset coordinator.
 - Exclusions: The guard's own rules do not change here.
 - Planner's call: after 230-bf, so the guard runs on the ref-update landing path rather than one about to be replaced. Plan lint flags the hot `coordinator.py`/`parallel_integrate.py` overlap; TOOLSET-276-3f is the runtime answer, and the change here is a few lines at the landing seam.
-
-### TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
-
-- [ ] TOOLSET-276-11 — Split tests/test_pi_autowork.py into per-feature modules over one fixture module
-- Short: Split test_pi_autowork.py by feature
-- Status: open
-- Goal: PI-RUNNER
-- Payoff: Run Autowork continuously through Pi with a model fallback.
-- Sources: [reliability research](docs/research/orchestrator-reliability.md) (hot files); [check](scripts/check.py) (`SPLIT` runs the module in 12 processes); [planning craft](skills/shared/PLANNING-CRAFT.md#disjoint-write-sets).
-- Evidence: the module is 2,980 lines, has had 47 fix commits, appears in about 38 open tasks' `Touches:`, and took 764 s of a 1,324 s full check as one process.
-- Touches: tests/test_pi_autowork.py, tests/pi_autowork_fixtures.py, tests/test_pi_autowork_*.py, scripts/check.py
-- Scope: (1) Move the shared runner fixtures (toolset clone, fake Pi CLI, repository builders) into `tests/pi_autowork_fixtures.py`. (2) Move the test classes into modules by feature (landing, integration, status, questions, lifecycle, maintainer…), unchanged. (3) Replace the `SPLIT` entry with the new modules. Run this alone: no other task touching `tests/test_pi_autowork.py` may run beside it.
-- Acceptance: Given the split, the same test IDs (by class and method name) pass as before, counted by a one-off comparison recorded in the commit message; no new module exceeds 800 lines; `python3 scripts/check.py --list` shows the new modules.
-- Checks: python3 scripts/check.py tests/
-- Dependencies: TOOLSET-269-f2, TOOLSET-270-a9, TOOLSET-271-d6, TOOLSET-273-e0.
-- Resources: exclusive (moves a file most open tasks edit; it must not run beside them).
-- Ownership: Toolset coordinator.
-- Exclusions: No test rewrites, deletions or new assertions; tests that need changing are reported, not changed.
-- Planner's call: after the current Now tasks that edit this module, so their candidates do not all conflict with the move. Plan lint: the `tests/test_pi_autowork_*.py` glob is a serial path on purpose, and Acceptance is test-ID parity rather than a new test.
 
 ### TOOLSET-266-7a — Batch remaining docs-maintainer triggers and ask only unresolved owner questions
 
