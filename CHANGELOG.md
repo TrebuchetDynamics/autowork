@@ -7,6 +7,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Added
 
+- `skills/autowork/scripts/checkout_lock.py`, a Claude Code hook: one interactive session
+  writes a checkout at a time (TOOLSET-290-12). The first session to edit a file in a
+  canonical checkout holds it until its files are committed or reverted, or it ends;
+  another session's edit is denied with the holder and its files named, and continues in
+  a worktree. `status|release` show and free it. Install steps: docs/worktree-placement.md.
 - `goals.py plan-lint REPO [--tasks ID,...] [--json] [--strict]` lints TODO.md task
   contracts before dispatch with the runner's own parsers. Errors (exit 1): missing or
   duplicate required fields, missing or unparseable Touches, coordinator files in

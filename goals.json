@@ -1712,14 +1712,6 @@
       "title": "Two runner tests fail only under full-check load"
     },
     {
-      "depends_on": [],
-      "goal": "CLAUDE-CODE",
-      "id": "TOOLSET-290-12",
-      "section": "Next",
-      "status": "open",
-      "title": "One interactive session writes the main checkout at a time"
-    },
-    {
       "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
@@ -3382,6 +3374,14 @@
       "section": "Done",
       "status": "done",
       "title": "Task status shows Active, Mergeable, Waiting or Blocker with a detail"
+    },
+    {
+      "depends_on": [],
+      "goal": "CLAUDE-CODE",
+      "id": "TOOLSET-290-12",
+      "section": "Done",
+      "status": "done",
+      "title": "One interactive session writes the main checkout at a time"
     },
     {
       "depends_on": [

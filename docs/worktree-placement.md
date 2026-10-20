@@ -34,6 +34,33 @@ to ensure they load the new hooks and user instructions.
 The hook payloads and lifecycle are documented in the
 [Claude Code hooks reference](https://code.claude.com/docs/en/hooks).
 
+## One interactive writer per checkout
+
+One interactive session writes a checkout at a time. Copy
+`skills/autowork/scripts/checkout_lock.py` to `~/.claude/hooks/checkout-lock.py` and
+add these hooks beside the worktree policy's:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": "python3 ~/.claude/hooks/checkout-lock.py"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 ~/.claude/hooks/checkout-lock.py"}]}]
+  }
+}
+```
+
+The first session to edit a file in a repository's canonical checkout holds it; the
+lock lives in the Git common directory (`interactive-writer.json`), so every linked
+checkout sees it. Another session's edit there is denied with a reason that names
+the holder and its uncommitted files; that session continues in a worktree through
+`EnterWorktree`, or waits. The lock passes on once every file the holder edited is
+committed or reverted (after a one-minute grace, since the hook runs before an edit
+lands), or when the holder's session ends. A holder with uncommitted files is never
+released automatically: `python3 ~/.claude/hooks/checkout-lock.py status|release
+[REPO]` shows the holder and frees it by hand. Edits under `.worktrees/`, linked
+worktrees and paths outside Git are never locked; reads are never blocked. Like the
+Bash worktree guard, this guards the edit tools, not shell commands that write files.
+
 ## Existing checkouts
 
 Use `git worktree move OLD NEW` after checking for live processes, open files and

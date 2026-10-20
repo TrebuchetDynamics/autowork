@@ -5142,3 +5142,29 @@ Source section: Now
 - Exclusions: No change to which tasks the engine runs once the files agree.
 - Planner's call: the archive records a close; a ledger that lags it is bookkeeping the runner can fix deterministically, so it needs neither a model nor the owner (owner, 2026-10-18: autowork "must be able to fix these issues easily").
 - Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Scope (2) is a repair inside the docs maintainer's transaction (265-16) that calls no model, not a new coordinator planning commit.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-290-12"></a>
+
+### TOOLSET-290-12 — One interactive session writes the main checkout at a time
+
+- [x] TOOLSET-290-12 — One interactive session writes the main checkout at a time
+- Short: One interactive writer per checkout
+- Status: done
+- Goal: CLAUDE-CODE
+- Payoff: Install the portable workflows in Claude Code.
+- Sources: [owner decision](docs/project.md#interactive-checkout-writer-2026-10-20) (2026-10-20); [reliability research](docs/research/orchestrator-reliability.md) (root cause 1: many writers to main and its checkout, 30 fixes); [worktree hook](skills/autowork/scripts/worktree_paths.py) (`hook`, installed as `~/.claude/hooks/worktree-policy.py`); [placement doc](docs/worktree-placement.md); [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) ("Interactive sessions work directly in the main checkout").
+- Evidence: on 2026-10-20 one interactive session parked its own work by taking the file list from `git status`, which swept a second session's uncommitted `fleet_view.py` and `tui.py` into its wip branch and reset them in the checkout; the second session found its edits gone and re-applied them. Both conflict-marker regressions on main (b69b2d2, 34b7f31) also came from several writers to one checkout.
+- Touches: skills/autowork/scripts/checkout_lock.py, skills/autowork/scripts/test_checkout_lock.py, docs/worktree-placement.md, AGENTS.md, CLAUDE.md
+- Produces: `checkout_lock.py` as a Claude Code hook (PreToolUse for Edit, Write, MultiEdit and NotebookEdit; SessionEnd) and a CLI `python3 checkout_lock.py status|release [REPO]`.
+- Scope: (1) A session's first file edit inside a canonical checkout (not under `.worktrees/`) takes the checkout's interactive-writer lock, recorded under the Git common directory with the session id, its transcript path and the files it has edited; later edits add to that list. (2) Another session's edit there is denied with a reason that names the holder, its edited files and the way out: `EnterWorktree`, or wait for the holder to commit. Reads are never blocked. (3) The lock passes to the next session at once when every file the holder edited is clean (committed or reverted), on the holder's SessionEnd, or when the holder's transcript has been idle for 30 minutes and its files are clean; a holder with dirty files is never released automatically. (4) `release` frees a lock by hand and says whose files stay dirty. (5) Edits inside `.worktrees/` and runner worktrees are not locked; Autowork runners keep their own checks. (6) AGENTS.md, CLAUDE.md and docs/worktree-placement.md say: one interactive writer per checkout; a second session works in `.worktrees/` through `EnterWorktree` until the first commits, and how to install the hook.
+- Acceptance: Given session S1 edited `a.py` in the main checkout, when S2 edits `b.py` there, then S2 is denied with a reason naming S1 and `a.py` (`test_checkout_lock.py::test_a_second_session_is_denied_and_told_why`). Given S1 commits `a.py`, S2's next edit takes the lock (`test_the_lock_passes_once_the_holder_is_clean`). Given S1's transcript idle 31 minutes with `a.py` still dirty, S2 is still denied (`test_a_dirty_holder_is_never_released_automatically`); `release` frees it (`test_release_names_the_dirty_files`). An edit under `.worktrees/` is never denied (`test_task_worktrees_are_not_locked`).
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_checkout_lock.py; python3 -m unittest discover -s skills/autowork/scripts -p test_worktree_paths.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: Bash commands that write files are not detected (a workflow guard, like the existing Bash worktree guard, not a sandbox). Pi, Codex and Hermes sessions are out of scope. The user's private `~/.claude/CLAUDE.md` and `~/.claude/settings.json` are the owner's to update by hand from docs/worktree-placement.md. No change to how runners write main.
+- Planner's call: a separate hook file beside `worktree_paths.py`, not more branches in it, so the worktree policy stays as small as it is; the lock lives under the Git common directory so every linked checkout of one repository sees one lock.
