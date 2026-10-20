@@ -263,6 +263,10 @@ class Coordinator:
                  and f'{t}@{commit}' not in failed]
         if size < 2 or len(fresh) < 2 or self.reexec_due() or self.batch_pending():
             return []  # land the last batch first: a new one would be built on another tree
+        if self.seen.pop('batched', None) and any(f'{t}@{commit}' in failed for t, commit in reported):
+            # One review alone between two batches: while resolutions kept the batch fresh, nine
+            # commits whose batch had failed never got a review of their own, one for 15 hours.
+            return []
         half = self.batch_half({f'{t}@{commit}' for t, commit in fresh})
         if half:
             fresh = [(t, commit) for t, commit in fresh if f'{t}@{commit}' in half]
@@ -270,6 +274,7 @@ class Coordinator:
         if self.seen.get('batch-tried') == key:
             return []
         self.seen['batch-tried'] = key
+        self.seen['batched'] = True
         self.batch_revisions = [f'{t}@{commit}' for t, commit in fresh]
         return [t for t, _ in fresh]
 

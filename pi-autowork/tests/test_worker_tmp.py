@@ -957,6 +957,22 @@ class BatchableTests(unittest.TestCase):
         self.assertEqual(batchable(rows), [('A', 'a'), ('B', 'b')])
         self.assertEqual(batchable(rows, {'A'}), [('B', 'b')])
 
+    def test_a_commit_whose_batch_failed_gets_a_review_between_two_batches(self):
+        """While resolutions kept producing fresh revisions a batch was always due first, and nine
+        commits whose batch had failed waited for a review of their own, one for 15 hours."""
+        from pi_autowork import coordinator
+        with tempfile.TemporaryDirectory() as folder:
+            runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+            runner.state, runner.seen = Path(folder), {}
+            runner.reexec_due, runner.batch_pending = (lambda: ''), (lambda: False)
+            (runner.state / 'batch-failed.json').write_text(json.dumps(['F@f']))
+            reported = [('A', 'a'), ('B', 'b'), ('F', 'f')]
+            self.assertEqual(runner.batch_due(reported), ['A', 'B'])
+            self.assertEqual(runner.batch_due(reported + [('C', 'c')]), [])  # F's turn, alone
+            self.assertEqual(runner.batch_due(reported + [('C', 'c')]), ['A', 'B', 'C'])
+            (runner.state / 'batch-failed.json').write_text('[]')
+            self.assertEqual(runner.batch_due([('D', 'd'), ('E', 'e')]), ['D', 'E'])  # none failed: batches go on
+
 
 class BusyLineTests(unittest.TestCase):
     """The wait for a session in the main checkout is said once per session: its changing status
