@@ -2138,8 +2138,8 @@ class Coordinator:
         person can resolve it: most blockers asked for what the runner already provides, or for a repair
         the worker may make itself, and waited hours for the owner. Once per task and reason."""
         task, root, reason = row.get('task'), row.get('worktree'), ' '.join(str(row.get('reason') or '').split())
-        if (self.stop or row.get('quick_hold') or row.get('worker_live') or int(row.get('answered') or 0) >= 2 or not root
-                or not Path(root).is_dir()):
+        if (self.stop or row.get('waits_for') or row.get('quick_hold') or row.get('worker_live')
+                or int(row.get('answered') or 0) >= 2 or not root or not Path(root).is_dir()):
             return False
         record = self.state / 'triage.json'
         try:

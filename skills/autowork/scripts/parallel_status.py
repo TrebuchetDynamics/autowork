@@ -224,11 +224,12 @@ def _snapshot(repo, common, now):
                          reason=slot.get('reason'), worktree=slot['worktree'], checks=slot.get('checks'),
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
+                         waits_for=slot.get('waits_for'), wait_since=slot.get('wait_since'),
                          ledger_edit_dropped=slot.get('ledger_edit_dropped'),
                          doc_impact=(slot.get('report') or {}).get('doc_impact'),
                          paused=bool(slot.get('paused')),
                          answered=max(int(s.get('answered') or 0) for s in [slot, *slot.get('previous_attempts', [])]),
-                         blocked_by=[]))
+                         blocked_by=list(slot.get('waits_for') or [])))
         if hold := state.quick_hold(common, slot):
             rows[-1]['quick_hold'] = hold
         if slot['state'] == 'held' and slot.get('cause') == 'conflict' and slot.get('commit'):

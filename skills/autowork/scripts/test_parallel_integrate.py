@@ -1138,6 +1138,40 @@ finally:
         path = dispatch.data_dir(self.common, state.slots(self.common)[0]) / 'report.json'
         execution.save(path, dict(execution.read(path), **fields))
 
+    def test_only_task_wait_blockers_become_dependency_holds(self):
+        self.ledger()
+        self.worker()
+        original = state.slots(self.common)[0]
+        cases = [
+            (['Needs B to land.'], ['B']),
+            (['Waiting for `B`', 'Blocked by B'], ['B']),
+            (['The existing B owner/coordinator must supply the retained parser repair in the combined baseline.'], ['B']),
+            (['Needs B to land.', 'Owner must provide credentials.'], []),
+            (['Needs B to land and owner approval.'], []),
+            (['Needs B to land; supply a token too.'], []),
+            (['Needs A to land.'], []),
+            (['Needs UNKNOWN-123 to land.'], []),
+        ]
+        for blockers, waits in cases:
+            with self.subTest(blockers=blockers):
+                execution.save(state.slot_path(self.common, 'A'), original)
+                self.report(blockers=blockers)
+                result = self.module().integrate(self.repo, self.owner, 'A', ['true'], 10)
+                self.assertEqual(result['outcome'], 'HELD', result)
+                slot = state.slots(self.common)[0]
+                self.assertEqual(slot.get('waits_for', []), waits)
+                self.assertEqual(slot['cause'], 'task_wait' if waits else 'blocker')
+        # A dependency added to the ledger while a worker runs is not a new inferred edge.
+        ledger = execution.read(self.repo / 'goals.json')
+        ledger['tasks'][0]['depends_on'] = ['B']
+        execution.save(self.repo / 'goals.json', ledger)
+        running = {k: v for k, v in original.items() if k != 'commit'}
+        execution.save(state.slot_path(self.common, 'A'), dict(running, state='dispatched',
+                                                               baseline=original['commit']))
+        self.report(commit=None, blockers=['Needs B to land.'])
+        slot = state.reconcile(self.repo, self.owner)[0]
+        self.assertEqual((slot['state'], slot['cause'], slot.get('waits_for')), ('held', 'blocker', None))
+
     def test_a_commit_whose_report_has_blockers_is_held_for_a_person(self):
         self.worker()
         self.report(blockers=['Physical device check not run'])
