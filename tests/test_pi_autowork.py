@@ -109,7 +109,7 @@ if 'PI_AUTOWORK_VERIFY' in message:
     role, task = 'verify', re.search(r'verifying task (\S+) ', message)[1]
 elif message.startswith('Plan the file scope of task'):
     role, task = 'touches', re.search(r'of task (\S+) ', message)[1]
-elif message.startswith('/skill:git-commit-push'):
+elif message.startswith('This worktree is on branch '):
     role, task = 'merge', None
 elif 'could not run its checks because this is missing' in message:
     role, task = 'provision', re.search(r'review of task (\S+) ', message)[1]
@@ -2523,6 +2523,22 @@ class EngineTests(Fixture):
         result = self.run_runner('--until-empty')
         self.assertIn('Budget reached', result.stdout)
         self.assertEqual(self.runs(), [])
+
+    def test_merge_instructions_finalize_only_conflicted_planning(self):
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        for files, finalize in [(['src/code.py'], False), (['docs/TODO.md'], False),
+                                (['TODO.md'], True), (['TODO.archive.md'], True), (['goals.json'], True)]:
+            with self.subTest(files=files):
+                prompt = coordinator.merge_prompt(branch='autowork/A', base='main', files=files,
+                                                   goals='/toolset/goals.py', repo='/project')
+                self.assertFalse(prompt.startswith('/skill:'))
+                self.assertEqual('python3 /toolset/goals.py merge-finalize .' in prompt, finalize)
+                self.assertEqual('python3 /toolset/goals.py validate .' in prompt, finalize)
+                if finalize:
+                    self.assertIn('if goals.json exists', prompt)
+                else:
+                    self.assertIn('leave TODO.md, TODO.archive.md and goals.json unchanged', prompt)
 
     def test_main_moving_meanwhile_is_merged_with_pi_resolving_conflicts(self):
         self.plan({'worker:A': ['move_main']})

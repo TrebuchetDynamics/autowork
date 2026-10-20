@@ -1297,11 +1297,26 @@ def merged(repo, owner_pid, task):
         report = execution.read(data / 'report.json')
         if not isinstance(report, dict) or report.get('task') != task:
             raise ValueError('merged needs the held commit\'s report.json')
+        # A source-conflict resolver can also normalize planning. Restore the merged
+        # base's planning (including deletions) before reporting/checking its commit,
+        # unless the task itself authored the path. Integration still handles authored
+        # coordinator edits through its existing proposal path.
+        planning = {'TODO.md', 'TODO.archive.md', 'goals.json'}
+        # Adoption replaces baseline/commit: retain original authorship even when an
+        # earlier resolution made a task-authored path identical to the merged base.
+        authored = slot.get('merged_authored_planning')
+        if authored is None:
+            authored = sorted(planning & set(changed(repo, slot['baseline'], slot['commit'])))
+        restore = sorted((planning - set(authored)) & set(changed(repo, base, head)))
+        if restore:
+            git(root, 'restore', '--source=' + base, '--staged', '--worktree', '--', *restore)
+            git(root, 'commit', '--amend', '--no-edit', '--allow-empty')
+            head = git(root, 'rev-parse', 'HEAD')
         report.update(commit=head, changed_files=changed(repo, base, head))
         execution.save(data / 'report.json', report)
         value = {k: v for k, v in slot.items() if k not in ('reason', 'cause', 'checks', 'integration', 'conflict_files')}
         value.update(state='reported', baseline=base, commit=head, merged_base=base,
-                     merged_count=adoption['merged_count'] + 1)
+                     merged_count=adoption['merged_count'] + 1, merged_authored_planning=authored)
         slot = state.write_slot(common, value, slot)
         return {'outcome': 'MERGED', 'task': task, 'commit': head, 'baseline': base,
                 'merged_count': slot['merged_count']}

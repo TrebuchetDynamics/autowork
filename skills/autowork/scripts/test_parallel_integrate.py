@@ -383,10 +383,18 @@ class IntegrationTests(unittest.TestCase):
 
     def test_existing_overlap_and_ledger_scope_holds_are_offered_again_and_integrate(self):
         module = self.module()
-        for task, cause, outside in [('A', 'scope', ['TODO.md']), ('B', 'overlap', [])]:
-            with self.subTest(cause=cause):
+        for task, cause, outside in [('A', 'scope', ['TODO.md']), ('B', 'overlap', []),
+                                     ('C', 'scope', ['TODO.md', 'TODO.archive.md', 'goals.json', 'CHANGELOG.md'])]:
+            with self.subTest(task=task, cause=cause):
+                if task == 'C':  # a legacy hold blamed coordinator paths identical to the base
+                    todo = self.repo / 'TODO.md'
+                    todo.write_text(todo.read_text() + '\n- [ ] C — Task C\n  Scope: C.txt\n'
+                                    '  Touches: C.txt\n  Acceptance: fixture\n  Checks: true\n'
+                                    '  Dependencies: None.\n  Status: open\n')
+                    self.git('commit', '-qam', 'add C')
+                    self.baseline = self.git('rev-parse', 'HEAD')
                 files = {task + '.txt': 'worker\n'}
-                if outside:
+                if task == 'A':
                     files['TODO.md'] = (self.repo / 'TODO.md').read_text() + '\nold ledger proposal\n'
                 _, commit = self.worker(task, files)
                 slot = next(s for s in state.slots(self.common) if s['task_id'] == task)
@@ -394,6 +402,12 @@ class IntegrationTests(unittest.TestCase):
                                                    reason='old scope/overlap hold'), slot)
                 self.assertEqual(module.retry_held(self.retry_args()),
                                  {'outcome': 'REOFFERED', 'task': task, 'commit': commit})
+                offered = module.slot_for(self.common, task)
+                module.hold(self.common, offered, 'same legacy hold', cause=cause, outside=outside)
+                with patch.object(dispatch, 'capacity', return_value=0):  # suppress a fresh worker, not reoffers
+                    self.assertEqual(module.retry_held(self.retry_args())['outcome'], 'IDLE')
+                offered = module.slot_for(self.common, task)
+                state.write_slot(self.common, dict(offered, state='reported'), offered)
                 self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['outcome'], 'INTEGRATED')
                 self.assertEqual((self.repo / (task + '.txt')).read_text(), 'worker\n')
 
@@ -1331,27 +1345,53 @@ finally:
         self.assertEqual((self.repo / 'B.txt').read_text(), 'worker\n')
 
     def test_an_adopted_resolver_merge_always_uses_the_current_integration_ledger(self):
-        root, _ = self.worker()
+        self.ledger()
         module = self.module()
-        original = (self.repo / 'TODO.md').read_text()
-        (self.repo / 'A.txt').write_text('canonical conflict\n')
-        self.git('commit', '-qam', 'canonical advanced')
-        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['cause'], 'conflict')
-        merged = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', 'main'], capture_output=True)
-        self.assertEqual(merged.returncode, 1)
-        self.git('checkout', '--ours', '--', 'A.txt', cwd=root)
-        (root / 'TODO.md').write_text(original.replace('# TODO', '# Resolver ledger note'))
-        self.git('add', 'A.txt', 'TODO.md', cwd=root)
-        self.git('commit', '-qm', 'resolver merged the session and edited its ledger', cwd=root)
-        self.assertEqual(module.merged(self.repo, self.owner, 'A')['outcome'], 'MERGED')
-        current = original.replace('# TODO', '# Newer coordinator ledger')
-        (self.repo / 'TODO.md').write_text(current)
-        self.git('commit', '-qam', 'ledger changed after adoption')
-        result = module.integrate(self.repo, self.owner, 'A', ['true'], 10)
-        self.assertEqual(result['outcome'], 'INTEGRATED', result)
-        self.assertEqual((self.repo / 'TODO.md').read_text(), current)
-        self.assertEqual((self.repo / 'A.txt').read_text(), 'worker\n')
-        self.assertIn('+# Resolver ledger note', Path(result['ledger_edit_dropped']['patch']).read_text())
+        for task, authored in [('A', False), ('B', True)]:
+            with self.subTest(authored_planning=authored):
+                self.baseline = self.git('rev-parse', 'HEAD')
+                original = (self.repo / 'TODO.md').read_text()
+                title = original.splitlines()[0]
+                files = {task + '.txt': 'worker\n'}
+                if authored:
+                    files['TODO.md'] = original.replace(title, '# Worker ledger proposal', 1)
+                root, _ = self.worker(task, files)
+                for resolution in (1, 2):
+                    (self.repo / (task + '.txt')).write_text(f'canonical conflict {resolution}\n')
+                    self.git('commit', '-qam', 'canonical advanced')
+                    base = self.git('rev-parse', 'HEAD')
+                    self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['cause'], 'conflict')
+                    merged = subprocess.run(['git', '-C', str(root), 'merge', '--no-edit', 'main'], capture_output=True)
+                    self.assertEqual(merged.returncode, 1)
+                    self.git('checkout', '--ours', '--', task + '.txt', cwd=root)
+                    # Matching the base once must not erase original task authorship.
+                    resolved = original if authored and resolution == 1 else original.replace(title, '# Resolver ledger note', 1)
+                    (root / 'TODO.md').write_text(resolved)
+                    (root / 'goals.json').write_text(json.dumps(json.loads((root / 'goals.json').read_text()), indent=4))
+                    (root / 'TODO.archive.md').write_text('# Incidental resolver archive\n')
+                    self.git('add', task + '.txt', 'TODO.md', 'goals.json', 'TODO.archive.md', cwd=root)
+                    self.git('commit', '-qm', 'resolver merged the session and edited its ledger', cwd=root)
+                    adopted = module.merged(self.repo, self.owner, task)
+                    self.assertEqual(adopted['outcome'], 'MERGED')
+                    # Planning must be clean before the adopted commit is checked, except
+                    # for task-authored paths. A resolver-created archive is removed.
+                    self.assertEqual(self.git('diff', '--name-only', base, adopted['commit'], '--',
+                                              'TODO.md', 'TODO.archive.md', 'goals.json'),
+                                     'TODO.md' if authored and resolution == 2 else '')
+                    self.assertEqual(self.git('rev-parse', 'HEAD', cwd=root), adopted['commit'])
+                    report = execution.read(dispatch.data_dir(self.common, module.slot_for(self.common, task)) / 'report.json')
+                    self.assertEqual(report['commit'], adopted['commit'])
+                current = original.replace(title, '# Newer coordinator ledger ' + task, 1)
+                (self.repo / 'TODO.md').write_text(current)
+                self.git('commit', '-qam', 'ledger changed after adoption')
+                result = module.integrate(self.repo, self.owner, task, ['true'], 10)
+                self.assertEqual(result['outcome'], 'INTEGRATED', result)
+                self.assertEqual((self.repo / 'TODO.md').read_text(), current)
+                self.assertEqual((self.repo / (task + '.txt')).read_text(), 'worker\n')
+                if authored:
+                    self.assertIn('+# Resolver ledger note', Path(result['ledger_edit_dropped']['patch']).read_text())
+                else:
+                    self.assertIsNone(result['ledger_edit_dropped'])
 
     def test_a_change_outside_touches_integrates_when_it_merges_and_passes(self):
         """TOOLSET-161-17: Touches schedule work and never hold it."""
