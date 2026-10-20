@@ -32,14 +32,6 @@ no extra approval step or execution authority.
 - Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-153-64/), then rescope or split TOOLSET-153-64 in its TODO.md entry. The runner reruns it when the entry changes.
 - Kind: held
 
-### Q-TOOLSET-252-4c — USER_DECISION — effort investigate — unblocks 0
-
-- Task: TOOLSET-252-4c — A worker blocker that names another open task waits for that task, occupies nothing meanwhile, and resumes when it lands
-- Needs: merge conflict; worker and canonical checkout preserved
-- Since: 2026-10-20T19:33:17Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-252-4c/), then rescope or split TOOLSET-252-4c in its TODO.md entry. The runner reruns it when the entry changes.
-- Kind: held
-
 ### Q-TOOLSET-261-15 — USER_DECISION — effort investigate — unblocks 0
 
 - Task: TOOLSET-261-15 — A worker's long test runs take a host check slot
