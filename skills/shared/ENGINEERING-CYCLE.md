@@ -222,13 +222,32 @@ coverage. Mark unavailable required checks NOT_CHECKED, never pretend they passe
    authorized session, with affected checks and fresh review. No native card
    reassignment, continuation API or done transition is required. Inspect exact
    integration evidence whenever the accepted task requires integration.
-5. After those gates, when goals.json exists, the owner uses the bundled `goals.py task <repo> <TASK> done`
+5. **Assess documentation impact** from the verified diff, task Acceptance/checks
+   and actual affected docs (commands/configuration, interfaces, architecture,
+   operations and verification requirements). Record `doc_impact` as `not_needed`
+   with a source-backed reason, `updated` with paths and passing readback/checks,
+   or `pending` with the concrete gap and resume action. Workers update in-scope
+   component docs and route shared docs to the coordinator/DOCS-MAINTAINER. See the
+   [parallel report contract](../autowork/references/parallel-workers.md#documentation-impact-evidence).
+   In sequential native/portable execution, resolve bundled Docs Sync in the actual
+   host and run scoped Maintain only for a concrete delta, before final closure.
+   No full bootstrap or global manifest is required; archive rendering alone is not
+   Maintain. Do not change unrelated policy or Acceptance. Read back affected docs
+   and run their checks. Preserve foreign dirty docs and reconcile moved source,
+   rather than overwrite or repin old evidence. Required doc failure/interruption
+   retains implementation and pending resume evidence, not a false documentation
+   pass or implementation replay. Needed closeout stays within once/until-empty
+   scope; stops, pauses and exhausted budgets launch no new work.
+   The Pi runtime's closeout Maintain pass belongs to DOCS-MAINTAINER (TOOLSET-266-7a),
+   not a second close authority inside its atomic transaction. Report evidence alone
+   neither launches that pass nor proves documentation acceptance.
+   After the required gates, when goals.json exists, the owner uses the bundled `goals.py task <repo> <TASK> done`
    and `goals.py evidence <repo> <GOAL> --kind executed --ref "<actual command>"
    --result pass|fail` for actual check receipts. The helper requires all goal tasks
    done and an executed pass to promote an unmet goal; it does not independently
    verify review, source freshness or truth of caller-supplied evidence.
-   Run narrow docs-sync Maintain to reconcile affected docs and task bodies, then
-   `goals.py validate <repo>` and `goals.py render <repo>`; use canonical authority
+   Reconcile task bodies, then run `goals.py validate <repo>` and
+   `goals.py render <repo>`; use canonical authority
    and revision guards and preserve concurrent edits. Rendering updates goal
    coverage and automatically archives explicitly closed, ledger-done task bodies
    under the [archive contract](../docs-sync/references/todo-archive.md). It does

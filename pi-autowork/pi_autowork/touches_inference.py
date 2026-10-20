@@ -1,9 +1,9 @@
 """Touches inference for pi-autowork: find runnable tasks without Touches, record a
 proposed list in TODO.md in the task's own field style, and widen a list the runner
-recorded itself. Touches is a scheduling hint only: parallel dispatch runs tasks
-whose Touches overlap after independent ones and never holds a task for it; overlap
-is settled by merging in priority order, and a real conflict goes to the merge
-resolver.
+recorded itself. Parallel dispatch runs tasks whose Touches overlap after independent
+ones, and a task naming a file that unlanded work also names waits for it to land;
+other overlap is settled by merging in priority order, and a real conflict goes to the
+merge resolver.
 
   touches_inference.py missing REPO TOOLSET LIMIT   -> JSON [{"id", "title"}], priority order
   touches_inference.py apply REPO TOOLSET TASK PATHS -> exit 0 when recorded and read back

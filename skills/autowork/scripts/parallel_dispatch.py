@@ -221,7 +221,7 @@ def check_failure_resumed(slot):
 
 
 def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
-           retained_commit=None):
+           retained_commit=None, landed_tasks=(), landed_revisions=(), rework=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -283,7 +283,19 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
         '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
-        '  "environment_failures": [...], "changelog": "..."}.',
+        '  "environment_failures": [...], "changelog": "...",',
+        '  "doc_impact": {"status": "not_needed"|"updated"|"pending", "reason": "...",',
+        '    "paths": [...], "checks": [...], "resume": "..."}}.',
+        '- Always assess doc impact from the final diff, task Acceptance and actual affected docs.',
+        '  "paths" lists repository-relative docs inspected/updated (empty for metadata-only work).',
+        '  "not_needed" explains why existing docs already cover the change or no docs are affected.',
+        '  For a concrete component-doc delta in scope, resolve the bundled Docs Sync skill in this',
+        '  host and run scoped Maintain, not a repository-wide bootstrap. "updated" names changed docs',
+        '  and copies their passing readback/check records from "checks" above.',
+        '  Shared/coordinator docs or an unfinished required doc update are "pending": give the exact',
+        '  gap in "reason" and a DOCS-MAINTAINER resume action in "resume"; never edit shared history',
+        '  or change policy/Acceptance to close a gap. The docs maintainer owns the closeout Docs Sync',
+        '  pass. Archive rendering alone is not Maintain. Report claims remain subject to verification.',
         '- "blockers" is only for what a person alone can provide: credentials or an account, a',
         '  physical device or operator access, spending, a change to third-party software, or a',
         '  product, security or scope decision the task and its sources leave open. Everything else',
@@ -294,6 +306,8 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
         '  the task\'s sources say how to make, you make. If blocked, report commit null with',
         '  blockers and stop.',
+        '  When the ONLY missing input is another open task landing, write "Needs TASK-ID to land."',
+        '  List any additional owner input as a separate blocker; never hide it in a task wait.',
         '- For a task repairing red or flaky main, read $AUTOWORK_MAIN_EVIDENCE/<revision>/:',
         '  the runner provides main_check.json (revision, last green, failures and commits),',
         '  main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes',
@@ -333,15 +347,37 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
     elif resume:
         lines += ['', 'A previous attempt was interrupted. Its uncommitted changes are still in the',
                   'worktree: inspect git status and continue from them rather than starting over.']
+    if landed_tasks:
+        lines += ['', 'Landed prerequisites: ' + ', '.join(landed_tasks) + '.',
+                  'Their landed source is reachable here at these immutable revisions:',
+                  *['- ' + revision for revision in landed_revisions],
+                  'Inspect with git show REVISION:path or git diff BASELINE REVISION -- path.',
+                  'Reconcile only prerequisite code needed by this task into this retained worktree,',
+                  'preserving its committed and uncommitted work. Do not import coordinator-owned files,',
+                  'reset, clean, or merge an entire revision. Re-run checks affected by the combined code.']
     if commit_finished:
         lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
                   'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
                   'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
+    if rework:
+        lines += ['', 'Rework after review: the last attempt at this task failed its review. Its commit',
+                  f'{rework.get("tip") or "(none recorded)"} is kept on a -set-aside branch listed above. Restore it',
+                  'instead of reimplementing, fix exactly what the review found, and rerun the task\'s Checks:',
+                  str(rework.get('finding') or '').strip()]
     if answers:
         lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
                   'task; do not report the same blocker again. A blocker that remains after this answer must',
                   'name what only a person can provide.', answers.strip()]
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def rework_record(common, task):
+    """The finding and kept commit of a review failure this attempt reworks (TOOLSET-285-29), or None."""
+    try:
+        record = execution.read(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def answers_text(common, task):
@@ -1077,10 +1113,14 @@ def dispatch_locked(args, repo, common, count, template, host):
         (data / 'contract.txt').write_text(task['contract'].strip() + '\n')  # what an answer is compared with
         prompt_file.write_text(prompt(task, worktree, branch, base, report, resume=bool(previous),
                                       adopted=idle.get(task['id']),
-                                      retained_commit=previous.get('commit') if previous else None,
+                                      retained_commit=(previous.get('commit') if previous and
+                                                       previous.get('report_resume_attempt') == previous['attempt']
+                                                       else None),
+                                      landed_tasks=(previous or {}).get('landed_tasks', ()),
+                                      landed_revisions=(previous or {}).get('landed_revisions', ()),
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
-                                      else ''))
+                                      else '', rework=rework_record(common, task['id'])))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])

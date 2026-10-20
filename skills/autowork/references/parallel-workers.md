@@ -35,14 +35,25 @@ sequential Autowork). `--run` takes every argument after it, so put it last.
 3. **Review the report.** Read `report.json` at
    `<git-common-dir>/autowork-execution/slot-data/<TASK>/attempt-N/report.json`
    (commit, changed files, checks, blockers, pending live checks, proposed
-   CHANGELOG line) and the commit itself. A report is a claim; integration verifies
+   CHANGELOG line and [doc-impact evidence](#documentation-impact-evidence)) and
+   the commit itself. A report is a claim; integration verifies
    it. `blockers` name what only a person can provide (credentials, devices, spending,
    third-party changes, open product or security decisions); a worker that reports any
    is held with `cause: blocker`, with or without a commit, and gets no fresh attempt.
    `--parallel-answer TASK --answer-file F` answers it instead: the attempt resumes in
    its own worktree with the answer in its prompt, at most twice per task. The Pi
    runner triages each new blocker this way and leaves only a person's part as a
-   question. `pending_live`
+   question. Exception: when every blocker is solely a wait for other open tasks, use
+   `Needs TASK-ID to land.` (multiple IDs may be joined with commas or `and`). The
+   [report classifier](../scripts/parallel_state.py) records `cause: task_wait`, `waits_for`
+   and `wait_since` before triage; the runner never triages a slot with `waits_for`.
+   Unknown wording, additional requests, self references and existing ledger dependencies
+   remain ordinary blockers for triage, not automatic owner questions. A task wait reserves
+   no files or resources, but still holds its dependents. Once every named task closes
+   locally or on the base, it resumes in place on the same attempt; the prompt names the
+   prerequisites and pins reachable landed source revisions for scoped reconciliation,
+   preserving retained work. An unresolved wait becomes one owner question after 24 hours,
+   never a triage. The engine never edits `Dependencies:` for this wait. `pending_live`
    lists device, production, hardware or human checks the worker could not run;
    they never hold the task. `unrelated_failures` lists test IDs that passed a single isolated
    rerun or also failed on the baseline; `environment_failures` lists command/summary strings
@@ -117,6 +128,47 @@ reason), `outside`, `cycle`, or moving work, with how many tasks it holds),
 completed/failed/integration-queue counts, and journal metrics (wall, worker,
 integration and waiting time, peak workers, conflicts, retries).
 
+## Documentation impact evidence
+
+Every worker assesses the final diff against task Acceptance and existing docs.
+Use `doc_impact` in `report.json`, for example (illustrative, not a receipt):
+
+```json
+{"status": "updated", "reason": "Guide now describes the changed command",
+ "paths": ["docs/guide.md"],
+ "checks": [{"command": "git diff --check", "result": "pass", "summary": "guide read back; diff whitespace checked"}]}
+```
+
+- `not_needed`: explain why inspected docs already cover the change or why
+  metadata-only work affects none. `paths` lists inspected docs (may be empty).
+- `updated`: name changed component docs and copy their passing readback/check
+  records from the report's top-level `checks`. Resolve bundled Docs Sync in the
+  actual host for scoped Maintain; no full bootstrap or global manifest.
+- `pending`: put the concrete gap in `reason`, inspected docs in `paths` (may be
+  empty), and the specific DOCS-MAINTAINER action in `resume`. Shared documents
+  remain with the coordinator; do not edit their policy, Acceptance or history.
+
+Integration retains the assessment in the slot's verified `report.doc_impact` and
+exposes it as `doc_impact` in the task snapshot, including after closure/restart.
+It adds `inputs` with exact `baseline`, worker `commit`, `task_contract_sha256` and
+`documents` mapping inspected paths to committed blob IDs (null for deletion).
+These are worker-source inputs, not a claim that merged/current docs are identical.
+Consumers must compare current source/docs and preserve foreign dirty work before
+reconciling; never make stale evidence current by repinning it. An existing
+mismatched `inputs` binding, missing/invalid assessment, missing path or unsupported
+update/check claim becomes `pending`, not an implementation retry or silent no-op.
+Older reports remain valid and need assessment. Raw reports remain available
+beside normalized slot evidence.
+
+DOCS-MAINTAINER owns the conditional closeout Maintain pass (TOOLSET-266-7a).
+These fields introduce no new trigger, model call, closure gate or second atomic-close
+authority. A worker assertion is not documentation acceptance; archive/index
+rendering alone is not Maintain. Sequential native/portable closeout uses the same
+[scoped assessment](../../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner)
+in its authorized session. Required doc failure/interruption preserves code and
+pending evidence without replaying implementation. Stops/pauses/budget limits
+launch no new work; once/until-empty limits include needed closeout.
+
 ## Runner jobs versus outside sessions
 
 The [writer scan](../scripts/task_execution.py) excludes this repository's own
@@ -166,15 +218,22 @@ SDKs and package caches remain in `AUTOWORK_CACHE`, independently of temp cleanu
 
 ## Admission: Touches and Resources
 
-`Touches:` schedules work; it never holds it (TOOLSET-161-17):
+`Touches:` schedules work, and a shared file holds it:
 
 - `Touches:` is a comma-separated list of repository-relative paths or globs the
   task is expected to change; `*` also matches across `/`, and a trailing `/` covers a
-  directory. It is a hint: tasks whose `Touches:` overlap running or earlier-chosen work
-  are dispatched after independent tasks, never held. A worker may change whatever else
-  its task needs; the merge into the base, one candidate at a time in priority order,
-  settles overlap, and a real conflict goes to the merge resolver. A missing or invalid
-  `Touches:` is no hint (the task ranks after hinted ones).
+  directory. A task that names a file (not a directory or glob) that running work, a
+  commit not landed yet, or a waiting higher-priority task also names waits until that
+  task lands: started together, they conflict at merge, and each conflict costs a
+  resolver run and a second review. Directory and glob overlap only ranks a task after
+  independent ones (TOOLSET-161-17), and an idle claim holds nothing. A worker may change
+  whatever else its task needs; the merge into the base, in priority order, settles the
+  rest, and a real conflict goes to the merge resolver. A missing or invalid `Touches:`
+  is no hint (the task ranks after hinted ones).
+- While worker slots idle and tasks wait on a shared file, the DOCS-MAINTAINER re-cuts
+  those tasks before they run (`overlap` trigger): it may merge one into a task that has
+  not started, split off the shared-file part as a dependent follow-up, supersede a
+  duplicate or make the order explicit, without touching running tasks.
 - `Resources: live` or `Resources: exclusive` makes a task run alone. Other names
   (for example `Resources: port-8080, test-db`) keep tasks that share a name from
   running together.
@@ -294,12 +353,14 @@ nothing parallel was claimed or started.
   blocker with uncommitted work: it resumes the same attempt once with an instruction to
   commit finished work using the advisory failure fields. A repeated such report becomes
   `timeout`, not an owner question; the coordinator resumes it when the resource gate allows.
-  Missing dependencies and other genuine inputs still wait for a person. Closing a
+  Task waits described above resume without spending a retry; other inputs go through
+  blocker triage, which leaves only a person's part as a question. Closing a
   retried task leaves the first attempt's worktree and branch for manual cleanup.
 - **Hold causes:** every held slot records a machine-readable `cause`: `scope` (with
   `outside`, the undeclared protected files), `report`, `conflict`,
-  `validation`, `contract_changed`, `moved`, `blocker`, `crash` (died twice),
-  `diverged` (the worker's HEAD does not descend from its baseline) or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
+  `validation`, `contract_changed`, `moved`, `blocker`, `task_wait` (with `waits_for`),
+  `crash` (died twice), `diverged` (the worker's HEAD does not descend from its baseline)
+  or `launch`. Integration's `HELD` result carries `cause` and `outside` too.
 - **Holds from before TOOLSET-161-17:** a commit held for `overlap`, or for `scope` on
   files that are not protected (including coordinator-owned files), is offered again once
   (`REOFFERED`) in priority order and integrates by merge; a worker held with

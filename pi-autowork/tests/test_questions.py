@@ -77,6 +77,37 @@ class QuestionTests(unittest.TestCase):
         self.assertTrue(questions.exhausted(
             {'state': 'held', 'attempt': 2, 'cause': None, 'reason': 'held with no attempt left'}))
 
+    def test_task_wait_becomes_one_question_only_after_24_hours(self):
+        status = {'tasks': [{'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'task_wait',
+                             'waits_for': ['T-2'], 'wait_since': 1000,
+                             'reason': 'worker waits for T-2'}]}
+        self.assertEqual(questions.build(status, TODO, goals, now=1000 + 24 * 3600 - 1), [])
+        found = questions.build(status, TODO, goals, now=1000 + 24 * 3600)
+        self.assertEqual([(q['id'], q['effort']) for q in found], [('T-1', 'input')])
+        self.assertIn('T-2', found[0]['needs'])
+        self.assertIn('24', found[0]['needs'])
+        text = questions.update(None, found, now=NOW)
+        self.assertEqual(text.count('### Q-'), 1)
+
+    def test_a_conflict_the_resolver_still_settles_is_not_asked(self):
+        """Seven conflict holds were posted as owner questions while three resolvers cleared them."""
+        held = {'task': 'T-1', 'state': 'held', 'attempt': 2, 'cause': 'conflict', 'commit': 'c',
+                'reason': 'merge conflict', 'merge_adoption': {'allowed': True, 'merged_count': 1}}
+        status = {'tasks': [held], 'roots': []}
+        self.assertEqual([q['id'] for q in questions.build(status, TODO, goals)], ['T-1'])
+        self.assertEqual(questions.build(status, TODO, goals, resolving={'T-1'}), [])
+        from pi_autowork.coordinator import Coordinator
+        runner = Coordinator.__new__(Coordinator)
+        runner.seen = {}
+        self.assertEqual(runner.resolving([held]), {'T-1'})
+        runner.seen['unresolved-T-1'] = 'c'  # its resolution failed: the owner answers it
+        self.assertEqual(runner.resolving([held]), set())
+        spent = dict(held, merge_adoption={'allowed': False, 'merged_count': 3})  # merges ran out
+        runner.seen = {}
+        self.assertEqual(runner.resolving([spent]), set())
+        runner.resolvers['T-1'] = {}
+        self.assertEqual(runner.resolving([spent]), {'T-1'})  # running now
+
     def test_live_authorization_becomes_one_owner_question_in_blockers(self):
         condition = 'Live authorization: T-1'
         status = {'tasks': [{'task': 'T-1', 'state': 'waiting', 'blocked_by': [condition]}],

@@ -164,6 +164,14 @@ def reread_settings(path, started_with):
     os.environ.update(now)
 
 
+def batchable(rows, handled=()):
+    """(task, commit) of each candidate a batch may take: reported, or integrating with no review
+    running (one runs only while the session is busy, and no batch starts then). Reported alone,
+    a review a restart cut short waited behind every later batch: 16 hours for one of them."""
+    return [(r['task'], r.get('commit')) for r in rows
+            if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
+
+
 class Coordinator:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -319,6 +327,15 @@ class Coordinator:
             failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
             revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
             checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
+            suspects = [revisions[t] for t in result.get('suspects') or [] if t in revisions]
+            if suspects and len(suspects) < len(checked):
+                # The failing tests import or name only these candidates' changes: they integrate
+                # one at a time, and the rest batch again at once instead of in halves.
+                failed = self.batch_failed() | set(suspects)
+                (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
+                LOG.say(failure + f'the failing tests point at {", ".join(r.split("@")[0] for r in suspects)}, '
+                        f'which integrate one at a time; the other {len(checked) - len(suspects)} batch again')
+                return
             if len(checked) >= 4:
                 middle = len(checked) // 2
                 path = self.state / 'batch-split.json'
@@ -1573,8 +1590,7 @@ class Coordinator:
         conflicts = [t for t in self.batch_conflicts() if t in queue and t not in chain]
         # Verified together: they land first, in order; then the batch's conflicts are held for the resolver.
         queue = chain + conflicts + [t for t in queue if t not in chain and t not in conflicts]
-        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows
-                                if r.get('state') == 'reported' and r['task'] not in handled])
+        batch = self.batch_due(batchable(rows, handled))
         if batch:
             self.start_batch(batch)
             return  # it runs beside the loop; its candidates land when it ends
@@ -1640,7 +1656,7 @@ class Coordinator:
             if row and row.get('state') == 'held' and row.get('cause') == 'conflict':
                 self.resolve_task_conflict(row)
         rows = self.tasks(self.status())
-        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows if r.get('state') == 'reported'])
+        batch = self.batch_due(batchable(rows))
         if batch:
             self.start_batch(batch)
             return True
@@ -1727,7 +1743,7 @@ class Coordinator:
                 self.reverify_after_timeout(task, version)
                 continue
             held_by_validation = row.get('state') == 'held' and (
-                row.get('cause') == 'validation'
+                row.get('cause') in ('validation', 'reviewed_twice')
                 or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
             if not held_by_validation or self.stop:
                 continue
@@ -1949,7 +1965,14 @@ class Coordinator:
             return sorted(set(reason.removeprefix('invalid goals.json').lstrip(': ').split('; ')))
         return []
 
-    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False):
+    def overlap_idles(self):
+        """Worker slots idle while a task waits for another one's file: the queue, not the pool,
+        is what limits the runner, so the DOCS-MAINTAINER re-cuts those tasks."""
+        rows = self.tasks()
+        busy = sum(1 for r in rows if r.get('state') in ('dispatched', 'running'))
+        return busy < int(self.workers) and any(maintainer.overlap(r) for r in rows)
+
+    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False, overlap=False):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
@@ -1963,8 +1986,10 @@ class Coordinator:
         # those slots cannot settle until the ledger is valid. Never move the session
         # under an active review, a merge resolution (its merge is adopted only onto the
         # revision it merged) or another writer.
+        # A re-cut of tasks waiting on a shared file writes planning files only: it runs beside
+        # workers, which is when idle slots make it worth a model run.
         if (dirty(self.integ) or self.session_busy() or self.resolvers
-                or (self.in_flight() and not main_only and not self.ledger_errors)):
+                or (self.in_flight() and not main_only and not self.ledger_errors and not overlap)):
             return False
         rows = [] if main_only or self.ledger_errors else self.tasks()
         if ledger_edits_only:
@@ -1973,13 +1998,22 @@ class Coordinator:
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
         main = {} if ledger_edits_only else main_check.read(self.state)
-        found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
-                                    reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
+        found = (maintainer.overlaps(rows) if overlap and not self.ledger_errors else
+                 maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
+                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', [])))
+        goals = dispatch = None
+        closures = []
+        if not main_only and not ledger_edits_only and not self.ledger_errors:
+            goals, dispatch = touches_inference.modules(self.toolset)
+            closures = maintainer.archive_closures(self.integ, dispatch.execution)
+        found = closures + found
         before = {}
         if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
-            goals, dispatch = touches_inference.modules(self.toolset)
+            if goals is None:
+                goals, dispatch = touches_inference.modules(self.toolset)
             before = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
         reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
+        found += maintainer.archive_rejections(self.state, closures, entries=before, reasons=reasons)
         history = maintainer.last(self.state)
         found = [item for item in found if not maintainer.own_main_refresh(
             self.repo, item, history.get('items', {}).get(maintainer.item_key(item), {}),
@@ -1987,6 +2021,10 @@ class Coordinator:
         found = maintainer.pending(self.state, found, entries=before, reasons=reasons)
         if not found:
             return False
+        # Mechanical replay is its own model-free batch in the same transaction.
+        # Failed replay receipts are filtered above, so other repairs still proceed.
+        replay = [item for item in found if item[1] == 'archive close']
+        found = replay or found
         trigger_key = maintainer.key(found)
         rolling = any(kind == 'plan' for _, kind, _ in found)
         plan_before = maintainer.plan_entries(self.integ, goals, dispatch.execution.archive_file(Path(self.integ))) \
@@ -1999,12 +2037,18 @@ class Coordinator:
         outcome, changed = 'no change', []
         try:
             base = git(scratch, 'rev-parse', 'HEAD')
-            message = maintainer.prompt(found, self.repo, self.goals)
-            if rolling:
-                message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
-            ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
-                                   message,
-                                   f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
+            if replay:
+                ok, text = maintainer.replay_archive(scratch, names, dispatch.execution, self.goals_cli)
+                if ok:
+                    ok = git_ok(scratch, 'add', '-A') and git_ok(scratch, 'commit', '-qm',
+                        'docs(tasks): replay archived completion of ' + ', '.join(names))
+            else:
+                message = maintainer.prompt(found, self.repo, self.goals)
+                if rolling:
+                    message += f'\nFinished batch reports: {Path(self.cfg["git_common"]) / "autowork-execution/slot-data"}.'
+                ok, text = self.pi_job('maintainer', maintainer.ROLE, scratch,
+                                       message,
+                                       f'pi-autowork-maintainer-{datetime.now():%Y%m%d%H%M%S}', self.verify_timeout)
             head = git(scratch, 'rev-parse', 'HEAD')
             paths = (git(scratch, 'diff', '--name-only', base, head) or '').split() if head and head != base else []
             diff = git(scratch, 'diff', base, head) or '' if paths else ''
@@ -2021,13 +2065,19 @@ class Coordinator:
                     plan_error = 'planning must finish successfully in one commit'
             if rolling and plan_error:
                 outcome = 'planning failed: ' + plan_error
+            elif replay and not ok:
+                outcome = maintainer.REPLAY_REFUSED + text.strip()
             elif not paths:
                 outcome = 'no change' if ok else 'failed'
-            elif not maintainer.planning_only(paths) or dirty(scratch):
+            elif (not (maintainer.planning_only(paths) or (replay and all(
+                    maintainer.planning_only([p]) or
+                    p == dispatch.execution.archive_file(Path(scratch)).relative_to(scratch).as_posix()
+                    for p in paths))) or dirty(scratch)):
                 outcome = 'refused: it changed more than planning files'
-            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and subprocess.run(
-                    [sys.executable, str(self.goals), 'validate', scratch], capture_output=True).returncode:
-                outcome = 'refused: goals.py validate failed'
+            elif (self.ledger_errors or (Path(scratch) / 'goals.json').exists()) and (
+                    validation := self.goals_cli('validate', scratch)).returncode:
+                outcome = (maintainer.REPLAY_REFUSED + (validation.stdout + validation.stderr).strip()
+                           if replay else 'refused: goals.py validate failed')
             elif git_ok(self.integ, 'merge', '-q', '--no-edit', head):
                 outcome = 'merged'
                 self.settled = self.land_soon = True
@@ -2037,9 +2087,9 @@ class Coordinator:
         finally:
             self.drop_scratch(scratch)
         after = before
-        if outcome == 'merged' and before:
+        if outcome == 'merged' and (before or replay):
             after = maintainer.entries((Path(self.integ) / 'TODO.md').read_text(), goals)
-            changed = [task for task in names if before.get(task) != after.get(task)
+            changed = names if replay else [task for task in names if before.get(task) != after.get(task)
                        or (task in ('MAIN', 'LEDGER') and task in changed)]
             self.snapshot = None  # waiting reasons must be reread against the repaired entries
         maintainer.remember(self.state, trigger_key=trigger_key, found=found, outcome=outcome, changed=changed,
@@ -2054,7 +2104,8 @@ class Coordinator:
                 LOG.say('The engine needs attention: invalid goals.json: ' + '; '.join(self.ledger_errors)
                         + f'; {maintainer.ROLE} {outcome}; see BLOCKERS.md')
         proposals = [item for item in maintainer.triggers(rows, limit=None) if item[1] == 'ledger edit']
-        return outcome == 'merged' or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons))
+        return (outcome == 'merged' or (bool(replay) and outcome.startswith(maintainer.REPLAY_REFUSED))
+                or bool(maintainer.pending(self.state, proposals, entries=after, reasons=reasons)))
 
     def environment_hold(self, task):
         """What a review of the held commit could not run without, or None (TOOLSET-173-94)."""
@@ -2117,8 +2168,8 @@ class Coordinator:
         person can resolve it: most blockers asked for what the runner already provides, or for a repair
         the worker may make itself, and waited hours for the owner. Once per task and reason."""
         task, root, reason = row.get('task'), row.get('worktree'), ' '.join(str(row.get('reason') or '').split())
-        if (self.stop or row.get('quick_hold') or row.get('worker_live') or int(row.get('answered') or 0) >= 2 or not root
-                or not Path(root).is_dir()):
+        if (self.stop or row.get('waits_for') or row.get('quick_hold') or row.get('worker_live')
+                or int(row.get('answered') or 0) >= 2 or not root or not Path(root).is_dir()):
             return False
         record = self.state / 'triage.json'
         try:
@@ -2425,7 +2476,7 @@ class Coordinator:
             triggers = maintainer.triggers(rows, findings=findings, limit=None)
             reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
             repairs = maintainer.stalled(self.state, triggers, entries=maintainer.entries(todo, goals), reasons=reasons)
-            found = questions.build(snapshot, todo, goals, repairs=repairs)
+            found = questions.build(snapshot, todo, goals, repairs=repairs, resolving=self.resolving(rows))
             if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
                 # TOOLSET-180-72: nothing guards the suite
                 found.append(questions.full_check_question())
@@ -2439,6 +2490,14 @@ class Coordinator:
                     'Built from the engine status without a model; /blockers answers them.')
         LOG.say(f'Questions for the owner in BLOCKERS.md: {len(found)} open'
                 + (f" (easiest: {found[0]['id']}, {found[0]['effort']})" if found else ''))
+
+    def resolving(self, rows):
+        """Held conflicts the merge resolver is settling or will take next: not the owner's yet. One
+        is asked once its resolution failed or its merges ran out (merge_adoption not allowed)."""
+        return set(self.resolvers) | {
+            r['task'] for r in rows if r.get('state') == 'held' and r.get('cause') == 'conflict'
+            and (r.get('merge_adoption') or {}).get('allowed')
+            and self.seen.get('unresolved-' + r['task']) != r.get('commit')}
 
     def update_toolset(self):
         """While nothing is in flight, update the toolset package Pi loads, at most once per
@@ -2732,6 +2791,12 @@ class Coordinator:
             if result.get('requeued') is False:
                 LOG.say(f'{task}: its TODO entry was removed or closed while it was held; set aside'
                         + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'review_rework':
+                LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'runner_merged':
+                LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
             else:
                 LOG.say(f'{task}: its TODO entry changed while it was held; running it fresh'
                         + (f' (earlier work kept as {kept})' if kept else ''))
@@ -2743,6 +2808,9 @@ class Coordinator:
             if waiting and waiting != self.last_waiting:
                 LOG.say(f'Waiting: {waiting}')
             self.last_waiting = waiting
+            if self.overlap_idles() and self.maintain(overlap=True):
+                self.last_waiting = ''
+                return  # dispatch again on the re-cut tasks first
         elif outcome == 'IDLE':
             # IDLE only means no worker is running: tasks may still be waiting on something.
             blocked = summary_list(result.get('waiting') or [])

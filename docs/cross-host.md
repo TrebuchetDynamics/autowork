@@ -280,8 +280,10 @@ test that passes when rerun alone counts as flaky. The rejection names the new f
 retry's prompt quotes them. The same command is main's check when `PI_AUTOWORK_MAIN_CHECK` is
 unset; a repository with neither gets one `FULL-CHECK` question in BLOCKERS.md.
 
-`Touches:` only schedules work (TOOLSET-161-17): tasks whose declared files overlap are
-dispatched after independent ones, never held, and a worker may change whatever its task
+`Touches:` schedules work: a task naming a file that running work, an unlanded commit or
+a waiting higher-priority task also names waits until that one lands; directory and glob
+overlap only ranks it after independent work (TOOLSET-161-17). While slots idle on such
+waits, the DOCS-MAINTAINER re-cuts the waiting tasks. A worker may change whatever its task
 needs. Finished work integrates one task at a time in priority order; the merge settles
 overlap, and a real conflict goes to the merge resolver. Only coordinator-owned files and
 undeclared protected files (manifests, lock files, schema, migration and CI files) hold a
@@ -399,6 +401,14 @@ How it works:
   explicit provider and model, `--no-approve`, the engine's one-task prompt and a
   session per task attempt. Workers never pick tasks or edit `TODO.md`,
   `TODO.archive.md`, `goals.json` or `CHANGELOG.md`; only the coordinator does.
+- **Doc-impact evidence.** Worker reports assess `doc_impact` as `not_needed`
+  (reason), `updated` (paths/readback/checks), or `pending` (gap/resume action).
+  The shared engine binds this to verified source, task and doc blobs and retains
+  it in slot reports/task snapshots after restart or closure. Older reports need
+  assessment, not rejection or an assumed no-op. In-scope component docs use bundled
+  Docs Sync scoped Maintain; shared-doc closeout belongs to DOCS-MAINTAINER
+  (TOOLSET-266-7a), not another atomic-close authority or model call added here.
+  See the [report contract](../skills/autowork/references/parallel-workers.md#documentation-impact-evidence).
 - **Verified integration.** A worker's commit and report are claims. The engine
   merges each reported task into the session branch one at a time and runs
   `pi-autowork.sh --verify`: `PI_AUTOWORK_VALIDATE` if set, then a separate read-only

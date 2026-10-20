@@ -1,9 +1,10 @@
 """Serialized, validated local integration. Worker reports are evidence, not acceptance."""
+import hashlib
 import math
 from datetime import datetime
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import re
 import sys
@@ -68,14 +69,14 @@ class Hold(ValueError):
 
 class ReportedBlocker(Hold):
     """The worker's own report names work it could not finish."""
-    def __init__(self, reason):
-        super().__init__('blocker', reason)
+    def __init__(self, reason, cause='blocker', **details):
+        super().__init__(cause, reason, **details)
 
 
 def hold(common, slot, reason, **updates):
     slot = state.change(common, slot, 'held', dict(updates, reason=reason))
     return {'outcome': 'HELD', 'task': slot['task_id'], 'reason': reason,
-            **{k: updates[k] for k in ('cause', 'outside', 'requested') if k in updates}}
+            **{k: updates[k] for k in ('cause', 'outside', 'requested', 'waits_for') if k in updates}}
 
 
 BRANCH_HOLD = 'unexpected worker branch'
@@ -154,13 +155,14 @@ def verify(repo, common, slot, contracts):
     files = changed(repo, slot['baseline'], commit)
     blockers = state.report_blockers(common, slot)
     if blockers:
-        raise ReportedBlocker(state.blocker_reason(blockers))
+        raise ReportedBlocker(**state.blocker_updates(repo, slot, blockers))
     for field in ('pending_live', 'unrelated_failures', 'environment_failures'):
         report[field] = live_items(report.get(field))
     mismatch = report_mismatch(repo, report, slot['task_id'], commit, files)
     if mismatch:
         raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
     verify_scope(repo, common, slot, contracts, files)
+    report['doc_impact'] = assess_doc_impact(repo, slot, task, files, report)
     return files, report
 
 
@@ -220,6 +222,53 @@ def adopt_runner_merged(repo, common, slot, tip):
     slot.update(state.write_slot(common, value, slot))
     state.event(common, 'runner_merged_adopted', task_id=slot['task_id'], commit=tip, merged_count=count + 1)
     return True
+
+
+def assess_doc_impact(repo, slot, task, files, report):
+    """Retain assessment evidence, not doc acceptance or a second close gate.
+
+    DOCS-MAINTAINER consumes pending/legacy evidence (TOOLSET-266-7a).
+    Bind committed objects, never dirty checkout bytes or a later integration HEAD.
+    Incomplete assessment needs Maintain, not another implementation attempt.
+    """
+    impact = report.get('doc_impact')
+    inputs = {'baseline': slot['baseline'], 'commit': slot['commit'],
+              'task_contract_sha256': hashlib.sha256(task['contract'].encode()).hexdigest(), 'documents': {}}
+
+    def pending(reason):
+        return {'status': 'pending', 'reason': reason, 'paths': [], 'checks': [],
+                'resume': 'DOCS-MAINTAINER: assess the verified diff, task acceptance and affected docs',
+                'inputs': inputs}
+
+    if not isinstance(impact, dict):
+        return pending('No doc-impact assessment in worker report; assess legacy evidence')
+    status, reason, paths = impact.get('status'), impact.get('reason'), impact.get('paths')
+    if (status not in ('not_needed', 'updated', 'pending') or not isinstance(reason, str) or not reason.strip()
+            or not isinstance(paths, list) or any(not isinstance(p, str) or not p or '\0' in p
+                or PurePosixPath(p).is_absolute() or '..' in PurePosixPath(p).parts
+                or PurePosixPath(p).as_posix() != p or p == '.' for p in paths)):
+        return pending('Incomplete doc-impact status, reason or repository-relative paths')
+    for path in paths:
+        versions = []
+        for revision in (slot['baseline'], slot['commit']):
+            entry = git(repo, '--literal-pathspecs', 'ls-tree', '-z', revision, '--', path)
+            metadata = entry.split('\t', 1)[0].split()
+            versions.append(metadata[2] if len(metadata) == 3 and metadata[1] == 'blob' else None)
+        if not any(versions):
+            return pending(f'Doc-impact path is not a committed document: {path}')
+        inputs['documents'][path] = versions[1]  # None records a deleted document.
+    if 'inputs' in impact and impact['inputs'] != inputs:
+        return pending('Doc-impact inputs moved; reconcile the original assessment')
+    checks = impact.get('checks', [])
+    if (not isinstance(checks, list) or any(not isinstance(c, dict) or c.get('result') != 'pass'
+            or not c.get('command') or c not in report['checks'] for c in checks)
+            or (status == 'updated' and (not checks or not set(paths).intersection(files)))):
+        return pending('Doc-impact updated claim needs changed doc paths and passing report checks')
+    resume = impact.get('resume', '')
+    if status == 'pending' and (not isinstance(resume, str) or not resume.strip()):
+        return pending(reason.strip())
+    return {'status': status, 'reason': reason.strip(), 'paths': paths, 'checks': checks,
+            'resume': resume if status == 'pending' else '', 'inputs': inputs}
 
 
 def report_mismatch(repo, report, task, commit, files):
@@ -614,6 +663,8 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                 files, report = verify(repo, common, slot, contracts)
                 require_no_writers(repo, files)
                 if slot['state'] == 'integrating':
+                    # Pre-upgrade intents can recover without the reported transition.
+                    slot = state.write_slot(common, dict(slot, report=report), slot)
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
                         return recovered
@@ -1206,7 +1257,7 @@ def reverifiable(slot, version):
     """A changed validator gets one more look, unless it repeated the same commit's verdict.
     Timeouts are not verdicts: the coordinator may still retry them with a longer limit."""
     return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
-            and (slot.get('cause') in ('validation', 'timeout')
+            and (slot.get('cause') in ('validation', 'reviewed_twice', 'timeout')
                  or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
             and slot.get('reverified') != version and slot.get('reviewed_by') != version
             and (slot.get('cause') == 'timeout' or slot.get('reverify_verdict') != validation_verdict(slot)))
@@ -1352,6 +1403,41 @@ def cleanup_worker(repo, common, slot):
     return True
 
 
+def rework_path(common, task):
+    """The record of the one rework a task's review failure earned (TOOLSET-285-29)."""
+    return execution.safe_path(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+
+
+def reviewer_finding(slot):
+    """The reviewer's finding a held slot failed on, or '': not an environment miss or a timeout."""
+    reason = str(slot.get('reason') or '')
+    found = re.search(r'PI_AUTOWORK_VERIFY: fail(?! environment)\b\s*(.*)', reason, re.S)
+    return ' '.join((found[1] if found else '').lstrip('—- ').split()) if slot.get('cause') == 'validation' else ''
+
+
+def review_rework(repo, common, current):
+    """A last attempt that failed its review was neither retried nor asked about: fresh retries are
+    for first attempts, and review failures are not questions. It now gets one rework attempt with
+    the finding and its kept commit; a rework that fails review too becomes a person's question
+    quoting both findings. Caller holds the dispatch, integration and writer locks."""
+    for slot in current:
+        finding = reviewer_finding(slot)
+        if slot['state'] != 'held' or not finding or state.worker_live(slot):
+            continue
+        marker = rework_path(common, slot['task_id'])
+        earlier = execution.read(marker) if marker.exists() else None
+        if isinstance(earlier, dict):
+            reason = (f'{slot.get("reason")}; this was its one rework after review, and the earlier '
+                      f'review found: {earlier.get("finding", "")}')
+            state.write_slot(common, dict(slot, cause='reviewed_twice', reason=reason), slot)
+            state.event(common, 'review_rework_failed', task_id=slot['task_id'])
+        elif slot['attempt'] >= 2:
+            execution.save(marker, {'finding': finding, 'tip': slot.get('commit') or '', 'at': time.time()})
+            state.event(common, 'review_rework', task_id=slot['task_id'], tip=slot.get('commit') or '')
+            return dict(_retire(repo, common, slot, True), outcome='REQUEUED', why='review_rework')
+    return None
+
+
 def retry_held(args):
     """Refill adapter for held slots; first attempts and their artifacts survive."""
     repo, common = context(args.consumer, args.owner_pid)
@@ -1365,6 +1451,21 @@ def retry_held(args):
             # No rescope, reoffer or fresh retry may bypass a repeated missing input.
             current = [s for s in current if not (hold := state.quick_hold(common, s))
                        or blocker_resolved(repo, common, s, hold)]
+            waits = [s for s in current if s['state'] == 'held' and s.get('waits_for')
+                     and not state.worker_live(s)]
+            if waits:
+                base = getattr(args, 'base_ref', None)
+                closed = dispatch.retired(repo, base)
+                ready = next((s for s in waits if set(s['waits_for']) <= closed), None)
+                if ready:
+                    revisions = [git(repo, 'rev-parse', 'HEAD')]
+                    if base:
+                        try:
+                            revisions.append(git(repo, 'rev-parse', '--verify', base + '^{commit}'))
+                        except ValueError:
+                            pass  # local closures remain sufficient with an unreadable base
+                    slot = state.resume_waited(common, ready, list(dict.fromkeys(revisions)))
+                    return {'outcome': 'RESUMED', 'task': slot['task_id'], 'landed_tasks': slot['landed_tasks']}
             # A retry that produced nothing (often because it judged the first hold
             # binding) gets the first attempt's commit re-verified once instead.
             # Earlier releases held a commit when a live session was in the canonical checkout
@@ -1478,15 +1579,22 @@ def retry_held(args):
             if merged_past is not None:
                 state.event(common, 'runner_merged_requeued', task_id=merged_past['task_id'],
                             tip=merged_past.get('tip', ''))
-                return dict(_retire(repo, common, merged_past, True), outcome='REQUEUED')
-            changed_slot = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
-                                 and entry_changed(repo, common, s)), None)
+                return dict(_retire(repo, common, merged_past, True), outcome='REQUEUED', why='runner_merged')
+            changed_slot = next((s for s in current if s['state'] == 'held' and not s.get('waits_for')
+                                 and not state.worker_live(s) and entry_changed(repo, common, s)), None)
             if changed_slot is not None:
+                rework_path(common, changed_slot['task_id']).unlink(missing_ok=True)  # a person's answer resets it
                 present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed_slot['task_id']))
                 state.event(common, 'task_entry_changed', task_id=changed_slot['task_id'],
                             changed_fields=entry_changes(repo, common, changed_slot), action='requeue')
                 result = _retire(repo, common, changed_slot, present)
                 return dict(result, outcome='REQUEUED')
+            reworked = review_rework(repo, common, current)
+            if reworked:
+                return reworked
+            # A second review failure became a person's question: read its new cause.
+            fresh = {x['task_id']: x for x in state.slots(common)}
+            current = [fresh.get(x['task_id'], x) for x in current]
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
             live = [s for s in current if state.worker_live(s)]
             capacity = dispatch.capacity(args)
