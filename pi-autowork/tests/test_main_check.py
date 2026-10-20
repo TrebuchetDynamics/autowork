@@ -302,6 +302,34 @@ class MainCheckTests(unittest.TestCase):
                         runner.check_main()
                         self.assertEqual(bool(started), starts)
 
+    def test_a_green_result_carries_over_planning_only_commits_and_not_code(self):
+        """The runner's questions commits moved main 8 times in a day: each took a host check
+        slot from a waiting review to check the same code."""
+        from pi_autowork.coordinator import Coordinator
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, PI_AUTOWORK_MAIN_CHECK='true'):
+            runner = Coordinator.__new__(Coordinator)
+            runner.state, runner.repo, runner.base, runner.stop = Path(tmp), tmp, 'main', False
+            runner.tasks = lambda: []
+            started = []
+            runner.scratch_checkout = lambda *args: started.append(args) and None
+            for changed, carried in (('BLOCKERS.md\nTODO.md\ngoals.json', True), ('TODO.md\nREADME.md', False)):
+                with self.subTest(changed=changed):
+                    started.clear()
+                    main_check.write(runner.state, {'state': 'green', 'rev': 'old', 'green': 'old', 'finished': 0})
+                    git = lambda *args: changed if args[1] == 'diff' else 'new'
+                    with patch('pi_autowork.coordinator.git', side_effect=git):
+                        runner.check_main()
+                    record = main_check.read(runner.state)
+                    self.assertEqual((record['rev'], record['green']) == ('new', 'new'), carried)
+                    self.assertEqual(bool(started), not carried)
+            # A red main is checked again: its repair may be the planning change.
+            started.clear()
+            main_check.write(runner.state, {'state': 'red', 'rev': 'old', 'green': 'older', 'finished': 0})
+            with patch('pi_autowork.coordinator.git', side_effect=lambda *a: 'TODO.md' if a[1] == 'diff' else 'new'):
+                runner.check_main()
+            self.assertTrue(started)
+
     def test_main_check_waiting_is_visible_and_does_not_consume_its_timeout(self):
         from pi_autowork.coordinator import Coordinator
 
