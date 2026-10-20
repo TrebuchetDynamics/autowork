@@ -166,6 +166,49 @@ class IntegrationTests(unittest.TestCase):
         events = [json.loads(line)['event'] for line in (self.common / 'journal.jsonl').read_text().splitlines()]
         self.assertIn('abandoned_merge_aborted', events)
 
+    def review_failed(self, finding, attempt):
+        slot = state.slots(self.common)[0]
+        slot = state.write_slot(self.common, dict(slot, attempt=attempt), slot)
+        self.module().hold(self.common, slot, 'integration validation failed or changed the integration tree: '
+                           f'PI_AUTOWORK_VERIFY: fail \u2014 {finding}', cause='validation')
+
+    def test_a_last_attempt_that_failed_review_is_reworked_once_then_asked(self):
+        """TOOLSET-285-29: a second attempt failed its review and was neither retried nor asked about."""
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        module = self.module()
+        root, commit = self.worker()
+        self.review_failed('reclaim continues after pressure stops', 2)
+        result = module.retry_held(self.retry_args())
+        self.assertEqual((result['outcome'], result['why']), ('REQUEUED', 'review_rework'), result)
+        record = dispatch.rework_record(self.common, 'A')
+        self.assertEqual((record['finding'], record['tip']), ('reclaim continues after pressure stops', commit))
+        task = execution.select_all(self.repo, None, None)[0]
+        text = dispatch.prompt(task, self.repo, 'b', 'HEAD', Path(self.temp.name) / 'r.json', rework=record)
+        self.assertIn('Rework after review', text)
+        self.assertIn('reclaim continues after pressure stops', text)
+        self.assertIn(commit, text)
+        # The rework fails review too: no third attempt, one question quoting both findings.
+        self.worker()
+        self.review_failed('signed execution cases never ran', 1)
+        self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REQUEUED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['cause'], 'reviewed_twice')
+        self.assertIn('signed execution cases never ran', slot['reason'])
+        self.assertIn('reclaim continues after pressure stops', slot['reason'])
+        self.assertTrue(state.exhausted(slot))
+        self.assertTrue(questions.exhausted(dict(slot, task='A')))
+        self.assertEqual(module.retry_held(self.retry_args()).get('outcome'), 'IDLE')  # asked, not retried
+
+    def test_an_environment_miss_is_not_reworked(self):
+        self.worker()
+        slot = state.slots(self.common)[0]
+        slot = state.write_slot(self.common, dict(slot, attempt=2), slot)
+        self.module().hold(self.common, slot, 'integration validation failed or changed the integration tree: '
+                           'PI_AUTOWORK_VERIFY: fail environment \u2014 fake-sdk 1.0', cause='validation')
+        self.assertNotEqual(self.module().retry_held(self.retry_args()).get('why'), 'review_rework')
+        self.assertIsNone(dispatch.rework_record(self.common, 'A'))
+
     def test_a_session_moved_only_by_planning_commits_lands_the_validated_merge_without_revalidating(self):
         self.worker()
         module = self.module()

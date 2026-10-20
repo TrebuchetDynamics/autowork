@@ -54,9 +54,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
 
-- [ ] TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+- [x] TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
 - Short: Review-failed last attempt is reworked
-- Status: open
+- Status: done 2026-10-20 (interactive session): one rework with finding and kept tip after a last-attempt review failure; second failure held as reviewed_twice (owner question, re-reviewable by a changed reviewer); entry edits reset it; fixture and runner tests.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, one fleet runner): a task's second attempt failed its review ('required scheduler and signed-execution acceptance evidence is missing'). The engine offers fresh retries only to first attempts, and the question list classes review failures as technical, so the task was neither retried nor asked about and appeared nowhere among the runner's roots or questions.
 - Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py

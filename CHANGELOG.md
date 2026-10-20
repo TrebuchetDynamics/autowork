@@ -279,6 +279,11 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- A task whose last attempt failed its review is reworked once instead of sitting held with
+  neither a retry nor a question: the attempt is set aside and a fresh one restores its commit
+  and fixes the quoted finding; a rework that fails review too becomes one owner question
+  quoting both findings (`reviewed_twice`). Requeues now say why in the log (TOOLSET-285-29).
+
 - Worker and review trees get the main checkout's installed dependencies for tracked lockfiles
   (`node_modules` beside package-lock.json, pnpm-lock.yaml, yarn.lock or npm-shrinkwrap.json;
   `.venv` beside uv.lock or poetry.lock) without a setting, when the lockfile is identical in

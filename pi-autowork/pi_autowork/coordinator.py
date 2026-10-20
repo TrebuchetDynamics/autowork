@@ -1722,7 +1722,7 @@ class Coordinator:
                 self.reverify_after_timeout(task, version)
                 continue
             held_by_validation = row.get('state') == 'held' and (
-                row.get('cause') == 'validation'
+                row.get('cause') in ('validation', 'reviewed_twice')
                 or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
             if not held_by_validation or self.stop:
                 continue
@@ -2708,6 +2708,12 @@ class Coordinator:
             kept = ', '.join(r['branch_now'] for r in result.get('renamed') or [] if r.get('branch_now'))
             if result.get('requeued') is False:
                 LOG.say(f'{task}: its TODO entry was removed or closed while it was held; set aside'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'review_rework':
+                LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'runner_merged':
+                LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip'
                         + (f' (earlier work kept as {kept})' if kept else ''))
             else:
                 LOG.say(f'{task}: its TODO entry changed while it was held; running it fresh'

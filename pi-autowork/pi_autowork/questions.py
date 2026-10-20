@@ -62,6 +62,8 @@ def technical(row):
     """A hold the runner recovers by itself: a merge conflict, or an integration-validation
     failure it can re-offer or re-verify. A person need not decide anything (owner direction:
     the recorded reason must name a decision, or it stays technical recovery)."""
+    if row.get('cause') == 'reviewed_twice':
+        return False  # its one rework failed review too (TOOLSET-285-29)
     return (row.get('cause') in TECHNICAL_CAUSES
             or 'integration validation' in str(row.get('reason') or ''))
 
@@ -74,6 +76,7 @@ def exhausted(row):
         return False
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
+                                          or row.get('cause') == 'reviewed_twice'
                                           or adoption.get('allowed') is False or bool(adoption.get('merged_count'))
                                           or bool(row.get('quick_hold')))
 

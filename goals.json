@@ -1204,14 +1204,6 @@
     },
     {
       "depends_on": [],
-      "goal": "PI-RUNNER",
-      "id": "TOOLSET-285-29",
-      "section": "Now",
-      "status": "open",
-      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
-    },
-    {
-      "depends_on": [],
       "goal": "RECOVERY",
       "id": "TOOLSET-003",
       "section": "Next",
@@ -3332,6 +3324,14 @@
       "section": "Done",
       "status": "done",
       "title": "The autowork core SKILL.md has room again: detail moves to references/"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-29",
+      "section": "Done",
+      "status": "done",
+      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
     },
     {
       "depends_on": [
