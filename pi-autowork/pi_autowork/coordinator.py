@@ -303,6 +303,16 @@ class Coordinator:
         # The order they were verified in: each verdict holds only for its step of that chain.
         order = [t for t in result.get('tasks') or [] if worker.batch_record(self.state, t).exists()]
         (self.state / 'batch-order.txt').write_text('\n'.join(order) + '\n')
+        # Offered first, out of priority order: the engine holds a conflict at once, and the
+        # hold is what starts the resolver. Asked after a long review, they waited hours.
+        (self.state / 'batch-conflicts.txt').write_text('\n'.join(result.get('skipped') or []) + '\n')
+
+    def batch_conflicts(self):
+        """Candidates the last batch left out because they do not merge with the session."""
+        try:
+            return (self.state / 'batch-conflicts.txt').read_text().split()
+        except OSError:
+            return []
 
     def batch_chain(self):
         """Batch-verified candidates not landed yet, in the order the batch verified them."""
@@ -1462,7 +1472,9 @@ class Coordinator:
         # runs and 13 "verifying" lines after one reload, TOOLSET-238-11).
         queue = [r['task'] for r in rows if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
         chain = [t for t in self.batch_chain() if t in queue]
-        queue = chain + [t for t in queue if t not in chain]  # verified together: they land first, in order
+        conflicts = [t for t in self.batch_conflicts() if t in queue and t not in chain]
+        # Verified together: they land first, in order; then the batch's conflicts are held for the resolver.
+        queue = chain + conflicts + [t for t in queue if t not in chain and t not in conflicts]
         batch = self.batch_due([(r['task'], r.get('commit')) for r in rows
                                 if r.get('state') == 'reported' and r['task'] not in handled])
         if batch:
@@ -1494,7 +1506,8 @@ class Coordinator:
             handled.add(task)
             first = re.search(r'highest-priority reported task first: (\S+)', finished[1].get('reason') or '')
             if first:
-                if first[1] not in handled:
+                # A batch conflict that merges now waits its turn; the rest are still offered first.
+                if first[1] not in handled and task not in conflicts:
                     queue.insert(0, first[1])
                 continue
             if finished[1].get('outcome') in ('INTEGRATED', 'HELD'):

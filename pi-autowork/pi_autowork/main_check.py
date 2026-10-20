@@ -325,13 +325,14 @@ def complete_results(text, root, cmd=None):
     return True
 
 
-def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None):
+def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None, only=None, workers=4):
     """Rerun up to ten IDs in their original CHECK directory, before scratch cleanup.
 
     A separate revision-bound receipt lists only completed, ungated passes. Missing
     modules, ambiguous directories, skips, timeouts and excess failures stay red.
     ``cmd`` is the command whose log this is; without it, the repository's declared full
-    check explains a gate log, and main's own check passes its command explicitly.
+    check explains a gate log, and main's own check passes its command explicitly. ``only``
+    limits the reruns to those IDs, and ``workers`` is how many run side by side.
     """
     root, receipt = Path(root).resolve(), Path(receipt)
     text = Path(log).read_text(errors='replace')
@@ -362,7 +363,7 @@ def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None):
     except ValueError:
         pass
     runs = []
-    for test_id, places in list(locations.items())[:10]:
+    for test_id, places in [item for item in locations.items() if only is None or item[0] in only][:10]:
         if not re.fullmatch(r'(?:\w+\.)+\w+', test_id) or len(places) != 1:
             continue
         directory = next(iter(places))
@@ -397,7 +398,7 @@ def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None):
                 and bool(re.search(r'^OK$', output, re.M)) and not gate_skips(output)), notes + output
 
     # Side by side: one at a time, ten reruns that each hit their timeout took 20 minutes.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         outcomes = list(pool.map(lambda run: rerun(*run), runs))
     with receipt.with_suffix('.log').open('w') as diagnostics:
         for notes in (notes for _, notes in outcomes):

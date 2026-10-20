@@ -1568,6 +1568,20 @@ finally:
         for task in ('A', 'D', 'B'):
             self.assertEqual(module.integrate(self.repo, self.owner, task, ['true'], 10)['outcome'], 'INTEGRATED')
 
+    def test_a_conflicting_candidate_is_held_out_of_priority_order(self):
+        self.worker('A')
+        self.worker('B')
+        (self.repo / 'B.txt').write_text('canonical\n')
+        self.git('add', 'B.txt')
+        self.git('commit', '-qm', 'canonical writes B.txt')
+        head = self.git('rev-parse', 'HEAD')
+        module = self.module()
+        held = module.integrate(self.repo, self.owner, 'B', ['true'], 10)
+        self.assertEqual((held['outcome'], held['cause']), ('HELD', 'conflict'), held)
+        self.assertEqual(module.slot_for(self.common, 'B')['conflict_files'], ['B.txt'])
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+
     def test_priority_order_is_enforced(self):
         self.worker('B')
         self.worker('A')
