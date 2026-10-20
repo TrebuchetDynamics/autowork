@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import runpy
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -73,9 +74,29 @@ def slot_root():
     return root
 
 
+# A background main check waiting this long is admitted in turn with reviews, so a busy fleet
+# never leaves main unchecked.
+BACKGROUND_WAIT = 1800
+
+
+def ticket_rank(name, now=None):
+    """(class, enqueued) of a `wait-<class>-<monotonic ns>-<pid>` ticket; lower is admitted first.
+
+    Class 0 is a review's suite, class 1 a background main check: main checks of every runner
+    held the host's slots while a review that lands work waited behind them."""
+    try:
+        _, kind, stamp, _ = name.split('-')
+        kind, stamp = int(kind), int(stamp)
+    except ValueError:
+        return (0, 0)
+    now = time.monotonic_ns() if now is None else now
+    return (0 if now - stamp >= BACKGROUND_WAIT * 10**9 else kind, stamp)
+
+
 @contextmanager
-def check_slot(waiting):
-    """FIFO admission to host-wide flock slots; dead tickets are cleaned on the next poll.
+def check_slot(waiting, background=False):
+    """Admission to host-wide flock slots: reviews before background main checks, each in
+    arrival order; dead tickets are cleaned on the next poll.
 
     Only tickets are unlinked. Slot/mutex inodes must stay put, including across restarts.
     The command inherits the lease: killing its supervisor does not release a still-live check.
@@ -95,9 +116,10 @@ def check_slot(waiting):
                 fcntl.flock(mutex, fcntl.LOCK_EX)
                 try:
                     if ticket is None:
-                        ticket = (root / f'wait-{time.monotonic_ns():020d}-{os.getpid()}').open('x')
+                        ticket = (root / f'wait-{int(background)}-{time.monotonic_ns():020d}-{os.getpid()}').open('x')
                         fcntl.flock(ticket, fcntl.LOCK_EX)
-                    ahead = 0
+                    ahead, now = 0, time.monotonic_ns()
+                    mine = ticket_rank(Path(ticket.name).name, now)
                     for path in sorted(root.glob('wait-*')):
                         if path == Path(ticket.name):
                             continue
@@ -105,7 +127,7 @@ def check_slot(waiting):
                             try:
                                 fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
                             except BlockingIOError:
-                                ahead += path.name < Path(ticket.name).name
+                                ahead += ticket_rank(path.name, now) < mine
                             else:
                                 path.unlink()  # dead waiter, including SIGKILL
                     busy = 0
@@ -144,8 +166,9 @@ class Stopped(Exception):
     """The caller was told to stop while its suite waited or ran; the suite is killed."""
 
 
-def run_command(cmd, checkout, limit, progress, output=None, stop=None):
+def run_command(cmd, checkout, limit, progress, output=None, stop=None, background=False):
     """Run a full suite with its complete timeout after admission; report queue progress.
+    A background main check is admitted after the reviews waiting with it.
 
     The suite runs in its own session, which a stop sent to the caller's group never reaches:
     with ``stop`` (a callable), a true answer kills it and raises Stopped instead.
@@ -177,7 +200,7 @@ def run_command(cmd, checkout, limit, progress, output=None, stop=None):
         notify('waiting', ahead=ahead)
 
     try:
-        with check_slot(wait) as lease:
+        with check_slot(wait, background) as lease:
             if queued:
                 transition(False)
             notify('running', started=time.time())
@@ -238,6 +261,45 @@ def write(state, value):
     return value
 
 
+def publish_evidence(state, common, revision, value):
+    """Publish a complete, read-only snapshot outside worktrees; retain five revisions."""
+    root = Path(common) / 'autowork-execution/main-evidence'
+    root.mkdir(parents=True, exist_ok=True)
+    bundle = root / revision
+    value['evidence'] = str(bundle)
+    value['checked_rev'] = revision  # recheck records clear rev so the scheduler will run again
+
+    def remove(path):
+        path.chmod(0o700)
+        shutil.rmtree(path)
+
+    with tempfile.TemporaryDirectory(prefix='.publishing-', dir=root) as staging:
+        staging = Path(staging)
+        (staging / 'main_check.json').write_text(json.dumps(value) + '\n')
+        (staging / 'flaky_history.json').write_text(json.dumps(value.get('flaky_history') or {}) + '\n')
+        for name in ('main-check.log', 'main-check.exit', 'main-check-reruns.log'):
+            source = Path(state) / name
+            # A green run has no reruns; never publish diagnostics left by an older run.
+            if name == 'main-check-reruns.log' and exit_code(state) == 0:
+                content = b''
+            else:
+                try:
+                    content = source.read_bytes()
+                except FileNotFoundError:
+                    content = b''
+            (staging / name).write_bytes(content)
+        for path in staging.iterdir():
+            path.chmod(0o400)
+        if bundle.exists():
+            remove(bundle)
+        staging.rename(bundle)
+        bundle.chmod(0o500)
+    revisions = sorted((path for path in root.iterdir() if path.is_dir() and not path.name.startswith('.')),
+                       key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    for old in revisions[5:]:
+        remove(old)
+
+
 def exit_code(state):
     """Only a complete receipt counts: shell redirection can expose an empty file first."""
     try:
@@ -288,11 +350,14 @@ def failures(log_text, limit=20):
     return list(dict.fromkeys(found))[:limit]
 
 
-def complete_results(text, root):
+def complete_results(text, root, cmd=None):
     """Do not excuse a flaky test alongside a process that died without a summary.
 
     The offline inventory may shard modules, so count its units, not just modules.
     Unknown shell commands without CHECK boundaries cannot prove completeness.
+    ``cmd`` is the command that produced ``text``: the gate's check may be declared in
+    AGENTS.md and never enter this process's environment, so only main's own check passes it
+    explicitly; every other caller means the repository's full check.
     """
     summary = re.compile(r'^Ran \d+ tests? in [\d.]+s\n\n(?:OK\b|FAILED\b)', re.M)
     sections = list(re.finditer(r'^CHECK (.+) \((\d+) modules\)$', text, re.M))
@@ -308,12 +373,13 @@ def complete_results(text, root):
         if set(expected) != {section[1] for section in sections}:
             return False
     if not sections:
+        cmd = full_check(str(root)) if cmd is None else cmd
         try:
-            args = shlex.split(command())
+            args = shlex.split(cmd)
         except ValueError:
             return False
         return (len(args) >= 3 and args[1:3] == ['-m', 'unittest']
-                and not re.search(r'[;&|<>()\n]', command()) and len(summary.findall(text)) == 1)
+                and not re.search(r'[;&|<>()\n]', cmd) and len(summary.findall(text)) == 1)
     for index, section in enumerate(sections):
         end = sections[index + 1].start() if index + 1 < len(sections) else len(text)
         if len(summary.findall(text[section.end():end])) != expected.get(section[1], int(section[2])):
@@ -321,11 +387,14 @@ def complete_results(text, root):
     return True
 
 
-def rerun_failures(log, root, receipt, rev, timeout=600):
+def rerun_failures(log, root, receipt, rev, timeout=600, cmd=None, only=None, workers=4):
     """Rerun up to ten IDs in their original CHECK directory, before scratch cleanup.
 
     A separate revision-bound receipt lists only completed, ungated passes. Missing
     modules, ambiguous directories, skips, timeouts and excess failures stay red.
+    ``cmd`` is the command whose log this is; without it, the repository's declared full
+    check explains a gate log, and main's own check passes its command explicitly. ``only``
+    limits the reruns to those IDs, and ``workers`` is how many run side by side.
     """
     root, receipt = Path(root).resolve(), Path(receipt)
     text = Path(log).read_text(errors='replace')
@@ -356,7 +425,7 @@ def rerun_failures(log, root, receipt, rev, timeout=600):
     except ValueError:
         pass
     runs = []
-    for test_id, places in list(locations.items())[:10]:
+    for test_id, places in [item for item in locations.items() if only is None or item[0] in only][:10]:
         if not re.fullmatch(r'(?:\w+\.)+\w+', test_id) or len(places) != 1:
             continue
         directory = next(iter(places))
@@ -365,12 +434,13 @@ def rerun_failures(log, root, receipt, rev, timeout=600):
 
     def rerun(test_id, directory):
         """(passed, diagnostics) of one test run alone."""
-        notes = f'RERUN {test_id} in {directory}\n'
+        argv = [sys.executable, '-m', 'unittest', test_id]
+        notes = f'RERUN {test_id} in {directory}\ncommand: {shlex.join(argv)}\n'
         try:
             # A file, not a pipe: a detached daemon inheriting stdout must not
             # make communicate() wait forever for EOF after the test times out.
             with tempfile.TemporaryFile() as capture, subprocess.Popen(
-                    [sys.executable, '-m', 'unittest', test_id], cwd=directory, env=env,
+                    argv, cwd=directory, env=env,
                     stdout=capture, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                     start_new_session=True) as process:
                 timed_out = False
@@ -385,19 +455,20 @@ def rerun_failures(log, root, receipt, rev, timeout=600):
                 output = capture.read(size).decode('utf-8', errors='replace')
         except OSError as error:
             return False, notes + f'Could not rerun {test_id}: {error}\n'
+        notes += f'exit code: {process.returncode}\n'
         if timed_out:
             return False, notes + output + f'TIMEOUT: {test_id} after {timeout:g}s\n'
         return (process.returncode == 0 and bool(re.search(r'^Ran [1-9]\d* tests? in ', output, re.M))
                 and bool(re.search(r'^OK$', output, re.M)) and not gate_skips(output)), notes + output
 
     # Side by side: one at a time, ten reruns that each hit their timeout took 20 minutes.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         outcomes = list(pool.map(lambda run: rerun(*run), runs))
     with receipt.with_suffix('.log').open('w') as diagnostics:
         for notes in (notes for _, notes in outcomes):
             diagnostics.write(notes)
     flaky = [test_id for (test_id, _), (passed, _) in zip(runs, outcomes) if passed]
-    result = dict(rev=rev, flaky=flaky, incomplete=not complete_results(text, root))
+    result = dict(rev=rev, flaky=flaky, incomplete=not complete_results(text, root, cmd))
     tmp = receipt.with_suffix('.tmp')
     tmp.write_text(json.dumps(result) + '\n')
     tmp.replace(receipt)
@@ -456,6 +527,7 @@ def line(record, now=None):
 
 if __name__ == '__main__':
     if sys.argv[1] == '--run':
-        code, _ = run_command(sys.argv[2], os.getcwd(), float(sys.argv[3]), sys.argv[4])
+        code, _ = run_command(sys.argv[2], os.getcwd(), float(sys.argv[3]), sys.argv[4], background=True)
         sys.exit(code if code >= 0 else 128 - code)
-    rerun_failures(*sys.argv[1:])
+    # Main's check may differ from the repository's gate check: name it here, not by env order.
+    rerun_failures(*sys.argv[1:], cmd=command(repo=sys.argv[2]))

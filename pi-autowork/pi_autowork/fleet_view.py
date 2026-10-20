@@ -7,16 +7,18 @@ and nothing here changes a runner: actions only build the argv that `autowork` o
 `pi-autowork.sh` already accept.
 """
 from dataclasses import dataclass, field
+import datetime
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 
 from pi_autowork import health, main_check, questions as owner_questions
 
-KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'not runnable',
+KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'blocker', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
 CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
           'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed', 'empty': 'no result',
@@ -152,7 +154,7 @@ def _phases(state_dir):
     return found
 
 
-PHASE_WORDS = ('waiting for a check slot', 'waiting to integrate', 'set aside', 'verifying', 'implemented', 'integrating', 'integrated',
+PHASE_WORDS = ('waiting for a check slot', 'waiting to integrate', 'set aside', 'verifying', 'landing', 'implemented', 'integrating', 'integrated',
                'running', 'pending', 'paused', 'done', 'failed', 'held', 'closed')
 
 
@@ -272,18 +274,22 @@ def doing(lane):
         return 'waiting for a check slot, ' + (lane.detail or '0 ahead')
     if lane.phase == 'waiting to integrate':
         return 'waiting to integrate: ' + (lane.detail or 'another integration first')
+    if lane.phase == 'batch check':
+        return 'batch check: ' + (lane.detail or 'one full check for the batch')
     if lane.phase in ('integrating', 'integrated'):
         return lane.phase
     text = doing_text(lane.activity) if lane.activity else ''
     if lane.phase == 'verifying':
         return 'reviewer: ' + (text or 'starting')
+    if lane.phase == 'landing':
+        return 'landing: ' + (lane.detail or 'passed in its batch')
     return text or ('starting' if lane.phase in ('starting', 'running', 'implementing') else lane.phase)
 
 
 def quiet(lane):
     """'quiet 12m' when the worker's last action is QUIET_AFTER seconds or older, else ''."""
     if (lane.activity_age is None or lane.activity_age < QUIET_AFTER
-            or lane.phase in ('waiting to integrate', 'waiting for a check slot')):
+            or lane.phase in ('waiting to integrate', 'waiting for a check slot', 'batch check')):
         return ''
     return 'quiet ' + duration(lane.activity_age // 60)
 
@@ -345,12 +351,15 @@ def verdict(runner):
     if runner.state == 'working':
         # Live workers, not every task in flight: 15 finished commits waiting to merge read as
         # "16 of 1 workers busy".
-        queued = sum(lane.phase in ('implemented', 'waiting to integrate') for lane in runner.lanes)
-        busy = runner.running or sum(lane.phase not in ('implemented', 'waiting to integrate') for lane in runner.lanes)
+        heads = [status(lane)[0] for lane in runner.lanes]
+        busy = runner.running or heads.count(ACTIVE)
         of = f' of {runner.max_workers}' if runner.max_workers else ''
         text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
-        if queued:
-            text += f"; {queued} commit{'s' if queued != 1 else ''} waiting to merge"
+        if heads.count(MERGEABLE):
+            text += f'; {heads.count(MERGEABLE)} mergeable'
+        if heads.count(WAITING):
+            queued = heads.count(WAITING)
+            text += f"; {queued} commit{'s' if queued != 1 else ''} waiting"
         if runner.gate:
             text += f'; no more start: {runner.gate}'
         if asks:
@@ -381,8 +390,11 @@ def verdict(runner):
     if runner.state == 'not cycling':
         return f'{head} — its status has not been refreshed; the runner may be busy or hung', 'bold red'
     if runner.held:
-        task, cause = runner.held[0]
-        return f"Waiting — {task}: {health.CAUSES.get(cause, cause or 'held')}", 'bold yellow'
+        task, cause = (blocking(runner.held) or runner.held)[0]
+        if cause in WAIT_CAUSES:
+            return f"Waiting — {task}: {health.CAUSES.get(cause, cause)}", 'bold yellow'
+        asked = any(q.id == task for q in runner.questions)
+        return f'Blocker — {task}: {blocker_detail(cause, asked)}', 'bold yellow'
     return head, 'bold yellow'
 
 
@@ -407,6 +419,78 @@ def waiting_line(runner, limit=4):
     return ' · '.join(parts) + (f' · +{more} more reasons' if more > 0 else '')
 
 
+# Each task shows one headline and a detail (docs/project.md, "Task status vocabulary"):
+# the headline says whether it moves, the detail how far it got. Engine states stay internal.
+ACTIVE, MERGEABLE, WAITING, BLOCKER = 'Active', 'Mergeable', 'Waiting', 'Blocker'
+# An implemented commit has not been checked: it waits, it is not Mergeable.
+WAIT_PHASES = {'implemented': 'Implemented', 'waiting to integrate': 'Merge turn', 'batch check': 'Batch check',
+               'waiting for a check slot': 'Check slot', 'paused': 'Paused', 'pending': 'Pending'}
+ACTIVE_PHASES = {'starting': 'Starting', 'running': 'Implementing', 'implementing': 'Implementing',
+                 'verifying': 'Verifying', 'integrating': 'Merging', 'landing': 'Merging'}
+
+
+def status(lane):
+    """(headline, detail) of a task in flight. Only an integrated commit, whose checks and review
+    passed and which is on the session branch, is Mergeable: main is all that remains."""
+    if lane.phase == 'integrated':
+        return MERGEABLE, 'Verified'
+    if lane.phase in WAIT_PHASES:
+        return WAITING, WAIT_PHASES[lane.phase]
+    return ACTIVE, ACTIVE_PHASES.get(lane.phase, lane.phase.capitalize())
+
+
+def resolver(asked):
+    """Who clears a Blocker: the owner only when the task has an open question in BLOCKERS.md;
+    a conflict, a failed check or a missing report is the runner's own repair."""
+    return 'Needs you' if asked else 'Agent repair'
+
+
+# A hold the engine lifts by itself once another task's files are free: a wait, not an obstacle.
+WAIT_CAUSES = ('overlap',)
+
+
+def blocking(held):
+    """The holds that are Blockers: every hold but those the engine lifts by itself."""
+    return [(task, cause) for task, cause in held if cause not in WAIT_CAUSES]
+
+
+def blocker_detail(cause, asked=False):
+    """'Conflict · Agent repair'."""
+    text = CAUSES.get(cause, cause or 'held')
+    return f'{text[:1].upper()}{text[1:]} · {resolver(asked)}'
+
+
+def task_counts(runner):
+    """(active, mergeable, waiting, blocker, total) for a runner."""
+    heads = [status(lane)[0] for lane in runner.lanes]
+    active = heads.count(ACTIVE) if runner.lanes else runner.running
+    mergeable = heads.count(MERGEABLE)
+    blocker = len(blocking(runner.held))
+    waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - blocker
+    return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker
+
+
+def reviews(state_dir, proc='/proc'):
+    """({task: its own review runs}, {task: a batch checking it runs}) for the runner whose state is
+    ``state_dir``, from live `worker.py --verify STATE TASK` and `--verify-batch STATE SESSION
+    SCRIPT TASK...` processes. The runner log's last "verifying" outlives a review that died."""
+    state = os.path.realpath(state_dir)
+    single, batch = set(), set()
+    for entry in Path(proc).glob('[0-9]*'):
+        try:
+            argv = (entry / 'cmdline').read_bytes().decode(errors='replace').split('\0')
+        except OSError:
+            continue
+        for i, arg in enumerate(argv[:-2]):
+            if arg in ('--verify', '--verify-batch') and os.path.realpath(argv[i + 1]) == state:
+                if arg == '--verify':
+                    single.add(argv[i + 2])
+                else:
+                    batch.update(a for a in argv[i + 4:] if a)
+                break
+    return single, batch
+
+
 def lanes(runner, now=None):
     """Tasks in flight for this runner, from the engine's slots, the runner log and Pi transcripts."""
     now = time.time() if now is None else now
@@ -418,6 +502,7 @@ def lanes(runner, now=None):
     except (OSError, subprocess.SubprocessError):
         return []
     phases = _phases(runner.state_dir) if runner.state_dir else {}
+    single, batch = reviews(runner.state_dir) if runner.state_dir else (set(), set())
     out = []
     for path in sorted(Path(common or '/nonexistent', 'autowork-execution', 'slots').glob('*.json')):
         try:
@@ -433,11 +518,16 @@ def lanes(runner, now=None):
             progress = main_check.slot_status(Path(runner.state_dir) / 'full-check' / f'{task}.status.json')
             if progress.get('state') == 'waiting' and main_check.alive(progress.get('pid')):
                 phase, detail = 'waiting for a check slot', f"{progress.get('ahead', 0)} ahead"
+        if phase == 'verifying' and runner.state_dir and task not in single:
+            # Its review is gone: hours of "verifying" for three tasks whose reviews had died.
+            phase, detail = (('batch check', 'one full check for the batch') if task in batch else
+                             ('waiting to integrate', 'its review is not running'))
         started = slot.get('started_at')
         activity, age = _activity(runner.state_dir, task, now) if runner.state_dir else ('', None)
         out.append(Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),
                         minutes=int((now - started) // 60) if started else None, activity=activity, activity_age=age))
-    return out
+    # Twenty finished commits listed first hid the eight tasks actually running.
+    return sorted(out, key=lambda lane: status(lane)[0] != ACTIVE)
 
 
 def ago(seconds):
@@ -480,6 +570,8 @@ class Question:
     effort: str
     unblocks: int
     needs: str
+    answer: str = ''    # how the runner says to answer it
+    kind: str = ''      # held, quick_hold, claim, cycle, contract, outside, ...: which quick answers apply
 
 
 def read_questions(repo, state_dir=''):
@@ -505,6 +597,10 @@ def read_questions(repo, state_dir=''):
             found.append(Question(head[1], head[2], int(head[3]), ''))
         elif found and line.startswith('- Needs: '):
             found[-1].needs = line[len('- Needs: '):].strip()
+        elif found and line.startswith('- Answer: '):
+            found[-1].answer = line[len('- Answer: '):].strip()
+        elif found and line.startswith('- Kind: '):
+            found[-1].kind = line[len('- Kind: '):].strip()
     return found
 
 
@@ -532,7 +628,7 @@ TASK_LINE = re.compile(r'^\[(\d\d:\d\d)\] (\S+): (\w+)\b')
 UNIT_LINE = re.compile(r'^(Starting|Started|Stopping|Stopped) pi-autowork@|^pi-autowork@\S+: ')
 BANNER = re.compile(r'^(PI AUTOWORK$|Repository: |Toolset: |Engine: |Primary: |Fallback: |Budget: |Mode: )')
 WORD_STYLES = {'done': 'green', 'integrated': 'green', 'failed': 'bold red', 'running': 'cyan',
-               'verifying': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan', 'paused': 'yellow'}
+               'verifying': 'cyan', 'landing': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan', 'paused': 'yellow'}
 
 
 def log_lines(text):
@@ -741,36 +837,185 @@ class Action:
     env: dict = field(default_factory=dict)
 
 
-def actions(runner, *, command, script, agent=None, task=None):
-    """What the owner can do to this runner now, as `autowork` commands (or the runner script)."""
+def actions(runner, *, command, script, agent=None):
+    """What the owner can do to this runner now, as `autowork` commands (or the runner script).
+    One key per action, the first letter of its one-word label, which the TUI highlights in
+    the word: P plays a stopped or paused runner and pauses a running one."""
     repo, name = runner.repo, runner.name
-    out = [Action('enter', 'log', [], interactive=True)]  # the TUI's own full-screen log view
+    out = [Action('l', 'Log', [], interactive=True)]  # the TUI's own full-screen log view (also Enter)
     running = runner.service in ('running', 'start', 'reload')
     if runner.has_service and running:
-        out.append(Action('p', 'pause', [command, 'pause', name],
+        out.append(Action('p', 'Pause', [command, 'pause', name],
                           confirm=f'Pause {name}? Its service stops and stays off until resumed; '
                                   'workers resume on the same attempt.'))
     elif runner.has_service and runner.state == 'paused':
-        out.append(Action('p', 'resume', [command, 'resume', name]))
-    if runner.has_service:
-        out.append(Action('m', 'model', [command, 'model', name]))       # the TUI picks the model
-        out.append(Action('M', 'fallback model', [command, 'model', name, '--fallback']))
+        out.append(Action('p', 'Play', [command, 'resume', name]))
+    elif repo:
+        out.append(Action('p', 'Play', [command, 'start', repo]))
     if running:
-        out.append(Action('s', 'stop', [command, 'stop', name],
+        out.append(Action('s', 'Stop', [command, 'stop', name],
                           confirm=f'Stop {name}? Workers pause and resume on the same attempt at the next start.'))
         if runner.has_service:
-            out.append(Action('R', 'restart', [command, 'restart', name],
+            out.append(Action('r', 'Restart', [command, 'restart', name],
                               confirm=f'Restart {name}? It reloads in place; running workers keep running.'))
-    elif repo:
-        out.append(Action('a', 'start service', [command, 'start', repo]))
+    if runner.has_service:
+        out.append(Action('m', 'Model', [command, 'model', name]))       # the TUI picks the model
+        out.append(Action('f', 'Fallback', [command, 'model', name, '--fallback']))
+    if repo:
+        out.append(Action('t', 'Tasks', [], interactive=True))  # the TUI's Tasks window
     if repo and runner.has_service and not running:
-        out.append(Action('u', 'remove service', [command, 'remove', name],
+        out.append(Action('u', 'Uninstall', [command, 'remove', name],
                           confirm=f'Remove pi-autowork@{name}? Its state and worktrees stay.'))
-    if repo and task:
-        out.append(Action('x', f'set aside {task}', [script, '--repo', repo, '--set-aside', task],
+    return out
+
+
+# The Tasks window's views, in key order: what each shows (a TaskRow's kind).
+TASK_VIEWS = ('all', 'working', 'held', 'waiting', 'questions')
+
+
+@dataclass
+class TaskRow:
+    """One open task of a runner's TODO.md, in its priority order."""
+    task: str
+    short: str          # `Short:` (at most 40 characters), else the title cut to 40
+    section: str        # Now, Next or Needs decision
+    state: str          # in plain words: implementing, implemented, held, waiting, ready, ...
+    kind: str           # working, held, waiting, ready: what a TASK_VIEWS filter matches
+    why: str = ''       # the hold or wait reason, or the owner's question
+    question: bool = False
+
+
+def goals_module():
+    """docs-sync's goals.py from this toolset: TODO.md is parsed the way the runner parses it."""
+    scripts = str(Path(__file__).resolve().parents[2] / 'skills' / 'docs-sync' / 'scripts')
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import goals
+    return goals
+
+
+def task_rows(runner):
+    """Every open task in ``runner``'s TODO.md, in its order, with what the runner says about it."""
+    try:
+        text = Path(runner.repo, 'TODO.md').read_text()
+    except (OSError, TypeError, ValueError):
+        return []
+    try:
+        states = json.loads(Path(runner.state_dir, 'status.json').read_text()).get('tasks') or []
+    except (OSError, TypeError, ValueError, AttributeError):
+        states = []
+    engine = {row[0]: row for row in states if isinstance(row, list) and len(row) == 4}
+    if not engine:  # a runner from before the per-task list: its groups name up to 20 tasks each
+        engine.update((t, (t, 'waiting', '', g['label'])) for g in runner.waiting_groups for t in g.get('tasks') or [])
+        engine.update((t, (t, 'held', cause or '', '')) for t, cause in runner.held)
+    lanes = {lane.task: lane for lane in runner.lanes}
+    asked = {q.id: q for q in runner.questions}
+    goals = goals_module()
+    rows = []
+    for task, entries in goals.task_bodies(text).items():
+        block, mark, section = entries[0]
+        if mark != ' ' or section not in ('Now', 'Next', 'Needs decision'):
+            continue
+        title = ' '.join(block.split('\n', 1)[0].strip().lstrip('—–-:').split())
+        short = ' '.join((goals.task_fields(block).get('Short') or '').split()) or title
+        _, state, cause, why = engine.get(task, (task, '', '', ''))
+        question = asked.get(task)
+        if task in lanes or state in IN_FLIGHT:
+            words, kind = ' · '.join(status(lanes.get(task) or Lane(task, PHASES[state]))), 'working'
+        elif state == 'held' and cause in WAIT_CAUSES:
+            words, kind = f'{WAITING} · ' + blocker_detail(cause).split(' · ')[0], 'held'
+        elif state == 'held':
+            words, kind = f'{BLOCKER} · ' + blocker_detail(cause, bool(question)), 'held'
+        elif state in ('waiting', 'pending'):
+            words, kind = WAITING, 'waiting'
+        elif section == 'Needs decision':
+            words, kind = f'{WAITING} · Needs decision', 'waiting'
+        else:
+            words, kind = f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
+        short = short if len(short) <= 40 else short[:39].rstrip() + '…'
+        rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
+                            why='you: ' + question.needs if question else why, question=bool(question)))
+    return rows
+
+
+def task_entry(runner, task):
+    """``task``'s whole TODO.md entry, as written."""
+    try:
+        text = Path(runner.repo, 'TODO.md').read_text()
+    except (OSError, TypeError, ValueError):
+        return ''
+    block = next((b for b in goals_module().task_blocks(text) if b['id'] == task), None)
+    return block['core'] if block else ''
+
+
+def open_goals(runner):
+    """(id, title) of the goals in ``runner``'s goals.json not yet met: a new task's choices."""
+    try:
+        data = json.loads(Path(runner.repo, 'goals.json').read_text())
+        return [(g['id'], g.get('title') or '') for g in data.get('goals') or [] if g.get('status') != 'met']
+    except (OSError, TypeError, ValueError, KeyError, AttributeError):
+        return []
+
+
+def task_view(rows, view):
+    """The rows a TASK_VIEWS filter shows."""
+    if view == 'all':
+        return rows
+    if view == 'questions':
+        return [r for r in rows if r.question]
+    return [r for r in rows if r.kind == view]
+
+
+def task_actions(runner, row, *, command, script, agent=None):
+    """What the Tasks window can do with one task: re-sort it (TODO.md order is the priority),
+    clear or set aside its hold, or answer the owner's questions in an agent."""
+    repo, name, task = runner.repo, runner.name, row.task
+    out = [Action('u', 'Up', [command, 'move', task, 'up', name]),
+           Action('d', 'Down', [command, 'move', task, 'down', name]),
+           Action('s', 'Section', [], interactive=True)]  # the TUI asks which: Now, Next or Needs decision
+    if row.kind == 'held':
+        out.append(Action('c', 'Clear', [command, 'clear-held', name, task],
+                          confirm=f'Clear the hold on {task}? Its commit goes back to integration; '
+                                  'its worktrees stay.'))
+        out.append(Action('a', 'Aside', [script, '--repo', repo, '--set-aside', task],
                           confirm=f'Set aside {task}? Its work stays on -set-aside-N branches and it runs fresh.'))
-    if repo and agent:
-        out.append(Action('b', 'answer blockers', [command, 'blockers', repo], interactive=True))
+    if agent and runner.questions:
+        out.append(Action('b', 'Blockers', [command, 'blockers', repo], interactive=True))
+    return out
+
+
+@dataclass
+class Answer:
+    """One way to answer an owner question from the TUI, as an `autowork` command."""
+    key: str
+    label: str              # one word; its key is the first letter
+    explain: str            # what it writes, in a few words
+    argv: list              # `{text}` stands for the owner's words, when ``needs_text``
+    needs_text: bool = False
+
+
+def answers(runner, question, *, command, today=None):
+    """The answers a question's kind supports, written where the runner reads them: the task's
+    TODO.md entry. Questions about no task (FULL-CHECK, LEDGER) have none: an agent answers them."""
+    task, name = question.id, runner.name
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', task) or task in ('FULL-CHECK', 'LEDGER'):
+        return []
+    day = today or datetime.date.today()
+    out = []
+    if question.kind == 'claim':
+        until = day + datetime.timedelta(days=7)
+        out.append(Answer('o', 'Open', 'no one is working on it: Status: open, so the runner runs it',
+                          [command, 'field', task, 'Status', 'open', name]))
+        out.append(Answer('h', 'Held', f'someone is: Held by: the owner; until {until}',
+                          [command, 'field', task, 'Held by', f'the owner; until {until}', name]))
+    fingerprint = re.search(r'Blocker resolution: (\S+?);', question.answer or '')
+    if question.kind == 'quick_hold' and fingerprint:
+        out.append(Answer('r', 'Resolve', 'name the producer task or the decision that unblocks it',
+                          [command, 'field', task, 'Blocker resolution', f'{fingerprint[1]}; {{text}}', name], True))
+    out.append(Answer('w', 'Write', 'your decision, as a dated Owner decision line in its entry',
+                      [command, 'field', task, 'Owner decision', f'{day}: {{text}}', name], True))
+    out.append(Answer('d', 'Defer', 'move it to Needs decision, with your reason as its Owner decision',
+                      [command, 'place', task, 'Needs decision', name, '--decision', f'{day}: deferred: {{text}}'], True))
     return out
 
 

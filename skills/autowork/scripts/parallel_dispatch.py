@@ -220,7 +220,8 @@ def check_failure_resumed(slot):
     return any(s.get('check_failure_resumed') for s in [slot, *slot.get('previous_attempts', [])])
 
 
-def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers=''):
+def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None, commit_finished=False, answers='',
+           rework=None):
     touches = task['fields'].get('Touches', '(none declared)')
     earlier = earlier_task_work(worktree, task['id'], branch, baseline)
     lines = [
@@ -235,6 +236,11 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         'Implement exactly this one task. The coordinator selected it; do not run Autowork task',
         'selection, start other Autowork workers, or pick other tasks. You may use your host\'s',
         'own subagents for this task.',
+        '',
+        'No person is attached to this session, and nobody will answer a question. This task\'s',
+        'contract is its approved design: when a skill or process asks for approval, confirmation or',
+        'a choice, take the contract as that approval and continue. Stop only for a real blocker, and',
+        'write it in the report.',
         '',
         'Rules:',
         f'- Work only inside {worktree}. Touches names the paths this task is expected to change: {touches}.',
@@ -277,7 +283,19 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '- Finally write JSON to the report file: {"task": ID, "commit": SHA or null,',
         '  "changed_files": [...], "checks": [{"command": ..., "result": "pass"|"fail", "summary": ...}],',
         '  "blockers": [...], "pending_live": [...], "unrelated_failures": [...],',
-        '  "environment_failures": [...], "changelog": "..."}.',
+        '  "environment_failures": [...], "changelog": "...",',
+        '  "doc_impact": {"status": "not_needed"|"updated"|"pending", "reason": "...",',
+        '    "paths": [...], "checks": [...], "resume": "..."}}.',
+        '- Always assess doc impact from the final diff, task Acceptance and actual affected docs.',
+        '  "paths" lists repository-relative docs inspected/updated (empty for metadata-only work).',
+        '  "not_needed" explains why existing docs already cover the change or no docs are affected.',
+        '  For a concrete component-doc delta in scope, resolve the bundled Docs Sync skill in this',
+        '  host and run scoped Maintain, not a repository-wide bootstrap. "updated" names changed docs',
+        '  and copies their passing readback/check records from "checks" above.',
+        '  Shared/coordinator docs or an unfinished required doc update are "pending": give the exact',
+        '  gap in "reason" and a DOCS-MAINTAINER resume action in "resume"; never edit shared history',
+        '  or change policy/Acceptance to close a gap. The docs maintainer owns the closeout Docs Sync',
+        '  pass. Archive rendering alone is not Maintain. Report claims remain subject to verification.',
         '- "blockers" is only for what a person alone can provide: credentials or an account, a',
         '  physical device or operator access, spending, a change to third-party software, or a',
         '  product, security or scope decision the task and its sources leave open. Everything else',
@@ -288,6 +306,12 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         '  a missing fixture) is yours to repair, as a separate commit on this branch. A missing input',
         '  the task\'s sources say how to make, you make. If blocked, report commit null with',
         '  blockers and stop.',
+        '- For a task repairing red or flaky main, read $AUTOWORK_MAIN_EVIDENCE/<revision>/:',
+        '  the runner provides main_check.json (revision, last green, failures and commits),',
+        '  main-check.log, main-check.exit, main-check-reruns.log (isolated commands, exit codes',
+        '  and output), and flaky_history.json. The parent keeps the latest five revisions.',
+        '  Never ask a person for these logs, exit codes or rerun outputs. Read them in place;',
+        '  do not copy the evidence into worktrees or commits, or modify it.',
         '- "pending_live" lists checks you cannot run here: physical devices, production or live',
         '  services, hardware, or human review. They become a separate live task and do not hold',
         '  this one; never list them as blockers or as failed checks.',
@@ -319,11 +343,25 @@ def prompt(task, worktree, branch, baseline, report, resume=False, adopted=None,
         lines += ['', 'Your host/check-only blocker is not a question for a person: commit the finished work',
                   'under the unrelated_failures/environment_failures rules above; preserve the existing changes.',
                   'Do not report host load, a quiet window, resource-gate skips or flaky/unrelated tests as blockers.']
+    if rework:
+        lines += ['', 'Rework after review: the last attempt at this task failed its review. Its commit',
+                  f'{rework.get("tip") or "(none recorded)"} is kept on a -set-aside branch listed above. Restore it',
+                  'instead of reimplementing, fix exactly what the review found, and rerun the task\'s Checks:',
+                  str(rework.get('finding') or '').strip()]
     if answers:
         lines += ['', 'You stopped on a blocker, and the runner answered it. Act on the answer and finish the',
                   'task; do not report the same blocker again. A blocker that remains after this answer must',
                   'name what only a person can provide.', answers.strip()]
     return '\n'.join(lines + ['', 'Task contract from TODO.md:', '', task['contract'], ''])
+
+
+def rework_record(common, task):
+    """The finding and kept commit of a review failure this attempt reworks (TOOLSET-285-29), or None."""
+    try:
+        record = execution.read(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
 
 
 def answers_text(common, task):
@@ -612,7 +650,7 @@ def launch(argv, worktree, data, slot_index, stdin_path):
     cache.mkdir(exist_ok=True, mode=0o700)
     base, lease = port_lease(slot_index)
     env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary, AUTOWORK_CACHE=str(cache), AUTOWORK_SLOT=str(slot_index),
-               AUTOWORK_PORT_BASE=str(base))
+               AUTOWORK_PORT_BASE=str(base), AUTOWORK_MAIN_EVIDENCE=str(data.parents[2] / 'main-evidence'))
     env[state.WORKER_MARKER] = str(Path(worktree).resolve())
     try:
         with open(data / 'worker.log', 'ab') as log, open(stdin_path, 'rb') as stdin:
@@ -690,6 +728,29 @@ def timeout_activity(common, slot, now):
         return ''
 
 
+def reported_commit(common, slot):
+    """The commit this attempt's report.json names when it is the clean branch tip, or None.
+
+    A worker whose session did not exit after it committed and reported has finished: a
+    fleet task's worker passed every check and wrote its report, then hung for 70 minutes,
+    and the timeout discarded the commit twice and asked the owner to rescope the task."""
+    try:
+        report = execution.read(data_dir(common, slot) / 'report.json')
+        root = execution.safe_path(slot['worktree'])
+        head = execution.git(root, 'rev-parse', 'HEAD')
+        if (not isinstance(report, dict) or report.get('task') != slot['task_id'] or not head
+                or head == slot['baseline'] or report.get('blockers')
+                or execution.git(root, 'status', '--porcelain', '--untracked-files=no')
+                or execution.git(root, 'merge-base', slot['baseline'], head) != slot['baseline']):
+            return None
+        named = report.get('commit')
+        if not isinstance(named, str) or len(named) < 7 or not head.startswith(named):
+            return None
+        return head
+    except (ValueError, OSError):
+        return None
+
+
 def enforce_timeouts(repo, owner_pid, common, default_timeout):
     """Each worker keeps the timeout it was started with (saved in its meta.json)."""
     stopped = []
@@ -699,6 +760,12 @@ def enforce_timeouts(repo, owner_pid, common, default_timeout):
                 and time.time() - slot['started_at'] > limit):
             activity = timeout_activity(common, slot, time.time())
             stop(slot['worker'], slot['worktree'])
+            commit = reported_commit(common, slot)
+            if commit:
+                stopped.append(state.transition(
+                    repo, owner_pid, slot['task_id'], 'reported', commit=commit,
+                    reason=f'its worker kept running after reporting this commit; stopped at the {limit:g} s timeout'))
+                continue
             stopped.append(state.transition(repo, owner_pid, slot['task_id'], 'interrupted',
                                             reason=f'worker timeout after {limit:g} s' + activity))
     return stopped
@@ -901,9 +968,12 @@ def merge_backlog(common, current, *, workers, now=None, env=os.environ):
     now = time.time() if now is None else now
     age = max(0, now - min(since.values())) if since else 0
     result.update(paused=paused or bool(since and age >= limits['MERGE_BACKLOG_AFTER']), oldest_seconds=age)
-    held = [s for s in queued.values() if s.get('writers_busy_reason')]
+    # Only a hold that is still open explains the backlog. Replaying a reason kept on a
+    # slot whose window closed long ago announced a writer that had already left.
+    held = [s for s in queued.values()
+            if s.get('writers_busy_reason') and state.writers_busy(s, now)]
     if held:
-        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at', 0))['writers_busy_reason']
+        result['reason'] = max(held, key=lambda s: s.get('writers_busy_at') or 0)['writers_busy_reason']
     return result
 
 
@@ -1014,7 +1084,7 @@ def dispatch_locked(args, repo, common, count, template, host):
                                       adopted=idle.get(task['id']),
                                       commit_finished=bool(previous and check_failure_resumed(previous)),
                                       answers=answers_text(common, task['id']) if previous and previous.get('answered')
-                                      else ''))
+                                      else '', rework=rework_record(common, task['id'])))
         if task['id'] in idle:
             with execution.lock(common / 'writer.lock'):
                 state.event(common, 'claim_adopted', task_id=task['id'], evidence=idle[task['id']])

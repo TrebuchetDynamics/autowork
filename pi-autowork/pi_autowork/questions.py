@@ -23,7 +23,7 @@ INPUT_CAUSES = ('blocker', 'scope_request', 'scope')
 # Holds the engine recovers without a person: it re-verifies the validation failure, or (on
 # request) clears the hold. A merge conflict is different — the engine resolves it during
 # integration, and one it cannot resolve stays the owner's question — so it is not listed here.
-TECHNICAL_CAUSES = ('validation',)
+TECHNICAL_CAUSES = ('validation', 'runner_merged')
 
 
 def _title(todo, task, goals):
@@ -62,6 +62,8 @@ def technical(row):
     """A hold the runner recovers by itself: a merge conflict, or an integration-validation
     failure it can re-offer or re-verify. A person need not decide anything (owner direction:
     the recorded reason must name a decision, or it stays technical recovery)."""
+    if row.get('cause') == 'reviewed_twice':
+        return False  # its one rework failed review too (TOOLSET-285-29)
     return (row.get('cause') in TECHNICAL_CAUSES
             or 'integration validation' in str(row.get('reason') or ''))
 
@@ -74,12 +76,15 @@ def exhausted(row):
         return False
     adoption = row.get('merge_adoption') or {}
     return row.get('state') == 'held' and (int(row.get('attempt') or 0) >= 2 or row.get('cause') in INPUT_CAUSES
+                                          or row.get('cause') == 'reviewed_twice'
                                           or adoption.get('allowed') is False or bool(adoption.get('merged_count'))
                                           or bool(row.get('quick_hold')))
 
 
-def build(snapshot, todo, goals, repairs=()):
-    """Questions from an engine status snapshot, without a model: dicts sorted easiest first."""
+def build(snapshot, todo, goals, repairs=(), resolving=()):
+    """Questions from an engine status snapshot, without a model: dicts sorted easiest first.
+    ``resolving`` names held conflicts the runner's merge resolver still settles by itself: seven
+    such holds were posted as owner questions while three resolvers were clearing them."""
     rows = {r.get('task'): r for r in snapshot.get('tasks') or [] if r.get('task')}
     roots = {r['id']: r for r in snapshot.get('roots') or []}
     found = {}
@@ -127,7 +132,7 @@ def build(snapshot, todo, goals, repairs=()):
             f'{task} — {title}' if title else task, (roots.get(task) or {}).get('blocks', 0))
 
     for task, row in rows.items():
-        if task in found or not exhausted(row):
+        if task in found or task in resolving or not exhausted(row):
             continue
         title = _title(todo, task, goals)
         line = f'{task} — {title}' if title else task
@@ -247,7 +252,7 @@ def render(questions, since):
     for q in questions:
         lines += [f"### Q-{q['id']} — {q['type']} — effort {q['effort']} — unblocks {q['unblocks']}", '',
                   f"- Task: {q['task']}", f"- Needs: {q['needs']}", f"- Since: {since.get(q['id'])}",
-                  f"- Answer: {q['answer']}", '']
+                  f"- Answer: {q['answer']}", f"- Kind: {q.get('kind') or 'other'}", '']
     lines.append(END)
     return '\n'.join(lines)
 

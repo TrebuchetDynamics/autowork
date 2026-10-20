@@ -131,7 +131,7 @@ with open(os.environ['FAKE_PI_PLAN'], 'r+') as stream:
 note({'run': behavior, 'role': role, 'task': task, 'provider': opts.get('--provider'), 'model': opts.get('--model'),
       'session': opts.get('--session-id'), 'cwd': os.getcwd(), 'tools': opts.get('--tools'),
       'execution_common': os.environ.get('AUTOWORK_EXECUTION_COMMON'),
-      'no_approve': '--no-approve' in args, 'message': message})
+      'no_approve': '--no-approve' in args, 'message': message, 'prompt': prompt})
 def emit(record):
     print(json.dumps(record), flush=True)
 def finish(stop='stop', text='', error=None):
@@ -168,6 +168,12 @@ elif role == 'verify':
         open(os.path.join(main, task + '.txt'), 'w').write('from main\n')
         subprocess.run(['git', '-C', main, 'add', '-A'])
         subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'main moved'])
+        finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
+    elif behavior == 'main_code':  # main gains an unrelated code commit while the batch reviews
+        main = os.environ['FAKE_MAIN_REPO']
+        open(os.path.join(main, 'tool.py'), 'w').write('VERSION = 2\n')
+        subprocess.run(['git', '-C', main, 'add', 'tool.py'])
+        subprocess.run(['git', '-C', main, '-c', 'user.email=m@example.invalid', '-c', 'user.name=Main', 'commit', '-qm', 'toolset fix'])
         finish(text='Checked.\nPI_AUTOWORK_VERIFY: pass all checks')
     elif behavior == 'move_session':  # a second conflict, after the first merge was adopted
         listing = git('worktree', 'list', '--porcelain').stdout
@@ -266,7 +272,14 @@ elif role == 'maintainer':
         git('add', 'A.txt'); git('commit', '-qm', 'not allowed')
     finish(text='PI_AUTOWORK_RESULT: completed A')
 elif role == 'triage':
-    if behavior == 'answer':
+    if behavior == 'answer_main':
+        evidence = os.environ.get('AUTOWORK_MAIN_EVIDENCE', '')
+        bundle = os.path.join(evidence, 'abc123')
+        if '$AUTOWORK_MAIN_EVIDENCE' in message and os.path.isfile(os.path.join(bundle, 'main-check.log')):
+            finish(text='PI_AUTOWORK_TRIAGE: answer\nRead the runner evidence at ' + bundle)
+        else:
+            finish(text='PI_AUTOWORK_TRIAGE: owner\nCannot find the main-check log.')
+    elif behavior == 'answer':
         finish(text='Read the report.\nPI_AUTOWORK_TRIAGE: answer\nYour ports are yours alone; no receipt exists. Proceed.')
     else:
         finish(text='PI_AUTOWORK_TRIAGE: owner\nA person must attach the device.')
@@ -363,6 +376,9 @@ elif behavior == 'push':
     pushed = git('push', 'origin', 'HEAD:refs/heads/pushed')
     open(os.environ['FAKE_PI_ROOT'] + '/push.rc', 'w').write(str(pushed.returncode))
     work(); finish(text='done')
+elif behavior == 'needs_main_log':
+    report(None, ['the full log of the red MAIN, including exit code and isolated rerun output'])
+    finish(text='blocked')
 elif behavior == 'blocked':
     report(None, ['needs a device'])
     finish(text='blocked')
@@ -609,6 +625,22 @@ class EngineTests(Fixture):
         self.assertEqual(self.git(self.repo, 'check-attr', 'merge', '--', 'docs/history.md'),
                          'docs/history.md: merge: docs-sync-archive')
         attributes = (self.repo / '.gitattributes').read_bytes()
+        for kind in ('goals', 'todo', 'archive'):
+            self.git(self.repo, 'config', '--local', f'merge.docs-sync-{kind}.driver',
+                     f'{shlex.quote(sys.executable)} /pruned-release/goals.py merge-driver {kind} %O %A %B')
+        # Config repair must also happen when uncommitted planning blocks startup.
+        head = self.git(self.repo, 'rev-parse', 'HEAD')
+        planning = (self.repo / 'TODO.md').read_bytes()
+        (self.repo / 'goals.json').write_text('{}\n')
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+        for kind in ('goals', 'todo', 'archive'):
+            driver = self.git(self.repo, 'config', '--local', '--get', f'merge.docs-sync-{kind}.driver')
+            self.assertEqual(shlex.split(driver)[1], str(ROOT / 'skills/docs-sync/scripts/goals.py'))
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), head)
+        self.assertEqual((self.repo / 'TODO.md').read_bytes(), planning)
+        self.assertEqual((self.repo / 'goals.json').read_text(), '{}\n')
+        (self.repo / 'goals.json').unlink()
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual((self.repo / '.gitattributes').read_bytes(), attributes)
@@ -686,7 +718,8 @@ class EngineTests(Fixture):
         self.assertEqual(self.runs(), [])
 
     def test_failed_review_holds_the_task_and_keeps_main_clean(self):
-        self.plan({'verify:A': ['fail', 'fail']})
+        # The first attempt, its fresh retry and its one rework after review (TOOLSET-285-29) all fail.
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})
         result = self.run_runner('--until-empty', '--workers', '1')
         self.assertIn('A: failed', result.stdout)
         held = json.loads((self.repo / '.git/autowork-execution/slots/A.json').read_text())
@@ -1045,7 +1078,11 @@ class EngineTests(Fixture):
         self.assertIn('(test_other.OtherTests.test_broken)', log())
         self.assertIn('DOCS-MAINTAINER: repairing the task docs of MAIN', log())
         self.assertIn('Main is green again at', log())
-        self.assertEqual(len(self.runs("maintainer")), 1, log())  # one repair for one set of failures
+        maintenance = self.runs('maintainer')
+        self.assertEqual(sum(run['run'] == 'repair_main' for run in maintenance), 1, log())
+        bundles = [re.search(r'; evidence bundle: ([^\n]+)', run['message'])[1] for run in maintenance]
+        self.assertEqual(len(bundles), len(set(bundles)), log())  # at most one refresh per checked revision
+        self.assertEqual(self.git(self.repo, 'log', '--format=%s').count('docs(tasks): FIX repairs the red main'), 1)
 
     def test_a_long_review_runs_beside_the_loop_so_other_work_starts(self):
         """TOOLSET-183-d6: a 25-minute review idled a whole runner: no dispatch, no status."""
@@ -1288,6 +1325,20 @@ class EngineTests(Fixture):
         self.assertNotIn('worker ledger proposal', (self.repo / 'TODO.md').read_text())
         self.assertIn('A: its edit to TODO.md was left out; the docs maintainer will review it', result.stdout)
 
+    def test_batch_passed_candidates_land_on_their_verdicts_when_main_gains_code(self):
+        """TOOLSET-281-0d: after the first batch-passed candidate landed, the session took main's new
+        code, so the next one's verdict no longer matched its tree and it went back to a queue of
+        single reviews for 15 hours. Main's code now waits until both have landed."""
+        self.env['PI_AUTOWORK_BATCH'] = '6'
+        self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
+        self.plan({'worker:A': ['barrier'], 'worker:B': ['barrier'], 'verify:A': ['main_code']})
+        result = self.run_runner('--until-empty', timeout=240)
+        self.assertIn('Batch: 2 passed (A, B)', result.stdout)
+        self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
+        self.assertEqual(sorted(r['task'] for r in self.runs('verify')), ['A', 'B', 'C'], result.stdout)  # none twice
+        self.assertIn('B: landing — passed in its batch; not reviewed again', result.stdout)
+        self.assertIn('VERSION = 2', (self.repo / 'tool.py').read_text())  # main's code was kept, after them
+
     def test_a_batched_candidate_that_fails_its_review_is_held_and_the_other_lands(self):
         self.env['PI_AUTOWORK_BATCH'] = '6'
         self.env['PI_AUTOWORK_MAIN_CHECK'] = 'true'
@@ -1314,6 +1365,97 @@ class EngineTests(Fixture):
         self.assertGreaterEqual(result.stdout.count('merged the session into its commit'), 2, result.stdout)
         self.assertIn('Batch: 2 passed (A, B)', result.stdout)
         self.assertGreaterEqual(result.stdout.count('Batch of 2 candidates (A, B)'), 2, result.stdout)
+        # Side by side: the second resolution starts before the first one is adopted.
+        asked = [m.start() for m in re.finditer('asking Pi to resolve the merge in its worktree', result.stdout)]
+        self.assertGreaterEqual(len(asked), 2, result.stdout)
+        self.assertLess(asked[1], result.stdout.index('merged the session into its commit'), result.stdout)
+
+    def test_a_running_merge_resolution_keeps_its_hold_and_the_session_still(self):
+        """A clear-held request and the docs maintainer's MAIN repair both landed beside a running
+        resolution: one cleared the hold it resolves, the other moved the session it merged, and
+        neither merge could then be adopted."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        runner = object.__new__(coordinator.Coordinator)
+        runner.state, runner.stop, runner.integ, runner.integration = self.root / 'state', False, str(self.root), None
+        (runner.state / 'requests').mkdir(parents=True)
+        request = runner.state / 'requests' / 'clear-held-T'
+        request.write_text('')
+        runner.resolvers['T'] = {'proc': None}
+        runner.engine = lambda *argv: self.fail(f'the engine was asked {argv}')
+        runner.handle_requests()
+        self.assertTrue(request.exists())  # kept for a later cycle
+        runner.validate_ledger = lambda *a: []
+        self.assertFalse(runner.maintain(main_only=True))
+
+    def test_a_worktree_left_mid_merge_or_with_loose_files_is_made_ready_for_the_resolver(self):
+        """A restart killed a resolution mid-merge, and workers left files beside their commit:
+        both kept the resolver away without a word, and the conflicts stayed held for hours."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        runner = object.__new__(coordinator.Coordinator)
+        runner.seen = {}
+        root = self.root / 'held'
+        git = lambda *a: subprocess.run(['git', '-C', str(root), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], capture_output=True, text=True)
+        root.mkdir()
+        git('init', '-q', '-b', 'main')
+        (root / 'f.txt').write_text('base\n')
+        git('add', '.')
+        git('commit', '-qm', 'base')
+        git('checkout', '-qb', 'other')
+        (root / 'f.txt').write_text('other\n')
+        git('commit', '-qam', 'other')
+        git('checkout', '-q', 'main')
+        (root / 'f.txt').write_text('main\n')
+        git('commit', '-qam', 'main')
+        commit = git('rev-parse', 'HEAD').stdout.strip()
+        self.assertNotEqual(git('merge', 'other').returncode, 0)  # stopped mid-merge
+        (root / 'loose.txt').write_text('left by the worker\n')
+        self.assertTrue(runner.ready_to_merge('T', str(root)))
+        self.assertEqual(git('status', '--porcelain').stdout, '')
+        self.assertEqual(git('rev-parse', 'HEAD').stdout.strip(), commit)
+        self.assertIn('left uncommitted before its merge resolution', git('stash', 'list').stdout)
+        git('stash', 'pop')
+        self.assertEqual((root / 'loose.txt').read_text(), 'left by the worker\n')
+
+    def test_a_resolution_the_session_moved_past_merges_the_new_session_before_adoption(self):
+        """The runner's own questions commit moved the session a second after each resolver
+        started, so every resolution was first refused ('could not adopt its merged commit')."""
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import coordinator
+        session, root = self.root / 'session', self.root / 'task'
+        git = lambda where, *a: subprocess.run(['git', '-C', str(where), '-c', 'user.email=t@example.invalid',
+                                                '-c', 'user.name=T', *a], capture_output=True, text=True,
+                                               check=True).stdout.strip()
+        session.mkdir()
+        git(session, 'init', '-q', '-b', 'main')
+        for name in ('base', 'task', 'first', 'second'):
+            if name == 'task':
+                git(session, 'worktree', 'add', '-q', '-b', 'T', str(root))
+                where = root
+            else:
+                where = session
+            (where / f'{name}.txt').write_text(name + '\n')
+            git(where, 'add', '.')
+            git(where, 'commit', '-qm', name)
+            if name == 'first':
+                resolved = git(session, 'rev-parse', 'HEAD')
+                git(root, 'merge', '-q', '--no-edit', resolved)  # what the resolver did
+        runner = object.__new__(coordinator.Coordinator)
+        runner.state, runner.integ, runner.child, runner.seen = self.root / 'state', str(session), None, {}
+        runner.state.mkdir()
+        out = self.root / 'merge.json'
+        out.write_text('{}')
+        proc = subprocess.Popen(['true'])
+        proc.wait()
+        runner.resolvers['T'] = {'proc': proc, 'out': str(out), 'root': str(root), 'head': resolved,
+                                 'commit': 'c', 'merged_count': 0}
+        adopted = []
+        runner.adopt_merge = lambda task: adopted.append(task) or True
+        runner.finish_resolvers()
+        self.assertEqual(adopted, ['T'])
+        git(root, 'merge-base', '--is-ancestor', git(session, 'rev-parse', 'HEAD'), 'HEAD')
 
     def test_a_failure_the_base_already_has_does_not_hold_a_candidate(self):
         self.env['PI_AUTOWORK_VALIDATE'] = 'echo "FAIL: test_y (other.T.test_y)"; exit 1'
@@ -1322,6 +1464,10 @@ class EngineTests(Fixture):
         self.assertTrue(list(self.state.glob('*/full-check/base-*.json')))  # the base result is cached
         prompt = next(self.repo.glob('.git/autowork-execution/slot-data/A/attempt-1/prompt.md')).read_text()
         self.assertIn('Do not run the full check', prompt)  # the runner's gate is the one run (TOOLSET-227-a8)
+        for review in self.runs('verify'):
+            self.assertIn('baseline-equivalent failures: other.T.test_y', review['message'])
+            self.assertIn('original inventory: exit 1; failures: other.T.test_y', review['message'])
+            self.assertNotIn('all-green', review['message'])
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
@@ -1596,13 +1742,19 @@ class EngineTests(Fixture):
 
     def test_a_blocker_the_runner_can_answer_resumes_the_attempt_without_a_question(self):
         """Most worker blockers asked the runner for what it already provides and waited for the owner."""
-        self.plan({'worker:A': ['blocked', 'complete'], 'triage:A': ['answer']})
+        bundle = self.repo / '.git/autowork-execution/main-evidence/abc123'
+        bundle.mkdir(parents=True)
+        (bundle / 'main-check.log').write_text('original main failure\n')
+        self.plan({'worker:A': ['needs_main_log', 'complete'], 'triage:A': ['answer_main']})
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('A: the runner answered its blocker; resuming its attempt', result.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
         resumed = [r for r in self.runs('worker') if r['task'] == 'A']
         self.assertEqual(len(resumed), 2)
+        self.assertIn(str(bundle), resumed[-1]['prompt'])
+        self.assertEqual(len(self.runs('triage')), 1)
+        self.assertNotIn('### Q-A ', (self.repo / 'BLOCKERS.md').read_text() if (self.repo / 'BLOCKERS.md').exists() else '')
         self.assertNotIn('autowork/A-r2', self.git(self.repo, 'branch', '--list', 'autowork/*'))  # same attempt
 
     def test_a_blocker_only_a_person_can_resolve_stays_a_question(self):
@@ -1919,8 +2071,12 @@ class EngineTests(Fixture):
         path = self.repo / '.worktrees/old-session'
         self.git(self.repo, 'worktree', 'add', '-q', '-b', 'pi-autowork/old', str(path))
         (path / 'landed.txt').write_text('keep this work\n')
-        self.git(path, 'add', 'landed.txt')
+        (path / '.gitignore').write_text('.dart_tool/\n')
+        self.git(path, 'add', 'landed.txt', '.gitignore')
         self.git(path, 'commit', '-qm', 'old session work')
+        # Regenerable build output does not keep a day-old session (it said so every cycle).
+        (path / '.dart_tool/flutter_build').mkdir(parents=True)
+        (path / '.dart_tool/flutter_build/registrant.dart').write_text('// generated\n')
         common = self.git(self.repo, 'rev-parse', '--absolute-git-dir')
         state = self.state / hashlib.sha256(common.encode()).hexdigest()[:16]
         state.mkdir(parents=True)
@@ -2160,10 +2316,11 @@ class EngineTests(Fixture):
                     ('independent reviewer', 'changed reviewer', True),
                     ('Checks that need a physical', 'Checks requiring a physical', True),
                     ('The worker recorded no pending', 'The worker listed no pending', True),
-                    ('The runner already ran', 'The runner executed', True),
+                    ('recorded full-check gate', 'recorded full-suite result', True),
                     ("verdict == 'fail'", "verdict != 'fail'", True),
                     ('command = main_check.full_check(checkout)', 'command = None', True),
-                    ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True)):
+                    ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True),
+                    ('only=set(tests), workers=1', 'only=set(tests), workers=4', True)):
                 with self.subTest(edit=before):
                     self.assertIn(before, source)
                     path.write_text(source.replace(before, after, 1))
@@ -2175,21 +2332,21 @@ class EngineTests(Fixture):
 
     def test_a_changed_reviewer_reviews_held_commits_again_by_itself(self):
         """flutter: three commits sat held after an older reviewer failed them; nobody should have to ask."""
-        self.plan({'verify:A': ['fail', 'fail']})
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})
         first = self.run_runner('--until-empty')
         self.assertIn('A: failed', first.stdout)
         reviews = lambda: len([r for r in self.runs('verify') if r['task'] == 'A'])
-        self.assertEqual(reviews(), 2)  # the first attempt and its fresh retry
+        self.assertEqual(reviews(), 3)  # the first attempt, its fresh retry and its one rework
         same = self.run_runner('--until-empty')  # the same reviewer: nothing reviewed again
         self.assertNotIn('verifying it again', same.stdout)
-        self.assertEqual(reviews(), 2)
+        self.assertEqual(reviews(), 3)
         self.env['PI_AUTOWORK_VALIDATE'] = 'true'  # validation changed: a new reviewer version
         self.plan({'verify:A': ['pass']})
         changed = self.run_runner('--until-empty')
         self.assertEqual(changed.returncode, 0, changed.stdout + changed.stderr)
         self.assertIn('A: the reviewer changed since this commit was held; verifying it again', changed.stdout)
         self.assertTrue(self.done('A', 'B', 'C'))
-        self.assertEqual(reviews(), 3)
+        self.assertEqual(reviews(), 4)  # and one look by the changed reviewer
 
     def test_editing_a_held_tasks_entry_answers_it_and_the_runner_reruns_it(self):
         """TOOLSET-120-fc: the owner only answers; no --set-aside, no restart."""
@@ -2218,27 +2375,47 @@ class EngineTests(Fixture):
     def test_uncommitted_owner_planning_is_committed_so_work_merges(self):
         """TOOLSET-120-fc (4): every fleet main checkout held uncommitted TODO.md edits."""
         self.owner_note()
+        with (self.repo / 'TODO.md').open('a') as out:
+            out.write('\nOwner planning note.\n')
         self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--until-empty')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Committed uncommitted changes in', result.stdout)
-        self.assertIn('docs(tasks): owner planning (pi-autowork)', self.git(self.repo, 'log', '--format=%s'))
+        planning = self.git(self.repo, 'log', '--format=%H', '--grep', '^docs(tasks): owner planning (pi-autowork)')
+        self.assertTrue(planning)
+        self.assertIn('Owner planning note.', self.git(self.repo, 'show', f'{planning.split()[-1]}:TODO.md'))
         self.assertIn('add the export task', (self.repo / 'BLOCKERS.md').read_text())
         self.assertTrue(self.done('A', 'B', 'C'))
         self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '')
 
-    def test_other_quiet_uncommitted_work_is_committed_too_but_not_possible_secrets(self):
-        """Owner direction (2026-10-16): auto work commits and merges all work, not only planning."""
-        self.owner_note()
-        (self.repo / 'scratch.py').write_text('print(1)\n')  # someone's quiet work
+    def test_other_quiet_uncommitted_work_stays_uncommitted_while_the_session_merges_and_pushes(self):
+        """GitHub #3: quietness does not transfer ownership of main-checkout work."""
+        for name in ('notes.txt', 'staged.txt', 'deleted.txt'):
+            (self.repo / name).write_text('original\n')
+        self.git(self.repo, 'add', '.')
+        self.git(self.repo, 'commit', '-qm', 'owner files')
+        bare = self.origin()
+        (self.repo / 'notes.txt').write_text('unfinished\n')
+        (self.repo / 'staged.txt').write_text('staged work\n')
+        self.git(self.repo, 'add', 'staged.txt')
+        (self.repo / 'deleted.txt').unlink()
+        (self.repo / 'scratch.py').write_text('print(1)\n')
         (self.repo / '.env').write_text('TOKEN=x\n')
+        before = self.git(self.repo, 'status', '--porcelain')
         self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--until-empty')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.done('A', 'B', 'C'), result.stdout)
-        self.assertIn('chore: uncommitted work in the main checkout (pi-autowork)',
-                      self.git(self.repo, 'log', '--format=%s'))
-        self.assertIn('left untracked as possible secrets: .env', result.stdout)
-        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), '?? .env')
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain'), before)
+        self.assertEqual((self.repo / 'notes.txt').read_text(), 'unfinished\n')
+        self.assertEqual(self.git(self.repo, 'show', ':staged.txt'), 'staged work')
+        self.assertFalse((self.repo / 'deleted.txt').exists())
+        self.assertIn('Pushed main to origin/main', result.stdout)
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'main'), self.git(bare, 'rev-parse', 'main'))
+        self.assertEqual(self.git(bare, 'show', 'main:notes.txt'), 'original')
+        self.assertEqual(self.git(bare, 'show', 'main:staged.txt'), 'original')
+        self.assertEqual(self.git(bare, 'show', 'main:deleted.txt'), 'original')
+        self.assertNotIn('scratch.py', self.git(bare, 'ls-tree', '-r', '--name-only', 'main'))
 
     def test_planning_held_open_for_writing_is_left_alone(self):
         self.owner_note()
@@ -2450,12 +2627,12 @@ class EngineTests(Fixture):
         self.assertIn('the merge could not be resolved; it waits for the owner', result.stdout)
 
     def test_a_refused_adoption_asks_the_owner_without_running_the_resolver(self):
-        self.plan({'verify:A': ['fail', 'fail']})
+        self.plan({'verify:A': ['fail', 'fail', 'fail']})  # with its one rework after review
         first = self.run_runner('--until-empty')
         self.assertEqual(first.returncode, 1, first.stdout + first.stderr)
         slot_path = self.repo / '.git/autowork-execution/slots/A.json'
         original = json.loads(slot_path.read_text())
-        self.assertEqual(original['cause'], 'validation')
+        self.assertEqual(original['cause'], 'reviewed_twice')
         original.update(cause='conflict', reason='merge conflict', conflict_files=['A.txt'])
         (self.repo / 'A.txt').write_text('conflicting session change\n')
         self.git(self.repo, 'commit', '-qam', 'session conflict')
@@ -2704,10 +2881,14 @@ class EngineTests(Fixture):
                     self.assertEqual((Path(session['path']) / saved).read_text(), 'keep this work\n')
 
     def test_user_changes_in_main_block_only_the_final_merge(self):
+        before = self.git(self.repo, 'rev-parse', 'HEAD')
         (self.repo / 'A.txt').write_text('my note\n')  # uncommitted; the merge would overwrite it
+        self.env['PI_AUTOWORK_PLANNING_QUIET'] = '0'
         result = self.run_runner('--once')
         self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
-        self.assertIn('Merge pending', result.stdout)
+        self.assertRegex(result.stdout, r'Merge pending: .*A\.txt')
+        self.assertEqual(self.git(self.repo, 'rev-parse', 'HEAD'), before)
+        self.assertEqual(self.git(self.repo, 'status', '--porcelain', '--', 'A.txt'), 'M A.txt')
         self.assertEqual((self.repo / 'A.txt').read_text(), 'my note\n')
         self.git(self.repo, 'checkout', '--', 'A.txt')
         result = self.run_runner('--until-empty')
@@ -2764,6 +2945,37 @@ class EngineTests(Fixture):
 
 
 class SetupTests(Fixture):
+    def test_git_can_merge_planning_after_the_registering_release_is_pruned(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'pi-autowork'))
+        from pi_autowork import release
+        package = self.root / 'package with spaces'
+        self.git(self.root, 'clone', '-q', '--shared', str(ROOT), str(package))
+        self.env['FAKE_PI_TOOLSET'] = str(package)
+        result = self.run_runner('--once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        selected = self.state / 'releases' / self.git(package, 'rev-parse', 'HEAD')
+        self.assertTrue(selected.is_dir())
+        glob = Path.glob
+        with patch.object(Path, 'glob', lambda path, pattern:
+                iter(()) if path == Path('/proc') else glob(path, pattern)):
+            for number in (2, 3):  # the two newest releases survive pruning
+                (package / 'RELEASE').write_text(f'{number}\n')
+                self.git(package, 'add', 'RELEASE')
+                self.git(package, 'commit', '-qm', f'release {number}')
+                release.prepare(self.state, package)
+        self.assertFalse(selected.exists(), 'the stable driver must not pin the registering release')
+        archive = self.repo / 'TODO.archive.md'
+        self.git(self.repo, 'checkout', '-qb', 'other-history')
+        archive.write_text(archive.read_text() + '\n- [x] OTHER — Other completed task\n')
+        self.git(self.repo, 'commit', '-qam', 'other history')
+        self.git(self.repo, 'checkout', '-q', 'main')
+        archive.write_text(archive.read_text() + '\n- [x] OWNER — Owner completed task\n')
+        self.git(self.repo, 'commit', '-qam', 'owner history')
+        self.git(self.repo, 'merge', '-q', '--no-edit', 'other-history')
+        self.assertIn('- [x] OTHER', archive.read_text())
+        self.assertIn('- [x] OWNER', archive.read_text())
+
     def test_copied_script_targets_its_repository_from_any_directory(self):
         shutil.copy(RUNNER, self.repo / 'pi-autowork.sh')
         self.git(self.repo, 'add', 'pi-autowork.sh')

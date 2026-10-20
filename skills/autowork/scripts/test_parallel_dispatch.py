@@ -119,11 +119,34 @@ class DispatchTests(unittest.TestCase):
         with patch.dict(os.environ, AUTOWORK_RUNNER_FULL_CHECK='python3 scripts/check.py'):
             gated = dispatch.prompt(task, self.repo, 'b', 'HEAD', self.root / 'r.json')
         self.assertNotIn('Run the full offline gate once', gated)
+        self.assertIn('No person is attached to this session', plain)  # TOOLSET-282-43
         self.assertIn('Do not run the full check (`python3 scripts/check.py`)', gated)
         self.assertIn('Leave the full check out of the report', gated)
         for text in ('unrelated_failures', 'environment_failures', 'rerun each alone once',
                      'git worktree add --detach', 'commit anyway', 'never blockers'):
             self.assertIn(text, gated)
+
+    def test_worker_gets_main_evidence_location_and_repair_instructions(self):
+        data = self.common / 'slot-data/A/attempt-1'
+        data.mkdir(parents=True)
+        prompt = data / 'prompt.md'
+        prompt.write_text(dispatch.prompt(execution.select_all(self.repo, None, None)[0],
+                                         self.repo, 'b', 'HEAD', data / 'report.json'))
+        output = data / 'evidence-path'
+        script = ('import os, sys, time; from pathlib import Path; '
+                  'Path(sys.argv[1]).write_text(os.environ.get("AUTOWORK_MAIN_EVIDENCE", "missing")); '
+                  'time.sleep(30)')
+        # An invoking runner/worker's repository must not leak into this repository's child.
+        with patch.dict(os.environ, AUTOWORK_MAIN_EVIDENCE='/wrong/repository'):
+            child = dispatch.launch([sys.executable, '-c', script, str(output)], self.repo, data, 1, prompt)
+        self.addCleanup(dispatch.stop, child, str(self.repo))
+        for _ in range(200):
+            if output.exists():
+                break
+            time.sleep(.01)
+        self.assertEqual(output.read_text(), str(self.common / 'main-evidence'))
+        self.assertIn('$AUTOWORK_MAIN_EVIDENCE/<revision>/', prompt.read_text())
+        self.assertIn('Never ask a person for these', prompt.read_text())
 
     def test_independent_tasks_run_together_in_separate_worktrees(self):
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 1.0},
@@ -131,8 +154,8 @@ class DispatchTests(unittest.TestCase):
         code, result = self.apply()
         self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
         self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
-        # D shares a.txt with A: Touches only rank it, so it waits for a free slot (TOOLSET-161-17).
-        self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['D'])
+        # D shares a.txt with A: it starts after A lands.
+        self.assertIn('shares a.txt with A', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['E'])
         self.assertNotIn('C', [w['id'] for w in result['waiting']])  # C's dependency is unfinished
         _, again = self.apply()
@@ -441,6 +464,19 @@ class DispatchTests(unittest.TestCase):
                     finally:
                         self.stop_workers()
 
+    def test_a_closed_writer_window_no_longer_explains_the_merge_backlog(self):
+        """A reason kept on an integrating slot was replayed for hours after the session left,
+        so the runner announced a writer that no longer held anything."""
+        now = time.time()
+        current = [dict(task_id='A', state='reported', commit='a' * 40,
+                        writers_busy_reason='live writer', writers_busy_at=now - 3600),
+                   dict(task_id='B', state='integrating', commit='b' * 40)]
+        env = {'PI_AUTOWORK_MERGE_BACKLOG': '1', 'PI_AUTOWORK_MERGE_BACKLOG_AFTER': '1200'}
+        self.assertNotIn('reason', dispatch.merge_backlog(self.common, current, workers=8, env=env))
+        current[0]['writers_busy_at'] = now
+        self.assertEqual(dispatch.merge_backlog(self.common, current, workers=8, env=env)['reason'],
+                         'live writer')
+
     def test_dependent_task_waits_until_its_dependency_is_done(self):
         self.write_todo(task('A', 'a.txt'), task('C', 'c.txt', 'A'))
         self.set_spec({'A': {'files': {'a.txt': 'a'}, 'sleep': 0.2}})
@@ -490,6 +526,21 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.assertEqual(slot['reason'], f'worker timeout after 2 s while running (14 min): {command}')
         self.assertFalse(state.worker_live(slot))
         self.assertEqual((self.repo / '.worktrees/autowork-A/a.txt').read_text(), 'partial')
+
+    def test_a_worker_that_hangs_after_reporting_keeps_its_commit_at_the_timeout(self):
+        """A worker passed every check, committed and wrote its report, then its session never
+        exited: the timeout discarded the commit twice and asked the owner to rescope the task."""
+        self.write_todo(task('A', 'a.txt'))
+        self.set_spec({'A': {'files': {'a.txt': 'done'}, 'sleep': 0, 'linger': 60}})
+        self.run_cli('--apply', '--parallel', '--worker-timeout', '2')
+        self.wait(20, '--worker-timeout', '2')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['state'], 'reported')
+        head = subprocess.run(['git', '-C', slot['worktree'], 'rev-parse', 'HEAD'], check=True,
+                              capture_output=True, text=True).stdout.strip()
+        self.assertEqual(slot['commit'], head)
+        self.assertIn('kept running after reporting', slot['reason'])
+        self.assertFalse(state.worker_live(slot))
 
     def test_crashed_worker_restarts_once_in_the_same_worktree(self):
         self.write_todo(task('A', 'a.txt'))
@@ -614,7 +665,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
                            task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))
         _, result = self.apply('4', '--base-ref', 'trunk')
-        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B', 'D'])
+        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B'])
+        self.assertIn('shares a.txt with A', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertNotIn('E', [w['id'] for w in result['waiting']])
 
     def test_an_unreadable_base_falls_back_to_the_session_ledger(self):
@@ -1249,11 +1301,12 @@ class AdmitTests(unittest.TestCase):
                               + list(parked), parked=list(parked), adopted=set(), protected=None)
 
     def test_an_interrupted_candidate_resumes_before_fresh_work_on_its_files(self):
-        """TOOLSET-161-17: fresh work on the same files is not held; it starts after the resume."""
+        """Fresh work on the same file waits for the resumed candidate to land."""
         fresh, interrupted = contract('FRESH', 'lib/x.dart'), contract('OLD', 'lib/x.dart, test/x_test.dart')
         result = self.admit([fresh, interrupted], restartable={'OLD'}, occupying={'OLD'})
-        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD', 'FRESH'])
-        self.assertEqual(result['waiting'], [])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD'])
+        self.assertEqual(result['waiting'], [{'id': 'FRESH', 'reason': 'shares lib/x.dart with OLD; starts after it lands',
+                                              'blocked_by': ['OLD']}])
 
     def test_a_commit_held_for_overlap_stops_nothing_but_its_dependents(self):
         held, interrupted = contract('HELD', 'lib/x.dart'), contract('OLD', 'lib/x.dart')

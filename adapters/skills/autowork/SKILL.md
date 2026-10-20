@@ -83,7 +83,16 @@ explicit read-only runs write nothing.
    consumers, and record the choice and checks in the existing task. Resolve the
    actual host skill or use the bundled fallback; apply review criteria within
    this host's existing review step and reuse unchanged source-bound decisions.
-4. Commit attributable verified work locally unless forbidden. Use ordinary Git and
+4. Assess doc impact from the verified diff, Acceptance and actual docs. Record
+   `not_needed` with reason, `updated` with paths/readback/checks, or `pending` with
+   the gap and resume action. Resolve this host's bundled [Docs Sync](../docs-sync/SKILL.md)
+   and run scoped Maintain only for a concrete delta, not a full bootstrap or just
+   archive rendering. Update in-scope component docs; route shared-doc gaps to the
+   coordinator/DOCS-MAINTAINER. Follow the shared [documentation closeout](../../../skills/shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner):
+   preserve foreign dirty docs, reconcile moved inputs and keep implementation with
+   pending evidence on failure/interruption, without replaying it. Needed closeout
+   stays within the original task limit; stops/pauses/budget limits launch no new work.
+   Commit attributable verified work locally unless forbidden. Use ordinary Git and
    the repository's conventions; do not manufacture a Hermes card or receipt. Follow
    repository integration policy and existing authority. Push/deploy requires its
    own authorization; never override host approvals or actual live-safety gates.

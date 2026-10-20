@@ -1,9 +1,10 @@
 """Serialized, validated local integration. Worker reports are evidence, not acceptance."""
+import hashlib
 import math
 from datetime import datetime
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import re
 import sys
@@ -58,7 +59,8 @@ class Hold(ValueError):
 
     Causes: scope (changed files outside Touches; ``outside`` lists them), overlap
     (another slot's or a coordinator file), report, conflict, validation,
-    contract_changed, moved (canonical HEAD moved twice), blocker.
+    contract_changed, moved (canonical HEAD moved twice), blocker, runner_merged
+    (the branch moved past its commit only through session merges; ``tip`` names it).
     """
     def __init__(self, cause, reason, **details):
         super().__init__(reason)
@@ -130,6 +132,11 @@ def verify(repo, common, slot, contracts):
     state.workspace(common, slot['worktree'], slot['branch'], slot['baseline'])
     if slot['branch'] != expected_branch(slot):
         raise ValueError(BRANCH_HOLD)
+    abort_abandoned_merge(common, slot)
+    tip = runner_merged_tip(repo, slot)
+    if tip and not adopt_runner_merged(repo, common, slot, tip):
+        raise Hold('runner_merged', f'its branch moved past the reported commit {slot["commit"][:12]} to {tip[:12]} '
+                   'only through merges of the session; the runner reruns it from that tip', tip=tip)
     commit = slot.get('commit', '')
     try:
         lineage = git(repo, 'merge-base', slot['baseline'], commit) == slot['baseline'] if commit else False
@@ -153,7 +160,113 @@ def verify(repo, common, slot, contracts):
     if mismatch:
         raise Hold('report', 'report.json does not match worker commit/files or reports failure: ' + mismatch)
     verify_scope(repo, common, slot, contracts, files)
+    report['doc_impact'] = assess_doc_impact(repo, slot, task, files, report)
     return files, report
+
+
+def abort_abandoned_merge(common, slot):
+    """Abort a conflict-free merge a resolver left uncommitted in the task worktree (TOOLSET-280-4f).
+    verify runs only with no worker and no resolver in that worktree, so nobody is finishing it,
+    and the resolver can merge again. One with unmerged paths is left for the conflict hold."""
+    root = execution.safe_path(slot['worktree'])
+    marker = Path(git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD'))
+    if not marker.is_file() or git(root, 'diff', '--name-only', '--diff-filter=U'):
+        return
+    merging = marker.read_text().strip()
+    git(root, 'merge', '--abort')
+    state.event(common, 'abandoned_merge_aborted', task_id=slot['task_id'], merge_head=merging)
+
+
+def runner_merged_tip(repo, slot):
+    """The branch tip, when it moved past the recorded commit only through merges whose other
+    parents are canonical revisions; else None. One fleet runner's resolver merged the session
+    into two held branches 13 and 15 times while adoption was refused, and the next verify asked
+    the owner to rescope both tasks for a 'reported commit/branch/lineage mismatch'."""
+    commit = slot.get('commit') or ''
+    try:
+        tip = git(repo, 'rev-parse', '--verify', 'refs/heads/' + slot['branch'])
+        if not commit or tip == commit or not ancestor(repo, commit, tip):
+            return None
+        head = git(repo, 'rev-parse', 'HEAD')
+        steps = git(repo, 'rev-list', '--first-parent', '--parents', f'{commit}..{tip}').splitlines()
+    except ValueError:
+        return None
+    for line in steps:
+        parents = line.split()[1:]
+        if len(parents) < 2 or not all(ancestor(repo, p, head) for p in parents[1:]):
+            return None  # a commit nobody recorded: the owner question names it
+    return tip
+
+
+def adopt_runner_merged(repo, common, slot, tip):
+    """Adopt a runner-merged tip as a resolver's merge is adopted, within the same three adoptions;
+    False when the limit is reached or the worktree is not clean on that tip. Updates ``slot``."""
+    count = slot.get('merged_count', 1 if slot.get('merged_base') else 0)
+    root = execution.safe_path(slot['worktree'])
+    try:
+        if (count >= 3 or git(root, 'rev-parse', 'HEAD') != tip
+                or git(root, 'status', '--porcelain', '--untracked-files=no')):
+            return False
+        base = git(repo, 'merge-base', 'HEAD', tip)
+    except ValueError:
+        return False
+    data = dispatch.data_dir(common, slot)
+    report = execution.read(data / 'report.json')
+    if not isinstance(report, dict) or report.get('task') != slot['task_id']:
+        return False
+    report.update(commit=tip, changed_files=changed(repo, base, tip))
+    execution.save(data / 'report.json', report)
+    value = dict(slot, baseline=base, commit=tip, merged_base=base, merged_count=count + 1)
+    slot.update(state.write_slot(common, value, slot))
+    state.event(common, 'runner_merged_adopted', task_id=slot['task_id'], commit=tip, merged_count=count + 1)
+    return True
+
+
+def assess_doc_impact(repo, slot, task, files, report):
+    """Retain assessment evidence, not doc acceptance or a second close gate.
+
+    DOCS-MAINTAINER consumes pending/legacy evidence (TOOLSET-266-7a).
+    Bind committed objects, never dirty checkout bytes or a later integration HEAD.
+    Incomplete assessment needs Maintain, not another implementation attempt.
+    """
+    impact = report.get('doc_impact')
+    inputs = {'baseline': slot['baseline'], 'commit': slot['commit'],
+              'task_contract_sha256': hashlib.sha256(task['contract'].encode()).hexdigest(), 'documents': {}}
+
+    def pending(reason):
+        return {'status': 'pending', 'reason': reason, 'paths': [], 'checks': [],
+                'resume': 'DOCS-MAINTAINER: assess the verified diff, task acceptance and affected docs',
+                'inputs': inputs}
+
+    if not isinstance(impact, dict):
+        return pending('No doc-impact assessment in worker report; assess legacy evidence')
+    status, reason, paths = impact.get('status'), impact.get('reason'), impact.get('paths')
+    if (status not in ('not_needed', 'updated', 'pending') or not isinstance(reason, str) or not reason.strip()
+            or not isinstance(paths, list) or any(not isinstance(p, str) or not p or '\0' in p
+                or PurePosixPath(p).is_absolute() or '..' in PurePosixPath(p).parts
+                or PurePosixPath(p).as_posix() != p or p == '.' for p in paths)):
+        return pending('Incomplete doc-impact status, reason or repository-relative paths')
+    for path in paths:
+        versions = []
+        for revision in (slot['baseline'], slot['commit']):
+            entry = git(repo, '--literal-pathspecs', 'ls-tree', '-z', revision, '--', path)
+            metadata = entry.split('\t', 1)[0].split()
+            versions.append(metadata[2] if len(metadata) == 3 and metadata[1] == 'blob' else None)
+        if not any(versions):
+            return pending(f'Doc-impact path is not a committed document: {path}')
+        inputs['documents'][path] = versions[1]  # None records a deleted document.
+    if 'inputs' in impact and impact['inputs'] != inputs:
+        return pending('Doc-impact inputs moved; reconcile the original assessment')
+    checks = impact.get('checks', [])
+    if (not isinstance(checks, list) or any(not isinstance(c, dict) or c.get('result') != 'pass'
+            or not c.get('command') or c not in report['checks'] for c in checks)
+            or (status == 'updated' and (not checks or not set(paths).intersection(files)))):
+        return pending('Doc-impact updated claim needs changed doc paths and passing report checks')
+    resume = impact.get('resume', '')
+    if status == 'pending' and (not isinstance(resume, str) or not resume.strip()):
+        return pending(reason.strip())
+    return {'status': status, 'reason': reason.strip(), 'paths': paths, 'checks': checks,
+            'resume': resume if status == 'pending' else '', 'inputs': inputs}
 
 
 def report_mismatch(repo, report, task, commit, files):
@@ -226,11 +339,36 @@ def verify_scope(repo, common, slot, contracts, files):
     # build/schema/CI state, even if other workers have already finished.
     protected = [p for p in files if plan.protected_path(p)]
     if protected:
-        original = dispatched_contract(common, slot)
-        admitted = {'fields': execution.goals_module().task_fields(original)} if original else None
-        if not admitted or not plan._solo(admitted, dispatch.protected_files(repo, slot['baseline'])):
+        rescoped = slot.get('rescoped_contract') if slot.get('rescoped') else None
+        contract = rescoped or dispatched_contract(common, slot)
+        admitted = {'fields': execution.goals_module().task_fields(contract)} if contract else None
+        inventory = dispatch.protected_files(repo, slot['baseline'])
+        if rescoped:
+            # An answered rescope admits only the protected paths it actually reserves.
+            # A different manifest, or an ordinary directory naming a new one, is not enough.
+            declared = plan.paths(admitted['fields'].get('Touches', ''))
+            outside = []
+            for path in protected:
+                matching = [p for p in declared if not plan.overlap([path], [p], [])['outside']]
+                if not plan._solo({'fields': {'Touches': ', '.join(matching)}},
+                                  [path] if path in inventory else []):
+                    outside.append(path)
+            if outside:
+                raise Hold('scope', 'rescoped contract does not reserve protected files: ' + str(outside)
+                           + '; a rerun or a contract change is needed', outside=outside)
+        elif not admitted or not plan._solo(admitted, inventory):
             raise Hold('scope', 'protected files need serial admission in the original task contract: '
                        + str(protected), outside=protected)
+
+
+def head_conflicts(repo, commit):
+    """The files ``commit`` conflicts in with canonical HEAD when merge_candidate would hold it
+    for them; [] when it merges, or its conflicts are only ledgers merge_candidate resolves."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+    result = subprocess.run(['git', '-C', str(repo), 'merge-tree', '--write-tree', '--name-only', '--no-messages',
+                             'HEAD', commit], env=env, capture_output=True, text=True, timeout=60)
+    files = [p for p in result.stdout.splitlines()[1:] if p] if result.returncode == 1 else []
+    return files if set(files) - set(dispatch.COORDINATOR_FILES) else []
 
 
 def merge_candidate(root, slot, baseline):
@@ -293,9 +431,8 @@ WRITER_HOLD = 'live or unknown external writer'
 # them or keeps the branch (TOOLSET-223-8e). A planning file the session holds open for
 # writing still counts (it stays in ``mine``).
 PLANNING_FILES = ('TODO.md', 'TODO.archive.md', 'todo.archive.md', 'goals.json', 'BLOCKERS.md')
-# A reported commit refused for a live writer steps aside in priority order for this long,
-# so one waiting candidate never holds back the rest (TOOLSET-223-8e).
-WRITERS_BUSY_SKIP = 600
+WRITERS_BUSY_SKIP = state.WRITERS_BUSY_SKIP
+writers_busy = state.writers_busy
 
 
 def main_checkout(repo):
@@ -328,19 +465,13 @@ def remerge_planning(repo, root, merge, head):
     return remerged
 
 
-def writers_busy(slot, now=None):
-    """A reported task refused for a live writer is skipped for a bounded window."""
-    try:
-        stamp = float(slot.get('writers_busy_at'))
-    except (TypeError, ValueError):
-        return False
-    return (time.time() if now is None else now) - stamp < WRITERS_BUSY_SKIP
-
-
 def touches_none_of(worker, files, main):
-    """A session only in the main checkout that neither holds open nor has left uncommitted
-    any of ``files`` (sierra, 2026-10-16: TASK-026 waited an hour on an unrelated session)."""
-    if files is None or set(worker.get('workspaces') or []) != {main}:
+    """A session working in the main checkout that neither holds open nor has left uncommitted
+    any of ``files`` (sierra, 2026-10-16: TASK-026 waited an hour on an unrelated session).
+
+    Other checkouts the same session also has open are irrelevant: the merge writes only
+    ``files`` in the canonical checkout, and those paths are what this compares."""
+    if files is None or main not in (worker.get('workspaces') or []):
         return False
     mine = {os.path.relpath(path, main) for path in worker.get('written') or []}
     listing = git(main, 'status', '--porcelain', '-z', '--untracked-files=all')
@@ -365,17 +496,31 @@ def slot_workspace_roots(common, slot):
 
 
 def require_no_writers(repo, files=None):
-    """Refuse while another agent may be writing. Integrating outside the main checkout
-    (a runner's session worktree) with ``files`` (the paths the merge changes), a session
-    in the main checkout blocks only when it holds one of them open or has left one
-    uncommitted there; sessions elsewhere and Autowork commands block as before."""
+    """Refuse while another agent may be writing. With ``files`` (the paths the write
+    changes), a session in the main checkout blocks only when it holds one of them open or
+    has left one uncommitted there, whichever checkout the write happens in. Its presence,
+    its activity and any other checkout it has open never block. Sessions that work in a
+    worker's worktree and Autowork commands block as before."""
     workers = execution.external_workers(repo)
     main = main_checkout(repo)
-    if main and main != str(Path(repo).resolve()):  # integrating elsewhere (the runner's session)
-        workers = [w for w in workers if not (w['kind'] == 'session' and touches_none_of(w, files, main))]
-    blocking = execution.blocking_workers(workers, repo)
     common = state.common_dir(repo)
     pool = [(slot, slot_workspace_roots(common, slot)) for slot in state.slots(common)]
+    if main:
+        # A person's session in the canonical checkout never gates work by existing, being
+        # busy or having another checkout open: only a file it holds open or has left
+        # uncommitted there, and only for a write that touches that same file, waits. A
+        # process inside a slot's worktree is not covered: it is judged as before below.
+        roots = [root for _, roots in pool for root in roots]
+        leaders = [slot['worker'] for slot, _ in pool if slot.get('worker')]
+        def in_pool(worker):
+            return any(Path(w).is_relative_to(root)
+                       for w in worker.get('workspaces') or [] for root in roots)
+        def recorded(worker):  # a slot's leader running somewhere the record does not say
+            return any(execution.identity(worker['pid']) == leader for leader in leaders)
+        workers = [w for w in workers
+                   if not (w['kind'] == 'session' and touches_none_of(w, files, main)
+                           and not in_pool(w) and not recorded(w))]
+    blocking = execution.blocking_workers(workers, repo)
     unattributed = {}
     for worker in workers:
         if worker['active'] is False:
@@ -502,11 +647,19 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
             ordered = chain + [t for t in ordered if t not in chain]
             first = next(iter(ordered), None)
             if first != task:  # it names the one, so the runner starts it next (TOOLSET-238-11)
+                # Holding a conflict lands nothing, so it needs no turn: behind one long review
+                # nine conflicting candidates waited hours for the resolver that only a hold starts.
+                conflicts = head_conflicts(repo, slot['commit'])
+                if conflicts:
+                    return hold(common, slot, 'merge conflict; worker and canonical checkout preserved',
+                                cause='conflict', conflict_files=conflicts)
                 raise ValueError(f'integrate the highest-priority reported task first: {first}')
             try:
                 files, report = verify(repo, common, slot, contracts)
                 require_no_writers(repo, files)
                 if slot['state'] == 'integrating':
+                    # Pre-upgrade intents can recover without the reported transition.
+                    slot = state.write_slot(common, dict(slot, report=report), slot)
                     recovered = recover_integration(repo, common, slot, contracts)
                     if recovered:
                         return recovered
@@ -571,15 +724,17 @@ def integrate(repo, owner_pid, task, argv, timeout, reviewer=None, base=None, ba
                                           f"{receipt.get('elapsed_seconds') or 0:.0f}s (limit {timeout:g}s)")
                 if (not passed(check) or git(root, 'rev-parse', 'HEAD') != merge
                         or git(root, 'status', '--porcelain', '--untracked-files=all')):
-                    raise Hold('validation', 'integration validation failed or changed the integration tree'
-                               + validation_reason(check))
+                    why = validation_reason(check)
+                    # The reviewer ran out of its time: the same host-speed cause as the check's.
+                    raise Hold('timeout' if why.startswith(': the review ran out of time') else 'validation',
+                               'integration validation failed or changed the integration tree' + why)
                 with execution.lock(common / 'writer.lock', wait=LOCK_WAIT):
                     state.require_owner(common, owner_pid)
                     # Re-read report, refs, scopes and source contracts after arbitrary validation.
                     fresh_contracts = {t['id']: t for t in dispatch.contracts(repo)}
                     verify(repo, common, slot, fresh_contracts)
                     verify_scope(repo, common, slot, fresh_contracts, changed(repo, baseline, merge))
-                    if fresh_contracts[task]['contract'] != contracts[task]['contract']:
+                    if display_free(fresh_contracts[task]['contract']) != display_free(contracts[task]['contract']):
                         raise Hold('contract_changed', 'task contract changed during validation')
                     require_no_writers(repo, changed(repo, baseline, merge))
                     if git(repo, 'symbolic-ref', 'HEAD') != canonical_branch:
@@ -652,7 +807,7 @@ def recover_integration(repo, common, slot, contracts):
     """
     info = slot.get('integration') or {}
     if (not info.get('commit') or not info.get('baseline')
-            or info.get('task_contract') != contracts[slot['task_id']]['contract']
+            or display_free(info.get('task_contract')) != display_free(contracts[slot['task_id']]['contract'])
             or info.get('canonical_branch') != git(repo, 'symbolic-ref', 'HEAD')
             or git(repo, 'rev-list', '--parents', '-n', '1', info['commit']).split()[1:]
                != [info['baseline'], slot['commit']]):
@@ -661,6 +816,12 @@ def recover_integration(repo, common, slot, contracts):
     verify_scope(repo, common, slot, contracts, files)
     if files != info.get('changed_files'):
         raise ValueError('abandoned integration delta does not match intent')
+    if not landed(repo, info['commit']):
+        # Never landed: remerge on the current head and revalidate, retaining the worker attempt.
+        # The head may have moved, since the runner lands its session beside a running review.
+        # Its integration tree is not needed (a restart left one with a review's files in it):
+        # the next integration keeps what is in it as a patch before reusing it.
+        return None
     # Older intents have no path. Recover only an unambiguous journaled checkout
     # with the exact candidate, including a retained pre-upgrade sibling tree.
     journal = common / 'journal.jsonl'
@@ -678,10 +839,6 @@ def recover_integration(repo, common, slot, contracts):
             candidates.append(root)
     if len(candidates) != 1:
         raise ValueError('abandoned integration tree changed or ambiguous; preserve for diagnosis')
-    if not landed(repo, info['commit']):
-        # Never landed: remerge on the current head and revalidate, retaining the worker attempt.
-        # The head may have moved, since the runner lands its session beside a running review.
-        return None
     validated_receipt(repo, common, slot)
     state.change(common, slot, 'integrated', {})
     return {'outcome': 'INTEGRATED', 'task': slot['task_id'], 'integration': info,
@@ -752,20 +909,33 @@ def archive_path(repo):
     return execution.archive_file(repo)
 
 
+# How a task is shown or ordered, not what it asks: adding `Short:` to every entry sent each held
+# task's finished work aside as if its contract had changed.
+DISPLAY_FIELDS = ('Short', 'Priority reason')
+_DISPLAY_LINE = re.compile(r'(?m)^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?(?:Short|Priority reason[^:\n]*):[^\n]*\n?')
+
+
+def display_free(contract):
+    """The contract without its display-only lines, for comparing two versions of one entry."""
+    return _DISPLAY_LINE.sub('', contract or '').strip()
+
+
 def require_task_contract(items, expected, *, archived=False):
     """Only closure-owned checkbox/status changes may differ from validation."""
     closed = re.sub(r'(?m)^([ \t]*(?:[-*][ \t]+)?Status:)[^\n]*', r'\1 done', expected)
     if archived and len(items) > 1:
         # History can hold an older entry for the same ID (sierra TASK-029): the closed
         # entry matching this contract is the one this close wrote.
-        items = [item for item in items if item[1].lower() == 'x' and item[0].strip() in (expected, closed)]
+        items = [item for item in items if item[1].lower() == 'x'
+                 and display_free(item[0]) in (display_free(expected), display_free(closed))]
     if len(items) != 1:
         raise ValueError('task contract provenance missing or ambiguous; no close')
     body, mark, _ = items[0]
     # A live body may already read `Status: done` with its box unchecked: an earlier
     # close that wrote the status but missed a bold `**ID**` checkbox.
-    if ((archived and mark.lower() != 'x') or body.strip() not in
-            ({expected, closed} if mark.lower() == 'x' or not archived else {expected})):
+    if ((archived and mark.lower() != 'x') or display_free(body) not in
+            ({display_free(expected), display_free(closed)} if mark.lower() == 'x' or not archived
+             else {display_free(expected)})):
         raise ValueError(CONTRACT_CHANGED)
 
 
@@ -903,7 +1073,11 @@ def entry_changes(repo, common, slot):
         return result
 
     before, after = fields(previous.strip()), fields(items[0][0].strip())
-    return sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+    return sorted(key for key in before.keys() | after.keys()
+                  if not key.startswith(DISPLAY_FIELDS) and before.get(key) != after.get(key))
+
+
+
 
 
 def blocker_resolved(repo, common, slot, hold):
@@ -1078,7 +1252,7 @@ def reverifiable(slot, version):
     """A changed validator gets one more look, unless it repeated the same commit's verdict.
     Timeouts are not verdicts: the coordinator may still retry them with a longer limit."""
     return (slot['state'] == 'held' and bool(slot.get('commit')) and not state.worker_live(slot)
-            and (slot.get('cause') in ('validation', 'timeout')
+            and (slot.get('cause') in ('validation', 'reviewed_twice', 'timeout')
                  or (not slot.get('cause') and str(slot.get('reason', '')).startswith(VALIDATION_HOLD)))
             and slot.get('reverified') != version and slot.get('reviewed_by') != version
             and (slot.get('cause') == 'timeout' or slot.get('reverify_verdict') != validation_verdict(slot)))
@@ -1217,6 +1391,41 @@ def cleanup_worker(repo, common, slot):
     return True
 
 
+def rework_path(common, task):
+    """The record of the one rework a task's review failure earned (TOOLSET-285-29)."""
+    return execution.safe_path(common / 'review-rework' / (re.sub(r'[^A-Za-z0-9._-]+', '-', task) + '.json'))
+
+
+def reviewer_finding(slot):
+    """The reviewer's finding a held slot failed on, or '': not an environment miss or a timeout."""
+    reason = str(slot.get('reason') or '')
+    found = re.search(r'PI_AUTOWORK_VERIFY: fail(?! environment)\b\s*(.*)', reason, re.S)
+    return ' '.join((found[1] if found else '').lstrip('—- ').split()) if slot.get('cause') == 'validation' else ''
+
+
+def review_rework(repo, common, current):
+    """A last attempt that failed its review was neither retried nor asked about: fresh retries are
+    for first attempts, and review failures are not questions. It now gets one rework attempt with
+    the finding and its kept commit; a rework that fails review too becomes a person's question
+    quoting both findings. Caller holds the dispatch, integration and writer locks."""
+    for slot in current:
+        finding = reviewer_finding(slot)
+        if slot['state'] != 'held' or not finding or state.worker_live(slot):
+            continue
+        marker = rework_path(common, slot['task_id'])
+        earlier = execution.read(marker) if marker.exists() else None
+        if isinstance(earlier, dict):
+            reason = (f'{slot.get("reason")}; this was its one rework after review, and the earlier '
+                      f'review found: {earlier.get("finding", "")}')
+            state.write_slot(common, dict(slot, cause='reviewed_twice', reason=reason), slot)
+            state.event(common, 'review_rework_failed', task_id=slot['task_id'])
+        elif slot['attempt'] >= 2:
+            execution.save(marker, {'finding': finding, 'tip': slot.get('commit') or '', 'at': time.time()})
+            state.event(common, 'review_rework', task_id=slot['task_id'], tip=slot.get('commit') or '')
+            return dict(_retire(repo, common, slot, True), outcome='REQUEUED', why='review_rework')
+    return None
+
+
 def retry_held(args):
     """Refill adapter for held slots; first attempts and their artifacts survive."""
     repo, common = context(args.consumer, args.owner_pid)
@@ -1258,6 +1467,17 @@ def retry_held(args):
                         name == 'Touches' or name.startswith('Touches widened ') for name in changes)
                     if changes and not touches_only:
                         continue
+                    # Repair an older runner's re-hold against the dispatch contract, once.
+                    # The saved answer must now admit the actual commit; never loop on a refusal.
+                    if (not changes and candidate.get('rescoped') and candidate.get('rescoped_contract')
+                            and 'scope' not in state.reoffered(candidate) and not state.worker_live(candidate)):
+                        try:
+                            verify_scope(repo, common, candidate, contracts,
+                                         changed(repo, candidate['baseline'], candidate['commit']))
+                        except Hold:
+                            continue
+                        slot = state.reoffer(common, candidate)
+                        return {'outcome': 'REOFFERED', 'task': slot['task_id'], 'commit': slot['commit']}
                     touches = task['fields'].get('Touches', '')
                     if not state.rescopable(candidate, touches, touches_only=touches_only):
                         continue
@@ -1325,14 +1545,29 @@ def retry_held(args):
             # held task whose TODO entry changed since its attempt was dispatched runs fresh,
             # its earlier work kept on -set-aside-N names; an entry that disappeared was
             # closed or removed by a person, so nothing is queued again.
-            changed = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
-                            and entry_changed(repo, common, s)), None)
-            if changed is not None:
-                present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed['task_id']))
-                state.event(common, 'task_entry_changed', task_id=changed['task_id'],
-                            changed_fields=entry_changes(repo, common, changed), action='requeue')
-                result = _retire(repo, common, changed, present)
+            # A branch the runner itself merged past its recorded commit, beyond the adoptions
+            # allowed: a fresh attempt, its kept tip named in the prompt (TOOLSET-280-4f).
+            merged_past = next((s for s in current if s['state'] == 'held' and s.get('cause') == 'runner_merged'
+                                and not state.worker_live(s)), None)
+            if merged_past is not None:
+                state.event(common, 'runner_merged_requeued', task_id=merged_past['task_id'],
+                            tip=merged_past.get('tip', ''))
+                return dict(_retire(repo, common, merged_past, True), outcome='REQUEUED', why='runner_merged')
+            changed_slot = next((s for s in current if s['state'] == 'held' and not state.worker_live(s)
+                                 and entry_changed(repo, common, s)), None)
+            if changed_slot is not None:
+                rework_path(common, changed_slot['task_id']).unlink(missing_ok=True)  # a person's answer resets it
+                present = bool(execution.goals_module().task_bodies((repo / 'TODO.md').read_text()).get(changed_slot['task_id']))
+                state.event(common, 'task_entry_changed', task_id=changed_slot['task_id'],
+                            changed_fields=entry_changes(repo, common, changed_slot), action='requeue')
+                result = _retire(repo, common, changed_slot, present)
                 return dict(result, outcome='REQUEUED')
+            reworked = review_rework(repo, common, current)
+            if reworked:
+                return reworked
+            # A second review failure became a person's question: read its new cause.
+            fresh = {x['task_id']: x for x in state.slots(common)}
+            current = [fresh.get(x['task_id'], x) for x in current]
             # A hold the worker reported a blocker for gets no fresh attempt: it needs a person.
             live = [s for s in current if state.worker_live(s)]
             capacity = dispatch.capacity(args)

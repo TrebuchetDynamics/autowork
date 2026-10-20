@@ -201,6 +201,10 @@ def update(state_dir, snapshot, *, now=None, runner=None, stall_after=STALL_AFTE
                        for t in snapshot.get('tasks', []) if t.get('state') == 'held'],
                  roots=roots[:10], stall_roots=keys if state == 'stalled' else [],
                  waiting_groups=waiting_groups(snapshot.get('tasks', [])), merge_backlog=backlog,
+                 # Every task, for the TUI's Tasks window: the groups above keep 20 of each.
+                 tasks=[[t['task'], t.get('state') or '', t.get('cause') or '',
+                          ' '.join(str(t.get('reason') or '').split())[:200]]
+                        for t in snapshot.get('tasks', []) if t.get('task')],
                  max_workers=snapshot.get('max_workers'), **runner)
     write_status(path, value)
     return announce

@@ -5,7 +5,42 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ## [Unreleased]
 
+### Added
+
+- `goals.py plan-lint REPO [--tasks ID,...] [--json] [--strict]` lints TODO.md task
+  contracts before dispatch with the runner's own parsers. Errors (exit 1): missing or
+  duplicate required fields, missing or unparseable Touches, coordinator files in
+  Touches, unknown or cyclic dependencies, and Checks commands naming a test file or
+  module that neither exists nor is created by the task's Touches. Warnings: Touches
+  overlapping another open task with no dependency path, hot files, directories,
+  serial paths, oversized tasks and Acceptance that names no test.
+
 ### Changed
+
+- A batch whose full check fails names its suspects: the candidates whose changes the
+  new failing tests import (transitively) or read by name. They integrate one at a time and
+  the rest batch again at once; when a failure points at no candidate, or at all of them,
+  the batch is halved as before. Halving cost a 20-minute full check per round.
+- Task status reads as one headline plus a detail (TOOLSET-289-71): the fleet table's
+  Run, Land, Wait and Held columns are now Active, Mergeable, Waiting and Blocker; task
+  rows and lanes show `Active · Verifying`, `Waiting · Implemented`, `Blocker · Conflict ·
+  Agent repair`. An implemented commit no longer counts as ready to land: only an
+  integrated one (checks and review passed) is Mergeable. A Blocker says Needs you only
+  when the task has an open question; an overlap hold, which the engine lifts itself, is
+  Waiting.
+- The autowork core SKILL.md is back to 12.6 KB of its 16 KB budget: partial-delivery
+  discipline, the canonical-checkout/session/lease rules and interactive-update reporting moved
+  word for word into `references/iteration-and-decisions.md`, `references/owner-cycle.md` and
+  `references/dispatch-and-reporting.md`, each linked from the core (TOOLSET-284-e0).
+
+- Planning skills now plan for parallel work: `Touches:` is described everywhere as
+  the expected write set that only orders parallel work (never a hold), and the
+  planning craft adds task sizing, disjoint write sets (hot-file extraction,
+  focused test files), acceptance that names a failing test, optional
+  `Produces:`/`Consumes:` seams, a pre-mortem and a batch dependency check. Plan
+  With Me, Plan For Me and the plan handoff lint the saved batch with
+  `goals.py plan-lint`; special-case guidance moved to each planner's
+  `references/special-cases.md`.
 
 - The terminal TUI leaves mouse dragging to terminal text selection by default.
   `autowork tui --mouse` opts into clickable controls; keyboard navigation and
@@ -255,6 +290,114 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- The fleet view no longer shows a task as `Active · Verifying` after its review died: a
+  live `--verify` process is required. A task a live batch is checking reads
+  `Waiting · Batch check`; any other, `Waiting · Merge turn` (its review is not running).
+- A task whose last attempt failed its review is reworked once instead of sitting held with
+  neither a retry nor a question: the attempt is set aside and a fresh one restores its commit
+  and fixes the quoted finding; a rework that fails review too becomes one owner question
+  quoting both findings (`reviewed_twice`). Requeues now say why in the log (TOOLSET-285-29).
+
+- Worker and review trees get the main checkout's installed dependencies for tracked lockfiles
+  (`node_modules` beside package-lock.json, pnpm-lock.yaml, yarn.lock or npm-shrinkwrap.json;
+  `.venv` beside uv.lock or poetry.lock) without a setting, when the lockfile is identical in
+  both trees. A review without them held a task 45 hours for a package its lockfile declares
+  (TOOLSET-283-15).
+
+- A held commit whose branch the runner itself merged past (only merges of session revisions
+  after the recorded commit) is adopted within the three-adoption limit, or rerun fresh from
+  the kept tip past it, instead of becoming an owner `rescope or split` question; a conflict-free
+  merge a resolver left uncommitted in a task worktree is aborted before verification
+  (TOOLSET-280-4f).
+
+- A worker never waits for a person's approval: its prompt says the task contract is the
+  approved design, and a worker that ends its session on a question without a commit or
+  report is resumed once in the same session; asking twice holds the task quoting the
+  question, not as a dead worker (TOOLSET-282-43).
+
+- Candidates that passed a batch land on their batch verdicts: until they have landed, the
+  runner defers a reload and takes no code from main into the session (planning and docs
+  still come through), and the log and TUI say `landing`, not `verifying`. A reload four
+  seconds after `landing them now` had sent one passed candidate to the back of the queue
+  for 15 hours (TOOLSET-281-0d).
+
+- A worker that committed and wrote its report but never exited keeps its commit at the
+  worker timeout: the slot is reported with that commit instead of interrupted. A
+  finished task was discarded twice this way and raised as an owner rescope question.
+
+- A review whose merged tree had a failing test no longer waits hours for a quiet
+  rerun: it waits at most `PI_AUTOWORK_QUIET_WAIT` (default 900 s) for this repository's
+  main check and a host check slot, then reruns the failures one at a time without one.
+  Queued behind other runners' full suites, a two-minute rerun had held a review for
+  three hours.
+
+- A day-old session rotates even when its worktree holds regenerable build output
+  (`target/`, `build/`, `.dart_tool/` that Git ignores): it is removed first. Kept for
+  `.dart_tool/` alone, a session never rotated and said so every cycle; a session kept for
+  other files now says so once.
+- A task that names a file (not a directory or glob) that running work, a commit not
+  landed yet, or a waiting higher-priority task also names now waits until that task
+  lands, replacing TOOLSET-161-17's rule that overlap never holds a task. Started
+  together, such tasks conflicted at merge, and each conflict cost a resolver run and
+  a second review. Directory and glob overlap still only ranks, and an idle claim holds
+  nothing.
+- While worker slots idle and tasks wait on a shared file, the DOCS-MAINTAINER re-cuts
+  those tasks before they run (`overlap` trigger). It may merge, split, supersede and
+  reorder tasks that have not started, beside running workers, and never edits a
+  running task's entry.
+- A commit whose review a restart cut short (left integrating) joins the next batch like a
+  reported one. Only reported commits were batched, and batches go first, so three such
+  commits waited behind every later batch, one for 16 hours.
+- A held merge conflict that the runner's resolver is settling, or will take next, is not
+  posted as an owner question in BLOCKERS.md. It is asked once its resolution fails or its
+  three merges are spent. Seven were posted while three resolvers were clearing them.
+- Host check slots admit a review's suites before background main checks waiting with
+  them; a main check that has waited 30 minutes takes its turn with reviews. Every
+  runner's main check held the slots while reviews that land work waited behind them.
+- A green main check carries over commits that change only planning files (TODO.md,
+  TODO.archive.md, goals.json, BLOCKERS.md) instead of checking main again: the runner's
+  own questions commits took a host check slot that a waiting review needed. A red main
+  is still checked again.
+- A batch of four or more candidates whose full check fails is checked again as two halves
+  (`batch-split.json`), and only a failing batch of two or three sends its candidates one
+  at a time. One broken test sent all six members of each failed batch to an hour-long
+  review of their own, and 23 finished commits waited about a day.
+- A bounded check reaps the processes it adopts as a subreaper once they exit. Unreaped,
+  a test fixture's finished worker stayed a zombie that still looked alive, so inside
+  every review about 110 runner tests waited out their 120 s limit and failed. Reviews ran
+  into their 4-hour limit, finished commits piled up behind them, and their aging bases
+  conflicted with the session.
+- A merge resolution that the session moved past while Pi worked merges the new session
+  before it is adopted, instead of being refused once and merged on the next pass.
+- A review holds a 100-port block of its own, as each worker does, exported as
+  `$AUTOWORK_PORT_BASE` for the full check and the reviewer. A task whose checks need it
+  failed its review as "fail environment — missing launch-assigned AUTOWORK_PORT_BASE".
+- Integration, recovery and close compare a task's contract without its display-only lines
+  (`Short:`, `Priority reason`). Adding `Short:` to every entry left tasks integrated before
+  it unable to close, and an interrupted one held for "lacks exact contract evidence".
+- Adding a display-only field to a task (`Short:`, `Priority reason:`) no longer reads as a
+  changed entry. Adding `Short:` to every task set each held task's finished work aside and
+  ran it fresh, as if its contract had been rewritten.
+- Parallel `reconcile` no longer aborts for every slot when one worker's HEAD shares no
+  history with its baseline; that slot is held with cause `diverged`. A worker adopted
+  after surviving the stop that paused it no longer keeps its pause marker, so its
+  later crash is held on attempt 2 instead of resumed. Found by the new model-based
+  state test.
+- "Waiting to integrate until another session leaves the main checkout" is said once per
+  session again. The line carried the session's changing status ("running command", "terminal
+  used 2 min ago"), so it repeated every minute.
+- An interrupted review whose merge never landed merges again even when the restart left
+  files in its integration tree. Recovery checked that tree before asking whether the merge had
+  landed, held the task as "integration tree changed", and a fresh worker redid finished work;
+  the next integration keeps those files as a patch.
+- A review whose reviewer ran out of time is reviewed again on the same commit with a longer
+  limit, not reimplemented. It ended with only "no verdict", was held as a failed review, and
+  a fresh worker redid a finished 90-minute task. A review without a verdict now says why
+  (out of time, no model, provider failure, or no verdict given), and the reviewer's own limit
+  follows the review's when it is doubled.
+- A runner whose engine keeps failing reads a finished review's answer, so it can reload onto a
+  release that fixes the engine. The reload waited for that answer, which the failing engine
+  never let it read: the runner stayed down until a person restarted it.
 - The engine no longer stops on a merge-conflict hold that the retry plan names first. Fresh
   retries leave conflict holds to the resolver, but the plan still listed them, and picking
   one raised a KeyError in every cycle ("no answer from the engine").
@@ -578,6 +721,8 @@ claim of a tagged release, completed installation or live workflow qualification
   remain separate. No memory provider or store is changed by the pin update.
 
 ### Added
+
+- Seeded, replayable model-based tests drive the parallel worker slot state machine and check every step against a reference model (`test_parallel_state_model.py`).
 
 - The runner answers worker blockers it can resolve, and the attempt resumes in its own
   worktree instead of waiting for the owner: a short triage job reads the report and

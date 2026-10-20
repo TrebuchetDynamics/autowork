@@ -4,8 +4,9 @@
 argv: PROMPT_FILE WORKTREE. Behavior per task comes from the JSON file named by
 FAKE_WORKER_SPEC: {"TASK": {"files": {"path": "text"}, "sleep": 0.5,
 "commit": true, "exit": 0, "blockers": [...], "pending_live": [...],
-"report": true, "escape": 3.0}}. Without a commit, "blockers" still writes a report
+"report": true, "escape": 3.0, "linger": 60}}. Without a commit, "blockers" still writes a report
 (a worker that stopped on purpose). "report": false commits without a report.
+"linger" keeps the process alive that many seconds after it committed and reported.
 "escape" leaves a child in its own session that ignores SIGTERM, outlives this
 leader by that many seconds and then writes escaped.txt in the worktree. Start and end times are appended to
 FAKE_WORKER_LOG so tests can prove overlapping lifetimes. Optional "ready" and
@@ -82,5 +83,6 @@ elif spec.get('nothing'):  # finished: nothing needed changing, and it says why
     report.write_text(json.dumps({'task': task, 'commit': None, 'changed_files': [], 'blockers': [],
                                   'checks': [{'command': 'full check', 'result': 'pass', 'summary': 'green'}],
                                   'finding': spec['nothing'], 'changelog': ''}))
+time.sleep(spec.get('linger', 0))
 note('end')
 sys.exit(spec.get('exit', 0))

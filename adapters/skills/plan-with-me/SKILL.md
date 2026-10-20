@@ -34,7 +34,7 @@ finish, summarize scope, non-goals, acceptance and open questions. Ask for appro
 only if your synthesis adds material unaccepted intent. Reconcile accepted decisions
 through [Docs Sync](../docs-sync/SKILL.md): full TODO.md tasks, priorities,
 dependencies, checks and `Touches:`. Run the planning craft's builder check on the saved tasks
-before reporting them ready. Do not start implementation merely because a plan exists.
+and lint them with `goals.py plan-lint <repo> --tasks IDS` before reporting them ready. Do not start implementation merely because a plan exists.
 
 Use the [single-pass handoff](../../../skills/shared/PLAN-HANDOFF.md#one-planning-pass-one-handoff):
 resume accepted decisions and existing task IDs, investigate only missing evidence,

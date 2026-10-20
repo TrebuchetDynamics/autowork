@@ -63,7 +63,7 @@ class FleetViewTests(unittest.TestCase):
                          ('service', 'stalled', '5h41m', 23))
         self.assertEqual(fleet_view.blockers(india), [('outside Now/Next', 'TASK-036 (19)')])  # moving work is not a blocker
         self.assertEqual((sierra.service, sierra.running, sierra.held), ('running', 1, [('TASK-023', 'blocker')]))
-        self.assertEqual(fleet_view.blockers(sierra), [('held', 'TASK-023 blocker (2)')])
+        self.assertEqual(fleet_view.blockers(sierra), [('blocker', 'TASK-023 blocker (2)')])
         self.assertEqual(fleet_view.summary(found.values()), [('working', 1), ('stalled', 1)])
 
     def test_state_without_a_service_is_history_not_a_runner(self):
@@ -85,23 +85,92 @@ class FleetViewTests(unittest.TestCase):
     def test_actions_are_autowork_commands(self):
         def keys(runner, **kw):
             return {a.key: a for a in fleet_view.actions(runner, command='aw', script='pa.sh', **kw)}
-        running = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='running'),
-                       agent=['claude'], task='T-9')
-        self.assertTrue(running['enter'].interactive and running['enter'].argv == [])  # the TUI's own log view
+        india = fleet_view.Runner(name='india', repo='/git/india', mode='service', service='running', held=[['T-9', 'conflict']],
+                                  questions=[fleet_view.Question('T-9', 'input', 1, 'a key')])
+        running = keys(india, agent=['claude'])
+        self.assertTrue(running['l'].interactive and running['l'].argv == [])  # the TUI's own log view
+        self.assertTrue(running['t'].interactive and running['t'].argv == [])  # and its Tasks window
         self.assertEqual(running['s'].argv, ['aw', 'stop', 'india'])
-        self.assertEqual(running['R'].argv, ['aw', 'restart', 'india'])
-        self.assertEqual(running['p'].argv, ['aw', 'pause', 'india'])
+        self.assertEqual(running['r'].argv, ['aw', 'restart', 'india'])
+        self.assertEqual((running['p'].label, running['p'].argv), ('Pause', ['aw', 'pause', 'india']))
         self.assertEqual(running['m'].argv, ['aw', 'model', 'india'])
-        self.assertEqual(running['x'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
-        self.assertEqual(running['b'].argv, ['aw', 'blockers', '/git/india'])
         self.assertNotIn('u', running)  # remove only a stopped service
-        for key in ('s', 'R', 'p', 'x'):
+        for key in ('s', 'r', 'p'):
             self.assertTrue(running[key].confirm, key)
+        # One key per action, the first letter of its one-word label.
+        for action in running.values():
+            self.assertEqual((action.label.lower()[0], ' ' in action.label), (action.key, False), action)
         paused = keys(fleet_view.Runner(name='india', repo='/git/india', mode='service', service='dead', state='paused'))
-        self.assertEqual(paused['p'].argv, ['aw', 'resume', 'india'])
-        self.assertEqual(paused['a'].argv, ['aw', 'start', '/git/india'])
+        self.assertEqual((paused['p'].label, paused['p'].argv), ('Play', ['aw', 'resume', 'india']))
         self.assertEqual(paused['u'].argv, ['aw', 'remove', 'india'])
-        self.assertNotIn('b', paused)  # no agent available
+        stopped = keys(fleet_view.Runner(name='india', repo='/git/india'))
+        self.assertEqual((stopped['p'].label, stopped['p'].argv), ('Play', ['aw', 'start', '/git/india']))
+        self.assertNotIn('s', stopped)
+        # A task's own actions, in the Tasks window.
+        held = fleet_view.TaskRow('T-9', 'Short', 'Now', 'held: conflict', 'held', question=True)
+        task = {a.key: a for a in fleet_view.task_actions(india, held, command='aw', script='pa.sh', agent=['claude'])}
+        self.assertEqual(task['u'].argv, ['aw', 'move', 'T-9', 'up', 'india'])
+        self.assertEqual(task['d'].argv, ['aw', 'move', 'T-9', 'down', 'india'])
+        self.assertEqual(task['c'].argv, ['aw', 'clear-held', 'india', 'T-9'])
+        self.assertEqual(task['a'].argv, ['pa.sh', '--repo', '/git/india', '--set-aside', 'T-9'])
+        self.assertEqual(task['b'].argv, ['aw', 'blockers', '/git/india'])
+        for key in ('c', 'a'):
+            self.assertTrue(task[key].confirm, key)
+        ready = fleet_view.TaskRow('T-1', 'Short', 'Now', 'ready', 'ready')
+        self.assertEqual(sorted(a.key for a in fleet_view.task_actions(india, ready, command='aw', script='pa.sh')),
+                         ['d', 's', 'u'])  # nothing held, no agent: re-sort and re-section only
+
+    def test_questions_are_answered_where_the_runner_reads_them(self):
+        """From the TUI: each answer writes a field of the task's TODO.md entry, or moves it."""
+        import datetime
+        india = fleet_view.Runner(name='india', repo='/git/india')
+        day = datetime.date(2026, 10, 20)
+        def keys(question):
+            return {a.key: a for a in fleet_view.answers(india, question, command='aw', today=day)}
+        claim = keys(fleet_view.Question('T-1', 'quick', 2, 'claimed', kind='claim'))
+        self.assertEqual(claim['o'].argv, ['aw', 'field', 'T-1', 'Status', 'open', 'india'])
+        self.assertEqual(claim['h'].argv, ['aw', 'field', 'T-1', 'Held by', 'the owner; until 2026-10-27', 'india'])
+        held = keys(fleet_view.Question('T-2', 'input', 1, 'quick hold', kind='quick_hold',
+                                        answer='To rerun, add `Blocker resolution: ab12cd; <producer>` to it.'))
+        self.assertEqual(held['r'].argv, ['aw', 'field', 'T-2', 'Blocker resolution', 'ab12cd; {text}', 'india'])
+        self.assertEqual(held['w'].argv, ['aw', 'field', 'T-2', 'Owner decision', '2026-10-20: {text}', 'india'])
+        self.assertEqual(held['d'].argv, ['aw', 'place', 'T-2', 'Needs decision', 'india',
+                                          '--decision', '2026-10-20: deferred: {text}'])
+        self.assertNotIn('o', held)
+        for answer in held.values():
+            self.assertEqual(answer.label.lower()[0], answer.key)
+        self.assertEqual(keys(fleet_view.Question('FULL-CHECK', 'input', 0, 'no gate')), {})  # an agent answers it
+        blockers = self.base / 'BLOCKERS.md'
+        blockers.write_text('<!-- pi-autowork:questions:start -->\n\n### Q-T-2 — USER_INPUT — effort input — unblocks 1\n\n'
+                            '- Needs: quick hold\n- Answer: add `Blocker resolution: ab12cd; x`\n- Kind: quick_hold\n\n'
+                            '<!-- pi-autowork:questions:end -->\n')
+        question = fleet_view.read_questions(str(self.base))[0]
+        self.assertEqual((question.id, question.kind, question.answer), ('T-2', 'quick_hold', 'add `Blocker resolution: ab12cd; x`'))
+
+    def test_tasks_list_every_open_task_in_order_with_what_the_runner_says(self):
+        repo = self.base / 'repo'
+        repo.mkdir()
+        (repo / 'TODO.md').write_text(
+            '# TODO\n\n## Now\n\n- [ ] T-1 — A first task whose title runs well past forty characters\n'
+            '- Short: First task\n\n- [ ] T-2 — Second task\n\n- [x] T-0 — Done task\n\n'
+            '## Next\n\n- [ ] T-3 — Third task with a title longer than forty characters\n\n'
+            '## Needs decision\n\n- [ ] T-4 — Asked\n')
+        state = self.base / 'state' / 'key'
+        state.mkdir(parents=True)
+        (state / 'status.json').write_text(json.dumps({'tasks': [
+            ['T-2', 'held', 'conflict', 'merge conflict'], ['T-3', 'waiting', '', 'dependency: T-1']]}))
+        runner = fleet_view.Runner(name='repo', repo=str(repo), state_dir=str(state),
+                                   lanes=[fleet_view.Lane(task='T-1', phase='implementing')],
+                                   questions=[fleet_view.Question('T-4', 'decision', 2, 'pick one')])
+        rows = fleet_view.task_rows(runner)
+        self.assertEqual([(r.task, r.short, r.state, r.kind) for r in rows], [
+            ('T-1', 'First task', 'Active · Implementing', 'working'),
+            ('T-2', 'Second task', 'Blocker · Conflict · Agent repair', 'held'),
+            ('T-3', 'Third task with a title longer than for…', 'Waiting', 'waiting'),
+            ('T-4', 'Asked', 'Waiting · Needs decision', 'waiting')])
+        self.assertEqual((rows[2].why, rows[3].why), ('dependency: T-1', 'you: pick one'))
+        self.assertEqual([r.task for r in fleet_view.task_view(rows, 'questions')], ['T-4'])
+        self.assertEqual([r.task for r in fleet_view.task_view(rows, 'held')], ['T-2'])
 
     def test_readiness_needs_todo_goals_and_main(self):
         repo = self.base / 'repo'
@@ -232,7 +301,10 @@ class FleetViewTests(unittest.TestCase):
              'Working — 2 of 8 workers busy'),
             (R('a', state='working', running=1, max_workers=1,
                lanes=[L('T1', 'implementing')] + [L(f'D{i}', 'implemented') for i in range(15)]),
-             'Working — 1 of 1 worker busy; 15 commits waiting to merge'),
+             'Working — 1 of 1 worker busy; 15 commits waiting'),
+            (R('a', state='working', running=1, lanes=[L('T1', 'implementing'), L('M', 'integrated')]),
+             'Working — 1 worker busy; 1 mergeable'),
+            (R('a', state='blocked', held=[('T-2', 'conflict')]), 'Blocker — T-2: Conflict · Agent repair'),
             (R('a', state='working', running=1, lanes=[L('T1', 'implementing')], gate='load average 27 >= 24 CPUs',
                questions=[Q('X', 'quick', 4, 'answer it')]),
              'Working — 1 worker busy; no more start: load average 27 >= 24 CPUs; 1 question for you'),
@@ -341,6 +413,34 @@ class FleetViewTests(unittest.TestCase):
         self.assertRegex(fleet_view.ago(one.activity_age), r'^(1|2)\ds ago$')
         self.assertEqual((two.phase, two.detail), ('waiting to integrate', 'until another session leaves the main checkout (pid 7)'))
         self.assertEqual((two.activity, two.activity_age), ('', None))
+        # The finished commit waiting to land sorts below the task being worked on, whatever its name.
+        (slots / 'T-0.json').write_text(json.dumps({'task_id': 'T-0', 'state': 'reported', 'attempt': 1}))
+        self.assertEqual([lane.task for lane in fleet_view.lanes(runner)], ['T-1', 'T-0', 'T-2'])
+
+    def test_a_review_that_died_is_not_verifying(self):
+        """Three tasks read "verifying" for 13 to 25 hours after their reviews died: the runner log's
+        last word is not a live review."""
+        state = self.base / 'state' / 'key'
+        proc = self.base / 'proc'
+        for pid, argv in ((10, ['python3', 'worker.py', '--verify', str(state), 'A']),
+                          (11, ['bash', 'pa.sh', '--verify-batch', str(state), '/s', 'pa.sh', 'B', 'C']),
+                          (12, ['python3', 'worker.py', '--verify', '/elsewhere', 'D'])):
+            (proc / str(pid)).mkdir(parents=True)
+            (proc / str(pid) / 'cmdline').write_bytes('\0'.join(argv).encode() + b'\0')
+        state.mkdir(parents=True)
+        self.assertEqual(fleet_view.reviews(str(state), proc=str(proc)), ({'A'}, {'B', 'C'}))
+        repo = self.base / 'repo'
+        subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+        slots = repo / '.git' / 'autowork-execution' / 'slots'
+        slots.mkdir(parents=True)
+        for task in 'ABE':
+            (slots / f'{task}.json').write_text(json.dumps({'task_id': task, 'state': 'integrating', 'attempt': 1}))
+        (state / 'runner.log').write_text(''.join(f'2026-10-20T14:00:00-06:00 {t}: verifying\n' for t in 'ABE'))
+        runner = fleet_view.Runner(name='repo', repo=str(repo), state_dir=str(state))
+        with mock.patch.object(fleet_view, 'reviews', return_value=({'A'}, {'B'})):
+            found = {lane.task: fleet_view.status(lane) for lane in fleet_view.lanes(runner)}
+        self.assertEqual(found, {'A': ('Active', 'Verifying'), 'B': ('Waiting', 'Batch check'),
+                                 'E': ('Waiting', 'Merge turn')})
 
     def test_phase_text_is_split_into_a_short_phase_and_its_detail(self):
         self.assertEqual(fleet_view._split_phase('verifying'), ('verifying', ''))
@@ -361,6 +461,36 @@ class FleetViewTests(unittest.TestCase):
         self.assertTrue(tui_web.command('autowork', 'pa.sh', view_only=True).endswith('--view-only'))
 
     @unittest.skipUnless(shutil.which('uv'), 'uv is not installed')
+    def test_implemented_is_waiting_not_mergeable(self):
+        """TOOLSET-289-71: an implemented commit has not been checked yet; "Land" counted it as ready."""
+        L = fleet_view.Lane
+        self.assertEqual(fleet_view.status(L('T', 'implemented')), ('Waiting', 'Implemented'))
+        self.assertEqual(fleet_view.status(L('T', 'waiting to integrate')), ('Waiting', 'Merge turn'))
+        runner = fleet_view.Runner(name='a', lanes=[L('A', 'implementing'), L('B', 'implemented'), L('C', 'verifying')],
+                                   waiting=2, held=[('D', 'conflict')])
+        self.assertEqual(fleet_view.task_counts(runner), (2, 0, 3, 1, 6))
+
+    def test_mergeable_needs_passed_gates(self):
+        """Only an integrated commit (checks and review passed, on the session branch) is Mergeable;
+        a commit being verified or merged is Active."""
+        L = fleet_view.Lane
+        self.assertEqual(fleet_view.status(L('T', 'integrated')), ('Mergeable', 'Verified'))
+        for phase, detail in (('verifying', 'Verifying'), ('integrating', 'Merging'), ('landing', 'Merging'),
+                              ('starting', 'Starting'), ('running', 'Implementing')):
+            self.assertEqual(fleet_view.status(L('T', phase)), ('Active', detail), phase)
+        runner = fleet_view.Runner(name='a', lanes=[L('A', 'integrated'), L('B', 'verifying')])
+        self.assertEqual(fleet_view.task_counts(runner), (1, 1, 0, 0, 2))
+
+    def test_blocker_names_its_resolver(self):
+        """A hold is the runner's repair unless the owner has an open question for it."""
+        self.assertEqual(fleet_view.blocker_detail('conflict'), 'Conflict · Agent repair')
+        self.assertEqual(fleet_view.blocker_detail('validation'), 'Validation · Agent repair')
+        self.assertEqual(fleet_view.blocker_detail('blocker', asked=True), 'Blocker · Needs you')
+        self.assertEqual(fleet_view.blocker_detail(None), 'Held · Agent repair')
+        # An overlap hold is lifted by the engine itself once the files are free: it waits.
+        runner = fleet_view.Runner(name='a', held=[('A', 'overlap'), ('B', 'conflict')])
+        self.assertEqual(fleet_view.task_counts(runner), (0, 0, 1, 1, 2))
+
     def test_the_tui_drives_the_same_actions_headless(self):
         """Textual is not a runner dependency: the pilot runs under uv, from its cache only."""
         result = subprocess.run(['uv', 'run', '--offline', '--quiet', '--no-project', '--with', 'textual==8.2.8',

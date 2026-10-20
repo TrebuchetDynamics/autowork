@@ -1,7 +1,7 @@
 ---
 name: grill-me
 description: "Adversarial plan interview before implementation."
-version: 2.1.0
+version: 2.1.1
 author: "Rafael Zendron (rafaumeu) + Matt Pocock (mattpocock/skills, grilling) + Hermes Agent"
 license: MIT
 platforms: [linux, macos, windows]
@@ -84,6 +84,9 @@ downstream of it wait; ask the rest of the frontier now.
 **Edge cases:**
 - "What happens if the user does Z?" / "What if dependency X goes down?"
 - "What if volume is 100x expected?" / "What are the security implications?"
+- Pre-mortem: "It shipped and broke something. What?" Probe up to three ways: an
+  existing behaviour that regressed, an input the plan is silent on, a consumer of
+  the changed state. Each needs a guard test or an explicit exclusion.
 
 ## Synthesis (when the frontier is empty)
 

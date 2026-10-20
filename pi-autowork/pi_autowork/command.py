@@ -23,6 +23,16 @@
     autowork clear-held [target] [TASK...]
                                   return held commits to integration as technical recovery
                                   (keeps the worktrees); no owner decision is asked
+    autowork field TASK LABEL VALUE [target]
+                                  set one field of a task's TODO.md entry (an owner answer:
+                                  "Owner decision", Status, "Held by", "Blocker resolution")
+    autowork place TASK Now|Next|"Needs decision" [target] [--decision TEXT]
+                                  move a task to another section (TODO.md and goals.json)
+    autowork add-task --title T --short S --goal G [--section S] [--scope ...] [target]
+                                  add a task to TODO.md and goals.json
+    autowork move TASK up|down [target]
+                                  move an open task among its TODO.md group's open tasks;
+                                  the runner records the new order as its priority
     autowork scorecard [--days N] [--json] [target...]
                                   per runner: tasks closed, held share, start to merge, owner
                                   questions over the last N days (default 7)
@@ -400,6 +410,9 @@ def cmd_blockers(args, paths):
     agent = fleet_view.blockers_agent()
     if not agent:
         raise Fail('no agent for /blockers: install claude or pi, or set AUTOWORK_AGENT')
+    # In the repository: started from the TUI or the home directory, Claude Code asked whether
+    # to trust the whole home directory, and the session was not the repository's.
+    os.chdir(repo)
     os.execvp(agent[0], [*agent, fleet_view.blockers_prompt(agent, repo)])
 
 
@@ -433,6 +446,43 @@ def cmd_clear_held(args, paths):
     if runner.service not in ('running', 'start', 'reload'):
         print(f'Start the runner to apply it: autowork start {repo}')
     return 0
+
+
+def goals(repo, *argv):
+    """docs-sync's goals.py on ``repo``: it takes the repository's planning lock."""
+    script = TOOLSET / 'skills' / 'docs-sync' / 'scripts' / 'goals.py'
+    result = subprocess.run([sys.executable, str(script), argv[0], repo, *argv[1:]], capture_output=True, text=True)
+    print((result.stdout or result.stderr).strip())
+    return result.returncode
+
+
+def cmd_move(args, paths):
+    """Re-sort TODO.md (the human priority) one place, as the TUI's Tasks window does."""
+    return goals(resolve(args.target, paths)[0], 'move', args.task, args.direction)
+
+
+def cmd_field(args, paths):
+    """An owner answer the runner reads from the task's TODO.md entry (Owner decision, Status, ...)."""
+    return goals(resolve(args.target, paths)[0], 'field', args.task, args.label, args.value)
+
+
+def cmd_place(args, paths):
+    """Move a task to Now, Next or Needs decision; --decision also records why."""
+    repo = resolve(args.target, paths)[0]
+    code = goals(repo, 'place', args.task, args.section)
+    if code == 0 and args.decision:
+        code = goals(repo, 'field', args.task, 'Owner decision', args.decision)
+    return code
+
+
+def cmd_add_task(args, paths):
+    """A new task in TODO.md and goals.json, at the top of its section, for the runner to pick up."""
+    argv = ['add-task', '--todo', '--goal', args.goal, '--title', args.title, '--short', args.short,
+            '--section', args.section]
+    for flag in ('scope', 'acceptance', 'checks'):
+        if getattr(args, flag):
+            argv += [f'--{flag}', getattr(args, flag)]
+    return goals(resolve(args.target, paths)[0], *argv)
 
 
 def parser():
@@ -484,6 +534,29 @@ def parser():
     card.add_argument('--days', type=int, default=7)
     card.add_argument('--json', action='store_true')
     card.add_argument('target', nargs='*', help='runner names or repository paths (default: every runner)')
+    move = sub.add_parser('move', help="move an open task up or down in its TODO.md group (the priority)")
+    move.add_argument('task')
+    move.add_argument('direction', choices=('up', 'down'))
+    move.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    field_ = sub.add_parser('field', help="set one field of a task's TODO.md entry (an owner answer)")
+    field_.add_argument('task')
+    field_.add_argument('label', help='for example "Owner decision", Status or "Held by"')
+    field_.add_argument('value')
+    field_.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    place = sub.add_parser('place', help='move a task to Now, Next or Needs decision')
+    place.add_argument('task')
+    place.add_argument('section', choices=('Now', 'Next', 'Needs decision'))
+    place.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
+    place.add_argument('--decision', help='also record this as its Owner decision (dated, one line)')
+    add = sub.add_parser('add-task', help='add a task to TODO.md and goals.json')
+    add.add_argument('--title', required=True)
+    add.add_argument('--short', required=True, help='at most 40 characters, for task lists')
+    add.add_argument('--goal', required=True, help="a goal ID from the repository's goals.json")
+    add.add_argument('--section', default='Next', choices=('Now', 'Next', 'Needs decision'))
+    add.add_argument('--scope')
+    add.add_argument('--acceptance')
+    add.add_argument('--checks')
+    add.add_argument('target', nargs='?', help='runner name, repository path or . (default: .)')
     sub.add_parser('help', help='this help')
     return top
 
@@ -493,7 +566,8 @@ COMMANDS = {'ls': cmd_ls, 'status': cmd_status, 'logs': cmd_logs, 'start': cmd_s
             'run': cmd_run, 'web': cmd_web, 'tui': cmd_tui, 'blockers': cmd_blockers,
             'pause': cmd_pause, 'resume': lambda a, p: cmd_pause(a, p, resume=True),
             'model': cmd_model, 'models': cmd_models, 'scorecard': cmd_scorecard,
-            'clear-held': cmd_clear_held, 'update': cmd_update}
+            'clear-held': cmd_clear_held, 'update': cmd_update, 'move': cmd_move, 'field': cmd_field,
+            'place': cmd_place, 'add-task': cmd_add_task}
 
 
 def main(argv=None):

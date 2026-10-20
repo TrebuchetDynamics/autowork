@@ -217,6 +217,70 @@ class InitializationTests(unittest.TestCase):
             self.assertEqual(run(cmd, str(self.repo)).returncode, 0)
         self.assertEqual(self.snapshot(), first)
 
+    def test_validate_reports_a_short_title_over_forty_characters(self):
+        """`Short:` is the task's title in task lists (the TUI's Tasks window): one line, 40 at most."""
+        body = self.body.replace('  Ownership: fixture owner\n',
+                                 '  Ownership: fixture owner\n  Short: Verify that startup works on every platform\n')
+        self.input_todo.write_text(body)
+        self.assertEqual(self.init('--todo-file', str(self.input_todo)).returncode, 0)
+        result = run('validate', str(self.repo))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('T1: Short is one line of at most 40 characters, not 43', result.stdout)
+        fixed = (self.repo / 'TODO.md').read_text().replace(' on every platform', '')
+        (self.repo / 'TODO.md').write_text(fixed)
+        self.assertEqual(run('validate', str(self.repo)).stdout.strip(), 'ok')
+
+    def test_move_swaps_an_open_task_with_its_open_neighbour_and_keeps_every_byte(self):
+        """`goals.py move` re-sorts TODO.md for the TUI's Tasks window: never across a group
+        heading, past a checked-off task, or with a byte of any task changed."""
+        sys.path.insert(0, str(SCRIPT.parent))
+        import goals
+        text = ('# TODO\n\n## Now\n\n### A — first\n\n- [ ] A — first\n- Status: open\n\n'
+                '- [x] D — done\n\n### B — second\n\n- [ ] B — second\n- Status: open\n\n'
+                '## Next\n\n- [ ] C — third\n')
+        moved, why = goals.move_block(text, 'B', -1)
+        self.assertEqual(why, '')
+        self.assertLess(moved.index('### B'), moved.index('### A'))
+        self.assertLess(moved.index('- [x] D'), moved.index('### A'))  # a checked-off task stays put
+        self.assertEqual(goals.move_block(moved, 'A', -1)[0], text)
+        self.assertEqual(goals.move_block(text, 'A', -1), (None, 'A is already first in Now'))
+        self.assertEqual(goals.move_block(text, 'B', 1), (None, 'B is already last in Now'))  # not into Next
+        self.assertEqual(goals.move_block(text, 'D', 1), (None, 'D is checked off'))
+        self.assertEqual(goals.move_block(text, 'X', 1), (None, 'X has no TODO.md entry'))
+
+    def test_owner_answers_set_one_field_and_move_sections_with_the_ledger(self):
+        """The TUI's answers: one line per field (two would hide both from task_fields), and a
+        section move changes TODO.md and goals.json together."""
+        self.assertEqual(self.init('--todo-file', str(self.input_todo)).returncode, 0)
+        repo = str(self.repo)
+        for value in ('2026-10-20: first', '2026-10-20: second'):
+            result = run('field', repo, 'T1', 'Owner decision', value)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        text = (self.repo / 'TODO.md').read_text()
+        self.assertEqual(text.count('Owner decision:'), 1)
+        self.assertIn('- Owner decision: 2026-10-20: second\n', text)
+        self.assertEqual(run('field', repo, 'T1', 'Held by', 'the owner;\n until 2026-10-27').returncode, 0)
+        self.assertIn('Held by: the owner; until 2026-10-27\n', (self.repo / 'TODO.md').read_text())  # one line
+        self.assertIn('a field is a label and a one-line value', run('field', repo, 'T1', 'Bad: label', 'x').stderr)
+        result = run('place', repo, 'T1', 'Needs decision')
+        self.assertIn('TODO.md has no "## Needs decision" section', result.stderr)
+        (self.repo / 'TODO.md').write_text((self.repo / 'TODO.md').read_text() + '\n## Needs decision\n')
+        result = run('place', repo, 'T1', 'Needs decision')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = (self.repo / 'TODO.md').read_text()
+        self.assertLess(text.index('## Needs decision'), text.index('- [ ] T1'))
+        self.assertEqual(json.loads((self.repo / 'goals.json').read_text())['tasks'][0]['section'], 'Needs decision')
+        self.assertEqual(run('validate', repo).stdout.strip(), 'ok')
+        result = run('add-task', repo, 'T2', '--goal', 'G1', '--title', 'Add a thing', '--section', 'Now', '--todo',
+                     '--short', 'A thing', '--scope', 'Do it.')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = (self.repo / 'TODO.md').read_text()
+        self.assertIn('## Now\n\n### T2 — Add a thing\n\n- [ ] T2 — Add a thing\n- Short: A thing\n', text)
+        self.assertIn('- Scope: Do it.\n', text)
+        self.assertEqual(run('validate', repo).stdout.strip(), 'ok')
+        long = run('add-task', repo, 'T3', '--goal', 'G1', '--title', 'X', '--todo', '--short', 'x' * 41)
+        self.assertIn('--short of 1 to 40 characters', long.stderr)
+
     def test_validate_reports_a_touches_value_that_is_not_a_list_of_paths(self):
         """TOOLSET-213-45: prose in Touches made the engine hold a worker's own files."""
         body = self.body.replace('  Ownership: fixture owner\n',

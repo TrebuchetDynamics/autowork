@@ -21,10 +21,10 @@ from pi_autowork import fleet_view  # noqa: E402
 from rich.text import Text  # noqa: E402  (installed with textual)
 from textual.app import App, ComposeResult  # noqa: E402
 from textual.binding import Binding  # noqa: E402
-from textual.containers import Horizontal, Vertical  # noqa: E402
+from textual.containers import Horizontal, Vertical, VerticalScroll  # noqa: E402
 from textual.screen import ModalScreen, Screen  # noqa: E402
-from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, Label, OptionList,  # noqa: E402
-                             RichLog, Static)
+from textual.widgets import (Button, DataTable, DirectoryTree, Footer, Header, Input, Label, OptionList,  # noqa: E402
+                             RichLog, Select, Static)
 
 REFRESH = 3.0
 LOG_REFRESH = 5.0
@@ -40,6 +40,37 @@ def code_stamp():
     except (OSError, ValueError):
         return 0
 QUESTIONS_SHOWN = 3
+
+
+def hotkeys(text, keys):
+    """Append 'Log  Pause  Stop', each word's key letter highlighted in it (the first letter
+    by convention; a key the word lacks is shown before it)."""
+    for number, (key, label) in enumerate(keys):
+        text.append('  ' if number else '')
+        at = label.lower().find(key.lower())
+        if at < 0:
+            text.append(key, style='bold underline cyan')
+            text.append(' ' + label)
+        else:
+            text.append(label[:at])
+            text.append(label[at], style='bold underline cyan')
+            text.append(label[at + 1:])
+
+
+def tilde(path):
+    home = str(Path.home())
+    return '~' + path[len(home):] if path and (path == home or path.startswith(home + '/')) else path
+
+
+def doing(lane):
+    """What a worker is doing, without what the row already says: its own task ID after
+    "said:", and "said:" after "reviewer:"."""
+    text = ' '.join(fleet_view.doing(lane).split())
+    text = text.replace('reviewer: said: ', 'reviewer: ', 1)
+    for prefix in ('said: ', 'reviewer: '):
+        if text.startswith(prefix + lane.task):
+            text = prefix + text[len(prefix + lane.task):].lstrip(' :,')
+    return text
 
 
 class Confirm(ModalScreen[bool]):
@@ -69,24 +100,95 @@ class Confirm(ModalScreen[bool]):
         self.dismiss(value)
 
 
-class PickTask(ModalScreen[str]):
+class TextPrompt(ModalScreen[str]):
+    """One line of the owner's words; Enter saves, Escape cancels."""
     BINDINGS = [Binding('escape', 'cancel', 'cancel')]
     DEFAULT_CSS = '''
-    PickTask { align: center middle; }
-    PickTask > Vertical { width: 70; height: auto; max-height: 80%; border: thick $accent; background: $surface; padding: 1 2; }
+    TextPrompt { align: center middle; }
+    TextPrompt > Vertical { width: 80; height: auto; border: thick $accent; background: $surface; padding: 1 2; }
     '''
 
-    def __init__(self, tasks):
+    def __init__(self, title, hint):
         super().__init__()
-        self.tasks = tasks
+        self.title_text, self.hint = title, hint
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label('Set aside which held task?')
-            yield OptionList(*[f'{task}  {fleet_view.CAUSES.get(cause, cause or "")}' for task, cause in self.tasks])
+            yield Label(Text(self.title_text, style='bold'))
+            yield Label(Text(self.hint, style='dim'))
+            yield Input(placeholder='Enter saves, Esc cancels', id='words')
+
+    def on_input_submitted(self, event):
+        self.dismiss(' '.join(event.value.split()) or None)
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class PickSection(ModalScreen[str]):
+    """Now, Next or Needs decision."""
+    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    DEFAULT_CSS = '''
+    PickSection { align: center middle; }
+    PickSection > Vertical { width: 50; height: auto; border: thick $accent; background: $surface; padding: 1 2; }
+    '''
+    SECTIONS = ('Now', 'Next', 'Needs decision')
+
+    def __init__(self, task):
+        super().__init__()
+        self.task_id = task
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(f'Move {self.task_id} to:')
+            yield OptionList(*self.SECTIONS)
 
     def on_option_list_option_selected(self, event):
-        self.dismiss(self.tasks[event.option_index][0])
+        self.dismiss(self.SECTIONS[event.option_index])
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class NewTask(ModalScreen[dict]):
+    """A new task's title, short title, goal and section, and optionally its scope and acceptance."""
+    BINDINGS = [Binding('escape', 'cancel', 'cancel')]
+    DEFAULT_CSS = '''
+    NewTask { align: center middle; }
+    NewTask > VerticalScroll { width: 90; height: auto; max-height: 90%; border: thick $accent; background: $surface; padding: 1 2; }
+    NewTask Input, NewTask Select { margin-bottom: 1; }
+    NewTask Horizontal { height: auto; align-horizontal: right; }
+    NewTask Button { margin-left: 2; }
+    '''
+
+    def __init__(self, goals):
+        super().__init__()
+        self.goals = goals
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield Label(Text('New task', style='bold'))
+            yield Input(placeholder='Title: the outcome, in a sentence', id='title')
+            yield Input(placeholder='Short title for task lists (at most 40 characters)', id='short', max_length=40)
+            yield Select([(f'{gid}  {title}'[:70], gid) for gid, title in self.goals], prompt='Goal', id='goal')
+            yield Select([(name, name) for name in PickSection.SECTIONS], value='Next', allow_blank=False, id='section')
+            yield Input(placeholder='Scope (optional)', id='scope')
+            yield Input(placeholder='Acceptance (optional): the test that proves it', id='acceptance')
+            with Horizontal():
+                yield Button('Add', variant='primary', id='add')
+                yield Button('Cancel', id='cancel')
+
+    def on_button_pressed(self, event):
+        if event.button.id == 'cancel':
+            self.dismiss(None)
+            return
+        value = {key: ' '.join(str(self.query_one(f'#{key}').value or '').split())
+                 for key in ('title', 'short', 'scope', 'acceptance')}
+        goal = self.query_one('#goal', Select).value
+        if not value['title'] or not value['short'] or goal in (None, Select.BLANK):
+            self.notify('A new task needs a title, a short title and a goal.', severity='warning')
+            return
+        self.dismiss(dict(value, goal=goal, section=self.query_one('#section', Select).value))
 
     def action_cancel(self):
         self.dismiss(None)
@@ -195,6 +297,246 @@ class WorkerScreen(Screen):
         self.query_one('#worker-actions', Static).update(text if actions else 'No actions recorded yet.')
 
 
+class TasksScreen(Screen):
+    """One runner's open tasks in priority (TODO.md) order: filter them, re-sort them, clear or
+    set aside a hold, answer the owner's questions. Refreshed like the main screen."""
+    VIEW_NAMES = {'all': 'All', 'working': 'Active', 'held': 'Blocker', 'waiting': 'Waiting', 'questions': 'Questions'}
+    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
+                Binding('tab', 'step_view(1)', 'next view', show=False),
+                Binding('shift+tab', 'step_view(-1)', 'previous view', show=False),
+                *[Binding(str(n + 1), f'show_view("{view}")', view, show=False)
+                  for n, view in enumerate(fleet_view.TASK_VIEWS)],
+                *[Binding(key, f'task("{key}")', key, show=False) for key in 'udcabs'],
+                Binding('n', 'new_task', 'New', show=False)]
+    DEFAULT_CSS = '''
+    #task-views { height: 1; padding: 0 1; }
+    #tasks { height: 1fr; }
+    #task-detail { height: auto; max-height: 7; padding: 0 1; border-top: solid $panel; }
+    '''
+    # State and Why are cut to what the terminal has left; Why goes first on a narrow one.
+    FIXED, TEXT = ('#', 'Task', 'Short'), ('State', 'Why')
+
+    def __init__(self, runner_name):
+        super().__init__()
+        self.runner_name, self.view, self.rows, self.shown = runner_name, 'all', [], []
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static(id='task-views')
+        yield DataTable(id='tasks', cursor_type='row', zebra_stripes=True)
+        yield Static(id='task-detail')
+
+    def on_mount(self):
+        self.title = f'{self.runner_name}: tasks'
+        self.query_one('#tasks', DataTable).add_columns(*self.FIXED, *self.TEXT)
+        self.refresh_tasks()
+        self.set_interval(REFRESH, self.refresh_tasks)
+
+    def runner(self):
+        return next((r for r in self.app.runners if r.name == self.runner_name), None)
+
+    def refresh_tasks(self, follow=None):
+        """``follow``: keep the cursor on this task wherever it moved (after a re-sort)."""
+        runner = self.runner()
+        self.rows = fleet_view.task_rows(runner) if runner else []
+        views = Text()
+        for number, view in enumerate(fleet_view.TASK_VIEWS):
+            count = len(fleet_view.task_view(self.rows, view))
+            label = f'{number + 1} {self.VIEW_NAMES[view]} {count}'
+            views.append(('  ' if number else '') + label, style='bold reverse' if view == self.view else 'dim')
+        views.append('   tab next view', style='dim')
+        self.query_one('#task-views', Static).update(views)
+        table = self.query_one('#tasks', DataTable)
+        current = follow or (self.current().task if self.current() else None)
+        self.shown = fleet_view.task_view(self.rows, self.view)
+        position = {row.task: number + 1 for number, row in enumerate(self.rows)}
+        cells = [{'#': (str(position[row.task]), 'dim'), 'Task': (row.task, 'bold'),
+                  'Short': (row.short, ''),
+                  'State': (row.state, 'bold yellow' if row.kind in ('held', 'waiting') else
+                            'bold green' if row.kind == 'working' else ''),
+                  'Why': (row.why, 'yellow' if row.question else 'dim')} for row in self.shown]
+        self.app.fill(table, cells, self.FIXED, self.TEXT, minimum=10)
+        tasks = [row.task for row in self.shown]
+        if current in tasks and table.cursor_row != tasks.index(current):
+            table.move_cursor(row=tasks.index(current))
+        self.show_task()
+
+    def current(self):
+        table = self.query_one('#tasks', DataTable)
+        return self.shown[table.cursor_row] if 0 <= table.cursor_row < len(self.shown) else None
+
+    def actions(self, row):
+        runner = self.runner()
+        if runner is None or row is None or self.app.view_only:
+            return []
+        return fleet_view.task_actions(runner, row, command=self.app.command, script=self.app.script,
+                                       agent=self.app.agent)
+
+    def show_task(self):
+        row = self.current()
+        text = Text()
+        if row is None:
+            text.append('No task in this view.\n', style='dim')
+        else:
+            text.append(row.task, style='bold')
+            text.append(f'  {row.short}\n')
+            text.append(f'{row.section} · {row.state}\n', style='dim')
+            if row.why:
+                text.append(row.why + '\n', style='yellow' if row.question else '')
+        keys = [(a.key, a.label) for a in self.actions(row)]
+        if not self.app.view_only:
+            keys.append(('n', 'New'))
+        hotkeys(text, ([('enter', 'Open')] if row else []) + keys + [('esc', 'Back')])
+        self.query_one('#task-detail', Static).update(text)
+
+    def on_data_table_row_selected(self, event):
+        row = self.current()
+        if row is not None:
+            self.app.push_screen(TaskScreen(self.runner_name, row.task))
+
+    def action_new_task(self):
+        runner = self.runner()
+        if runner is None or self.app.view_only:
+            return
+
+        def add(task):
+            if not task:
+                return
+            argv = [self.app.command, 'add-task', '--title', task['title'], '--short', task['short'],
+                    '--goal', task['goal'], '--section', task['section']]
+            for key in ('scope', 'acceptance'):
+                if task[key]:
+                    argv += [f'--{key}', task[key]]
+            self.app.execute(fleet_view.Action('n', f'New task in {runner.name}', argv + [runner.name]))
+        self.app.push_screen(NewTask(fleet_view.open_goals(runner)), add)
+
+    def on_data_table_row_highlighted(self, event):
+        self.show_task()
+
+    def action_show_view(self, view):
+        self.view = view
+        self.refresh_tasks()
+
+    def action_step_view(self, step):
+        views = fleet_view.TASK_VIEWS
+        self.action_show_view(views[(views.index(self.view) + step) % len(views)])
+
+    def action_task(self, key):
+        row = self.current()
+        action = next((a for a in self.actions(row) if a.key == key), None)
+        if action is None:
+            return
+        self.follow = row.task
+        if key == 's':
+            runner = self.runner()
+            self.app.push_screen(PickSection(row.task), lambda section: section and self.app.execute(
+                fleet_view.Action('s', f'Section {row.task}', [self.app.command, 'place', row.task, section, runner.name])))
+            return
+        if action.confirm:
+            self.app.push_screen(Confirm(action.confirm), lambda yes: yes and self.app.execute(action))
+        else:
+            self.app.execute(action)
+
+
+class TaskScreen(Screen):
+    """One task: its question and the runner's suggested answer, its whole TODO.md entry and
+    its worker's last actions. Answer it here; refreshed like the main screen."""
+    BINDINGS = [Binding('escape,q', 'app.pop_screen', 'Back', show=False),
+                Binding('s', 'section', 'Section', show=False),
+                *[Binding(key, f'answer("{key}")', key, show=False) for key in 'ohrwd']]
+    DEFAULT_CSS = '''
+    #task-scroll { height: 1fr; padding: 0 1; }
+    #task-answers { height: auto; padding: 0 1; border-top: solid $panel; }
+    '''
+
+    def __init__(self, runner_name, task):
+        super().__init__()
+        self.runner_name, self.task_id = runner_name, task
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with VerticalScroll(id='task-scroll'):
+            yield Static(id='task-body')
+        yield Static(id='task-answers')
+
+    def on_mount(self):
+        self.title = f'{self.runner_name}: {self.task_id}'
+        self.refresh_tasks()
+        self.set_interval(REFRESH, self.refresh_tasks)
+
+    def runner(self):
+        return next((r for r in self.app.runners if r.name == self.runner_name), None)
+
+    def question(self):
+        runner = self.runner()
+        return next((q for q in runner.questions if q.id == self.task_id), None) if runner else None
+
+    def answers(self):
+        runner, question = self.runner(), self.question()
+        if runner is None or question is None or self.app.view_only:
+            return []
+        return fleet_view.answers(runner, question, command=self.app.command)
+
+    def refresh_tasks(self, follow=None):
+        runner, question = self.runner(), self.question()
+        row = next((r for r in fleet_view.task_rows(runner) if r.task == self.task_id), None) if runner else None
+        text = Text()
+        text.append(self.task_id, style='bold')
+        if row:
+            text.append(f'  {row.short}\n')
+            text.append(f'{row.section} · {row.state}\n', style='dim')
+        else:
+            text.append('  (closed, or not in TODO.md now)\n', style='dim')
+        if question:
+            text.append(f'\nQuestion for you ({question.effort}, unblocks {question.unblocks})\n', style='bold yellow')
+            text.append(question.needs + '\n', style='yellow')
+            if question.answer:
+                text.append('The runner suggests: ', style='bold')
+                text.append(question.answer + '\n', style='dim')
+        elif row and row.why:
+            text.append(row.why + '\n')
+        entry = fleet_view.task_entry(runner, self.task_id) if runner else ''
+        if entry:
+            text.append('\nTODO.md entry\n', style='bold')
+            text.append(entry + '\n')
+        actions = fleet_view.recent_actions(runner, self.task_id) if runner else []
+        if actions:
+            text.append('\nLast actions\n', style='bold')
+            for line, age in actions:
+                text.append(f'{fleet_view.ago(age):>9}  ', style='dim')
+                text.append(line + '\n')
+        self.query_one('#task-body', Static).update(text)
+        keys = Text()
+        for answer in self.answers():
+            hotkeys(keys, [(answer.key, answer.label)])
+            keys.append(f'  {answer.explain}\n', style='dim')
+        hotkeys(keys, ([] if self.app.view_only else [('s', 'Section')]) + [('esc', 'Back')])
+        self.query_one('#task-answers', Static).update(keys)
+
+    def action_answer(self, key):
+        answer = next((a for a in self.answers() if a.key == key), None)
+        if answer is None:
+            return
+
+        def run(words):
+            if answer.needs_text and not words:
+                return
+            argv = [part.replace('{text}', words or '') for part in answer.argv]
+            self.app.execute(fleet_view.Action(answer.key, f'{answer.label} {self.task_id}', argv))
+        if answer.needs_text:
+            self.app.push_screen(TextPrompt(f'{answer.label}: {self.task_id}', answer.explain), run)
+        else:
+            self.app.push_screen(Confirm(f'{answer.label} {self.task_id}: {answer.explain}?'), lambda yes: yes and run(''))
+
+    def action_section(self):
+        runner = self.runner()
+        if runner is None or self.app.view_only:
+            return
+        self.app.push_screen(PickSection(self.task_id), lambda section: section and self.app.execute(
+            fleet_view.Action('s', f'Section {self.task_id}',
+                              [self.app.command, 'place', self.task_id, section, runner.name])))
+
+
 class RepoTree(DirectoryTree):
     """Directories only; a repository is marked ready (TODO.md and goals.json) or not."""
 
@@ -215,7 +557,7 @@ class RepoTree(DirectoryTree):
 
 class BrowseScreen(Screen):
     """Pick a repository and start its service."""
-    BINDINGS = [Binding('s', 'start', 'start service'), Binding('escape,q', 'app.pop_screen', 'back')]
+    BINDINGS = [Binding('p', 'start', 'Play'), Binding('escape,q', 'app.pop_screen', 'back')]
     CSS = '''
     #tree { width: 1fr; }
     #info { width: 1fr; padding: 0 1; }
@@ -245,7 +587,7 @@ class BrowseScreen(Screen):
         info.append(str(node.data.path) + '\n', style='bold')
         if self.chosen.ready:
             info.append('ready', style='bold green')
-            info.append(f' on {self.chosen.branch}. Press s to start its service.\n')
+            info.append(f' on {self.chosen.branch}. Press p to play (start) its service.\n')
         elif not self.chosen.repo:
             info.append('not a Git repository\n', style='dim')
         else:
@@ -272,21 +614,22 @@ class FleetApp(App):
     #log { height: 1fr; min-height: 4; border-top: solid $panel; }
     '''
     BINDINGS = [
-        Binding('enter', 'run("enter")', 'log'),
-        Binding('d', 'browse', 'start a repository'),
-        Binding('a', 'run("a")', 'start'),
-        Binding('s', 'run("s")', 'stop'),
-        Binding('R', 'run("R")', 'restart'),
-        Binding('p', 'run("p")', 'pause/resume'),
-        Binding('m', 'pick_model("model")', 'model'),
-        Binding('M', 'pick_model("fallback")', 'fallback'),
-        Binding('u', 'run("u")', 'remove service'),
-        Binding('x', 'set_aside', 'set aside'),
-        Binding('b', 'run("b")', 'blockers'),
-        Binding('r', 'refresh', 'refresh'),
-        Binding('q', 'quit', 'quit'),
+        # One key per action, the first letter of its word, shown highlighted in the detail
+        # pane (the footer repeated them, cut short). Enter on a runner opens its log too.
+        # show=False: the log, worker and browse screens' footers list their own keys, not
+        # these (the log's footer offered Play/Pause and Stop, cut off at 'Fallba').
+        Binding('l', 'run("l")', 'Log', show=False),
+        Binding('p', 'run("p")', 'Play/Pause', show=False),
+        Binding('s', 'run("s")', 'Stop', show=False),
+        Binding('r', 'run("r")', 'Restart', show=False),
+        Binding('m', 'pick_model("model")', 'Model', show=False),
+        Binding('f', 'pick_model("fallback")', 'Fallback', show=False),
+        Binding('t', 'run("t")', 'Tasks', show=False),
+        Binding('u', 'run("u")', 'Uninstall', show=False),
+        Binding('n', 'browse', 'New', show=False),
+        Binding('q', 'quit', 'Quit', show=False),
     ]
-    CONTROL = {'run', 'set_aside', 'browse', 'pick_model'}
+    CONTROL = {'run', 'browse', 'pick_model'}
 
     def __init__(self, *, command, script, state_root, env_dir, systemctl='systemctl',
                  journalctl='journalctl', agent=None, runner_cmd=subprocess.run, view_only=False, browse_root=None,
@@ -306,10 +649,12 @@ class FleetApp(App):
 
     def check_action(self, action, parameters):
         """View-only (for example served to a browser on a shared network): no control keys."""
-        if self.view_only and action in self.CONTROL:
+        if self.view_only and action in self.CONTROL and parameters not in (('l',), ('t',)):  # read-only views
             return False
-        if action == 'run' and parameters and parameters[0] == 'enter':
-            return True
+        # Over the log, worker or browse screen, the runner keys are off: s while reading a log
+        # asked to stop the runner, and p on the browse screen is its own Play.
+        if len(self.screen_stack) > 1 and action in self.CONTROL:
+            return False
         return True
 
     # -- layout -----------------------------------------------------------------
@@ -319,18 +664,65 @@ class FleetApp(App):
         yield Static(id='detail')
         yield DataTable(id='lanes', cursor_type='row', zebra_stripes=True)
         yield RichLog(id='log', wrap=True, highlight=False, markup=False)
-        yield Footer()
+
+    # The counts come right after the name, as narrow columns that always show: after a
+    # 44-column Needs they scrolled off an 80-column terminal. Needs and Now share the rest.
+    RUNNER_COLUMNS = ('Runner', 'State', 'Active', 'Mergeable', 'Waiting', 'Blocker', 'Total')
+    RUNNER_TEXT = ('Needs', 'Now')
+    LANE_COLUMNS = ('Task', 'Status', 'Try', 'For', 'Quiet')
+    LANE_TEXT = ('Doing',)
+    STATUS_STYLE = {fleet_view.ACTIVE: 'bold green', fleet_view.MERGEABLE: 'bold cyan',
+                    fleet_view.WAITING: 'bold yellow', fleet_view.BLOCKER: 'bold yellow'}
 
     def on_mount(self):
         table = self.query_one('#runners', DataTable)
-        table.add_columns('Runner', 'State', 'Needs', 'Tasks', 'Now')
-        self.query_one('#lanes', DataTable).add_columns('Task', 'Phase', 'Try', 'For', 'Doing')
+        table.add_columns(*self.RUNNER_COLUMNS, *self.RUNNER_TEXT)
+        self.query_one('#lanes', DataTable).add_columns(*self.LANE_COLUMNS, *self.LANE_TEXT)
         self.action_refresh()
         self.refresh_log()
         self.set_interval(REFRESH, self.action_refresh)
         self.set_interval(LOG_REFRESH, self.refresh_log)
         self.code = code_stamp()
         self.set_interval(CODE_CHECK, self.reload_if_updated)
+
+    def on_resize(self, event):
+        self._shown = {}  # the columns fit the new width
+        if self.query_one('#runners', DataTable).columns:  # the first resize comes before on_mount
+            self.action_refresh()
+
+    @staticmethod
+    def fit(text, room):
+        """``text`` in ``room`` columns: cut at a word, or mid-word when that keeps far more."""
+        if len(text) <= room:
+            return text
+        cut = text[:room - 1]
+        words = cut.rsplit(' ', 1)[0]
+        return (words if len(words) > room * 2 // 3 else cut).rstrip(' ,;:·') + '…'
+
+    def fill(self, table, rows, fixed, text, minimum=16):
+        """Show ``rows`` ({column: (text, style)}) in ``table``. The fixed columns always show,
+        whole; the text columns share what the terminal has left, each cut to fit, and the last
+        named goes first when fewer than ``minimum`` columns would be left for each. Redrawn only
+        when something changed, since a clear-and-rewrite every refresh made the panes flicker."""
+        width = lambda column: max([len(column), *(len(row[column][0]) for row in rows)]) + 2  # padding
+        left = self.size.width - sum(width(c) for c in fixed) - 4  # border and scrollbar
+        shown = list(text)
+        while shown and left // len(shown) - 2 < minimum:
+            shown.pop()
+        room = left // max(1, len(shown)) - 2
+        columns = (*fixed, *shown)
+        cells = [tuple((self.fit(row[c][0], room) if c in shown else row[c][0], row[c][1]) for c in columns)
+                 for row in rows]
+        shown_before = self.__dict__.setdefault('_shown', {})
+        if shown_before.get(table.id) == (columns, cells):
+            return False
+        shown_before[table.id] = (columns, cells)
+        table.clear(columns=tuple(str(c.label) for c in table.columns.values()) != columns)
+        if not table.columns:
+            table.add_columns(*columns)
+        for row, values in zip(rows, cells):
+            table.add_row(*(Text(value, style=style) for value, style in values), key=row[columns[0]][0])
+        return True
 
     def reload_if_updated(self):
         """Start again on new code, between actions and with no dialog open."""
@@ -344,23 +736,19 @@ class FleetApp(App):
         keep = self.selected
         rows = []
         for runner in self.runners:
-            now = ', '.join(f'{lane.task} {lane.phase}' for lane in runner.lanes[:2])
+            now = ', '.join(f'{lane.task} {fleet_view.status(lane)[1].lower()}' for lane in runner.lanes[:2])
             if runner.job:
                 now = ', '.join(x for x in (fleet_view.job_text(runner.job), now) if x)
             if len(runner.lanes) > 2:
                 now += f' +{len(runner.lanes) - 2}'
-            state = f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip()
-            tasks = f'{runner.running} run  {runner.waiting} wait  {len(runner.held)} held'
-            rows.append((runner.name, state, runner.color, fleet_view.short(fleet_view.needs(runner) or '-', 44),
-                         bool(runner.questions), tasks, fleet_view.short(now or '-', 40)))
-        # Redraw only what changed: a clear-and-rewrite every refresh made panes flicker
-        # and repaint over each other.
-        if rows != getattr(self, '_rows', None):
-            self._rows = rows
-            table.clear()
-            for name, state, color, need, asked, tasks, now in rows:
-                table.add_row(name, Text(state, style=f'bold {color}'), Text(need, style='yellow' if asked else ''),
-                              tasks, now, key=name)
+            active, mergeable, waiting, blocker, total = (str(n) for n in fleet_view.task_counts(runner))
+            rows.append({'Runner': (runner.name, ''),
+                         'State': (f'{runner.state} {fleet_view.duration(runner.minutes)}'.strip(), f'bold {runner.color}'),
+                         'Active': (active, 'green'), 'Mergeable': (mergeable, 'cyan'), 'Waiting': (waiting, ''),
+                         'Blocker': (blocker, 'yellow' if blocker != '0' else ''), 'Total': (total, 'bold'),
+                         'Needs': (' '.join((fleet_view.needs(runner) or '-').split()), 'yellow' if runner.questions else ''),
+                         'Now': (now or '-', '')})
+        self.fill(table, rows, self.RUNNER_COLUMNS, self.RUNNER_TEXT)
         names = [r.name for r in self.runners]
         if names:
             row = names.index(keep) if keep in names else 0
@@ -386,7 +774,7 @@ class FleetApp(App):
         """Enter on a runner (the table takes the key itself): its full-screen log; on a
         worker: its last actions."""
         if event.data_table.id == 'runners':
-            self.action_run('enter')
+            self.action_run('l')
         elif event.data_table.id == 'lanes' and event.row_key is not None and self.current() is not None:
             self.push_screen(WorkerScreen(self.current(), event.row_key.value))
 
@@ -394,7 +782,7 @@ class FleetApp(App):
         detail = self.query_one('#detail', Static)
         runner = self.current()
         if runner is None:
-            detail.update('No pi-autowork runners yet. Press d to choose a repository and start its service.')
+            detail.update('No pi-autowork runners yet. Press n for a new one: choose a repository and play its service.')
             self.query_one('#lanes', DataTable).display = False
             return
         text = Text()
@@ -402,6 +790,9 @@ class FleetApp(App):
         sentence, style = fleet_view.verdict(runner)
         text.append(f'{runner.name}  ', style='bold')
         text.append(sentence + '\n', style=style)
+        active, mergeable, waiting, blocker, total = fleet_view.task_counts(runner)
+        text.append(f'{total} open: ', style='bold')
+        text.append(f'{active} active · {mergeable} mergeable · {waiting} waiting · {blocker} blocker\n')
         waiting = fleet_view.waiting_line(runner)
         if waiting:
             text.append(f'{runner.waiting} waiting: ', style='dim')
@@ -423,19 +814,22 @@ class FleetApp(App):
         if repair:
             text.append(repair + '\n', style='cyan')
         if runner.held:
-            text.append('held: ', style='bold yellow')
-            text.append(', '.join(t + (f' {fleet_view.CAUSES.get(c, c)}' if c else '') for t, c in runner.held) + '\n')
-        details = [runner.repo or '(repository unknown)']
+            asked = {q.id for q in runner.questions}
+            text.append('blocker: ', style='bold yellow')
+            text.append(', '.join(f'{t} {fleet_view.blocker_detail(c, t in asked)}' if c not in fleet_view.WAIT_CAUSES
+                                  else f'{t} waits: {fleet_view.CAUSES[c]}' for t, c in runner.held) + '\n')
+        # Short: the full model IDs are in the m and M pickers. One line on 80 columns.
+        details = [tilde(runner.repo) or '(repository unknown)']
         if runner.model:
-            details.append(f'model {runner.model}, fallback {runner.fallback}')
+            details.append(f'model {runner.model.rsplit("/", 1)[-1]}, fallback {runner.fallback.rsplit("/", 1)[-1]}')
         text.append('  '.join(details) + '\n', style='dim')
         if runner.toolset:  # a development checkout instead of the Pi package: say so
             text.append(f'toolset {runner.toolset} (PI_AUTOWORK_TOOLSET, not the Pi package)\n', style='yellow')
         if self.view_only:
-            text.append('view only', style='dim')
+            text.append('view only  ', style='dim')
+            hotkeys(text, [('l', 'Log'), ('q', 'Quit')])
         else:
-            text.append('  '.join(f'[{a.key}] {a.label}' for a in self.available(runner)) + '  [d] start a repository',
-                        style='dim')
+            hotkeys(text, [(a.key, a.label) for a in self.available(runner)] + [('n', 'New'), ('q', 'Quit')])
         if text.plain != getattr(self, '_detail', None):
             self._detail = text.plain
             detail.update(text)
@@ -444,23 +838,14 @@ class FleetApp(App):
     def show_lanes(self, runner):
         """One row per worker: phase, attempt, how long, and what it is doing in plain words."""
         table = self.query_one('#lanes', DataTable)
-        rows = []
-        for lane in runner.lanes:
-            quiet = fleet_view.quiet(lane)
-            rows.append((lane.task, lane.phase, str(lane.attempt), fleet_view.duration(lane.minutes),
-                         fleet_view.doing(lane), quiet))
-        if rows != getattr(self, '_lane_rows', None):
-            self._lane_rows = rows
-            keep = table.cursor_row
-            table.clear()
-            for task, phase, attempt, minutes, doing, quiet in rows:
-                activity = Text(doing)
-                if quiet:
-                    activity.append(f'  {quiet}', style='bold yellow')
-                style = 'bold yellow' if phase.startswith('waiting') else 'bold green'
-                table.add_row(task, Text(phase, style=style), attempt, minutes, activity, key=task)
-            if rows:
-                table.move_cursor(row=min(keep, len(rows) - 1))
+        rows = [{'Task': (lane.task, ''),
+                 'Status': (' · '.join(fleet_view.status(lane)), self.STATUS_STYLE[fleet_view.status(lane)[0]]),
+                 'Try': (str(lane.attempt), ''), 'For': (fleet_view.duration(lane.minutes), ''),
+                 'Quiet': (fleet_view.quiet(lane).removeprefix('quiet '), 'bold yellow'),
+                 'Doing': (doing(lane), '')} for lane in runner.lanes]
+        keep = table.cursor_row
+        if self.fill(table, rows, self.LANE_COLUMNS, self.LANE_TEXT) and rows:
+            table.move_cursor(row=min(keep, len(rows) - 1))
         table.display = bool(runner.lanes)
 
     def logs(self, runner, lines=200, since=None):
@@ -482,21 +867,24 @@ class FleetApp(App):
             log.write('(nothing in the last hour; Enter shows the whole log)')
 
     # -- actions ----------------------------------------------------------------
-    def available(self, runner, task=None):
-        return fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent, task=task)
+    def available(self, runner):
+        return fleet_view.actions(runner, command=self.command, script=self.script, agent=self.agent)
 
-    def action_run(self, key, task=None):
+    def action_run(self, key):
         runner = self.current()
         if runner is None:
-            if key == 'a':
+            if key == 'p':
                 self.action_browse()
             return
-        if key == 'enter':
+        if key == 'l':
             self.push_screen(LogScreen(runner, self.logs))
+            return
+        if key == 't':  # view-only shows the tasks too, without their actions
+            self.push_screen(TasksScreen(runner.name))
             return
         if self.view_only:
             return
-        action = next((a for a in self.available(runner, task) if a.key == key), None)
+        action = next((a for a in self.available(runner) if a.key == key), None)
         if action is None:
             self.notify(f'Nothing to do with "{key}" for {runner.name} right now.', severity='warning')
             return
@@ -508,7 +896,7 @@ class FleetApp(App):
     def action_pick_model(self, which):
         runner = self.current()
         if runner is None or not runner.has_service:
-            self.notify('Models are set per service; start one first (a, or d to browse).', severity='warning')
+            self.notify('Models are set per service; play one first (p, or n for a new one).', severity='warning')
             return
         if self.model_cache is None:
             self.model_cache = self.list_models()
@@ -528,13 +916,6 @@ class FleetApp(App):
                                                   if runner.service == 'running' else '?'))
             self.push_screen(Confirm(action.confirm), lambda yes: yes and self.execute(action))
         self.push_screen(PickModel(title, self.model_cache, current), chosen)
-
-    def action_set_aside(self):
-        runner = self.current()
-        if runner is None or not runner.held:
-            self.notify('No held task to set aside here.', severity='warning')
-            return
-        self.push_screen(PickTask(runner.held), lambda task: task and self.action_run('x', task))
 
     def action_browse(self):
         root = self.browse_root or (Path.home() / 'git' if (Path.home() / 'git').is_dir() else Path.home())
@@ -573,6 +954,8 @@ class FleetApp(App):
         self.call_from_thread(self.notify, message[:300], severity='information' if ok else 'error',
                               title=f'{action.label}: {"done" if ok else "failed"}')
         self.call_from_thread(self.action_refresh)
+        if isinstance(self.screen, (TasksScreen, TaskScreen)):
+            self.call_from_thread(self.screen.refresh_tasks, getattr(self.screen, 'follow', None))
 
 
 def main(argv=None):

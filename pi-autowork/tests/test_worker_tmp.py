@@ -6,12 +6,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_autowork import fleet_view, worker  # noqa: E402
+from pi_autowork import fleet_view, main_check, worker  # noqa: E402
 
 
 def setUpModule():
@@ -125,20 +126,26 @@ class WorkerTmpTests(unittest.TestCase):
         git('commit', '-qam', 'merged')
         runs = Path(self.temp.name) / 'runs'
         state = Path(self.temp.name) / 'state'
-        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        command = f'echo ran >> {runs}; printf "Ran 1 test in 0.1s\\n\\nOK\\n"'
+        os.environ['PI_AUTOWORK_VALIDATE'] = command
         self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
         for _ in range(2):  # a re-review of the same tree, as after a reviewer change
             self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 1)
         note = worker.gate_note(state, 'T-1', str(self.repo))
-        self.assertIn(f'`echo ran >> {runs}`', note)
+        self.assertIn(f'`{command}`', note)
         self.assertIn('it passed', note)
-        self.assertIn(str(worker.gate_log(state, 'T-1')), note)
+        self.assertIn('all-green', note)
+        self.assertIn(git('rev-parse', 'HEAD^{tree}').stdout.strip(), note)
         self.assertIn('Do not run the full check again', note)
         (self.repo / 'a.txt').write_text('changed\n')  # a new tree runs it again
         git('commit', '-qam', 'changed')
         worker.full_suite_gate(state, 'T-1', str(self.repo))
         self.assertEqual(runs.read_text().count('ran'), 2)
+        os.environ['PI_AUTOWORK_VALIDATE'] = command + '; true'  # the command is part of the key
+        self.assertIn('unavailable', worker.gate_note(state, 'T-1', str(self.repo)))
+        worker.full_suite_gate(state, 'T-1', str(self.repo))
+        self.assertEqual(runs.read_text().count('ran'), 3)
         os.environ.pop('PI_AUTOWORK_VALIDATE')
         self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
 
@@ -199,20 +206,98 @@ class WorkerTmpTests(unittest.TestCase):
         self.assertIn('no base to compare with', reason)
         self.assertRaises(ValueError, worker.base_result, state, str(self.repo), command, '', 10)
 
-    def test_a_cached_verdict_leaves_the_reviewer_a_log_that_exists(self):
-        """The verdict is cached per tree while the note names the task's log, so a second task
-        that hit the cache was told to read a file nobody had written."""
-        self.committed_repo()
-        state = self.elsewhere() / 'state'
-        command = 'echo "Ran 1 test in 0.1s"; echo; echo OK'
-        os.environ['PI_AUTOWORK_VALIDATE'] = command
-        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
-        self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
-        self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
-        log = worker.gate_log(state, 'T-2')
-        self.assertIn(str(log), worker.gate_note(state, 'T-2', str(self.repo)))
-        self.assertTrue(log.is_file(), 'the note names a log the cached verdict never wrote')
-        self.assertEqual(log.read_text(), worker.gate_log(state, 'T-1').read_text())
+    def test_a_cached_verdict_explains_its_producing_evidence_not_the_current_tasks_log(self):
+        """Missing or stale task logs must not turn exception acceptance into all-green."""
+        (self.repo / 'test_mod.py').write_text('import unittest\nclass T(unittest.TestCase):\n'
+                                               '    def test_ok(self): pass\n'
+                                               '    def test_red(self): self.fail()\n')
+        git = self.committed_repo()
+        tree = git('rev-parse', 'HEAD^{tree}').stdout.strip()
+        for failures, kind, classification in (([], 'unittest', 'all-green'),
+                                               ([], 'skipped', 'accepted with skipped tests'),
+                                               ([], 'pytest', 'unavailable'), ([], 'mixed', 'unavailable'),
+                                               ([], 'unknown', 'unavailable'),
+                                               (['test_red'], 'unittest', 'baseline-equivalent'),
+                                               (['test_ok'], 'unittest', 'isolated-rerun'),
+                                               (['test_ok', 'test_red'], 'unittest', 'baseline-equivalent')):
+            with self.subTest(failures=failures, kind=kind):
+                state, runs = self.elsewhere() / 'state', self.elsewhere() / 'runs'
+                lines = ['CHECK . (1 modules)'] + [f'FAIL: {f} (test_mod.T.{f})' for f in failures]
+                lines += ['Ran 3 tests in 0.1s', '',
+                          'FAILED (failures=1, skipped=1)' if failures else 'OK']
+                if kind == 'skipped':
+                    lines[-1] = 'OK (skipped=1)'
+                elif kind in ('pytest', 'unknown'):
+                    lines = ['1 passed, 1 skipped in 0.01s' if kind == 'pytest' else 'custom check completed']
+                if kind == 'mixed':
+                    lines += ['1 passed, 1 skipped in 0.01s']
+                if failures:
+                    lines += ['RESOURCE_GATE_SKIP: busy host']
+                command = (f'echo ran >> {runs}; printf "%s\\n" ' +
+                           ' '.join(repr(line) for line in lines) + f'; exit {int(bool(failures))}')
+                with patch.dict(os.environ, PI_AUTOWORK_VALIDATE=command):
+                    self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
+                    initial = worker.gate_note(state, 'T-1', str(self.repo))
+                    self.assertIn(classification, initial)
+                    self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
+                    log = worker.gate_log(state, 'T-2')
+                    self.assertEqual(log.read_text(), worker.gate_log(state, 'T-1').read_text())
+                    log.unlink()  # cross-task explanation needs no task-local log
+                    worker.gate_log(state, 'T-1').write_text('OK\n')  # overwritten by a later task run
+                    note = worker.gate_note(state, 'T-2', str(self.repo))
+                    self.assertEqual(note, initial)
+                    self.assertIn('T-1', note)
+                    self.assertIn(tree, note)
+                    self.assertIn(f'`{command}`', note)
+                    self.assertIn('Do not run the full check again', note)
+                    for failure in failures:
+                        self.assertIn(f'test_mod.T.{failure}', note)
+                    if failures:
+                        self.assertNotIn('all-green', note)
+                        self.assertIn('unittest skips: 1', note)
+                        self.assertIn('resource-gate skips: 1', note)
+                    if len(failures) == 2:
+                        self.assertIn('isolated-rerun', note)
+                    count = runs.read_text().count('ran')
+                    self.assertEqual(count, 2 if 'test_red' in failures else 1)
+                    cache = state / 'full-check' / f'tree-{tree}.json'
+                    record = json.loads(cache.read_text())
+                    evidence = Path(record['log'])
+                    original = evidence.read_text()
+                    for damage in ('absent', 'empty', 'unreadable', 'stale', 'foreign',
+                                   'tree', 'command', 'legacy', 'no-record'):
+                        with self.subTest(damage=damage):
+                            value = dict(record)
+                            if damage == 'absent':
+                                evidence.unlink()
+                            elif damage == 'empty':
+                                evidence.write_text('')
+                            elif damage == 'unreadable':
+                                evidence.unlink()
+                                evidence.mkdir()  # deterministic even when tests run as root
+                            elif damage == 'stale':
+                                evidence.write_text('Ran 1 test in 0.1s\n\nOK\n')
+                            elif damage == 'foreign':
+                                value['log'] = str(runs)
+                            elif damage in ('tree', 'command'):
+                                value[damage] = 'different'
+                            elif damage == 'legacy':
+                                value = {k: record[k] for k in ('command', 'ok', 'reason', 'task', 'log')}
+                            cache.write_text(json.dumps(value))
+                            if damage == 'no-record':
+                                cache.unlink()
+                            unavailable = worker.gate_note(state, 'T-2', str(self.repo))
+                            self.assertIn('unavailable', unavailable)
+                            self.assertNotIn('all-green', unavailable)
+                            self.assertNotIn('it passed', unavailable)
+                            if damage == 'legacy':
+                                self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
+                                self.assertNotIn('already ran', unavailable)
+                            if evidence.is_dir():
+                                evidence.rmdir()
+                            evidence.write_text(original)
+                            cache.write_text(json.dumps(record))
+                    self.assertEqual(runs.read_text().count('ran'), count, 'explanation ran another check')
 
     def test_an_empty_verify_timeout_keeps_the_documented_default(self):
         """A service config that sets the name to nothing became `timeout ''`, and float('')
@@ -224,6 +309,22 @@ class WorkerTmpTests(unittest.TestCase):
                              return_value={'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass'}) as job:
             self.assertEqual(worker.review(state, 'T-1', str(self.repo), head, ''), 0)
         self.assertEqual(job.call_args.args[6], '1800')
+
+    def test_a_review_without_a_verdict_says_why_for_the_hold(self):
+        """A reviewer that ran out of time left only "no verdict": held as a validation failure,
+        the task was reimplemented by a fresh worker instead of reviewed again with more time."""
+        import contextlib
+        import io
+        state = self.elsewhere() / 'state'
+        head = worker.git(str(self.repo), 'rev-parse', 'HEAD')
+        for result, reason in (({'ok': False, 'text': '', 'why': 'timeout'}, 'the review ran out of time after 1800 s'),
+                               ({'ok': False, 'text': '', 'why': 'no_model'}, 'the reviewer did not finish (no_model)'),
+                               ({'ok': True, 'text': 'Checked the files.'}, 'the reviewer gave no verdict')):
+            with self.subTest(reason=reason), patch.dict(os.environ, PI_AUTOWORK_VERIFY_TIMEOUT='1800'), \
+                    patch.object(worker.pi_runtime, 'job', return_value=result), \
+                    contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(worker.review(state, 'T-1', str(self.repo), head, ''), 1)
+            self.assertIn(f'AUTOWORK_HOLD_REASON: {reason}\n', out.getvalue())
 
     def test_an_empty_task_timeout_keeps_the_documented_default(self):
         state = self.elsewhere() / 'state'
@@ -293,6 +394,39 @@ class WorkerTmpTests(unittest.TestCase):
         os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}; echo "CHECK . (1 modules)"; echo "FAIL: test_red (test_mod.T.test_red)"; printf "Ran 2 tests in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1'
         self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), os.environ['PI_AUTOWORK_VALIDATE']), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 3)  # red alone too: the base, red as well, decides
+
+    def test_a_failure_from_a_loaded_host_is_rerun_alone_once_main_check_is_done(self):
+        """Rerun side by side beside main's full suite, the engine tests timed out and held candidates
+        whose trees pass them: what stays red is rerun one at a time once main's check has ended."""
+        git = lambda *a: subprocess.run(['git', '-C', str(self.repo), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        busy = Path(self.temp.name) / 'busy'
+        busy.write_text('main check running\n')
+        (self.repo / 'test_mod.py').write_text('import unittest\nfrom pathlib import Path\n'
+                                               'class T(unittest.TestCase):\n'
+                                               f'    def test_loaded(self): self.assertFalse(Path({str(busy)!r}).exists())\n')
+        git('add', '-A')
+        git('commit', '-qm', 'merged')
+        runs = Path(self.temp.name) / 'runs'
+        command = (f'echo ran >> {runs}; echo "CHECK . (1 modules)"; echo "FAIL: test_loaded (test_mod.T.test_loaded)"; '
+                   'printf "Ran 1 test in 0.1s\\n\\nFAILED (failures=1)\\n"; exit 1')
+        state = Path(self.temp.name) / 'loaded'
+        state.mkdir()
+        main = subprocess.Popen(['sleep', '60'])
+        self.addCleanup(lambda: (main.kill(), main.wait()))
+        main_check.write(state, {'state': 'running', 'pid': main.pid, 'start_time': main_check.start_time(main.pid)})
+
+        def main_check_ends():
+            time.sleep(3)  # after the side-by-side reruns, which still see the load
+            busy.unlink()
+            main.kill()
+            main.wait()
+        ender = threading.Thread(target=main_check_ends)
+        ender.start()
+        self.addCleanup(ender.join)
+        self.assertEqual(worker.run_gate(state, 'T-1', str(self.repo), command), (True, ''))
+        self.assertEqual(runs.read_text().count('ran'), 1)  # no base suite was needed
+        self.assertEqual(json.loads(worker.gate_log(state, 'T-1').with_suffix('.reruns.json').read_text())['flaky'], [])
 
     def test_the_gate_runs_the_full_check_with_a_private_tmpdir(self):
         """The runner has no $TMPDIR: a check that requires one crashed on every candidate and its base."""
@@ -413,6 +547,45 @@ class WorkerTmpTests(unittest.TestCase):
 
 class ReviewScratchTests(unittest.TestCase):
     """Reviewers copied whole repositories into RAM-backed /tmp and left them there."""
+
+    def test_a_review_holds_a_port_block_of_its_own_until_it_ends(self):
+        """A task whose checks bind $AUTOWORK_PORT_BASE failed its review for want of it."""
+        import fcntl
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder) / 'repo', Path(folder) / 'state'
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@example.invalid',
+                            'commit', '-q', '--allow-empty', '-m', 'base'], check=True)
+            state.mkdir()
+            dispatch, _, _ = worker.engine_modules()
+            seen = {}
+
+            def held(base):
+                fd = os.open(dispatch.port_lease_dir() / str((base - 20100) // 100 + 1), os.O_RDWR)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                    return False
+                except BlockingIOError:
+                    return True
+                finally:
+                    os.close(fd)
+
+            def job(settings, role, task, checkout, prompt, *rest):
+                seen['base'] = int(os.environ['AUTOWORK_PORT_BASE'])
+                seen['held'] = held(seen['base'])
+                return {'ok': True, 'text': 'PI_AUTOWORK_VERIFY: pass all good'}
+
+            old_cwd = os.getcwd()
+            os.chdir(repo)
+            try:
+                with patch.object(worker.pi_runtime, 'job', job), patch.object(worker, 'pending_live', lambda c, t: []), \
+                        patch.dict(os.environ, {'PI_AUTOWORK_REVIEW_ROOT': str(state)}):
+                    self.assertEqual(worker.verify(str(state), 'T-1'), 0)
+            finally:
+                os.chdir(old_cwd)
+            self.assertTrue(seen['held'], 'the review ran without holding its port block')
+            self.assertFalse(held(seen['base']), 'the block stayed leased after the review')
 
     def test_a_review_gets_its_own_tmpdir_which_is_removed_afterwards(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -573,6 +746,209 @@ class BatchFailureTests(unittest.TestCase):
             # A new revision (the resolver merged it with the session) is a new candidate.
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('B', 'b1')]), [])
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('E', 'e1')]), ['A', 'E'])
+
+    def test_a_failed_batch_of_four_or_more_is_split_in_halves_until_the_failing_one_is_alone(self):
+        """23 commits waited: each failed batch of six sent all six to a review of their own."""
+        reported = [(t, t.lower()) for t in 'ABCDEFG']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'):
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ABCDEFG'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ABCDEF')})  # G was past the size
+            self.assertEqual(self.coordinator(folder).batch_due(reported), list('ABC'))
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('DEF'))  # restarted between the halves
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('DEF')})  # three: one at a time
+            landed = [r for r in reported if r[0] not in 'ABC']
+            self.assertEqual(self.coordinator(folder).batch_due(landed), [])  # D, E and F alone; G waits for a pair
+            # A half that shrinks to one candidate (the others landed) sends it alone too.
+            Path(folder, 'batch-split.json').write_text(json.dumps([['G@g', 'H@h'], ['I@i', 'J@j']]))
+            self.assertEqual(self.coordinator(folder).batch_due([('G', 'g'), ('I', 'i'), ('J', 'j')]), ['I', 'J'])
+            self.assertIn('G@g', json.loads(Path(folder, 'batch-failed.json').read_text()))
+
+
+    def test_suspects_integrate_alone_and_the_rest_batch_again(self):
+        """Halving cost a full check per round; the failing tests usually name the candidate."""
+        reported = [(t, t.lower()) for t in 'ABCD']
+        with tempfile.TemporaryDirectory() as folder, patch('pi_autowork.coordinator.LOG'):
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ABCD'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ABCD'), 'suspects': ['B']})
+            self.assertFalse(Path(folder, 'batch-split.json').exists())
+            self.assertEqual(json.loads(Path(folder, 'batch-failed.json').read_text()), ['B@b'])
+            self.assertEqual(self.coordinator(folder).batch_due(reported), list('ACD'))
+            # Every candidate a suspect tells nothing: halves, as before.
+            runner = self.coordinator(folder)
+            self.assertEqual(runner.batch_due(reported), list('ACD'))
+            runner.batch_done({'outcome': 'BATCH_GATE_FAILED', 'tasks': list('ACD'), 'suspects': list('ACD')})
+            self.assertEqual(json.loads(Path(folder, 'batch-failed.json').read_text()), ['A@a', 'B@b', 'C@c', 'D@d'])
+
+    def test_the_failing_tests_point_at_the_candidates_whose_changes_they_import_or_read(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo, state = Path(folder, 'repo'), Path(folder, 'state')
+            git = lambda *a: subprocess.run(['git', '-C', str(repo), *a], check=True, capture_output=True,
+                                            text=True).stdout.strip()
+            files = {'pkg/__init__.py': '', 'pkg/a.py': 'from . import helper\n', 'pkg/helper.py': 'X = 1\n',
+                     'pkg/b.py': 'Y = 2\n', 'guide/GUIDE.md': 'text\n', 'tests/notes.md': 'n\n',
+                     'tests/test_near.py': "ROOT.joinpath('notes.md')\n",
+                     'tests/test_a.py': 'from pkg import a\n',
+                     'tests/test_doc.py': "TEXT = open('guide/GUIDE.md').read()\n"}
+            for name, text in files.items():
+                (repo / name).parent.mkdir(parents=True, exist_ok=True)
+                (repo / name).write_text(text)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            git('add', '.')
+            git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base')
+            base, steps = git('rev-parse', 'HEAD'), []
+            for task, name in (('A', 'pkg/helper.py'), ('B', 'pkg/b.py'), ('C', 'guide/GUIDE.md'), ('D', 'tests/notes.md')):
+                (repo / name).write_text(task + '\n')
+                git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qam', task)
+                steps.append((task, git('rev-parse', 'HEAD')))
+            record = state / 'full-check' / f"tree-{git('rev-parse', 'HEAD^{tree}')}.json"
+            record.parent.mkdir(parents=True)
+
+            def suspects(failures, excused=()):
+                record.write_text(json.dumps({'result': {'failures': failures}, 'baseline_equivalent': list(excused)}))
+                return worker.batch_suspects(str(state), str(repo), base, steps)
+
+            self.assertEqual(suspects(['test_a.ATests.test_x']), ['A'])  # through pkg.a, which imports helper
+            self.assertEqual(suspects(['test_doc.DocTests.test_y']), ['C'])  # it reads the file by name
+            self.assertEqual(suspects(['test_near.T.test']), ['D'])  # a bare name, beside the test
+            self.assertEqual(suspects(['test_a.ATests.test_x', 'test_doc.DocTests.test_y']), ['A', 'C'])
+            self.assertEqual(suspects(['test_a.ATests.test_x', 'test_gone.T.test']), [])  # one unexplained
+            self.assertEqual(suspects(['test_a.ATests.test_x'], excused=['test_a.ATests.test_x']), [])  # base fails it too
+            record.unlink()
+            self.assertEqual(worker.batch_suspects(str(state), str(repo), base, steps), [])  # no record
+
+class BatchLandingTests(unittest.TestCase):
+    """TOOLSET-281-0d: a reload 4 s after `landing them now` sent one batch-passed candidate back to
+    a queue of single reviews for 15 hours. Until the passed candidates land, the runner neither
+    re-executes nor merges code from main into the session their verdicts were reached on."""
+
+    def runner(self, folder, states, record_age=0):
+        from pi_autowork import coordinator
+        runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+        runner.state, runner.seen = Path(folder), {}
+        runner.integration = runner.child = None
+        (runner.state / 'batch').mkdir()
+        for task in states:
+            (runner.state / 'batch' / f'{task}.json').write_text(json.dumps({'at': time.time() - record_age}))
+        (runner.state / 'batch-order.txt').write_text('\n'.join(states) + '\n')
+        runner.tasks = lambda snapshot=None: [{'task': t, 'state': s} for t, s in states.items()]
+        return runner, coordinator
+
+    def test_a_reload_waits_for_batch_passed_candidates_to_land(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {'A': 'closed', 'B': 'integrating', 'C': 'reported'})
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                    patch.object(coordinator.os, 'execv', side_effect=AssertionError('re-executed')):
+                self.assertIsNone(runner.reexec('Toolset updated to abc; restarting on it'))
+            self.assertEqual(said, ['Reload pending: waiting for B, C to land (passed in a batch)'])
+
+    def test_landed_or_expired_batch_verdicts_hold_nothing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {'A': 'closed', 'B': 'held'})
+            self.assertEqual(runner.batch_landing(), [])  # landed, or held: nothing to wait for
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {'B': 'reported'}, record_age=7300)
+            self.assertEqual(runner.batch_landing(), [])  # past the verdicts' two hours
+
+    def test_the_session_takes_no_code_from_main_until_the_batch_lands(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {'B': 'reported'})
+            runner.repo, runner.integ, runner.integ_branch, runner.base = '/repo', '/session', 'pi-autowork/s', 'main'
+            runner.session_busy = lambda: False
+            runner.commit_session_leftovers = lambda: self.fail('the session was touched')
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                    patch.object(coordinator, 'git', return_value='pi-autowork/pi_autowork/worker.py\n'):
+                self.assertFalse(runner.merge_main())
+                self.assertFalse(runner.merge_main())
+            self.assertEqual(said, ['Merge pending: B land first, on the trees their batch passed'])  # said once
+            runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
+            with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
+                self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
+class HeadlessApprovalTests(unittest.TestCase):
+    """TOOLSET-282-43: a worker loaded an interactive design skill, ended its session with "Do you
+    approve?" after 28 s, and the runner held the task as a dead worker for the owner to rescope."""
+
+    def run_worker(self, replies):
+        from pi_autowork import worker
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        tree = root / 'tree'
+        subprocess.run(['git', 'init', '-q', str(tree)], check=True)
+        git = lambda *a: subprocess.run(['git', '-C', str(tree), '-c', 'user.email=t@example.invalid',
+                                         '-c', 'user.name=T', *a], check=True, capture_output=True, text=True)
+        git('commit', '-q', '--allow-empty', '-m', 'base')
+        baseline = git('rev-parse', 'HEAD').stdout.strip()
+        prompt, report = root / 'prompt.md', root / 'attempt-1' / 'report.json'
+        report.parent.mkdir()
+        prompt.write_text(f'Task: T-1\nBaseline: {baseline}\nReport file: {report}\n')
+        calls = []
+
+        def job(settings, role, task, directory, message, session, limit, extra):
+            calls.append((message, session))
+            reply = replies[len(calls) - 1]
+            if reply == 'work':
+                (tree / 'done.txt').write_text('done\n')
+                git('add', 'done.txt')
+                git('commit', '-qm', 'work')
+                report.write_text(json.dumps({'task': 'T-1', 'commit': git('rev-parse', 'HEAD').stdout.strip()}))
+                return {'ok': True, 'text': 'Committed.'}
+            return {'ok': True, 'text': reply}
+
+        with patch.object(worker.pi_runtime, 'job', side_effect=job), \
+                patch.object(worker.pi_runtime, 'Settings', return_value=None):
+            code = worker.worker(str(root / 'state'), str(tree), str(prompt), str(report), 60)
+        return code, calls, report
+
+    def test_a_worker_that_asks_for_approval_is_resumed_once_in_its_session(self):
+        code, calls, report = self.run_worker(['Here is my design.\n\n**Do you approve?**', 'work'])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1], calls[1][1])  # the same session, the same attempt
+        self.assertIn('No person is attached', calls[1][0])
+        self.assertIsNotNone(json.loads(report.read_text())['commit'])
+
+    def test_a_worker_that_asks_twice_is_held_with_its_question(self):
+        code, calls, report = self.run_worker(['Do you approve?', 'Which option do you prefer?'])
+        self.assertEqual((code, len(calls)), (1, 2))
+        self.assertEqual(json.loads(report.read_text())['blockers'],
+                         ['the worker asked twice instead of implementing: Which option do you prefer?'])
+
+    def test_a_finished_worker_or_a_plain_ending_is_not_resumed(self):
+        self.assertEqual(len(self.run_worker(['work'])[1]), 1)
+        self.assertEqual(len(self.run_worker(['I could not finish.'])[1]), 1)
+
+
+class BatchableTests(unittest.TestCase):
+    def test_a_review_a_restart_cut_short_joins_the_next_batch(self):
+        """Left integrating by a restart, three commits waited behind every later batch, one
+        for 16 hours: only reported commits were ever batched."""
+        from pi_autowork.coordinator import batchable
+        rows = [{'task': 'A', 'state': 'reported', 'commit': 'a'}, {'task': 'B', 'state': 'integrating', 'commit': 'b'},
+                {'task': 'C', 'state': 'held', 'commit': 'c'}, {'task': 'D', 'state': 'running'}]
+        self.assertEqual(batchable(rows), [('A', 'a'), ('B', 'b')])
+        self.assertEqual(batchable(rows, {'A'}), [('B', 'b')])
+
+
+class BusyLineTests(unittest.TestCase):
+    """The wait for a session in the main checkout is said once per session: its changing status
+    ("running command", "terminal used 2 min ago") repeated the line every minute."""
+
+    def test_the_same_session_is_named_once_and_another_one_again(self):
+        from pi_autowork import coordinator
+        runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+        runner.seen = {}
+        said = []
+        reason = 'live or unknown external writer/session; preserve canonical checkout: pid {} pi in /repo (session: {})'
+        with patch.object(coordinator.LOG, 'say', side_effect=said.append):
+            for pid, status in ((7, 'running command'), (7, 'terminal used 2 min ago'), (8, 'running command')):
+                runner.integrated('A', {'outcome': 'BUSY', 'reason': reason.format(pid, status)})
+        self.assertEqual(len(said), 2, said)
+        self.assertIn('pid 8', said[1])
 
 
 class EnvironmentMarkerTests(unittest.TestCase):

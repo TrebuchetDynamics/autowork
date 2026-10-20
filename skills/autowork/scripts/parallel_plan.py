@@ -155,6 +155,14 @@ def _hint(task):
         return []
 
 
+def _files(task):
+    """The literal files a task declares (no directory, no glob). Two tasks naming the same one
+    conflict at merge: each held conflict cost a resolver run and a second review, and the
+    resolvers spent the afternoon on `coordinator.py` and `tests/test_pi_autowork.py`. A
+    directory or glob stays a hint, so a wide or missing Touches never holds anything."""
+    return {p for p in _hint(task) if not p.endswith('/') and not GLOB.search(p)}
+
+
 def _resources(task):
     """The resource names a Resources line starts with, before its explanation.
 
@@ -298,6 +306,17 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
         if id(task) not in hints:
             hints[id(task)] = _hint(task)
         return hints[id(task)]
+
+    file_sets = {}
+
+    def files(task):
+        if id(task) not in file_sets:
+            file_sets[id(task)] = _files(task)
+        return file_sets[id(task)]
+
+    def shared_file(a, b):
+        both = files(a) & files(b)
+        return min(both) if both else ''
     # A serial file (manifest, lockfile, CI, migration) conflicts only with other serial
     # work: each worker has its own worktree, so it cannot break a neighbour's build
     # (TOOLSET-160-df). Only an exclusive task runs alone and stops lower dispatch.
@@ -332,14 +351,16 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return 'dependency: held ' + b['id'] if depends(a, b) else ''
         if depends(a, b) or depends(b, a):
             return 'dependency conflict with ' + b['id']
-        # Overlapping Touches never hold a task (TOOLSET-161-17): integration merges in priority
-        # order and settles a real conflict there. Resources, serial and exclusive rules stay.
+        # A file both name waits for the other to land, and for a higher-priority task waiting on
+        # it. Directory and glob overlap only rank (TOOLSET-161-17), and an idle claim holds nothing.
         if claim or reserved:  # idle claim or waiting task
             other = ('in_progress ' if claim else '') + b['id']
             if resources(a) & resources(b):
                 return 'shared resource with ' + other
             if serial(a) and serial(b):
                 return 'serial path shared with ' + other
+            if reserved and (file := shared_file(a, b)):
+                return f'shares {file} with {other}, which goes first'
             return ''
         alone = '' if b['id'] in finished else exclusive(a) or exclusive(b)
         if alone:
@@ -348,6 +369,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             return 'serial path shared with ' + b['id']
         if resources(a) & resources(b):
             return 'shared resource with ' + b['id']
+        if file := shared_file(a, b):
+            return f'shares {file} with {b["id"]}; starts after it lands'
         return ''
 
     # Backfill: a task may start past a waiting higher-priority one only when it shares
@@ -390,8 +413,8 @@ def plan(tasks, running=(), *, all_tasks=(), parked=(), adopted=(), protected_fi
             dispatch.append(task)
             if exclusive(task):
                 stopped = ('priority task ' + tid + ': ' + exclusive(task), tid)
-    # Likely-independent work first: a task whose declared Touches overlap running or
-    # earlier-chosen work ranks lower for the free slots, but is not held (TOOLSET-161-17).
+    # Likely-independent work first: a task whose declared directories or globs overlap running
+    # or earlier-chosen work ranks lower for the free slots, but is not held (TOOLSET-161-17).
     chosen, ranked = {path for t in running for path in hint(t)}, []
     for task in dispatch:
         ranked.append((bool(_shared(hint(task), chosen)) if hint(task) else True, task))
