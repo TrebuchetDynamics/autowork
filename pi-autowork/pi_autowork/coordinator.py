@@ -323,6 +323,24 @@ class Coordinator:
             return []
         return [t for t in order if worker.batch_record(self.state, t).exists()]
 
+    def batch_landing(self):
+        """Batch-passed candidates not landed yet (TOOLSET-281-0d). Their verdicts hold only for
+        the trees they were reached on, so until they land the runner neither re-executes nor
+        merges code from main into the session: a reload 4 s after `landing them now` sent one
+        passed candidate back to the end of a queue of single reviews for 15 hours. The verdicts'
+        own two-hour lifetime (batch_pending) bounds the wait."""
+        chain = self.batch_chain()
+        if not chain or not self.batch_pending():
+            return []
+        states = {r.get('task'): r.get('state') for r in self.tasks()}
+        return [t for t in chain if states.get(t) in ('reported', 'integrating')]
+
+    def base_has_code(self):
+        """Whether main holds anything but planning files and docs the session lacks; a batch
+        verdict survives those (worker.same_code)."""
+        changed = git(self.repo, 'diff', '--name-only', f'{self.integ_branch}...{self.base}').split()
+        return any(p not in PLANNING_FILES and not p.startswith('docs/') for p in changed)
+
     def batch_pending(self):
         """Batch verdicts not used yet: the session holds still for them, or their trees no longer match."""
         folder = self.state / 'batch'
@@ -764,6 +782,13 @@ class Coordinator:
             return False  # a review or a merge resolution is running; the session merges after it
         if not self.integ and not self.load_session():
             return True
+        landing = self.batch_landing()
+        if landing and self.base_has_code():
+            note = f"{', '.join(landing)} land first, on the trees their batch passed"
+            if self.seen.get('merge-batch') != note:
+                self.seen['merge-batch'] = note
+                LOG.say(f'Merge pending: {note}')
+            return False
         self.commit_session_leftovers()
         ahead = self.ahead()
         if ahead == 0:
@@ -1499,9 +1524,10 @@ class Coordinator:
                 return
             if task in handled:
                 continue
-            if self.reexec_due():
+            if self.reexec_due() and task not in chain:
                 # Back-to-back reviews left no gap for a reload: one runner kept its morning
-                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews.
+                # release for hours (TOOLSET-236-4d). Re-execute now, between two reviews; a
+                # batch-passed candidate lands first, or the reload would wait on it forever.
                 self.resolve_deferred(deferred)
                 self.restart_if_updated()
                 return
@@ -1516,7 +1542,7 @@ class Coordinator:
             # after a moment is the review, and only it reads "verifying".
             finished = self.collect_integration(wait=1.5)
             if finished is None:
-                self.note_state(task, 'integrating')
+                self.note_integrating(task, chain)
                 finished = self.collect_integration(wait=3.5)
             if finished is None:
                 self.resolve_deferred(deferred)
@@ -1529,11 +1555,19 @@ class Coordinator:
                     queue.insert(0, first[1])
                 continue
             if finished[1].get('outcome') in ('INTEGRATED', 'HELD'):
-                self.note_state(task, 'integrating')  # a quick review still ran: say so before its answer
+                self.note_integrating(task, chain)  # a quick review still ran: say so before its answer
             self.integrated(*finished, resolve_conflicts=False)
             if finished[1].get('cause') == 'conflict':
                 deferred.append(task)
         self.resolve_deferred(deferred)
+
+    def note_integrating(self, task, chain):
+        """A batch-passed candidate lands on its batch's verdict: 'landing', not 'verifying', which
+        read as a fresh review for the 15 hours one such candidate waited (TOOLSET-281-0d)."""
+        if task in chain:
+            self.note_state(task, 'landing', 'passed in its batch; not reviewed again')
+        else:
+            self.note_state(task, 'integrating')
 
     def resolve_deferred(self, deferred):
         """Resolve the conflicts this pass held back, then batch their merged revisions so they
@@ -2394,12 +2428,15 @@ class Coordinator:
         are adopted. Not while a review or a Pi job runs, nor once a review has ended but its
         answer is not read yet (TOOLSET-187-1d: a reload deferred behind a review re-executed the
         moment it ended and lost it): the cycle reads it, and a later cycle re-executes."""
-        if self.integration or self.child or self.resolvers:
+        landing = [] if self.integration or self.child or self.resolvers else self.batch_landing()
+        if self.integration or self.child or self.resolvers or landing:
             what = (f"the review of {self.integration['task']}" if self.integration else
-                    f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else 'a Pi job')
+                    f"the merge resolution of {', '.join(sorted(self.resolvers))}" if self.resolvers else
+                    'a Pi job' if self.child else '')
+            what = f'{what} to end' if what else f"{', '.join(landing)} to land (passed in a batch)"
             if self.seen.get('reexec-pending') != what:
                 self.seen['reexec-pending'] = what
-                LOG.say(f'Reload pending: waiting for {what} to end')
+                LOG.say(f'Reload pending: waiting for {what}')
             return
         package = self.package
         if reload:

@@ -664,6 +664,57 @@ class BatchFailureTests(unittest.TestCase):
             self.assertEqual(self.coordinator(folder).batch_due([('A', 'a2'), ('E', 'e1')]), ['A', 'E'])
 
 
+class BatchLandingTests(unittest.TestCase):
+    """TOOLSET-281-0d: a reload 4 s after `landing them now` sent one batch-passed candidate back to
+    a queue of single reviews for 15 hours. Until the passed candidates land, the runner neither
+    re-executes nor merges code from main into the session their verdicts were reached on."""
+
+    def runner(self, folder, states, record_age=0):
+        from pi_autowork import coordinator
+        runner = coordinator.Coordinator.__new__(coordinator.Coordinator)
+        runner.state, runner.seen = Path(folder), {}
+        runner.integration = runner.child = None
+        (runner.state / 'batch').mkdir()
+        for task in states:
+            (runner.state / 'batch' / f'{task}.json').write_text(json.dumps({'at': time.time() - record_age}))
+        (runner.state / 'batch-order.txt').write_text('\n'.join(states) + '\n')
+        runner.tasks = lambda snapshot=None: [{'task': t, 'state': s} for t, s in states.items()]
+        return runner, coordinator
+
+    def test_a_reload_waits_for_batch_passed_candidates_to_land(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {'A': 'closed', 'B': 'integrating', 'C': 'reported'})
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                    patch.object(coordinator.os, 'execv', side_effect=AssertionError('re-executed')):
+                self.assertIsNone(runner.reexec('Toolset updated to abc; restarting on it'))
+            self.assertEqual(said, ['Reload pending: waiting for B, C to land (passed in a batch)'])
+
+    def test_landed_or_expired_batch_verdicts_hold_nothing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {'A': 'closed', 'B': 'held'})
+            self.assertEqual(runner.batch_landing(), [])  # landed, or held: nothing to wait for
+        with tempfile.TemporaryDirectory() as folder:
+            runner, _ = self.runner(folder, {'B': 'reported'}, record_age=7300)
+            self.assertEqual(runner.batch_landing(), [])  # past the verdicts' two hours
+
+    def test_the_session_takes_no_code_from_main_until_the_batch_lands(self):
+        with tempfile.TemporaryDirectory() as folder:
+            runner, coordinator = self.runner(folder, {'B': 'reported'})
+            runner.repo, runner.integ, runner.integ_branch, runner.base = '/repo', '/session', 'pi-autowork/s', 'main'
+            runner.session_busy = lambda: False
+            runner.commit_session_leftovers = lambda: self.fail('the session was touched')
+            said = []
+            with patch.object(coordinator.LOG, 'say', side_effect=said.append), \
+                    patch.object(coordinator, 'git', return_value='pi-autowork/pi_autowork/worker.py\n'):
+                self.assertFalse(runner.merge_main())
+                self.assertFalse(runner.merge_main())
+            self.assertEqual(said, ['Merge pending: B land first, on the trees their batch passed'])  # said once
+            runner.commit_session_leftovers, runner.ahead = (lambda: None), (lambda: 0)
+            with patch.object(coordinator, 'git', return_value='TODO.md\ndocs/plan.md\n'):
+                self.assertTrue(runner.merge_main())  # planning and docs leave the verdicts valid
+
+
 class BusyLineTests(unittest.TestCase):
     """The wait for a session in the main checkout is said once per session: its changing status
     ("running command", "terminal used 2 min ago") repeated the line every minute."""

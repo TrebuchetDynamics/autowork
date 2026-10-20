@@ -84,9 +84,9 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 
 ### TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
 
-- [ ] TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
+- [x] TOOLSET-281-0d — A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first
 - Short: Batch pass lands before reload
-- Status: open
+- Status: done 2026-10-20 (interactive session): reload and session merge wait for batch-passed candidates to land; `landing` phase in log and TUI; unit and runner tests.
 - Goal: PI-RUNNER
 - Evidence: (2026-10-20, this repository's runner): at 20:56 a batch passed three candidates and logged 'landing them now'; 4 s later the runner reloaded onto a new toolset. Two landed; the third has sat in 'integrating' for over 15 h behind about 20 queued candidates, each reviewed one at a time.
 - Touches: pi-autowork/pi_autowork/coordinator.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/test_parallel_integrate.py, tests/test_pi_autowork.py, pi-autowork/pi_autowork/fleet_view.py

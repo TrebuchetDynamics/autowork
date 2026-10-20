@@ -1239,14 +1239,6 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-281-0d",
-      "section": "Now",
-      "status": "open",
-      "title": "A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first"
-    },
-    {
-      "depends_on": [],
-      "goal": "PI-RUNNER",
       "id": "TOOLSET-282-43",
       "section": "Now",
       "status": "open",
@@ -3302,6 +3294,14 @@
       "section": "Done",
       "status": "done",
       "title": "Select and copy terminal TUI text by mouse dragging"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-281-0d",
+      "section": "Done",
+      "status": "done",
+      "title": "A candidate that passed its batch lands before the runner reloads, and after an interrupted landing it lands first"
     },
     {
       "depends_on": [

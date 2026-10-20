@@ -154,7 +154,7 @@ def _phases(state_dir):
     return found
 
 
-PHASE_WORDS = ('waiting for a check slot', 'waiting to integrate', 'set aside', 'verifying', 'implemented', 'integrating', 'integrated',
+PHASE_WORDS = ('waiting for a check slot', 'waiting to integrate', 'set aside', 'verifying', 'landing', 'implemented', 'integrating', 'integrated',
                'running', 'pending', 'paused', 'done', 'failed', 'held', 'closed')
 
 
@@ -279,6 +279,8 @@ def doing(lane):
     text = doing_text(lane.activity) if lane.activity else ''
     if lane.phase == 'verifying':
         return 'reviewer: ' + (text or 'starting')
+    if lane.phase == 'landing':
+        return 'landing: ' + (lane.detail or 'passed in its batch')
     return text or ('starting' if lane.phase in ('starting', 'running', 'implementing') else lane.phase)
 
 
@@ -552,7 +554,7 @@ TASK_LINE = re.compile(r'^\[(\d\d:\d\d)\] (\S+): (\w+)\b')
 UNIT_LINE = re.compile(r'^(Starting|Started|Stopping|Stopped) pi-autowork@|^pi-autowork@\S+: ')
 BANNER = re.compile(r'^(PI AUTOWORK$|Repository: |Toolset: |Engine: |Primary: |Fallback: |Budget: |Mode: )')
 WORD_STYLES = {'done': 'green', 'integrated': 'green', 'failed': 'bold red', 'running': 'cyan',
-               'verifying': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan', 'paused': 'yellow'}
+               'verifying': 'cyan', 'landing': 'cyan', 'implemented': 'cyan', 'resuming': 'cyan', 'paused': 'yellow'}
 
 
 def log_lines(text):

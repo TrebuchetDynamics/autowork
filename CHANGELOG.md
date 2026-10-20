@@ -274,6 +274,12 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Candidates that passed a batch land on their batch verdicts: until they have landed, the
+  runner defers a reload and takes no code from main into the session (planning and docs
+  still come through), and the log and TUI say `landing`, not `verifying`. A reload four
+  seconds after `landing them now` had sent one passed candidate to the back of the queue
+  for 15 hours (TOOLSET-281-0d).
+
 - A worker that committed and wrote its report but never exited keeps its commit at the
   worker timeout: the slot is reported with that commit instead of interrupted. A
   finished task was discarded twice this way and raised as an owner rescope question.
