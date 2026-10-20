@@ -1492,6 +1492,11 @@ class Coordinator:
                 self.resolve_deferred(deferred)
                 self.restart_if_updated()
                 return
+            if deferred and task not in conflicts:
+                # Before a review, which would keep the resolver waiting until it ends: eight held
+                # conflicts sat behind the next candidate's 45-minute review.
+                self.resolve_deferred(deferred)
+                return
             self.follow_base()  # each review validates against the main branch as it is now
             self.start_integration(task)
             # Quick refusals (another task first, a busy writer) answer at once; one still running
