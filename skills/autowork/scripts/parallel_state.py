@@ -460,7 +460,7 @@ def rescope(common, old, touches, *, contract=None):
     value = {k: v for k, v in old.items() if k not in ('reason', 'cause', 'outside')}
     value.update(state='reported', rescoped=True, touches=touches)
     if contract is not None:
-        # Consume this answer without overwriting the original admission evidence.
+        # Admission uses this answer for rescoped slots; keep the dispatch evidence intact.
         value['rescoped_contract'] = contract.strip()
     return write_slot(common, value, old)
 
