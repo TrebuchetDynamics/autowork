@@ -945,7 +945,13 @@ def entry_changes(repo, common, slot):
         return result
 
     before, after = fields(previous.strip()), fields(items[0][0].strip())
-    return sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+    return sorted(key for key in before.keys() | after.keys()
+                  if key not in DISPLAY_FIELDS and before.get(key) != after.get(key))
+
+
+# How a task is shown or ordered, not what it asks: adding `Short:` to every entry sent each held
+# task's finished work aside as if its contract had changed.
+DISPLAY_FIELDS = ('Short', 'Priority reason')
 
 
 def blocker_resolved(repo, common, slot, hold):

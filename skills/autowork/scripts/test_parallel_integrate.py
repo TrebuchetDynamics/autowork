@@ -912,6 +912,21 @@ finally:
             module.set_aside(self.repo, self.owner, 'A')
         self.assertEqual(state.slots(self.common)[0]['state'], 'integrated')
 
+    def test_a_display_only_field_is_not_a_changed_entry(self):
+        """Adding `Short:` to every task set each held task's finished work aside as rewritten."""
+        self.worker()
+        module = self.module()
+        todo = self.repo / 'TODO.md'
+        slot = state.slots(self.common)[0]
+        contract = execution.goals_module().task_bodies(todo.read_text())['A'][0][0].strip()
+        (dispatch.data_dir(self.common, slot) / 'contract.txt').write_text(contract + '\n')
+        module.hold(self.common, slot, 'failure', cause='validation')
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: offline fixture\n'
+                                                 '  Short: A short title\n  Priority reason: first', 1))
+        self.assertFalse(module.entry_changed(self.repo, self.common, state.slots(self.common)[0]))
+        todo.write_text(todo.read_text().replace('Acceptance: offline fixture', 'Acceptance: a rewritten scope', 1))
+        self.assertEqual(module.entry_changes(self.repo, self.common, state.slots(self.common)[0]), ['Acceptance'])
+
     def test_an_integrated_task_whose_entry_changed_is_set_aside_and_queued_again(self):
         self.worker()
         module = self.module()

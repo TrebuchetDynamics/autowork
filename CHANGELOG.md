@@ -274,6 +274,9 @@ claim of a tagged release, completed installation or live workflow qualification
 
 ### Fixed
 
+- Adding a display-only field to a task (`Short:`, `Priority reason:`) no longer reads as a
+  changed entry. Adding `Short:` to every task set each held task's finished work aside and
+  ran it fresh, as if its contract had been rewritten.
 - Parallel `reconcile` no longer aborts for every slot when one worker's HEAD shares no
   history with its baseline; that slot is held with cause `diverged`. A worker adopted
   after surviving the stop that paused it no longer keeps its pause marker, so its
