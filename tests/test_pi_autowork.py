@@ -1256,6 +1256,10 @@ class EngineTests(Fixture):
         self.assertTrue(list(self.state.glob('*/full-check/base-*.json')))  # the base result is cached
         prompt = next(self.repo.glob('.git/autowork-execution/slot-data/A/attempt-1/prompt.md')).read_text()
         self.assertIn('Do not run the full check', prompt)  # the runner's gate is the one run (TOOLSET-227-a8)
+        for review in self.runs('verify'):
+            self.assertIn('baseline-equivalent failures: other.T.test_y', review['message'])
+            self.assertIn('original inventory: exit 1; failures: other.T.test_y', review['message'])
+            self.assertNotIn('all-green', review['message'])
 
     def test_a_reviewer_that_changes_files_fails_verification(self):
         self.plan({'verify:A': ['tamper', 'tamper']})
@@ -2094,7 +2098,7 @@ class EngineTests(Fixture):
                     ('independent reviewer', 'changed reviewer', True),
                     ('Checks that need a physical', 'Checks requiring a physical', True),
                     ('The worker recorded no pending', 'The worker listed no pending', True),
-                    ('The runner already ran', 'The runner executed', True),
+                    ('recorded full-check gate', 'recorded full-suite result', True),
                     ("verdict == 'fail'", "verdict != 'fail'", True),
                     ('command = main_check.full_check(checkout)', 'command = None', True),
                     ("'PI_AUTOWORK_VALIDATE_TIMEOUT', 3600", "'PI_AUTOWORK_VALIDATE_TIMEOUT', 3601", True),

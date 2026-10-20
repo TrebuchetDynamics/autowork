@@ -126,20 +126,26 @@ class WorkerTmpTests(unittest.TestCase):
         git('commit', '-qam', 'merged')
         runs = Path(self.temp.name) / 'runs'
         state = Path(self.temp.name) / 'state'
-        os.environ['PI_AUTOWORK_VALIDATE'] = f'echo ran >> {runs}'
+        command = f'echo ran >> {runs}; printf "Ran 1 test in 0.1s\\n\\nOK\\n"'
+        os.environ['PI_AUTOWORK_VALIDATE'] = command
         self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
         for _ in range(2):  # a re-review of the same tree, as after a reviewer change
             self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
         self.assertEqual(runs.read_text().count('ran'), 1)
         note = worker.gate_note(state, 'T-1', str(self.repo))
-        self.assertIn(f'`echo ran >> {runs}`', note)
+        self.assertIn(f'`{command}`', note)
         self.assertIn('it passed', note)
-        self.assertIn(str(worker.gate_log(state, 'T-1')), note)
+        self.assertIn('all-green', note)
+        self.assertIn(git('rev-parse', 'HEAD^{tree}').stdout.strip(), note)
         self.assertIn('Do not run the full check again', note)
         (self.repo / 'a.txt').write_text('changed\n')  # a new tree runs it again
         git('commit', '-qam', 'changed')
         worker.full_suite_gate(state, 'T-1', str(self.repo))
         self.assertEqual(runs.read_text().count('ran'), 2)
+        os.environ['PI_AUTOWORK_VALIDATE'] = command + '; true'  # the command is part of the key
+        self.assertIn('unavailable', worker.gate_note(state, 'T-1', str(self.repo)))
+        worker.full_suite_gate(state, 'T-1', str(self.repo))
+        self.assertEqual(runs.read_text().count('ran'), 3)
         os.environ.pop('PI_AUTOWORK_VALIDATE')
         self.assertEqual(worker.gate_note(state, 'T-1', str(self.repo)), '')
 
@@ -200,20 +206,98 @@ class WorkerTmpTests(unittest.TestCase):
         self.assertIn('no base to compare with', reason)
         self.assertRaises(ValueError, worker.base_result, state, str(self.repo), command, '', 10)
 
-    def test_a_cached_verdict_leaves_the_reviewer_a_log_that_exists(self):
-        """The verdict is cached per tree while the note names the task's log, so a second task
-        that hit the cache was told to read a file nobody had written."""
-        self.committed_repo()
-        state = self.elsewhere() / 'state'
-        command = 'echo "Ran 1 test in 0.1s"; echo; echo OK'
-        os.environ['PI_AUTOWORK_VALIDATE'] = command
-        self.addCleanup(os.environ.pop, 'PI_AUTOWORK_VALIDATE', None)
-        self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
-        self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
-        log = worker.gate_log(state, 'T-2')
-        self.assertIn(str(log), worker.gate_note(state, 'T-2', str(self.repo)))
-        self.assertTrue(log.is_file(), 'the note names a log the cached verdict never wrote')
-        self.assertEqual(log.read_text(), worker.gate_log(state, 'T-1').read_text())
+    def test_a_cached_verdict_explains_its_producing_evidence_not_the_current_tasks_log(self):
+        """Missing or stale task logs must not turn exception acceptance into all-green."""
+        (self.repo / 'test_mod.py').write_text('import unittest\nclass T(unittest.TestCase):\n'
+                                               '    def test_ok(self): pass\n'
+                                               '    def test_red(self): self.fail()\n')
+        git = self.committed_repo()
+        tree = git('rev-parse', 'HEAD^{tree}').stdout.strip()
+        for failures, kind, classification in (([], 'unittest', 'all-green'),
+                                               ([], 'skipped', 'accepted with skipped tests'),
+                                               ([], 'pytest', 'unavailable'), ([], 'mixed', 'unavailable'),
+                                               ([], 'unknown', 'unavailable'),
+                                               (['test_red'], 'unittest', 'baseline-equivalent'),
+                                               (['test_ok'], 'unittest', 'isolated-rerun'),
+                                               (['test_ok', 'test_red'], 'unittest', 'baseline-equivalent')):
+            with self.subTest(failures=failures, kind=kind):
+                state, runs = self.elsewhere() / 'state', self.elsewhere() / 'runs'
+                lines = ['CHECK . (1 modules)'] + [f'FAIL: {f} (test_mod.T.{f})' for f in failures]
+                lines += ['Ran 3 tests in 0.1s', '',
+                          'FAILED (failures=1, skipped=1)' if failures else 'OK']
+                if kind == 'skipped':
+                    lines[-1] = 'OK (skipped=1)'
+                elif kind in ('pytest', 'unknown'):
+                    lines = ['1 passed, 1 skipped in 0.01s' if kind == 'pytest' else 'custom check completed']
+                if kind == 'mixed':
+                    lines += ['1 passed, 1 skipped in 0.01s']
+                if failures:
+                    lines += ['RESOURCE_GATE_SKIP: busy host']
+                command = (f'echo ran >> {runs}; printf "%s\\n" ' +
+                           ' '.join(repr(line) for line in lines) + f'; exit {int(bool(failures))}')
+                with patch.dict(os.environ, PI_AUTOWORK_VALIDATE=command):
+                    self.assertEqual(worker.full_suite_gate(state, 'T-1', str(self.repo)), (True, ''))
+                    initial = worker.gate_note(state, 'T-1', str(self.repo))
+                    self.assertIn(classification, initial)
+                    self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
+                    log = worker.gate_log(state, 'T-2')
+                    self.assertEqual(log.read_text(), worker.gate_log(state, 'T-1').read_text())
+                    log.unlink()  # cross-task explanation needs no task-local log
+                    worker.gate_log(state, 'T-1').write_text('OK\n')  # overwritten by a later task run
+                    note = worker.gate_note(state, 'T-2', str(self.repo))
+                    self.assertEqual(note, initial)
+                    self.assertIn('T-1', note)
+                    self.assertIn(tree, note)
+                    self.assertIn(f'`{command}`', note)
+                    self.assertIn('Do not run the full check again', note)
+                    for failure in failures:
+                        self.assertIn(f'test_mod.T.{failure}', note)
+                    if failures:
+                        self.assertNotIn('all-green', note)
+                        self.assertIn('unittest skips: 1', note)
+                        self.assertIn('resource-gate skips: 1', note)
+                    if len(failures) == 2:
+                        self.assertIn('isolated-rerun', note)
+                    count = runs.read_text().count('ran')
+                    self.assertEqual(count, 2 if 'test_red' in failures else 1)
+                    cache = state / 'full-check' / f'tree-{tree}.json'
+                    record = json.loads(cache.read_text())
+                    evidence = Path(record['log'])
+                    original = evidence.read_text()
+                    for damage in ('absent', 'empty', 'unreadable', 'stale', 'foreign',
+                                   'tree', 'command', 'legacy', 'no-record'):
+                        with self.subTest(damage=damage):
+                            value = dict(record)
+                            if damage == 'absent':
+                                evidence.unlink()
+                            elif damage == 'empty':
+                                evidence.write_text('')
+                            elif damage == 'unreadable':
+                                evidence.unlink()
+                                evidence.mkdir()  # deterministic even when tests run as root
+                            elif damage == 'stale':
+                                evidence.write_text('Ran 1 test in 0.1s\n\nOK\n')
+                            elif damage == 'foreign':
+                                value['log'] = str(runs)
+                            elif damage in ('tree', 'command'):
+                                value[damage] = 'different'
+                            elif damage == 'legacy':
+                                value = {k: record[k] for k in ('command', 'ok', 'reason', 'task', 'log')}
+                            cache.write_text(json.dumps(value))
+                            if damage == 'no-record':
+                                cache.unlink()
+                            unavailable = worker.gate_note(state, 'T-2', str(self.repo))
+                            self.assertIn('unavailable', unavailable)
+                            self.assertNotIn('all-green', unavailable)
+                            self.assertNotIn('it passed', unavailable)
+                            if damage == 'legacy':
+                                self.assertEqual(worker.full_suite_gate(state, 'T-2', str(self.repo)), (True, ''))
+                                self.assertNotIn('already ran', unavailable)
+                            if evidence.is_dir():
+                                evidence.rmdir()
+                            evidence.write_text(original)
+                            cache.write_text(json.dumps(record))
+                    self.assertEqual(runs.read_text().count('ran'), count, 'explanation ran another check')
 
     def test_an_empty_verify_timeout_keeps_the_documented_default(self):
         """A service config that sets the name to nothing became `timeout ''`, and float('')
