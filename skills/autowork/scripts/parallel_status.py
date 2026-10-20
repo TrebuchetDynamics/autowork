@@ -225,6 +225,7 @@ def _snapshot(repo, common, now):
                          commit=slot.get('commit'), integration=slot.get('integration'), attempt=slot['attempt'],
                          worker_live=live, cause=slot.get('cause'), requested=slot.get('requested'),
                          ledger_edit_dropped=slot.get('ledger_edit_dropped'),
+                         doc_impact=(slot.get('report') or {}).get('doc_impact'),
                          paused=bool(slot.get('paused')),
                          answered=max(int(s.get('answered') or 0) for s in [slot, *slot.get('previous_attempts', [])]),
                          blocked_by=[]))

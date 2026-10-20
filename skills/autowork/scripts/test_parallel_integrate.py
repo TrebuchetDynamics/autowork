@@ -1,4 +1,5 @@
 """Offline integration acceptance using disposable real Git repositories."""
+import hashlib
 import importlib
 import json
 import os
@@ -740,6 +741,60 @@ finally:
         self.assertEqual(self.module().live_items('on a phone'), ['on a phone'])
         self.assertEqual(self.module().live_items(['a', '', '  ', None, {'command': 'adb'}]), ['a', 'adb'])
         self.assertEqual(self.module().live_items(None), [])
+
+    def test_doc_impact_is_source_bound_and_incomplete_assessments_remain_pending(self):
+        _, commit = self.worker(files={'A.txt': 'new interface\n', 'guide.md': 'new interface\n'})
+        module = self.module()
+        slot = state.slots(self.common)[0]
+        path = dispatch.data_dir(self.common, slot) / 'report.json'
+        report = execution.read(path)
+        contracts = {t['id']: t for t in dispatch.contracts(self.repo)}
+        check = {'command': 'test -s guide.md', 'result': 'pass', 'summary': 'read back interface'}
+        cases = [
+            (None, 'pending'),  # legacy evidence must be assessed, not rejected or silently excused
+            ({'status': 'not_needed', 'reason': 'guide already covers interface', 'paths': ['guide.md']}, 'not_needed'),
+            ({'status': 'updated', 'reason': 'guide reconciled with interface',
+              'paths': ['guide.md'], 'checks': [check]}, 'updated'),
+            ({'status': 'pending', 'reason': 'shared runbook needs command', 'paths': [],
+              'resume': 'DOCS-MAINTAINER: reconcile shared runbook'}, 'pending'),
+            ({'status': 'updated', 'reason': 'unchecked assertion', 'paths': ['guide.md']}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'missing document', 'paths': ['absent.md']}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'foreign path', 'paths': ['../foreign.md']}, 'pending'),
+            ({'status': 'not_needed'}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'metadata only', 'paths': []}, 'not_needed'),
+            ({'status': 'updated', 'reason': 'old assessment', 'paths': ['guide.md'],
+              'checks': [check], 'inputs': {'commit': self.baseline}}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'invalid path', 'paths': ['guide\0.md']}, 'pending'),
+        ]
+        for impact, expected in cases:
+            with self.subTest(impact=impact):
+                execution.save(path, dict(report, checks=[check], **({'doc_impact': impact} if impact else {})))
+                _, assessed = module.verify(self.repo, self.common, slot, contracts)
+                evidence = assessed['doc_impact']
+                self.assertEqual(evidence['status'], expected)
+                self.assertTrue(evidence['reason'])
+                self.assertEqual(evidence['inputs']['commit'], commit)
+                self.assertEqual(evidence['inputs']['baseline'], self.baseline)
+                self.assertEqual(evidence['inputs']['task_contract_sha256'],
+                                 hashlib.sha256(contracts['A']['contract'].encode()).hexdigest())
+                if expected == 'pending':
+                    self.assertTrue(evidence['resume'])
+                elif evidence['paths']:
+                    self.assertEqual(evidence['inputs']['documents']['guide.md'],
+                                     self.git('rev-parse', commit + ':guide.md'))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(state.slots(self.common)[0]['report']['doc_impact']['status'], 'pending')
+        # Resume an older landed intent without replaying implementation or validation.
+        execution.save(path, report)
+        landed = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(landed, state='integrating', report=report), landed)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10)['outcome'], 'INTEGRATED')
+        before = state.slots(self.common)[0]['report']['doc_impact']
+        self.assertEqual(before['status'], 'pending')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertEqual(state.slots(self.common)[0]['report']['doc_impact'], before)
+        from parallel_status import snapshot
+        self.assertEqual(snapshot(self.repo)['tasks'][0]['doc_impact'], before)
 
     def test_advisory_check_failures_integrate_but_do_not_override_the_gate(self):
         self.worker()

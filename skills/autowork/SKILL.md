@@ -81,7 +81,15 @@ review step. Keep Hermes Agent unchanged.
    gates. A missing required review holds completion, not unrelated authorized work.
    Follow
    [partial delivery and the critical path](references/iteration-and-decisions.md#partial-delivery-and-the-critical-path).
-5. **Close out.** Commit attributable verified paths locally unless forbidden.
+5. **Close out.** Assess doc impact from the verified diff, Acceptance and actual docs:
+   record `not_needed` with reason, `updated` with paths/readback/checks, or `pending`
+   with the gap and resume action. Follow the shared [scoped documentation closeout](../shared/ENGINEERING-CYCLE.md#one-canonical-backlog-one-executor-one-closure-owner):
+   resolve bundled Docs Sync in this host and run Maintain only for a concrete delta.
+   Workers update in-scope component docs and report shared-doc gaps for the
+   coordinator/DOCS-MAINTAINER; archive rendering is not a docs pass. Preserve
+   implementation and pending evidence on interruption; never replay implementation
+   or launch work after a stop/pause/budget limit to finish docs.
+   Commit attributable verified paths locally unless forbidden.
    Use ordinary Git, repository review and integration policy. Inspect fresh target
    state and serialize canonical writes; preserve unrelated dirty work. Never push,
    deploy, publish, spend money, place trades or broaden live authority without its
