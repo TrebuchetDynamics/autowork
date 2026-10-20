@@ -81,11 +81,12 @@ async def main():
             assert 'on you' not in detail and 'model gpt-6.1-sol' in detail, detail
             assert '23 waiting: 19 wait for TASK-036 (overlapping files) · 4 on dependencies' in detail, detail
             runners = app.query_one('#runners')
-            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Run', 'Land', 'Wait',
-                                                                        'Held', 'Total', 'Needs', 'Now']
+            # TOOLSET-289-71 (test_runner_columns): the owner's four headlines.
+            assert [str(c.label) for c in runners.columns.values()] == ['Runner', 'State', 'Active', 'Mergeable',
+                                                                        'Waiting', 'Blocker', 'Total', 'Needs', 'Now']
             assert [str(c) for c in runners.get_row_at(0)[2:7]] == ['0', '0', '23', '1', '24']
-            assert '19 wait for TASK-036 (overlapping files)' in str(runners.get_row_at(0)[7])
-            assert '24 open: 0 working · 0 to land · 23 waiting · 1 held' in detail, detail
+            assert '19 wait for TASK-036 (overlapping' in str(runners.get_row_at(0)[7]), runners.get_row_at(0)  # cut to fit
+            assert '24 open: 0 active · 0 mergeable · 23 waiting · 1 blocker' in detail, detail
             # The keys, each word's first letter highlighted in it; one key per action.
             hints = app.query_one('#detail').render()
             assert str(hints).rstrip().endswith('Log  Pause  Stop  Restart  Model  Fallback  Tasks  New  Quit'), str(hints)

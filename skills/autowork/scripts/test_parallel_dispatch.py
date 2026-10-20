@@ -154,8 +154,8 @@ class DispatchTests(unittest.TestCase):
         code, result = self.apply()
         self.assertEqual((code, result['outcome']), (0, 'DISPATCHED'), result)
         self.assertEqual([s['task'] for s in result['dispatched']], ['A', 'B'])
-        # D shares a.txt with A: Touches only rank it, so it waits for a free slot (TOOLSET-161-17).
-        self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['D'])
+        # D shares a.txt with A: it starts after A lands.
+        self.assertIn('shares a.txt with A', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertIn('all 2 worker slots busy', {w['id']: w['reason'] for w in result['waiting']}['E'])
         self.assertNotIn('C', [w['id'] for w in result['waiting']])  # C's dependency is unfinished
         _, again = self.apply()
@@ -665,7 +665,8 @@ worker.worker(sys.argv[1], sys.argv[3], sys.argv[2], sys.argv[4], '1')
         self.close_on_base(task('A', 'a.txt'), task('B', 'b.txt'), task('C', 'c.txt', 'A'),
                            task('E', 'e.txt').replace('- [ ] E', '- [x] E'), task('D', 'a.txt'))
         _, result = self.apply('4', '--base-ref', 'trunk')
-        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B', 'D'])
+        self.assertEqual(sorted(d['task'] for d in result['dispatched']), ['A', 'B'])
+        self.assertIn('shares a.txt with A', {w['id']: w['reason'] for w in result['waiting']}['D'])
         self.assertNotIn('E', [w['id'] for w in result['waiting']])
 
     def test_an_unreadable_base_falls_back_to_the_session_ledger(self):
@@ -1394,11 +1395,12 @@ class AdmitTests(unittest.TestCase):
                               + list(parked), parked=list(parked), adopted=set(), protected=None)
 
     def test_an_interrupted_candidate_resumes_before_fresh_work_on_its_files(self):
-        """TOOLSET-161-17: fresh work on the same files is not held; it starts after the resume."""
+        """Fresh work on the same file waits for the resumed candidate to land."""
         fresh, interrupted = contract('FRESH', 'lib/x.dart'), contract('OLD', 'lib/x.dart, test/x_test.dart')
         result = self.admit([fresh, interrupted], restartable={'OLD'}, occupying={'OLD'})
-        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD', 'FRESH'])
-        self.assertEqual(result['waiting'], [])
+        self.assertEqual([t['id'] for t in result['dispatch']], ['OLD'])
+        self.assertEqual(result['waiting'], [{'id': 'FRESH', 'reason': 'shares lib/x.dart with OLD; starts after it lands',
+                                              'blocked_by': ['OLD']}])
 
     def test_a_commit_held_for_overlap_stops_nothing_but_its_dependents(self):
         held, interrupted = contract('HELD', 'lib/x.dart'), contract('OLD', 'lib/x.dart')

@@ -18,7 +18,7 @@ import time
 
 from pi_autowork import health, main_check, questions as owner_questions
 
-KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'held', 'contract': 'not runnable',
+KINDS = {'runner': 'runner', 'cycle': 'dependency cycle', 'held': 'blocker', 'contract': 'not runnable',
          'claim': 'claimed elsewhere', 'outside': 'outside Now/Next'}
 CAUSES = {'blocker': 'blocker', 'scope': 'outside Touches', 'scope_request': 'needs files', 'overlap': 'overlap',
           'report': 'bad report', 'conflict': 'conflict', 'validation': 'validation', 'crash': 'crashed', 'empty': 'no result',
@@ -274,6 +274,8 @@ def doing(lane):
         return 'waiting for a check slot, ' + (lane.detail or '0 ahead')
     if lane.phase == 'waiting to integrate':
         return 'waiting to integrate: ' + (lane.detail or 'another integration first')
+    if lane.phase == 'batch check':
+        return 'batch check: ' + (lane.detail or 'one full check for the batch')
     if lane.phase in ('integrating', 'integrated'):
         return lane.phase
     text = doing_text(lane.activity) if lane.activity else ''
@@ -287,7 +289,7 @@ def doing(lane):
 def quiet(lane):
     """'quiet 12m' when the worker's last action is QUIET_AFTER seconds or older, else ''."""
     if (lane.activity_age is None or lane.activity_age < QUIET_AFTER
-            or lane.phase in ('waiting to integrate', 'waiting for a check slot')):
+            or lane.phase in ('waiting to integrate', 'waiting for a check slot', 'batch check')):
         return ''
     return 'quiet ' + duration(lane.activity_age // 60)
 
@@ -349,12 +351,15 @@ def verdict(runner):
     if runner.state == 'working':
         # Live workers, not every task in flight: 15 finished commits waiting to merge read as
         # "16 of 1 workers busy".
-        queued = sum(lane.phase in QUEUED for lane in runner.lanes)
-        busy = runner.running or sum(lane.phase not in QUEUED for lane in runner.lanes)
+        heads = [status(lane)[0] for lane in runner.lanes]
+        busy = runner.running or heads.count(ACTIVE)
         of = f' of {runner.max_workers}' if runner.max_workers else ''
         text = f"Working — {busy}{of} worker{'s' if busy != 1 else ''} busy"
-        if queued:
-            text += f"; {queued} commit{'s' if queued != 1 else ''} waiting to merge"
+        if heads.count(MERGEABLE):
+            text += f'; {heads.count(MERGEABLE)} mergeable'
+        if heads.count(WAITING):
+            queued = heads.count(WAITING)
+            text += f"; {queued} commit{'s' if queued != 1 else ''} waiting"
         if runner.gate:
             text += f'; no more start: {runner.gate}'
         if asks:
@@ -385,8 +390,11 @@ def verdict(runner):
     if runner.state == 'not cycling':
         return f'{head} — its status has not been refreshed; the runner may be busy or hung', 'bold red'
     if runner.held:
-        task, cause = runner.held[0]
-        return f"Waiting — {task}: {health.CAUSES.get(cause, cause or 'held')}", 'bold yellow'
+        task, cause = (blocking(runner.held) or runner.held)[0]
+        if cause in WAIT_CAUSES:
+            return f"Waiting — {task}: {health.CAUSES.get(cause, cause)}", 'bold yellow'
+        asked = any(q.id == task for q in runner.questions)
+        return f'Blocker — {task}: {blocker_detail(cause, asked)}', 'bold yellow'
     return head, 'bold yellow'
 
 
@@ -411,15 +419,76 @@ def waiting_line(runner, limit=4):
     return ' · '.join(parts) + (f' · +{more} more reasons' if more > 0 else '')
 
 
-# Finished commits only waiting to land: they sort below the tasks being worked on.
-QUEUED = ('implemented', 'waiting to integrate')
+# Each task shows one headline and a detail (docs/project.md, "Task status vocabulary"):
+# the headline says whether it moves, the detail how far it got. Engine states stay internal.
+ACTIVE, MERGEABLE, WAITING, BLOCKER = 'Active', 'Mergeable', 'Waiting', 'Blocker'
+# An implemented commit has not been checked: it waits, it is not Mergeable.
+WAIT_PHASES = {'implemented': 'Implemented', 'waiting to integrate': 'Merge turn', 'batch check': 'Batch check',
+               'waiting for a check slot': 'Check slot', 'paused': 'Paused', 'pending': 'Pending'}
+ACTIVE_PHASES = {'starting': 'Starting', 'running': 'Implementing', 'implementing': 'Implementing',
+                 'verifying': 'Verifying', 'integrating': 'Merging', 'landing': 'Merging'}
+
+
+def status(lane):
+    """(headline, detail) of a task in flight. Only an integrated commit, whose checks and review
+    passed and which is on the session branch, is Mergeable: main is all that remains."""
+    if lane.phase == 'integrated':
+        return MERGEABLE, 'Verified'
+    if lane.phase in WAIT_PHASES:
+        return WAITING, WAIT_PHASES[lane.phase]
+    return ACTIVE, ACTIVE_PHASES.get(lane.phase, lane.phase.capitalize())
+
+
+def resolver(asked):
+    """Who clears a Blocker: the owner only when the task has an open question in BLOCKERS.md;
+    a conflict, a failed check or a missing report is the runner's own repair."""
+    return 'Needs you' if asked else 'Agent repair'
+
+
+# A hold the engine lifts by itself once another task's files are free: a wait, not an obstacle.
+WAIT_CAUSES = ('overlap',)
+
+
+def blocking(held):
+    """The holds that are Blockers: every hold but those the engine lifts by itself."""
+    return [(task, cause) for task, cause in held if cause not in WAIT_CAUSES]
+
+
+def blocker_detail(cause, asked=False):
+    """'Conflict · Agent repair'."""
+    text = CAUSES.get(cause, cause or 'held')
+    return f'{text[:1].upper()}{text[1:]} · {resolver(asked)}'
 
 
 def task_counts(runner):
-    """(being worked on, finished and waiting to land, waiting to start, held, total) for a runner."""
-    landing = sum(lane.phase in QUEUED for lane in runner.lanes)
-    active = len(runner.lanes) - landing if runner.lanes else runner.running
-    return active, landing, runner.waiting, len(runner.held), active + landing + runner.waiting + len(runner.held)
+    """(active, mergeable, waiting, blocker, total) for a runner."""
+    heads = [status(lane)[0] for lane in runner.lanes]
+    active = heads.count(ACTIVE) if runner.lanes else runner.running
+    mergeable = heads.count(MERGEABLE)
+    blocker = len(blocking(runner.held))
+    waiting = heads.count(WAITING) + runner.waiting + len(runner.held) - blocker
+    return active, mergeable, waiting, blocker, active + mergeable + waiting + blocker
+
+
+def reviews(state_dir, proc='/proc'):
+    """({task: its own review runs}, {task: a batch checking it runs}) for the runner whose state is
+    ``state_dir``, from live `worker.py --verify STATE TASK` and `--verify-batch STATE SESSION
+    SCRIPT TASK...` processes. The runner log's last "verifying" outlives a review that died."""
+    state = os.path.realpath(state_dir)
+    single, batch = set(), set()
+    for entry in Path(proc).glob('[0-9]*'):
+        try:
+            argv = (entry / 'cmdline').read_bytes().decode(errors='replace').split('\0')
+        except OSError:
+            continue
+        for i, arg in enumerate(argv[:-2]):
+            if arg in ('--verify', '--verify-batch') and os.path.realpath(argv[i + 1]) == state:
+                if arg == '--verify':
+                    single.add(argv[i + 2])
+                else:
+                    batch.update(a for a in argv[i + 4:] if a)
+                break
+    return single, batch
 
 
 def lanes(runner, now=None):
@@ -433,6 +502,7 @@ def lanes(runner, now=None):
     except (OSError, subprocess.SubprocessError):
         return []
     phases = _phases(runner.state_dir) if runner.state_dir else {}
+    single, batch = reviews(runner.state_dir) if runner.state_dir else (set(), set())
     out = []
     for path in sorted(Path(common or '/nonexistent', 'autowork-execution', 'slots').glob('*.json')):
         try:
@@ -448,12 +518,16 @@ def lanes(runner, now=None):
             progress = main_check.slot_status(Path(runner.state_dir) / 'full-check' / f'{task}.status.json')
             if progress.get('state') == 'waiting' and main_check.alive(progress.get('pid')):
                 phase, detail = 'waiting for a check slot', f"{progress.get('ahead', 0)} ahead"
+        if phase == 'verifying' and runner.state_dir and task not in single:
+            # Its review is gone: hours of "verifying" for three tasks whose reviews had died.
+            phase, detail = (('batch check', 'one full check for the batch') if task in batch else
+                             ('waiting to integrate', 'its review is not running'))
         started = slot.get('started_at')
         activity, age = _activity(runner.state_dir, task, now) if runner.state_dir else ('', None)
         out.append(Lane(task=task, phase=phase, detail=detail, attempt=slot.get('attempt', 1),
                         minutes=int((now - started) // 60) if started else None, activity=activity, activity_age=age))
     # Twenty finished commits listed first hid the eight tasks actually running.
-    return sorted(out, key=lambda lane: lane.phase in QUEUED)
+    return sorted(out, key=lambda lane: status(lane)[0] != ACTIVE)
 
 
 def ago(seconds):
@@ -845,19 +919,19 @@ def task_rows(runner):
         title = ' '.join(block.split('\n', 1)[0].strip().lstrip('—–-:').split())
         short = ' '.join((goals.task_fields(block).get('Short') or '').split()) or title
         _, state, cause, why = engine.get(task, (task, '', '', ''))
-        if task in lanes:
-            words, kind = lanes[task].phase, 'working'
-        elif state == 'held':
-            words, kind = 'held: ' + CAUSES.get(cause, cause or 'held'), 'held'
-        elif state in ('waiting', 'pending'):
-            words, kind = 'waiting', 'waiting'
-        elif state in IN_FLIGHT:
-            words, kind = PHASES[state], 'working'
-        elif section == 'Needs decision':
-            words, kind = 'needs decision', 'waiting'
-        else:
-            words, kind = state or 'ready', 'ready'
         question = asked.get(task)
+        if task in lanes or state in IN_FLIGHT:
+            words, kind = ' · '.join(status(lanes.get(task) or Lane(task, PHASES[state]))), 'working'
+        elif state == 'held' and cause in WAIT_CAUSES:
+            words, kind = f'{WAITING} · ' + blocker_detail(cause).split(' · ')[0], 'held'
+        elif state == 'held':
+            words, kind = f'{BLOCKER} · ' + blocker_detail(cause, bool(question)), 'held'
+        elif state in ('waiting', 'pending'):
+            words, kind = WAITING, 'waiting'
+        elif section == 'Needs decision':
+            words, kind = f'{WAITING} · Needs decision', 'waiting'
+        else:
+            words, kind = f'{WAITING} · Ready' if state in ('', 'ready') else state, 'ready'
         short = short if len(short) <= 40 else short[:39].rstrip() + '…'
         rows.append(TaskRow(task=task, short=short, section=section, state=words, kind=kind,
                             why='you: ' + question.needs if question else why, question=bool(question)))

@@ -1,4 +1,5 @@
 """Offline integration acceptance using disposable real Git repositories."""
+import hashlib
 import importlib
 import json
 import os
@@ -165,6 +166,49 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(Path(self.git('rev-parse', '--path-format=absolute', '--git-path', 'MERGE_HEAD', cwd=root)).exists())
         events = [json.loads(line)['event'] for line in (self.common / 'journal.jsonl').read_text().splitlines()]
         self.assertIn('abandoned_merge_aborted', events)
+
+    def review_failed(self, finding, attempt):
+        slot = state.slots(self.common)[0]
+        slot = state.write_slot(self.common, dict(slot, attempt=attempt), slot)
+        self.module().hold(self.common, slot, 'integration validation failed or changed the integration tree: '
+                           f'PI_AUTOWORK_VERIFY: fail \u2014 {finding}', cause='validation')
+
+    def test_a_last_attempt_that_failed_review_is_reworked_once_then_asked(self):
+        """TOOLSET-285-29: a second attempt failed its review and was neither retried nor asked about."""
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'pi-autowork'))
+        from pi_autowork import questions
+        module = self.module()
+        root, commit = self.worker()
+        self.review_failed('reclaim continues after pressure stops', 2)
+        result = module.retry_held(self.retry_args())
+        self.assertEqual((result['outcome'], result['why']), ('REQUEUED', 'review_rework'), result)
+        record = dispatch.rework_record(self.common, 'A')
+        self.assertEqual((record['finding'], record['tip']), ('reclaim continues after pressure stops', commit))
+        task = execution.select_all(self.repo, None, None)[0]
+        text = dispatch.prompt(task, self.repo, 'b', 'HEAD', Path(self.temp.name) / 'r.json', rework=record)
+        self.assertIn('Rework after review', text)
+        self.assertIn('reclaim continues after pressure stops', text)
+        self.assertIn(commit, text)
+        # The rework fails review too: no third attempt, one question quoting both findings.
+        self.worker()
+        self.review_failed('signed execution cases never ran', 1)
+        self.assertNotEqual(module.retry_held(self.retry_args()).get('outcome'), 'REQUEUED')
+        slot = state.slots(self.common)[0]
+        self.assertEqual(slot['cause'], 'reviewed_twice')
+        self.assertIn('signed execution cases never ran', slot['reason'])
+        self.assertIn('reclaim continues after pressure stops', slot['reason'])
+        self.assertTrue(state.exhausted(slot))
+        self.assertTrue(questions.exhausted(dict(slot, task='A')))
+        self.assertEqual(module.retry_held(self.retry_args()).get('outcome'), 'IDLE')  # asked, not retried
+
+    def test_an_environment_miss_is_not_reworked(self):
+        self.worker()
+        slot = state.slots(self.common)[0]
+        slot = state.write_slot(self.common, dict(slot, attempt=2), slot)
+        self.module().hold(self.common, slot, 'integration validation failed or changed the integration tree: '
+                           'PI_AUTOWORK_VERIFY: fail environment \u2014 fake-sdk 1.0', cause='validation')
+        self.assertNotEqual(self.module().retry_held(self.retry_args()).get('why'), 'review_rework')
+        self.assertIsNone(dispatch.rework_record(self.common, 'A'))
 
     def test_a_session_moved_only_by_planning_commits_lands_the_validated_merge_without_revalidating(self):
         self.worker()
@@ -740,6 +784,60 @@ finally:
         self.assertEqual(self.module().live_items('on a phone'), ['on a phone'])
         self.assertEqual(self.module().live_items(['a', '', '  ', None, {'command': 'adb'}]), ['a', 'adb'])
         self.assertEqual(self.module().live_items(None), [])
+
+    def test_doc_impact_is_source_bound_and_incomplete_assessments_remain_pending(self):
+        _, commit = self.worker(files={'A.txt': 'new interface\n', 'guide.md': 'new interface\n'})
+        module = self.module()
+        slot = state.slots(self.common)[0]
+        path = dispatch.data_dir(self.common, slot) / 'report.json'
+        report = execution.read(path)
+        contracts = {t['id']: t for t in dispatch.contracts(self.repo)}
+        check = {'command': 'test -s guide.md', 'result': 'pass', 'summary': 'read back interface'}
+        cases = [
+            (None, 'pending'),  # legacy evidence must be assessed, not rejected or silently excused
+            ({'status': 'not_needed', 'reason': 'guide already covers interface', 'paths': ['guide.md']}, 'not_needed'),
+            ({'status': 'updated', 'reason': 'guide reconciled with interface',
+              'paths': ['guide.md'], 'checks': [check]}, 'updated'),
+            ({'status': 'pending', 'reason': 'shared runbook needs command', 'paths': [],
+              'resume': 'DOCS-MAINTAINER: reconcile shared runbook'}, 'pending'),
+            ({'status': 'updated', 'reason': 'unchecked assertion', 'paths': ['guide.md']}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'missing document', 'paths': ['absent.md']}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'foreign path', 'paths': ['../foreign.md']}, 'pending'),
+            ({'status': 'not_needed'}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'metadata only', 'paths': []}, 'not_needed'),
+            ({'status': 'updated', 'reason': 'old assessment', 'paths': ['guide.md'],
+              'checks': [check], 'inputs': {'commit': self.baseline}}, 'pending'),
+            ({'status': 'not_needed', 'reason': 'invalid path', 'paths': ['guide\0.md']}, 'pending'),
+        ]
+        for impact, expected in cases:
+            with self.subTest(impact=impact):
+                execution.save(path, dict(report, checks=[check], **({'doc_impact': impact} if impact else {})))
+                _, assessed = module.verify(self.repo, self.common, slot, contracts)
+                evidence = assessed['doc_impact']
+                self.assertEqual(evidence['status'], expected)
+                self.assertTrue(evidence['reason'])
+                self.assertEqual(evidence['inputs']['commit'], commit)
+                self.assertEqual(evidence['inputs']['baseline'], self.baseline)
+                self.assertEqual(evidence['inputs']['task_contract_sha256'],
+                                 hashlib.sha256(contracts['A']['contract'].encode()).hexdigest())
+                if expected == 'pending':
+                    self.assertTrue(evidence['resume'])
+                elif evidence['paths']:
+                    self.assertEqual(evidence['inputs']['documents']['guide.md'],
+                                     self.git('rev-parse', commit + ':guide.md'))
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['true'], 10)['outcome'], 'INTEGRATED')
+        self.assertEqual(state.slots(self.common)[0]['report']['doc_impact']['status'], 'pending')
+        # Resume an older landed intent without replaying implementation or validation.
+        execution.save(path, report)
+        landed = state.slots(self.common)[0]
+        state.write_slot(self.common, dict(landed, state='integrating', report=report), landed)
+        self.assertEqual(module.integrate(self.repo, self.owner, 'A', ['false'], 10)['outcome'], 'INTEGRATED')
+        before = state.slots(self.common)[0]['report']['doc_impact']
+        self.assertEqual(before['status'], 'pending')
+        self.assertEqual(module.close(self.repo, self.owner, 'A')['outcome'], 'CLOSED')
+        self.assertEqual(state.slots(self.common)[0]['report']['doc_impact'], before)
+        from parallel_status import snapshot
+        self.assertEqual(snapshot(self.repo)['tasks'][0]['doc_impact'], before)
 
     def test_advisory_check_failures_integrate_but_do_not_override_the_gate(self):
         self.worker()
@@ -2453,9 +2551,9 @@ finally:
     def test_retry_respects_worker_capacity(self):
         self.retry_blocked_fixture('capacity')
 
-    def test_retry_runs_beside_an_overlapping_worker(self):
-        """TOOLSET-161-17: overlapping Touches never make a task wait."""
-        self.retry_blocked_fixture('overlap', 'RETRIED')
+    def test_a_retry_naming_a_running_workers_file_waits_for_it(self):
+        """A retry naming a file a running worker names would conflict with it at merge."""
+        self.retry_blocked_fixture('overlap')
 
     def test_exclusive_retry_waits_for_worker_pool(self):
         self.retry_blocked_fixture('exclusive')

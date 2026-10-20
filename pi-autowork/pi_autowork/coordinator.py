@@ -164,6 +164,14 @@ def reread_settings(path, started_with):
     os.environ.update(now)
 
 
+def batchable(rows, handled=()):
+    """(task, commit) of each candidate a batch may take: reported, or integrating with no review
+    running (one runs only while the session is busy, and no batch starts then). Reported alone,
+    a review a restart cut short waited behind every later batch: 16 hours for one of them."""
+    return [(r['task'], r.get('commit')) for r in rows
+            if r.get('state') in ('reported', 'integrating') and r['task'] not in handled]
+
+
 class Coordinator:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -319,6 +327,15 @@ class Coordinator:
             failure = f'Batch: the full check failed on the merged tree ({str(result.get("reason") or "")[:300]}); '
             revisions = {r.split('@')[0]: r for r in getattr(self, 'batch_revisions', [])}
             checked = [revisions[t] for t in result.get('tasks') or [] if t in revisions]
+            suspects = [revisions[t] for t in result.get('suspects') or [] if t in revisions]
+            if suspects and len(suspects) < len(checked):
+                # The failing tests import or name only these candidates' changes: they integrate
+                # one at a time, and the rest batch again at once instead of in halves.
+                failed = self.batch_failed() | set(suspects)
+                (self.state / 'batch-failed.json').write_text(json.dumps(sorted(failed)) + '\n')
+                LOG.say(failure + f'the failing tests point at {", ".join(r.split("@")[0] for r in suspects)}, '
+                        f'which integrate one at a time; the other {len(checked) - len(suspects)} batch again')
+                return
             if len(checked) >= 4:
                 middle = len(checked) // 2
                 path = self.state / 'batch-split.json'
@@ -1568,8 +1585,7 @@ class Coordinator:
         conflicts = [t for t in self.batch_conflicts() if t in queue and t not in chain]
         # Verified together: they land first, in order; then the batch's conflicts are held for the resolver.
         queue = chain + conflicts + [t for t in queue if t not in chain and t not in conflicts]
-        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows
-                                if r.get('state') == 'reported' and r['task'] not in handled])
+        batch = self.batch_due(batchable(rows, handled))
         if batch:
             self.start_batch(batch)
             return  # it runs beside the loop; its candidates land when it ends
@@ -1635,7 +1651,7 @@ class Coordinator:
             if row and row.get('state') == 'held' and row.get('cause') == 'conflict':
                 self.resolve_task_conflict(row)
         rows = self.tasks(self.status())
-        batch = self.batch_due([(r['task'], r.get('commit')) for r in rows if r.get('state') == 'reported'])
+        batch = self.batch_due(batchable(rows))
         if batch:
             self.start_batch(batch)
             return True
@@ -1722,7 +1738,7 @@ class Coordinator:
                 self.reverify_after_timeout(task, version)
                 continue
             held_by_validation = row.get('state') == 'held' and (
-                row.get('cause') == 'validation'
+                row.get('cause') in ('validation', 'reviewed_twice')
                 or (not row.get('cause') and str(row.get('reason') or '').startswith('integration validation failed')))
             if not held_by_validation or self.stop:
                 continue
@@ -1944,7 +1960,14 @@ class Coordinator:
             return sorted(set(reason.removeprefix('invalid goals.json').lstrip(': ').split('; ')))
         return []
 
-    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False):
+    def overlap_idles(self):
+        """Worker slots idle while a task waits for another one's file: the queue, not the pool,
+        is what limits the runner, so the DOCS-MAINTAINER re-cuts those tasks."""
+        rows = self.tasks()
+        busy = sum(1 for r in rows if r.get('state') in ('dispatched', 'running'))
+        return busy < int(self.workers) and any(maintainer.overlap(r) for r in rows)
+
+    def maintain(self, main_only=False, ledger_errors=None, ledger_edits_only=False, overlap=False):
         """DOCS-MAINTAINER (TOOLSET-164-f1): when nothing runs and tasks are held for a planning
         cause or are not runnable as written, one Pi job restates them from the repository's own
         evidence in a disposable checkout. Its commit merges into the session only if it changed
@@ -1958,8 +1981,10 @@ class Coordinator:
         # those slots cannot settle until the ledger is valid. Never move the session
         # under an active review, a merge resolution (its merge is adopted only onto the
         # revision it merged) or another writer.
+        # A re-cut of tasks waiting on a shared file writes planning files only: it runs beside
+        # workers, which is when idle slots make it worth a model run.
         if (dirty(self.integ) or self.session_busy() or self.resolvers
-                or (self.in_flight() and not main_only and not self.ledger_errors)):
+                or (self.in_flight() and not main_only and not self.ledger_errors and not overlap)):
             return False
         rows = [] if main_only or self.ledger_errors else self.tasks()
         if ledger_edits_only:
@@ -1968,8 +1993,9 @@ class Coordinator:
         findings = {r['task']: worker.review_findings(self.state, r['task']) for r in rows
                     if r.get('state') == 'held' and r.get('cause') == 'validation' and r.get('task')}
         main = {} if ledger_edits_only else main_check.read(self.state)
-        found = maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
-                                    reported_flakes=maintainer.last(self.state).get('flaky_tests', []))
+        found = (maintainer.overlaps(rows) if overlap and not self.ledger_errors else
+                 maintainer.triggers(rows, main, findings, ledger_errors=self.ledger_errors, limit=None,
+                                     reported_flakes=maintainer.last(self.state).get('flaky_tests', [])))
         before = {}
         if any(task not in ('MAIN', 'LEDGER') for task, _, _ in found):
             goals, dispatch = touches_inference.modules(self.toolset)
@@ -2402,7 +2428,7 @@ class Coordinator:
             triggers = maintainer.triggers(rows, findings=findings, limit=None)
             reasons = {r['task']: r.get('reason') or '' for r in rows if r.get('task')}
             repairs = maintainer.stalled(self.state, triggers, entries=maintainer.entries(todo, goals), reasons=reasons)
-            found = questions.build(snapshot, todo, goals, repairs=repairs)
+            found = questions.build(snapshot, todo, goals, repairs=repairs, resolving=self.resolving(rows))
             if os.environ.get('PI_AUTOWORK_ASK_FULL_CHECK', '1') != '0' and not main_check.full_check(self.integ):
                 # TOOLSET-180-72: nothing guards the suite
                 found.append(questions.full_check_question())
@@ -2416,6 +2442,14 @@ class Coordinator:
                     'Built from the engine status without a model; /blockers answers them.')
         LOG.say(f'Questions for the owner in BLOCKERS.md: {len(found)} open'
                 + (f" (easiest: {found[0]['id']}, {found[0]['effort']})" if found else ''))
+
+    def resolving(self, rows):
+        """Held conflicts the merge resolver is settling or will take next: not the owner's yet. One
+        is asked once its resolution failed or its merges ran out (merge_adoption not allowed)."""
+        return set(self.resolvers) | {
+            r['task'] for r in rows if r.get('state') == 'held' and r.get('cause') == 'conflict'
+            and (r.get('merge_adoption') or {}).get('allowed')
+            and self.seen.get('unresolved-' + r['task']) != r.get('commit')}
 
     def update_toolset(self):
         """While nothing is in flight, update the toolset package Pi loads, at most once per
@@ -2709,6 +2743,12 @@ class Coordinator:
             if result.get('requeued') is False:
                 LOG.say(f'{task}: its TODO entry was removed or closed while it was held; set aside'
                         + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'review_rework':
+                LOG.say(f'{task}: its last attempt failed review; reworking it once with the findings'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
+            elif result.get('why') == 'runner_merged':
+                LOG.say(f'{task}: its branch was merged past its commit by the runner; running it fresh from that tip'
+                        + (f' (earlier work kept as {kept})' if kept else ''))
             else:
                 LOG.say(f'{task}: its TODO entry changed while it was held; running it fresh'
                         + (f' (earlier work kept as {kept})' if kept else ''))
@@ -2720,6 +2760,9 @@ class Coordinator:
             if waiting and waiting != self.last_waiting:
                 LOG.say(f'Waiting: {waiting}')
             self.last_waiting = waiting
+            if self.overlap_idles() and self.maintain(overlap=True):
+                self.last_waiting = ''
+                return  # dispatch again on the re-cut tasks first
         elif outcome == 'IDLE':
             # IDLE only means no worker is running: tasks may still be waiting on something.
             blocked = summary_list(result.get('waiting') or [])

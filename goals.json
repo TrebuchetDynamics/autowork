@@ -441,7 +441,8 @@
         "TOOLSET-107-93",
         "TOOLSET-109-f1",
         "TOOLSET-113-04",
-        "TOOLSET-146-bc"
+        "TOOLSET-146-bc",
+        "TOOLSET-146-bc-LIVE"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -809,7 +810,10 @@
         "TOOLSET-284-e0",
         "TOOLSET-285-29",
         "TOOLSET-285-47",
-        "TOOLSET-286-32"
+        "TOOLSET-286-32",
+        "TOOLSET-287-44",
+        "TOOLSET-288-cf",
+        "TOOLSET-289-71"
       ],
       "title": "Run Autowork continuously through Pi with a model fallback"
     }
@@ -817,7 +821,7 @@
   "priority_order": {
     "schema": 1,
     "tasks": [
-      "TOOLSET-285-29",
+      "TOOLSET-287-44",
       "TOOLSET-277-52",
       "TOOLSET-270-a9",
       "TOOLSET-271-d6",
@@ -844,13 +848,13 @@
       "TOOLSET-119-2b",
       "TOOLSET-118-68",
       "TOOLSET-099-87",
-      "TOOLSET-146-bc",
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
       "TOOLSET-235-0d",
       "TOOLSET-278-91",
       "TOOLSET-279-eb",
+      "TOOLSET-288-cf",
       "TOOLSET-286-32",
       "TOOLSET-285-47",
       "TOOLSET-276-2c",
@@ -910,7 +914,8 @@
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d",
-      "TOOLSET-215-91"
+      "TOOLSET-215-91",
+      "TOOLSET-146-bc-LIVE"
     ]
   },
   "tasks": [
@@ -990,14 +995,6 @@
       "section": "Now",
       "status": "open",
       "title": "Heal toolset pin drift so every runner receives released fixes"
-    },
-    {
-      "depends_on": [],
-      "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-146-bc",
-      "section": "Now",
-      "status": "open",
-      "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
       "depends_on": [
@@ -1205,10 +1202,10 @@
     {
       "depends_on": [],
       "goal": "PI-RUNNER",
-      "id": "TOOLSET-285-29",
+      "id": "TOOLSET-287-44",
       "section": "Now",
       "status": "open",
-      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+      "title": "A merge conflict the resolver may still adopt is never an owner question"
     },
     {
       "depends_on": [],
@@ -1724,6 +1721,14 @@
       "title": "Harden conflicting-owner-plan journey against fixture races"
     },
     {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-288-cf",
+      "section": "Next",
+      "status": "open",
+      "title": "Two runner tests fail only under full-check load"
+    },
+    {
       "depends_on": [
         "AUDIT-QUOTED-SECRET",
         "TOOLSET-092-18",
@@ -1765,6 +1770,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify Pi API-key and subscription login locally with owner credentials"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-146-bc"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-146-bc"
     },
     {
       "depends_on": [],
@@ -2619,6 +2634,14 @@
     },
     {
       "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc",
+      "section": "Done",
+      "status": "done",
+      "title": "Run conditional Docs Sync during verified Autowork closeout"
+    },
+    {
+      "depends_on": [],
       "goal": "PI-RUNNER",
       "id": "TOOLSET-148-88",
       "section": "Done",
@@ -3332,6 +3355,24 @@
       "section": "Done",
       "status": "done",
       "title": "The autowork core SKILL.md has room again: detail moves to references/"
+    },
+    {
+      "depends_on": [],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-285-29",
+      "section": "Done",
+      "status": "done",
+      "title": "A task whose last attempt failed its review is reworked once with the findings, never left silently held"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-129-c4"
+      ],
+      "goal": "PI-RUNNER",
+      "id": "TOOLSET-289-71",
+      "section": "Done",
+      "status": "done",
+      "title": "Task status shows Active, Mergeable, Waiting or Blocker with a detail"
     },
     {
       "depends_on": [

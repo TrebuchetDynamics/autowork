@@ -5013,3 +5013,77 @@ Source section: Next
 - Exclusions: No new LLM judge, source-truth guarantee, semantic model benchmark, larger swarm, Obsidian export, runtime/service/profile changes, deployment, publication, test waiver, failure-history rewrite or resurrection of modules targeted by TOOLSET-202-9a. Research persistence does not dispatch implementation.
 - Planner's call: A narrow producer-evidence fidelity successor to delivered check reuse, not its reimplementation. Keep 130-15 as the read-model consumer and 118-68/228-0c as capacity owners. Diagnose from structured producing evidence before parsing task-local logs; preserve unsupported and unavailable distinctions.
 - Next action: Add a table-driven fake gate/record regression showing cached cross-task reuse with a missing current-task log and an exception-qualified producing run. Make the minimal existing gate-record/gate_note correction, then run the focused fixtures and mandatory offline/review gates. Do not run real model calls or increase worker count to verify this behavior.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-285-29"></a>
+
+### TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+
+- [x] TOOLSET-285-29 — A task whose last attempt failed its review is reworked once with the findings, never left silently held
+- Short: Review-failed last attempt is reworked
+- Status: done 2026-10-20 (interactive session): one rework with finding and kept tip after a last-attempt review failure; second failure held as reviewed_twice (owner question, re-reviewable by a changed reviewer); entry edits reset it; fixture and runner tests.
+- Goal: PI-RUNNER
+- Evidence: (2026-10-20, one fleet runner): a task's second attempt failed its review ('required scheduler and signed-execution acceptance evidence is missing'). The engine offers fresh retries only to first attempts, and the question list classes review failures as technical, so the task was neither retried nor asked about and appeared nowhere among the runner's roots or questions.
+- Touches: skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/questions.py, pi-autowork/tests/test_questions.py, tests/test_pi_autowork.py
+- Scope: (1) A held slot whose cause is a review failure (validation, not environment) on its last attempt gets one fresh rework attempt of the same task: the previous commit is kept on a -set-aside-N branch, and the new prompt names that tip and quotes the reviewer's findings as what to fix. (2) A second review failure of the rework becomes an owner question quoting both findings. (3) Until then, status, the TUI and BLOCKERS.md show such a task as 'reworking after review' or as the question, never as nothing: no held task may be neither retried nor asked.
+- Acceptance: In fixtures: a task whose second attempt fails review with a finding gets exactly one rework attempt whose prompt contains the finding and the kept tip; a rework that passes lands; a rework that fails again yields one owner question quoting both findings; a status snapshot never shows a held task with no retry, no question and no root.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_integrate.py; python3 -m unittest discover -s pi-autowork/tests -p test_questions.py; python3 scripts/check.py tests/test_pi_autowork.py; python3 scripts/check.py with TMPDIR set to a fresh short directory
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to review content, gates or the attempt limit for other causes; an environment hold keeps its provisioning path.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Next
+
+<a id="toolset-289-71"></a>
+
+### TOOLSET-289-71 — Task status shows Active, Mergeable, Waiting or Blocker with a detail
+
+- [x] TOOLSET-289-71 — Task status shows Active, Mergeable, Waiting or Blocker with a detail
+- Short: Status reads Active/Mergeable/…
+- Status: done
+- Goal: PI-RUNNER
+- Payoff: Run Autowork continuously through Pi with a model fallback.
+- Sources: [accepted vocabulary](docs/project.md#task-status-vocabulary-2026-10-20) (owner, 2026-10-20); [fleet view](pi-autowork/pi_autowork/fleet_view.py) (`task_counts`, `QUEUED`, `PHASES`); [TUI](pi-autowork/pi_autowork/tui.py) (`RUNNER_COLUMNS` Run/Land/Wait/Held and the detail line "working · to land · waiting · held"); [health](pi-autowork/pi_autowork/health.py) (`NEEDS_PERSON`, "held for a person").
+- Evidence: the owner asked what Run, Land, Wait and Held mean and whether Held is a blocker. "Land" counts `implemented` commits (`QUEUED`) that have not been checked yet, so it is not "ready to merge"; "Held" covers both agent-repairable causes and real owner questions.
+- Touches: pi-autowork/pi_autowork/fleet_view.py, pi-autowork/pi_autowork/tui.py, pi-autowork/pi_autowork/health.py, pi-autowork/tests/test_fleet_view.py, pi-autowork/tests/test_health.py
+- Consumes: TOOLSET-129-c4's single Needs action (reason, audience, source) for a Blocker's "who resolves it".
+- Scope: (1) One pure function maps a slot and its evidence to (headline, detail, resolver): headline one of Active, Mergeable, Waiting, Blocker; Mergeable only when the recorded checks and review passed and only the merge remains; `held` becomes Blocker with its cause and resolver Agent repair, Needs you or External (Needs you only for causes the engine cannot repair, the `NEEDS_PERSON` set made explicit). (2) The runner table's columns become Active, Mergeable, Waiting, Blocker, Total; the detail line, task rows and `autowork status` use the same words and show `headline · detail`. (3) Every Waiting row names its reason. (4) Engine state names and runner-level states are unchanged; no alias keeps the old column names.
+- Acceptance: Given a reported commit without checks, the row reads `Waiting · Implemented`, never Mergeable (`test_fleet_view.py::test_implemented_is_waiting_not_mergeable`). Given checks and review passed, `Mergeable` (`test_mergeable_needs_passed_gates`). A conflict hold reads `Blocker · Conflict · Agent repair`; a blocker the worker reported for credentials reads `… · Needs you` (`test_blocker_names_its_resolver`). The runner table header is exactly Runner, State, Active, Mergeable, Waiting, Blocker, Total, Needs, Now (`test_runner_columns`).
+- Checks: python3 -m unittest discover -s pi-autowork/tests -p test_fleet_view.py; python3 -m unittest discover -s pi-autowork/tests -p test_health.py; python3 scripts/check.py
+- Dependencies: None.
+- Ownership: Toolset coordinator.
+- Exclusions: No change to engine slot states, hold causes or retry behaviour; TOOLSET-276-a9 owns the hold-cause table.
+- Planner's call: after 129-c4 because both rewrite the Needs cell and the runner table in the same files.
+
+
+<!-- archived from TODO.md -->
+
+Source section: Now
+
+<a id="toolset-146-bc"></a>
+
+### TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
+
+- [x] TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
+- Short: Conditional Docs Sync at closeout
+- Status: done
+- Goal: DOCS-COMPLETENESS — Make core-document completeness and drift machine-checkable.
+- Sources: [accepted recovery and closeout plan](docs/plans/2026-10-16-pi-autowork-coordinator.md#automatic-stall-recovery-and-conditional-docs-sync), [existing closeout guidance](skills/shared/ENGINEERING-CYCLE.md), [Docs Sync](adapters/skills/docs-sync/SKILL.md), [parallel close](skills/autowork/scripts/parallel_integrate.py).
+- Touches: skills/autowork/SKILL.md, adapters/skills/autowork/SKILL.md, skills/shared/ENGINEERING-CYCLE.md, skills/autowork/references/parallel-workers.md, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, tests/test_pi_autowork.py, tests/fixtures/autowork-closeout/, docs/cross-host.md, docs/workflows.md
+- Skills: Required: bundled Docs Sync, resolved in the actual host, for scoped Maintain when a verified change leaves a concrete documentation delta. Expected result is affected docs reconciled with source and readback/checks, or a justified not_needed disposition. Archive-only rendering is not equivalent. Use its existing helper path for deterministic task/index/archive changes; no repository-wide bootstrap.
+- Scope: Assess doc impact at each task closeout from verified changes, task acceptance and actual docs. Update component docs inside authorized worker Touches; route shared docs through the coordinator. Add source-bound not_needed/updated/pending evidence with backward-compatible assessment of older reports. Prepare a narrow Docs Sync pass outside atomic-close locks; integrate/validate the actual doc candidate before final closure. Coalesce compatible completions in one settlement pass without waiting for fleet idleness. Preserve current atomic closure, exact evidence binding and history ownership. Align native/portable sequential guidance with the runtime path. Reconcile known newer origin atomic-close changes before editing; no second closeout authority.
+- Acceptance: Behavioral fixtures show relevant docs updated for a changed interface; already-correct or metadata-only work produces a justified no-op; two compatible completions share one pass with per-task evidence. Foreign dirty docs and moved source hold/reconcile safely. Failure or interruption preserves integrated code and pending doc closeout without marking done or replaying implementation; restart resumes once. Legacy reports lacking doc fields are assessed instead of rejected. TODO-only and indexed archive history is preserved. Once/until-empty finish needed closeout within scope; stops/pauses/budget limits do not launch new work. Scoped Docs Sync changes no unrelated policy or acceptance and no global manifest is required.
+- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py; python3 scripts/check.py tests/test_pi_autowork.py; bounded native/portable closeout behavioral scenarios (new, unrun); python3 scripts/check.py at combined runtime integration; git diff --check. Reuse compact fake-worker/disposable-Git fixtures; no test per wording rule.
+- Dependencies: None. Serialize overlapping lifecycle/closeout edits after active TOOLSET-115-bf work; reuse TOOLSET-120-fc/141-c4 recovery facilities where present, without making all stall handlers prerequisites for doc closeout.
+- Ownership: Toolset coordinator. Source/offline delivery here; installed fleet qualification remains TOOLSET-096-7e.
+- Owner decision (2026-10-17): the conditional Docs Sync pass at closeout runs in the DOCS-MAINTAINER worker (TOOLSET-164-f1, [plan](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) decision 5). This task keeps the per-task doc-impact assessment and its not_needed/updated/pending evidence in worker reports, which the maintainer consumes.
+- Exclusions: No full-doc bootstrap per task, new product work at closeout, infinite model retries, automatic installation/service restart, paused-job resumption, direct fleet-repository edits, publication or invented live checks. This planning pass dispatches nothing.
+- Planner's call: Always assess, run scoped Maintain only when needed; bind disposition to actual source/doc inputs and retain pending status on required doc failure. A code integration is not complete task closeout.
+- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Only the `not_needed`, `updated` or `pending` doc-impact fields in worker reports remain. The closeout Docs Sync pass itself belongs to the docs maintainer (266-7a).

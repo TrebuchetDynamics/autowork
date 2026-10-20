@@ -137,6 +137,17 @@ executed evidence precede canonical closure; no push or deployment is implied.
 Skill availability and support files are checked at use time; a missing skill is
 reported with its safe fallback, not silently treated as loaded.
 
+At verified closeout, assess the actual diff, task acceptance and affected docs.
+Record `doc_impact` as `not_needed` (source-backed reason), `updated` (paths and
+passing readback/checks), or `pending` (concrete gap and resume action). Sequential
+native/portable sessions resolve bundled Docs Sync and run scoped Maintain only
+for a concrete delta; rendering task/archive metadata is not a docs pass. Workers
+update in-scope component docs and route shared-doc gaps to the coordinator's
+DOCS-MAINTAINER. The Pi engine retains input-bound report evidence for that role;
+the maintainer's conditional closeout pass is separate work (TOOLSET-266-7a), not
+an extra model call or closure authority added by report assessment. See the
+[report format and binding](../skills/autowork/references/parallel-workers.md#documentation-impact-evidence).
+
 ## Autoresearch
 
 The bundle vendors [uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch)
@@ -847,7 +858,7 @@ example-repo    Verifying        None
 another-repo    Working          1 decision
 
 example-repo
-2 executing | 1 verifying | 4 to land
+2 active | 1 verifying | 4 mergeable
 Next: finish current review
 Evidence: current snapshot, observed age
 
