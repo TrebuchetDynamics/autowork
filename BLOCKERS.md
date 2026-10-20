@@ -16,22 +16,6 @@ no extra approval step or execution authority.
 - Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-118-68/), then rescope or split TOOLSET-118-68 in its TODO.md entry. The runner reruns it when the entry changes.
 - Kind: held
 
-### Q-TOOLSET-153-64 — USER_DECISION — effort investigate — unblocks 0
-
-- Task: TOOLSET-153-64 — A planning hold lets repository agents repair the queue without stopping the runner
-- Needs: merge conflict; worker and canonical checkout preserved; adopted 1 of 3; conflict in: pi-autowork/pi_autowork/command.py, tests/test_pi_autowork.py
-- Since: 2026-10-20T19:33:17Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-153-64/), then rescope or split TOOLSET-153-64 in its TODO.md entry. The runner reruns it when the entry changes.
-- Kind: held
-
-### Q-TOOLSET-261-15 — USER_DECISION — effort investigate — unblocks 0
-
-- Task: TOOLSET-261-15 — A worker's long test runs take a host check slot
-- Needs: merge conflict; worker and canonical checkout preserved; adopted 1 of 3; conflict in: docs/reference.md, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/test_parallel_dispatch.py
-- Since: 2026-10-20T19:33:17Z
-- Answer: Read the evidence (the worker's report and validation log under .git/autowork-execution/slot-data/TOOLSET-261-15/), then rescope or split TOOLSET-261-15 in its TODO.md entry. The runner reruns it when the entry changes.
-- Kind: held
-
 <!-- pi-autowork:questions:end -->
 
 None.
