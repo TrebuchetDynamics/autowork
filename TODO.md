@@ -587,25 +587,6 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Next action: Have the existing coordinator resume the retained candidate in its recorded worktree after supplying the already-approved short task-owned temporary root outside Git and fixture-only environment isolation. Preserve uncommitted implementation and passing focused checks; rerun the full failing inventory and diagnose process-group/load failures without weakening production push guards, dropping tests or resetting consumed budget. This is an internal test-environment repair, not a new owner input.
 - Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Drop "No cap increase" and "default 8": TOOLSET-260-ae raises the hard limit to 16, and the code's defaults are DEFAULT_WORKERS, WORKER_CAP, HARD_LIMIT = 2, 4, 8. "No push by the runner" no longer holds either: read it as no force-push.
 
-### TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
-
-- [ ] TOOLSET-146-bc — Run conditional Docs Sync during verified Autowork closeout
-- Short: Conditional Docs Sync at closeout
-- Status: open
-- Goal: DOCS-COMPLETENESS — Make core-document completeness and drift machine-checkable.
-- Sources: [accepted recovery and closeout plan](docs/plans/2026-10-16-pi-autowork-coordinator.md#automatic-stall-recovery-and-conditional-docs-sync), [existing closeout guidance](skills/shared/ENGINEERING-CYCLE.md), [Docs Sync](adapters/skills/docs-sync/SKILL.md), [parallel close](skills/autowork/scripts/parallel_integrate.py).
-- Touches: skills/autowork/SKILL.md, adapters/skills/autowork/SKILL.md, skills/shared/ENGINEERING-CYCLE.md, skills/autowork/references/parallel-workers.md, skills/autowork/scripts/parallel_dispatch.py, skills/autowork/scripts/parallel_integrate.py, skills/autowork/scripts/parallel_state.py, skills/autowork/scripts/test_parallel_dispatch.py, skills/autowork/scripts/test_parallel_integrate.py, pi-autowork/pi_autowork/coordinator.py, pi-autowork/pi_autowork/worker.py, tests/test_pi_autowork.py, tests/fixtures/autowork-closeout/, docs/cross-host.md, docs/workflows.md
-- Skills: Required: bundled Docs Sync, resolved in the actual host, for scoped Maintain when a verified change leaves a concrete documentation delta. Expected result is affected docs reconciled with source and readback/checks, or a justified not_needed disposition. Archive-only rendering is not equivalent. Use its existing helper path for deterministic task/index/archive changes; no repository-wide bootstrap.
-- Scope: Assess doc impact at each task closeout from verified changes, task acceptance and actual docs. Update component docs inside authorized worker Touches; route shared docs through the coordinator. Add source-bound not_needed/updated/pending evidence with backward-compatible assessment of older reports. Prepare a narrow Docs Sync pass outside atomic-close locks; integrate/validate the actual doc candidate before final closure. Coalesce compatible completions in one settlement pass without waiting for fleet idleness. Preserve current atomic closure, exact evidence binding and history ownership. Align native/portable sequential guidance with the runtime path. Reconcile known newer origin atomic-close changes before editing; no second closeout authority.
-- Acceptance: Behavioral fixtures show relevant docs updated for a changed interface; already-correct or metadata-only work produces a justified no-op; two compatible completions share one pass with per-task evidence. Foreign dirty docs and moved source hold/reconcile safely. Failure or interruption preserves integrated code and pending doc closeout without marking done or replaying implementation; restart resumes once. Legacy reports lacking doc fields are assessed instead of rejected. TODO-only and indexed archive history is preserved. Once/until-empty finish needed closeout within scope; stops/pauses/budget limits do not launch new work. Scoped Docs Sync changes no unrelated policy or acceptance and no global manifest is required.
-- Checks: python3 -m unittest discover -s skills/autowork/scripts -p test_parallel_dispatch.py; python3 scripts/check.py skills/autowork/scripts/test_parallel_integrate.py; python3 scripts/check.py tests/test_pi_autowork.py; bounded native/portable closeout behavioral scenarios (new, unrun); python3 scripts/check.py at combined runtime integration; git diff --check. Reuse compact fake-worker/disposable-Git fixtures; no test per wording rule.
-- Dependencies: None. Serialize overlapping lifecycle/closeout edits after active TOOLSET-115-bf work; reuse TOOLSET-120-fc/141-c4 recovery facilities where present, without making all stall handlers prerequisites for doc closeout.
-- Ownership: Toolset coordinator. Source/offline delivery here; installed fleet qualification remains TOOLSET-096-7e.
-- Owner decision (2026-10-17): the conditional Docs Sync pass at closeout runs in the DOCS-MAINTAINER worker (TOOLSET-164-f1, [plan](docs/plans/2026-10-17-docs-maintainer.md#docs-maintainer-worker) decision 5). This task keeps the per-task doc-impact assessment and its not_needed/updated/pending evidence in worker reports, which the maintainer consumes.
-- Exclusions: No full-doc bootstrap per task, new product work at closeout, infinite model retries, automatic installation/service restart, paused-job resumption, direct fleet-repository edits, publication or invented live checks. This planning pass dispatches nothing.
-- Planner's call: Always assess, run scoped Maintain only when needed; bind disposition to actual source/doc inputs and retain pending status on required doc failure. A code integration is not complete task closeout.
-- Planner's call (2026-10-19 audit; where this differs from the Scope above, this wins): Only the `not_needed`, `updated` or `pending` doc-impact fields in worker reports remain. The closeout Docs Sync pass itself belongs to the docs maintainer (266-7a).
-
 ### TOOLSET-156-75 — Split a task into subtasks when that unlocks parallel work or reduces complexity
 
 - [ ] TOOLSET-156-75 — Split a task into subtasks when that unlocks parallel work or reduces complexity
@@ -1781,6 +1762,14 @@ ownership. UI/features, ledger redesign and deferred live work follow runtime fi
 - Planner's call: Hermes' own read-only skill folders are the supported way to share skills it must not curate, so no file permissions trick or review setting is needed. A profile pinned to a revision loads its pinned clone's `skills/` the same way. Placed in Now (owner, 2026-10-18: "do both").
 - Owner decision (2026-10-19): Keep this migration deferred until the safety probe passes on supported Hermes. Preserve current profile-local copies and all existing safety criteria/exclusions; no upstream patch, weaker read-only rule or live runtime/profile change is authorized.
 - Gate: DEFERRED — not executable until a supported Hermes revision passes the required native read-only safety probe; retain the failed probe as historical evidence.
+
+- [ ] TOOLSET-146-bc-LIVE — Live checks for TOOLSET-146-bc
+  Scope: Run the live checks the offline work for TOOLSET-146-bc left pending.
+  Acceptance: Each check passes on the real target:
+  - Installed-host/model-driven Docs Sync behavior and fleet qualification remain TOOLSET-096-7e; offline fixtures are not native/live acceptance.
+  Checks: Live qualification by an authorized person; offline evidence does not count.
+  Dependencies: TOOLSET-146-bc.
+  Status: open
 
 ## Goal coverage
 

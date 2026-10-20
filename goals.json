@@ -441,7 +441,8 @@
         "TOOLSET-107-93",
         "TOOLSET-109-f1",
         "TOOLSET-113-04",
-        "TOOLSET-146-bc"
+        "TOOLSET-146-bc",
+        "TOOLSET-146-bc-LIVE"
       ],
       "title": "Make core-document completeness and drift machine-checkable"
     },
@@ -847,7 +848,6 @@
       "TOOLSET-119-2b",
       "TOOLSET-118-68",
       "TOOLSET-099-87",
-      "TOOLSET-146-bc",
       "TOOLSET-156-75",
       "TOOLSET-129-c4",
       "TOOLSET-130-15",
@@ -914,7 +914,8 @@
       "TOOLSET-129-6c",
       "TOOLSET-101-f6",
       "TOOLSET-145-6d",
-      "TOOLSET-215-91"
+      "TOOLSET-215-91",
+      "TOOLSET-146-bc-LIVE"
     ]
   },
   "tasks": [
@@ -994,14 +995,6 @@
       "section": "Now",
       "status": "open",
       "title": "Heal toolset pin drift so every runner receives released fixes"
-    },
-    {
-      "depends_on": [],
-      "goal": "DOCS-COMPLETENESS",
-      "id": "TOOLSET-146-bc",
-      "section": "Now",
-      "status": "open",
-      "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
       "depends_on": [
@@ -1777,6 +1770,16 @@
       "section": "Needs decision",
       "status": "open",
       "title": "Qualify Pi API-key and subscription login locally with owner credentials"
+    },
+    {
+      "depends_on": [
+        "TOOLSET-146-bc"
+      ],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc-LIVE",
+      "section": "Needs decision",
+      "status": "open",
+      "title": "Live checks for TOOLSET-146-bc"
     },
     {
       "depends_on": [],
@@ -2628,6 +2631,14 @@
       "section": "Done",
       "status": "done",
       "title": "Query pending and completed tasks from repository evidence without writes"
+    },
+    {
+      "depends_on": [],
+      "goal": "DOCS-COMPLETENESS",
+      "id": "TOOLSET-146-bc",
+      "section": "Done",
+      "status": "done",
+      "title": "Run conditional Docs Sync during verified Autowork closeout"
     },
     {
       "depends_on": [],
